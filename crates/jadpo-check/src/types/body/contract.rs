@@ -314,6 +314,10 @@ impl Body<'_> {
                 // Read as the type it is built on, its bounds checked as a
                 // construction's (chunk 5.5i3).
                 Holds::Bounded { of, .. } => Some(Ty::Prim(of)),
+                // Read as the object, the rules a type built on it adds
+                // checked as a construction's: a rate type's currencies
+                // (chunk 5.5h4).
+                Holds::Object(_) => Some(Ty::Opaque(entry.name.to_string(), Vec::new())),
                 _ => None,
             },
             Contract::Representation(prim) => Some(Ty::Prim(prim)),

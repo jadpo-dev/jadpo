@@ -24,7 +24,9 @@ pub enum Shape {
     StdEnum(String),
     /// A standard object type (area 19): sent as its data entry's JSON
     /// says, an object of its fields (`InstantRange`'s `start` and `end`).
-    StdObject(&'static jadpo_std::StandardType),
+    /// A standard object, with the rules a type built on it adds: a rate
+    /// type's currencies (chunk 5.5h4).
+    StdObject(&'static jadpo_std::StandardType, Rules),
     /// `IssuedToken` or `IssuedKey` (area 8), or `DecodeProblem` (area
     /// 19): built in, with the fields `jadpo_std::http::builtin_object_fields`
     /// lists.
@@ -53,6 +55,8 @@ pub fn merge<'r>(chain: impl IntoIterator<Item = &'r Rules>) -> Rules {
         out.max_duration = out.max_duration.or(rules.max_duration);
         out.currency = out.currency.or(rules.currency);
         out.rounding = out.rounding.or(rules.rounding);
+        out.rate_from = out.rate_from.or(rules.rate_from);
+        out.rate_to = out.rate_to.or(rules.rate_to);
         out.standard = out.standard.or(rules.standard);
     }
     out
@@ -176,7 +180,7 @@ impl<'g> Wire<'g> {
                                 | jadpo_std::standard::Holds::Map(..)
                         )
                     {
-                        return Shape::StdObject(entry);
+                        return Shape::StdObject(entry, merge(&rules));
                     }
                     return match issued_name(&name) {
                         Some(issued) => Shape::Issued(issued),
@@ -269,7 +273,7 @@ impl<'g> Wire<'g> {
                 self.name(&key)
             }
             Shape::StdEnum(name) => name,
-            Shape::StdObject(entry) => entry.name.to_string(),
+            Shape::StdObject(entry, rules) => format!("{}{}", entry.name, rules_text(&rules)),
             Shape::Issued(name) => {
                 refs.insert(issued_key(name));
                 name.to_string()
@@ -314,7 +318,7 @@ impl<'g> Wire<'g> {
             // A map keyed by a standard enum lists the keys the wire takes:
             // a `LocalisedText`'s, the supported locales' tags (chunk
             // 5.5o2).
-            Shape::StdObject(entry) => match entry.holds {
+            Shape::StdObject(entry, rules) => match entry.holds {
                 jadpo_std::standard::Holds::Map(jadpo_std::Part::Standard(key), _) => {
                     let mut out = standard_object_schema(entry);
                     out.set(
@@ -323,7 +327,7 @@ impl<'g> Wire<'g> {
                     );
                     out
                 }
-                _ => standard_object_schema(entry),
+                _ => rate_currencies(standard_object_schema(entry), &rules),
             },
             Shape::StdEnum(name) => {
                 let mut out = Value::object();
@@ -480,6 +484,24 @@ fn whole(n: Num) -> Option<i64> {
 /// a part that may be `none` also `null`, or, for one sent as RFC 9457
 /// sends a problem (`Json::Members`), left out; a type sent as its
 /// canonical text (`LocalTime`, chunk 5.5k) is a string.
+/// A rate type's `from` and `to` (chunk 5.5h4): each the one code its
+/// type fixes, as a `Money` type's currency is shown.
+fn rate_currencies(mut schema: Value, rules: &Rules) -> Value {
+    for (field, fixed) in [("from", rules.rate_from), ("to", rules.rate_to)] {
+        let Some(code) = fixed.and_then(jadpo_std::money::code) else {
+            continue;
+        };
+        let mut one = Value::object();
+        one.set("type", "string");
+        one.set("enum", vec![code]);
+        if let Some(mut properties) = schema.get("properties").cloned() {
+            properties.set(field, one);
+            schema.set("properties", properties);
+        }
+    }
+    schema
+}
+
 pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut out = Value::object();
     if entry.json == jadpo_std::standard::Json::Text {
@@ -846,4 +868,38 @@ pub fn rules_text(rules: &Rules) -> String {
         })
         .collect();
     format!(" {{ {} }}", shown.join(", "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rate_type_shows_the_currencies_it_fixes() {
+        let entry = jadpo_std::standard_type(jadpo_std::standard::EXCHANGE_RATE).expect("a rate");
+        let code = |schema: &Value, field: &str| {
+            schema
+                .get("properties")
+                .and_then(|properties| properties.get(field))
+                .and_then(|one| one.get("enum"))
+                .and_then(Value::as_array)
+                .map(<[Value]>::len)
+        };
+        let rules = Rules {
+            rate_from: jadpo_std::money::ordinal_of_code("GBP"),
+            ..Rules::default()
+        };
+        let typed = rate_currencies(standard_object_schema(entry), &rules);
+        assert_eq!(
+            typed
+                .get("properties")
+                .and_then(|p| p.get("from"))
+                .and_then(|one| one.get("enum")),
+            Some(&Value::Array(vec![Value::from("GBP")]))
+        );
+        assert!(
+            code(&typed, "to").is_some_and(|codes| codes > 1),
+            "a `to` it leaves open is any currency"
+        );
+    }
 }

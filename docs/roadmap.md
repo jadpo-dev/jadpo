@@ -789,7 +789,7 @@ reference only).
   UN/LOCODE list's terms are unclear and **needs Richard** to say whether
   it ships. What the pages left open is area 19's "Chosen in chunk
   5.5l2".
-- [ ] **5.5h4 Exchange rate types that fix their currencies** `opus ·
+- [x] **5.5h4 Exchange rate types that fix their currencies** `opus ·
   high` (area 19, "Money and payments"; decided by the lead session,
   2026-10-18, following decision 16), after 5.5h2: a type built on
   `ExchangeRate` may fix its currencies, `type PoundsToEuros =
@@ -799,7 +799,11 @@ reference only).
   condition; a rate read at the boundary is checked against them. Purely
   additive. Done when an inverted typed rate passed through a function
   fails to compile with a checked example, and a fixed-currency rate needs
-  no `attempt`.
+  no `attempt`. Built, with a type built on an object now built from that
+  object, `from` and `to` as construction failures, and JSON, text and
+  OpenAPI checking them, and a currency a parent type fixes kept by the
+  types built on it; storing one waits with `ExchangeRate`. What the
+  pages left open is area 19's "Chosen in chunk 5.5h4".
 - [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
   "The standard types", split from 5.5i), after 5.5l: `CardBrand`,
   `MaskedCardNumber` with its conversion from a `PaymentCardNumber`, and

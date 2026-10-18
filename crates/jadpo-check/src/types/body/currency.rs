@@ -8,7 +8,10 @@
 //! `currency_mismatch` under `attempt`. `money.convert` reads it too: an
 //! amount and a rate's `from` known to differ is a compile error, an
 //! inverted rate caught before it runs, and its result is in the rate's
-//! `to` where that is known (chunk 5.5h2).
+//! `to` where that is known (chunk 5.5h2). A rate's type fixes its
+//! currencies with `from:` and `to:` as a `Money` type fixes its one with
+//! `currency:`, so they are known across function boundaries too (chunk
+//! 5.5h4).
 
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_std::Op;
@@ -51,6 +54,21 @@ impl Body<'_> {
             .rule_chain(ty)
             .into_iter()
             .find_map(|(_, rules)| rules.currency)
+    }
+
+    /// The currency a rate type's chain fixes as its `from` or `to`, if it
+    /// does (chunk 5.5h4).
+    pub(super) fn fixed_rate_currency(&self, ty: &Ty, field: &str) -> Option<u32> {
+        if self.table.is_nullable(ty) {
+            return None;
+        }
+        self.table
+            .rule_chain(ty)
+            .into_iter()
+            .find_map(|(_, rules)| match field {
+                "from" => rules.rate_from,
+                _ => rules.rate_to,
+            })
     }
 
     /// What is known of the currency of the amount `expr`.
@@ -141,10 +159,18 @@ impl Body<'_> {
     }
 
     /// What is known of an exchange rate's `from` or `to` currency (area
-    /// 19): one written out in the rate's own object literal, or, for a
-    /// rate a subject names, what a condition proved of `rate.from`, as
-    /// for an amount's currency.
+    /// 19): one its type fixes (chunk 5.5h4), one written out in the
+    /// rate's own object literal, or, for a rate a subject names, what a
+    /// condition proved of `rate.from`, as for an amount's currency.
     pub(super) fn rate_currency(&self, rate: &Expr, field: &str) -> Currency {
+        if let Some(code) = self
+            .facts
+            .types
+            .get(&node_key(rate.syntax()))
+            .and_then(|ty| self.fixed_rate_currency(ty, field))
+        {
+            return Currency::Fixed(code);
+        }
         match rate {
             Expr::ParenExpr(paren) => {
                 return paren
@@ -236,6 +262,16 @@ impl Body<'_> {
             },
             _ => OneCurrency::Unknown,
         }
+    }
+
+    /// Whether the rate `value` converts from (or to) `code`, the currency
+    /// a rate type being built fixes: its `from` or `to` rule can't break
+    /// when it does (chunk 5.5h4).
+    pub(super) fn rate_in_currency(&self, value: &Expr, field: &str, code: u32) -> bool {
+        matches!(
+            self.same_currency(&self.rate_currency(value, field), &Currency::Fixed(code)),
+            OneCurrency::Yes(_)
+        )
     }
 
     /// Whether the amount `value` is in `code`, the currency a type being

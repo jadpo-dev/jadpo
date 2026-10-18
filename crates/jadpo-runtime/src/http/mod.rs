@@ -999,7 +999,7 @@ fn cursor_field(route: &RoutePlan) -> String {
 /// The names of an input's fields whose type is a list or a set, which
 /// the query string gives as a repeated key.
 fn list_fields(app: &App<'_>, codec: CodecId) -> Vec<String> {
-    let Some(Codec::Object { shape, fields }) = app.codecs.codecs.get(codec.0 as usize) else {
+    let Some(Codec::Object { shape, fields, .. }) = app.codecs.codecs.get(codec.0 as usize) else {
         return Vec::new();
     };
     let Some(shape) = app.codecs.shapes.get(shape.0 as usize) else {

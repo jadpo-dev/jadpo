@@ -879,10 +879,12 @@ impl Decls<'_> {
     ) -> Rules {
         let mut rules = Rules::default();
         let mut seen: BTreeMap<String, (Span, Const)> = BTreeMap::new();
+        let mut written: BTreeMap<String, ast::Member> = BTreeMap::new();
         for (name, member) in tree::members(list) {
             let Some(key) = tree::name_text(&name) else {
                 continue;
             };
+            written.entry(key.clone()).or_insert_with(|| member.clone());
             let key_span = self.span(name.syntax());
             let value_node = member.value();
             let value = value_node.as_ref().map_or(Const::Other, Const::from_expr);
@@ -969,6 +971,7 @@ impl Decls<'_> {
                             format!("{an} `{}` type", prim.name())
                         }
                         Subject::Collection => "a collection".to_string(),
+                        Subject::ExchangeRate => "an `ExchangeRate` type".to_string(),
                         Subject::Other => "this type".to_string(),
                     };
                     self.out.push(
@@ -1043,7 +1046,81 @@ impl Decls<'_> {
                 .map(|(a, b)| a > b),
         );
         self.inherited(&seen, &rules, parent);
+        self.fixed_currencies(&written, &rules, parent);
         rules
+    }
+
+    /// A currency the type built on fixes already, given again as another
+    /// one (area 19, chunk 5.5h4, decided by the lead session): a `Money`
+    /// type's `currency:`, a rate type's `from:` and `to:`. A type built on
+    /// another only narrows it, so it repeats the currency or leaves it
+    /// out; another one leaves no value that follows both.
+    fn fixed_currencies(
+        &mut self,
+        written: &BTreeMap<String, ast::Member>,
+        own: &Rules,
+        parent: &Ty,
+    ) {
+        let chain: Vec<(String, Rules)> = self
+            .table
+            .rule_chain(parent)
+            .into_iter()
+            .map(|(host, rules)| (host, rules.clone()))
+            .collect();
+        let pick = |rules: &Rules, key: &str| match key {
+            "currency" => rules.currency,
+            "from" => rules.rate_from,
+            _ => rules.rate_to,
+        };
+        let shown = |code: u32| {
+            format!(
+                "{}.{}",
+                jadpo_std::CURRENCY,
+                jadpo_std::money::variant(code).unwrap_or("?")
+            )
+        };
+        for key in ["currency", "from", "to"] {
+            let Some(mine) = pick(own, key) else {
+                continue;
+            };
+            let Some((host, theirs)) = chain
+                .iter()
+                .find_map(|(host, rules)| pick(rules, key).map(|code| (host, code)))
+            else {
+                continue;
+            };
+            let Some(member) = written.get(key) else {
+                continue;
+            };
+            if mine == theirs {
+                continue;
+            }
+            let code = jadpo_std::money::code(theirs).unwrap_or("?");
+            let span = member
+                .value()
+                .map_or_else(|| self.span(member.syntax()), |v| self.span(v.syntax()));
+            let what = match key {
+                "currency" => format!("the currency at {code}"),
+                "from" => format!("the currency its rates convert from at {code}"),
+                _ => format!("the currency its rates convert to at {code}"),
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_CONSTRAINT_CONTRADICTION,
+                    format!(
+                        "`{key}: {}` is different from `{host}`'s `{key}: {}`",
+                        shown(mine),
+                        shown(theirs)
+                    ),
+                )
+                .at(span, format!("different from `{host}`'s `{key}: {}`", shown(theirs)))
+                .reason(format!(
+                    "`{host}` fixes {what}, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built."
+                ))
+                .next(format!("Remove `{key}:`, so the type keeps `{host}`'s {code}"))
+                .edit(tree::removal(self.path, member), ""),
+            );
+        }
     }
 
     /// A refinement's rules against those of the types it builds on (area
