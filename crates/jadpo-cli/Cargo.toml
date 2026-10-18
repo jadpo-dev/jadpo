@@ -40,6 +40,7 @@ openssl.workspace = true
 jadpo-drivers.workspace = true
 # The software authenticator the passkey tests sign in with (area 8).
 jadpo-host-native = { workspace = true, features = ["test-authenticator"] }
+regex.workspace = true
 tokio.workspace = true
 
 [lints]

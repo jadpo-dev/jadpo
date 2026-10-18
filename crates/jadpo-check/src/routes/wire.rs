@@ -35,6 +35,9 @@ pub enum Shape {
     Set(TypeRef, Rules),
     Map(TypeRef, TypeRef, Rules),
     Page(TypeRef),
+    /// `Range<T>` (area 19, "Ranges"): an object of its two ends, each
+    /// its item or `null` for an open end; with the type as written.
+    Range(TypeRef, String),
     /// Not a type the boundary carries.
     Other(String),
 }
@@ -165,6 +168,10 @@ impl<'g> Wire<'g> {
                     rules.push(own);
                     current = TypeRef::Builtin(builtin);
                 }
+                TypeRef::Std(name, args) if name == jadpo_std::RANGE && args.len() == 1 => {
+                    let written = TypeRef::Std(name, args.clone()).to_string();
+                    return Shape::Range(args.into_iter().next().unwrap_or(TypeRef::None), written);
+                }
                 TypeRef::Std(name, args) if name == "Page" && args.len() == 1 => {
                     return Shape::Page(args.into_iter().next().unwrap_or(TypeRef::None));
                 }
@@ -292,7 +299,7 @@ impl<'g> Wire<'g> {
                 rules_text(&rules)
             ),
             Shape::Page(inner) => format!("Page<{}>", self.render(&inner, refs)),
-            Shape::Other(written) => written,
+            Shape::Range(_, written) | Shape::Other(written) => written,
         };
         if self.nullable(ty) {
             format!("{shown}?")
@@ -386,6 +393,29 @@ impl<'g> Wire<'g> {
                 out.set("type", "object");
                 out.set("properties", properties);
                 out.set("required", vec![Value::from("items"), Value::from("next")]);
+                out.set("additionalProperties", false);
+                out
+            }
+            // A range's two ends, each its item or `null` for an open end,
+            // with its rule across them described (chunk 5.5w2).
+            Shape::Range(item, _) => {
+                let mut null = Value::object();
+                null.set("type", "null");
+                let mut end = Value::object();
+                end.set("anyOf", vec![self.schema(&item, refs), null]);
+                let mut properties = Value::object();
+                for name in jadpo_std::RANGE_FIELDS {
+                    properties.set(name, end.clone());
+                }
+                let mut out = Value::object();
+                if let Some(described) =
+                    jadpo_std::standard::across::described(jadpo_std::RANGE)
+                {
+                    out.set("description", described);
+                }
+                out.set("type", "object");
+                out.set("properties", properties);
+                out.set("required", jadpo_std::RANGE_FIELDS.to_vec());
                 out.set("additionalProperties", false);
                 out
             }
