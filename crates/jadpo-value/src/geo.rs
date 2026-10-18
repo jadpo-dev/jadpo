@@ -10,6 +10,7 @@
 //! right-hand rule (the outer ring counterclockwise, each hole clockwise).
 //! The data is `jadpo_std::standard::geo`'s.
 
+use jadpo_std::geography::{Coordinates, Shape};
 use jadpo_std::standard::geo::{
     BOUNDING_BOX, EASTING_NORTHING, GEOJSON_TYPES, GEOMETRY, LINE_STRING, MAP_TILE,
     MULTI_LINE_STRING, MULTI_POINT, MULTI_POLYGON, POINT, POLYGON,
@@ -487,6 +488,236 @@ fn trimmed(mut value: Decimal) -> Decimal {
     value
 }
 
+// --- In PostGIS's `geography` (area 20, "Storage"; chunk 5.5u4) -------------
+
+/// A position as `geography` holds it: each coordinate the double its
+/// decimal is, which, held as the shortest decimal of a double (area 20,
+/// question 2), it is exactly; an altitude the double nearest its metres.
+fn coordinates_of_point(point: &Value) -> Option<Coordinates> {
+    let (latitude, longitude) = axes(point)?;
+    let Value::Record(record) = point else {
+        return None;
+    };
+    let double = |value: Decimal| value.to_string().parse::<f64>().ok();
+    let altitude = match record.get("altitude") {
+        Some(Value::Quantity(quantity)) => Some(double(quantity.decimal())?),
+        Some(Value::None) | None => None,
+        Some(_) => return None,
+    };
+    Some(Coordinates::new(
+        double(longitude)?,
+        double(latitude)?,
+        altitude,
+    ))
+}
+
+fn points_of(points: &[Value]) -> Option<Vec<Coordinates>> {
+    points.iter().map(coordinates_of_point).collect()
+}
+
+/// A polygon's rings, the outer first, each in the order it was given.
+fn rings_of(polygon: &Value) -> Option<Vec<Vec<Coordinates>>> {
+    let Value::Record(record) = polygon else {
+        return None;
+    };
+    let mut rings = vec![points_of(listed(record, "outer")?)?];
+    for hole in listed(record, "holes")? {
+        rings.push(points_of(hole.items()?)?);
+    }
+    Some(rings)
+}
+
+/// A geometry's value as PostGIS's `geography` holds it: one of the six,
+/// or the one a `Geometry` holds; `None` for any other value. Rings are
+/// kept as they were given, so what is stored reads back unchanged.
+pub fn shape(value: &Value) -> Option<Shape> {
+    let value = match value {
+        Value::Variant(variant) if &*variant.ty == GEOMETRY => &variant.fields.first()?.1,
+        other => other,
+    };
+    let Value::Record(record) = value else {
+        return None;
+    };
+    Some(match &*record.ty {
+        POINT => Shape::Point(coordinates_of_point(value)?),
+        LINE_STRING => Shape::LineString(points_of(listed(record, "points")?)?),
+        MULTI_POINT => Shape::MultiPoint(points_of(listed(record, "points")?)?),
+        POLYGON => Shape::Polygon(rings_of(value)?),
+        MULTI_LINE_STRING => Shape::MultiLineString(
+            listed(record, "lines")?
+                .iter()
+                .map(|line| match line {
+                    Value::Record(line) => points_of(listed(line, "points")?),
+                    _ => None,
+                })
+                .collect::<Option<_>>()?,
+        ),
+        MULTI_POLYGON => Shape::MultiPolygon(
+            listed(record, "polygons")?
+                .iter()
+                .map(rings_of)
+                .collect::<Option<_>>()?,
+        ),
+        _ => return None,
+    })
+}
+
+/// A coordinate read back from `geography`: the shortest decimal of its
+/// double, as a coordinate built in code is held.
+fn coordinate_value(double: f64, bound: i128) -> Result<Decimal, String> {
+    let text = jadpo_std::standard::geo::nearest_double(&format!("{double}"))
+        .ok_or("a stored coordinate that isn't a number")?;
+    let value = Decimal::parse(&text).ok_or("a stored coordinate that isn't a number")?;
+    if value < Decimal::new(-bound, 0) || value > Decimal::new(bound, 0) {
+        return Err("a stored coordinate out of its range".into());
+    }
+    Ok(value)
+}
+
+/// A `Point` from a stored position: its altitude the `Length` its double's
+/// shortest decimal is, rounded half to even to the micrometre.
+fn point_of(position: &Coordinates) -> Result<Value, String> {
+    let altitude = match position.altitude() {
+        Some(metres) => {
+            let text = jadpo_std::standard::geo::nearest_double(&format!("{metres}"))
+                .ok_or("a stored altitude that isn't a number")?;
+            let metres = Decimal::parse(&text).ok_or("a stored altitude past a decimal")?;
+            let unit = QuantityKind::Length.base_unit();
+            let amount = jadpo_std::quantity::to_base(metres.mantissa, metres.scale, unit)
+                .ok_or("a stored altitude past a `Length`")?;
+            Value::Quantity(crate::Quantity {
+                kind: QuantityKind::Length,
+                amount,
+            })
+        }
+        None => Value::None,
+    };
+    Ok(point(
+        coordinate_value(position.latitude(), 90)?,
+        coordinate_value(position.longitude(), 180)?,
+        altitude,
+    ))
+}
+
+fn points_value(points: &[Coordinates], least: usize) -> Result<Vec<Value>, String> {
+    if points.len() < least {
+        return Err("a stored geometry with too few points".into());
+    }
+    points.iter().map(point_of).collect()
+}
+
+fn line_value(points: &[Coordinates]) -> Result<Value, String> {
+    Ok(Value::record(
+        LINE_STRING,
+        vec![("points".into(), Value::list(points_value(points, 2)?))],
+    ))
+}
+
+/// A `Polygon` from its stored rings, checked as a polygon read from
+/// GeoJSON is (area 20, "Polygons are valid when built"), since a row
+/// another program wrote may hold one that isn't valid; its rings stay in
+/// the order they were stored.
+fn polygon_value(rings: &[Vec<Coordinates>]) -> Result<Value, String> {
+    let mut values = Vec::new();
+    for ring in rings {
+        let points = points_value(ring, 4)?;
+        let closed = matches!((points.first(), points.last()), (Some(first), Some(last)) if crate::ops::equal(first, last));
+        if !closed {
+            return Err("a stored polygon whose ring isn't closed".into());
+        }
+        values.push(points);
+    }
+    let positions: Vec<Vec<jadpo_std::sphere::Position>> = values
+        .iter()
+        .map(|ring| ring.iter().filter_map(position_num).collect())
+        .collect();
+    let Some((outer, holes)) = positions.split_first() else {
+        return Err("a stored polygon without a ring".into());
+    };
+    if jadpo_std::sphere::rings_broken(outer, holes).is_some() {
+        return Err("a stored polygon whose rings break `rings_valid`".into());
+    }
+    let outer = values.remove(0);
+    Ok(Value::record(
+        POLYGON,
+        vec![
+            ("outer".into(), Value::list(outer)),
+            (
+                "holes".into(),
+                Value::list(values.into_iter().map(Value::list).collect()),
+            ),
+        ],
+    ))
+}
+
+/// The value of standard type `ty` (one of the six geometries, or
+/// `Geometry` for any of them) a `geography` column held as `shape`. A
+/// shape of another kind than `ty` is refused: the column's check holds
+/// it to its type. The error names the rule, never the value.
+pub fn from_shape(ty: &str, shape: &Shape) -> Result<Value, String> {
+    let value = match shape {
+        Shape::Point(position) => point_of(position)?,
+        Shape::LineString(points) => line_value(points)?,
+        Shape::MultiPoint(points) => Value::record(
+            MULTI_POINT,
+            vec![("points".into(), Value::list(points_value(points, 1)?))],
+        ),
+        Shape::Polygon(rings) => polygon_value(rings)?,
+        Shape::MultiLineString(lines) => {
+            if lines.is_empty() {
+                return Err("a stored geometry with too few points".into());
+            }
+            Value::record(
+                MULTI_LINE_STRING,
+                vec![(
+                    "lines".into(),
+                    Value::list(
+                        lines
+                            .iter()
+                            .map(|line| line_value(line))
+                            .collect::<Result<_, _>>()?,
+                    ),
+                )],
+            )
+        }
+        Shape::MultiPolygon(polygons) => {
+            if polygons.is_empty() {
+                return Err("a stored geometry with too few points".into());
+            }
+            Value::record(
+                MULTI_POLYGON,
+                vec![(
+                    "polygons".into(),
+                    Value::list(
+                        polygons
+                            .iter()
+                            .map(|rings| polygon_value(rings))
+                            .collect::<Result<_, _>>()?,
+                    ),
+                )],
+            )
+        }
+    };
+    let kind = shape.standard_type();
+    if ty == GEOMETRY {
+        let ordinal = GEOJSON_TYPES
+            .iter()
+            .position(|(_, name)| *name == kind)
+            .ok_or("a stored geometry of no known kind")?;
+        let (variant, _) = GEOJSON_TYPES[ordinal];
+        return Ok(Value::variant(
+            GEOMETRY,
+            ordinal as u32,
+            variant,
+            vec![(variant.into(), value)],
+        ));
+    }
+    if ty != kind {
+        return Err(format!("a stored `{kind}` where a `{ty}` was kept"));
+    }
+    Ok(value)
+}
+
 /// A point's latitude and longitude, or a fault for anything else.
 fn position_of(point: &Value) -> Result<(Decimal, Decimal), Fault> {
     axes(point).ok_or(Fault::Shape)
@@ -762,6 +993,163 @@ mod tests {
         let mut out = String::new();
         assert!(write(value, &mut out));
         out
+    }
+
+    /// Every geometry, each with and without altitude, as GeoJSON writes
+    /// them: rings by the right-hand rule, so reading gives them back.
+    fn every_geometry() -> Vec<(&'static str, String)> {
+        let mut out = Vec::new();
+        for z in [None, Some("8848.86")] {
+            let p = |lon: &str, lat: &str| match z {
+                Some(alt) => format!("[{lon},{lat},{alt}]"),
+                None => format!("[{lon},{lat}]"),
+            };
+            let ring = format!(
+                "[{},{},{},{},{}]",
+                p("-0.2", "51.49"),
+                p("-0.05", "51.49"),
+                p("-0.05", "51.54"),
+                p("-0.2", "51.54"),
+                p("-0.2", "51.49")
+            );
+            let hole = format!(
+                "[{},{},{},{},{}]",
+                p("-0.15", "51.5"),
+                p("-0.15", "51.52"),
+                p("-0.1", "51.52"),
+                p("-0.1", "51.5"),
+                p("-0.15", "51.5")
+            );
+            let line = format!("[{},{}]", p("-0.1276", "51.5072"), p("2.3522", "48.8566"));
+            for (ty, coordinates) in [
+                (POINT, p("-0.1276", "51.5072")),
+                (LINE_STRING, line.clone()),
+                (POLYGON, format!("[{ring},{hole}]")),
+                (
+                    MULTI_POINT,
+                    format!("[{},{}]", p("0", "0"), p("151.2093", "-33.8688")),
+                ),
+                (MULTI_LINE_STRING, format!("[{line},{line}]")),
+                (MULTI_POLYGON, format!("[[{ring},{hole}],[{ring}]]")),
+            ] {
+                out.push((
+                    ty,
+                    format!(r#"{{"type":"{ty}","coordinates":{coordinates}}}"#),
+                ));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn every_geometry_reads_back_from_geography_unchanged() {
+        for (ty, text) in every_geometry() {
+            let value = read_text(ty, &text).expect(&text);
+            let held = shape(&value).expect("a shape");
+            assert_eq!(held.standard_type(), ty);
+            assert_eq!(from_shape(ty, &held).as_ref(), Ok(&value), "{text}");
+            // As a `Geometry`, the variant its kind is.
+            let geometry = read_text(GEOMETRY, &text).expect(&text);
+            assert_eq!(shape(&geometry), Some(held.clone()));
+            assert_eq!(from_shape(GEOMETRY, &held).as_ref(), Ok(&geometry));
+            // Held in another type's column, refused.
+            let other = if ty == POINT { LINE_STRING } else { POINT };
+            assert!(from_shape(other, &held).is_err());
+        }
+        // A ring wound clockwise is stored as it was given, not rewound.
+        let clockwise = Value::record(
+            POLYGON,
+            vec![
+                (
+                    "outer".into(),
+                    Value::list(
+                        [(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)]
+                            .into_iter()
+                            .map(|(lat, lon)| {
+                                point(Decimal::new(lat, 0), Decimal::new(lon, 0), Value::None)
+                            })
+                            .collect(),
+                    ),
+                ),
+                ("holes".into(), Value::list(Vec::new())),
+            ],
+        );
+        let held = shape(&clockwise).expect("a shape");
+        assert_eq!(from_shape(POLYGON, &held).as_ref(), Ok(&clockwise));
+        // A coordinate with more digits than a double holds is the double's.
+        let far = Shape::Point(Coordinates::new(
+            -0.1276,
+            51.50720000001234567,
+            Some(0.1 + 0.2),
+        ));
+        let Ok(Value::Record(record)) = from_shape(POINT, &far) else {
+            panic!("a point");
+        };
+        assert_eq!(
+            record.get("latitude"),
+            Some(&Value::Decimal(
+                Decimal::parse("51.50720000001235").expect("decimal")
+            ))
+        );
+        assert_eq!(
+            record.get("altitude"),
+            Some(&Value::Quantity(crate::Quantity {
+                kind: QuantityKind::Length,
+                amount: 300_000,
+            }))
+        );
+        // A row whose polygon isn't valid, written by another program.
+        let bow_tie = Shape::Polygon(vec![
+            [
+                (0.0, 0.0),
+                (10.0, 10.0),
+                (0.0, 10.0),
+                (10.0, 0.0),
+                (0.0, 0.0),
+            ]
+            .into_iter()
+            .map(|(lon, lat)| Coordinates::new(lon, lat, None))
+            .collect(),
+        ]);
+        assert!(from_shape(POLYGON, &bow_tie).is_err());
+        // Out of range.
+        let beyond = Shape::Point(Coordinates::new(0.0, 95.0, None));
+        assert!(from_shape(POINT, &beyond).is_err());
+    }
+
+    #[test]
+    fn a_geometry_mixing_altitudes_isn_t_bound() {
+        let mixed = Shape::MultiPoint(vec![
+            Coordinates::new(0.0, 0.0, None),
+            Coordinates::new(1.0, 1.0, Some(5.0)),
+        ]);
+        let stored = jadpo_std::standard::storage::Stored::Shape(mixed);
+        assert!(
+            jadpo_std::standard::storage::bind(&stored, jadpo_std::SqlType::Geography).is_err()
+        );
+        let value = read_text(POINT, r#"{"type":"Point","coordinates":[1,2]}"#).expect("point");
+        let bound = jadpo_std::standard::storage::bind(
+            &value.stored().expect("stored"),
+            jadpo_std::SqlType::Geography,
+        );
+        assert_eq!(
+            bound,
+            Ok(jadpo_std::SqlValue::Geography(Shape::Point(
+                Coordinates::new(1.0, 2.0, None)
+            )))
+        );
+    }
+
+    /// A geometry kept in a Redis entity's JSON is its GeoJSON (area 20,
+    /// "A store with no PostGIS"), the contract's own reading and writing:
+    /// every geometry, with and without altitude, comes back unchanged.
+    #[test]
+    fn every_geometry_round_trips_through_its_geojson() {
+        for (ty, text) in every_geometry() {
+            let value = read_text(ty, &text).expect(&text);
+            assert_eq!(written(&value), text);
+            assert_eq!(read_text(ty, &written(&value)).as_ref(), Ok(&value));
+        }
     }
 
     #[test]

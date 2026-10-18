@@ -233,6 +233,9 @@ pub struct FieldModel {
     pub builtin: Option<jadpo_std::Builtin>,
     /// The places its type's values keep, for a decimal.
     pub scale: Option<u32>,
+    /// The geometry its `geography` column holds (area 20, chunk 5.5u4):
+    /// one of the six geometries, or `Geometry` for any of them.
+    pub geometry: Option<&'static str>,
 }
 
 impl FieldModel {
@@ -286,6 +289,19 @@ impl FieldModel {
                 .collect(),
             None => vec![(self.born.clone(), sql_type.clone())],
         }
+    }
+}
+
+/// The geometry a field of type `ty` holds in its one `geography` column
+/// (area 20, chunk 5.5u4): one of the six geometries, or `Geometry`; none
+/// for any other type, a `Circle`'s centre included, which is one of its
+/// named columns.
+fn geometry_of(lookup: &dyn TypeView, ty: &Ty) -> Option<&'static str> {
+    match lookup.structure(ty) {
+        Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name)
+            .filter(|entry| entry.storage == jadpo_std::standard::Storage::Geography)
+            .map(|entry| entry.name),
+        _ => None,
     }
 }
 
@@ -865,6 +881,7 @@ impl Reader<'_> {
             json: None,
             builtin: None,
             scale: None,
+            geometry: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -979,24 +996,10 @@ impl Reader<'_> {
             return Some(field);
         }
         match column_type(self.lookup, &ty) {
-            // A geometry is stored in a PostGIS `geography` column, which
-            // the geospatial area builds (area 19, chunk 5.5s).
-            Ok(sql) if sql == "geography" => {
-                let shown = ty.strip_nullable().to_string();
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("Storing a `{shown}` field isn't built yet"),
-                    )
-                    .at(node_span(path, value.syntax()), "a geometry, stored as `geography`")
-                    .reason(format!(
-                        "Area 19 stores a geometry in a PostGIS `geography` column in WGS84, with its query conditions and indexes, and that storage comes with the geospatial area (roadmap 5.5u); until then this compiler can't read or write `{entity}.{name}`."
-                    ))
-                    .next(format!(
-                        "Keep what `{entity}.{name}` holds out of storage for now, or store its latitude and longitude as `Latitude` and `Longitude` fields of their own"
-                    ))
-                    .help_at("19-standard-library.html#geospatial-a-future-area"),
-                );
+            // A geometry is stored in a PostGIS `geography` column, checked
+            // to hold its type's geometry in WGS84 (area 20, chunk 5.5u4).
+            Ok(sql) if sql == "geography" && geometry_of(self.lookup, &ty).is_some() => {
+                field.geometry = geometry_of(self.lookup, &ty);
                 field.sql_type = Some(sql);
             }
             // A vector is stored in a pgvector `vector` column, fixed to its
@@ -2115,6 +2118,29 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                     physical::Check {
                         column: name.clone(),
                         values,
+                        geography: false,
+                    },
+                );
+            }
+            // A `geography` column holds its type's geometry in WGS84
+            // (area 20, "Storage"; chunk 5.5u4): a geometry field's own, a
+            // circle's centre.
+            let geometry = match entry {
+                Some(entry) => jadpo_std::standard::storage::geometry_at(entry, at),
+                None => field.geometry,
+            };
+            if sql_type == "geography"
+                && let Some(geometry) = geometry
+            {
+                out.checks.insert(
+                    physical::object_name(&[table, name], "check"),
+                    physical::Check {
+                        column: name.clone(),
+                        values: jadpo_std::geography::geometry_types(geometry)
+                            .into_iter()
+                            .map(String::from)
+                            .collect(),
+                        geography: true,
                     },
                 );
             }

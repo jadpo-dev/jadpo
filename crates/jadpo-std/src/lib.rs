@@ -56,6 +56,7 @@ pub mod constant;
 mod enums;
 pub mod fixed;
 mod format;
+pub mod geography;
 pub mod http;
 mod isolation;
 pub mod jadpo_text;

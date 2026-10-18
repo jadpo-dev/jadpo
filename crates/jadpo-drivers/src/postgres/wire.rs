@@ -4,6 +4,7 @@
 
 use std::fmt::Write as _;
 
+use jadpo_runtime::geography::{Coordinates, Shape};
 use jadpo_runtime::{SqlType, SqlValue};
 
 /// Type OIDs, as `pg_type` numbers them.
@@ -52,6 +53,10 @@ pub(crate) mod oid {
 /// 5.5v1).
 pub(crate) const VECTOR: &str = "vector";
 
+/// PostGIS's type, by the name its extension gives it, known by name as
+/// pgvector's is (area 20, chunk 5.5u4).
+pub(crate) const GEOGRAPHY: &str = "geography";
+
 /// The most items pgvector's `vector` has.
 const VECTOR_MOST: usize = 16_000;
 
@@ -91,7 +96,7 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
         SqlType::Time => oid::TIME,
         SqlType::LocalTimestamp => oid::TIMESTAMP,
         SqlType::Json => oid::JSONB,
-        SqlType::Vector => oid::UNSPECIFIED,
+        SqlType::Vector | SqlType::Geography => oid::UNSPECIFIED,
         SqlType::Range(inner) => range_oid(*inner),
         SqlType::Array(inner) => match inner {
             SqlType::Bool => oid::BOOL_ARRAY,
@@ -106,11 +111,13 @@ pub(crate) fn param_oid(ty: SqlType) -> u32 {
             SqlType::Date => oid::DATE_ARRAY,
             SqlType::Time => oid::TIME_ARRAY,
             SqlType::Json => oid::JSONB_ARRAY,
-            // Arrays of arrays, of local timestamps, of ranges and of
-            // vectors are never sent.
-            SqlType::Array(_) | SqlType::LocalTimestamp | SqlType::Range(_) | SqlType::Vector => {
-                oid::TEXT_ARRAY
-            }
+            // Arrays of arrays, of local timestamps, of ranges, of
+            // vectors and of geographies are never sent.
+            SqlType::Array(_)
+            | SqlType::LocalTimestamp
+            | SqlType::Range(_)
+            | SqlType::Vector
+            | SqlType::Geography => oid::TEXT_ARRAY,
         },
     }
 }
@@ -197,6 +204,7 @@ pub(crate) fn encode(value: &SqlValue, out: &mut Vec<u8>) -> Result<bool, String
         }
         SqlValue::Array(element, items) => array_to_wire(*element, items, out)?,
         SqlValue::Vector(bits) => vector_to_wire(bits, out)?,
+        SqlValue::Geography(shape) => geography_to_wire(shape, out)?,
     }
     Ok(true)
 }
@@ -238,6 +246,240 @@ pub(crate) fn vector_from_wire(raw: &[u8]) -> Result<SqlValue, String> {
             .map(|item| u32::from_be_bytes(*item))
             .collect(),
     ))
+}
+
+// --- PostGIS's `geography` as EWKB (area 20, "Interop": WKB is the
+// driver's own encoding; chunk 5.5u4) -------------------------------------
+
+/// EWKB's flag for a geometry with a third coordinate.
+const EWKB_Z: u32 = 0x8000_0000;
+/// EWKB's flag for a geometry with a measure, which Jadpo never stores.
+const EWKB_M: u32 = 0x4000_0000;
+/// EWKB's flag for a geometry that names its SRID after its type.
+const EWKB_SRID: u32 = 0x2000_0000;
+
+/// A geometry in PostGIS's extended WKB, `geography_recv`'s input:
+/// little-endian, its type flagged with a third coordinate where its
+/// positions have altitudes and with SRID 4326, then its parts, each
+/// member of a multi-geometry a whole WKB geometry of its own.
+fn geography_to_wire(shape: &Shape, out: &mut Vec<u8>) -> Result<(), String> {
+    let z = shape.has_altitude().ok_or(
+        "a geometry whose points mix with and without an altitude, which PostGIS can't hold",
+    )?;
+    shape_to_wire(shape, z, true, out);
+    Ok(())
+}
+
+fn shape_to_wire(shape: &Shape, z: bool, outer: bool, out: &mut Vec<u8>) {
+    out.push(1);
+    let mut code = shape.code();
+    if z {
+        code |= EWKB_Z;
+    }
+    if outer {
+        code |= EWKB_SRID;
+    }
+    out.extend_from_slice(&code.to_le_bytes());
+    if outer {
+        out.extend_from_slice(&jadpo_runtime::geography::SRID.to_le_bytes());
+    }
+    let count = |n: usize, out: &mut Vec<u8>| {
+        out.extend_from_slice(&u32::try_from(n).unwrap_or(u32::MAX).to_le_bytes());
+    };
+    let position = |at: &Coordinates, out: &mut Vec<u8>| {
+        out.extend_from_slice(&at.longitude.to_le_bytes());
+        out.extend_from_slice(&at.latitude.to_le_bytes());
+        if z {
+            out.extend_from_slice(&at.altitude.unwrap_or(0).to_le_bytes());
+        }
+    };
+    let points = |points: &[Coordinates], out: &mut Vec<u8>| {
+        count(points.len(), out);
+        for at in points {
+            position(at, out);
+        }
+    };
+    match shape {
+        Shape::Point(at) => position(at, out),
+        Shape::LineString(line) => points(line, out),
+        Shape::Polygon(rings) => {
+            count(rings.len(), out);
+            for ring in rings {
+                points(ring, out);
+            }
+        }
+        Shape::MultiPoint(members) => {
+            count(members.len(), out);
+            for at in members {
+                shape_to_wire(&Shape::Point(*at), z, false, out);
+            }
+        }
+        Shape::MultiLineString(members) => {
+            count(members.len(), out);
+            for line in members {
+                shape_to_wire(&Shape::LineString(line.clone()), z, false, out);
+            }
+        }
+        Shape::MultiPolygon(members) => {
+            count(members.len(), out);
+            for rings in members {
+                shape_to_wire(&Shape::Polygon(rings.clone()), z, false, out);
+            }
+        }
+    }
+}
+
+/// Reads EWKB, `geography_send`'s output.
+struct Ewkb<'r> {
+    raw: &'r [u8],
+    at: usize,
+}
+
+impl Ewkb<'_> {
+    fn bytes<const N: usize>(&mut self) -> Result<[u8; N], String> {
+        let bytes = self
+            .raw
+            .get(self.at..self.at + N)
+            .and_then(|bytes| <[u8; N]>::try_from(bytes).ok())
+            .ok_or_else(|| length("geography", self.raw))?;
+        self.at += N;
+        Ok(bytes)
+    }
+
+    fn u32(&mut self, little: bool) -> Result<u32, String> {
+        let bytes = self.bytes::<4>()?;
+        Ok(if little {
+            u32::from_le_bytes(bytes)
+        } else {
+            u32::from_be_bytes(bytes)
+        })
+    }
+
+    fn f64_bits(&mut self, little: bool) -> Result<u64, String> {
+        let bytes = self.bytes::<8>()?;
+        let bits = if little {
+            u64::from_le_bytes(bytes)
+        } else {
+            u64::from_be_bytes(bytes)
+        };
+        if !f64::from_bits(bits).is_finite() {
+            return Err("the server sent a geography with a coordinate that isn't a number".into());
+        }
+        Ok(bits)
+    }
+
+    /// A count of what follows, each taking at least `least` bytes, so a
+    /// count past what was sent is refused before anything is reserved.
+    fn count(&mut self, little: bool, least: usize) -> Result<usize, String> {
+        let n = usize::try_from(self.u32(little)?).map_err(|_| length("geography", self.raw))?;
+        if n.saturating_mul(least) > self.raw.len().saturating_sub(self.at) {
+            return Err(length("geography", self.raw));
+        }
+        Ok(n)
+    }
+
+    /// One geometry: its byte order, its type with its flags, its SRID
+    /// where it names one (4326, the only one a `geography` column of
+    /// Jadpo's holds), then its parts; `want` the kind a member of a
+    /// multi-geometry must be.
+    fn shape(&mut self, want: Option<u32>) -> Result<Shape, String> {
+        let little = match self.bytes::<1>()? {
+            [1] => true,
+            [0] => false,
+            _ => return Err("the server sent a geography in no byte order".into()),
+        };
+        let flagged = self.u32(little)?;
+        if flagged & EWKB_M != 0 {
+            return Err("the server sent a geography with a measure".into());
+        }
+        if flagged & EWKB_SRID != 0 {
+            let srid = self.u32(little)?;
+            if srid != jadpo_runtime::geography::SRID {
+                return Err(format!(
+                    "the server sent a geography in SRID {srid}, not 4326"
+                ));
+            }
+        }
+        let z = flagged & EWKB_Z != 0;
+        let code = flagged & !(EWKB_Z | EWKB_M | EWKB_SRID);
+        if want.is_some_and(|want| want != code) {
+            return Err("the server sent a multi-geometry with a member of another kind".into());
+        }
+        let width = if z { 24 } else { 16 };
+        let position = |this: &mut Self| -> Result<Coordinates, String> {
+            let longitude = this.f64_bits(little)?;
+            let latitude = this.f64_bits(little)?;
+            let altitude = if z {
+                Some(this.f64_bits(little)?)
+            } else {
+                None
+            };
+            Ok(Coordinates {
+                longitude,
+                latitude,
+                altitude,
+            })
+        };
+        let points = |this: &mut Self| -> Result<Vec<Coordinates>, String> {
+            let n = this.count(little, width)?;
+            (0..n).map(|_| position(this)).collect()
+        };
+        Ok(match code {
+            1 => Shape::Point(position(self)?),
+            2 => Shape::LineString(points(self)?),
+            3 => {
+                let n = self.count(little, 4)?;
+                Shape::Polygon((0..n).map(|_| points(self)).collect::<Result<_, _>>()?)
+            }
+            4 | 5 | 6 => {
+                let n = self.count(little, 9)?;
+                let members = (0..n)
+                    .map(|_| self.shape(Some(code - 3)))
+                    .collect::<Result<Vec<Shape>, String>>()?;
+                // Each member was read as `code - 3`, so each is that kind.
+                match code {
+                    4 => Shape::MultiPoint(
+                        members
+                            .into_iter()
+                            .filter_map(|member| match member {
+                                Shape::Point(at) => Some(at),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
+                    5 => Shape::MultiLineString(
+                        members
+                            .into_iter()
+                            .filter_map(|member| match member {
+                                Shape::LineString(line) => Some(line),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
+                    _ => Shape::MultiPolygon(
+                        members
+                            .into_iter()
+                            .filter_map(|member| match member {
+                                Shape::Polygon(rings) => Some(rings),
+                                _ => None,
+                            })
+                            .collect(),
+                    ),
+                }
+            }
+            other => return Err(format!("the server sent a geography of WKB type {other}")),
+        })
+    }
+}
+
+/// A PostGIS `geography` read from its binary format, EWKB.
+pub(crate) fn geography_from_wire(raw: &[u8]) -> Result<SqlValue, String> {
+    let mut reader = Ewkb { raw, at: 0 };
+    let shape = reader.shape(None)?;
+    if reader.at != raw.len() {
+        return Err(length("geography", raw));
+    }
+    Ok(SqlValue::Geography(shape))
 }
 
 /// A range in its binary format: its flags, then each end that isn't open,
@@ -577,6 +819,93 @@ fn numeric_from_wire(raw: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn unhex(text: &str) -> Vec<u8> {
+        (0..text.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(&text[at..at + 2], 16).expect("hex"))
+            .collect()
+    }
+
+    #[test]
+    fn a_geography_is_postgis_s_extended_wkb() {
+        // `geography_send` of `SRID=4326;POINT(-0.1276 51.5072)` and of
+        // `SRID=4326;POINT Z(-0.1276 51.5072 8848.86)`, from PostGIS 3.4.2.
+        let flat = Shape::Point(Coordinates::new(-0.1276, 51.5072, None));
+        let high = Shape::Point(Coordinates::new(-0.1276, 51.5072, Some(8848.86)));
+        for (shape, sent) in [
+            (&flat, "0101000020e6100000da1b7c613255c0bffe43faedebc04940"),
+            (
+                &high,
+                "01010000a0e6100000da1b7c613255c0bffe43faedebc0494048e17a146e48c140",
+            ),
+        ] {
+            let mut out = Vec::new();
+            assert_eq!(
+                encode(&SqlValue::Geography(shape.clone()), &mut out),
+                Ok(true)
+            );
+            assert_eq!(hex(&out), sent);
+            assert_eq!(
+                geography_from_wire(&unhex(sent)),
+                Ok(SqlValue::Geography(shape.clone()))
+            );
+        }
+        // Every kind, with and without altitude, round trips; big-endian
+        // and SRID-less members read.
+        let at = |lon: f64, lat: f64, z: Option<f64>| Coordinates::new(lon, lat, z);
+        for z in [None, Some(12.5)] {
+            let ring = vec![
+                at(0.0, 0.0, z),
+                at(1.0, 0.0, z),
+                at(1.0, 1.0, z),
+                at(0.0, 0.0, z),
+            ];
+            for shape in [
+                Shape::LineString(vec![at(0.0, 0.0, z), at(1.0, 1.0, z)]),
+                Shape::Polygon(vec![ring.clone(), ring.clone()]),
+                Shape::MultiPoint(vec![at(0.0, 0.0, z), at(-180.0, -90.0, z)]),
+                Shape::MultiLineString(vec![vec![at(0.0, 0.0, z), at(1.0, 1.0, z)]]),
+                Shape::MultiPolygon(vec![vec![ring.clone()], vec![ring.clone()]]),
+            ] {
+                let mut out = Vec::new();
+                encode(&SqlValue::Geography(shape.clone()), &mut out).expect("encoded");
+                assert_eq!(geography_from_wire(&out), Ok(SqlValue::Geography(shape)));
+            }
+        }
+        let big = "00000000013ff00000000000004000000000000000";
+        assert_eq!(
+            geography_from_wire(&unhex(big)),
+            Ok(SqlValue::Geography(Shape::Point(at(1.0, 2.0, None))))
+        );
+        // Mixed altitudes, another SRID, a measure, a short or long
+        // message, a count past what was sent.
+        let mixed = Shape::LineString(vec![at(0.0, 0.0, None), at(1.0, 1.0, Some(2.0))]);
+        assert!(encode(&SqlValue::Geography(mixed), &mut Vec::new()).is_err());
+        assert!(
+            geography_from_wire(&unhex("0101000020a2100000000000000000f03f0000000000000040"))
+                .is_err()
+        );
+        assert!(
+            geography_from_wire(&unhex(
+                "0101000060e6100000000000000000f03f00000000000000400000000000000000"
+            ))
+            .is_err()
+        );
+        assert!(geography_from_wire(&unhex("0101000020e6100000000000000000f03f")).is_err());
+        assert!(
+            geography_from_wire(&unhex(
+                "0101000020e6100000000000000000f03f000000000000004000"
+            ))
+            .is_err()
+        );
+        assert!(geography_from_wire(&unhex("0102000020e6100000ffffffff")).is_err());
+        assert_eq!(param_oid(SqlType::Geography), oid::UNSPECIFIED);
+    }
 
     #[test]
     fn a_vector_is_its_count_a_reserved_zero_and_its_floats() {

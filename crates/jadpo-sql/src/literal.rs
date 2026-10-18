@@ -103,7 +103,58 @@ pub fn sql(value: &SqlValue) -> Option<String> {
             }
             format!("'[{}]'::vector", items.join(","))
         }
+        // EWKT in WGS84, each coordinate the shortest decimal that is its
+        // double, so PostGIS reads back the double the runtime binds (area
+        // 20, chunk 5.5u4).
+        SqlValue::Geography(shape) => format!("'{}'::geography", ewkt(shape)?),
     })
+}
+
+/// A geometry as PostGIS's extended WKT: `SRID=4326;POINT Z (-0.1276
+/// 51.5072 35)`, longitude first; `None` for one whose positions mix with
+/// and without an altitude, which PostGIS can't hold.
+fn ewkt(shape: &jadpo_std::geography::Shape) -> Option<String> {
+    use jadpo_std::geography::{Coordinates, Shape};
+    let z = shape.has_altitude()?;
+    let position = |at: &Coordinates| match at.altitude() {
+        Some(altitude) => format!("{} {} {altitude}", at.longitude(), at.latitude()),
+        None => format!("{} {}", at.longitude(), at.latitude()),
+    };
+    let points = |points: &[Coordinates]| {
+        format!(
+            "({})",
+            points.iter().map(position).collect::<Vec<_>>().join(", ")
+        )
+    };
+    let rings = |rings: &[Vec<Coordinates>]| {
+        format!(
+            "({})",
+            rings
+                .iter()
+                .map(|ring| points(ring))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let body = match shape {
+        Shape::Point(at) => format!("({})", position(at)),
+        Shape::LineString(line) | Shape::MultiPoint(line) => points(line),
+        Shape::Polygon(polygon) | Shape::MultiLineString(polygon) => rings(polygon),
+        Shape::MultiPolygon(polygons) => format!(
+            "({})",
+            polygons
+                .iter()
+                .map(|polygon| rings(polygon))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    Some(format!(
+        "SRID={};{}{} {body}",
+        jadpo_std::geography::SRID,
+        shape.geometry_type(),
+        if z { " Z" } else { "" }
+    ))
 }
 
 /// Text as a quoted literal: `'it''s'`, or an escape string when it holds
@@ -163,6 +214,7 @@ fn type_name(ty: SqlType) -> Option<String> {
         SqlType::LocalTimestamp => "timestamp".into(),
         SqlType::Json => "jsonb".into(),
         SqlType::Vector => "vector".into(),
+        SqlType::Geography => "geography".into(),
         SqlType::Array(inner) => format!("{}[]", type_name(*inner)?),
         SqlType::Range(element) => range_name(*element)?.into(),
     })
@@ -232,6 +284,40 @@ fn timestamp(micros: i64, offset: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_geometry_is_postgis_s_extended_wkt() {
+        use jadpo_std::geography::{Coordinates, Shape};
+        let at = |lon: f64, lat: f64, z: Option<f64>| Coordinates::new(lon, lat, z);
+        let point = SqlValue::Geography(Shape::Point(at(-0.1276, 51.5072, Some(8848.86))));
+        assert_eq!(
+            sql(&point).as_deref(),
+            Some("'SRID=4326;POINT Z (-0.1276 51.5072 8848.86)'::geography")
+        );
+        let ring = vec![
+            at(0.0, 0.0, None),
+            at(1.0, 0.0, None),
+            at(1.0, 1.0, None),
+            at(0.0, 0.0, None),
+        ];
+        let patches =
+            SqlValue::Geography(Shape::MultiPolygon(vec![vec![ring.clone()], vec![ring]]));
+        assert_eq!(
+            sql(&patches).as_deref(),
+            Some(
+                "'SRID=4326;MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)), ((0 0, 1 0, 1 1, 0 0)))'::geography"
+            )
+        );
+        let mixed = SqlValue::Geography(Shape::MultiPoint(vec![
+            at(0.0, 0.0, None),
+            at(1.0, 1.0, Some(2.0)),
+        ]));
+        assert_eq!(sql(&mixed), None);
+        assert_eq!(
+            sql(&SqlValue::Null(SqlType::Geography)).as_deref(),
+            Some("NULL::geography")
+        );
+    }
 
     #[test]
     fn a_vector_is_pgvector_s_text_of_its_floats() {

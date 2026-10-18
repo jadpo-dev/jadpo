@@ -57,6 +57,13 @@ pub enum MigrateError {
     ExtensionMissing {
         extension: String,
     },
+    /// A migration creates `extension`, which the database server offers
+    /// but the role applying migrations can't create: PostGIS isn't a
+    /// trusted extension, so a superuser or the provider's own admin role
+    /// creates it (area 20, "A store with no PostGIS"; chunk 5.5u4).
+    ExtensionNotCreatable {
+        extension: String,
+    },
 }
 
 impl From<StoreError> for MigrateError {
@@ -167,8 +174,8 @@ pub async fn has_extensions(
 
 /// Whether the database offers every extension a migration not yet
 /// applied creates: one installed or one its server could install
-/// (`pg_available_extensions`). Whether the role may create it is found
-/// when the migration runs.
+/// (`pg_available_extensions`), which the role applying migrations may
+/// create ([`may_create`]).
 async fn offers_every_extension(
     transaction: &mut dyn Transaction,
     migrations: &[Migration],
@@ -188,9 +195,46 @@ async fn offers_every_extension(
             if rows.is_empty() {
                 return Err(MigrateError::ExtensionMissing { extension });
             }
+            may_create(transaction, &extension).await?;
         }
     }
     Ok(())
+}
+
+/// Whether the role may create `extension`, where the database hasn't it
+/// yet: created in a savepoint and undone, since whether a role may
+/// create an extension that isn't trusted (PostGIS) depends on the server
+/// and the provider's roles, so trying it is the one sure test. A role
+/// that can't is refused before anything runs (area 20, "A store with no
+/// PostGIS"; chunk 5.5u4).
+async fn may_create(
+    transaction: &mut dyn Transaction,
+    extension: &str,
+) -> Result<(), MigrateError> {
+    let installed = transaction
+        .query(
+            "SELECT 1 FROM pg_extension WHERE extname = $1",
+            &[SqlValue::Text(extension.to_string())],
+        )
+        .await?;
+    if !installed.is_empty() {
+        return Ok(());
+    }
+    transaction.savepoint().await?;
+    let created = transaction
+        .batch(&format!(
+            "CREATE EXTENSION IF NOT EXISTS \"{}\"",
+            extension.replace('"', "\"\"")
+        ))
+        .await;
+    transaction.rollback_to_savepoint().await?;
+    match created {
+        Ok(()) => Ok(()),
+        Err(StoreError::Unavailable) => Err(MigrateError::Store(StoreError::Unavailable)),
+        Err(_) => Err(MigrateError::ExtensionNotCreatable {
+            extension: extension.to_string(),
+        }),
+    }
 }
 
 /// The first migration still to apply, under the table's lock.

@@ -180,6 +180,31 @@ pub fn add_check(table: &str, name: &str, column: &str, values: &[String]) -> St
     )
 }
 
+/// Adds the check constraint `name` that the `geography` column `column`
+/// of `table` holds a geometry in WGS84 whose `GeometryType` is one of
+/// `types` (`POINT`): an untyped column, so a point may have an altitude
+/// or not, value by value, held to its type and system here (area 20,
+/// "Storage"; chunk 5.5u4).
+pub fn add_geography_check(table: &str, name: &str, column: &str, types: &[String]) -> String {
+    let column = ident(column);
+    let kind = match types {
+        [one] => format!("GeometryType({column}) = {}", text_literal(one)),
+        many => format!(
+            "GeometryType({column}) IN ({})",
+            many.iter()
+                .map(|v| text_literal(v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    format!(
+        "ALTER TABLE {} ADD CONSTRAINT {} CHECK (ST_SRID({column}) = {} AND {kind})",
+        ident(table),
+        ident(name),
+        jadpo_std::geography::SRID
+    )
+}
+
 /// Adds the foreign key `name` from `columns` of `table` to `target`'s
 /// `id`, doing `on_delete` (`RESTRICT`, `CASCADE`, `SET NULL`) when the
 /// record it names is deleted.

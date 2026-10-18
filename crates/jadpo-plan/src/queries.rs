@@ -597,6 +597,11 @@ impl Planner<'_> {
         if column_type(field) == Some(jadpo_std::SqlType::Vector) {
             return Some(Column::Vector);
         }
+        // A geometry, in a PostGIS `geography` column (area 20, chunk
+        // 5.5u4).
+        if let Some(geometry) = field.geometry {
+            return Some(Column::Geography(geometry.to_string()));
+        }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {
             return Some(match prim {
