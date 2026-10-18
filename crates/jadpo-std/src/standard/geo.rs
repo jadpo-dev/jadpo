@@ -1105,7 +1105,7 @@ pub const FEATURE_ENTRY: StandardType = StandardType {
             r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]}}"#,
             r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":null}"#,
             r#"{"type":"Point","coordinates":[0,0]}"#,
-            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"},"title":"A bakery"}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"},"title":"A shop"}"#,
         ],
     ),
     release: FIRST_RELEASE,

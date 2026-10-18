@@ -31,6 +31,9 @@ northing
 radius
 lat
 lng
+# GeoJSON's `coordinates`, a common name `type.standard_exists` matches a
+# `LineString`'s list of points by (chunk 5.5u6)
+coordinates
 
 # `colour`'s parameters and the media types' names and parts (chunk 5.5p)
 hue

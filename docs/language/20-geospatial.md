@@ -822,49 +822,49 @@ test "a feature's identity is in its properties" {
 }
 ```
 
-WKT, built in chunk 5.5u6, from the planner's spreadsheet, whose cells
-hold outlines as WKT, longitude first:
+WKT, built in chunk 5.5u6, from the planner's spreadsheet, which holds
+each outline as WKT, longitude first:
 
 ```jadpo check project=geo-wkt
-type ExportCell = Text {}
+type SheetText = Text {}
 
 type NotAShape = Failure {
     kind: FailureKind.invalid_value
 }
 
-/// A patch's outline from the planner's spreadsheet, a cell of WKT.
-function outline_from(cell: ExportCell) fails NotAShape -> Geometry {
-    return attempt geo.from_wkt(cell) {
+/// A patch's outline from the planner's spreadsheet, as WKT.
+function outline_from(sheet_text: SheetText) fails NotAShape -> Geometry {
+    return attempt geo.from_wkt(sheet_text) {
         malformed: NotAShape  // not WKT, or rings that cross
         out_of_range: NotAShape  // past the poles, or another system
     }
 }
 
 /// An outline for the planner's spreadsheet, longitude first.
-function cell_for(outline: Geometry) -> ExportCell {
-    return ExportCell(geo.to_wkt(outline))
+function sheet_text_for(outline: Geometry) -> SheetText {
+    return SheetText(geo.to_wkt(outline))
 }
 ```
 
 ```jadpo check project=geo-wkt file=main.test.jadpo
 test "a patch comes back from the spreadsheet as it went" {
-    var cell: ExportCell = ExportCell(
+    var sheet_text: SheetText = SheetText(
         "POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.54,-0.2 51.49))"
     )
-    var outline: Geometry = attempt outline_from(cell)
-    assert cell_for(outline) == cell
-    var typed: Geometry = attempt outline_from(
-        ExportCell(
+    var outline: Geometry = attempt outline_from(sheet_text)
+    assert sheet_text_for(outline) == sheet_text
+    var respaced: Geometry = attempt outline_from(
+        SheetText(
             "SRID=4326;polygon ((-0.2 51.49, -0.05 51.49, -0.05 51.54, -0.2 51.54, -0.2 51.49))"
         )
     )
-    assert typed == outline
+    assert respaced == outline
 }
 
 test "what isn't an outline is refused" {
-    assert outline_from(ExportCell("POINT(-0.1276 91)")) fails NotAShape
-    assert outline_from(ExportCell("SRID=4258;POINT(-0.1276 51.5072)")) fails NotAShape
-    assert outline_from(ExportCell("POLYGON((0 0,10 10,0 10,10 0,0 0))")) fails NotAShape
+    assert outline_from(SheetText("POINT(-0.1276 91)")) fails NotAShape
+    assert outline_from(SheetText("SRID=4258;POINT(-0.1276 51.5072)")) fails NotAShape
+    assert outline_from(SheetText("POLYGON((0 0,10 10,0 10,10 0,0 0))")) fails NotAShape
 }
 ```
 

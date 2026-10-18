@@ -272,9 +272,10 @@ impl Decls<'_> {
                         let needs = match arity {
                             0 => "no type arguments".to_string(),
                             1 => format!("one type argument, as in `{first}<Tag>`"),
-                            _ if super::body::is_feature(first) => format!(
-                                "two type arguments, its geometry's and its properties', as in `{first}<Polygon, PatchProperties>`"
-                            ),
+                            _ if super::body::is_feature(first) => {
+                                "two type arguments, a geometry type and the properties' `Object` type"
+                                    .to_string()
+                            }
                             _ => format!("{arity} type arguments, as in `{first}<Key, Value>`"),
                         };
                         self.out.push(

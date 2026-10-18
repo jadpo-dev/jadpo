@@ -137,7 +137,7 @@ impl Body<'_> {
                     false,
                     None,
                     format!(
-                        "`{ty}` is GeoJSON for a map, with no text and no form for people; its geometry and its properties each have theirs"
+                        "`{ty}` is GeoJSON for a map, with no text and no form to show it in; its geometry and its properties each have theirs"
                     ),
                 )
             }
