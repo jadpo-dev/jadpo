@@ -1,6 +1,7 @@
 # Language reference
 
-Nineteen areas, all decided, one page per area, numbered in reading order.
+Twenty areas, one page per area, numbered in reading order: nineteen
+decided, and area 20, geospatial, proposed for Richard to decide.
 These pages are the source of truth for documentation;
 `tools/language_docs.py` checks them and renders them as web pages into
 `build/language-site/`.
