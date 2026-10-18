@@ -163,6 +163,11 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # exchange and the configured origin (area 8, chunk 5.1b).
         ('live PostgreSQL: round trips and signed sessions',
          [('jadpo-cli', 'round_trips'), ('jadpo-cli', 'signed')], []),
+        # Vectors in pgvector: stored and read back unchanged, `ai.distance`
+        # against pgvector's own operators, and a store without the
+        # extension refused (area 21, chunk 5.5v1). The server needs
+        # pgvector: CI's image has it (tools/postgres/Dockerfile).
+        ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

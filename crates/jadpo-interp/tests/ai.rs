@@ -4,12 +4,14 @@
 //! length is checked where the running program builds one and where JSON is
 //! read; numbers past what a float or a decimal holds, and JSON's missing
 //! NaN and infinity, are refused; an embedding, a usage and a message are
-//! sent as named fields; and each is shown to people.
+//! sent as named fields; and each is shown to people. `ai.distance` gives
+//! the distance its vectors' type compares them by, as pgvector works it
+//! out (area 21, chunk 5.5v1).
 
 use crate::support;
 
 use jadpo_interp::Value;
-use support::{decimal, failure, int, list, main, text, value};
+use support::{decimal, failure, fault, int, list, main, text, value};
 
 const AI: &str = "type Sent = Text {}
 
@@ -114,6 +116,39 @@ function usage_shown(usage: TokenUsage, reader: Locale) -> PresentationText {
 /// A vector for a debugging page.
 function vector_shown(vector: ArticleVector, reader: Locale) -> PresentationText {
     return text.format(vector, locale: reader)
+}
+
+/// A shop's position in a map of tastes, compared by straight-line
+/// distance.
+type TasteVector = Vector {
+    dimensions: 3
+    distance: VectorDistance.euclidean
+}
+
+/// A normalised score vector, compared by inner product.
+type ScoreVector = Vector {
+    dimensions: 3
+    distance: VectorDistance.inner_product
+}
+
+/// How far apart two vectors are.
+type Apart = Decimal {
+    scale: 18
+}
+
+/// How far apart two articles are, by angle.
+function articles_apart(a: ArticleVector, b: ArticleVector) -> Apart {
+    return Apart(ai.distance(a, b))
+}
+
+/// How far apart two shops' tastes are.
+function tastes_apart(a: TasteVector, b: TasteVector) -> Apart {
+    return Apart(ai.distance(a, b))
+}
+
+/// How far apart two scores are.
+function scores_apart(a: ScoreVector, b: ScoreVector) -> Apart {
+    return Apart(ai.distance(a, b))
 }
 
 /// A count typed into the limits page.
@@ -302,4 +337,42 @@ fn a_typed_count_is_a_whole_number_from_0() {
             "{raw}"
         );
     }
+}
+
+#[test]
+fn a_distance_is_the_one_its_type_compares_by() {
+    let program = main(AI).with_proof_checks();
+    let vector = |items: [&str; 3]| list(items.iter().map(|item| decimal(item)).collect());
+    let a = vector(["1", "2", "3"]);
+    let b = vector(["4", "-5", "6"]);
+    // One less 12 / sqrt(14 * 77), as pgvector's `<=>` gives it.
+    let cosine = jadpo_std::standard::ai::distance_text(1.0 - 12.0 / 1078f64.sqrt());
+    assert_eq!(
+        value(&program, "articles_apart", vec![a.clone(), b.clone()]),
+        decimal(&cosine)
+    );
+    assert_eq!(
+        value(&program, "tastes_apart", vec![a.clone(), b.clone()]),
+        decimal("8.18535277187245")
+    );
+    assert_eq!(
+        value(&program, "scores_apart", vec![a.clone(), b.clone()]),
+        decimal("-12")
+    );
+    assert_eq!(
+        value(&program, "articles_apart", vec![a.clone(), a.clone()]),
+        decimal("0")
+    );
+    // A vector of zeros has no direction, so no angle to another.
+    let zero = vector(["0", "0", "0"]);
+    assert_eq!(
+        fault(&program, "articles_apart", vec![zero.clone(), a.clone()]).kind,
+        jadpo_interp::FaultKind::Defect(
+            "a cosine distance from a vector of zeros, which has no direction".into()
+        )
+    );
+    assert_eq!(
+        value(&program, "tastes_apart", vec![zero, a]),
+        decimal(&jadpo_std::standard::ai::distance_text(14f64.sqrt()))
+    );
 }

@@ -1181,7 +1181,8 @@ reference only).
   with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
   EXTENSION` in migrations and `migration.extension_missing`, GiST indexes
   derived and declared with `kind: IndexKind.geographic`, geometries in
-  Redis as GeoJSON, and CI on `postgis/postgis:16-3.4`. Done when an
+  Redis as GeoJSON, and CI's image with PostGIS (`tools/postgres`, chunk
+  5.5v1). Done when an
   entity stores and reads back every geometry, with and without altitude,
   unchanged.
 - [ ] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
@@ -1208,7 +1209,7 @@ reference only).
   and compares them in code; 5.5v1b takes the nearest-neighbour query and
   its index. A vector type with `dimensions:` stored in a pgvector
   `vector(n)` column (the 5.5s2 `toolchain.not_built_yet` lifted), an
-  `Embedding` in a column for its model and one for its vector,
+  `Embedding` in columns for its model and one for its vector,
   `distance:` on the type, `ai.distance` in code computed as pgvector
   computes each metric, `CREATE EXTENSION` in the first migration with a
   vector column, `jadpo migrate apply`, `jadpo dev`, `jadpo test` and the

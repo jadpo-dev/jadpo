@@ -6705,9 +6705,10 @@ specify:
 > Built in chunk 5.5s2, the AI types' baselines: `Vector` with a type's
 > `dimensions:`, `Embedding`, `TokenCount`, `TokenUsage` and
 > `ChatMessage` with its `ChatRole`, each on the contract, built, sent as
-> JSON and shown to people ("Chosen in chunk 5.5s2"). Storing a vector or
-> an embedding is `toolchain.not_built_yet` until this area builds its
-> pgvector column; `ai.embed`, similarity and `ai.generate` come with it.
+> JSON and shown to people ("Chosen in chunk 5.5s2"). Chunk 5.5v1 stores
+> a vector in a pgvector column and adds `distance:` and `ai.distance`
+> (area 21); `ai.embed` and `ai.generate` come with area 21's later
+> chunks.
 
 A help article's embedding is three numbers here, where a real model's
 are 1,536 or more; a list of the wrong length is refused by name:
@@ -10257,7 +10258,10 @@ the most conservative reading:
 - **Storage:** a vector or an embedding is stored in a pgvector `vector`
   column (`Storage::Vector`), which the AI area builds, so a field of one
   is `toolchain.not_built_yet`, pointing at it. A count is one `bigint`
-  column; a usage and a message are stored a column per part.
+  column; a usage and a message are stored a column per part. *Amended
+  by chunk 5.5v1:* a vector is stored in `vector(n)`, and an embedding in
+  three columns, its model's two and its vector (area 21, "Chosen in chunk
+  5.5v1").
 - **Shapes:** none of the five has a distinctive shape for
   `type.standard_exists` (question 5); a `{ role, content }` or an
   `{ input, output }` is too common to flag.

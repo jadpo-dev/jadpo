@@ -289,15 +289,20 @@ pub const EMBEDDING_FIELDS: [(&str, Part); 2] = [
 ];
 
 /// A vector with the model that made it: sent as named fields, its model
-/// as `ModelId`'s text, and stored in two columns, its model as text and
-/// its vector in a pgvector `vector` (chunk 5.5v1).
+/// as `ModelId`'s text, and stored in three columns, its model's provider
+/// and name as `ModelId` is stored and its vector in a pgvector `vector`
+/// (chunk 5.5v1).
 pub const EMBEDDING_ENTRY: StandardType = StandardType {
     name: EMBEDDING,
     holds: Holds::Object(&EMBEDDING_FIELDS),
     text: None,
     json: Json::Fields(&["model", "vector"]),
     storage: Storage::Columns {
-        parts: &[("model", "text"), ("vector", "vector")],
+        parts: &[
+            ("model_provider", "text"),
+            ("model_name", "text"),
+            ("vector", "vector"),
+        ],
         fixed: &[],
     },
     format: Format {

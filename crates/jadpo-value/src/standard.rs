@@ -1646,6 +1646,25 @@ fn text_of(value: Value) -> Result<String, Fault> {
 mod tests {
     use super::*;
 
+    /// An embedding is stored as its model's provider and name and its
+    /// vector (chunk 5.5v1), and made again from them.
+    #[test]
+    fn an_embedding_is_its_model_and_its_vector() {
+        let vector = crate::vector::from_floats(&[0.5, -0.25, 1.0]).unwrap();
+        let model = [Value::text("openai"), Value::text("text-embedding-3-small")];
+        let read = from_parts_of(
+            "Embedding",
+            &[model[0].clone(), model[1].clone(), vector.clone()],
+        );
+        let Ok(embedding) = read else {
+            panic!("{read:?}");
+        };
+        assert_eq!(
+            to_parts(&embedding),
+            Some(vec![model[0].clone(), model[1].clone(), vector])
+        );
+    }
+
     #[test]
     fn durations_read_and_write_as_iso_8601() {
         assert_eq!(iso_duration("PT5M"), Some(300_000));

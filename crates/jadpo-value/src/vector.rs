@@ -12,8 +12,8 @@ use crate::{Decimal, Value};
 
 /// The distance from `a` to `b` by `metric`, `VectorDistance`'s variant
 /// name the checker fills from their type. A cosine with a vector of zeros
-/// is a fault, as dividing by zero is, since such a vector has no
-/// direction; a sum past a float's range is an overflow.
+/// is a fault, since such a vector has no direction; a sum past a float's
+/// range is an overflow.
 pub fn distance(a: &Value, b: &Value, metric: &Value) -> Result<Value, Fault> {
     let metric = match metric {
         Value::Text(name) => VectorDistance::from_name(name).ok_or(Fault::Shape)?,
@@ -27,7 +27,7 @@ pub fn distance(a: &Value, b: &Value, metric: &Value) -> Result<Value, Fault> {
         let zero = |items: &[f32]| items.iter().all(|item| *item == 0.0);
         return Err(
             if metric == VectorDistance::Cosine && (zero(&a) || zero(&b)) {
-                Fault::DivisionByZero
+                Fault::ZeroVector
             } else {
                 Fault::DecimalOverflow
             },
@@ -90,7 +90,7 @@ mod tests {
                 &vector(&["1", "0"]),
                 &Value::text("cosine")
             ),
-            Err(Fault::DivisionByZero)
+            Err(Fault::ZeroVector)
         );
         assert_eq!(
             distance(

@@ -126,6 +126,7 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 | `pattern` | `Text` | string | A regular expression the text must match |
 | `format` | `Text` | `email` | The text must be an email address |
 | `dimensions` | a type built on `Vector` | whole number, 1 to 16,000 | Exactly that many items (area 19, chunk 5.5s2) |
+| `distance` | a type built on `Vector` | a `VectorDistance`: `cosine` (the default), `euclidean` or `inner_product` | How its vectors are compared: `ai.distance` and its index follow it (area 21, chunk 5.5v1) |
 
 Each constraint is written `name: value`, one per line. There are no other
 constraints and no custom validation functions.
@@ -2005,7 +2006,7 @@ error: `maxlength` isn't a setting Jadpo knows
   |
 3 |     maxlength: 120
   |     ^^^^^^^^^ unknown setting
-  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency`, `rounding`, `from`, `to` and `dimensions`. Did you mean `max_length`?
+  reason: A type's block holds the constraints `min`, `max`, `min_length`, `max_length`, `pattern`, `format`, `scale`, `version`, `currency`, `rounding`, `from`, `to`, `dimensions` and `distance`. Did you mean `max_length`?
   next: Use `max_length` instead of `maxlength` (agent)
   rule: type.unknown_setting
   help: docs/language/02-values-and-types.html#type-unknown-setting
