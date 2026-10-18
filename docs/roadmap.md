@@ -929,12 +929,17 @@ reference only).
   `ContentRatingScheme` (BBFC, MPA, PEGI, ESRB) beside the 15, accepted by
   the lead session (2026-10-18). What the pages left open is area 19's "Chosen in
   chunk 5.5p".
-- [ ] **5.5q Randomness** `opus · high` (area 19, "Randomness",
+- [x] **5.5q Randomness** `opus · high` (area 19, "Randomness",
   question 19): the generated `random` namespace's 5 operations, actions
   only, seeded per test and recorded for replay, reading the operating
   system's generator outside tests. Done when the examples pass,
   interpreted and in the runtime, and a test's random values repeat on a
-  rerun. Split on 2026-10-18; cryptography is 5.5q2.
+  rerun. Split on 2026-10-18; cryptography is 5.5q2. Built, with
+  `type.random_context`, a test's seed from the test alone (identities
+  included; `--seed` orders only), uniform draws by rejection, one source
+  of random bytes per invocation that records and replays, and the native
+  host on `getrandom` 0.4.3. What the pages left open is area 19's "Chosen
+  in chunk 5.5q".
 - [ ] **5.5q2 Cryptography** `opus · high` (area 19, "Hashing and
   cryptography", question 9; split from 5.5q), after 5.5q: `crypto`'s 8
   operations that need no keys held as data; `EncryptionKey`,

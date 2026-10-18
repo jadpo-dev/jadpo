@@ -617,6 +617,34 @@ impl Body<'_> {
         Some(self.interval(&value, reading))
     }
 
+    /// `random.integer` (area 19, "Randomness"): a number drawn from `min`
+    /// to `max` is never below the lowest `min` can be nor above the
+    /// highest `max` can be, so `DiceRoll(random.integer(1, 6))` needs no
+    /// arm.
+    fn drawn(&self, call: &ast::CallExpr, reading: &mut Reading) -> Option<Interval> {
+        let super::facts::Reach::Std(Op::RandomInteger) =
+            self.facts.reaches.get(&node_key(call.syntax()))?
+        else {
+            return None;
+        };
+        let args: Vec<ast::Arg> = call.arg_list()?.args().collect();
+        let find = |name: &str, position: usize| {
+            let named = args.iter().find(|arg| {
+                arg.name()
+                    .and_then(|n| n.ident_token())
+                    .is_some_and(|t| t.text() == name)
+            });
+            let positional = args.get(position).filter(|arg| arg.name().is_none());
+            named.or(positional).and_then(ast::Arg::expr)
+        };
+        let min = self.interval(&find("min", 0)?, reading);
+        let max = self.interval(&find("max", 1)?, reading);
+        Some(Interval {
+            low: min.low,
+            high: max.high,
+        })
+    }
+
     fn floor(&self, call: &ast::CallExpr) -> Option<i64> {
         match self.facts.reaches.get(&node_key(call.syntax()))? {
             super::facts::Reach::Std(op) => op.operation().at_least,
@@ -868,6 +896,7 @@ impl Body<'_> {
             Expr::CallExpr(call) if let Some(chosen) = self.chosen(call, reading) => chosen,
             Expr::CallExpr(call) if let Some(rounded) = self.rounded(call, reading) => rounded,
             Expr::CallExpr(call) if let Some(amount) = self.amount(call, reading) => amount,
+            Expr::CallExpr(call) if let Some(drawn) = self.drawn(call, reading) => drawn,
             // `integer.divide` and `decimal.divide` are bounded as `/` is,
             // whichever way they round: rounding away from zero never
             // passes the dividend while the divisor is at least 1.

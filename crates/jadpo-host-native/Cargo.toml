@@ -22,6 +22,8 @@ bytes.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }
 http-body-util.workspace = true
+# The operating system's cryptographic generator (area 19, "Randomness").
+getrandom.workspace = true
 
 [lints]
 workspace = true

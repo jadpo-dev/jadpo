@@ -378,7 +378,7 @@ pub(crate) fn choose_and_run(
         .count();
     let databases = (!steps.is_empty() && users > 0)
         .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed).for_tests(users));
-    let failures = run::run_all(prepared, &ordered, seed, &rerun, databases.as_ref());
+    let failures = run::run_all(prepared, &ordered, &rerun, databases.as_ref());
     drop(databases);
     let results: Vec<TestResult> = ordered
         .into_iter()

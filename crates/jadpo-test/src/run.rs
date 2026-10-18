@@ -27,7 +27,6 @@ const NO_VARIABLES: fn(&str) -> Option<String> = |_| None;
 pub(crate) fn run_all(
     prepared: &Arc<Prepared>,
     tests: &[Test],
-    seed: u64,
     rerun: &Rerun,
     databases: Option<&TestDatabases>,
 ) -> Vec<Option<Box<TestFailure>>> {
@@ -48,7 +47,6 @@ pub(crate) fn run_all(
             }
         },
         tests,
-        seed,
         rerun,
         sources,
         databases,
@@ -68,7 +66,6 @@ fn workers(count: usize) -> usize {
 fn spread<E: Executor>(
     make: impl Fn() -> E + Sync,
     tests: &[Test],
-    seed: u64,
     rerun: &Rerun,
     sources: &(dyn Sources + Sync),
     databases: Option<&TestDatabases>,
@@ -89,7 +86,7 @@ fn spread<E: Executor>(
             let Some(test) = tests.get(index) else {
                 break;
             };
-            done.push((index, one(&executor, test, seed, rerun, sources, &stores)));
+            done.push((index, one(&executor, test, rerun, sources, &stores)));
         }
         done
     };
@@ -136,7 +133,6 @@ struct Stores<'a> {
 fn one<E: Executor>(
     executor: &E,
     test: &Test,
-    seed: u64,
     rerun: &Rerun,
     sources: &dyn Sources,
     stores: &Stores<'_>,
@@ -149,7 +145,7 @@ fn one<E: Executor>(
             rerun,
         )));
     };
-    let mut env = TestEnv::new(seed, &test.key);
+    let mut env = TestEnv::new(&test.key);
     if let Some(start) = executor.clock(callable) {
         env.env.clock = jadpo_runtime::Clock::fixed(start);
     }
@@ -267,7 +263,6 @@ mod tests {
                 places: Places::new(),
             },
             &tests,
-            1,
             &rerun,
             &sources,
             None,

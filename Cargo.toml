@@ -157,6 +157,14 @@ lsp-types = "=0.97.0"
 tokio = { version = "=1.53.3", default-features = false }
 tokio-postgres = { version = "=0.7.18", default-features = false }
 bytes = "=1.12.1"
+# The operating system's cryptographic generator for the native host
+# (jadpo-host-native only): what a deployable's new identities, tokens and
+# `random` values take (area 19, "Randomness"). getrandom 0.4 calls the
+# platform's own interface (getrandom(2), getentropy, BCryptGenRandom),
+# already in the lock through tokio-postgres. It never builds for wasm32
+# here: a Workers host takes the Web Crypto API's, and `jadpo-value` takes
+# random bytes only from the host.
+getrandom = { version = "=0.4.3", default-features = false }
 # HTTP for the native host (jadpo-host-native only; docs/compiler-runtime.md §2.6).
 hyper = { version = "=1.12.0", default-features = false }
 hyper-util = { version = "=0.1.21", default-features = false }
