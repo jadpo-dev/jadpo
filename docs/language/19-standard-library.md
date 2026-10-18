@@ -3991,7 +3991,8 @@ on its own line, and a `LocalisedText` as `text.pick` gives it.
 | `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
 | `crypto.public_key(key:)` | `PublicKey`, the Ed25519 public half of a `PrivateKey` setting, which the app may publish so others can check what it signs (decided by the lead session for chunk 5.5q2) | | none |
 | `crypto.verify_signature(value, signature, key)` | `Bool`; `key` a `PublicKey`, which is not secret and may be read | | none |
-| `crypto.verify_jwt(token, keys:, issuer:, audience:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token), with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional (chunk 5.5r); it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, and `wrong_issuer` when `issuer:` is given | none |
+| `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token): Ed25519, RS256 for an RSA key and ES256 for a P-256 key (chunk 5.5r4), with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional (chunk 5.5r); with `as:`, an `Object` of the application's, the token's claims beyond the registered seven that it names instead, read as `json.read` reads them (chunk 5.5r4); it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, `wrong_issuer` when `issuer:` is given, and `mismatch` when `as:` is | none |
+| `crypto.read_certificate(der)` | `Certificate`, read from its DER `Bytes` as its PEM's DER is (chunk 5.5r4): a key set's `x5c` after `encoding.from_base64`, or a file's bytes | `malformed` | none |
 | `crypto.verify_totp(code, secret)` | `Bool` for a `OneTimeCode` against a `TotpSecret`, RFC 6238 with one step either side. Waits for keys held as data | | none |
 
 - **No algorithm choices.** Each job has one construction, chosen for
@@ -4320,6 +4321,15 @@ test "a partner's token signs in only while it holds" {
 > 8725's best practices and are tested against RFC 7519's and RFC 8037's
 > examples and the classic attacks. What the page left open is under
 > "Chosen in chunk 5.5r".
+>
+> Built in chunk 5.5r4: RS256 and ES256 on RustCrypto's `rsa` 0.9.10 and
+> `p256` 0.14.0, verification only, so a `Jwk` holds an Ed25519, an RSA
+> or a P-256 key and Google's, Microsoft's and Auth0's key sets read and
+> check their tokens; a token's own claims read as an application's
+> `Object` with `as:`; and `crypto.read_certificate`. They are tested
+> against RFC 7515's and RFC 7520's examples and the classic attacks
+> under both algorithms. What the page left open is under "Chosen in
+> chunk 5.5r4".
 
 ### Secret values
 
@@ -10251,8 +10261,9 @@ built, each the most conservative reading:
   most identity providers sign with, aren't built: the page names no
   algorithm, and each needs a crate of its own (RustCrypto's `rsa` or
   `p256`); they are chunk 5.5r4, with typed custom claims (decided by
-  the lead session, "Decisions"). HS256 needs a shared secret held as
-  data, which waits for keys held as data ("Language gaps").
+  the lead session, "Decisions"), and built there ("Chosen in chunk
+  5.5r4"). HS256 needs a shared secret held as data, which waits for
+  keys held as data ("Language gaps").
 - **A `Jwk` holds no secret.** It has no private key (`d`) and no shared
   secret (an `oct` key's `k`): JSON naming either isn't a `Jwk`, so a key
   set read from outside can't put a secret in a program. Its parts are
@@ -10302,7 +10313,7 @@ built, each the most conservative reading:
   its subject, else its issuer, else its id, else its expiry
   (`FormatKey::FirstPart`). A token's other claims (`scope`, `email`)
   aren't read here: `verify_jwt(..., as:)` reads them as an application's
-  type in chunk 5.5r4.
+  type, built in chunk 5.5r4.
 - **`OAuthScope`** is one RFC 6749 scope-token of 1 to 256 characters.
   Area 9 (question 6) plans an `OAuthScope` enum generated from the scopes
   `authentication.jadpo` declares, after the first build; it narrows this
@@ -10646,7 +10657,7 @@ conservative reading:
   JSON is that text, as every type with a canonical text is sent, not its
   DER in Base64; it is stored as that JSON (`jsonb`) and read back through
   the same reader, so a stored part is never trusted.
-- **Reading DER bytes is chunk 5.5r4's.** The DER inside a PEM is read
+- **Reading DER bytes is chunk 5.5r4's,** and built there. The DER inside a PEM is read
   here; a certificate from bytes (a file's contents, a key set's `x5c`) is
   read by `crypto.read_certificate(der)`, giving a `Certificate` and
   failing `malformed`, on this chunk's reader, built with 5.5r4's JWTs
@@ -10684,6 +10695,81 @@ conservative reading:
   a certificate whose names are all in its extensions have an empty
   subject; `FormatKey::FirstPart` now passes over empty text. It is not
   ordered, and `==` compares every part, the bytes in constant time.
+
+### Chosen in chunk 5.5r4
+
+Choices the page left open when RS256, ES256, typed claims and
+`crypto.read_certificate` were built, each the most conservative reading.
+They supersede 5.5r's "One algorithm, Ed25519":
+
+- **Three kinds of key, one algorithm each.** A `Jwk`'s `kty` is `OKP`
+  (an Ed25519 key, `crv` and `x`, used with `EdDSA`), `RSA` (`n` and `e`,
+  used with `RS256`) or `EC` (a P-256 key, `crv`, `x` and `y`, used with
+  `ES256`). Its parts are `kty`, `crv`, `x`, `y`, `n`, `e`, `kid`, `alg`,
+  `use_` and `x5c`, each but `kty` optional, and three rules across them
+  hold a key to its kind: `parts_of_its_kty` (its kind's parts and no
+  other's), `algorithm_of_its_kty` (an `alg`, where given, is its kind's)
+  and `a_usable_key`. A token is tried only against keys used with the
+  algorithm its header names, and each with that key's own algorithm, so
+  `none`, `HS256`, an RS256 token named for an EC key's id and the
+  reverse all fail `invalid_signature`. RS384, RS512, PS256, ES384 and
+  the rest aren't built: no identity provider the chunk names needs one,
+  and a key set naming one doesn't read.
+- **A key that can be used.** An RSA modulus is 2,048 to 4,096 bits, odd
+  and in its fewest octets: under 2,048 bits can be factored (RFC 7518
+  §3.3 requires 2,048), and 4,096 is the most `rsa` checks by default,
+  so a key set can't make checking a token cost without bound. The
+  exponent is odd, from 3 to 2^32 - 1, in its fewest octets. A P-256
+  point is checked to be on the curve, both in the type's rule and by
+  `p256` again before it is used; each coordinate is 32 octets in full
+  (RFC 7518 §6.2.1.2).
+- **Members a `Jwk` doesn't hold are ignored,** as RFC 7517 §4 requires
+  (Microsoft's key set sends `issuer` and `cloud_instance_name`, and
+  Microsoft's and Auth0's `x5t`), the one standard object that ignores
+  them; but a private key's or a shared secret's members (`d`, `p`, `q`,
+  `dp`, `dq`, `qi`, `oth`, `k`) and `key_ops`, which limits a key in a way
+  a `Jwk` doesn't hold, make JSON not a `Jwk`, so a key set read from
+  outside can't put a secret in a program. A key set whose keys don't all
+  read is `mismatch` as a whole, as any list is.
+- **`x5c` is carried, and held to the key.** It is the certificates' DER
+  in standard Base64 as RFC 7517 §4.7 sends them, read with
+  `encoding.from_base64` and `crypto.read_certificate`. A key with
+  certificates is tried only when its first certificate reads strictly
+  and holds the same public key (RFC 7517 §4.7's MUST); nothing checks
+  the chain, which `x5c` alone doesn't make trusted. `x5u`, `x5t` and a
+  header's `x5c` are never read.
+- **RS256 is RSASSA-PKCS1-v1_5 with SHA-256 by encoding and comparing**
+  the whole padded digest (RFC 8017 §8.2.2), never by parsing it, with a
+  signature exactly as long as the modulus. The digest is `sha2`'s, so
+  `rsa`'s own `digest` isn't used. RUSTSEC-2023-0071 (Marvin), open
+  against every `rsa` release, leaks a private key through the timing of
+  decryption and signing; verifying holds no private key, so it is not
+  reached, and nothing here decrypts or signs with RSA.
+- **ES256's signature is R and S,** 64 octets (RFC 7518 §3.4), each from
+  1 to below the group's order. A high S is accepted: RFC 7518 doesn't
+  refuse one, `p256` doesn't, and RFC 7515 §A.3's own example has one.
+  Another signature of the same claims is then possible, which matters
+  only to something keyed on a token's text, and Jadpo keeps no token.
+- **The crates,** pinned exactly: `rsa` 0.9.10, the latest stable
+  release (0.10 is a release candidate), and `p256` 0.14.0 with its
+  `ecdsa` feature, both without `std`, so neither reads randomness and
+  both build for wasm32. Verification only: neither signs.
+- **`as:` reads the claims beyond the registered seven** into an `Object`
+  the application declares. Its fields are read as `json.read` reads an
+  object's, so a claim missing, of the wrong kind or breaking a rule is
+  `mismatch`, whose first problem fills a `problem: DecodeProblem` field
+  as `json.read`'s does; claims it doesn't name are ignored, as RFC 7519
+  §4 requires of claims not understood, though a nested object it names
+  is read strictly. A type naming one of the seven (`sub`, `exp` ...) is
+  `type.mismatch`: the call checks those itself and gives them as
+  `JwtClaims` without `as:`. Anything but an application's `Object`
+  (`Text`, `JwtClaims`, a list) is `type.mismatch` too. Nothing is read as
+  the type until the signature, the times, the issuer and the audience
+  hold, and `mismatch` needs its arm only when `as:` is given.
+- **`crypto.read_certificate(der)`** reads `Bytes` with 5.5r5's strict
+  reader, the DER inside a PEM read the same way, and fails `malformed`
+  for anything else. It reads nothing else and needs no key, so a function
+  calls it.
 
 ### Chosen in chunk 5.5w
 
@@ -11310,7 +11396,7 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5r5 Certificates** `opus · high`: `Certificate`, X.509 from PEM or
   DER on an audited crate, its subject, issuer, validity and fingerprint
   read-only. Built, read from its PEM; reading DER bytes is 5.5r4's
-  `crypto.read_certificate(der)`.
+  `crypto.read_certificate(der)`, built.
 - **5.5s Geospatial types' baselines** `opus · high`: the 17
   geospatial types, with construction, text and JSON from the contract;
   their storage and operations come with the geospatial area. Split on
