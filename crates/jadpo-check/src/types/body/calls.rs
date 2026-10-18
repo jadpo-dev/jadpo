@@ -580,6 +580,10 @@ impl Body<'_> {
         let word = kind.word();
         let next = match self.context {
             Context::Inline => format!("Call `{callee}` outside the inline function"),
+            Context::Backfill => {
+                "Work the value out from the record's own fields, constants and functions"
+                    .to_string()
+            }
             _ => format!(
                 "Make the caller an action, or call `{callee}` from the action that uses this function"
             ),
@@ -611,7 +615,11 @@ impl Body<'_> {
                 "{} is pure: it computes its result from its arguments alone, so reading and writing entities belongs in an action.",
                 capital(caller)
             ))
-            .next("Make the caller an action, or pass the data in as an argument"),
+            .next(if self.context == Context::Backfill {
+                "Work the value out from the record's own fields, constants and functions"
+            } else {
+                "Make the caller an action, or pass the data in as an argument"
+            }),
         );
     }
 

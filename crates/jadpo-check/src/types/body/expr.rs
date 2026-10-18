@@ -522,6 +522,12 @@ impl Body<'_> {
         let written = format!("{head}.{}", members.join("."));
         let span = self.span(expr);
         if head == CONFIG {
+            // A backfill gives the same value wherever the migration runs
+            // (area 5, chunk 5.6b).
+            if self.context == super::Context::Backfill {
+                self.backfill_outside_row(span, &written, "a setting");
+                return Ty::Error;
+            }
             return self.setting_read(rest, expr);
         }
         match members.as_slice() {
@@ -596,11 +602,19 @@ impl Body<'_> {
                 format!("{} can't {verb} `{written}`", super::capital(caller)),
             )
             .at(span, "reads the clock")
-            .reason(format!(
-                "{} is pure: it gives the same result for the same arguments, so the time it needs arrives as a parameter; only actions read the clock.",
-                super::capital(caller)
-            ))
-            .next("Pass the time in as a parameter, read in the action that calls this"),
+            .reason(if self.context == super::Context::Backfill {
+                "A backfill gives each record the value its own fields give, whenever the migration runs, so it never reads the clock; only actions read the clock.".to_string()
+            } else {
+                format!(
+                    "{} is pure: it gives the same result for the same arguments, so the time it needs arrives as a parameter; only actions read the clock.",
+                    super::capital(caller)
+                )
+            })
+            .next(if self.context == super::Context::Backfill {
+                "Work the value out from the record's own fields, or a constant"
+            } else {
+                "Pass the time in as a parameter, read in the action that calls this"
+            }),
         );
     }
 
@@ -617,11 +631,19 @@ impl Body<'_> {
                 format!("{} can't call `{written}`", super::capital(caller)),
             )
             .at(span, "reads the generator")
-            .reason(format!(
-                "{} is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.",
-                super::capital(caller)
-            ))
-            .next("Pass the value in as a parameter, made in the action that calls this"),
+            .reason(if self.context == super::Context::Backfill {
+                "A backfill gives each record the value its own fields give, whenever the migration runs, so it never reads the generator; only actions read the generator, which a test seeds so that it repeats.".to_string()
+            } else {
+                format!(
+                    "{} is pure: it gives the same result for the same arguments, so a random value it needs arrives as a parameter; only actions read the generator, which a test seeds so that it repeats.",
+                    super::capital(caller)
+                )
+            })
+            .next(if self.context == super::Context::Backfill {
+                "Work the value out from the record's own fields, or a constant"
+            } else {
+                "Pass the value in as a parameter, made in the action that calls this"
+            }),
         );
     }
 

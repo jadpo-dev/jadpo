@@ -18,6 +18,7 @@
 //! here reports a knock-on of something it doesn't check.
 
 mod across;
+pub(crate) mod backfill;
 mod calls;
 mod contract;
 mod currency;
@@ -167,6 +168,54 @@ pub fn callables_of<'db>(db: &'db dyn Db, file: File) -> Vec<Callable<'db>> {
     out
 }
 
+/// The computed backfills the latest migration's `changes.jadpo` holds,
+/// each checked as a callable is: `index` is its `migration` among the
+/// file's declarations and `function` its decision's place among the
+/// migration's (area 5, "Computed backfills"; chunk 5.6b). An earlier
+/// migration's backfills ran with the code they were written against, so
+/// only the latest's are read.
+pub fn backfill_callables<'db>(
+    db: &'db dyn Db,
+    project: Project,
+    file: File,
+) -> Vec<Callable<'db>> {
+    let path = file.path(db);
+    if !path.ends_with("/changes.jadpo") {
+        return Vec::new();
+    }
+    let latest = crate::data::migrations::migrations(db, project)
+        .list
+        .last()
+        .map(|migration| migration.changes_path());
+    if latest.as_deref() != Some(path.as_str()) {
+        return Vec::new();
+    }
+    let Some(source) = tree::source(db, file) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (index, decl) in source.decls().enumerate() {
+        let Decl::SingletonDecl(migration) = decl else {
+            continue;
+        };
+        let count = migration
+            .member_list()
+            .map_or(0, |list| list.member_items().count());
+        for member in 0..count {
+            if let Some((_, _, value)) =
+                crate::data::migrations::backfill_member(&migration, member)
+                && matches!(
+                    super::rules::Const::from_expr(&value),
+                    super::rules::Const::Other | super::rules::Const::Path(_)
+                )
+            {
+                out.push(Callable::new(db, file, index as u32, Some(member as u32)));
+            }
+        }
+    }
+    out
+}
+
 /// The rules across fields `file`'s object types name, each checked as a
 /// callable is: `index` is its type's declaration and `function` its place
 /// among the type's rules (area 2, "Rules across fields").
@@ -239,6 +288,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         loops: 0,
         pending_block: None,
         stored: None,
+        retired: Vec::new(),
         action: None,
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
@@ -416,13 +466,21 @@ enum Context {
     /// A rule's condition across an object's fields (area 2, "Rules across
     /// fields"): pure, and reading only those fields ([`across`]).
     Rule,
+    /// A computed backfill in a migration's `changes.jadpo` (area 5,
+    /// "Computed backfills"): pure, reading its row's stored fields, and
+    /// never able to fail.
+    Backfill,
 }
 
 impl Context {
     fn is_pure(self) -> bool {
         matches!(
             self,
-            Context::Function | Context::Inline | Context::Constant | Context::Rule
+            Context::Function
+                | Context::Inline
+                | Context::Constant
+                | Context::Rule
+                | Context::Backfill
         )
     }
 
@@ -434,6 +492,7 @@ impl Context {
             Context::Test => "a test",
             Context::Constant => "a constant",
             Context::Rule => "a rule",
+            Context::Backfill => "a backfill",
         }
     }
 }
@@ -545,6 +604,11 @@ struct Body<'a> {
     /// While an update by `id` of this entity checks its values: the
     /// entity whose stored fields they may read (area 6, "Counters").
     stored: Option<String>,
+    /// While a computed backfill is checked (area 5, chunk 5.6b): the
+    /// fields of `stored`'s entity this migration retires, with their
+    /// types, which the backfill may read though the entity no longer
+    /// declares them.
+    retired: Vec<(String, Ty)>,
     /// The action being checked, by name: whether root `policy {
     /// actions: }` lists it decides which fields its updates may change
     /// (area 9).
@@ -573,6 +637,17 @@ struct Target {
     /// A rule across an object's fields (area 2): its type's name and its
     /// condition, read with the type's fields in scope.
     rule: Option<(String, Option<ast::Expr>, Option<ast::MemberList>)>,
+    /// A computed backfill (area 5, chunk 5.6b).
+    backfill: Option<BackfillTarget>,
+}
+
+/// A computed backfill to check: the field it fills, its type, its value,
+/// and the fields this migration retires that it may read.
+struct BackfillTarget {
+    entity: String,
+    ty: Ty,
+    value: ast::Expr,
+    retired: Vec<(String, Ty)>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -688,6 +763,7 @@ impl Body<'_> {
             body,
             constant: None,
             rule: None,
+            backfill: None,
         };
         let constant = |syntax: jadpo_syntax::SyntaxNode, name, d: &ast::ConstantDecl| Target {
             syntax,
@@ -701,6 +777,7 @@ impl Body<'_> {
             body: None,
             constant: Some((d.ty(), d.value())),
             rule: None,
+            backfill: None,
         };
         Some(match (decl, function) {
             (Decl::FunctionDecl(d), None) => target(
@@ -760,6 +837,7 @@ impl Body<'_> {
                     body: function.block(),
                     constant: None,
                     rule: None,
+                    backfill: None,
                 }
             }
             // A rule across an object type's fields (area 2).
@@ -781,6 +859,48 @@ impl Body<'_> {
                     body: None,
                     constant: None,
                     rule: Some((host, rule.condition(), d.member_list())),
+                    backfill: None,
+                }
+            }
+            // A computed backfill in a migration's `changes.jadpo` (area 5,
+            // chunk 5.6b): `index` is its decision among the migration's.
+            (Decl::SingletonDecl(d), Some(index)) => {
+                let (entity, field, value) =
+                    crate::data::migrations::backfill_member(d, index as usize)?;
+                // Typed as a value set on the field is (area 6): its
+                // declared type, or the field's own when it has rules of
+                // its own, which a value then meets only by construction.
+                let path = std::slice::from_ref(&field);
+                let ty = match self.table.field(&entity, path) {
+                    Some(def) if def.rules == jadpo_std::Rules::default() => {
+                        if def.optional {
+                            def.declared.clone().nullable()
+                        } else {
+                            def.declared.clone()
+                        }
+                    }
+                    _ => self.table.field_type(&entity, path),
+                };
+                let retired =
+                    crate::data::migrations::retired_fields(self.db, self.project, &entity);
+                Target {
+                    syntax: value.syntax().clone(),
+                    context: Context::Backfill,
+                    word: "backfill",
+                    name: Some(format!("{entity}.{field}")),
+                    params: None,
+                    fails: None,
+                    contract: false,
+                    result: None,
+                    body: None,
+                    constant: None,
+                    rule: None,
+                    backfill: Some(BackfillTarget {
+                        entity,
+                        ty,
+                        value,
+                        retired,
+                    }),
                 }
             }
             (Decl::TestDecl(d), None) => Target {
@@ -808,6 +928,7 @@ impl Body<'_> {
             body,
             constant,
             rule,
+            backfill,
         } = callable;
         self.context = context;
         self.test = word == "test";
@@ -822,6 +943,11 @@ impl Body<'_> {
         self.scopes.push(Vec::new());
         if let Some((host, condition, members)) = rule {
             self.rule(&host, condition.as_ref(), members);
+            self.pop_scope();
+            return;
+        }
+        if let Some(backfill) = backfill {
+            self.backfill(backfill);
             self.pop_scope();
             return;
         }

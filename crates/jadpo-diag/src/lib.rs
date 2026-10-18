@@ -436,6 +436,10 @@ rules! {
         "01-project-layout-and-modules.html#library-similar-exists", "A library function already does the same";
     MIGRATION_APPLY_FAILED: "migration.apply_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Migrations could not be applied";
+    MIGRATION_BACKFILL_CAN_FAIL: "migration.backfill_can_fail", area 5, Error, Agent,
+        "05-data.html#migration-backfill-can-fail", "Computed backfill can fail";
+    MIGRATION_BACKFILL_OUTSIDE_ROW: "migration.backfill_outside_row", area 5, Error, Agent,
+        "05-data.html#migration-backfill-outside-row", "Computed backfill reads more than its row";
     MIGRATION_DECISION_INVALID: "migration.decision_invalid", area 5, Error, Agent,
         "05-data.html#migration-decision-invalid", "Migration decision does not fit its change";
     MIGRATION_DECISION_REQUIRED: "migration.decision_required", area 5, Error, Human,

@@ -54,6 +54,10 @@ impl Needed {
 pub enum Decided {
     /// The SQL literal existing rows get.
     Backfill(String),
+    /// A computed backfill (area 5, "Computed backfills"; chunk 5.6b):
+    /// the SQL expression each existing row gets, reading the row's own
+    /// columns as `"table"."column"`, filled in batches.
+    Computed(String),
     Retired,
 }
 
@@ -385,8 +389,11 @@ pub fn migration_sql(
                     });
                 }
                 if let Some(need) = need {
+                    let key = new
+                        .map(|t| t.primary_key.columns.clone())
+                        .unwrap_or_default();
                     plan.columns
-                        .extend(backfill(table, column, &[], need, decided));
+                        .extend(backfill(table, &key, column, &[], need, decided));
                 }
             }
             Change::AlterColumn { table, column, .. } => {
@@ -444,8 +451,12 @@ pub fn migration_sql(
                     .find(|n| &n.table == table && &n.column == column);
                 match need {
                     Some(need) => {
+                        let key = new
+                            .map(|t| t.primary_key.columns.clone())
+                            .unwrap_or_default();
                         plan.columns.extend(backfill(
                             table,
+                            &key,
                             column,
                             &refit(was, now, column),
                             need,
@@ -564,12 +575,35 @@ struct Plan {
 
 fn backfill(
     table: &str,
+    key: &[String],
     column: &str,
     broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
     match (need.kind, decided(need)) {
+        // Filled in batches, each its own transaction, then the rows
+        // written meanwhile filled with the table locked against writes,
+        // and the column made required, in the migration's last step
+        // (chunk 5.6b). An entity's key is its one `id`.
+        (NeededKind::Backfill, Some(Decided::Computed(value))) if key.len() == 1 => vec![
+            Statement {
+                sql: table::backfill_in_batches(&need.key(), table, &key[0], column, &value),
+                does: "fill existing rows in batches",
+            },
+            Statement {
+                sql: table::lock_against_writes(table),
+                does: "lock against writes",
+            },
+            Statement {
+                sql: table::fill(table, column, &value, &[table::is_null(column)]),
+                does: "fill rows written meanwhile",
+            },
+            Statement {
+                sql: table::set_not_null(table, column),
+                does: "require a value",
+            },
+        ],
         (NeededKind::Backfill, Some(Decided::Backfill(value))) => {
             let mut empty = vec![table::is_null(column)];
             empty.extend(broken.iter().cloned());
@@ -775,6 +809,60 @@ mod tests {
         let text = done.to_document("x");
         assert!(text.contains("UPDATE \"todo\" SET \"rank\" = 3 WHERE \"rank\" IS NULL;"));
         assert!(text.contains("SET NOT NULL;"));
+    }
+
+    #[test]
+    fn a_computed_backfill_is_filled_in_batches_then_required() {
+        let before = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+        ]);
+        let after = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+            ("rank", "bigint", false, false),
+        ]);
+        let value = "(CASE WHEN \"todo\".\"flag\" THEN 1 ELSE 2 END)";
+        let sql = migration_sql(&before, &after, &|_| Some(Decided::Computed(value.into())))
+            .expect("sql");
+        let document = sql.to_document("x");
+        let section = &sections(&document)[0];
+        let steps = jadpo_std::Migration {
+            name: "x".into(),
+            digest: section_digest(&section.sql),
+            sql: section.sql.clone(),
+        }
+        .steps();
+        assert_eq!(steps.len(), 3, "{document}");
+        assert_eq!(
+            steps[0],
+            jadpo_std::Step::Once("ALTER TABLE \"todo\" ADD COLUMN \"rank\" bigint;".into())
+        );
+        let jadpo_std::Step::Batches(batches) = &steps[1] else {
+            panic!("{document}");
+        };
+        assert_eq!(batches.field, "Todo.rank");
+        assert_eq!(batches.how, "by UPDATE");
+        assert_eq!(
+            batches.count,
+            "SELECT count(*) FROM \"todo\" WHERE \"rank\" IS NULL"
+        );
+        assert!(
+            batches
+                .batch
+                .contains(&format!("SET \"rank\" = {value} FROM \"batch\""))
+                && batches
+                    .batch
+                    .contains("WHERE \"id\" > $1 ORDER BY \"id\" LIMIT 1000"),
+            "{}",
+            batches.batch
+        );
+        assert_eq!(
+            steps[2],
+            jadpo_std::Step::Once(format!(
+                "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nUPDATE \"todo\" SET \"rank\" = {value} WHERE \"rank\" IS NULL;\nALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;"
+            ))
+        );
     }
 
     #[test]

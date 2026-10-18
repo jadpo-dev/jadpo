@@ -94,6 +94,46 @@ pub fn fill(table: &str, column: &str, value: &str, conditions: &[String]) -> St
     )
 }
 
+/// How many rows a computed backfill fills in one batch, each batch in a
+/// transaction of its own (area 5, "Computed backfills"; chosen in chunk
+/// 5.6b): small enough that a batch holds its rows' locks for a moment,
+/// large enough that a million rows take a thousand batches.
+pub const BATCH_ROWS: u32 = 1000;
+
+/// A computed backfill of `column` with `value` (SQL reading the row's
+/// columns as `"table"."column"`), filled in batches by `UPDATE`: the line
+/// that names `field` and says how, the statement counting the rows left,
+/// and one batch, which takes the key the last batch ended at as `$1` and
+/// gives the key it ended at and how many rows it filled. Batches go in
+/// key order, so each starts where the last ended, through the key's
+/// index; the rows each fills are those still without a value, so a
+/// batch run twice fills nothing twice.
+pub fn backfill_in_batches(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    value: &str,
+) -> String {
+    let (t, k, c) = (ident(table), ident(key), ident(column));
+    format!(
+        "{marker}{field}: by UPDATE, {BATCH_ROWS} rows a batch, each batch its own transaction\n\
+         SELECT count(*) FROM {t} WHERE {c} IS NULL;\n\
+         WITH \"batch\" AS (SELECT {k} AS \"jadpo_key\" FROM {t} WHERE {k} > $1 ORDER BY {k} LIMIT {BATCH_ROWS}), \
+         \"filled\" AS (UPDATE {t} SET {c} = {value} FROM \"batch\" WHERE {t}.{k} = \"batch\".\"jadpo_key\" AND {t}.{c} IS NULL RETURNING 1) \
+         SELECT (SELECT \"jadpo_key\" FROM \"batch\" ORDER BY \"jadpo_key\" DESC LIMIT 1), (SELECT count(*) FROM \"filled\")",
+        marker = jadpo_std::BACKFILL_MARKER,
+    )
+}
+
+/// Keeps every other transaction from writing `table` until this one
+/// ends, while reads go on: what a computed backfill's last step takes
+/// before it fills the rows written meanwhile and makes the column
+/// required, so no row without a value can arrive in between.
+pub fn lock_against_writes(table: &str) -> String {
+    format!("LOCK TABLE {} IN SHARE ROW EXCLUSIVE MODE", ident(table))
+}
+
 /// `column IS NULL`: a row a new required column has no value in.
 pub fn is_null(column: &str) -> String {
     format!("{} IS NULL", ident(column))

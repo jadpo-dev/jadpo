@@ -262,6 +262,200 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
     }
 }
 
+/// An operator (area 3, "Expressions and operators"), as its SQL form
+/// takes it (chunk 5.6b).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Operator {
+    And,
+    Or,
+    Not,
+    Negate,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
+/// The SQL form of operator `op` on its operands (one for `not` and `-`,
+/// two otherwise), each a value held in one column of a built-in type: an
+/// enum without data is held as text. `None` where it has none: `in` and
+/// `matches`, the operators on money, quantities, percentages, periods
+/// and times moved by a duration, a decimal's `*` and `/`, and operands
+/// of different kinds. What each keeps to (chosen in chunk 5.6b):
+///
+/// - **`and` and `or` stop early, as the runtime does,** so an operand
+///   that would stop the statement (`x / y` after `y != 0 and`) is never
+///   worked out: they are `CASE`, whose branches PostgreSQL works out
+///   only when taken.
+/// - **Whole numbers are `bigint`,** widened first, so `+`, `-`, `*`,
+///   `/` and unary `-` overflow exactly where an `Int`'s do, and `/` and
+///   `%` drop the remainder toward zero, as Rust's do.
+/// - **A decimal's `+` and `-` keep the larger operand's places and stop
+///   where the runtime's do:** past 38 digits, or where either operand
+///   lifted to those places is past the 128 bits the runtime works in.
+/// - **Text is compared in code points** (`COLLATE "C"`), and `+` joins.
+pub fn operator(op: Operator, args: &[Arg<'_>]) -> Option<String> {
+    use Operator::*;
+    let held = |arg: &Arg<'_>| match arg {
+        Arg::Value(sql, Held::Builtin(builtin)) => Some((sql.to_string(), kind(*builtin)?)),
+        _ => None,
+    };
+    match (op, args) {
+        (Not, [a]) => {
+            let (a, Kind::Bool) = held(a)? else {
+                return None;
+            };
+            Some(format!("(NOT {a})"))
+        }
+        (Negate, [a]) => match held(a)? {
+            (a, Kind::Whole) => Some(format!("(-{})", wide(&a))),
+            (a, Kind::Decimal) => Some(format!("(-({a}))")),
+            _ => None,
+        },
+        (_, [a, b]) => binary(op, held(a)?, held(b)?),
+        _ => None,
+    }
+}
+
+/// What an operator does with a built-in type's values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    Bool,
+    Whole,
+    Decimal,
+    Text,
+    /// Compared only: a UUID, bytes.
+    Same,
+    /// Compared and ordered: a date, an instant.
+    Ordered,
+    /// A duration, in milliseconds: ordered, and added to another.
+    Duration,
+}
+
+fn kind(builtin: Builtin) -> Option<Kind> {
+    Some(match builtin.representation() {
+        Builtin::Bool => Kind::Bool,
+        Builtin::Int => Kind::Whole,
+        Builtin::Decimal => Kind::Decimal,
+        Builtin::Text => Kind::Text,
+        Builtin::Uuid | Builtin::Bytes => Kind::Same,
+        Builtin::CalendarDate | Builtin::Instant => Kind::Ordered,
+        Builtin::Duration => Kind::Duration,
+        _ => return None,
+    })
+}
+
+fn binary(op: Operator, (a, ka): (String, Kind), (b, kb): (String, Kind)) -> Option<String> {
+    use Operator::*;
+    let number = |k: Kind| matches!(k, Kind::Whole | Kind::Decimal);
+    let numbers = number(ka) && number(kb);
+    let decimal = numbers && (ka == Kind::Decimal || kb == Kind::Decimal);
+    let whole = ka == Kind::Whole && kb == Kind::Whole;
+    let same = ka == kb;
+    let compare = |sign: &str| -> Option<String> {
+        if whole {
+            return Some(format!("({} {sign} {})", wide(&a), wide(&b)));
+        }
+        if numbers || (same && ka != Kind::Text) {
+            return Some(format!("(({a}) {sign} ({b}))"));
+        }
+        None
+    };
+    match op {
+        And if ka == Kind::Bool && kb == Kind::Bool => {
+            Some(format!("(CASE WHEN {a} THEN {b} ELSE FALSE END)"))
+        }
+        Or if ka == Kind::Bool && kb == Kind::Bool => {
+            Some(format!("(CASE WHEN {a} THEN TRUE ELSE {b} END)"))
+        }
+        Equal | NotEqual => {
+            let sign = if op == Equal { "=" } else { "<>" };
+            if ka == Kind::Text && kb == Kind::Text {
+                return Some(format!("(({a}) {sign} ({b}) COLLATE \"C\")"));
+            }
+            compare(sign)
+        }
+        Less | LessEqual | Greater | GreaterEqual
+            if numbers || (same && matches!(ka, Kind::Ordered | Kind::Duration)) =>
+        {
+            compare(match op {
+                Less => "<",
+                LessEqual => "<=",
+                Greater => ">",
+                _ => ">=",
+            })
+        }
+        Add | Subtract if decimal => Some(decimal_sum(&a, &b, op == Add)),
+        Add | Subtract | Multiply | Divide | Remainder
+            if whole || (same && ka == Kind::Duration && matches!(op, Add | Subtract)) =>
+        {
+            let sign = match op {
+                Add => "+",
+                Subtract => "-",
+                Multiply => "*",
+                Divide => "/",
+                _ => "%",
+            };
+            Some(format!("({} {sign} {})", wide(&a), wide(&b)))
+        }
+        Add if ka == Kind::Text && kb == Kind::Text => Some(format!("(({a}) || ({b}))")),
+        _ => None,
+    }
+}
+
+/// The largest 128-bit whole number, the most a runtime decimal's
+/// mantissa is worked out in.
+const I128_MAX: &str = "170141183460469231731687303715884105727";
+
+/// A decimal's `+` or `-`, as the runtime works it out: both mantissas
+/// lifted to the larger scale in 128 bits, then added, the result held
+/// to 38 digits. Named once in a subquery, since each operand is read
+/// several times; where the runtime stops, a cast to `numeric(38, 0)`
+/// stops the statement.
+fn decimal_sum(a: &str, b: &str, add: bool) -> String {
+    let sign = if add { "+" } else { "-" };
+    let lift = |x: &str| format!("abs({x}) * power(10::numeric, v.s) <= {I128_MAX}");
+    format!(
+        "(SELECT CASE WHEN {} AND {} THEN round(((v.a {sign} v.b) * power(10::numeric, v.s))::numeric(38, 0) * power(10::numeric, -v.s), v.s) ELSE (v.a * 0 + 1e38)::numeric(38, 0) END FROM (SELECT ({a})::numeric AS a, ({b})::numeric AS b, greatest(scale(({a})::numeric), scale(({b})::numeric)) AS s) AS v)",
+        lift("v.a"),
+        lift("v.b"),
+    )
+}
+
+/// A conditional (area 3): each condition in turn and the value it gives,
+/// and the value when none holds, as `CASE`, which works out only the
+/// branch it takes, so a value that would stop the statement where its
+/// condition doesn't hold never runs. An `if`'s chain, and a `match`
+/// whose last arm is the `else` (chunk 5.6b).
+pub fn case(arms: &[(String, String)], otherwise: &str) -> String {
+    if arms.is_empty() {
+        return otherwise.to_string();
+    }
+    let mut out = String::from("(CASE");
+    for (condition, value) in arms {
+        out.push_str(&format!(" WHEN {condition} THEN {value}"));
+    }
+    out.push_str(&format!(" ELSE {otherwise} END)"));
+    out
+}
+
+/// Whether a value that may be `none` is: `x == none`, or with `negated`
+/// `x != none`.
+pub fn none_check(x: &str, negated: bool) -> String {
+    if negated {
+        format!("(({x}) IS NOT NULL)")
+    } else {
+        format!("(({x}) IS NULL)")
+    }
+}
+
 /// Every character Unicode gives the `White_Space` property, which Rust's
 /// `str::trim` removes and `text.trim` with it.
 pub const TRIMMED_CHARACTERS: &str = "\u{9}\u{a}\u{b}\u{c}\u{d}\u{20}\u{85}\u{a0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}";
@@ -525,6 +719,52 @@ mod tests {
                 ])]
             ),
             Some(Form::Value("\"p_amount\"".into()))
+        );
+        let int = Held::Builtin(Builtin::Int);
+        assert_eq!(
+            operator(
+                Operator::Add,
+                &[Arg::Value("\"a\"", int), Arg::Value("\"b\"", int)]
+            )
+            .as_deref(),
+            Some("((\"a\")::bigint + (\"b\")::bigint)")
+        );
+        let flag = Held::Builtin(Builtin::Bool);
+        assert_eq!(
+            operator(
+                Operator::And,
+                &[Arg::Value("\"p\"", flag), Arg::Value("\"q\"", flag)]
+            )
+            .as_deref(),
+            Some("(CASE WHEN \"p\" THEN \"q\" ELSE FALSE END)")
+        );
+        // Text compares in code points; a decimal's `*` has no form.
+        assert_eq!(
+            operator(
+                Operator::Equal,
+                &[Arg::Value("\"t\"", text), Arg::Value("'x'", text)]
+            )
+            .as_deref(),
+            Some("((\"t\") = ('x') COLLATE \"C\")")
+        );
+        let decimal = Held::Builtin(Builtin::Decimal);
+        assert_eq!(
+            operator(
+                Operator::Multiply,
+                &[Arg::Value("\"d\"", decimal), Arg::Value("\"e\"", decimal)]
+            ),
+            None
+        );
+        assert_eq!(
+            operator(
+                Operator::Less,
+                &[Arg::Value("\"t\"", text), Arg::Value("'x'", text)]
+            ),
+            None
+        );
+        assert_eq!(
+            case(&[("\"p\"".into(), "1".into())], "2"),
+            "(CASE WHEN \"p\" THEN 1 ELSE 2 END)"
         );
         assert_eq!(place_literal(0, "1"), "1");
         assert_eq!(place_literal(3, "5"), "0.005");
