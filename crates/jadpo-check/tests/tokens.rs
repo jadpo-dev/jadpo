@@ -239,7 +239,16 @@ fn a_token_s_own_claims_are_read_as_an_object_of_the_application_s() {
 }
 
 #[test]
-fn as_names_an_object_without_the_registered_claims() {
+fn as_names_an_object_whose_registered_claims_are_their_types() {
+    let reads = |declared: &str, ty: &str| {
+        format!(
+            "{declared}action claims(token: Jwt, keys: List<Jwk>) fails Refused, Expired -> {ty} {{\n    return attempt crypto.verify_jwt(token, keys: keys, audience: \"clinic\", as: {ty}) {{\n{ARMS}        mismatch: Refused\n    }}\n}}\n"
+        )
+    };
+    // Registered claims as `JwtClaims` holds them, optional or not, and
+    // built on their types.
+    let member = "type MemberId = Text {\n    max_length: 64\n}\n\ntype Member = Object {\n    sub: MemberId\n    iss: Text?\n    aud: List<Text>\n    exp: Instant\n    iat: Instant?\n    email: Email\n}\n\n";
+    assert_eq!(check(&reads(member, "Member")), NONE);
     for (declared, ty, expected) in [
         (
             "",
@@ -252,15 +261,17 @@ fn as_names_an_object_without_the_registered_claims() {
             "is an object type of the application's, not `JwtClaims`",
         ),
         (
-            "type Member = Object {\n    sub: Text\n    email: Email\n}\n\n",
+            "type Member = Object {\n    sub: Int\n    email: Email\n}\n\n",
             "Member",
-            "`Member.sub` is a registered claim",
+            "`Member.sub` is a registered claim, which is text",
+        ),
+        (
+            "type Member = Object {\n    exp: Text\n}\n\n",
+            "Member",
+            "`Member.exp` is a registered claim, which is an `Instant`",
         ),
     ] {
-        let source = format!(
-            "{declared}action claims(token: Jwt, keys: List<Jwk>) fails Refused, Expired -> Text {{\n    var read: Text = attempt crypto.verify_jwt(token, keys: keys, as: {ty}) {{\n{ARMS}        mismatch: Refused\n    }}\n    return \"read\"\n}}\n"
-        );
-        let found = shown(&source);
+        let found = shown(&reads(declared, ty));
         assert!(
             found.iter().any(|problem| problem.contains(expected)),
             "{ty}: {found:?}"

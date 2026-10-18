@@ -1036,10 +1036,10 @@ reference only).
   key's; a key with an `x5c` is tried only when its first certificate
   holds the same key. RFC 7515's and RFC 7520's examples verify and the
   attack suite is refused under both algorithms. `as:` takes an
-  application's `Object`, reads the claims beyond the registered seven it
-  names, ignores the others, and is `type.mismatch` for a type naming a
-  registered claim, so the registered ones still come from a call
-  without `as:`. What the pages left open is area 19's "Chosen in chunk
+  application's `Object`, reads the claims it names and ignores the
+  others; a registered claim it names is the checked value as `JwtClaims`
+  holds it, so one call gives `sub` and `email` (decided by the lead
+  session), and one declared as another type is `type.mismatch`. What the pages left open is area 19's "Chosen in chunk
   5.5r4".
 - [x] **5.5r3 Security records** `opus · high` (area 19, "The standard
   types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,

@@ -117,9 +117,9 @@ impl Body<'_> {
     }
 
     /// `crypto.verify_jwt`'s `as:` (chunk 5.5r4): a type a document can be
-    /// read as, which is an object type of the application's naming none
-    /// of the seven registered claims, which the call checks itself and
-    /// gives as `JwtClaims` without `as:`; what is wrong is reported.
+    /// read as, which is an object type of the application's, each field
+    /// it has for one of the seven registered claims built on that claim's
+    /// type as `JwtClaims` holds it; what is wrong is reported.
     pub(super) fn claims_type_argument(&mut self, value: &Expr, written: &str) -> Option<Ty> {
         let target = self.json_type_argument(value, written)?;
         let fields = match &target {
@@ -141,30 +141,44 @@ impl Body<'_> {
                 )
                 .at(self.span(value), "not an `Object` of the application's")
                 .reason(format!(
-                    "`{written}` with `as:` reads a token's own claims, the ones beyond the seven RFC 7519 registers, into an `Object` the application declares, a field for each claim it reads; the claims it doesn't name are ignored."
+                    "`{written}` with `as:` reads a token's claims into an `Object` the application declares, a field for each claim it reads; the claims it doesn't name are ignored."
                 ))
                 .next("Declare an `Object` with a field for each claim, such as `type SignIn = Object { email: Email }`"),
             );
             return None;
         };
-        let registered = fields.iter().find(|field| {
-            jadpo_std::standard::security::JWT_CLAIMS_FIELDS
-                .iter()
-                .any(|(claim, _)| *claim == field.name)
-        });
-        if let Some(field) = registered {
+        // A registered claim it names is given as `JwtClaims` holds it, so
+        // its field is built on that claim's type (decided by the lead
+        // session for chunk 5.5r4).
+        let held = |claim: &str| match claim {
+            "iss" | "sub" | "jti" => Some(("text", Ty::Prim(Prim::Text))),
+            "exp" | "nbf" | "iat" => Some(("an `Instant`", Ty::Prim(Prim::Instant))),
+            "aud" => Some(("a list of text", Ty::List(Box::new(Ty::Prim(Prim::Text))))),
+            _ => None,
+        };
+        for field in &fields {
+            let Some((what, expected)) = held(&field.name) else {
+                continue;
+            };
+            let found = match self.table.structure(&field.declared) {
+                Ty::List(item) => Ty::List(Box::new(self.table.structure(&item))),
+                other => other,
+            };
+            if found == expected || found.has_error() {
+                continue;
+            }
             let claim = &field.name;
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_MISMATCH,
-                    format!("`{target}.{claim}` is a registered claim, which `{written}` with `as:` doesn't read"),
+                    format!("`{target}.{claim}` is a registered claim, which is {what}, not `{}`", field.declared),
                 )
-                .at(self.span(value), format!("`{target}` has `{claim}`"))
+                .at(self.span(value), format!("`{target}.{claim}` isn't {what}"))
                 .reason(format!(
-                    "`{written}` checks the seven claims RFC 7519 registers (`iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`) itself and gives them as `JwtClaims` when it has no `as:`; `as:` reads only the claims beyond them."
+                    "`{written}` checks the seven claims RFC 7519 registers itself and gives a type `as:` names each it has a field for as `JwtClaims` holds it: `iss`, `sub` and `jti` as text, `aud` as a list of text, and `exp`, `nbf` and `iat` as an `Instant`."
                 ))
                 .next(format!(
-                    "Remove `{claim}` from `{target}`, and read it from `{written}` without `as:`"
+                    "Declare `{claim}` as {what}, or a type built on it, with `?` where a token may leave it out"
                 )),
             );
             return None;

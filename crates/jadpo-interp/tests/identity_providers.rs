@@ -17,7 +17,7 @@ use jadpo_interp::{Executor, Outcome, Program, Value};
 use jadpo_runtime::{Clock, Ctx, Env, MemoryHost};
 use support::{main, text, value};
 
-const SOURCE: &str = "type KeySet = Object {\n    keys: List<Jwk>\n}\n\ntype KeySetText = Text {\n    max_length: 100000\n}\n\ntype CertificateText = Text {\n    max_length: 100000\n}\n\ntype Subject = Text {}\n\ntype KeySetUnreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TokenRefused = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TokenExpired = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SignInUnexpected = Failure {\n    kind: FailureKind.invalid_value\n    internal: {\n        problem: DecodeProblem\n    }\n}\n\ntype NotACertificate = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SignIn = Object {\n    email: Email\n    email_verified: Bool\n}\n\nfunction provider_keys(published: KeySetText) fails KeySetUnreadable -> List<Jwk> {\n    var key_set: KeySet = attempt json.read(published, as: KeySet) {\n        malformed: KeySetUnreadable\n        mismatch: KeySetUnreadable\n    }\n    return key_set.keys\n}\n\naction claims(token: Jwt, published: KeySetText) fails KeySetUnreadable, TokenRefused, TokenExpired -> JwtClaims {\n    var keys: List<Jwk> = attempt provider_keys(published)\n    return attempt crypto.verify_jwt(token, keys: keys, issuer: \"https://id.example.com\", audience: \"clinic\") {\n        invalid_signature: TokenRefused\n        expired: TokenExpired\n        not_yet_valid: TokenRefused\n        malformed: TokenRefused\n        wrong_audience: TokenRefused\n        wrong_issuer: TokenRefused\n    }\n}\n\naction sign_in(token: Jwt, published: KeySetText) fails KeySetUnreadable, TokenRefused, TokenExpired, SignInUnexpected -> SignIn {\n    var keys: List<Jwk> = attempt provider_keys(published)\n    return attempt crypto.verify_jwt(token, keys: keys, issuer: \"https://id.example.com\", audience: \"clinic\", as: SignIn) {\n        invalid_signature: TokenRefused\n        expired: TokenExpired\n        not_yet_valid: TokenRefused\n        malformed: TokenRefused\n        wrong_audience: TokenRefused\n        wrong_issuer: TokenRefused\n        mismatch: SignInUnexpected\n    }\n}\n\nfunction certificate_subject(x5c: CertificateText) fails NotACertificate -> Subject {\n    var der: Bytes = attempt encoding.from_base64(x5c) {\n        malformed: NotACertificate\n    }\n    var certificate: Certificate = attempt crypto.read_certificate(der) {\n        malformed: NotACertificate\n    }\n    return Subject(certificate.subject)\n}\n";
+const SOURCE: &str = "type KeySet = Object {\n    keys: List<Jwk>\n}\n\ntype KeySetText = Text {\n    max_length: 100000\n}\n\ntype CertificateText = Text {\n    max_length: 100000\n}\n\ntype Subject = Text {}\n\ntype KeySetUnreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TokenRefused = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype TokenExpired = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SignInUnexpected = Failure {\n    kind: FailureKind.invalid_value\n    internal: {\n        problem: DecodeProblem\n    }\n}\n\ntype NotACertificate = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype SignIn = Object {\n    email: Email\n    email_verified: Bool\n}\n\ntype Member = Object {\n    sub: Text\n    aud: List<Text>\n    exp: Instant\n    email: Email\n}\n\nfunction provider_keys(published: KeySetText) fails KeySetUnreadable -> List<Jwk> {\n    var key_set: KeySet = attempt json.read(published, as: KeySet) {\n        malformed: KeySetUnreadable\n        mismatch: KeySetUnreadable\n    }\n    return key_set.keys\n}\n\naction claims(token: Jwt, published: KeySetText) fails KeySetUnreadable, TokenRefused, TokenExpired -> JwtClaims {\n    var keys: List<Jwk> = attempt provider_keys(published)\n    return attempt crypto.verify_jwt(token, keys: keys, issuer: \"https://id.example.com\", audience: \"clinic\") {\n        invalid_signature: TokenRefused\n        expired: TokenExpired\n        not_yet_valid: TokenRefused\n        malformed: TokenRefused\n        wrong_audience: TokenRefused\n        wrong_issuer: TokenRefused\n    }\n}\n\naction sign_in(token: Jwt, published: KeySetText) fails KeySetUnreadable, TokenRefused, TokenExpired, SignInUnexpected -> SignIn {\n    var keys: List<Jwk> = attempt provider_keys(published)\n    return attempt crypto.verify_jwt(token, keys: keys, issuer: \"https://id.example.com\", audience: \"clinic\", as: SignIn) {\n        invalid_signature: TokenRefused\n        expired: TokenExpired\n        not_yet_valid: TokenRefused\n        malformed: TokenRefused\n        wrong_audience: TokenRefused\n        wrong_issuer: TokenRefused\n        mismatch: SignInUnexpected\n    }\n}\n\naction member(token: Jwt, published: KeySetText) fails KeySetUnreadable, TokenRefused, TokenExpired, SignInUnexpected -> Member {\n    var keys: List<Jwk> = attempt provider_keys(published)\n    return attempt crypto.verify_jwt(token, keys: keys, issuer: \"https://id.example.com\", audience: \"clinic\", as: Member) {\n        invalid_signature: TokenRefused\n        expired: TokenExpired\n        not_yet_valid: TokenRefused\n        malformed: TokenRefused\n        wrong_audience: TokenRefused\n        wrong_issuer: TokenRefused\n        mismatch: SignInUnexpected\n    }\n}\n\nfunction certificate_subject(x5c: CertificateText) fails NotACertificate -> Subject {\n    var der: Bytes = attempt encoding.from_base64(x5c) {\n        malformed: NotACertificate\n    }\n    var certificate: Certificate = attempt crypto.read_certificate(der) {\n        malformed: NotACertificate\n    }\n    return Subject(certificate.subject)\n}\n";
 
 /// 2026-10-18T09:00:00Z.
 const NOW: i64 = 1_792_314_000_000;
@@ -229,6 +229,36 @@ fn a_token_s_own_claims_are_read_as_the_application_s_type() {
     assert_eq!(
         failed(&program, "sign_in", EC_EXPIRED, &google()),
         "TokenExpired"
+    );
+}
+
+#[test]
+fn one_call_reads_the_subject_and_the_email() {
+    let program = main(SOURCE);
+    for token in [RSA_GOOD, EC_GOOD] {
+        let Outcome::Value(Value::Record(member)) =
+            called(&program, "member", token, &google(), NOW)
+        else {
+            panic!("{token}");
+        };
+        // The registered claims as `JwtClaims` holds them, checked first.
+        assert_eq!(member.get("sub"), Some(&Value::text("member-42")));
+        assert_eq!(
+            member.get("aud"),
+            Some(&Value::list(vec![Value::text("clinic")]))
+        );
+        assert_eq!(member.get("exp"), Some(&Value::Instant(NOW + 3_600_000)));
+        assert_eq!(member.get("email"), Some(&Value::text("ada@example.com")));
+    }
+    // A token without an email is `mismatch`; a tampered subject never
+    // reaches the type.
+    match called(&program, "member", EC_NO_EMAIL, &google(), NOW) {
+        Outcome::Failed(failure) => assert_eq!(failure.name, "SignInUnexpected"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        failed(&program, "member", RSA_TAMPERED, &google()),
+        "TokenRefused"
     );
 }
 

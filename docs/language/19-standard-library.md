@@ -3995,7 +3995,7 @@ on its own line, and a `LocalisedText` as `text.pick` gives it.
 | `crypto.sign(value, key:)` | `Bytes`, an Ed25519 signature; `key:` a `PrivateKey` setting | | none |
 | `crypto.public_key(key:)` | `PublicKey`, the Ed25519 public half of a `PrivateKey` setting, which the app may publish so others can check what it signs (decided by the lead session for chunk 5.5q2) | | none |
 | `crypto.verify_signature(value, signature, key)` | `Bool`; `key` a `PublicKey`, which is not secret and may be read | | none |
-| `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token): Ed25519, RS256 for an RSA key and ES256 for a P-256 key (chunk 5.5r4), with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional (chunk 5.5r); with `as:`, an `Object` of the application's, the token's claims beyond the registered seven that it names instead, read as `json.read` reads them (chunk 5.5r4); it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, `wrong_issuer` when `issuer:` is given, and `mismatch` when `as:` is | none |
+| `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` | `JwtClaims`, checked against a set of `Jwk`s, each key's own algorithm only (never `none`, never chosen by the token): Ed25519, RS256 for an RSA key and ES256 for a P-256 key (chunk 5.5r4), with expiry, not-before and issued-at against `clock.now`, and the issuer and audience the call names, each optional (chunk 5.5r); with `as:`, an `Object` of the application's, the claims it names instead, read as `json.read` reads them, a registered one as `JwtClaims` holds it (chunk 5.5r4); it reads the clock, so actions call it | `invalid_signature`, `expired`, `not_yet_valid`, `malformed`, `wrong_audience`, `wrong_issuer` when `issuer:` is given, and `mismatch` when `as:` is | none |
 | `crypto.read_certificate(der)` | `Certificate`, read from its DER `Bytes` as its PEM's DER is (chunk 5.5r4): a key set's `x5c` after `encoding.from_base64`, or a file's bytes | `malformed` | none |
 | `crypto.verify_totp(code, secret)` | `Bool` for a `OneTimeCode` against a `TotpSecret`, RFC 6238 with one step either side. Waits for keys held as data | | none |
 
@@ -4330,7 +4330,8 @@ test "a partner's token signs in only while it holds" {
 > `p256` 0.14.0, verification only, so a `Jwk` holds an Ed25519, an RSA
 > or a P-256 key and Google's, Microsoft's and Auth0's key sets read and
 > check their tokens; a token's own claims read as an application's
-> `Object` with `as:`; and `crypto.read_certificate`. They are tested
+> `Object` with `as:`, its registered ones as `JwtClaims` holds them;
+> and `crypto.read_certificate`. They are tested
 > against RFC 7515's and RFC 7520's examples and the classic attacks
 > under both algorithms. What the page left open is under "Chosen in
 > chunk 5.5r4".
@@ -10764,18 +10765,26 @@ They supersede 5.5r's "One algorithm, Ed25519":
   release (0.10 is a release candidate), and `p256` 0.14.0 with its
   `ecdsa` feature, both without `std`, so neither reads randomness and
   both build for wasm32. Verification only: neither signs.
-- **`as:` reads the claims beyond the registered seven** into an `Object`
-  the application declares. Its fields are read as `json.read` reads an
-  object's, so a claim missing, of the wrong kind or breaking a rule is
-  `mismatch`, whose first problem fills a `problem: DecodeProblem` field
-  as `json.read`'s does; claims it doesn't name are ignored, as RFC 7519
-  §4 requires of claims not understood, though a nested object it names
-  is read strictly. A type naming one of the seven (`sub`, `exp` ...) is
-  `type.mismatch`: the call checks those itself and gives them as
-  `JwtClaims` without `as:`. Anything but an application's `Object`
-  (`Text`, `JwtClaims`, a list) is `type.mismatch` too. Nothing is read as
-  the type until the signature, the times, the issuer and the audience
-  hold, and `mismatch` needs its arm only when `as:` is given.
+- **`as:` reads a token's claims** into an `Object` the application
+  declares. Its fields are read as `json.read` reads an object's, so a
+  claim missing, of the wrong kind or breaking a rule is `mismatch`, whose
+  first problem fills a `problem: DecodeProblem` field as `json.read`'s
+  does; claims it doesn't name are ignored, as RFC 7519 §4 requires of
+  claims not understood, though a nested object it names is read
+  strictly. Anything but an application's `Object` (`Text`, `JwtClaims`,
+  a list) is `type.mismatch`. Nothing is read as the type until the
+  signature, the times, the issuer and the audience hold, and `mismatch`
+  needs its arm only when `as:` is given.
+- **The registered claims through `as:`.** A field the type has for one
+  of the seven (`iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`) is
+  filled with the value the call checked, exactly as `JwtClaims` holds
+  it, so one call gives a token's subject and its own claims: `iss`,
+  `sub` and `jti` as text, `aud` as a list of text, and `exp`, `nbf` and
+  `iat` as an `Instant`. A field declared as another type (`sub: Int`,
+  `exp: Text`) is `type.mismatch`; one built on its type (`sub:
+  MemberId`) keeps its own rules, and one without `?` that the token
+  leaves out is `mismatch` (`required`). Decided by the lead session
+  (2026-10-18).
 - **`crypto.read_certificate(der)`** reads `Bytes` with 5.5r5's strict
   reader, the DER inside a PEM read the same way, and fails `malformed`
   for anything else. It reads nothing else and needs no key, so a function
@@ -10968,6 +10977,7 @@ What the pages left open, each the most conservative reading:
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |
 | JWTs from identity providers | Chunk 5.5r4, after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and `p256`, verification only, pinned and built for wasm32, with the RFCs' test vectors and 5.5r's attack suite, so Google's, Microsoft's and Auth0's tokens verify; and typed custom claims, `verify_jwt(token, keys:, as: MyClaims)` decoding the claims beyond the registered seven into an application's `Object` through `json.read(as:)`'s decoding and typed failures, `JwtClaims` still giving the registered ones. HS256 still waits for keys held as data (lead session, chunk 5.5r) | 2026-10-18 |
+| Registered claims through `as:` | `crypto.verify_jwt(..., as: T)` fills a field of `T` named for a registered claim with the value it checked, as `JwtClaims` holds it, so one call gives a token's `sub` and its own claims; a registered claim declared as another type is `type.mismatch` (lead session, chunk 5.5r4) | 2026-10-18 |
 | A `Jwt` is a secret value | A token is a credential: `Jwt` joins chunk 5.5r2's secret values, so it is never in a response or a log, is compared in constant time and is redacted in reports (lead session, chunk 5.5r) | 2026-10-18 |
 | Generated scopes narrow `OAuthScope` | Area 9's enum of an application's declared scopes (its question 6) narrows the standard `OAuthScope` to them, a closed subset, rather than reusing the name; noted in area 9's plan, not built (lead session, chunk 5.5r) | 2026-10-18 |
 | `ChatRole` | Accepted as a standard type: a `ChatMessage`'s role, `system`, `user`, `assistant` or `tool`, added in chunk 5.5s2 as `IdentityDocumentKind` was (lead session, chunk 5.5s2) | 2026-10-18 |

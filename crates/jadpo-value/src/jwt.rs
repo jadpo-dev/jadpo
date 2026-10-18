@@ -33,9 +33,10 @@
 //!   a different value from the same token (RFC 7515 §5.2, RFC 7519 §7.2).
 //!   A numeric date is a whole number of seconds.
 //! - **Claims of the application's own type** (`as:`, chunk 5.5r4) are
-//!   read last, once everything else holds: the claims beyond the
-//!   registered seven that its type names, through `json.read`'s decoding,
-//!   the others ignored, as RFC 7519 §4 requires of claims not understood.
+//!   read last, once everything else holds: the claims its type names,
+//!   through `json.read`'s decoding, the others ignored, as RFC 7519 §4
+//!   requires of claims not understood; a registered one it names is the
+//!   checked value, as `JwtClaims` holds it.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -316,10 +317,11 @@ pub fn verify_jwt(
 
 /// `crypto.verify_jwt(token, keys:, issuer:, audience:, as:)` at `now`
 /// (chunk 5.5r4): once the token holds as [`verify_jwt`] checks it, its
-/// claims beyond the registered seven as the application's object type
-/// whose codec is `codec`, those its type doesn't name ignored (RFC 7519
-/// §4), read through `json.read`'s decoding, so a claim missing, of the
-/// wrong kind or breaking a rule is `mismatch` with its problem.
+/// claims as the application's object type whose codec is `codec`, those
+/// its type doesn't name ignored (RFC 7519 §4) and a registered one it
+/// names given as `JwtClaims` holds it, read through `json.read`'s
+/// decoding, so a claim missing, of the wrong kind or breaking a rule is
+/// `mismatch` with its problem.
 pub fn verify_jwt_as(
     token: &str,
     keys: &[Value],
@@ -329,17 +331,28 @@ pub fn verify_jwt_as(
     codecs: &Codecs<'_>,
     codec: CodecId,
 ) -> Result<Value, Refusal> {
-    let (_, members) = verified(token, keys, issuer, audience, now)?;
+    let (registered, members) = verified(token, keys, issuer, audience, now)?;
     let named = claim_names(codecs, codec);
-    let custom: serde_json::Map<String, Json> = members
+    let mut custom: serde_json::Map<String, Json> = members
         .into_iter()
         .filter(|(name, _)| {
-            !JWT_CLAIMS_FIELDS
-                .iter()
-                .any(|(registered, _)| registered == name)
+            !JWT_CLAIMS_FIELDS.iter().any(|(claim, _)| claim == name)
                 && named.iter().any(|field| field == name)
         })
         .collect();
+    // A registered claim the type names is the checked one, as `JwtClaims`
+    // holds it (decided by the lead session for chunk 5.5r4); one the token
+    // hasn't is left out, so a field that must have it is `required`.
+    if let Value::Record(record) = &registered {
+        for (claim, _) in JWT_CLAIMS_FIELDS {
+            if !named.iter().any(|field| field == claim) {
+                continue;
+            }
+            if let Some(json) = record.get(claim).and_then(held_json) {
+                custom.insert(claim.to_string(), json);
+            }
+        }
+    }
     let mut problems = Vec::new();
     match codecs.read(
         codec,
@@ -354,6 +367,18 @@ pub fn verify_jwt_as(
                 rule: "type".to_string(),
             },
         ))),
+    }
+}
+
+/// A registered claim as `JwtClaims` holds it, written as JSON reads it
+/// back: text, a list of text, or an instant as its canonical text;
+/// `None` for a claim the token hasn't.
+fn held_json(value: &Value) -> Option<Json> {
+    match value {
+        Value::Text(text) => Some(Json::String(text.to_string())),
+        Value::Instant(millis) => Some(Json::String(jadpo_std::format_instant(*millis))),
+        Value::List(items) => Some(Json::Array(items.iter().filter_map(held_json).collect())),
+        _ => None,
     }
 }
 

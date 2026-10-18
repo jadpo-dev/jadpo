@@ -54,9 +54,9 @@ public library crypto {
     /// or for no audience when none is given (`wrong_audience`). A token
     /// that isn't one, or has no `exp`, is `malformed`. With `as:`, an
     /// object type of the application's, it gives instead the token's
-    /// claims beyond the registered seven that the type names, read as
-    /// `json.read` reads it, and fails `mismatch` when they aren't the
-    /// type. It reads the clock, so it is called only in actions.
+    /// claims the type names, read as `json.read` reads it, a registered
+    /// one as `JwtClaims` holds it, and fails `mismatch` when they aren't
+    /// the type. It reads the clock, so it is called only in actions.
     function verify_jwt(token: Jwt, keys: List<Jwk>, issuer: Text?, audience: Text?, as: Type?) -> JwtClaims {}
 
     /// The certificate `der` holds, read strictly as X.509 DER (a key
