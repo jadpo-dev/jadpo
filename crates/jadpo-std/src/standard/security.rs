@@ -902,7 +902,10 @@ pub const JWK_FIELDS: [(&str, Part); 10] = [
     ("kid", Part::Optional(&Part::Matching(KEY_ID_PATTERN))),
     ("alg", Part::Optional(&Part::Matching("EdDSA|RS256|ES256"))),
     ("use_", Part::Optional(&Part::Matching("sig"))),
-    ("x5c", Part::Optional(&Part::List(&Part::Matching(X5C_PATTERN)))),
+    (
+        "x5c",
+        Part::Optional(&Part::List(&Part::Matching(X5C_PATTERN))),
+    ),
 ];
 
 /// A public key a token is checked against, as RFC 7517 sends one in a

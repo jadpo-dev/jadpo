@@ -92,17 +92,21 @@ pub fn is_rsa_modulus(n: &[u8]) -> bool {
         return false;
     };
     let bits = n.len() * 8 - first.leading_zeros() as usize;
-    first != 0 && n.last().is_some_and(|last| last & 1 == 1) && (RSA_MIN_BITS..=RSA_MAX_BITS).contains(&bits)
+    first != 0
+        && n.last().is_some_and(|last| last & 1 == 1)
+        && (RSA_MIN_BITS..=RSA_MAX_BITS).contains(&bits)
 }
 
 /// Whether `e` is an RSA public exponent a `Jwk` holds: in its fewest
 /// octets, odd, and from 3 to 2^32 - 1, which holds 65,537, every
 /// identity provider's (chosen in chunk 5.5r4).
 pub fn is_rsa_exponent(e: &[u8]) -> bool {
-    if e.is_empty() || e.len() > 4 || e[0] == 0 {
+    if e.is_empty() || e.len() > 4 || e.first() == Some(&0) {
         return false;
     }
-    let value = e.iter().fold(0u64, |sum, byte| (sum << 8) | u64::from(*byte));
+    let value = e
+        .iter()
+        .fold(0u64, |sum, byte| (sum << 8) | u64::from(*byte));
     value >= 3 && value & 1 == 1
 }
 
@@ -131,15 +135,17 @@ fn from_big_endian(bytes: &[u8]) -> Option<U256> {
     }
     let mut out = [0u64; 4];
     for (limb, chunk) in out.iter_mut().rev().zip(bytes.chunks(8)) {
-        *limb = chunk.iter().fold(0u64, |sum, byte| (sum << 8) | u64::from(*byte));
+        *limb = chunk
+            .iter()
+            .fold(0u64, |sum, byte| (sum << 8) | u64::from(*byte));
     }
     Some(out)
 }
 
 fn below(a: &U256, b: &U256) -> bool {
-    for i in (0..4).rev() {
-        if a[i] != b[i] {
-            return a[i] < b[i];
+    for (x, y) in a.iter().rev().zip(b.iter().rev()) {
+        if x != y {
+            return x < y;
         }
     }
     false
@@ -149,10 +155,10 @@ fn below(a: &U256, b: &U256) -> bool {
 fn wrapping_sub(a: &U256, b: &U256) -> U256 {
     let mut out = [0u64; 4];
     let mut borrow = false;
-    for i in 0..4 {
-        let (step, under) = a[i].overflowing_sub(b[i]);
+    for ((slot, x), y) in out.iter_mut().zip(a).zip(b) {
+        let (step, under) = x.overflowing_sub(*y);
         let (step, under_again) = step.overflowing_sub(u64::from(borrow));
-        out[i] = step;
+        *slot = step;
         borrow = under || under_again;
     }
     out
@@ -162,10 +168,10 @@ fn wrapping_sub(a: &U256, b: &U256) -> U256 {
 fn wrapping_add(a: &U256, b: &U256) -> U256 {
     let mut out = [0u64; 4];
     let mut carry = false;
-    for i in 0..4 {
-        let (step, over) = a[i].overflowing_add(b[i]);
+    for ((slot, x), y) in out.iter_mut().zip(a).zip(b) {
+        let (step, over) = x.overflowing_add(*y);
         let (step, over_again) = step.overflowing_add(u64::from(carry));
-        out[i] = step;
+        *slot = step;
         carry = over || over_again;
     }
     out
@@ -186,25 +192,31 @@ fn sub_mod(a: &U256, b: &U256) -> U256 {
 /// needs; nothing here is secret.
 fn mul_mod(a: &U256, b: &U256) -> U256 {
     let mut product = [0u64; 8];
-    for i in 0..4 {
+    for (i, x) in a.iter().enumerate() {
         let mut carry = 0u128;
-        for j in 0..4 {
-            let at = u128::from(product[i + j]) + u128::from(a[i]) * u128::from(b[j]) + carry;
-            product[i + j] = at as u64;
+        for (slot, y) in product.iter_mut().skip(i).zip(b) {
+            let at = u128::from(*slot) + u128::from(*x) * u128::from(*y) + carry;
+            *slot = at as u64;
             carry = at >> 64;
         }
-        product[i + 4] = carry as u64;
+        if let Some(slot) = product.get_mut(i + 4) {
+            *slot = carry as u64;
+        }
     }
     let mut rest: U256 = [0; 4];
     for bit in (0..512).rev() {
-        let out = rest[3] >> 63;
-        for i in (1..4).rev() {
-            rest[i] = (rest[i] << 1) | (rest[i - 1] >> 63);
+        // Shift in the product's next bit, keeping the bit shifted out.
+        let mut carry = product
+            .get(bit / 64)
+            .map_or(0, |word| (word >> (bit % 64)) & 1);
+        for limb in rest.iter_mut() {
+            let next = *limb >> 63;
+            *limb = (*limb << 1) | carry;
+            carry = next;
         }
-        rest[0] = (rest[0] << 1) | ((product[bit / 64] >> (bit % 64)) & 1);
         // Below 2P before this, so one subtraction brings it below P; the
         // bit shifted out is the 257th of a value that fits once reduced.
-        if out == 1 || !below(&rest, &P) {
+        if carry == 1 || !below(&rest, &P) {
             rest = wrapping_sub(&rest, &P);
         }
     }
@@ -277,7 +289,11 @@ fn parts_of_its_kty(parts: &dyn Parts) -> Verdict {
             _ => unknown = true,
         }
     }
-    if unknown { Verdict::Unknown } else { Verdict::Holds }
+    if unknown {
+        Verdict::Unknown
+    } else {
+        Verdict::Holds
+    }
 }
 
 fn algorithm_of_its_kty(parts: &dyn Parts) -> Verdict {
@@ -385,14 +401,20 @@ mod tests {
             panic!("32 octets");
         };
         let minus_y = wrapping_sub(&p, &y_value);
-        let minus_y: Vec<u8> = minus_y.iter().rev().flat_map(|limb| limb.to_be_bytes()).collect();
+        let minus_y: Vec<u8> = minus_y
+            .iter()
+            .rev()
+            .flat_map(|limb| limb.to_be_bytes())
+            .collect();
         assert!(on_p256(&x, &minus_y));
     }
 
     #[test]
     fn an_rsa_key_is_big_enough_and_odd() {
         // RFC 7515 §A.2's modulus, 2,048 bits.
-        let n = bytes("ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ");
+        let n = bytes(
+            "ofgWCuLjybRlzo0tZWJjNiuSfb4p4fAkd_wWJcyQoTbji9k0l8W26mPddxHmfHQp-Vaw-4qPCJrcS2mJPMEzP1Pt0Bm4d4QlL-yRT-SFd2lZS-pCgNMsD1W_YpRPEwOWvG6b32690r2jZ47soMZo9wGzjb_7OMg0LOL-bSf63kpaSHSXndS5z5rexMdbBYUsLA9e-KXBdQOS-UTo7WTBEMa2R2CapHg665xsmtdVMTBQY4uDZlxvb3qCo5ZwKh9kG4LT6_I5IhlJH7aGhyxXFvUK-DWNmoudF8NAco9_h9iaGNj8q2ethFkMLs91kzk2PAcDTW9gb54h4FRWyuXpoQ",
+        );
         assert!(is_rsa_modulus(&n));
         let mut even = n.clone();
         if let Some(last) = even.last_mut() {

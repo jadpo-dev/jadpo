@@ -84,8 +84,11 @@ pub fn subject_key(der: &[u8]) -> Option<SubjectKey> {
     let info = certificate.public_key();
     let algorithm = &info.algorithm.algorithm;
     let fewest = |octets: &[u8]| {
-        let start = octets.iter().position(|byte| *byte != 0).unwrap_or(octets.len());
-        octets[start..].to_vec()
+        octets
+            .iter()
+            .skip_while(|byte| **byte == 0)
+            .copied()
+            .collect::<Vec<u8>>()
     };
     if *algorithm == oid_registry::OID_PKCS1_RSAENCRYPTION {
         let PublicKey::RSA(key) = info.parsed().ok()? else {
@@ -98,13 +101,17 @@ pub fn subject_key(der: &[u8]) -> Option<SubjectKey> {
     }
     if *algorithm == oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY {
         let curve = info.algorithm.parameters.as_ref()?.as_oid().ok()?;
-        let point = &info.subject_public_key.data;
-        if curve != oid_registry::OID_EC_P256 || point.len() != 65 || point[0] != 4 {
+        let point: &[u8] = &info.subject_public_key.data;
+        let Some((4, coordinates)) = point.split_first() else {
+            return None;
+        };
+        if curve != oid_registry::OID_EC_P256 || coordinates.len() != 64 {
             return None;
         }
+        let (x, y) = coordinates.split_at(32);
         return Some(SubjectKey::P256 {
-            x: point[1..33].to_vec(),
-            y: point[33..].to_vec(),
+            x: x.to_vec(),
+            y: y.to_vec(),
         });
     }
     if *algorithm == oid_registry::OID_SIG_ED25519 {

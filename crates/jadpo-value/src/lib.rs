@@ -847,9 +847,9 @@ mod tests {
                 Op::EncodingFromBase64url => vec![Value::text("bG9hZg")],
                 Op::EncodingFromHex => vec![Value::text("6c6f6166")],
                 Op::CryptoReadCertificate => {
-                    let Some(Value::Record(read)) = certificate::read_pem(
-                        jadpo_std::standard::certificates::SELF_SIGNED,
-                    ) else {
+                    let Some(Value::Record(read)) =
+                        certificate::read_pem(jadpo_std::standard::certificates::SELF_SIGNED)
+                    else {
                         panic!("the self-signed certificate reads");
                     };
                     vec![read.get("der").cloned().unwrap_or(Value::None)]

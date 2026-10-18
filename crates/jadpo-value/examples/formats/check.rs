@@ -550,7 +550,10 @@ fn crypto_checks(expect: &mut impl FnMut(String, String, &str)) {
     let key = jwk(&[
         ("kty", Value::text("OKP")),
         ("crv", Value::text("Ed25519")),
-        ("x", Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo")),
+        (
+            "x",
+            Value::text("11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"),
+        ),
         ("kid", Value::text("2026-10")),
     ]);
     let now = 1_792_314_000_000;
@@ -592,19 +595,27 @@ fn crypto_checks(expect: &mut impl FnMut(String, String, &str)) {
     let ec = jwk(&[
         ("kty", Value::text("EC")),
         ("crv", Value::text("P-256")),
-        ("x", Value::text("f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU")),
-        ("y", Value::text("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0")),
+        (
+            "x",
+            Value::text("f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU"),
+        ),
+        (
+            "y",
+            Value::text("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"),
+        ),
     ]);
     let then = 1_300_819_320_000;
     for (name, token, own, other) in [
         ("RS256", RFC_7515_RS256, &rsa, &ec),
         ("ES256", RFC_7515_ES256, &ec, &rsa),
     ] {
-        let issuer = jadpo_value::jwt::verify_jwt(token, std::slice::from_ref(own), None, None, then)
-            .map(|claims| match claims {
-                Value::Record(record) => format!("{:?}", record.get("iss")),
-                other => format!("{other:?}"),
-            });
+        let issuer =
+            jadpo_value::jwt::verify_jwt(token, std::slice::from_ref(own), None, None, then).map(
+                |claims| match claims {
+                    Value::Record(record) => format!("{:?}", record.get("iss")),
+                    other => format!("{other:?}"),
+                },
+            );
         expect(
             format!("RFC 7515's {name} token's issuer"),
             issuer.unwrap_or_else(|fault| format!("{fault:?}")),

@@ -191,11 +191,16 @@ fn a_jwk_holds_an_rsa_or_a_p256_key_by_its_rules() {
             "function key() -> Jwk {{\n    return Jwk {{\n        kty: \"EC\"\n        crv: \"P-256\"\n        x: \"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\"\n        y: \"{y}\"\n        n: none\n        e: none\n        kid: none\n        alg: \"ES256\"\n        use_: none\n        x5c: none\n    }}\n}}\n"
         )
     };
-    assert_eq!(check(&ec("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0")), NONE);
+    assert_eq!(
+        check(&ec("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0")),
+        NONE
+    );
     // A point off the curve.
     let refused = shown(&ec("x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a4"));
     assert!(
-        refused.iter().any(|problem| problem.contains("a_usable_key")),
+        refused
+            .iter()
+            .any(|problem| problem.contains("a_usable_key")),
         "{refused:?}"
     );
 }
@@ -227,14 +232,25 @@ fn a_token_s_own_claims_are_read_as_an_object_of_the_application_s() {
     let as_claims = format!(
         "{SIGN_IN}action claims(token: Jwt, keys: List<Jwk>) fails Refused, Expired -> JwtClaims {{\n    return attempt {call} {{\n{ARMS}        mismatch: Refused\n    }}\n}}\n"
     );
-    assert_eq!(check(&as_claims).first().map(String::as_str), Some("type.mismatch"));
+    assert_eq!(
+        check(&as_claims).first().map(String::as_str),
+        Some("type.mismatch")
+    );
 }
 
 #[test]
 fn as_names_an_object_without_the_registered_claims() {
     for (declared, ty, expected) in [
-        ("", "Text", "is an object type of the application's, not `Text`"),
-        ("", "JwtClaims", "is an object type of the application's, not `JwtClaims`"),
+        (
+            "",
+            "Text",
+            "is an object type of the application's, not `Text`",
+        ),
+        (
+            "",
+            "JwtClaims",
+            "is an object type of the application's, not `JwtClaims`",
+        ),
         (
             "type Member = Object {\n    sub: Text\n    email: Email\n}\n\n",
             "Member",

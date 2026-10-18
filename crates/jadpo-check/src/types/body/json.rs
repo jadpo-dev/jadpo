@@ -180,7 +180,9 @@ impl Body<'_> {
         };
         // The call's site is the type it gives, however the call is
         // reached, which the plan reads its codec from.
-        self.facts.types.insert(node_key(call.syntax()), target.clone());
+        self.facts
+            .types
+            .insert(node_key(call.syntax()), target.clone());
         target
     }
 

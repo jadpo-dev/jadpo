@@ -82,7 +82,9 @@ fn condition_clause(keys: &[String]) -> String {
         } else {
             ""
         };
-        format!("What a token says is only known when the program runs: one not signed by a key it is given fails `invalid_signature`, one past its time `expired` or `not_yet_valid`, one for another app `wrong_audience` or `wrong_issuer`, and one that isn't a token `malformed`{claims}")
+        format!(
+            "What a token says is only known when the program runs: one not signed by a key it is given fails `invalid_signature`, one past its time `expired` or `not_yet_valid`, one for another app `wrong_audience` or `wrong_issuer`, and one that isn't a token `malformed`{claims}"
+        )
     } else if keys.iter().any(|key| key == "mismatch") {
         "What a document holds is only known when the program runs: text that isn't one JSON document fails `malformed`, and a document that isn't the type `as:` names fails `mismatch`".to_string()
     } else if keys.iter().any(|key| key == "malformed") {

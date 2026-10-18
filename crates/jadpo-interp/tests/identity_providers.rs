@@ -170,7 +170,11 @@ fn the_attack_suite_is_refused_under_both_algorithms() {
         (RSA_DUPLICATE_SUBJECT, "TokenRefused"),
         (EC_DUPLICATE_SUBJECT, "TokenRefused"),
     ] {
-        assert_eq!(failed(&program, "claims", token, &google()), refused, "{token}");
+        assert_eq!(
+            failed(&program, "claims", token, &google()),
+            refused,
+            "{token}"
+        );
     }
     // A key whose certificate holds another key is never tried.
     assert_eq!(

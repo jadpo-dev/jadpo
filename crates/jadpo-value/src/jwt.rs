@@ -173,8 +173,8 @@ struct Key<'a> {
 /// The DER of SHA-256's `DigestInfo` up to the digest itself, which
 /// RSASSA-PKCS1-v1_5 signs (RFC 8017 §9.2, note 1).
 const SHA256_DIGEST_INFO: [u8; 19] = [
-    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
-    0x05, 0x00, 0x04, 0x20,
+    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
+    0x00, 0x04, 0x20,
 ];
 
 /// A `Jwk` value's key, or `None` for one nothing can check with (which
@@ -265,12 +265,13 @@ fn verifies(key: &Key<'_>, signed: &[u8], signature: &[u8]) -> bool {
         // R and S, each 32 octets (RFC 7518 §3.4), each from 1 to below
         // the group's order. A high S is accepted, as RFC 7518 and `p256`
         // accept it (chosen in chunk 5.5r4).
-        Public::P256(public) => p256::ecdsa::Signature::from_slice(signature)
-            .is_ok_and(|signature| {
+        Public::P256(public) => {
+            p256::ecdsa::Signature::from_slice(signature).is_ok_and(|signature| {
                 public
                     .verify_prehash(&crate::hash::sha256(signed), &signature)
                     .is_ok()
-            }),
+            })
+        }
     }
 }
 
@@ -333,12 +334,19 @@ pub fn verify_jwt_as(
     let custom: serde_json::Map<String, Json> = members
         .into_iter()
         .filter(|(name, _)| {
-            !JWT_CLAIMS_FIELDS.iter().any(|(registered, _)| registered == name)
+            !JWT_CLAIMS_FIELDS
+                .iter()
+                .any(|(registered, _)| registered == name)
                 && named.iter().any(|field| field == name)
         })
         .collect();
     let mut problems = Vec::new();
-    match codecs.read(codec, &Json::Object(custom), &Path::default(), &mut problems) {
+    match codecs.read(
+        codec,
+        &Json::Object(custom),
+        &Path::default(),
+        &mut problems,
+    ) {
         Some(value) => Ok(value),
         None => Err(Refusal::Mismatch(problems.into_iter().next().unwrap_or(
             Problem {
@@ -826,10 +834,7 @@ mod tests {
         ] {
             let claims = verify_jwt(token, &keys, Some("joe"), None, RFC_7515_NOW).expect(token);
             assert_eq!(field(&claims, "iss"), &Value::text("joe"));
-            assert_eq!(
-                field(&claims, "exp"),
-                &Value::Instant(1_300_819_380_000)
-            );
+            assert_eq!(field(&claims, "exp"), &Value::Instant(1_300_819_380_000));
             // Each against the other's key, and after it expires.
             let swapped = if token == RFC_7515_RS256 {
                 vec![ec_key(RFC_7515_EC_X, RFC_7515_EC_Y, None)]
@@ -856,12 +861,24 @@ mod tests {
     fn rfc_7520_s_rs256_signature_verifies_and_its_payload_isn_t_claims() {
         let bilbo = rsa_key(RFC_7520_N, Some("bilbo.baggins@hobbiton.example"));
         assert_eq!(
-            verify_jwt(RFC_7520_RS256, &[bilbo.clone()], None, None, NOW),
+            verify_jwt(
+                RFC_7520_RS256,
+                std::slice::from_ref(&bilbo),
+                None,
+                None,
+                NOW
+            ),
             Err(Fault::Broke(RuleKey::Malformed))
         );
         // Under another key the signature fails first.
         assert_eq!(
-            verify_jwt(RFC_7520_RS256, &[rsa_key(RFC_7515_RSA_N, None)], None, None, NOW),
+            verify_jwt(
+                RFC_7520_RS256,
+                &[rsa_key(RFC_7515_RSA_N, None)],
+                None,
+                None,
+                NOW
+            ),
             Err(Fault::Broke(RuleKey::InvalidSignature))
         );
         let Some(Key {
@@ -1125,7 +1142,11 @@ mod tests {
             (RSA_EXPIRED, RuleKey::Expired),
             (EC_OTHER_AUDIENCE, RuleKey::WrongAudience),
         ] {
-            assert_eq!(read(token), Err(Refusal::Token(Fault::Broke(key))), "{token}");
+            assert_eq!(
+                read(token),
+                Err(Refusal::Token(Fault::Broke(key))),
+                "{token}"
+            );
         }
     }
 }
