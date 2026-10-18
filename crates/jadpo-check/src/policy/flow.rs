@@ -1835,7 +1835,13 @@ fn element(
     let mut out = Prov::default();
     for (name, source) in &element_of.fields {
         let prov = match source {
-            Source::Column(field) => Prov::of(Src::Field {
+            // `count()` carries no field; another aggregate or a group
+            // carries what its field holds (chunk 5.6c).
+            Source::Entry { field: None, .. } => Prov::default(),
+            Source::Column(field)
+            | Source::Entry {
+                field: Some(field), ..
+            } => Prov::of(Src::Field {
                 entity: entity.to_string(),
                 field: field.clone(),
                 reached: reached.clone(),

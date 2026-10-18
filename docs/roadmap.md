@@ -1568,18 +1568,38 @@ reference only).
   meanwhile and makes the column required; the operators' and
   conditionals' forms agree with the runtime on live PostgreSQL beside
   the operations'; area 5's "Chosen in chunk 5.6b".
-- [ ] **5.6b2 Backfills worked out in Jadpo** `opus · high` (area 5,
+- [x] **5.6b2 Backfills worked out in Jadpo** `opus · high` (area 5,
   "Computed backfills"), after 5.6b: a backfill with an operation that has
   no SQL form runs through `jadpo migrate apply`, which reads each batch,
   works the values out in the runtime and writes them back, in 5.6b's
   batches, transactions and resume marker; `jadpo migrate apply` says when
-  a backfill runs in Jadpo and is slower, and the generated SQL says which.
-- [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
+  a backfill runs in Jadpo and is slower, and the generated SQL says which. Built: the
+  latest migration's backfill with no SQL form planned as a callable of
+  the stored fields it reads; each batch read `FOR NO KEY UPDATE`, worked
+  out in the interpreter and written back through the storage codec in
+  one `UPDATE … FROM unnest`, resumed from `jadpo_migration_steps`, and the
+  rows written meanwhile read and filled in the write-locked last step;
+  the SQL's marker says `in Jadpo` with a digest of the code it runs, so a
+  change to it asks for the migration again; `jadpo migrate apply` says
+  `in Jadpo (slower than SQL)`; an earlier migration's waits for the
+  build that wrote it; `jadpo dev` applies with the same interpreter;
+  area 5's "Chosen in chunk 5.6b2".
+- [x] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard
   operations' SQL forms. Design the syntax and errors on area 6's page
   first. Done when a usage-per-month and a counts-by-status query each
   run as one SQL statement and give the same result as the interpreter.
+  Built: `group:` and `aggregate:` blocks shaped like `include:` (area 6,
+  "Counts, sums and groups"), `List<T>` with groups and `T` without, an
+  average as `decimal.divide`'s form, time buckets as new SQL forms of
+  `temporal.year`, `month` and `day` of a date, and four new errors. On
+  live PostgreSQL both queries send one statement each and give, value
+  for value and place for place, what the interpreter works out in code
+  from the same three thousand records (`live PostgreSQL: queries`).
+  What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
+  of an instant, which needs a zone PostgreSQL may not see as Jadpo
+  does, is left for Richard.
 - [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
 

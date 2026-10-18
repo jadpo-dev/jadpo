@@ -691,8 +691,9 @@ function of a field otherwise stays refused.
   joined to the others with `and`: an index finds the records it holds
   for, never those it doesn't, so it can't be under `not` or `or`, and its
   value is always given, so it isn't a `where_present:` line. An
-  include's records aren't rechecked yet, so a `geo.` condition in an
-  include is `toolchain.not_built_yet`.
+  include's records aren't rechecked yet, and an aggregate's totals are
+  the database's (area 6, chunk 5.6c), so a `geo.` condition in an
+  include or an aggregate query is `toolchain.not_built_yet`.
 - **Errors reuse area 6's rules** with new reasons: a `geo.` call with the
   field anywhere but first, a box on a field that isn't a `Point`, a
   `BoundingBox` or `Circle` field, or a condition under `not` or `or` is
@@ -1383,7 +1384,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   code turns down would need the other side's answer, which the statement
   doesn't give (both `query.condition_unsupported`); `where_present:`
   doesn't take one, its value never being absent; an include's records
-  aren't rechecked yet (`toolchain.not_built_yet`). A record whose field
+  aren't rechecked yet, nor an aggregate query's, whose totals the
+  database works out (both `toolchain.not_built_yet`). A record whose field
   is `none` meets no `geo.` condition. The values are parameters or
   fields inside one; `within`'s `distance:` may also be a length written
   out, proved never negative as in code.

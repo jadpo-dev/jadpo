@@ -34,11 +34,17 @@ use crate::lookups::{FailureView, Lookup, Name, NameView, SigView, file_at};
 use crate::tree::{self, dotted, node_span};
 use crate::types::{Const, Def, FieldsBase, Prim, Ty, TypeView};
 
+mod aggregates;
+
+pub use aggregates::{AggregateKind, Entry, EntryOrder, GroupKey, Grouping};
+
 /// The sections a query declaration holds (area 6, "Named queries").
-pub const SECTIONS: [&str; 8] = [
+pub const SECTIONS: [&str; 10] = [
     "from",
     "where",
     "where_present",
+    "group",
+    "aggregate",
     "order",
     "limit",
     "page",
@@ -117,6 +123,10 @@ pub enum Source {
     Column(String),
     /// The include at this position in its level's list.
     Include(usize),
+    /// The group or aggregate at this position among an aggregate query's
+    /// entries (area 6, "Counts, sums and groups"), with the field it
+    /// reads, which `count()` has none of.
+    Entry { at: usize, field: Option<String> },
 }
 
 /// What a query's records become: the entity itself, or an object type
@@ -237,6 +247,10 @@ pub struct QueryModel {
     /// For a query ordered by `geo.distance`, its order, in place of
     /// `order` (area 20, chunk 5.5u5).
     pub distance: Option<DistanceOrder>,
+    /// For an aggregate query, its groups, aggregates and their order, in
+    /// place of `order`: each row is a value of `element`, filled from
+    /// them.
+    pub grouping: Option<Grouping>,
 }
 
 /// Every query of a project, without positions: for what reads them all,
@@ -445,6 +459,19 @@ impl<'a> Reader<'a> {
             self.nearest_page(&name, &result_span, &element_ty);
             return None;
         }
+        // An aggregate query (chunk 5.6c): `group:` or `aggregate:`.
+        if sections.first.contains_key("group") || sections.first.contains_key("aggregate") {
+            let shape = aggregates::Shape {
+                name: &name,
+                span: &span,
+                result: &sig.result,
+                result_span: &result_span,
+                cardinality,
+                element: &element_ty,
+                nearest: nearest_written.is_some() || nearest_result,
+            };
+            return self.aggregate_query(symbol, decl, &scope, entity, &sections, &shape);
+        }
         if let Some(problem) = self.nearest_result(
             &name,
             &sig.result,
@@ -582,6 +609,7 @@ impl<'a> Reader<'a> {
             missing,
             nearest,
             distance,
+            grouping: None,
         })
     }
 

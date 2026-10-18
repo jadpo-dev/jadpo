@@ -140,8 +140,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
         # `jadpo migrate apply` and `status`.
         ('live PostgreSQL: jadpo migrate', [('jadpo-cli', 'migrate')], []),
-        # Queries, `get` and `create` run through `jadpo test` (area 6).
-        ('live PostgreSQL: queries', [('jadpo-cli', 'queries')], []),
+        # Queries, `get` and `create` run through `jadpo test`, and
+        # aggregate queries against what code works out (area 6).
+        ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),
         # Writes, their conflicts and counters through `jadpo test`, and a
         # concurrent change forced from a second connection, rerunning the
         # whole action (area 6).

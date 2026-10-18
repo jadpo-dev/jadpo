@@ -483,3 +483,22 @@ fn a_geo_condition_derives_its_gist_index() {
         ]
     );
 }
+
+#[test]
+fn a_geo_condition_isn_t_counted_by_the_database_yet() {
+    // The code decides a `geo.` condition's records, and an aggregate's
+    // totals are the database's (chunk 5.5u5).
+    assert_eq!(
+        checked(
+            "entity Bakery {\n    id: Uuid\n    spot: Point\n}\n\ntype BakeryCount = Output {\n    bakeries: Int\n}\n\n/// How many bakeries a map shows.\nquery counted(view: BoundingBox) -> BakeryCount {\n    from: Bakery\n    where: geo.within(Bakery.spot, view)\n    aggregate: {\n        bakeries: count()\n    }\n}\n"
+        ),
+        ["toolchain.not_built_yet"]
+    );
+    assert_eq!(
+        checked(
+            "entity Bakery {\n    id: Uuid\n    spot: Point\n    area: Polygon\n}\n\nentity Stall {\n    id: Uuid\n    bakery_id: Bakery.id {\n        on_delete: OnDelete.cascade\n    }\n    spot: Point\n}\n\ntype StallView = Output {\n    pick: [Stall.id]\n}\n\ntype BakeryStalls = Output {\n    pick: [Bakery.id]\n    stalls: List<StallView>\n}\n\n/// A bakery's stalls in a view.\nquery stalls_in(bakery_id: Bakery.id, view: BoundingBox) -> BakeryStalls? {\n    from: Bakery\n    where: Bakery.id == bakery_id\n    include: {\n        stalls: {\n            via: Stall.bakery_id\n            where: geo.within(Stall.spot, view)\n            order: [Stall.id asc]\n            limit: 10\n        }\n    }\n}\n"
+        ),
+        ["toolchain.not_built_yet"],
+        "nor are an include's records rechecked yet"
+    );
+}

@@ -362,6 +362,14 @@ fn built() -> BTreeSet<String> {
     );
     // Area 21: a nearest-neighbour query (chunk 5.5v1b).
     out.insert("query result nearest".to_string());
+    // Area 6: an aggregate query's aggregates and time buckets (chunk
+    // 5.6c).
+    out.extend(
+        ["count", "sum", "min", "max", "average"]
+            .iter()
+            .map(|a| format!("query aggregate {a}")),
+    );
+    out.insert("query group bucket".to_string());
     // Area 6's isolation levels (chunk 3.7), each on an action that writes.
     out.extend(
         jadpo_std::Isolation::ALL
@@ -1289,6 +1297,27 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             }
         }
         includes(&query.includes, 1, &mut used);
+        // An aggregate query's groups and aggregates (chunk 5.6c).
+        if let Some(grouping) = &query.grouping {
+            use jadpo_check::data::queries::{Entry, GroupKey};
+            if grouping.order.iter().any(|o| !o.added) {
+                used.insert("query section order".to_string());
+            }
+            for (_, entry) in &grouping.entries {
+                match entry {
+                    Entry::Group(key) => {
+                        used.insert("query section group".to_string());
+                        if matches!(key, GroupKey::Bucket { .. }) {
+                            used.insert("query group bucket".to_string());
+                        }
+                    }
+                    Entry::Aggregate { kind, .. } => {
+                        used.insert("query section aggregate".to_string());
+                        used.insert(format!("query aggregate {}", kind.word()));
+                    }
+                }
+            }
+        }
     }
     for &file in project.files(db) {
         let path = file.path(db);
