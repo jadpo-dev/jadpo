@@ -2903,9 +2903,9 @@ Area 10's 21 `temporal` operations stand. The new time types add three.
 whole years, months and days, unlike a `Duration`, which is exact time,
 and a `DateRange`, which is a span between two dates. It has no order
 (one month and 30 days don't compare) and `==` compares part by part. It
-is stored as its three parts in `integer` columns (chunk 5.5w), not as an
-`interval`, which PostgreSQL keeps as months and days, so `P12M` would
-come back as `P1Y`.
+is stored as its three parts in `integer` columns, not as an `interval`,
+which PostgreSQL keeps as months and days, so `P12M` would come back as
+`P1Y` (chunk 5.5w; accepted by the lead session, 2026-10-18).
 `CalendarDate + CalendarPeriod` (the operator table) applies years, then
 months, then days, and clamps a day past the month's end to its last day,
 so 31 January plus one month is 28 or 29 February. That is area 10's
@@ -8484,8 +8484,10 @@ under "Errors").
   (`Codec::Standard`), except a `DateRange`, which is an object of its
   two dates as `InstantRange` is. **Storage** is that JSON in one
   `jsonb` column, as `InstantRange`'s is, rather than chunk 5.5h's named
-  columns; chunk 5.5w moves ranges and periods to the native `daterange`
-  and `interval` columns the page names.
+  columns; chunk 5.5w moved ranges to the native `daterange` column the
+  page names, and periods to three `integer` columns rather than an
+  `interval` (accepted by the lead session, 2026-10-18, "Chosen in chunk
+  5.5w").
 - **Order.** `LocalTime`, `LocalDateTime`, `YearMonth`, `Year`,
   `Quarter` and `IsoWeek` are ordered, part by part in declared order,
   which is the canonical order; `UtcOffset`, `Month` (an enum, as
@@ -10722,12 +10724,14 @@ chunks before:
   whose start is its end, and that doesn't hold its end, as `empty`,
   without its ends, so it couldn't read back: storing one is a fault
   naming that, and reading `empty` is one too. A `DateRange` of one day
-  holds that day, so it is stored. Whether a stored range should be
-  proved non-empty instead is a question for Richard.
+  holds that day, so it is stored. It stays a refusal when stored: proving
+  a stored range non-empty at compile time would be a language change,
+  not wanted now (decided by the lead session, 2026-10-18).
 - **`CalendarPeriod` is three `integer` columns,** `years`, `months` and
   `days`, not the `interval` "Time and calendar additions" named:
   PostgreSQL keeps an interval as months, days and microseconds, so
-  `P12M` would come back as `P1Y`, two values `==` tells apart.
+  `P12M` would come back as `P1Y`, two values `==` tells apart (accepted
+  by the lead session, 2026-10-18).
 - **Every standard enum is stored by its code,** as the closed lists and
   `Currency` were: `Zone` as `Europe/London`, `Locale` as `en-GB`,
   `HttpMethod` as `GET`, `FileType` as `image/png`; an enum's part in an

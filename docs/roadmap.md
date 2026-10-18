@@ -1187,8 +1187,12 @@ reference only).
   as that type. What the chunk chose is area 19's "Chosen in chunk 5.5w",
   the encodings its "Every boundary through the contract".
 - [ ] **5.5w2 Every boundary through the contract: JSON and the built
-  boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w. The
-  re-audit's gaps on the boundaries that are built: `json.write` writes a
+  boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w.
+  First, a privacy fix (lead session, 2026-10-18): a value that a column
+  can't hold is written into the fault's text (`jadpo-runtime/src/read.rs`
+  `to_sql`), and so possibly into a log; error text names the field and
+  the rule, never the value, as a `DecodeProblem` does. Then the
+  re-audit's other gaps on the boundaries that are built: `json.write` writes a
   map key that isn't text, a UUID, a number or an enum by `Display`
   (`jadpo-value/src/json.rs` `key_text`), so a date, an instant, a
   duration, money, a quantity or a standard object as a key doesn't read
@@ -1198,9 +1202,7 @@ reference only).
   as `1_000`, `.5` or `--5`); a `Duration` setting takes `5m` but not its
   canonical `PT5M`; `RichText`, `RichTextBlock` and `LocalisedText` are
   stored as area 5's `jsonb`, written and read by the route codec, which
-  structured fields don't have yet; and a value that a column can't hold
-  is written into the fault's text (`jadpo-runtime/src/read.rs`), which
-  could put personal data in a log. Done when a test per built boundary
+  structured fields don't have yet. Done when a test per built boundary
   (a request and a response, OpenAPI's shape, `json.read` and
   `json.write` with the value as a map key, storage, settings, a query
   string, `text.parse` and `text.from`) round-trips one value of every
