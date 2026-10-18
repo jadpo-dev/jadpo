@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 151 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-three are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 169 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, the 18 software types in 5.5n2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-four are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -129,7 +129,7 @@ exception to the rule.
 | Health (9) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, **`Allergen`** (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
-| Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, **`Uuid`**, `Ulid`, `IdempotencyKey`, `Doi` | `semver` |
+| Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
 | Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, `FlightNumber`, **`CabinClass`** (enum), **`BookingReference`** | |
@@ -392,7 +392,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `Discount`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RelativeUrl`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerImage`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3986,15 +3986,98 @@ test "a status's class is a comparison, and a problem is sent as RFC 9457 has it
 }
 ```
 
+Each software type follows its standard in the same way: a
+`SemanticVersion` is SemVer 2.0.0's (`1.2.3-alpha.1+build.5`), an object
+of its numbers, pre-release and build metadata, ordered by SemVer's
+precedence, so `1.10.0` comes after `1.9.0` and every pre-release before
+its release; a `VersionRange` is npm's range grammar written one way
+(`^1.2.3`, `>=1.0.0 <2.0.0`, `1.2.x || >=2.5.0-beta.1`); a `GitRef` what
+`git check-ref-format` accepts; a `PackageUrl` ECMA-427's canonical
+`pkg:` URL; a `Cve` the CVE programme's id; a `SpdxLicence` an SPDX
+expression over the SPDX licence list; a `TraceId`, a `SpanId` and a
+`TraceParent` W3C Trace Context's; a `LogLevel` one of OpenTelemetry's six
+severities; a `FileName` and a `FilePath` names and paths every common
+file system takes, written with `/`; a `RegularExpression` a pattern area
+2's linear-time engine takes, refusing what `pattern:` refuses; a
+`ContainerImage` the OCI distribution reference with its registry and a
+tag or a digest; a `Digest` the OCI image specification's; a `Ulid` the
+ULID specification's 26 characters; an `IdempotencyKey` what the
+`Idempotency-Key` header carries; and a `Doi` the DOI Handbook's name.
+
+A shop's plugin registry reads the version a release form names, offers a
+release only to the shops whose range it fits, and tells a newer release
+from an older one by SemVer, not by its text:
+
+```jadpo check project=software
+type FormText = Text {}
+
+type YesNo = Bool {}
+
+type NotAVersion = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The version a plugin's release form names.
+function plugin_version(raw: FormText) fails NotAVersion -> SemanticVersion {
+    var typed_version: SemanticVersion = attempt text.parse(raw, as: SemanticVersion) {
+        malformed: NotAVersion
+    }
+    return typed_version
+}
+
+/// Whether a plugin's release fits the range a shop asks for.
+function fits_shop(plugin_release: SemanticVersion, shop_wants: VersionRange) -> YesNo {
+    return YesNo(semver.satisfies(plugin_release, shop_wants))
+}
+
+/// Whether an offered release is newer than the one installed.
+function newer_than(installed_release: SemanticVersion, offered_release: SemanticVersion) -> YesNo {
+    return YesNo(offered_release > installed_release)
+}
+
+/// Whether a release is offered to every shop: it has no pre-release.
+function generally_available(plugin_release: SemanticVersion) -> YesNo {
+    return YesNo(plugin_release.pre_release == none)
+}
+
+/// A release's version as its tag writes it.
+function release_tag(plugin_release: SemanticVersion) -> FormText {
+    return FormText(text.from(plugin_release))
+}
+```
+
+```jadpo check project=software file=main.test.jadpo
+test "versions follow SemVer's precedence, not their text" {
+    var nine: SemanticVersion = attempt plugin_version("1.9.0")
+    var ten: SemanticVersion = attempt plugin_version("1.10.0")
+    var release_candidate: SemanticVersion = attempt plugin_version("1.10.0-rc.1")
+    assert newer_than(nine, ten)
+    assert newer_than(release_candidate, ten)
+    assert not generally_available(release_candidate)
+    assert release_tag(release_candidate) == "1.10.0-rc.1"
+    assert plugin_version("v1.10.0") fails NotAVersion
+}
+
+test "a range takes a pre-release only where it names one" {
+    var patch_release: SemanticVersion = attempt plugin_version("1.4.2")
+    var beta_release: SemanticVersion = attempt plugin_version("2.0.0-beta.1")
+    assert fits_shop(patch_release, "^1.2.3")
+    assert not fits_shop(patch_release, "~1.2.3")
+    assert not fits_shop(beta_release, "^1.2.3")
+    assert not fits_shop(beta_release, ">=1.0.0")
+    assert fits_shop(beta_release, ">=2.0.0-beta.0 <3.0.0")
+}
+```
+
 > Built in chunk 5.5n for the 20 web and network types (`UrlPath`,
 > `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`,
 > `HttpMethod`, `HttpStatus`, `HttpHeaderName`, `UserAgent`,
 > `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, `Cidr`,
 > `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken`) and `web`'s
-> three operations; `web.cidr_contains`'s SQL form comes with the SQL
-> forms (chunk 5.6). The 18 software types and `semver.satisfies` are
-> chunk 5.5n2. What the page left open is "Chosen in chunk 5.5n", under
-> "Review".
+> three operations, and in chunk 5.5n2 for the 18 software types and
+> `semver.satisfies`; `web.cidr_contains`'s SQL form comes with the SQL
+> forms (chunk 5.6). What the page left open is "Chosen in chunk 5.5n"
+> and "Chosen in chunk 5.5n2", under "Review".
 
 ## Groups with the baseline only
 
@@ -5345,7 +5428,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, each other group of types in 5.5i4 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, the 18 software types with `semver.satisfies` in 5.5n2, each other group of types in 5.5i4 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -7006,6 +7089,117 @@ under "Errors").
   (`ItemPrice`, areas 2 and 3, example 05), area 1's `Discount`
   (`DiscountTerms`) and example 09's (`BasketDiscount`), which moves to
   the standard `Discount` in 5.7.
+
+### Chosen in chunk 5.5n2
+
+- **`SemanticVersion` is an object** of `major`, `minor` and `patch`,
+  each a whole number from 0 up, and `pre_release` and `build`, each text
+  or `none`, as the catalogue sketched it, so code reads its parts
+  (`release.pre_release == none`). Its canonical text is SemVer 2.0.0's,
+  `1.2.3-alpha.1+build.5`, with no `v` before it; a number past an `Int`
+  is `malformed`. It is sent as that text, stored a column per part
+  (`bigint` for the numbers, `text` or `NULL` for the rest), and shown as
+  its text.
+- **`<` is SemVer 2.0.0's precedence** (§11): numbers numerically, a
+  pre-release below its release, its identifiers compared numerically or
+  in ASCII order, numbers first. Build metadata is ignored, as §10 says,
+  so neither of `1.0.0+a` and `1.0.0+b` is below the other, though they
+  aren't equal: `==` compares every part. Sorting and a set's order go by
+  precedence, then by build metadata as text, so they stay total and
+  agree with `==`. A query can't order by a version: its columns don't
+  sort by precedence, and SQL forms come with chunk 5.6.
+- **`VersionRange` is npm's range grammar** (node-semver's), since the
+  page names no syntax and SemVer defines none: sets joined by ` || `,
+  each of comparisons (`<`, `<=`, `>`, `>=`), `~`, `^`, partial versions
+  (`1.2`, `1.2.x`) and hyphen ranges (`1.0.0 - 1.4.2`), with `*` for any
+  version. It is read in one spelling: no `v` or `=` before a version, no
+  space after an operator, one space between comparisons, the wildcard
+  `x` inside a version and `*` only alone, and no build metadata, which a
+  range can't use. Each form means what node-semver desugars it to
+  (`^0.2.3` is `>=0.2.3 <0.3.0-0`), and a range is held as its text: two
+  spellings of one set (`1.2` and `1.2.x`) are different values.
+- **`semver.satisfies` keeps node-semver's pre-release rule,** which Cargo
+  shares: a version with a pre-release is inside a range only where a
+  comparison of the same set names a pre-release of the same major, minor
+  and patch, so `^1.2.3` never takes `2.0.0-beta.1`, nor `*` any
+  pre-release. It never fails.
+- **`GitRef`** is any name `git check-ref-format --allow-onelevel`
+  accepts: a branch (`main`), a tag, a full ref (`refs/heads/main`) or a
+  commit's full hash (`GitSha` folded in), not `--normalize`d, so a
+  leading `/` or a `//` is refused. Its length isn't limited, as git's
+  isn't.
+- **`PackageUrl`** is ECMA-427's canonical form: `pkg:` with no `//`, a
+  lower-case type, each component percent-encoded only where §5.4 says
+  (upper-case hex, and none of `A-Z a-z 0-9 . - _ ~ :` encoded), qualifier
+  keys in lower case, sorted, each once with a value, and no `.`, `..` or
+  empty subpath segment. A registered type's own rules (npm's lower-case
+  names, PyPI's normalisation) aren't checked yet; they would refuse more,
+  never accept more.
+- **`Cve`** is `CVE-`, a year from 1999 and a sequence of four digits, or
+  five to nineteen with no leading zero (the CVE programme's 2014 syntax,
+  and its JSON schema's nineteen), in upper case.
+- **`SpdxLicence`** is an SPDX 2.3 expression (Annex D) over the SPDX
+  License List 3.29.0, bundled by Embark's `spdx` crate 0.13.6 (CC0 data,
+  Apache-2.0 code): each identifier as the list spells it, deprecated ones
+  included since they still name a licence, `+`, `WITH` an exception on
+  the list, `AND`, `OR`, parentheses and `LicenseRef-` and `DocumentRef-`
+  references. Operators are upper case, words are one space apart and
+  parentheses have no space inside. `NONE` and `NOASSERTION` are a
+  document's values, not expressions, and are refused.
+- **`TraceId` and `SpanId`** are W3C Trace Context's ids, lower-case
+  hexadecimal, not all zero. **`TraceParent`** is text, as `Cidr` is (no
+  operation reads its parts yet), of version `00` only: the one version
+  defined, whose length is fixed. Its flags are any two hex digits.
+- **`LogLevel`** is an enum of OpenTelemetry's six severities, `trace`,
+  `debug`, `info`, `warn`, `error` and `fatal` (the catalogue's five and
+  OpenTelemetry's `fatal`, so a later addition doesn't break a `match`),
+  its codes their short names (`INFO`), read ignoring case and stored by
+  variant name, as `HttpMethod` is. It isn't ordered: no enum is yet, so
+  area 16's "logs from `LogLevel.warn`" is the runtime's own reading.
+  Area 10's example, which declared its own `LogLevel` of verbosity
+  levels, is renamed `Verbosity` (question 3).
+- **`FileName`** is what every common file system takes: 1 to 255 bytes
+  of UTF-8; no `/`, `\`, NUL or other control character; none of
+  Windows' `< > : " | ? *`; not `.` or `..`; no space or dot at the end,
+  which Windows drops; and not a Windows device name (`CON`, `PRN`,
+  `AUX`, `NUL`, `COM0` to `COM9`, `LPT0` to `LPT9`, with `¹²³`), in any
+  case, with any extension (`nul.txt`).
+- **`FilePath`** is written with `/`, as POSIX and URLs write one, so a
+  Windows path (`C:\Users`) is refused: `/` alone, or names joined by
+  `/`, absolute after a leading `/`, each a `FileName`, in its shortest
+  form (no `.` segment, `..` only at the start of a relative path, no
+  empty segment, no `/` at the end), at most 4096 bytes, Linux's
+  `PATH_MAX`. It says nothing of where files are kept: area 16's stores
+  never derive a key from a name.
+- **`RegularExpression`** is a pattern area 2's `pattern:` takes
+  (`jadpo_std::compile_pattern`, the `regex` crate), so backreferences
+  and lookaround are refused as they are there; it is matched whole, and
+  isn't empty.
+- **`ContainerImage`** is the OCI distribution reference fully qualified:
+  a registry first (a domain in lower case with a `.` or a port, an IP
+  address, or `localhost`), the repository's components in lower case,
+  and a tag, a digest or both, so `nginx:1.27` (Docker Hub's short form,
+  `docker.io/library/nginx:1.27` in full) and a reference with neither
+  (an implied `latest`) are refused: one image has one text.
+- **`Digest`** is the OCI image specification's grammar, its registered
+  algorithms held to theirs (`sha256` and `blake3` 64 lower-case hex
+  digits, `sha512` 128); an unregistered algorithm passes when it meets
+  the grammar, as the specification asks.
+- **`Ulid`** is upper case only, its first character at most `7`; it
+  isn't ordered, as no type held as text is.
+- **`IdempotencyKey`** is 1 to 255 printable ASCII characters, no `"` or
+  `\`, so a structured field's string carries it unescaped, and no space
+  at either end; the draft recommends a UUID and doesn't require one.
+- **`Doi`** is `10.`, a registrant code of four to nine digits with any
+  subdivisions, `/` and a suffix of printable characters with ASCII
+  letters in lower case, since the DOI Handbook compares them ignoring
+  case; `doi:` and resolver URLs are refused.
+- **Personal data:** none of the software types is.
+- **No shapes:** `type.standard_exists` matches none of them; an
+  application's `{ major, minor, patch }` stays its own for now, since
+  a shape added later reports every such type at once.
+- **Clashes renamed:** the tests' `Digest` (bytes) is `HashBytes`.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -7509,7 +7703,7 @@ first; each group of types then arrives with its baseline and its extras.
   and `web`'s 3 operations. Built; split on 2026-10-18, the 18 software
   types and `semver.satisfies` are 5.5n2.
 - **5.5n2 Software** `opus · high`: the 18 software types and
-  `semver.satisfies`.
+  `semver.satisfies`. Built.
 - **5.5o Text formats** `opus · high`: `Markdown`, `Html` (whose
   construction is the sanitiser, a security boundary per #88), `RichText`
   and `LocalisedText`, `markup`'s 3 operations and `text.pick`.

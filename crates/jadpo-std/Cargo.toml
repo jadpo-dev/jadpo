@@ -10,10 +10,12 @@ license.workspace = true
 # A shared leaf crate (docs/compiler-runtime.md §2.1): it depends on no other
 # workspace crate, so compiler and runtime crates may both depend on it, and
 # it builds for wasm32-unknown-unknown.
-# idna checks a domain name by UTS 46 (area 19, "Web and software").
+# idna checks a domain name by UTS 46, and spdx holds the SPDX licence list
+# (area 19, "Web and software").
 [dependencies]
 regex.workspace = true
 idna.workspace = true
+spdx.workspace = true
 
 [lints]
 workspace = true

@@ -52,7 +52,7 @@ config {
 fn every_kind_of_one_piece_of_text_is_a_setting() {
     assert_eq!(
         rules(
-            r#"type LogLevel = Enum {
+            r#"type Verbosity = Enum {
     debug
     info
     warning
@@ -89,8 +89,8 @@ config {
         default: "2026-01-15T12:00:00Z"
     }
     launch: CalendarDate
-    level: LogLevel {
-        default: LogLevel.info
+    level: Verbosity {
+        default: Verbosity.info
     }
     business_zone: Zone {
         default: Zone.europe_london
@@ -296,11 +296,11 @@ fn a_default_follows_the_rules_of_a_named_type() {
 fn an_enum_setting_takes_its_variants() {
     let with = |default: &str| {
         rules(&format!(
-            "type LogLevel = Enum {{\n    debug\n    info\n}}\n\nconfig {{\n    level: LogLevel {{\n        default: {default}\n    }}\n}}\n"
+            "type Verbosity = Enum {{\n    debug\n    info\n}}\n\nconfig {{\n    level: Verbosity {{\n        default: {default}\n    }}\n}}\n"
         ))
     };
-    assert_eq!(with("LogLevel.info"), CLEAN);
-    assert_eq!(with("LogLevel.loud"), ["configuration.default_invalid"]);
+    assert_eq!(with("Verbosity.info"), CLEAN);
+    assert_eq!(with("Verbosity.loud"), ["configuration.default_invalid"]);
     assert_eq!(with("Zone.utc"), ["configuration.default_type"]);
     assert_eq!(with("\"info\""), ["configuration.default_type"]);
 }

@@ -10,7 +10,7 @@ use crate::support;
 use jadpo_db::Layout;
 use support::{problems, rules};
 
-const TYPES: &str = "type Note = Text {\n    max_length: 200\n}\n\ntype Body = Bytes {\n    max_length: 1000\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype ImportLine = Input {\n    sku: Note\n    quantity: Quantity\n}\n\ntype OrderImport = Input {\n    reference: Note\n    lines: List<ImportLine>\n    note: Note {\n        optional: true\n    }\n}\n\ntype OrderView = Output {\n    reference: Note\n    lines: List<ImportLine>\n}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Invalid = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Encoded = Text {}\n\ntype Digest = Bytes {}\n\nentity Order {\n    id: Uuid\n    reference: Note\n}\n\n";
+const TYPES: &str = "type Note = Text {\n    max_length: 200\n}\n\ntype Body = Bytes {\n    max_length: 1000\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\ntype ImportLine = Input {\n    sku: Note\n    quantity: Quantity\n}\n\ntype OrderImport = Input {\n    reference: Note\n    lines: List<ImportLine>\n    note: Note {\n        optional: true\n    }\n}\n\ntype OrderView = Output {\n    reference: Note\n    lines: List<ImportLine>\n}\n\ntype Unreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Invalid = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Encoded = Text {}\n\ntype HashBytes = Bytes {}\n\nentity Order {\n    id: Uuid\n    reference: Note\n}\n\n";
 
 fn check(source: &str) -> Vec<String> {
     rules(
@@ -30,7 +30,7 @@ const NONE: &[&str] = &[];
 
 #[test]
 fn every_operation_checks() {
-    let source = "function etag(body: Body) -> Encoded {\n    return Encoded(encoding.to_hex(hash.sha256(body)))\n}\n\nfunction key(note: Note) -> Encoded {\n    return Encoded(encoding.to_base64url(hash.sha256(note)))\n}\n\nfunction written(note: Note) -> List<Encoded> {\n    var bytes: Bytes = encoding.to_utf8(note)\n    return [Encoded(encoding.to_base64(bytes)), Encoded(encoding.to_base64url(bytes)), Encoded(encoding.to_hex(bytes)), Encoded(encoding.to_url_component(note))]\n}\n\nfunction read(note: Note, body: Body) fails Unreadable -> List<Digest> {\n    var one: Bytes = attempt encoding.from_base64(note) {\n        malformed: Unreadable\n    }\n    var two: Bytes = attempt encoding.from_base64url(note) {\n        malformed: Unreadable\n    }\n    var three: Bytes = attempt encoding.from_hex(note) {\n        invalid: Unreadable\n    }\n    var shown: Text = attempt encoding.from_utf8(body) {\n        malformed: Unreadable\n    }\n    return [Digest(one), Digest(two), Digest(three), Digest(encoding.to_utf8(shown))]\n}\n\nfunction imported(message: Note) fails Unreadable, Invalid -> OrderImport {\n    var order: OrderImport = attempt json.read(message, as: OrderImport) {\n        malformed: Unreadable\n        mismatch: Invalid\n    }\n    return order\n}\n\nfunction from_bytes(body: Body) fails Invalid -> List<Quantity> {\n    return attempt json.read(body, as: List<Quantity>) {\n        invalid: Invalid\n    }\n}\n\nfunction sent(order: OrderView) -> Encoded {\n    return Encoded(json.write(order))\n}\n\nfunction lines(order: OrderImport) -> Encoded {\n    return Encoded(json.write(order.lines))\n}\n";
+    let source = "function etag(body: Body) -> Encoded {\n    return Encoded(encoding.to_hex(hash.sha256(body)))\n}\n\nfunction key(note: Note) -> Encoded {\n    return Encoded(encoding.to_base64url(hash.sha256(note)))\n}\n\nfunction written(note: Note) -> List<Encoded> {\n    var bytes: Bytes = encoding.to_utf8(note)\n    return [Encoded(encoding.to_base64(bytes)), Encoded(encoding.to_base64url(bytes)), Encoded(encoding.to_hex(bytes)), Encoded(encoding.to_url_component(note))]\n}\n\nfunction read(note: Note, body: Body) fails Unreadable -> List<HashBytes> {\n    var one: Bytes = attempt encoding.from_base64(note) {\n        malformed: Unreadable\n    }\n    var two: Bytes = attempt encoding.from_base64url(note) {\n        malformed: Unreadable\n    }\n    var three: Bytes = attempt encoding.from_hex(note) {\n        invalid: Unreadable\n    }\n    var shown: Text = attempt encoding.from_utf8(body) {\n        malformed: Unreadable\n    }\n    return [HashBytes(one), HashBytes(two), HashBytes(three), HashBytes(encoding.to_utf8(shown))]\n}\n\nfunction imported(message: Note) fails Unreadable, Invalid -> OrderImport {\n    var order: OrderImport = attempt json.read(message, as: OrderImport) {\n        malformed: Unreadable\n        mismatch: Invalid\n    }\n    return order\n}\n\nfunction from_bytes(body: Body) fails Invalid -> List<Quantity> {\n    return attempt json.read(body, as: List<Quantity>) {\n        invalid: Invalid\n    }\n}\n\nfunction sent(order: OrderView) -> Encoded {\n    return Encoded(json.write(order))\n}\n\nfunction lines(order: OrderImport) -> Encoded {\n    return Encoded(json.write(order.lines))\n}\n";
     assert_eq!(check(source), NONE);
 }
 
@@ -38,7 +38,7 @@ fn every_operation_checks() {
 fn decoding_can_fail_and_its_attempt_maps_it() {
     assert_eq!(
         check(
-            "function f(note: Note) -> Digest {\n    return Digest(encoding.from_hex(note))\n}\n"
+            "function f(note: Note) -> HashBytes {\n    return HashBytes(encoding.from_hex(note))\n}\n"
         ),
         ["failure.attempt_required"]
     );
@@ -63,7 +63,7 @@ fn decoding_can_fail_and_its_attempt_maps_it() {
         ["failure.attempt_infallible"]
     );
     let headline = shown(
-        "function f(note: Note) -> Digest {\n    return Digest(encoding.from_base64(note))\n}\n",
+        "function f(note: Note) -> HashBytes {\n    return HashBytes(encoding.from_base64(note))\n}\n",
     );
     assert_eq!(headline.len(), 1, "{headline:?}");
     assert!(headline[0].contains("can fail at runtime"), "{headline:?}");
@@ -73,7 +73,7 @@ fn decoding_can_fail_and_its_attempt_maps_it() {
 fn a_digest_is_bytes_of_bytes_or_text() {
     assert_eq!(
         check(
-            "function f(quantity: Quantity) -> Digest {\n    return Digest(hash.sha256(quantity))\n}\n"
+            "function f(quantity: Quantity) -> HashBytes {\n    return HashBytes(hash.sha256(quantity))\n}\n"
         ),
         ["type.mismatch"]
     );

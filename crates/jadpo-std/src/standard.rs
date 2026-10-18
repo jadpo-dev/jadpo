@@ -36,6 +36,7 @@ mod postal_codes_data;
 pub mod prices;
 pub mod recurrence;
 mod schedules;
+pub mod software;
 pub mod web;
 
 pub use contact::{LINE_MAX, LINE_PATTERN};
@@ -299,6 +300,9 @@ pub enum TextForm {
     /// [`web::utm_text`]): `utm_source=mailing&utm_medium=email&...`,
     /// each part it has in its parts' order, percent-encoded.
     UtmQuery,
+    /// SemVer 2.0.0's text, `1.2.3-alpha.1+build.5`, with no `v` before it
+    /// (chunk 5.5n2, [`software::read_version`]).
+    SemanticVersion,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -546,6 +550,30 @@ pub enum Validator {
     UserAgent,
     /// A web origin's serialisation (RFC 6454, [`web`]).
     WebOrigin,
+    /// A container image reference, fully qualified (OCI distribution,
+    /// [`software`]).
+    ContainerImage,
+    /// A digest by the OCI image specification's grammar ([`software`]).
+    Digest,
+    /// A portable file name ([`software`]).
+    FileName,
+    /// A portable path written with `/` ([`software`]).
+    FilePath,
+    /// A ref name `git check-ref-format` accepts ([`software`]).
+    GitRef,
+    /// A package URL in ECMA-427's canonical form ([`software`]).
+    PackageUrl,
+    /// A pattern area 2's linear-time engine compiles ([`software`]).
+    RegularExpression,
+    /// An SPDX licence expression on the bundled list ([`software`]).
+    SpdxLicence,
+    /// A W3C Trace Context id: lower-case hexadecimal, not all zero
+    /// ([`software`]).
+    TraceHex,
+    /// A `traceparent` of version `00` ([`software`]).
+    TraceParent,
+    /// A node-semver range in one spelling ([`software`]).
+    VersionRange,
     /// GS1's mod-10 check digit: a GTIN, an ISBN-13, an SSCC.
     Gs1,
     /// A VIN's check digit, where 49 CFR 565 requires one.
@@ -590,6 +618,17 @@ impl Validator {
             Validator::RelativeUrl => web::is_relative_url(text),
             Validator::UserAgent => web::is_user_agent(text),
             Validator::WebOrigin => web::is_web_origin(text),
+            Validator::ContainerImage => software::is_container_image(text),
+            Validator::Digest => software::is_digest(text),
+            Validator::FileName => software::is_file_name(text),
+            Validator::FilePath => software::is_file_path(text),
+            Validator::GitRef => software::is_git_ref(text),
+            Validator::PackageUrl => software::is_package_url(text),
+            Validator::RegularExpression => software::is_regular_expression(text),
+            Validator::SpdxLicence => software::is_spdx_licence(text),
+            Validator::TraceHex => software::is_trace_hex(text),
+            Validator::TraceParent => software::is_trace_parent(text),
+            Validator::VersionRange => software::is_version_range(text),
             Validator::Gs1 => codes::passes_gs1(text),
             Validator::Vin => codes::is_vin(text),
             Validator::ContainerNumber => codes::is_container_number(text),
@@ -932,8 +971,9 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `contact`), and `PhoneNumber`, `CallingCode`, `PostalCode` and
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
 /// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), the 20 web
-/// and network types (chunk 5.5n, in `web`), and the money group's
-/// records (chunk 5.5i3, in `prices`).
+/// and network types (chunk 5.5n, in `web`), the money group's records
+/// (chunk 5.5i3, in `prices`), and the 18 software types (chunk 5.5n2, in
+/// `software`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1026,6 +1066,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("35 gL", "35 g/L"),
         ],
     ),
+    software::CONTAINER_IMAGE,
     codes::CONTAINER_NUMBER,
     places::CONTINENT_ENTRY,
     web::COOKIE,
@@ -1063,6 +1104,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         crate::QuantityKind::Current,
         &[("0.005 A", "0.005 A"), ("1 A", "1 A"), ("16 A", "16 A")],
     ),
+    software::CVE,
     quantity(
         crate::QuantityKind::DataSize,
         &[
@@ -1116,7 +1158,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    software::DIGEST,
     prices::DISCOUNT_ENTRY,
+    software::DOI,
     web::DOMAIN_NAME,
     documents::DRIVING_LICENCE_NUMBER_TYPE,
     StandardType {
@@ -1235,6 +1279,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     contact::FAMILY_NAME,
+    software::FILE_NAME,
+    software::FILE_PATH,
     StandardType {
         name: FILE_TYPE,
         holds: Holds::Enum(FILE_TYPES),
@@ -1304,6 +1350,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("2400000000 Hz", "2,400,000,000 Hz"),
         ],
     ),
+    software::GIT_REF,
     contact::GIVEN_NAME,
     web::HOSTNAME,
     codes::HS_CODE,
@@ -1315,6 +1362,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::IBAN,
     codes::ICAO_AIRPORT,
     codes::ICD10_CODE,
+    software::IDEMPOTENCY_KEY,
     documents::IDENTITY_DOCUMENT_TYPE,
     documents::IDENTITY_DOCUMENT_KIND_TYPE,
     quantity(
@@ -1508,6 +1556,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    software::LOG_LEVEL,
     codes::LOT_NUMBER,
     web::MAC_ADDRESS,
     card_types::MASKED_CARD_NUMBER_TYPE,
@@ -1617,6 +1666,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::NHS_NUMBER,
     schedules::OPENING_HOURS,
     codes::ORCID,
+    software::PACKAGE_URL,
     documents::PASSPORT_NUMBER_TYPE,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
@@ -1766,7 +1816,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     schedules::RECURRENCE_RULE,
+    software::REGULAR_EXPRESSION,
     web::RELATIVE_URL,
+    software::SEMANTIC_VERSION_ENTRY,
     codes::SERIAL_NUMBER,
     codes::SKU,
     web::SLUG,
@@ -1779,6 +1831,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("120 dB", "120 dB"),
         ],
     ),
+    software::SPAN_ID,
+    software::SPDX_LICENCE,
     quantity(
         crate::QuantityKind::Speed,
         &[
@@ -1808,11 +1862,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     lists::TENURE_ENTRY,
     places::TEXT_DIRECTION_ENTRY,
+    software::TRACE_ID,
+    software::TRACE_PARENT,
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
     identifiers::UK_SORT_CODE,
     identifiers::UK_UTR,
+    software::ULID,
     places::UN_LOCODE,
     codes::UN_NUMBER,
     prices::UNIT_PRICE_ENTRY,
@@ -1878,6 +1935,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     documents::VAT_NUMBER_TYPE,
+    software::VERSION_RANGE,
     codes::VIN,
     quantity(
         crate::QuantityKind::Voltage,
@@ -2442,7 +2500,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 153, "the 153 standard types built so far");
+        assert_eq!(names.len(), 171, "the 171 standard types built so far");
     }
 
     #[test]

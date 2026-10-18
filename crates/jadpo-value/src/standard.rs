@@ -146,6 +146,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Event, Value::Record(record)) => crate::event::event_text(record)?,
         (TextForm::Whole, Value::Int(n)) => n.to_string(),
         (TextForm::UtmQuery, Value::Record(record)) => crate::web::utm_text(record)?,
+        (TextForm::SemanticVersion, Value::Record(record)) => crate::semver::version_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -495,6 +496,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             _ => None,
         },
         TextForm::UtmQuery => crate::web::read_utm(raw),
+        TextForm::SemanticVersion => crate::semver::read_version(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.

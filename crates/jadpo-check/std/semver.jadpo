@@ -1,0 +1,14 @@
+// The `semver` namespace (area 19, "Web and software"). Its operation is
+// listed, typed, in `jadpo-std`'s operation table, which names the Rust
+// function in `jadpo-value` that runs it; a test holds this stub to that
+// table. It never fails: its version and range were checked when they were
+// built.
+
+public library semver {
+    /// Whether `version` is inside `range`, as node-semver reads the range:
+    /// in one of its sets joined by `||`, meeting each comparison of it. A
+    /// pre-release is inside only where a comparison of that set names a
+    /// pre-release of the same major, minor and patch, so `^1.2.3` never
+    /// takes `2.0.0-beta.1`.
+    function satisfies(version: SemanticVersion, range: VersionRange) -> Bool {}
+}

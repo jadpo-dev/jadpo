@@ -52,7 +52,7 @@ pub enum Value {
 
 impl Value {
     /// The value as Jadpo writes it: `5000`, `0.2000`, `"text"`,
-    /// `LogLevel.normal`, `[1, 2]`, `VatBand { starts: "2010-01-01", rate: 0.1750 }`.
+    /// `Verbosity.normal`, `[1, 2]`, `VatBand { starts: "2010-01-01", rate: 0.1750 }`.
     pub fn written(&self) -> String {
         match self {
             Value::Number { value, .. } => value.to_string(),
