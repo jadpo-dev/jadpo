@@ -265,6 +265,7 @@ impl Body<'_> {
                 FieldsBase::Event => "event",
                 FieldsBase::EmailMessage => "email",
                 FieldsBase::Message => "message",
+                FieldsBase::Prompt => "prompt",
                 FieldsBase::Failure => "failure",
                 FieldsBase::Object | FieldsBase::Entity => "object",
             },

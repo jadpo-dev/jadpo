@@ -1162,13 +1162,23 @@ reference only).
   build on this roadmap. **Needs Richard** to decide the page. Decided
   2026-10-18 (Richard), as recommended, with PostGIS needed only once an
   app has a geometry column or index: [area 20](language/20-geospatial.md).
-- [ ] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
+- [x] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
   and "Precision and determinism"):
   `geo.distance`, `geo.length`, `geo.bearing` and `geo.area` by Karney's
   methods in Jadpo's decimal code, and coordinates held as doubles'
   shortest decimals. Done when each matches a sample of GeographicLib's
   `GeodTest` set to the micrometre, gives the same digits on native and
-  wasm32, and is benchmarked.
+  wasm32, and is benchmarked. Built: GeographicLib's inverse problem and
+  polygon area ported to whole-number fixed point (256 bits, 136 after
+  the point), its series to order 8; every distance within 75
+  femtometres of the test set before rounding, and all 10,000 lines of
+  `GeodTest-short` passing, of which a 500-line sample, written by
+  `tools/geodtest_sample.py`, is checked natively and under wasm32 with
+  one digest of every answer; 30 to 65 µs a distance natively, about
+  2.8 times that under wasm32. `same_point` is settled only by
+  `attempt`; a line's length sums its edges' rounded distances and an
+  area rounds once; a coordinate is rounded to the nearest double as it
+  is built. What the chunk chose is area 20's "Chosen in chunk 5.5u2".
 - [ ] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
   "Operations"), after 5.5u2:
   `geo.intersects`, `contains` and `within` (with `distance:`, a
@@ -1204,7 +1214,7 @@ reference only).
   on this roadmap. Written as area 21 and decided by Richard on
   2026-10-18, all fifteen questions as recommended; built in 5.5v1 to
   5.5v7.
-- [ ] **5.5v1 Vectors in PostgreSQL: storage** `opus · high` (area 21,
+- [x] **5.5v1 Vectors in PostgreSQL: storage** `opus · high` (area 21,
   "Embeddings and search"). Split (2026-10-18): this chunk stores vectors
   and compares them in code; 5.5v1b takes the nearest-neighbour query and
   its index. A vector type with `dimensions:` stored in a pgvector
@@ -1220,7 +1230,14 @@ reference only).
   an entity stores and reads back vectors of every metric unchanged on
   PostgreSQL, `ai.distance` gives pgvector's own distance for each metric
   on the same inputs, a store without pgvector is refused before anything
-  runs, and each new error has a checked example.
+  runs, and each new error has a checked example. Built: storage through
+  the shared storage codec and pgvector's binary format, `ai.distance`
+  agreeing with pgvector to the bit on exact inputs (within a float's
+  rounding elsewhere, since pgvector's compiler orders its sums), a zero
+  vector's cosine a fault, and CI on `tools/postgres/Dockerfile`
+  (PostgreSQL 16.14, pgvector 0.8.7, PostGIS 3.6.4, since every
+  `postgis/postgis` 16 tag is on Debian bullseye). What the chunk chose is
+  area 21's "Chosen in chunk 5.5v1".
 - [ ] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
   (area 21, "The nearest-neighbour query" and "The index"), after 5.5v1:
   `order: [F nearest v]` returning `Nearest<T>`, `ai.distance` as a SQL
@@ -1234,7 +1251,7 @@ reference only).
   nearest query of five returns the same five records interpreted and on
   PostgreSQL, its plan uses the index, and each new error has a checked
   example.
-- [ ] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
+- [x] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
   files"): the `Prompt` type base, `prompts/` in a domain,
   `<name>.prompt` with `# Instructions` and `# Request`, placeholders
   checked as translations' are, free text only as tagged data blocks
@@ -1242,7 +1259,14 @@ reference only).
   turns, `prompts.render` and `jadpo ai show`, and each prompt's digest
   in the manifest. Done when a rendered prompt matches the page's
   example byte for byte, an injected closing tag can't end its block,
-  and each `prompt.` error has a checked example.
+  and each `prompt.` error has a checked example. Built: the page's
+  request renders byte for byte (a test reads it from the page); every
+  closing tag in a block is escaped, in any case, spaced, with HTML
+  references, percent and backslash encodings and Unicode lookalikes,
+  and nested, in text and in JSON, which stays the same document; the
+  five `prompt.` errors have checked examples; `prompts.render` gives a
+  `List<ChatMessage>`, and `jadpo ai show` prints a prompt unfilled. What
+  the page left open is area 21's "Chosen in chunk 5.5v2".
 - [x] **5.5w Every boundary through the contract: storage** `opus · high`
   (area 19, "Every standard type meets one contract"; Richard,
   2026-10-17), after the standard type groups. Split (2026-10-18) after a
@@ -1344,7 +1368,7 @@ reference only).
   `jadpo-cli/tests/standard_boundaries.rs` holds the JSON boundary and
   OpenAPI to it. What clients see change is area 19's "Chosen in chunk
   5.5w3".
-- [ ] **5.5w3b Every boundary through the contract: SQL literals**
+- [x] **5.5w3b Every boundary through the contract: SQL literals**
   `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
   compile-time SQL literals (`jadpo-sql`'s conditions, backfills in
   `jadpo-check`'s migrations) share the runtime's storage codec, so a
@@ -1352,6 +1376,17 @@ reference only).
   when no boundary has an encoder of its own: each calls the contract's
   JSON, storage or text for a standard type, and 5.5w3's test covers the
   SQL literals too.
+  Built: the storage codec and `SqlValue` moved to the shared leaf
+  (`jadpo_std::standard::storage::bind`), which the runtime's `to_sql`
+  calls and every literal is made with, decoded for its field by
+  `jadpo_std::constant::literal`; statements bind a literal as a
+  parameter (`Source::Stored`, `WriteSource::Stored`,
+  `PurgeSource::Stored`), and a partial index's predicate, a backfill and
+  the fixed identity statements write it with `jadpo_sql::literal`;
+  backfills take every literal a field's type has; the guard test holds
+  the SQL literals too, and `jadpo-cli/tests/sql_literals.rs` holds each
+  standard type's literal to what the runtime binds, live. What it chose
+  is area 19's "Chosen in chunk 5.5w3b".
 - [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code

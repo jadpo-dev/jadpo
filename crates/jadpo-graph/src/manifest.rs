@@ -255,6 +255,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
         Detail::ActionException { who } => {
             out.set("who", who.iter().map(Value::from).collect::<Vec<_>>());
         }
+        Detail::Prompt { version } => out.set("version", version.as_str()),
     }
 }
 
@@ -363,6 +364,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     (
         "via",
         "The reference a tenancy reaches its tenant through; id on the tenant itself",
+    ),
+    (
+        "version",
+        "A prompt's name and the first 8 hex characters of a SHA-256 over its two files, as every call's trace carries it",
     ),
 ];
 

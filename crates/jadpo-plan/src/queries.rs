@@ -132,6 +132,13 @@ impl Bind for Statement {
         };
         Some(self.param(source, ty))
     }
+
+    /// A literal or an enum value, bound as the storage codec made it
+    /// (chunk 5.5w3b).
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        let ty = value.ty();
+        Some(self.param(Source::Stored(value), ty))
+    }
 }
 
 /// The columns a statement selects, each a field of its entity once, with

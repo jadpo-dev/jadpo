@@ -328,6 +328,18 @@ by its entry's `Json`: its canonical text, or an object of the members
 OpenAPI's schema reads too (`routes::wire::scalar_schema`), so neither
 names a built-in type; `jadpo_plan::standard_codecs` makes any standard
 type's codecs over an empty graph, for the per-type harness.
+Since chunk 5.5w3b the storage codec is the shared leaf's
+(`jadpo_std::standard::storage::bind`, with `SqlValue`): the runtime's
+`to_sql` reads a value as the codec's `Stored` view and calls it, and
+`jadpo_sql::condition` decodes a literal for its field
+(`jadpo_std::constant::literal`, moved from `jadpo-plan`, given the
+field's built-in type and scale on `Column`) and makes its value with
+it. A statement binds that value as a parameter through `Bind::stored`
+(`Source::Stored`, `WriteSource::Stored`, `PurgeSource::Stored`, which the
+runtime sends as they are); where a statement takes none (a partial
+index's predicate, a migration's backfill, the identity statements with
+fixed parameters) `jadpo_sql::literal::sql` writes the same value as SQL
+text (area 19, "Chosen in chunk 5.5w3b").
 Since chunk 5.5q the table marks the operations that read the generator
 (`Op::reads_generator`, `random`'s five): the one exception to every
 operation being pure. The checker refuses them outside actions and tests
@@ -635,6 +647,26 @@ against by the same `Ctx` as a folder's, a feature being on when a route
 `Locale.en_xa` is a `Locale` variant that `fallback_chain` sends straight to
 the default locale, and `present::pseudo` accents and lengthens the text of
 the wording while the values it writes stay as they are.
+
+Prompts (area 21, "Prompts as files", chunk 5.5v2) are read in
+`jadpo-check`'s `prompts` module: a `type X = Prompt` (`Base::Prompt`,
+`FieldsBase::Prompt`, `Folder::Prompts` in a domain or `shared/`) and its
+text, `<name>.prompt` beside it, which `jadpo-db` reads as a record
+(`is_prompt_text`; in loose files any `.prompt`) and `source_texts` hands
+to the renderer so its errors quote it. `jadpo-std`'s `prompt` module
+parses the two sections into `Piece`s, fills them (`fill`) and escapes a
+data block's closing tags (`escape`), for text and for JSON; `analysis`
+decides how each field is sent (`Form::Closed`, `Text` or `Json`, or the
+conversation's turns), reports the `prompt.` rules and gives each checked
+prompt a `PromptEntry` with its digest, a SHA-256 over its two files. The
+graph gets a `prompt` node per prompt (`Detail::Prompt { version }`) and a
+`uses` edge from each callable that renders it. `prompts.render(value)`,
+a member of the generated `prompts` namespace, is checked from the value's
+type alone and lowered to `Callee::Prompt(name)`; `jadpo-plan` numbers a
+JSON codec for each field the text writes (`Decoded::Prompt`) and carries
+the `PromptPlan`, and `jadpo_value::prompt::render` builds the
+`List<ChatMessage>` for both executors. `jadpo ai show` (`jadpo-cli`'s
+`ai`) prints a prompt's messages from `outline`, unfilled.
 Enums that Rust code interprets (`Rounding`, `TextFormat`,
 `UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, `TextDirection`, `TranslationReview`, and `Zone` and `Locale` from their tables) are
 declared once, in `jadpo-std`. The namespaces the compiler fills from the
@@ -1927,8 +1959,8 @@ Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 transition, never to the parent an include reads, which stays readable
 while hidden (area 6, question 10); `clock.now` in it is the operation's
 clock, sent as a parameter. A transition's statement is an `UPDATE` of the
-fields its `set:` gives (fixed values written into the text, `clock.now`
-a parameter) and every `on_change` field, with its `when:` in the `WHERE`
+fields its `set:` gives (fixed values and `clock.now` parameters, since
+chunk 5.5w3b) and every `on_change` field, with its `when:` in the `WHERE`
 when it can refuse a visible record; a create fills each owned field from
 `initial:`, or `NULL`. A guarded transition's plan carries a `Guard`: when
 the update changes no row, the runtime asks with its `SELECT 1`

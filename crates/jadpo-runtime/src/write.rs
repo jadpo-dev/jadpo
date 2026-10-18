@@ -237,6 +237,12 @@ fn params_of(
             params.push(ctx.caller_param(*part));
             continue;
         }
+        // A literal or an enum value, as the storage codec bound it when
+        // the plan was made (chunk 5.5w3b).
+        if let WriteSource::Stored(value) = &param.source {
+            params.push(value.clone());
+            continue;
+        }
         // A JSON-held value, written as its contract's JSON (chunk
         // 5.5w2b).
         if let WriteSource::Json { of, codec } = &param.source {
@@ -301,6 +307,10 @@ fn source_value(
         // Answered above, as its JSON.
         WriteSource::Json { .. } => {
             return Err(defect(ctx, "a JSON-held value read as a part", site));
+        }
+        // Answered above, bound already.
+        WriteSource::Stored(_) => {
+            return Err(defect(ctx, "a bound literal read as a part", site));
         }
         // One of the columns a compound standard type is stored in (area
         // 19).

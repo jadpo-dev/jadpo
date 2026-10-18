@@ -65,6 +65,7 @@ archived_at
 arrivals
 arrived_at
 article
+article_excerpt
 article_id
 article_meaning
 article_slug
@@ -130,6 +131,7 @@ batch_count
 batch_name
 batch_size
 batches_baked
+bearing_out
 before_vat
 bench
 bench_name
@@ -420,6 +422,7 @@ delivery_view
 delivery_window
 deposit
 describe_order
+describe_photo
 describe_status
 destination_company_id
 devices
@@ -507,6 +510,7 @@ eve
 evening
 event_start
 every_name
+excerpt
 expected_delivery
 export_my_data
 export_products
@@ -754,6 +758,7 @@ ledger_amount
 ledger_entry
 left_at
 left_over
+leg
 legacy_flag
 lemon
 lend
@@ -1117,6 +1122,7 @@ password_to_keep
 past_expiry
 pasted_about
 pastry
+patch_area
 patch_layer
 patch_properties
 patch_release
@@ -1363,6 +1369,7 @@ roggen
 room_depth
 room_floor
 rotated
+round_length
 round_order
 royal_code
 runs_until
@@ -1375,6 +1382,7 @@ safe_to_eat
 sale_price
 sales
 same_price
+same_spot
 same_twice
 save_draft
 save_note
@@ -1672,6 +1680,7 @@ tray_warnings
 trays
 trays_out
 trays_to_bake
+trip_length
 turned_down
 twenty_in_threes
 twice_daily
@@ -1711,7 +1720,9 @@ user_view
 usual_contacts
 usual_order
 valid_from
+van_leg
 van_position
+van_round
 vat_band
 vat_bands
 vat_date

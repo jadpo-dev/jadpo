@@ -89,6 +89,8 @@ fn condition_clause(keys: &[String]) -> String {
         "What a document holds is only known when the program runs: text that isn't one JSON document fails `malformed`, and a document that isn't the type `as:` names fails `mismatch`".to_string()
     } else if keys.iter().any(|key| key == "malformed") {
         "What the text or bytes hold is only known when the program runs, and they may not be the encoding at all, which fails `malformed`".to_string()
+    } else if keys.iter().any(|key| key == "same_point") {
+        "Two equal points have no direction between them, and whether these two are equal is only known when the program runs, which fails `same_point`".to_string()
     } else if keys.iter().any(|key| key == "out_of_range") {
         "There is no logarithm of a value at or below `0`, and nothing proves this one above `0`, as a literal above `0` or a type whose `min` is above `0` would".to_string()
     } else {
@@ -104,10 +106,9 @@ fn condition_clause(keys: &[String]) -> String {
 /// options, or a value proved above `0`; nothing settles what decoding
 /// gives (area 19, "Encodings" and "Data formats").
 fn settle_by(keys: &[String]) -> String {
-    if keys
-        .iter()
-        .any(|key| key == "malformed" || key == "mismatch" || key == "invalid_signature")
-    {
+    if keys.iter().any(|key| {
+        key == "malformed" || key == "mismatch" || key == "invalid_signature" || key == "same_point"
+    }) {
         String::new()
     } else if keys.iter().any(|key| key == "out_of_range") {
         ", or pass a value whose type has a `min` above `0`".to_string()
@@ -174,7 +175,8 @@ impl Body<'_> {
                 Reach::Caller(_)
                 | Reach::Session(_)
                 | Reach::AdvanceClock
-                | Reach::Translation { .. },
+                | Reach::Translation { .. }
+                | Reach::Prompt(_),
             ) => Fallible::Never,
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,

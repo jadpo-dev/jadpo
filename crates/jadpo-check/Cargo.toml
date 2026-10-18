@@ -19,6 +19,8 @@ jadpo-sql.workspace = true
 jadpo-std.workspace = true
 jadpo-syntax.workspace = true
 salsa.workspace = true
+# The digest of a prompt's two files (area 21), as the manifest lists it.
+sha2.workspace = true
 
 [lints]
 workspace = true

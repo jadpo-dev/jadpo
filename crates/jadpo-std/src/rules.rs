@@ -52,6 +52,12 @@ pub struct Rules {
     /// whose range `min` and `max` are (chunk 5.5n), which names it only.
     /// Only the standard library sets it; no block can write it.
     pub standard: Option<&'static str>,
+    /// A coordinate, a `Latitude` or a `Longitude` (area 20, question 2):
+    /// kept as the shortest decimal of the nearest IEEE double, rounded as
+    /// it is built, as a `Vector`'s items are kept as single-precision
+    /// floats, so PostGIS and GeoJSON hold it exactly. A holding, never a
+    /// rule a value breaks; only the standard library sets it.
+    pub double: bool,
 }
 
 /// Which rule a value breaks, by the key an `attempt`'s arm names it with
@@ -130,6 +136,9 @@ pub enum RuleKey {
     /// A token `crypto.verify_jwt` checks was issued by another issuer than
     /// `issuer:` names, or by none.
     WrongIssuer,
+    /// `geo.bearing`'s two points are the same place, which has no
+    /// direction to itself (area 20, "Operations").
+    SamePoint,
     /// A rule an object type names across its fields (area 2, "Rules
     /// across fields"): its name is carried beside the key, since an
     /// `attempt`'s arm names it by that. Never in [`RuleKey::ALL`], so no
@@ -141,7 +150,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 26] = [
+    pub const ALL: [RuleKey; 27] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -168,6 +177,7 @@ impl RuleKey {
         RuleKey::NotYetValid,
         RuleKey::WrongAudience,
         RuleKey::WrongIssuer,
+        RuleKey::SamePoint,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -199,6 +209,7 @@ impl RuleKey {
             RuleKey::NotYetValid => "not_yet_valid",
             RuleKey::WrongAudience => "wrong_audience",
             RuleKey::WrongIssuer => "wrong_issuer",
+            RuleKey::SamePoint => "same_point",
             RuleKey::Named => "rule",
         }
     }
@@ -206,7 +217,8 @@ impl RuleKey {
     /// Whether only the running program can know it, so no option or
     /// proof settles it and only an `attempt` does: what text or bytes
     /// decode to (`malformed`, `mismatch`), whether a sealed value opens
-    /// (`unreadable`) and what a token says (`crypto.verify_jwt`'s).
+    /// (`unreadable`), what a token says (`crypto.verify_jwt`'s) and
+    /// whether two points are the same place (`geo.bearing`'s).
     pub fn only_when_run(self) -> bool {
         matches!(
             self,
@@ -218,6 +230,7 @@ impl RuleKey {
                 | RuleKey::NotYetValid
                 | RuleKey::WrongAudience
                 | RuleKey::WrongIssuer
+                | RuleKey::SamePoint
         )
     }
 

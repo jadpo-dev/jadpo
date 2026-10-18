@@ -48,6 +48,7 @@ fn source(source: &Source) -> String {
         Source::Cursor(i) => format!("cursor {i}"),
         Source::SizePlusOne => "page size + 1".to_string(),
         Source::Caller(part) => format!("caller {part:?}"),
+        Source::Stored(value) => format!("literal {value:?}"),
     }
 }
 
@@ -156,6 +157,7 @@ fn write(name: &str, write: &WriteSitePlan) -> String {
             WriteSource::Caller(part) => format!("caller {part:?}"),
             WriteSource::Part { of, index } => format!("part {index} of {of:?}"),
             WriteSource::Json { of, codec } => format!("JSON {codec} of {of:?}"),
+            WriteSource::Stored(value) => format!("literal {value:?}"),
         };
         out.push_str(&format!("-- ${}: {source} as {:?}\n", i + 1, param.ty));
     }

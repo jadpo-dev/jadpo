@@ -110,6 +110,8 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Session(_)
                 | Callee::AdvanceClock
                 | Callee::Unknown => {}
+                // A prompt is used by the value built of its type.
+                Callee::Prompt(_) => {}
                 // A message is used by what calls it (area 10).
                 Callee::Translation(key) => {
                     if let Some(name) = crate::translations::type_of_key(db, project, key) {
@@ -668,7 +670,7 @@ enum Move<'a> {
 fn is_plain_type(kind: &ItemKind) -> bool {
     matches!(
         kind,
-        ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message)
+        ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message | Base::Prompt)
     )
 }
 

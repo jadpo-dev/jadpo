@@ -45,7 +45,7 @@ impl Decider {
 pub struct Rule {
     /// `area.name`, lower case, for example `cli.unknown_command`.
     pub id: &'static str,
-    /// The language area (1–19) whose page documents the rule.
+    /// The language area (1–21) whose page documents the rule.
     pub area: u8,
     /// Whether a `decline` line may answer it instead of a fix.
     pub declinable: bool,
@@ -106,6 +106,8 @@ rules! {
         "07-http.html#api-record-out-of-date", "API record disagrees with the routes";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "07-http.html#api-setting-unknown", "API setting is not one an API takes";
+    CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "AI command has invalid arguments";
     CLI_API_ARGUMENTS: "cli.api_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Api command has invalid arguments";
     CLI_CHECK_ARGUMENTS: "cli.check_arguments", area 14, Error, Agent,
@@ -492,6 +494,16 @@ rules! {
         "09-policy.html#policy-scope-missing", "Entity has no reference a role or the tenant applies through";
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
         "09-policy.html#policy-subject-duplicate", "Grant names the same caller twice";
+    PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
+        "21-ai.html#prompt-free-text-in-instructions", "A free-text placeholder is written in a prompt's instructions";
+    PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,
+        "21-ai.html#prompt-placeholder-type", "A prompt's field is of a type a prompt can't send";
+    PROMPT_PLACEHOLDER_UNKNOWN: "prompt.placeholder_unknown", area 21, Error, Agent,
+        "21-ai.html#prompt-placeholder-unknown", "A prompt's text writes a field its type does not have";
+    PROMPT_PLACEHOLDER_UNUSED: "prompt.placeholder_unused", area 21, Error, Agent,
+        "21-ai.html#prompt-placeholder-unused", "A prompt's field is written nowhere in its text";
+    PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
+        "21-ai.html#prompt-section-missing", "A prompt and its file don't make its two sections, each once and in order";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-condition-unsupported", "Query condition is not one an index can serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
@@ -1275,7 +1287,7 @@ mod tests {
                 );
             }
             assert!(
-                (1..=19).contains(&rule.area),
+                (1..=21).contains(&rule.area),
                 "{}: area {}",
                 rule.id,
                 rule.area

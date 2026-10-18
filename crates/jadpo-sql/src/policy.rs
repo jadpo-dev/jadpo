@@ -9,7 +9,7 @@
 //! membership, its table under an alias of its own so a membership's
 //! grants can test its own table.
 
-use crate::{ident, text_literal};
+use crate::ident;
 
 /// One way a grant lets a caller in.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,7 +40,9 @@ pub struct Membership {
     /// qualified, or a new record's parameter. `None` for a membership
     /// across the whole application.
     pub scope: Option<(String, String)>,
-    /// Its role column and the roles that count; `None` when any role
+    /// Its role column and the roles that count, each as SQL: a parameter
+    /// bound to the role's stored value, or that value written where the
+    /// statement takes no parameters (chunk 5.5w3b); `None` when any role
     /// does (tenancy: any membership in the tenant).
     pub roles: Option<(String, Vec<String>)>,
     /// Its lifecycle's `visible:`, written for its own columns, so a
@@ -66,11 +68,10 @@ pub fn exists(membership: &Membership) -> String {
         tests.push(format!("{alias}.{} = {value}", ident(column)));
     }
     if let Some((column, roles)) = &membership.roles {
-        let listed: Vec<String> = roles.iter().map(|role| text_literal(role)).collect();
         tests.push(format!(
             "{alias}.{} IN ({})",
             ident(column),
-            listed.join(", ")
+            roles.join(", ")
         ));
     }
     if let Some(visible) = &membership.visible {
@@ -185,12 +186,12 @@ mod tests {
             member: "user_id".into(),
             caller: "$2".into(),
             scope: Some(("company_id".into(), qualified("project", "company_id"))),
-            roles: Some(("role".into(), vec!["editor".into(), "owner".into()])),
+            roles: Some(("role".into(), vec!["$3".into(), "$4".into()])),
             visible: None,
         };
         assert_eq!(
             exists(&membership),
-            "EXISTS (SELECT 1 FROM \"company_membership\" AS \"jadpo_m\" WHERE \"jadpo_m\".\"user_id\" = $2 AND \"jadpo_m\".\"company_id\" = \"project\".\"company_id\" AND \"jadpo_m\".\"role\" IN ('editor', 'owner'))"
+            "EXISTS (SELECT 1 FROM \"company_membership\" AS \"jadpo_m\" WHERE \"jadpo_m\".\"user_id\" = $2 AND \"jadpo_m\".\"company_id\" = \"project\".\"company_id\" AND \"jadpo_m\".\"role\" IN ($3, $4))"
         );
     }
 

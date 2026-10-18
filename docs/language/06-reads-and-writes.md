@@ -693,8 +693,10 @@ action disable_user(user_id: User.id) fails UserNotFound, UserDisabled -> User {
 }
 ```
 
-The statement is `UPDATE "user" SET "stage" = 'disabled', "disabled_at" =
-$1 WHERE "id" = $2 AND "stage" = 'active'`; when it changes no row, a second
+The statement is `UPDATE "user" SET "stage" = $1, "disabled_at" = $2
+WHERE "id" = $3 AND "stage" = $4`, the stages bound as their column holds
+them (`'disabled'`, `'active'`; area 19, "Chosen in chunk 5.5w3b"); when
+it changes no row, a second
 statement asks whether the user is there and visible, which tells
 `UserDisabled` from `UserNotFound`. `jadpo sql disable_user` shows both.
 

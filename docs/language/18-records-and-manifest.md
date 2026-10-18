@@ -148,7 +148,11 @@ that path numbers decode against, and each deployable's build id.
 > writes, a `field_restriction` for each field's own policy, a `tenancy` for
 > each entity that belongs to the tenant and an `action_exception` for each
 > line under root `policy { actions: }`, with `grants` edges to what each
-> decides and `scopes` edges from each tenancy to its entity.
+> decides and `scopes` edges from each tenancy to its entity. Since chunk
+> 5.5v2 each prompt (area 21) is a `prompt` node, placed at its `.prompt`
+> file, its type as its parent, with its `version`: its name and the first
+> 8 hex characters of a SHA-256 over its two files,
+> `answer_question@864ad76b`.
 
 ## Stable identity
 

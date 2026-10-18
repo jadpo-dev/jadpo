@@ -25,6 +25,9 @@ ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 # through it is `semantic.standard_operation_moved`.
 [namespaces]
 collection:
+# The rest of area 20's operations, built by chunks 5.5u3 and 5.5u6; the
+# constructions from pairs and GeoJSON text are area 19's.
+geo: intersects contains within centroid bounding_box from_wkt to_wkt from_geojson from_lng_lat from_lat_lng
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until
@@ -32,13 +35,15 @@ collection:
 # operation started, which only actions read (area 10). `config.<name>` is a
 # setting of the project's own `config { }`, and `translations.<domain>.<message>`
 # a message or enum a domain's `translations/` folder words, so neither's
-# members are listed here (area 10).
+# members are listed here (area 10). `prompts.render` renders a value of any
+# prompt the project declares (area 21).
 [generated]
 clock: now advance
 config:
 translations:
 sessions:
 oauth:
+prompts: render
 
 # Names too generic for a domain or a library (area 1).
 [generic]

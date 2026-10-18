@@ -33,6 +33,41 @@ pub fn program(files: &[(&str, &str)]) -> Program {
     }
 }
 
+/// The program of `files` as loose files, with the files beside them that
+/// aren't Jadpo (a prompt's text, area 21) at `records`.
+pub fn program_with_records(files: &[(&str, &str)], records: &[(&str, &str)]) -> Program {
+    let db = Database::default();
+    let inputs: Vec<File> = files
+        .iter()
+        .map(|(path, text)| File::new(&db, path.to_string(), text.to_string()))
+        .collect();
+    let records = records
+        .iter()
+        .map(|(path, text)| jadpo_db::Record {
+            path: path.to_string(),
+            text: Ok(text.to_string()),
+        })
+        .collect();
+    let project = Project::new(
+        &db,
+        inputs,
+        Vec::new(),
+        Layout::Loose,
+        Default::default(),
+        records,
+    );
+    match Program::load(&db, project) {
+        Ok(program) => program,
+        Err(errors) => panic!(
+            "the example doesn't check: {:#?}",
+            errors
+                .iter()
+                .map(|d| format!("{}: {}", d.rule.id, d.message))
+                .collect::<Vec<_>>()
+        ),
+    }
+}
+
 /// The program of one file, `main.jadpo`.
 pub fn main(source: &str) -> Program {
     program(&[("main.jadpo", source)])

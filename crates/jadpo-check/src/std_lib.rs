@@ -22,7 +22,7 @@ use crate::types::{BASES, Prim, TypeRef, container_arity};
 const NAMES: &str = include_str!("../std/names.txt");
 
 /// The stub files, by name.
-const STUBS: [(&str, &str); 24] = [
+const STUBS: [(&str, &str); 25] = [
     ("types.jadpo", include_str!("../std/types.jadpo")),
     ("standard.jadpo", include_str!("../std/standard.jadpo")),
     ("text.jadpo", include_str!("../std/text.jadpo")),
@@ -46,6 +46,7 @@ const STUBS: [(&str, &str); 24] = [
     ("markup.jadpo", include_str!("../std/markup.jadpo")),
     ("colour.jadpo", include_str!("../std/colour.jadpo")),
     ("media.jadpo", include_str!("../std/media.jadpo")),
+    ("geo.jadpo", include_str!("../std/geo.jadpo")),
     ("ai.jadpo", include_str!("../std/ai.jadpo")),
 ];
 
@@ -95,7 +96,9 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
             Some(Kind::Any)
         }
         // A standard object type the runtime builds as a record, one held
-        // as text (area 19), or a named collection (chunk 5.5o2).
+        // as text (area 19), a named collection (chunk 5.5o2), or one built
+        // on a built-in type with bounds of its own, `geo.bearing`'s
+        // `Bearing` (chunk 5.5u2).
         (other, 0)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
                 matches!(
@@ -104,6 +107,7 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
                         | jadpo_std::standard::Holds::Text { .. }
                         | jadpo_std::standard::Holds::List(_)
                         | jadpo_std::standard::Holds::Map(..)
+                        | jadpo_std::standard::Holds::Bounded { .. }
                 )
             }) =>
         {

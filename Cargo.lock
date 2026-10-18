@@ -1412,6 +1412,7 @@ dependencies = [
  "jadpo-std",
  "jadpo-syntax",
  "salsa",
+ "sha2",
 ]
 
 [[package]]
@@ -1430,6 +1431,7 @@ dependencies = [
  "jadpo-lsp",
  "jadpo-plan",
  "jadpo-runtime",
+ "jadpo-sql",
  "jadpo-std",
  "jadpo-syntax",
  "jadpo-term",
@@ -1569,6 +1571,7 @@ dependencies = [
  "html5ever",
  "idna",
  "regex",
+ "serde_json",
  "spdx",
 ]
 

@@ -46,75 +46,10 @@ pub enum StoreError {
 
 pub use jadpo_std::SqlType;
 
-/// A value sent to a store or read back from one. Drivers turn these into
-/// their wire formats; the read plans' codecs ([`crate::read`]) turn them
-/// into Jadpo values. Ordered, so an include's rows group by their key.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum SqlValue {
-    /// `NULL`, with the type a parameter needs.
-    Null(SqlType),
-    Bool(bool),
-    Int2(i16),
-    Int4(i32),
-    Int8(i64),
-    /// An exact decimal in its canonical text (`-12.50`).
-    Numeric(String),
-    Text(String),
-    Bytes(Vec<u8>),
-    Uuid([u8; 16]),
-    /// Microseconds since 1970-01-01T00:00:00Z.
-    Timestamp(i64),
-    /// Days since 1970-01-01.
-    Date(i32),
-    /// Microseconds since midnight.
-    Time(i64),
-    /// Microseconds since 1970-01-01T00:00:00 on no zone: a `timestamp`
-    /// without a zone, a `LocalDateTime` (area 19, chunk 5.5w).
-    LocalTimestamp(i64),
-    /// JSON text.
-    Json(String),
-    /// An array of values of one type, none of them `NULL`: a list a field
-    /// is tested `in`, or an include's keys.
-    Array(SqlType, Vec<SqlValue>),
-    /// A range of values of the element type (area 19, "Ranges", chunk
-    /// 5.5w): from its lower end, held, to its upper end, held when
-    /// `upper_held`; an end that is `None` is open.
-    Range {
-        element: SqlType,
-        lower: Option<Box<SqlValue>>,
-        upper: Option<Box<SqlValue>>,
-        upper_held: bool,
-    },
-    /// A pgvector `vector` (area 21, chunk 5.5v1): each item's
-    /// single-precision float by its bits, so a vector is compared and
-    /// ordered exactly, as the other values are.
-    Vector(Vec<u32>),
-}
-
-impl SqlValue {
-    /// The type the value is sent as.
-    pub fn ty(&self) -> SqlType {
-        match self {
-            SqlValue::Null(ty) => *ty,
-            SqlValue::Bool(_) => SqlType::Bool,
-            SqlValue::Int2(_) => SqlType::Int2,
-            SqlValue::Int4(_) => SqlType::Int4,
-            SqlValue::Int8(_) => SqlType::Int8,
-            SqlValue::Numeric(_) => SqlType::Numeric,
-            SqlValue::Text(_) => SqlType::Text,
-            SqlValue::Bytes(_) => SqlType::Bytes,
-            SqlValue::Uuid(_) => SqlType::Uuid,
-            SqlValue::Timestamp(_) => SqlType::Timestamp,
-            SqlValue::Date(_) => SqlType::Date,
-            SqlValue::Time(_) => SqlType::Time,
-            SqlValue::LocalTimestamp(_) => SqlType::LocalTimestamp,
-            SqlValue::Json(_) => SqlType::Json,
-            SqlValue::Array(element, _) => element.array(),
-            SqlValue::Range { element, .. } => element.range(),
-            SqlValue::Vector(_) => SqlType::Vector,
-        }
-    }
-}
+/// A value sent to a store or read back from one: the shared leaf's, so
+/// a literal the compiler writes into a statement is the value the runtime
+/// binds (area 19, chunk 5.5w3b).
+pub use jadpo_std::SqlValue;
 
 /// One row a query gave, its columns in the query's order.
 pub type Row = Vec<SqlValue>;

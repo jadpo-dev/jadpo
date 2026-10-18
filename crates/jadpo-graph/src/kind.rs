@@ -163,6 +163,7 @@ kinds! {
     ConfigField: "config_field", Services, Reserved, 10;
     LocaleSet: "locale_set", Services, Reserved, 10;
     TranslationKey: "translation_key", Services, Built, 10;
+    Prompt: "prompt", Services, Built, 21;
     EmailTemplate: "email_template", Services, Reserved, 16;
     Flag: "flag", Services, Reserved, 16;
     RateLimit: "rate_limit", Services, Reserved, 7;

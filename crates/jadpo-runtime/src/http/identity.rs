@@ -1062,6 +1062,9 @@ fn policed(
     for param in &gated.extra {
         own.push(match &param.source {
             jadpo_std::read::Source::Caller(part) => ctx.caller_param(*part),
+            // A literal or a role, as the storage codec bound it (chunk
+            // 5.5w3b).
+            jadpo_std::read::Source::Stored(value) => value.clone(),
             _ => SqlValue::Timestamp(ctx.now().saturating_mul(1000)),
         });
     }

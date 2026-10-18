@@ -6,6 +6,7 @@ mod support;
 
 mod accept_language;
 mod across;
+mod ai;
 mod binary;
 mod check;
 mod cli;
@@ -28,6 +29,7 @@ mod queries;
 mod round_trips;
 mod signed;
 mod sql;
+mod sql_literals;
 mod standard_boundaries;
 mod standard_storage;
 mod suggest;

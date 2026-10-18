@@ -6,99 +6,18 @@
 //! interpreter turns each into a value per thread and the code generator
 //! writes it into the program.
 
-use jadpo_graph::body::Literal;
-use jadpo_std::{Builtin, Dur, Num};
-
 /// A value known while compiling, as plain data the runtime reads too.
 pub use jadpo_std::Constant;
 
-/// Text as a literal of a type built on `builtin` holds it; `None` when
-/// the text isn't one, which the checker rules out.
-pub fn text(builtin: Option<Builtin>, text: &str) -> Option<Constant> {
-    Some(match builtin.map(Builtin::representation) {
-        Some(Builtin::Uuid) => Constant::Uuid(text.to_ascii_lowercase()),
-        Some(Builtin::Instant) => Constant::Instant(jadpo_std::instant_millis(text)?),
-        Some(Builtin::CalendarDate) => Constant::Date(jadpo_std::date_number(text)?),
-        _ => Constant::Text(text.to_string()),
-    })
-}
-
-/// `literal` as a value of a type built on `builtin` (none for an object,
-/// an enum or a container) whose values keep `scale` places; `None` for a
-/// literal that type can't hold, which the checker rules out.
-pub fn literal(
-    literal: &Literal,
-    builtin: Option<Builtin>,
-    scale: Option<u32>,
-) -> Option<Constant> {
-    match literal {
-        Literal::Bool(value) => Some(Constant::Bool(*value)),
-        Literal::None => Some(Constant::None),
-        Literal::Text(written) => text(builtin, written),
-        Literal::Duration(written) => Dur::parse(written)
-            .and_then(|dur| i64::try_from(dur.millis).ok())
-            .map(Constant::Duration),
-        Literal::Quantity(written) => {
-            jadpo_std::quantity::parse_literal(written)
-                .ok()
-                .map(|(unit, amount)| Constant::Quantity {
-                    kind: unit.kind,
-                    amount,
-                })
-        }
-        Literal::Percentage(written) => {
-            jadpo_std::percentage::parse_literal(written).map(|fraction| Constant::Percentage {
-                mantissa: fraction.mantissa,
-                scale: fraction.scale,
-            })
-        }
-        // A ratio built into a percentage, `Percentage(0.25)`, is the
-        // fraction it is (area 19).
-        Literal::Number { value, .. } if builtin == Some(Builtin::Percentage) => {
-            Some(Constant::Percentage {
-                mantissa: value.mantissa,
-                scale: value.scale,
-            })
-        }
-        // Only the zero `units.sum` is given for no items, which the
-        // checker fills: a written number never stands for a quantity
-        // (area 19, `type.unit_required`).
-        Literal::Number { value, .. } if matches!(builtin, Some(Builtin::Quantity(_))) => {
-            let Some(Builtin::Quantity(kind)) = builtin else {
-                return None;
-            };
-            let kept = value.at_scale(kind.scale())?;
-            Some(Constant::Quantity {
-                kind,
-                amount: kept.mantissa,
-            })
-        }
-        Literal::Number { value, decimal } => {
-            let decimal = match builtin {
-                Some(builtin) => builtin.representation() == Builtin::Decimal,
-                None => *decimal,
-            };
-            if decimal {
-                let kept: Num = match scale {
-                    Some(scale) => value.at_scale(scale)?,
-                    None => value.at_scale(value.scale)?,
-                };
-                Some(Constant::Decimal {
-                    mantissa: kept.mantissa,
-                    scale: kept.scale,
-                })
-            } else if value.scale == 0 {
-                i64::try_from(value.mantissa).ok().map(Constant::Int)
-            } else {
-                None
-            }
-        }
-    }
-}
+/// A literal decoded for the type it goes into: the shared leaf's, which
+/// the SQL a condition or a backfill writes decodes with too (chunk 5.5w3b).
+pub use jadpo_std::constant::{literal, text};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jadpo_graph::body::Literal;
+    use jadpo_std::{Builtin, Num};
 
     fn number(text: &str, decimal: bool) -> Literal {
         Literal::Number {

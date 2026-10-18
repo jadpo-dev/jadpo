@@ -52,7 +52,7 @@
 pub mod across;
 mod builtin;
 pub mod config;
-mod constant;
+pub mod constant;
 mod enums;
 mod format;
 pub mod http;
@@ -66,6 +66,7 @@ mod num;
 mod operations;
 pub mod percentage;
 pub mod policy;
+pub mod prompt;
 pub mod quantity;
 pub mod read;
 mod rules;
@@ -97,7 +98,7 @@ pub use operations::{
     moved_namespace, operation,
 };
 pub use quantity::{QuantityKind, Unit as QuantityUnit};
-pub use read::SqlType;
+pub use read::{SqlType, SqlValue};
 pub use rules::{
     Broken, KEY_TEXT_LENGTH, Pattern, RuleKey, Rules, check_builtin_text, compile_pattern,
     decode_key, is_email, is_ip_address, is_key_text, is_url, uuid_version,

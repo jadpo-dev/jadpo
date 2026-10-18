@@ -262,6 +262,9 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
             .unwrap_or(SqlValue::Null(param.ty)),
         Source::SizePlusOne => SqlValue::Int8(env.size.saturating_add(1)),
         Source::Caller(part) => caller_of(&env.callers, *part),
+        // A literal or an enum value, as the storage codec bound it when
+        // the plan was made (chunk 5.5w3b).
+        Source::Stored(value) => value.clone(),
     })
 }
 
@@ -481,96 +484,19 @@ impl JsonCodecs<'_> {
     }
 }
 
-/// A value as a parameter of type `ty`.
+/// A value as a parameter of type `ty`, through the contract's storage
+/// codec (`jadpo_std::standard::storage::bind`), which the compiler writes
+/// every literal in a statement with too (chunk 5.5w3b). A fault names what
+/// the value is, never the value itself, which may be personal or secret
+/// and would reach a log through it (chunk 5.5w2).
 pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
-    Ok(match (value, ty) {
-        (Value::None, ty) => SqlValue::Null(ty),
-        (Value::Bool(b), SqlType::Bool) => SqlValue::Bool(*b),
-        (Value::Int(n), SqlType::Int8) => SqlValue::Int8(*n),
-        (Value::Int(n), SqlType::Int4) => SqlValue::Int4(
-            i32::try_from(*n).map_err(|_| "a whole number too large for its column")?,
-        ),
-        (Value::Int(n), SqlType::Int2) => SqlValue::Int2(
-            i16::try_from(*n).map_err(|_| "a whole number too large for its column")?,
-        ),
-        (Value::Int(n), SqlType::Numeric) => SqlValue::Numeric(n.to_string()),
-        (Value::Decimal(d), SqlType::Numeric) => SqlValue::Numeric(d.to_string()),
-        (Value::Text(text), SqlType::Text) => SqlValue::Text(text.to_string()),
-        (Value::Uuid(text) | Value::Text(text), SqlType::Uuid) => {
-            SqlValue::Uuid(uuid_bytes(text).ok_or("text that isn't a UUID")?)
-        }
-        (Value::Uuid(text), SqlType::Text) => SqlValue::Text(text.to_string()),
-        (Value::Bytes(bytes), SqlType::Bytes) => SqlValue::Bytes(bytes.to_vec()),
-        (Value::Instant(millis), SqlType::Timestamp) => {
-            SqlValue::Timestamp(millis.checked_mul(1000).ok_or("an instant out of range")?)
-        }
-        (Value::Date(day), SqlType::Date) => SqlValue::Date(*day),
-        (Value::Duration(millis), SqlType::Int8) => SqlValue::Int8(*millis),
-        // In its kind's base unit at its scale (area 19).
-        (Value::Quantity(quantity), SqlType::Numeric) => SqlValue::Numeric(
-            jadpo_std::quantity::number_text(quantity.amount, quantity.kind.scale()),
-        ),
-        // The fraction it is (area 19).
-        (Value::Percentage(fraction), SqlType::Numeric) => SqlValue::Numeric(fraction.to_string()),
-        (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => SqlValue::Text(
-            jadpo_std::standard::stored_variant(&variant.ty, &variant.name).to_string(),
-        ),
-        // A `LocalTime` and a `LocalDateTime`, as microseconds (chunk 5.5w).
-        (Value::Int(micros), SqlType::Time) => SqlValue::Time(*micros),
-        (Value::Int(micros), SqlType::LocalTimestamp) => SqlValue::LocalTimestamp(*micros),
-        // A range's ends and whether it holds its upper one (chunk 5.5w).
-        (Value::List(ends), SqlType::Range(element)) => match &ends[..] {
-            // One whose start is its end holds nothing, and PostgreSQL keeps
-            // such a range as `empty`, without its ends, so it wouldn't
-            // read back.
-            [lower, upper, Value::Bool(false)]
-                if !matches!(lower, Value::None) && lower == upper =>
-            {
-                return Err(
-                    "a range whose start is its end, which PostgreSQL keeps without its ends"
-                        .into(),
-                );
-            }
-            [lower, upper, Value::Bool(upper_held)] => {
-                let end = |value: &Value| -> Result<Option<Box<SqlValue>>, String> {
-                    Ok(match value {
-                        Value::None => None,
-                        value => Some(Box::new(to_sql(value, *element)?)),
-                    })
-                };
-                SqlValue::Range {
-                    element: *element,
-                    lower: end(lower)?,
-                    upper: end(upper)?,
-                    upper_held: *upper_held,
-                }
-            }
-            _ => return Err("a range without its two ends".into()),
-        },
-        // A vector's items, each the float it keeps (area 21, chunk 5.5v1).
-        (vector @ Value::List(_), SqlType::Vector) => SqlValue::Vector(
-            jadpo_value::vector::floats(vector)
-                .map_err(|_| "a vector with an item that isn't a number")?
-                .into_iter()
-                .map(f32::to_bits)
-                .collect(),
-        ),
-        (Value::List(items) | Value::Set(items), SqlType::Array(inner)) => SqlValue::Array(
-            *inner,
-            items
-                .iter()
-                .map(|item| to_sql(item, *inner))
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
-        // What the value is, never the value itself, which may be personal
-        // or secret and would reach a log through the fault (chunk 5.5w2).
-        (value, ty) => {
-            return Err(format!(
-                "{} that a `{ty:?}` column can't hold",
-                value.described()
-            ));
-        }
-    })
+    match value.stored() {
+        Some(stored) => jadpo_std::standard::storage::bind(&stored, ty),
+        None => Err(format!(
+            "{} that a `{ty:?}` column can't hold",
+            value.described()
+        )),
+    }
 }
 
 /// A column's value as the runtime holds it.
@@ -733,21 +659,6 @@ fn widen(value: SqlValue) -> SqlValue {
 }
 
 /// A UUID's 16 bytes from its text.
-fn uuid_bytes(text: &str) -> Option<[u8; 16]> {
-    let hex: Vec<u8> = text.bytes().filter(|b| *b != b'-').collect();
-    if hex.len() != 32 {
-        return None;
-    }
-    let mut out = [0u8; 16];
-    for (byte, pair) in out.iter_mut().zip(hex.chunks(2)) {
-        let [high, low] = pair else { return None };
-        let high = (*high as char).to_digit(16)?;
-        let low = (*low as char).to_digit(16)?;
-        *byte = u8::try_from(high * 16 + low).ok()?;
-    }
-    Some(out)
-}
-
 /// A UUID as text: lowercase hexadecimal in groups of 8-4-4-4-12.
 pub fn uuid_text(bytes: &[u8; 16]) -> String {
     let mut out = String::with_capacity(36);

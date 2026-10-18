@@ -227,9 +227,26 @@ pub struct FieldModel {
     /// contract's JSON in the one `jsonb` column `sql_type` is, written and
     /// read by the route codec.
     pub json: Option<&'static str>,
+    /// The built-in type its type is built on, which a literal compared
+    /// with it or backfilled into it is decoded for, as the plan decodes a
+    /// body's (chunk 5.5w3b); `None` for an enum, an object or a container.
+    pub builtin: Option<jadpo_std::Builtin>,
+    /// The places its type's values keep, for a decimal.
+    pub scale: Option<u32>,
 }
 
 impl FieldModel {
+    /// Its column as a condition or a literal written into SQL sees it.
+    pub fn column(&self) -> jadpo_sql::Column<'_> {
+        jadpo_sql::Column {
+            name: &self.born,
+            nullable: self.nullable,
+            ty: sql_type(self),
+            builtin: self.builtin,
+            scale: self.scale,
+        }
+    }
+
     /// The data entry of the compound standard type the field holds, if it
     /// holds one.
     pub fn compound_entry(&self) -> Option<&'static jadpo_std::StandardType> {
@@ -846,6 +863,8 @@ impl Reader<'_> {
             fixed: Vec::new(),
             comment: None,
             json: None,
+            builtin: None,
+            scale: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -917,6 +936,14 @@ impl Reader<'_> {
             self.lookup,
             &Ty::Field(entity.to_string(), vec![name.to_string()]),
         );
+        if let Ty::Prim(builtin) = self.lookup.structure(ty.strip_nullable()) {
+            field.builtin = Some(builtin);
+        }
+        field.scale = self
+            .lookup
+            .rule_chain(ty.strip_nullable())
+            .into_iter()
+            .find_map(|(_, rules)| rules.scale);
         // A token or a key is shown once and kept only as its verifier, by
         // the runtime (area 8).
         if let Ty::Prim(
@@ -2196,12 +2223,7 @@ pub fn sql_type(field: &FieldModel) -> Option<jadpo_std::SqlType> {
 /// An entity's fields as the columns a condition on them renders.
 impl jadpo_sql::Columns for EntityModel {
     fn column(&self, name: &str) -> Option<jadpo_sql::Column<'_>> {
-        let field = field(self, name)?;
-        Some(jadpo_sql::Column {
-            name: &field.born,
-            nullable: field.nullable,
-            ty: sql_type(field),
-        })
+        Some(field(self, name)?.column())
     }
 }
 

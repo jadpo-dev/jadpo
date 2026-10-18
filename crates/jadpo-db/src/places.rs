@@ -75,11 +75,14 @@ pub enum Folder {
     /// `type X = Message` files and the `translations { }` language files
     /// (area 10).
     Translations,
+    /// `type X = Prompt` files, each with its `<name>.prompt` text beside
+    /// it (area 21).
+    Prompts,
     Fixtures,
 }
 
 impl Folder {
-    pub const ALL: [Folder; 13] = [
+    pub const ALL: [Folder; 14] = [
         Folder::Entities,
         Folder::Types,
         Folder::Failures,
@@ -92,15 +95,17 @@ impl Folder {
         Folder::Subscribers,
         Folder::Emails,
         Folder::Translations,
+        Folder::Prompts,
         Folder::Fixtures,
     ];
 
     /// The folders `shared/` may hold.
-    pub const SHARED: [Folder; 4] = [
+    pub const SHARED: [Folder; 5] = [
         Folder::Types,
         Folder::Libraries,
         Folder::Failures,
         Folder::Translations,
+        Folder::Prompts,
     ];
 
     pub fn name(self) -> &'static str {
@@ -117,6 +122,7 @@ impl Folder {
             Folder::Subscribers => "subscribers",
             Folder::Emails => "emails",
             Folder::Translations => "translations",
+            Folder::Prompts => "prompts",
             Folder::Fixtures => "fixtures",
         }
     }
@@ -132,7 +138,7 @@ impl Folder {
             Folder::Entities => *kind == ItemKind::Entity,
             Folder::Types => matches!(
                 kind,
-                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message)
+                ItemKind::Type(base) if !matches!(base, Base::Failure | Base::Event | Base::EmailMessage | Base::Message | Base::Prompt)
             ),
             Folder::Failures => *kind == ItemKind::Type(Base::Failure),
             Folder::Actions => *kind == ItemKind::Action,
@@ -147,6 +153,7 @@ impl Folder {
             Folder::Translations => {
                 matches!(kind, ItemKind::Type(Base::Message) | ItemKind::Singleton)
             }
+            Folder::Prompts => *kind == ItemKind::Type(Base::Prompt),
             Folder::Fixtures => *kind == ItemKind::Fixture,
         }
     }

@@ -66,6 +66,8 @@ pub(crate) enum Reach {
         key: String,
         arity: usize,
     },
+    /// `prompts.render(prompt)` (area 21): the prompt's name.
+    Prompt(String),
     Unknown,
 }
 

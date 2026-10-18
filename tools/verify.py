@@ -247,6 +247,14 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
             Step('hashing, encodings and JSON give the fixed answers under wasm32', 'wasm32',
                  ['node', 'tools/run_wasm.mjs',
                   f'target/{WASM}/debug/examples/formats.wasm'], lane='cargo'),
+            # The geodesic measures (area 20, chunk 5.5u2): GeographicLib's
+            # test sample and the digest of every answer, as natively.
+            Step('geodesic measures check for wasm32', 'wasm32',
+                 ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
+                  '--example', 'geodesics'], lane='cargo'),
+            Step('geodesic measures give the native digits under wasm32', 'wasm32',
+                 ['node', 'tools/run_wasm.mjs',
+                  f'target/{WASM}/debug/examples/geodesics.wasm'], lane='cargo'),
         ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'

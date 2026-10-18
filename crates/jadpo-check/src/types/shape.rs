@@ -22,6 +22,9 @@ pub enum FieldsBase {
     /// `type X = Message { }` (area 10): text for people, its fields the
     /// wording's placeholders.
     Message,
+    /// `type X = Prompt { }` (area 21): what a model is asked, its fields
+    /// the placeholders of its `.prompt` file.
+    Prompt,
     Failure,
     Entity,
 }
@@ -35,6 +38,7 @@ impl FieldsBase {
             "Event" => FieldsBase::Event,
             "EmailMessage" => FieldsBase::EmailMessage,
             "Message" => FieldsBase::Message,
+            "Prompt" => FieldsBase::Prompt,
             "Failure" => FieldsBase::Failure,
             _ => return None,
         })

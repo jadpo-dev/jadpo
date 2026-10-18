@@ -525,6 +525,60 @@ impl Value {
         }
     }
 
+    /// As the storage codec takes it (`jadpo_std::standard::storage`,
+    /// chunk 5.5w3b); `None` for a value no column holds as itself (an
+    /// amount of money, a `ZonedTime`, an object, a map, a secret value),
+    /// which `standard::to_parts` turns into its columns first.
+    pub fn stored(&self) -> Option<jadpo_std::standard::storage::Stored<'_>> {
+        use jadpo_std::standard::storage::Stored;
+        Some(match self {
+            Value::None => Stored::None,
+            Value::Bool(value) => Stored::Bool(*value),
+            Value::Int(n) => Stored::Int(*n),
+            Value::Decimal(d) => Stored::Decimal {
+                mantissa: d.mantissa,
+                scale: d.scale,
+            },
+            Value::Text(text) => Stored::Text(text),
+            Value::Uuid(text) => Stored::Uuid(text),
+            Value::Bytes(bytes) => Stored::Bytes(bytes),
+            Value::Instant(millis) => Stored::Instant(*millis),
+            Value::Date(day) => Stored::Date(*day),
+            Value::Duration(millis) => Stored::Duration(*millis),
+            Value::Quantity(quantity) => Stored::Quantity {
+                kind: quantity.kind,
+                amount: quantity.amount,
+            },
+            Value::Percentage(fraction) => Stored::Percentage {
+                mantissa: fraction.mantissa,
+                scale: fraction.scale,
+            },
+            Value::Variant(variant) if variant.fields.is_empty() => Stored::Variant {
+                ty: &variant.ty,
+                name: &variant.name,
+            },
+            Value::List(items) => Stored::List(
+                items
+                    .iter()
+                    .map(Value::stored)
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            Value::Set(items) => Stored::Set(
+                items
+                    .iter()
+                    .map(Value::stored)
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            Value::Unit
+            | Value::Zoned(_)
+            | Value::Money(_)
+            | Value::Map(_)
+            | Value::Record(_)
+            | Value::Variant(_)
+            | Value::Secret(_) => return None,
+        })
+    }
+
     /// `text` held as a secret value of standard type `kind` (chunk
     /// 5.5r2).
     pub fn secret(kind: &'static str, text: &str) -> Value {
