@@ -1203,20 +1203,36 @@ reference only).
   on this roadmap. Written as area 21 and decided by Richard on
   2026-10-18, all fifteen questions as recommended; built in 5.5v1 to
   5.5v7.
-- [ ] **5.5v1 Vectors in PostgreSQL** `opus · high` (area 21,
-  "Embeddings and search"): a vector type with `dimensions:` stored in a
-  pgvector `vector(n)` column (the 5.5s2 `toolchain.not_built_yet`
-  lifted), `distance:` on the type, `order: [F nearest v]` returning
-  `Nearest<T>`, `ai.distance` in code and as a SQL form in `where:`, a
-  derived HNSW index with the type's operator class (half-precision
-  expression index from 2,001 to 4,000 dimensions), `hnsw.ef_search` and
-  strict iterative scans per query, `CREATE EXTENSION` in the migration
-  with `jadpo migrate apply` and the start-up check refusing a store
-  without pgvector, and CI's and `jadpo dev`'s PostgreSQL on an image
-  with both pgvector and PostGIS (5.5u4 moves it to PostGIS's). Design the errors on area 21 first. Done
-  when a filtered nearest query of five returns the same five records
-  interpreted and on PostgreSQL, its plan uses the index, and each new
-  error has a checked example.
+- [ ] **5.5v1 Vectors in PostgreSQL: storage** `opus · high` (area 21,
+  "Embeddings and search"). Split (2026-10-18): this chunk stores vectors
+  and compares them in code; 5.5v1b takes the nearest-neighbour query and
+  its index. A vector type with `dimensions:` stored in a pgvector
+  `vector(n)` column (the 5.5s2 `toolchain.not_built_yet` lifted), an
+  `Embedding` in a column for its model and one for its vector,
+  `distance:` on the type, `ai.distance` in code computed as pgvector
+  computes each metric, `CREATE EXTENSION` in the first migration with a
+  vector column, `jadpo migrate apply`, `jadpo dev`, `jadpo test` and the
+  start-up check refusing a store without pgvector
+  (`migration.extension_missing`, shared with 5.5u4),
+  `data.vector_store_unsupported`, and CI's PostgreSQL on an image with
+  both pgvector and PostGIS. Design the errors on area 21 first. Done when
+  an entity stores and reads back vectors of every metric unchanged on
+  PostgreSQL, `ai.distance` gives pgvector's own distance for each metric
+  on the same inputs, a store without pgvector is refused before anything
+  runs, and each new error has a checked example.
+- [ ] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
+  (area 21, "The nearest-neighbour query" and "The index"), after 5.5v1:
+  `order: [F nearest v]` returning `Nearest<T>`, `ai.distance` as a SQL
+  form in `where:`, a derived HNSW index with the type's operator class
+  (half-precision expression index from 2,001 to 4,000 dimensions, exact
+  search with a warning above), `kind: IndexKind.hnsw` with `m:` and
+  `ef_construction:`, `hnsw.ef_search` and strict iterative scans per
+  query (pgvector 0.8.0 or later: the chunk decides how a store with an
+  older pgvector is refused), and `query.nearest_unindexed`,
+  `query.nearest_type` and `query.nearest_page`. Done when a filtered
+  nearest query of five returns the same five records interpreted and on
+  PostgreSQL, its plan uses the index, and each new error has a checked
+  example.
 - [ ] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
   files"): the `Prompt` type base, `prompts/` in a domain,
   `<name>.prompt` with `# Instructions` and `# Request`, placeholders
