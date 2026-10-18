@@ -16,6 +16,26 @@
 /// checksum: `021000021`.
 public type AbaRoutingNumber = Text {}
 
+/// One of the 14 allergens a food label must name (area 19, UK FIR 2014
+/// and EU Regulation 1169/2011, Annex II), written as its own name,
+/// `milk`, and shown as the Food Standards Agency words it.
+public type Allergen = Enum {
+    celery
+    cereals_containing_gluten
+    crustaceans
+    eggs
+    fish
+    lupin
+    milk
+    molluscs
+    mustard
+    peanuts
+    sesame
+    soybeans
+    sulphites
+    tree_nuts
+}
+
 /// An angle, held in radians to 9 places (area 19), written `90deg` or
 /// `1.5rad`.
 public type Angle = Angle {}
@@ -31,6 +51,32 @@ public type Bic = Text {}
 /// Data per second, held in whole bits per second (area 19), written
 /// `100Mbps`; a `DataSize` over a `Duration`.
 public type Bitrate = Bitrate {}
+
+/// A person's blood group, ABO and RhD (area 19), written `O-`: health
+/// data.
+public type BloodType = Enum {
+    a_positive
+    a_negative
+    ab_positive
+    ab_negative
+    b_positive
+    b_negative
+    o_positive
+    o_negative
+}
+
+/// A booking's record locator (area 19, IATA's passenger name record),
+/// six capitals and digits: `X7K9QZ`.
+public type BookingReference = Text {}
+
+/// The cabin a seat is sold in (area 19), written as its own name,
+/// `premium_economy`.
+public type CabinClass = Enum {
+    business
+    economy
+    first
+    premium_economy
+}
 
 /// A calendar day with no time or zone (area 10), written `2026-10-25`.
 public type CalendarDate = CalendarDate {}
@@ -67,6 +113,46 @@ public type CallingCode = Text {}
 /// The first 6 or 8 digits of a card number, naming its issuer (area
 /// 19): `424242`.
 public type CardBin = Text {}
+
+/// A card scheme (area 19), written as its own name, `visa`, and shown
+/// by the scheme's, "Visa". `money.mask` tells it from a card's number.
+public type CardBrand = Enum {
+    american_express
+    diners_club
+    discover
+    jcb
+    maestro
+    mastercard
+    unionpay
+    visa
+}
+
+/// The month a payment card runs to, to its end (area 19), written
+/// `2028-12` and shown as the card prints it, `12/28`: `year` from 2000 to
+/// 2099, `month` from 1 to 12. Personal data.
+public type CardExpiry = Object {
+    year: Int
+    month: Int
+}
+
+/// A shipping carrier by its Standard Carrier Alpha Code (area 19, NMFTA),
+/// two to four capitals: `UPSN`.
+public type Carrier = Text {}
+
+/// A level of the Common European Framework of Reference for Languages
+/// (area 19), written `B2`.
+public type CefrLevel = Enum {
+    a1
+    a2
+    b1
+    b2
+    c1
+    c2
+}
+
+/// An intermodal container's number (area 19, ISO 6346), its check digit
+/// passing: `CSQU3054383`, printed `CSQU 305438 3`.
+public type ContainerNumber = Text {}
 
 /// A continent (area 19), as UN M49 groups the world: written as its own
 /// name, `europe`, and as M49's number with `form: CodeForm.numeric`.
@@ -122,8 +208,21 @@ public type DateRange = Object {
 /// An active ISO 4217 currency (area 19), written as its code, `GBP`.
 public type Currency = Enum {}
 
+/// A driving licence's number with the country that issued it (area 19):
+/// the number upper case with no spaces, in that country's form where it
+/// publishes one, `MCADI801206HZ9HM` for Great Britain. Shown masked to
+/// its last four. Personal data.
+public type DrivingLicenceNumber = Object {
+    country: Country
+    number: Text
+}
+
 /// A length of time, exact to the millisecond (area 10), written `PT1H30M`.
 public type Duration = Duration {}
+
+/// A GTIN-13, the European article number (area 19, GS1), its check digit
+/// passing: `4006381333931`.
+public type Ean13 = Text {}
 
 /// An email address (area 2), checked as one.
 public type Email = Email {}
@@ -142,6 +241,18 @@ public type Emoji = Text {}
 /// Energy, held in joules to 3 places (area 19), written `2kWh` or
 /// `250kcal`.
 public type Energy = Energy {}
+
+/// An energy performance certificate's band (area 19, the UK's EPC),
+/// written `C`.
+public type EpcRating = Enum {
+    a
+    b
+    c
+    d
+    e
+    f
+    g
+}
 
 /// A rate between two currencies at an instant (area 19): one `from` is
 /// `rate` of `to`, written `GBP/EUR 1.17 2026-10-18T09:00:00Z`. An app holds
@@ -201,6 +312,16 @@ public type HttpMethod = Enum {
 /// An HTTP response's status code (area 19, RFC 9110), from 100 to 599.
 public type HttpStatus = Int {}
 
+/// A Harmonized System commodity code (area 19, WCO), six to ten digits
+/// with no dots: `090111`.
+public type HsCode = Text {}
+
+/// An airline's IATA designator (area 19), two characters: `BA`.
+public type IataAirline = Text {}
+
+/// An airport's IATA code (area 19), three capitals: `LHR`.
+public type IataAirport = Text {}
+
 /// An IBAN (area 19, ISO 13616) in its electronic form, upper case with
 /// no spaces, its mod-97 check digits passing: `GB29NWBK60161331926819`.
 /// Shown to people in fours.
@@ -210,8 +331,57 @@ public type Iban = Text {}
 /// Luhn check digit passing. Personal data.
 public type Imei = Text {}
 
+/// What kind of identity document one is (area 19), written as its own
+/// name: `passport`, `identity_card`, `driving_licence`,
+/// `residence_permit`.
+public type IdentityDocumentKind = Enum {
+    passport
+    identity_card
+    driving_licence
+    residence_permit
+}
+
+/// An identity document (area 19): its kind, the country that issued it,
+/// its number in that country's form for its kind, and the day it
+/// expires, if it does. Shown as its number masked to its last four.
+/// Personal data.
+public type IdentityDocument = Object {
+    kind: IdentityDocumentKind
+    country: Country
+    number: Text
+    expires: CalendarDate?
+}
+
+/// An airport's ICAO location indicator (area 19), four capitals: `EGLL`.
+public type IcaoAirport = Text {}
+
+/// A diagnosis's ICD-10 code (area 19, WHO), with its dot: `I21.9`.
+/// Health data.
+public type Icd10Code = Text {}
+
 /// Illuminance, held in lux to 3 places (area 19), written `500lx`.
 public type Illuminance = Illuminance {}
+
+/// A rule of ICC's Incoterms 2020 (area 19), written as its code, `FOB`.
+/// The rules earlier editions had, `DAT`, are only read.
+public type Incoterm = Enum {
+    cfr
+    cif
+    cip
+    cpt
+    daf
+    dap
+    dat
+    ddp
+    ddu
+    deq
+    des
+    dpu
+    exw
+    fas
+    fca
+    fob
+}
 
 /// One moment for everyone (area 10), written `2026-10-25T09:30:00Z`.
 public type Instant = Instant {}
@@ -229,6 +399,10 @@ public type InvoiceNumber = Text {}
 
 /// An IPv4 or IPv6 address (area 2).
 public type IpAddress = IpAddress {}
+
+/// An ISBN (area 19, ISO 2108) in its 13 digits with no hyphens, its
+/// check digit passing: `9780306406157`.
+public type Isbn = Text {}
 
 /// A securities identification number (area 19, ISO 6166), its Luhn
 /// check digit passing: `US0378331005`.
@@ -248,6 +422,17 @@ public type JsonPointer = Text {}
 /// A language (area 19, ISO 639-1), written as its code, `en`; `form:
 /// CodeForm.alpha3` writes ISO 639-2's `eng`. `Language.or_` is Odia.
 public type Language = Enum {}
+
+/// A lawful basis for processing personal data (area 19, GDPR Article
+/// 6(1)), written as its own name, `legitimate_interests`.
+public type LawfulBasis = Enum {
+    consent
+    contract
+    legal_obligation
+    legitimate_interests
+    public_task
+    vital_interests
+}
 
 /// A Legal Entity Identifier (area 19, ISO 17442), its mod-97 check
 /// digits passing: `506700GE1G29325QX363`.
@@ -280,6 +465,19 @@ public type Locale = Enum {}
 /// `AC-DE-48-00-00-80`. Personal data.
 public type MacAddress = Text {}
 
+/// What may be kept of a payment card once its number is gone (area 19,
+/// PCI DSS): its brand, where a listed scheme issued it, and its last four
+/// digits, shown as `Visa •••• 4242`. `money.mask` makes one from a
+/// `PaymentCardNumber`. Personal data.
+public type MaskedCardNumber = Object {
+    brand: CardBrand?
+    last_four: Text
+}
+
+/// A manufacturing batch or lot (area 19, GS1 AI 10), up to 20 of GS1's
+/// characters: `ABC123`.
+public type LotNumber = Text {}
+
 /// A mass, held in kilograms to 9 places, a microgram (area 19), written
 /// `250g`, `2.5kg` or `500mcg`.
 public type Mass = Mass {}
@@ -300,6 +498,14 @@ public type Month = Enum {
     december
 }
 
+/// A UK electricity supply's MPAN core (area 19, Elexon), 13 digits, its
+/// check digit passing: `1200012345679`.
+public type Mpan = Text {}
+
+/// A UK gas supply's meter point reference number (area 19, Xoserve), 6
+/// to 10 digits: `1234567`.
+public type Mprn = Text {}
+
 /// A person's nationality (area 19), named by the country, as ISO 3166-1
 /// codes it: `GB`. Personal data.
 public type Nationality = Enum {}
@@ -316,6 +522,19 @@ public type NhsNumber = Text {}
 /// 09:00-17:30; Sa 10:00-16:00; 2026 Dec 25 off [Europe/London]`.
 /// `temporal.open_at` asks whether it is open at an instant.
 public type OpeningHours = Text {}
+
+/// A passport's number with the country that issued it (area 19, ICAO
+/// Doc 9303): the number upper case, in that country's form where it
+/// publishes one, `123456789` for the United Kingdom. Shown masked to its
+/// last four. Personal data.
+public type PassportNumber = Object {
+    country: Country
+    number: Text
+}
+
+/// A researcher's ORCID iD (area 19), its ISO 7064 check character
+/// passing: `0000-0002-1825-0097`.
+public type Orcid = Text {}
 
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last
@@ -427,6 +646,30 @@ public type RelativeUrl = Text {}
 /// one.
 public type Slug = Text {}
 
+/// An item's serial number (area 19, GS1 AI 21), up to 20 of GS1's
+/// characters: `SN-0042a`.
+public type SerialNumber = Text {}
+
+/// A seller's stock-keeping unit (area 19), 1 to 64 characters with no
+/// spaces: `AB-1234-XL`.
+public type Sku = Text {}
+
+/// A SNOMED CT concept's identifier (area 19), its Verhoeff check digit
+/// passing: `22298006`. Health data.
+public type SnomedConcept = Text {}
+
+/// A serial shipping container code (area 19, GS1), 18 digits, its check
+/// digit passing: `106141412345678908`.
+public type Sscc = Text {}
+
+/// How land in England and Wales is held (area 19, HM Land Registry),
+/// written as its own name, `freehold`.
+public type Tenure = Enum {
+    commonhold
+    freehold
+    leasehold
+}
+
 /// Which way text runs (area 19), written as HTML's `dir` writes it, `ltr`
 /// and `rtl`: what `locale.direction` gives.
 public type TextDirection = Enum {
@@ -441,6 +684,15 @@ public type SoundLevel = SoundLevel {}
 /// A speed, held in metres per second to 6 places (area 19), written
 /// `30mph` or `100kmh`; a `Length` over a `Duration`.
 public type Speed = Speed {}
+
+/// A taxpayer's identification number with the country that issued it
+/// (area 19), as the OECD's common reporting standard records one: any of
+/// that country's forms, a UTR or a National Insurance number for the
+/// United Kingdom. Shown masked to its last four. Personal data.
+public type TaxId = Object {
+    country: Country
+    number: Text
+}
 
 /// A temperature, held in kelvin to 3 places (area 19), written
 /// `21degC`, `70degF` or `300kelvin`. It adds only a
@@ -474,6 +726,14 @@ public type UkUtr = Text {}
 /// A place in trade and transport (area 19, UN/LOCODE): a country's code
 /// and three letters or digits, `GBLON`.
 public type UnLocode = Text {}
+
+/// A dangerous good's UN number (area 19, the UN Model Regulations):
+/// `UN1203`, printed `UN 1203`.
+public type UnNumber = Text {}
+
+/// A GTIN-12, the universal product code (area 19, GS1), its check digit
+/// passing and its leading zero kept: `036000291452`.
+public type UpcA = Text {}
 
 /// A Unique Property Reference Number (area 19, GeoPlace): up to 12
 /// digits, held as text so no zero is lost: `100023336956`. Personal data.
@@ -523,6 +783,18 @@ public type UtmParameters = Object {
 
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
+
+/// A VAT registration number (area 19), written as VIES writes it: its
+/// country's code (`EL` for Greece) and the number in that country's form,
+/// `GB980780684`.
+public type VatNumber = Object {
+    country: Country
+    number: Text
+}
+
+/// A vehicle identification number (area 19, ISO 3779), 17 characters
+/// with no `I`, `O` or `Q`: `1HGCM82633A004352`.
+public type Vin = Text {}
 
 /// A voltage, held in volts to 6 places (area 19), written `230V`.
 public type Voltage = Voltage {}

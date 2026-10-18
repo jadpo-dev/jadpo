@@ -32,6 +32,11 @@ public library money {
     /// Currency.gbp)` is £10.50.
     function from_minor(amount: Int, currency: Currency) -> Money {}
 
+    /// What may be kept of `card` once its number is gone: its brand, told
+    /// by its first digits from the ranges each scheme publishes (`none`
+    /// for a range no listed scheme issues), and its last four digits.
+    function mask(card: PaymentCardNumber) -> MaskedCardNumber {}
+
     /// `value`'s minor units: 1050 for £10.50.
     function minor(value: Money) -> Int {}
 

@@ -17,10 +17,14 @@ use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
 pub mod addresses_data;
+pub mod card_types;
+mod codes;
 mod contact;
+pub mod documents;
 pub mod emoji_data;
 pub mod events;
 mod identifiers;
+pub mod lists;
 pub mod opening_hours;
 pub mod person_names_data;
 pub mod phones;
@@ -90,6 +94,9 @@ pub enum Part {
     /// One line of text for people ([`LINE_PATTERN`]): an address's
     /// lines, the name in a mailbox (chunk 5.5l).
     Line,
+    /// Text matching this pattern whole: a masked card's last four digits
+    /// (chunk 5.5i2).
+    Matching(&'static str),
     /// Text for people that may run over several lines, with no control
     /// character but a tab or a line feed ([`events::PARAGRAPH_PATTERN`]):
     /// an event's description (chunk 5.5k3).
@@ -107,7 +114,7 @@ impl Part {
         match self {
             Part::Of(builtin) => Some(builtin),
             Part::Whole(..) => Some(Builtin::Int),
-            Part::Line | Part::Paragraph => Some(Builtin::Text),
+            Part::Line | Part::Matching(_) | Part::Paragraph => Some(Builtin::Text),
             Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
         }
     }
@@ -127,6 +134,10 @@ impl Part {
             },
             Part::Line => crate::Rules {
                 pattern: Some(LINE_PATTERN.to_string()),
+                ..crate::Rules::default()
+            },
+            Part::Matching(pattern) => crate::Rules {
+                pattern: Some(pattern.to_string()),
                 ..crate::Rules::default()
             },
             Part::Paragraph => crate::Rules {
@@ -232,6 +243,14 @@ pub enum TextForm {
     /// A fraction of two whole numbers joined by `/`, its denominator at
     /// least 1, `3/4`, `-1/2` (chosen in chunk 5.5j2).
     Fraction,
+    /// A card's expiry as ISO 8601's calendar month, `2028-12`, its year
+    /// from 2000 to 2099 so the card's own `12/28` names one month (chosen
+    /// in chunk 5.5i2).
+    CardExpiry,
+    /// A VAT number as VIES writes it: its country's code (`EL` for
+    /// Greece), then the number with no spaces or punctuation,
+    /// `GB980780684` (chosen in chunk 5.5i2).
+    VatNumber,
     /// An RFC 5545 `VEVENT` (chosen in chunk 5.5k3, [`events`]): a
     /// property a line, joined by line feeds, an all-day event's `DTEND`
     /// the day after its last.
@@ -362,6 +381,21 @@ pub enum FormatKey {
     /// its detail, each on its own line; with neither, its status; with no
     /// status either, its type, `about:blank` when it has none.
     ProblemDetails,
+    /// Each variant's own name, the same in every locale, in the variants'
+    /// order: a card brand's, "American Express" (chunk 5.5i2).
+    Names(&'static [&'static str]),
+    /// A masked card as a receipt prints it: its brand's name, if known,
+    /// and its last four after `•••• `, "Visa •••• 4242" (chunk 5.5i2).
+    MaskedCard,
+    /// A card's expiry as the card prints it, `12/28` (chunk 5.5i2).
+    CardExpiry,
+    /// The text in the object's part `part`, shown as its last four after
+    /// `mask`: a tax or identity document's number, `•••• 6789` (chunk
+    /// 5.5i2).
+    PartLastFour {
+        part: &'static str,
+        mask: &'static str,
+    },
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -459,6 +493,18 @@ pub enum Validator {
     UserAgent,
     /// A web origin's serialisation (RFC 6454, [`web`]).
     WebOrigin,
+    /// GS1's mod-10 check digit: a GTIN, an ISBN-13, an SSCC.
+    Gs1,
+    /// A VIN's check digit, where 49 CFR 565 requires one.
+    Vin,
+    /// An ISO 6346 container number's check digit.
+    ContainerNumber,
+    /// A SNOMED CT concept's partition and Verhoeff check digit.
+    SnomedConcept,
+    /// An ORCID iD's ISO 7064 MOD 11-2 check character.
+    Orcid,
+    /// An MPAN core's check digit.
+    Mpan,
 }
 
 impl Validator {
@@ -491,6 +537,12 @@ impl Validator {
             Validator::RelativeUrl => web::is_relative_url(text),
             Validator::UserAgent => web::is_user_agent(text),
             Validator::WebOrigin => web::is_web_origin(text),
+            Validator::Gs1 => codes::passes_gs1(text),
+            Validator::Vin => codes::is_vin(text),
+            Validator::ContainerNumber => codes::is_container_number(text),
+            Validator::SnomedConcept => codes::is_snomed_concept(text),
+            Validator::Orcid => codes::is_orcid(text),
+            Validator::Mpan => codes::is_mpan(text),
         }
     }
 }
@@ -830,6 +882,7 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// and network types (chunk 5.5n, in `web`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
+    lists::ALLERGEN_ENTRY,
     quantity(
         crate::QuantityKind::Angle,
         &[
@@ -855,6 +908,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("100000000 bps", "100,000,000 bit/s"),
         ],
     ),
+    lists::BLOOD_TYPE_ENTRY,
+    codes::BOOKING_REFERENCE,
+    lists::CABIN_CLASS_ENTRY,
     // Day-and-month calendar dates, ordered by day.
     StandardType {
         name: "CalendarDate",
@@ -902,6 +958,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     phones::CALLING_CODE,
     identifiers::CARD_BIN,
+    card_types::CARD_BRAND_TYPE,
+    card_types::CARD_EXPIRY_TYPE,
+    codes::CARRIER,
+    lists::CEFR_LEVEL_ENTRY,
     web::CIDR,
     quantity(
         crate::QuantityKind::Concentration,
@@ -911,6 +971,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("35 gL", "35 g/L"),
         ],
     ),
+    codes::CONTAINER_NUMBER,
     places::CONTINENT_ENTRY,
     web::COOKIE,
     places::COUNTRY_ENTRY,
@@ -1001,6 +1062,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     web::DOMAIN_NAME,
+    documents::DRIVING_LICENCE_NUMBER_TYPE,
     StandardType {
         name: "Duration",
         holds: Holds::Builtin(Builtin::Duration),
@@ -1028,6 +1090,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    codes::EAN13,
     checked(
         "Email",
         Builtin::Email,
@@ -1050,6 +1113,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("3600000 J", "3,600,000 J"),
         ],
     ),
+    lists::EPC_RATING_ENTRY,
     // A rate between two currencies at an instant (area 19, "Money and
     // payments"): what `money.convert` applies, never fetched.
     StandardType {
@@ -1186,10 +1250,17 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     contact::GIVEN_NAME,
     web::HOSTNAME,
+    codes::HS_CODE,
     web::HTTP_HEADER_NAME,
     web::HTTP_METHOD,
     web::HTTP_STATUS,
+    codes::IATA_AIRLINE,
+    codes::IATA_AIRPORT,
     identifiers::IBAN,
+    codes::ICAO_AIRPORT,
+    codes::ICD10_CODE,
+    documents::IDENTITY_DOCUMENT_TYPE,
+    documents::IDENTITY_DOCUMENT_KIND_TYPE,
     quantity(
         crate::QuantityKind::Illuminance,
         &[
@@ -1199,6 +1270,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         ],
     ),
     web::IMEI,
+    lists::INCOTERM_ENTRY,
     StandardType {
         name: "Instant",
         holds: Holds::Builtin(Builtin::Instant),
@@ -1279,6 +1351,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    codes::ISBN,
     identifiers::ISIN,
     // A week of an ISO week-numbering year, ordered by year and week.
     time_object(
@@ -1298,6 +1371,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     web::JSON_POINTER,
     places::LANGUAGE_ENTRY,
+    lists::LAWFUL_BASIS_ENTRY,
     identifiers::LEI,
     quantity(
         crate::QuantityKind::Length,
@@ -1376,7 +1450,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    codes::LOT_NUMBER,
     web::MAC_ADDRESS,
+    card_types::MASKED_CARD_NUMBER_TYPE,
     quantity(
         crate::QuantityKind::Mass,
         &[
@@ -1476,10 +1552,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    codes::MPAN,
+    codes::MPRN,
     places::NATIONALITY_ENTRY,
     web::NETWORK_PORT,
     identifiers::NHS_NUMBER,
     schedules::OPENING_HOURS,
+    codes::ORCID,
+    documents::PASSPORT_NUMBER_TYPE,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
     // A proportion where 0.20 is 20% (chunk 5.5j2): one `numeric` column
@@ -1628,7 +1708,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     schedules::RECURRENCE_RULE,
     web::RELATIVE_URL,
+    codes::SERIAL_NUMBER,
+    codes::SKU,
     web::SLUG,
+    codes::SNOMED_CONCEPT,
     quantity(
         crate::QuantityKind::SoundLevel,
         &[
@@ -1645,6 +1728,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("340 mps", "340 m/s"),
         ],
     ),
+    codes::SSCC,
+    documents::TAX_ID_TYPE,
     quantity(
         crate::QuantityKind::Temperature,
         &[
@@ -1661,6 +1746,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("5 kelvin", "5 K"),
         ],
     ),
+    lists::TENURE_ENTRY,
     places::TEXT_DIRECTION_ENTRY,
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
@@ -1668,6 +1754,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::UK_SORT_CODE,
     identifiers::UK_UTR,
     places::UN_LOCODE,
+    codes::UN_NUMBER,
+    codes::UPC_A,
     contact::UPRN,
     checked(
         "Url",
@@ -1728,6 +1816,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    documents::VAT_NUMBER_TYPE,
+    codes::VIN,
     quantity(
         crate::QuantityKind::Voltage,
         &[
@@ -2040,34 +2130,46 @@ pub fn reads_by_country(name: &str) -> bool {
     matches!(name, "PhoneNumber" | "PostalCode")
 }
 
-/// A rule across two parts of a standard object (chunk 5.5l2): the text
-/// in part `part` fits the code of the closed list in part `by`, as a
-/// postal code fits its address's country. A literal that writes both is
-/// proved while compiling and a value read from JSON is checked as it is
-/// read, breaking `format` at `part`; one built in code from values waits
-/// on cross-field rules (chunk 5.5t).
+/// A rule across the parts of a standard object (chunk 5.5l2): the text
+/// in part `part` fits the codes of the enums in parts `by`, as a postal
+/// code fits its address's country and a passport number its issuing
+/// country (chunk 5.5i2). A literal that writes them all is proved while
+/// compiling and a value read from JSON is checked as it is read, breaking
+/// `format` at `part`; one built in code from values waits on cross-field
+/// rules (chunk 5.5t).
 #[derive(Clone, Copy, Debug)]
 pub struct PartRule {
     pub part: &'static str,
-    pub by: &'static str,
-    /// Whether the part's text fits the other part's code.
-    pub fits: fn(&str, &str) -> bool,
+    pub by: &'static [&'static str],
+    /// Whether the part's text fits the other parts' codes, in `by`'s
+    /// order.
+    pub fits: fn(&str, &[&str]) -> bool,
     /// What a refusal says the part must be: "a postal code of the
     /// address's country".
     pub says: &'static str,
+    /// What the part is, as a refusal's label says it: "a postal code".
+    pub noun: &'static str,
+    /// Who decides the part's form, as a refusal's reason says it: "the
+    /// postal service" (of the address's country).
+    pub authority: &'static str,
 }
 
 /// The rules across the parts of standard object type `ty`.
 pub fn part_rules(ty: &str) -> &'static [PartRule] {
     const POSTAL_ADDRESS: &[PartRule] = &[PartRule {
         part: "postal_code",
-        by: "country",
-        fits: postal::fits,
+        by: &["country"],
+        fits: |code, by| {
+            by.first()
+                .is_some_and(|country| postal::fits(code, country))
+        },
         says: "a postal code of the address's country",
+        noun: "a postal code",
+        authority: "the postal service",
     }];
     match ty {
         "PostalAddress" => POSTAL_ADDRESS,
-        _ => &[],
+        _ => documents::part_rules(ty),
     }
 }
 
@@ -2117,6 +2219,9 @@ impl StandardType {
             Holds::Text { personal, .. } => personal,
             _ => contact::PERSONAL
                 .iter()
+                .chain(card_types::PERSONAL)
+                .chain(documents::PERSONAL)
+                .chain(lists::PERSONAL)
                 .find(|(name, _)| *name == self.name)
                 .map(|(_, category)| *category),
         }
@@ -2237,7 +2342,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 108, "the 108 standard types built so far");
+        assert_eq!(names.len(), 146, "the 146 standard types built so far");
     }
 
     #[test]

@@ -10,6 +10,8 @@ all
 first_day
 phone
 postal_code
+passport
+vat
 
 # Rust keywords and ordinary programming vocabulary
 # ordinary English: `configuration.move_name_taken`
@@ -242,6 +244,19 @@ card
 card_number
 invoice
 company
+# the standard types `Sku`, `Isbn`, `BookingReference`, `Allergen` and its
+# variants (the 14 a food label names) and `LawfulBasis.consent` (area 19,
+# chunk 5.5m)
+allergen
+booking
+consent
+eggs
+gluten
+isbn
+milk
+nuts
+sesame
+sku
 # the standard type `OpeningHours` and RFC 5545's frequencies (area 19,
 # chunk 5.5k2)
 hours

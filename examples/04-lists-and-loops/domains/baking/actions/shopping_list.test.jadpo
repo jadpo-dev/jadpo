@@ -1,4 +1,4 @@
-use baking/types { Allergen, Ingredient, Recipe }
+use baking/types { Hazard, Ingredient, Recipe }
 
 test "an ingredient that goes in twice is bought once" {
     var shortbread: Recipe = Recipe {
@@ -16,7 +16,7 @@ test "an ingredient that goes in twice is bought once" {
                 weight: 10
             }
         ]
-        allergens: [Allergen.gluten, Allergen.milk]
+        allergens: [Hazard.gluten, Hazard.milk]
     }
     assert shopping_list(shortbread) == ["Flour", "Butter"]
 }

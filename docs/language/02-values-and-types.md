@@ -42,7 +42,8 @@ These types exist without being declared, and their names cannot be reused.
 > `PostalCode`, `Sku`, `Dimensions`, `Price`) are renamed or replaced by
 > the built-in in that chunk: chunk 5.5h renamed this page's `Money`
 > objects (`PriceTag`, `OrderLine`) and its `Currency` enum, chunk 5.5l2
-> its `PostalCode` (`ShippingCode`), and chunk 5.5h gave a
+> its `PostalCode` (`ShippingCode`), chunk 5.5m its `Sku`
+> (`StockCode`), and chunk 5.5h gave a
 > `Money` type its `currency:` and `rounding:` settings, with `min:` and
 > `max:` in minor units (area 19, "Money and payments"). A shape that copies a standard type under
 > another name is the declinable error `type.standard_exists`. Still no
@@ -2552,7 +2553,7 @@ type OrderNote = Text {
 }
 
 type OrderLineRequest = Input {
-    sku: Sku
+    sku: StockCode
 }
 
 entity Order {
@@ -2567,14 +2568,14 @@ type Price = Decimal {  // rules on a number
     min: 0.00
 }
 
-type Sku = Text {  // rules on text
+type StockCode = Text {  // rules on text
     pattern: "[A-Z]{3}-[0-9]{4}"
 }
 
 type OrderId = Uuid {}  // a new identity type with no extra rules
 
 type OrderLine = Object {  // fields
-    sku: Sku
+    sku: StockCode
     price: Price
 }
 
@@ -2900,12 +2901,12 @@ var share: Price = decimal.divide(total, people, rounding: Rounding.half_even)
 #### Q9: patterns match the whole text and are checked while compiling
 
 ```jadpo fragment
-type Sku = Text {
+type StockCode = Text {
     pattern: "[A-Z]{3}-[0-9]{4}"
 }
 
-var sku: Sku = "ABC-1234"       // checked while compiling
-var bad: Sku = "ABC-1234x"      // compile error: the whole text must match
+var sku: StockCode = "ABC-1234"   // checked while compiling
+var bad: StockCode = "ABC-1234x"  // compile error: the whole text must match
 
 type Doubled = Text {
     pattern: "(a+)+\\1"         // rejected: backreferences are not allowed

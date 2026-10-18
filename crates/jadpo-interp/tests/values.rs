@@ -321,7 +321,7 @@ fn a_share_is_divided_with_a_named_rounding() {
 fn a_pattern_matches_the_whole_text() {
     // Question 9.
     let program = main(
-        "type Sku = Text {\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Written = Text {\n    max_length: 40\n}\n\nfunction first_sku() -> Sku {\n    var sku: Sku = \"ABC-1234\"  // checked while compiling\n    return sku\n}\n\nfunction parse_sku(written: Written) fails SkuRejected -> Sku {\n    var sku: Sku = attempt Sku(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
+        "type StockCode = Text {\n    pattern: \"[A-Z]{3}-[0-9]{4}\"\n}\n\ntype SkuRejected = Failure {\n    kind: FailureKind.invalid_value\n}\n\ntype Written = Text {\n    max_length: 40\n}\n\nfunction first_sku() -> StockCode {\n    var sku: StockCode = \"ABC-1234\"  // checked while compiling\n    return sku\n}\n\nfunction parse_sku(written: Written) fails SkuRejected -> StockCode {\n    var sku: StockCode = attempt StockCode(written) {\n        pattern: SkuRejected\n    }\n    return sku\n}\n",
     );
     assert_eq!(value(&program, "first_sku", vec![]), text("ABC-1234"));
     assert_eq!(

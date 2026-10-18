@@ -600,6 +600,98 @@ fn postal_codes_follow_each_country_s_rules() {
 }
 
 #[test]
+fn identity_documents_follow_each_country_s_forms() {
+    use jadpo_std::standard::documents::{DOCUMENT_EXAMPLES, VAT_NUMBER, vat_prefix};
+    for examples in DOCUMENT_EXAMPLES {
+        let entry = jadpo_std::standard_type(examples.ty).unwrap();
+        let (codecs, validators, shapes) = codecs(entry);
+        let table = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &shapes,
+        };
+        let read = |number: &str| -> (Option<Value>, Vec<String>) {
+            // A VAT number is sent as VIES writes it.
+            if examples.ty == VAT_NUMBER {
+                let text = format!("{}{number}", vat_prefix(examples.country));
+                let read = standard::read(entry, &text);
+                assert!(
+                    matches!(read, Ok(_) | Err(Fault::Broke(RuleKey::Malformed))),
+                    "{text}: {read:?}"
+                );
+                return (read.ok(), vec!["number".to_string()]);
+            }
+            let mut json = serde_json::json!({
+                "country": examples.country,
+                "number": number,
+            });
+            if let Some(kind) = examples.kind {
+                json["kind"] = serde_json::Value::String(kind.to_string());
+                json["expires"] = serde_json::Value::Null;
+            }
+            let mut problems = Vec::new();
+            let read = table.read(CodecId(0), &json, &Path::default(), &mut problems);
+            let fields = problems.iter().map(|p| p.field.clone()).collect();
+            (read, fields)
+        };
+        for number in examples.valid {
+            let (value, problems) = read(number);
+            assert!(
+                value.is_some(),
+                "{} {number} in {}: {problems:?}",
+                examples.ty,
+                examples.country
+            );
+        }
+        for number in examples.invalid {
+            let (value, problems) = read(number);
+            assert_eq!(
+                value, None,
+                "{} {number} isn't one of {}'s",
+                examples.ty, examples.country
+            );
+            assert!(
+                problems.iter().any(|field| field.ends_with("number")),
+                "{} {number}: {problems:?}",
+                examples.ty
+            );
+        }
+    }
+}
+
+#[test]
+fn a_masked_card_keeps_the_brand_and_last_four() {
+    let masked = |number: &str| {
+        jadpo_value::run(
+            jadpo_std::Op::MoneyMask,
+            &[Value::text(number)],
+            None,
+            &mut |_| None,
+        )
+        .unwrap_or_else(|fault| panic!("{number}: {fault:?}"))
+    };
+    let entry = jadpo_std::standard_type("MaskedCardNumber").unwrap();
+    let shown = |value: &Value| standard::shown(entry, value, "en-GB", &Value::None, &Value::None);
+    assert_eq!(
+        shown(&masked("4242424242424242")).as_deref(),
+        Ok("Visa •••• 4242")
+    );
+    assert_eq!(
+        shown(&masked("378282246310005")).as_deref(),
+        Ok("American Express •••• 0005")
+    );
+    assert_eq!(
+        shown(&masked("2223003122003222")).as_deref(),
+        Ok("Mastercard •••• 3222")
+    );
+    // A range no listed scheme issues has no brand.
+    assert_eq!(
+        shown(&masked("9999999999999995")).as_deref(),
+        Ok("•••• 9995")
+    );
+}
+
+#[test]
 fn an_event_s_parts_are_checked_together_as_json_is_read() {
     let event = jadpo_std::standard_type("CalendarEvent").unwrap();
     let (codecs, validators, shapes) = codecs(event);

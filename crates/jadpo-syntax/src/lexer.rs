@@ -519,14 +519,16 @@ impl Lexer<'_> {
         let after = self.rest_of_line(self.pos);
         let code = after.split("//").next().unwrap_or("").trim();
         let ends = code.is_empty() || code.starts_with('}') || code.chars().all(|c| c == ';');
-        // And only before what can start a line: a word, a number, text, a
-        // bracket or a prefix operator. Never a `.` or a `/` (a field access,
-        // or the rest of a path: `use bakery;/actions`), a `{`, or what only
-        // follows a value, such as the `?` of `flour: Grams;?`, a `,` or an
-        // infix operator.
-        let starts_line = code.chars().next().is_some_and(|c| {
-            c.is_alphanumeric() || matches!(c, '_' | '"' | '\'' | '(' | '[' | '-' | '!')
-        });
+        // And only before what can start a line: a word, a number, text or
+        // a prefix operator. Never a `.` or a `/` (a field access, or the
+        // rest of a path: `use bakery;/actions`), a `{`, a `(` or a `[`
+        // (the arguments of `assert set_oven;("TOAST", 0)`, which no line
+        // starts with), or what only follows a value, such as the `?` of
+        // `flour: Grams;?`, a `,` or an infix operator.
+        let starts_line = code
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '"' | '\'' | '-' | '!'));
         let ends_line = ends_line && starts_line;
         let (edit, next) = if ends {
             // Spaces before the `;` go with it.

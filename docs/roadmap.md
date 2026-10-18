@@ -797,20 +797,58 @@ reference only).
   additive. Done when an inverted typed rate passed through a function
   fails to compile with a checked example, and a fixed-currency rate needs
   no `attempt`.
-- [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
-  19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
-  that are records or choices of other types. `Price`, `UnitPrice`,
-  `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Percentage`
-  and the quantities (5.5j); `CardBrand`, `MaskedCardNumber` with its
-  conversion from a `PaymentCardNumber`, and `CardExpiry`; `BankAccount`,
-  with the UK modulus check across a sort code and an account number; and
-  `VatNumber`, `TaxId`, `PassportNumber`, `DrivingLicenceNumber` and
-  `IdentityDocument`, on `Country` (5.5l). Done when every type passes the
-  harness.
-- [ ] **5.5m Commerce, health, travel and the rest** `opus · high` (area
-  19, "Groups with the baseline only"): 45 types, mostly codes with a
-  pattern or check digit (`Ean13`, `Isbn`, `Vin`, `IataAirport`). Done
-  when every type passes the harness.
+- [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
+  "The standard types", split from 5.5i), after 5.5l: `CardBrand`,
+  `MaskedCardNumber` with its conversion from a `PaymentCardNumber`, and
+  `CardExpiry`; `VatNumber`, `TaxId`, `PassportNumber`,
+  `DrivingLicenceNumber` and `IdentityDocument`, on `Country` (5.5l), each
+  checked by its country's published format (at least GB, DE, FR, IE, US
+  and one country outside Europe), by length where none is published.
+  Done when every type passes the harness with valid and invalid
+  examples per rule. Split on 2026-10-18; the rest is 5.5i3. Built, with
+  `money.mask` for the conversion and `IdentityDocumentKind` as the
+  document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
+  pages and each issuer's own, by length where a country publishes none.
+  What the pages left open is area 19's "Chosen in chunk 5.5i2".
+- [ ] **5.5i3 Prices, discounts and bank accounts** `opus · high` (area
+  19, "The standard types", split from 5.5i2), after 5.5j2: `Price`,
+  `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`,
+  on `Money`, `Percentage` and the quantities; `BankAccount`, with the UK
+  modulus check across a sort code and an account number by Vocalink's
+  published specification and test cases. `Discount` and `BankAccount`
+  are the first standard types that are a choice of other types. Done
+  when every type passes the harness with valid and invalid examples per
+  rule.
+- [x] **5.5m Commerce, health, travel and the rest: codes and lists**
+  `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
+  45 that are codes or closed lists. Held as text with a pattern and,
+  where the page names one, a check digit: `Sku`, `Ean13`, `UpcA`,
+  `Isbn`, `Sscc`, `HsCode`, `Carrier`, `ContainerNumber`, `LotNumber`,
+  `SerialNumber`, `Vin`, `Icd10Code`, `SnomedConcept`, `IataAirport`,
+  `IcaoAirport`, `IataAirline`, `BookingReference`, `UnNumber`, `Orcid`,
+  `Mpan` and `Mprn`; and the closed lists `Incoterm`, `BloodType`,
+  `Allergen`, `CabinClass`, `CefrLevel`, `EpcRating`, `Tenure` and
+  `LawfulBasis` as built-in enums. Done when every type passes the
+  harness with valid and invalid examples per rule. Split on 2026-10-18;
+  the records and measures are 5.5m2. Built, the check digits GS1's,
+  ISO 6346's, ISO 7064's, Verhoeff's, an MPAN's and, for North American
+  manufacturers, a VIN's; IATA's and ICAO's codes and ICD-10 are checked
+  by pattern only, since their lists can't be shipped, and a list CLDR
+  doesn't name is shown by its authority's English wording. The ISBN-10
+  conversion is 5.5m2's. What the pages left open is area 19's "Chosen in
+  chunk 5.5m".
+- [ ] **5.5m2 Commerce, health, travel and the rest: records and
+  measures** `opus · high` (area 19, "Groups with the baseline only",
+  split from 5.5m): the other 16, each a record of other types or a
+  measure: `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`,
+  `ShoeSize`, `Dimensions`, `TrackingNumber` (on 5.5m's `Carrier`),
+  `VehicleRegistration`, `Dose`, `DosageInstruction`, `HeartRate`,
+  `BloodPressure`, `BloodGlucose`, `FlightNumber` (on 5.5m's
+  `IataAirline`), `Jurisdiction` and `ModelId`; and the contract's ISBN-10
+  conversion, `text.parse(raw, as: Isbn, form: CodeForm.isbn10)`, reading
+  only, consistent with `Country`'s `form:` (decided by the lead session,
+  2026-10-18). Done when every type passes the harness and an ISBN-10
+  reads as its `Isbn`, a bad check digit `malformed`.
 - [x] **5.5n Web and network** `opus · high` (area 19, "Web and
   software"): the 20 new web and network types (`UrlPath`, `RelativeUrl`,
   `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod`,
@@ -822,9 +860,9 @@ reference only).
   software group is 5.5n2. Built, with UTS 46 by Servo's `idna` 1.1.0 on
   the pinned ICU4X, Emoji 18.0's list, `HttpStatus` and `NetworkPort` held
   as whole numbers, and `ProblemDetails` sent as RFC 9457 sends it
-  (`type_` in code); `HttpMethod` keeps the five route methods, and
-  whether RFC 9110's other four join **needs Richard**. What the pages
-  left open is area 19's "Chosen in chunk 5.5n".
+  (`type_` in code); `HttpMethod` keeps the five route methods (decided
+  by the lead session, 2026-10-18). What the pages left open is area
+  19's "Chosen in chunk 5.5n".
 - [ ] **5.5n2 Software** `opus · high` (area 19, "Web and software",
   split from 5.5n): the 18 software types (`SemanticVersion`,
   `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`,

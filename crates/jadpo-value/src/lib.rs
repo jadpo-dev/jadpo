@@ -249,8 +249,10 @@ pub fn run(
         (Op::MoneySplit, [total, parts]) => money::split(total, parts),
         (Op::MoneyAllocate, [total, ratios]) => money::allocate(total, ratios),
         (Op::MoneyConvert, [amount, rate]) => money::convert(amount, rate),
+        (Op::MoneyMask, [card]) => money::mask(card),
         (
             Op::MoneyConvert
+            | Op::MoneyMask
             | Op::MoneyFromMinor
             | Op::MoneyOf
             | Op::MoneyMinor
@@ -765,6 +767,7 @@ mod tests {
                 Op::MoneyFromMinor => vec![Value::Int(1050), pounds.clone()],
                 Op::MoneyOf => vec![Value::Decimal(Decimal::new(1050, 2)), pounds.clone()],
                 Op::MoneyMinor | Op::MoneyCurrency => vec![price.clone()],
+                Op::MoneyMask => vec![Value::text("4242424242424242")],
                 Op::MoneySum => vec![Value::list(vec![price.clone()]), pounds.clone()],
                 Op::MoneySplit => vec![price.clone(), Value::Int(3)],
                 Op::MoneyAllocate => vec![price.clone(), items.clone()],

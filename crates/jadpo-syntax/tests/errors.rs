@@ -495,6 +495,9 @@ fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
     // Nor before a `.`: the new line would start with a field access.
     let field = parse_file("action f() -> Unit {\n    var a: Count = b;.c\n}\n");
     assert!(!field.checkable(), "{:#?}", field.errors());
+    // Nor before a call's arguments: no line starts with `(`.
+    let call = parse_file("test \"t\" {\n    assert set_oven;(\"TOAST\", 0) == none\n}\n");
+    assert!(!call.checkable(), "{:#?}", call.errors());
 }
 
 #[test]
