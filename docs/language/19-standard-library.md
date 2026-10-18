@@ -9,6 +9,7 @@ rules:
   - type.argument_negative
   - type.money_split
   - type.standard_clash
+  - syntax.percent_ambiguous
   - type.standard_exists
   - type.temporal_format_part_missing
   - type.unit_required
@@ -100,7 +101,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 65 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 68 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -122,7 +123,7 @@ exception to the rule.
 | Commerce and logistics (20) | `Sku`, `Ean13`, `UpcA`, `Isbn`, `Sscc`, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, `HsCode`, `Incoterm` (enum), `TrackingNumber`, `Carrier`, `ContainerNumber`, `LotNumber`, `SerialNumber`, `Vin`, `VehicleRegistration` | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, `CalendarEvent` | `temporal`, `range` |
 | Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
-| Maths and data (8) | `Percentage`, `Ratio`, `Fraction`, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
+| Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | `BloodType` (enum), `Icd10Code`, `SnomedConcept`, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, `Allergen` (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
 | Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
@@ -581,7 +582,7 @@ stand.
 - **The `%` literal.** `20%` is a `Percentage` (`0.20`); `%` as remainder
   (area 3) is always written with spaces, as the formatter writes every
   binary operator, so the two never meet in formatted code. `20%3` is an
-  error naming both readings.
+  error naming both readings (`syntax.percent_ambiguous`).
 - **A ratio becomes a `Percentage` by construction.** Dividing two
   quantities gives a plain `Decimal` (`lip / total`), and
   `Percentage(ratio)` makes it one for display: `0.25` gives `25%`
@@ -591,6 +592,150 @@ stand.
   a reviewer never has to find an overload to know what it does, whether
   it can fail or what it costs. Area 3 already keeps generics to the
   standard library for the same reason.
+
+A bakery adds VAT to its cakes, trims its shelves and reports how much of
+a batch passed, each with a percentage:
+
+```jadpo check project=percentages
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+type VatRate = Percentage {
+    min: 0%
+    max: 100%
+}
+
+type PassRate = Percentage {}
+
+type Offcut = Length {}
+
+type Share = Decimal {
+    scale: 4
+}
+
+/// The VAT on a cake's price at `rate`, rounded half to even to a penny.
+function vat_on(price: CakePrice, rate: VatRate) -> CakePrice {
+    return CakePrice(price * rate)
+}
+
+/// A cake's price with VAT added: the whole price and the rate on top.
+function with_vat(price: CakePrice, rate: VatRate) -> CakePrice {
+    return CakePrice(price * (100% + rate))
+}
+
+/// What is trimmed off a shelf cut from a 2.5262 m board: 15% of it.
+function offcut() -> Offcut {
+    var total: Length = 2metre + 45cm + 3inch
+    var trim: Length = total * 15%
+    return Offcut(trim)
+}
+
+/// The offcut for the reader, in centimetres.
+function offcut_label(reader: Locale) -> PresentationText {
+    return text.format(offcut(), locale: reader, unit: LengthUnit.centimetre)
+}
+
+/// How much of a batch passed, from the share that did.
+function pass_rate(passed: Share) -> PassRate {
+    return PassRate(passed)
+}
+
+/// A rate for the reader, as their locale writes a percentage.
+function rate_label(rate: PassRate, reader: Locale) -> PresentationText {
+    return text.format(rate, locale: reader)
+}
+
+/// Each of four people's share of a cake.
+function quarter() -> Fraction {
+    return Fraction {
+        numerator: 1
+        denominator: 4
+    }
+}
+```
+
+```jadpo check project=percentages file=main.test.jadpo
+test "a percentage scales money, numbers and quantities" {
+    var cake: CakePrice = CakePrice(money.from_minor(1250, Currency.gbp))
+    assert vat_on(cake, 20%) == money.from_minor(250, Currency.gbp)
+    assert with_vat(cake, 20%) == money.from_minor(1500, Currency.gbp)
+    var penny_cake: CakePrice = CakePrice(money.from_minor(100, Currency.gbp))
+    assert vat_on(penny_cake, 12.5%) == money.from_minor(12, Currency.gbp)
+    assert 50% * 20% == 10%
+    assert 20% + 5% == 25%
+}
+
+test "the offcut is exact in metres and shown in centimetres" {
+    assert offcut() == 0.37893metre
+    assert offcut_label(Locale.en_gb) == "37.893 cm"
+    assert offcut_label(Locale.de_de) == "37,893 cm"
+}
+
+test "a ratio becomes a percentage, and fractions are written as people write them" {
+    assert pass_rate(0.25) == 25%
+    assert rate_label(pass_rate(0.175), Locale.en_gb) == "17.5%"
+    assert text.from(pass_rate(0.175)) == "17.5%"
+    assert text.from(quarter()) == "1/4"
+    assert quarter().denominator == 4
+}
+```
+
+A voucher keeps its discount in one `numeric` column, as the fraction it
+is:
+
+```jadpo check project=percentage-vouchers file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=percentage-vouchers file=domains/bakery/types/discount_rate.jadpo hidden
+/// A discount off a cake, as a percentage of its price.
+type DiscountRate = Percentage {
+    min: 0%
+    max: 100%
+}
+```
+
+```jadpo check project=percentage-vouchers file=domains/bakery/entities/voucher.jadpo migrate=initial
+use bakery/types { DiscountRate }
+
+/// A voucher a customer brings to the counter.
+entity Voucher {
+    id: Uuid
+    off: DiscountRate  // one `numeric` column: 0.15 for 15%
+}
+```
+
+```jadpo check project=percentage-vouchers file=domains/bakery/actions/issue_voucher.jadpo hidden
+use bakery/entities { Voucher }
+use bakery/types { DiscountRate }
+
+/// Issues a voucher for `off` a cake's price.
+action issue_voucher(off: DiscountRate) -> Voucher {
+    return Voucher.create {
+        set: {
+            off: off
+        }
+    }
+}
+```
+
+```jadpo check project=percentage-vouchers file=domains/bakery/actions/issue_voucher.test.jadpo
+use bakery/entities { Voucher }
+
+test "a voucher keeps its discount as it was issued" {
+    var issued: Voucher = issue_voucher(15%)
+    var voucher_on_file: Voucher = attempt Voucher.get(issued.id)
+    assert voucher_on_file.off == 15%
+    assert text.from(voucher_on_file.off) == "15%"
+}
+```
+
+> Built in chunk 5.5j2: `Percentage`, `Ratio` and `Fraction` on the
+> contract; the `%` literal with `syntax.percent_ambiguous`; the table's
+> `Percentage` rows; `Percentage(ratio)`; one `numeric` column; and
+> `{rate, number, percent}` in messages (area 10). What the pages left
+> open is "Chosen in chunk 5.5j2", under "Review".
 
 ## SQL forms
 
@@ -1862,8 +2007,8 @@ test "an order keeps its amounts as they were written" {
 > Built in chunk 5.5h2: `ExchangeRate` on the contract, `money.convert`
 > with its inverted-rate type error, and `{price, number, currency}` in
 > translation messages (area 10); what the pages left open is "Chosen in
-> chunk 5.5h2". `Money * Percentage` with `Percentage` comes in 5.5j2;
-> until then `price * 0.2` scales by a `Decimal`.
+> chunk 5.5h2". `Money * Percentage` came with `Percentage` in chunk
+> 5.5j2, under "The standard operator table".
 
 ## Physical quantities
 
@@ -2154,7 +2299,8 @@ test "a shelf keeps its length as it was cut" {
 > `text.format`'s `unit:`; one `numeric` column, compared and ordered in
 > queries; and the wire's `{ "value": ..., "unit": ... }`. What the pages
 > left open is "Chosen in chunk 5.5j", under "Review". `Percentage`,
-> `Ratio`, `Fraction` and the `%` literal are chunk 5.5j2.
+> `Ratio`, `Fraction` and the `%` literal came in chunk 5.5j2, under "The
+> standard operator table", with `distance * 15%`.
 
 ## Time and calendar additions
 
@@ -3983,6 +4129,65 @@ error: `2mw` has no unit `mw`: did you mean `2mW` (milliwatts) or `2MW` (megawat
 check failed: 1 error, 1 file
 ```
 
+### `syntax.percent_ambiguous`
+
+A number touching `%` is a percentage, `20%`, and the remainder (area 3)
+is written with spaces, `20 % 3`, as the formatter writes every binary
+operator. With a number or a name touching the `%` on both sides, either
+could be meant, so neither is guessed.
+
+```jadpo check project=e-percent-ambiguous expect=syntax.percent_ambiguous
+type BoxCount = Int {}
+
+/// The cakes left over when twenty are packed in boxes of three.
+function twenty_in_threes() -> BoxCount {
+    return BoxCount(20%3)
+}
+```
+
+```text output
+error: `20%3` could be `20% 3` or `20 % 3`
+ --> main.jadpo:5:21
+  |
+5 |     return BoxCount(20%3)
+  |                     ^^^^ a percentage or a remainder
+  reason: A number touching `%` is a percentage, `20%`, and the remainder is written with spaces, `20 % 3`, as the formatter writes every binary operator; with `3` touching the `%` too, either could be meant.
+  next: Write `20 % 3` for the remainder, or put the percentage `20%` apart from what follows it (agent)
+  rule: syntax.percent_ambiguous
+  help: docs/language/19-standard-library.html#syntax-percent-ambiguous
+
+check failed: 1 error, 1 file
+```
+
+Adding a percentage to money doesn't compile either, by area 3's
+`type.arithmetic_operand`, since it could mean the price raised by a
+fifth or a fifth of something else; the fix writes both:
+
+```jadpo check project=e-money-plus-percentage expect=type.arithmetic_operand
+type CakePrice = Money {
+    currency: Currency.gbp
+}
+
+/// A cake's price with VAT added.
+function with_vat(price: CakePrice) -> CakePrice {
+    return CakePrice(price + 20%)
+}
+```
+
+```text output
+error: `CakePrice` and a percentage can't be added: it could mean two things
+ --> main.jadpo:7:22
+  |
+7 |     return CakePrice(price + 20%)
+  |                      ^^^^^^^^^^^ an amount and a percentage
+  reason: `price + 20%` could mean the amount raised by 20% of itself, or 20% of some other amount; the standard operator table refuses it rather than guess. A percentage scales money by `*`.
+  next: Write `price * 120%`, or `price + price * 20%`, whichever is meant (agent)
+  rule: type.arithmetic_operand
+  help: docs/language/03-logic.html#type-arithmetic-operand
+
+check failed: 1 error, 1 file
+```
+
 ### `type.temporal_format_part_missing`
 
 A `LocalTime` is a clock time with no date or zone, and a
@@ -4026,8 +4231,8 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, ten time types in 5.5k, each other group of types in 5.5i2 to 5.5s |
-| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, each other group of types in 5.5i2 to 5.5s |
+| `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}` |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
 | A release that adds a standard type, and `jadpo fix` | Decided (question 4); built in 5.5a2: `type.standard_clash`, `jadpo fix`'s swap and rename, the editor's swap |
@@ -4742,6 +4947,81 @@ under "Errors").
   `2.5262metre`, or `units.of(0.001, VolumeUnit.cubic_metre)` for a kind
   whose base unit has no suffix.
 
+### Chosen in chunk 5.5j2
+
+- **`Percentage` is a type built into the language**
+  (`Builtin::Percentage`), held as the exact fraction it is (`20%` is
+  0.20), and like `Money` a representation: a signature names a type
+  built on it (`type VatRate = Percentage { min: 0%  max: 100% }`),
+  whose `min:` and `max:` are written with `%`, while a `var` may be a
+  plain `Percentage`. It is ordered.
+- **The `%` literal** is digits and `%` with nothing between, its
+  fraction keeping the places written and two more (`12.5%` is 0.125);
+  it may be negative (`-5%`), as a quantity literal may. A number, `%`
+  and a name or number all touching (`20%3`, `20%rate`) is
+  `syntax.percent_ambiguous`, a new rule, with no edit since either
+  reading could be meant; the rest of the file is read as the remainder.
+- **A bare number where a percentage goes is refused**, as an argument,
+  in a comparison, beside `+` or as a bound, since 0.2 and 20 are the
+  confusion the type exists to end: `type.mismatch` (or
+  `type.incomparable`, `type.ordering_operand`, `type.arithmetic_operand`
+  or `type.setting_value` where it stands), whose next step names both
+  readings, `25%` if `0.25` is a ratio or `0.25%`, with no edit.
+- **`Percentage(ratio)` takes a `Decimal`,** a value or a decimal literal,
+  into `Percentage` or any type built on it, checking that type's rules
+  (`Percentage(0.25)` is 25%). A whole number (`VatRate(20)`) or an `Int`
+  value is `type.constructor_input`, naming both readings, and a named
+  percentage never becomes the plain `Percentage`, as for any
+  representation (area 2).
+- **"The same kind" for a number is a number:** `Int * Percentage` gives
+  a `Decimal`, as `*` by a `Decimal` does (area 3), rather than rounding
+  to a whole number. A percentage is written after the amount, number or
+  quantity it scales, as a number is (`price * 20%`); `20% * price` and
+  `15% * length` are refused with the fix written the other way, while
+  `20% * 3` is a percentage, as the table's own row says. A quantity
+  times a percentage rounds half to even to its kind's scale, as by a
+  number. `+` and `-` of two percentages keep area 3's named-type rule.
+- **No other row:** nothing divides a percentage (`rate / 2` is refused;
+  `rate * 50%` halves it), adds one to a number or a quantity, or negates
+  a percentage value (`-rate`); a quantity and a percentage are reported
+  as different kinds.
+- **`Money + Percentage`** is `type.arithmetic_operand`, whose next step
+  writes both readings with the percentage worked out: `price * 120%` or
+  `price + price * 20%` (`price * 80%` or `price - price * 20%` for `-`);
+  for a percentage value, `price * (100% + rate)`.
+- **Text.** The canonical text is the fraction as a percentage with no
+  trailing zeros, `20%`, `12.5%`; `text.parse` reads a number, one
+  optional space and `%`, since French and German write `20 %`, and
+  anything else is `malformed`.
+- **The wire is that text,** `"20%"`, rather than the fraction a `Decimal`
+  would send, so no client reads 0.2 as 0.2%; a JSON number is `type` and
+  text without `%` `format`. OpenAPI shows a string with its pattern.
+- **Storage** is one `numeric` column holding the fraction, 0.15 for
+  15%, at whatever places the value has.
+- **`text.format`** is ICU4X's percent formatter over CLDR's pattern
+  (`icu_experimental`, already pinned): the locale's digits and
+  separators, every place the value keeps as a percentage, and the `%`
+  where the locale puts it, `12.5%`, `20 %` in `de_de` with a no-break
+  space. It takes no options. `Display` writes `20%`.
+- **`{rate, number, percent}`** is the style of a field built on
+  `Percentage`, as `{price, number, currency}` is money's, shown as
+  `text.format` shows it; `{rate}` for one, or either style on a field of
+  another kind, is `translation.placeholder_style`, whose edit writes the
+  right one. Any other style is still `translation.wording_invalid`.
+- **`Ratio` and `Fraction` are standard objects** of the catalogue's
+  shapes: a `Ratio`'s `numerator` and `denominator` are `Decimal`s, any
+  value, as an exchange rate's is; a `Fraction`'s are whole numbers, its
+  `denominator` at least 1. Each is held as written, so `16:9` and
+  `32:18`, or `1/2` and `2/4`, are two values, as any object's fields
+  compare, and neither is ordered: reducing or comparing by value is an
+  operation no page decides. Their canonical texts are `16:9` (each
+  number with the places it was given) and `3/4`, with no spaces, read
+  back exactly so, a denominator below 1 being `malformed`; each is sent
+  as that text and stored as it in `jsonb`, as the time objects are, and
+  shown as it whatever the locale. `type.standard_exists` matches an
+  object of a `numerator` and a `denominator`, by what they are built on.
+  No `Ratio` or `Fraction` operations are decided, so none is built.
+
 ### Chosen in chunk 5.5k
 
 - **Split.** `RecurrenceRule`, `OpeningHours` and `CalendarEvent`, with
@@ -5435,7 +5715,7 @@ first; each group of types then arrives with its baseline and its extras.
   2026-10-18, the rest is 5.5j2.
 - **5.5j2 Percentages, ratios and fractions** `opus · high`:
   `Percentage`, `Ratio` and `Fraction`, the `%` literal and the operator
-  table's `Percentage` rows.
+  table's `Percentage` rows. Built.
 - **5.5k Time and calendar** `opus · high`: ten of the 13 new time
   types, `CalendarPeriod`'s operator rows and `temporal.period_between`.
   Built; split on 2026-10-17, the rest is 5.5k2.

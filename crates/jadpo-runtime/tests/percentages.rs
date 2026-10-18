@@ -150,4 +150,5 @@ fn a_percentage_is_shown_as_the_locale_writes_one() {
     assert_eq!(shown("0.2", "de-DE"), "20\u{a0}%");
     assert_eq!(shown("0.2", "fr-FR"), "20\u{a0}%");
     assert_eq!(shown("-0.05", "en-GB"), "-5%");
+    assert_eq!(shown("0.125", "es-MX"), "12.5%");
 }

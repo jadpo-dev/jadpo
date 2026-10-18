@@ -622,6 +622,15 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             out.set("required", vec![value_field, unit_field]);
             out.set("additionalProperties", false);
         }
+        // Its canonical text, so a client never reads 0.2 as 0.2% (area 19).
+        Builtin::Percentage => {
+            string(&mut out, None);
+            out.set("pattern", "^-?[0-9]+(\\.[0-9]+)?%$");
+            out.set(
+                "description",
+                "A percentage written with `%`, such as `20%`.",
+            );
+        }
         Builtin::Unit => out.set("type", "null"),
         _ => string(&mut out, None),
     }
