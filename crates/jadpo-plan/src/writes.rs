@@ -189,7 +189,8 @@ impl Planner<'_> {
                     };
                     // A compound type goes into its several columns (area
                     // 19).
-                    let parts = field_columns(&mut writing, field, &source)?;
+                    let json = self.json_codec(entity_model, field);
+                    let parts = field_columns(&mut writing, field, &source, json)?;
                     let first = parts.first().map(|(_, value)| value.clone())?;
                     for (column, value) in parts {
                         names.push(column);
@@ -322,8 +323,9 @@ impl Planner<'_> {
                         let validator = self.types.validator_id(&TypeRef::Field(key.clone()));
                         let parts = if *by_id && stored_in(body, *value) {
                             // The database works out no compound type in
-                            // its several columns (area 19).
-                            if field.compound.is_some() {
+                            // its several columns (area 19), nor a value
+                            // held as JSON (chunk 5.5w2b).
+                            if field.compound.is_some() || field.json.is_some() {
                                 return None;
                             }
                             let sql =
@@ -340,7 +342,8 @@ impl Planner<'_> {
                                     },
                                 ));
                             }
-                            field_columns(&mut writing, field, &WriteSource::Input(input))?
+                            let json = self.json_codec(entity_model, field);
+                            field_columns(&mut writing, field, &WriteSource::Input(input), json)?
                         };
                         let first = parts
                             .first()
@@ -377,6 +380,7 @@ impl Planner<'_> {
                                 },
                                 SqlType::Bool,
                             );
+                            let json = self.json_codec(entity_model, field);
                             let parts = field_columns(
                                 &mut writing,
                                 field,
@@ -384,6 +388,7 @@ impl Planner<'_> {
                                     input,
                                     field: name.clone(),
                                 },
+                                json,
                             )?;
                             let _ = ty;
                             let (first_column, first) = parts.first().cloned()?;
@@ -440,8 +445,13 @@ impl Planner<'_> {
                                     ));
                                 }
                                 let _ = ty;
-                                let parts =
-                                    field_columns(&mut writing, field, &WriteSource::Input(at))?;
+                                let json = self.json_codec(entity_model, field);
+                                let parts = field_columns(
+                                    &mut writing,
+                                    field,
+                                    &WriteSource::Input(at),
+                                    json,
+                                )?;
                                 let (first_column, first) = parts.first().cloned()?;
                                 for (column, value) in &parts {
                                     assignments.push(text::set_when(column, &supplied, value));
@@ -874,8 +884,18 @@ fn field_columns(
     writing: &mut Writing,
     field: &jadpo_check::data::FieldModel,
     source: &WriteSource,
+    json: Option<u32>,
 ) -> Option<Vec<(String, String)>> {
     let ty = column_type(field)?.param();
+    // A JSON-held standard value, written as its contract's JSON by the
+    // route codec (chunk 5.5w2b).
+    if let Some(codec) = json {
+        let source = WriteSource::Json {
+            of: Box::new(source.clone()),
+            codec,
+        };
+        return Some(vec![(field.born.clone(), writing.param(source, ty))]);
+    }
     if field.compound.is_none() {
         return Some(vec![(
             field.born.clone(),
@@ -917,6 +937,7 @@ pub(crate) fn plans(
     project: jadpo_db::Project,
     types: &mut Types,
     bodies: &[(Key, &Body)],
+    json: &std::cell::RefCell<Vec<TypeRef>>,
 ) -> (Vec<WriteSitePlan>, HashMap<(Key, u32), u32>) {
     let model = jadpo_check::data::data_model(db, project);
     let lookup = jadpo_check::lookups::Lookup::new(db, project);
@@ -927,6 +948,7 @@ pub(crate) fn plans(
         types,
         access,
         action: None,
+        json,
     };
     let mut out = Vec::new();
     let mut at = HashMap::new();

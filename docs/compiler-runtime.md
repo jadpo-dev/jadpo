@@ -314,6 +314,13 @@ route table's kind of codec for each type a call reads or writes, built by
 the same code, numbered per call through the site's `Decoded::Json`, so a
 document in memory is read and written exactly as a request and a
 response are (area 19, "Data formats").
+Since chunk 5.5w2b the table also numbers the type of each field holding
+a JSON-held standard value (`RichText`, `RichTextBlock`, `LocalisedText`,
+`FieldModel::json`): its column is `Column::Json(n)` and its write's
+parameter `WriteSource::Json`, and the runtime's `store` is given the
+table with the program's validators and shapes (`JsonCodecs`, as
+`json.read` is given them), so its `jsonb` holds what `json.write` writes
+and reads back as `json.read` reads.
 Since chunk 5.5q the table marks the operations that read the generator
 (`Op::reads_generator`, `random`'s five): the one exception to every
 operation being pure. The checker refuses them outside actions and tests

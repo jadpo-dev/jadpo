@@ -1254,7 +1254,7 @@ reference only).
   (`jadpo-cli/tests/standard_boundaries.rs`, with settings in the
   runtime harness). What it chose, and what clients see change, is area
   19's "Chosen in chunk 5.5w2".
-- [ ] **5.5w2b Every boundary through the contract: the JSON-held values
+- [x] **5.5w2b Every boundary through the contract: the JSON-held values
   in storage** `opus · high` (area 19; split from 5.5w2), after 5.5w2:
   `RichText`, `RichTextBlock` and `LocalisedText` are stored as area 5's
   `jsonb`, written and read by the route codec, which structured fields
@@ -1262,7 +1262,12 @@ reference only).
   table, a column reads it (`Column::Json`) and a write's parameter
   writes it, the runtime's store operations given the JSON codecs as
   `json.read` is. Done when 5.5w's storage test stores and reads back
-  each of the three's examples.
+  each of the three's examples. Built: `FieldModel::json` marks the
+  three, `Column::Json` and `WriteSource::Json` number their codecs in
+  the JSON table, and `jadpo_runtime::store` takes `JsonCodecs`; a query
+  comparing one is `toolchain.not_built_yet`, and an application's own
+  structured fields stay refused. What it chose is area 19's "Chosen in
+  chunk 5.5w2b".
 - [ ] **5.5w3 Every boundary through the contract: one encoder**
   `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
   and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`

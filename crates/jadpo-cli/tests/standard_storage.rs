@@ -7,7 +7,9 @@
 //! the entry's valid examples and reads it back equal, and the initial
 //! migration lays each column out as the entry says: a quantity's column
 //! with a comment naming its unit, a fixed currency and a fixed rate held
-//! by check constraints, a standard enum stored by its code.
+//! by check constraints, a standard enum stored by its code. The JSON-held
+//! values (`RichText`, `RichTextBlock`, `LocalisedText`) are stored as
+//! their contract's JSON in one `jsonb` column (chunk 5.5w2b).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -93,6 +95,12 @@ fn stored_in_columns(entry: &StandardType) -> bool {
         && !matches!(entry.holds, Holds::Builtin(jadpo_std::Builtin::Money))
 }
 
+/// Whether the entry's type is stored as its contract's JSON in one
+/// `jsonb` column (chunk 5.5w2b).
+fn stored_as_json(entry: &StandardType) -> bool {
+    entry.storage == Storage::Column(jadpo_std::read::SqlType::Json)
+}
+
 /// How a value of the entry's type is read from `raw`: from its
 /// canonical text, or from its JSON for a type with no single text form.
 fn reading(entry: &StandardType, ty: &str) -> String {
@@ -109,7 +117,7 @@ fn reading(entry: &StandardType, ty: &str) -> String {
 fn cases() -> Vec<Case> {
     let mut out = Vec::new();
     for entry in STANDARD_TYPES {
-        if !stored_in_columns(entry) || entry.name == jadpo_std::RANGE {
+        if !(stored_in_columns(entry) || stored_as_json(entry)) || entry.name == jadpo_std::RANGE {
             continue;
         }
         // A built-in type is named in a signature by a type built on it.
@@ -287,7 +295,8 @@ fn every_standard_object_and_choice_is_stored_and_read_back() {
         .collect::<String>();
     // A quantity's column names its unit; a fixed currency and a fixed
     // rate are held by check constraints; a choice's kind and a native
-    // range are columns of their own.
+    // range are columns of their own; a JSON-held value is one `jsonb`
+    // column.
     for expected in [
         "COMMENT ON COLUMN \"fixed_holding\".\"shelf\" IS 'Length in metres (m)'",
         "\"fixed_holding_paid_currency_check\" CHECK (\"paid_currency\" = 'GBP')",
@@ -296,6 +305,7 @@ fn every_standard_object_and_choice_is_stored_and_read_back() {
         "\"value_kind\" text NOT NULL",
         "\"value\" daterange NOT NULL",
         "\"value_amount\" numeric(38, 9)",
+        "CREATE TABLE \"holds_rich_text\" (\n    \"id\" uuid NOT NULL,\n    \"value\" jsonb NOT NULL",
     ] {
         assert!(sql.contains(expected), "`{expected}` in:\n{sql}");
     }
