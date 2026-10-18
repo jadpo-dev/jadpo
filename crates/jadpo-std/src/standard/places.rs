@@ -183,6 +183,7 @@ const fn closed(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -341,6 +342,7 @@ pub const UN_LOCODE: StandardType = StandardType {
         &["GB LON", "gblon", "UKLON", "YUBEG", "GBLO1", "GBLO", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]

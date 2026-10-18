@@ -31,6 +31,7 @@ mod resolve;
 pub mod routes;
 pub mod setting_move;
 mod std_lib;
+pub mod suggest;
 pub mod translations;
 mod tree;
 pub mod types;

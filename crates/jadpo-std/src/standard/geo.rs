@@ -126,6 +126,7 @@ pub const LATITUDE_ENTRY: StandardType = StandardType {
         &["51.5072 N", "N51.5072", "51,5072", "1e1", "+51.5", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Degrees east of the prime meridian in WGS84, from -180 to 180, held as
@@ -161,6 +162,7 @@ pub const LONGITUDE_ENTRY: StandardType = StandardType {
         &["0.1276 W", "W0.1276", "-0,1276", "", "east"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A compass direction in degrees clockwise from true north, from 0 to
@@ -193,6 +195,7 @@ pub const BEARING_ENTRY: StandardType = StandardType {
         &["90°", "N", "1.5rad", "", "ninety"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A coordinate reference system by its EPSG code, `EPSG:27700`, the
@@ -227,6 +230,7 @@ pub const CRS_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A geohash cell (geohash.org): 1 to 12 characters of its base 32, in
@@ -253,6 +257,7 @@ pub const GEOHASH_ENTRY: StandardType = StandardType {
         &["gcpvja", "GCPVJ", "gcpvj0duq5x7z", "gcpv j", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An H3 cell (Uber's H3 index, mode 1) as its 15 lower-case hexadecimal
@@ -291,6 +296,7 @@ pub const H3_CELL_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Whether `text` is an H3 cell's index: mode 1, reserved bits clear, a
@@ -363,6 +369,7 @@ pub const MAP_TILE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `EastingNorthing`'s parts: projected coordinates in the units of their
@@ -412,6 +419,7 @@ pub const EASTING_NORTHING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Point`'s parts: a latitude and a longitude by name, and the height
@@ -499,6 +507,7 @@ pub const POINT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A path of two points or more, in order: a GeoJSON `LineString`.
@@ -534,6 +543,7 @@ pub const LINE_STRING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Polygon`'s parts: its outer ring, then its holes, each ring closed (its
@@ -575,6 +585,7 @@ pub const POLYGON_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Points with no order between them, at least one: a GeoJSON
@@ -604,6 +615,7 @@ pub const MULTI_POINT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Paths, at least one: a GeoJSON `MultiLineString`.
@@ -635,6 +647,7 @@ pub const MULTI_LINE_STRING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Areas, at least one: a GeoJSON `MultiPolygon`, each by `Polygon`'s
@@ -667,6 +680,7 @@ pub const MULTI_POLYGON_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Geometry`'s variants: one of the six geometries, each holding it by
@@ -752,6 +766,7 @@ pub const GEOMETRY_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `BoundingBox`'s sides by name, as RFC 7946 §5 defines them: its south
@@ -838,6 +853,7 @@ pub const BOUNDING_BOX_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Circle`'s parts: a centre, and a radius never below 0.
@@ -890,6 +906,7 @@ pub const CIRCLE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The GeoJSON geometry `type` a standard type is sent as, for the five

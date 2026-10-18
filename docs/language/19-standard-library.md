@@ -200,7 +200,10 @@ contract adds 2 names, not 700.
 > `TaxRate` the first ("Chosen in chunk 5.5i3"). Chunk 5.5o2 added named
 > collections, `RichText` a list and `LocalisedText` a map, each built,
 > sent and read as an application's named collection is ("Chosen in
-> chunk 5.5o2").
+> chunk 5.5o2"). Chunk 5.5x gave each entry its `signals`, the data
+> `jadpo suggest` finds hand-rolled uses of the type by: conversion
+> constants, the words of names, format literals and validation texts,
+> beside the shape it already had (area 14, "Suggestions").
 
 A form sends a quantity as text, an order's time goes into a log line as
 its canonical text, and a day, a duration and a zone are shown to people

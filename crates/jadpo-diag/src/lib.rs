@@ -142,6 +142,8 @@ rules! {
         "14-tooling.html#command-errors", "Routes command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Sql command has invalid arguments";
+    CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Suggest command has invalid arguments";
     CLI_TEST_ARGUMENTS: "cli.test_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Test command has invalid arguments";
     CLI_TRANSLATIONS_ARGUMENTS: "cli.translations_arguments", area 14, Error, Agent,
@@ -646,6 +648,8 @@ rules! {
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
+    SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Ignored suggestions record can't be read";
     SYNTAX_ASSERTION_FORM: "syntax.assertion_form", area 13, Error, Agent,
         "13-testing.html#syntax-assertion-form", "Assertion written in another language's form";
     SYNTAX_ASYNC_AWAIT: "syntax.async_await", area 3, Error, Agent,

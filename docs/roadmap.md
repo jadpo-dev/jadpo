@@ -1186,7 +1186,7 @@ reference only).
   cells for types with no single text form, the bytes a personal value's
   log hash covers, developer reports' value form, and integration fields
   without `wire:`. Decide each of those on its owning page, then build.
-- [ ] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
+- [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
   could use a standard type or operation; edits stay with the agent and,
@@ -1262,6 +1262,11 @@ reference only).
   beside the accepted ones, and narrows or removes it (tested against the
   accepted snippets so it keeps catching what it got right), and proposes,
   never builds, language features.
+  Taught patterns from `found` move to a committed
+  `taught_suggestions.jadpo_record` at the project root (area 1's root list
+  gains it), so a teammate's scan finds what another taught;
+  `.jadpo/suggest_signals` stays only as a cache (lead session,
+  2026-10-18).
   Done when the whole exchange runs against the fake in tests, nothing is
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored

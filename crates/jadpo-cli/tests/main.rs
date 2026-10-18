@@ -28,6 +28,7 @@ mod queries;
 mod round_trips;
 mod signed;
 mod sql;
+mod suggest;
 #[path = "test.rs"]
 mod test_command;
 mod translation_exchange;

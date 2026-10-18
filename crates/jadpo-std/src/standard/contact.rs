@@ -57,6 +57,7 @@ const fn text(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -185,6 +186,7 @@ pub const EMAIL_WITH_NAME: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A person's name: their given name and, where they have one, their
@@ -225,6 +227,7 @@ pub const PERSON_NAME: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `PostalAddress`.
@@ -302,4 +305,5 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };

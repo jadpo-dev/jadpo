@@ -79,6 +79,7 @@ pub const TOKEN_COUNT_ENTRY: StandardType = StandardType {
         &["-1", "1.5", "1,200", "+5", "05", "", "9007199254740992"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `TokenUsage`'s parts: the tokens a call read and wrote, and of those it
@@ -151,6 +152,7 @@ pub const TOKEN_USAGE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `ChatRole`'s variants, each its own name, as the providers' APIs write
@@ -187,6 +189,7 @@ pub const CHAT_ROLE_ENTRY: StandardType = StandardType {
         &["developer", "model", "human", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `ChatMessage`'s parts: who wrote it and what it says, as text.
@@ -238,6 +241,7 @@ pub const CHAT_MESSAGE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A list of numbers, each a single-precision float, as a model's
@@ -274,6 +278,7 @@ pub const VECTOR_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Embedding`'s parts: the model that made it and its vector, since
@@ -318,6 +323,7 @@ pub const EMBEDDING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The rules a `Vector` keeps as a type: from 1 to [`MOST_DIMENSIONS`]

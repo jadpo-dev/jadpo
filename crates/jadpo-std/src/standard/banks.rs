@@ -123,4 +123,5 @@ pub const BANK_ACCOUNT_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
