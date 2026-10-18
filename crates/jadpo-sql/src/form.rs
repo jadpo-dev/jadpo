@@ -190,7 +190,7 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
             one(format!("char_length({x})::bigint"))
         }
         (Op::TextTrim, [Value(x, held)]) if text(held) => {
-            one(format!("btrim({x}, {})", text_literal(WHITE_SPACE)))
+            one(format!("btrim({x}, {})", text_literal(TRIMMED_CHARACTERS)))
         }
         (Op::TextContains, [Value(x, held), Value(a, _)]) if text(held) => {
             one(format!("(strpos({x}, {a}) > 0)"))
@@ -264,7 +264,7 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
 
 /// Every character Unicode gives the `White_Space` property, which Rust's
 /// `str::trim` removes and `text.trim` with it.
-pub const WHITE_SPACE: &str = "\u{9}\u{a}\u{b}\u{c}\u{d}\u{20}\u{85}\u{a0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}";
+pub const TRIMMED_CHARACTERS: &str = "\u{9}\u{a}\u{b}\u{c}\u{d}\u{20}\u{85}\u{a0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}";
 
 /// A whole number as `bigint`: a field whose range is narrow is stored
 /// in a `smallint` or an `integer` (area 5), whose arithmetic overflows
@@ -384,8 +384,8 @@ fn decimal_divide(x: &str, a: &str, rounding: Rounding) -> String {
 fn decimal_round(x: &str, scale: u32, rounding: Rounding) -> String {
     // One unit in the last place kept, and half of one, as literals with
     // exactly that many places.
-    let unit = power_of_ten(scale, "1");
-    let half = power_of_ten(scale + 1, "5");
+    let unit = place_literal(scale, "1");
+    let half = place_literal(scale + 1, "5");
     let t = format!("trunc({x}, {scale})");
     let away = format!("(CASE WHEN ({x}) > 0 THEN {unit} ELSE -{unit} END)");
     let rounded = match rounding {
@@ -400,8 +400,8 @@ fn decimal_round(x: &str, scale: u32, rounding: Rounding) -> String {
 }
 
 /// `digit` in the `places`th place after the point, as a literal:
-/// `power_of_ten(2, "1")` is `0.01`, and with no places `1`.
-fn power_of_ten(places: u32, digit: &str) -> String {
+/// `place_literal(2, "1")` is `0.01`, and with no places `1`.
+fn place_literal(places: u32, digit: &str) -> String {
     if places == 0 {
         return digit.to_string();
     }
@@ -526,15 +526,15 @@ mod tests {
             ),
             Some(Form::Value("\"p_amount\"".into()))
         );
-        assert_eq!(power_of_ten(0, "1"), "1");
-        assert_eq!(power_of_ten(3, "5"), "0.005");
-        assert!(WHITE_SPACE.chars().all(char::is_whitespace));
+        assert_eq!(place_literal(0, "1"), "1");
+        assert_eq!(place_literal(3, "5"), "0.005");
+        assert!(TRIMMED_CHARACTERS.chars().all(char::is_whitespace));
         assert_eq!(
             (0..=0x10ffff_u32)
                 .filter_map(char::from_u32)
                 .filter(|c| c.is_whitespace())
                 .count(),
-            WHITE_SPACE.chars().count()
+            TRIMMED_CHARACTERS.chars().count()
         );
     }
 

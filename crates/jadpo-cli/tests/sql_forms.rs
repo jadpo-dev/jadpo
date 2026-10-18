@@ -469,8 +469,12 @@ fn texts() -> Vec<String> {
     .collect();
     // PostgreSQL text can't hold the NUL character, so no column does.
     out.retain(|t| !t.contains('\0'));
-    out.push(form::WHITE_SPACE.to_string());
-    out.push(format!("{}word{}", form::WHITE_SPACE, form::WHITE_SPACE));
+    out.push(form::TRIMMED_CHARACTERS.to_string());
+    out.push(format!(
+        "{}word{}",
+        form::TRIMMED_CHARACTERS,
+        form::TRIMMED_CHARACTERS
+    ));
     out.push("x".repeat(300));
     out
 }
