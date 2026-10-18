@@ -1497,14 +1497,20 @@ reference only).
   each row's own fields, constants and pure functions, typed against the
   field it fills; filled in batches, one `UPDATE` each where every
   operation in it has a SQL form (5.6's, and the operators' and
-  conditionals' forms, each tested the same way) and by `jadpo migrate
-  apply` otherwise, then made required. The batch size, locking (each
-  batch its own transaction, never a long table lock), resuming after a
-  crash and progress output chosen and recorded on area 5; a failure
-  midway leaves the column consistent and the migration resumable; `jadpo
-  migrate apply` says when a backfill runs in Jadpo and is slower; an
-  expression that can fail is refused unless area 5 says what a failing
-  row gets.
+  conditionals' forms, each tested the same way), then made required. The
+  batch size, locking (each batch its own transaction, never a long table
+  lock), resuming after a crash and progress output chosen and recorded on
+  area 5; a failure midway leaves the column consistent and the migration
+  resumable; an expression that can fail is refused unless area 5 says
+  what a failing row gets. A backfill without a full SQL form is refused
+  as not built yet, naming 5.6b2. (Split 2026-10-18: the backfills worked
+  out in Jadpo are 5.6b2.)
+- [ ] **5.6b2 Backfills worked out in Jadpo** `opus · high` (area 5,
+  "Computed backfills"), after 5.6b: a backfill with an operation that has
+  no SQL form runs through `jadpo migrate apply`, which reads each batch,
+  works the values out in the runtime and writes them back, in 5.6b's
+  batches, transactions and resume marker; `jadpo migrate apply` says when
+  a backfill runs in Jadpo and is slower, and the generated SQL says which.
 - [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard
