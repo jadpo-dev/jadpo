@@ -21,6 +21,7 @@ mod routes;
 mod run;
 mod sql;
 mod suggest;
+mod suggestions;
 mod table;
 mod test;
 mod translations;

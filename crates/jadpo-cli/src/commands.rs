@@ -18,6 +18,7 @@ pub use crate::migrate::migrate;
 pub use crate::routes::routes;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
 pub use crate::sql::sql;
+pub use crate::suggestions::suggest;
 use crate::suggest::nearest;
 use crate::table::{self, SHELLS};
 pub use crate::test::test;

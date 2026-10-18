@@ -467,9 +467,12 @@ member that holds the signal. Each snippet has two forms.
 ```text
 $ jadpo suggest
 Suggestions
-  S1  domains/shop/libraries/pricing.jadpo:6  Money     conversion  total_price * 100
-  S2  domains/shop/entities/shop.jadpo:2      Point     shape       latitude, longitude
-  S3  domains/shop/types/delivery.jadpo:3     Duration  name        timeout_ms: Int
+  S1  domains/shop/libraries/pricing.jadpo:6  Money     conversion
+      total_price * 100
+  S2  domains/shop/entities/shop.jadpo:2      Point     shape
+      latitude, longitude
+  S3  domains/shop/types/delivery.jadpo:3     Duration  name
+      timeout_ms: Int
 
 What to do
   Review the rest of the code against `jadpo suggest --catalogue`.
@@ -482,7 +485,9 @@ What to do
 ```
 
 Findings are numbered S1, S2… in file order, each with its place, what it
-suggests, the signal and the snippet, cut with `…` to fit. With none it
+suggests, the signal and the snippet. A snippet goes beside its row when
+every one fits in 80 columns, and otherwise every snippet goes on the line
+under its row, cut with `…` only if it is longer than that line. With none it
 says `✓ No suggestions`, and the instruction stays, since the review of the
 rest still applies. `--json` gives each finding's number, place, range,
 suggestion, signal, reason, text, canonical form and both hashes, and the
@@ -728,6 +733,7 @@ each command is built.
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
+| `suggest.record_invalid` | `suggest` | Ignored suggestions record can't be read |
 | `test.failed` | `test` | Test run failed |
 | `test.no_tests` | `test` | No tests to run |
 | `test.runtime_start_failed` | `test` | Test runtime could not start |

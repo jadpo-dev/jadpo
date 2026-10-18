@@ -748,6 +748,80 @@ pub static COMMANDS: &[Command] = &[
         run: commands::fix,
     },
     Command {
+        name: "suggest",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Hint where a standard type or operation fits",
+        description: "Formats, then scans the project for code that could use a standard type or \
+                      operation: hand-rolled money, durations, quantities, points, validation \
+                      patterns and loops, found by the signals each standard type's entry holds. \
+                      It never edits: each finding is numbered (S1, S2...) for the agent to act on, \
+                      and the report ends with the routine to follow. `ignore` keeps a finding \
+                      quiet until its code changes, in the committed \
+                      ignored_suggestions.jadpo_record. `found` records something the scan \
+                      missed, before the code changes, and teaches it so the next scan finds the \
+                      same pattern. `share` sends what was learned to Jadpo HQ (not built yet). \
+                      `--catalogue` lists every signal.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do besides scanning: ignore, found or share",
+                required: false,
+                values: Values::Fixed(crate::suggestions::ACTIONS),
+            },
+            Argument {
+                name: "subject",
+                description: "For ignore, the suggestion's number; for found, <file>:<line>",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+            Argument {
+                name: "what",
+                description: "For ignore, the reason; for found, the type or operation",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+            Argument {
+                name: "why",
+                description: "For found, the reason",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
+        ],
+        flags: &[Flag {
+            name: "--catalogue",
+            value: None,
+            description: "List every signal the scan looks for",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "Find where the code could use a standard type",
+                command: "jadpo suggest",
+            },
+            Example {
+                description: "Keep the first suggestion quiet, with the reason",
+                command: "jadpo suggest ignore S1 \"Basis points, not money\"",
+            },
+            Example {
+                description: "Record a miss before fixing it",
+                command: "jadpo suggest found domains/shop/libraries/pricing.jadpo:9 Money \"Pence held as Int\"",
+            },
+            Example {
+                description: "See every signal it looks for",
+                command: "jadpo suggest --catalogue",
+            },
+        ],
+        arguments_rule: &rule::CLI_SUGGEST_ARGUMENTS,
+        raises: &[
+            &rule::SUGGEST_RECORD_INVALID,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::suggest,
+    },
+    Command {
         name: "translations",
         synonyms: &[],
         group: "Change safely",
