@@ -745,6 +745,15 @@ reference only).
   recurrence a `RecurrenceRule`. Done when it passes the harness and an
   all-day event's text, JSON and storage round-trip without moving a
   day.
+- [ ] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
+  high` (areas 10 and 19; decided by the lead session, 2026-10-18, from
+  5.5k3's findings): `temporal.resolve` taking a `LocalDateTime` (and a
+  `CalendarDate` with a `LocalTime`) with a zone, under area 10's existing
+  `dst:` choice, so a timed `CalendarEvent`'s start becomes an `Instant`;
+  and `RecurrenceRule` accepting a date-only start, so an all-day event
+  recurs (birthdays, anniversaries) without a zone. Done when an event's
+  start resolves across both clock changes with each `dst:` choice, and a
+  yearly all-day event on 29 February follows RFC 5545's skipping rule.
 - [x] **5.5l People and places** `opus · high` (area 19, question 22): 15
   of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
   `Continent`, `Language`, `WritingScript`, `TextDirection`,
