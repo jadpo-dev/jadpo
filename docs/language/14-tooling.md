@@ -633,7 +633,7 @@ $ jadpo suggest share
 ✓ Sent 3 hashes to Jadpo HQ
     kinds  1 accepted, 1 found, 1 ignored
     asked  nothing more
-    token  new, in app.jadpo: commit it so the team counts as one project
+    token  new, in app.jadpo: commit it so every copy counts as one project
 
 Sharing is on
   Only hashes went. To stop sharing, add `share: false` to `suggestions { }`.
@@ -1106,7 +1106,7 @@ error: `project_token: "acme-shop"` isn't a value `project_token` takes
   |
 2 |     project_token: "acme-shop"
   |                    ^^^^^^^^^^^ not a token
-  reason: A project token is 32 random hex digits, tied to nothing, so Jadpo HQ can count distinct projects without knowing which they are.
+  reason: A project token is 32 random hex digits, tied to nothing, so Jadpo HQ can tell one project from another without knowing which it is.
   next: Remove `project_token:`; `jadpo suggest share` writes a new one (agent)
   rule: type.suggestions_value_invalid
   help: docs/language/14-tooling.html#type-suggestions-value-invalid

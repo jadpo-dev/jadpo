@@ -124,7 +124,7 @@ fn the_whole_exchange_runs_against_the_fake() {
             "Sent 1 hash to Jadpo HQ
     kinds  1 ignored
     asked  1 snippet
-    token  new, in app.jadpo: commit it so the team counts as one project
+    token  new, in app.jadpo: commit it so every copy counts as one project
 
 What `jadpo suggest share --approve` sends
   POST {url}/v1/suggestions/snippets

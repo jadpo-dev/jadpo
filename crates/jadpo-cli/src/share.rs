@@ -193,7 +193,7 @@ pub fn share(call: &Call, cwd: &Path, root: &Path) -> Reply {
     .collect();
     if chosen.len() > 1 {
         return arguments(
-            format!("`{}` and `{}` can't go together", chosen[0], chosen[1]),
+            format!("`{}` and `{}` can't be given at once", chosen[0], chosen[1]),
             "`--approve` sends the snippets HQ asked for, `--decline` drops them, and `--new-token` replaces the token before sharing.",
             "Run one of them at a time",
         );
@@ -293,54 +293,44 @@ fn new_token() -> Option<String> {
 /// `app.jadpo`; the file it went into.
 fn write_token(root: &Path, settings: &Settings, token: &str) -> Result<String, Box<Diagnostic>> {
     let literal = format!("\"{token}\"");
-    let (file, edit): (String, Box<dyn Fn(&str) -> String>) =
-        match (&settings.token, &settings.keyword, settings.open) {
-            (Some((_, span)), _, _) => {
-                let (start, end) = (span.start as usize, span.end as usize);
-                let literal = literal.clone();
-                (
-                    span.path.clone(),
-                    Box::new(move |text: &str| {
-                        format!("{}{literal}{}", &text[..start], &text[end..])
-                    }),
-                )
-            }
-            (None, Some(keyword), Some(open)) => {
-                let at = open as usize;
-                let member = format!("\n    project_token: {literal}");
-                (
-                    keyword.path.clone(),
-                    Box::new(move |text: &str| {
-                        let after = &text[at..];
-                        // `suggestions {}` gains its own line for the brace.
-                        let close =
-                            if after.trim_start().starts_with('}') && !after.starts_with('\n') {
-                                "\n"
-                            } else {
-                                ""
-                            };
-                        format!("{}{member}{close}{after}", &text[..at])
-                    }),
-                )
-            }
-            _ => {
-                let block = format!("suggestions {{\n    project_token: {literal}\n}}\n");
-                (
-                    "app.jadpo".to_string(),
-                    Box::new(move |text: &str| {
-                        let mut out = text.trim_end().to_string();
-                        if !out.is_empty() {
-                            out.push_str("\n\n");
-                        }
-                        out.push_str(&block);
-                        out
-                    }),
-                )
-            }
-        };
+    let file = match (&settings.token, &settings.keyword) {
+        (Some((_, span)), _) => span.path.clone(),
+        (None, Some(keyword)) => keyword.path.clone(),
+        _ => "app.jadpo".to_string(),
+    };
     let path = root.join(&file);
     let text = std::fs::read_to_string(&path).map_err(|error| write_failed(&file, &error))?;
-    std::fs::write(&path, edit(&text)).map_err(|error| write_failed(&file, &error))?;
+    let edited = match (&settings.token, settings.open) {
+        // Replaced where it is.
+        (Some((_, span)), _) => format!(
+            "{}{literal}{}",
+            &text[..span.start as usize],
+            &text[span.end as usize..]
+        ),
+        // The block's first member; `suggestions {}` gains a line for its
+        // closing brace.
+        (None, Some(open)) if settings.keyword.is_some() => {
+            let (before, after) = text.split_at(open as usize);
+            let (close, after) = if after.trim_start().starts_with('}') {
+                ("\n", after.trim_start())
+            } else {
+                ("", after)
+            };
+            format!("{before}\n    project_token: {literal}{close}{after}")
+        }
+        // A new block at the end of the file.
+        _ => {
+            let mut out = text.trim_end().to_string();
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(&format!(
+                "suggestions {{\n    project_token: {literal}\n}}\n"
+            ));
+            out
+        }
+    };
+    std::fs::write(&path, edited).map_err(|error| write_failed(&file, &error))?;
     Ok(file)
 }
 
@@ -525,7 +515,7 @@ fn send_hashes(
     if let Some(file) = &token_file {
         rows.push((
             "token".to_string(),
-            format!("new, in {file}: commit it so the team counts as one project"),
+            format!("new, in {file}: commit it so every copy counts as one project"),
         ));
     }
     let mut screen = Screen::new().with(Block::Status {

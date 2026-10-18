@@ -132,7 +132,7 @@ fn invalid(name: &str, at: Span, written: Option<&str>) -> Diagnostic {
     let (label, reason, next) = if name == "project_token" {
         (
             "not a token",
-            "A project token is 32 random hex digits, tied to nothing, so Jadpo HQ can count distinct projects without knowing which they are.",
+            "A project token is 32 random hex digits, tied to nothing, so Jadpo HQ can tell one project from another without knowing which it is.",
             "Remove `project_token:`; `jadpo suggest share` writes a new one",
         )
     } else {
