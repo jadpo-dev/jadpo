@@ -755,12 +755,23 @@ impl Body<'_> {
                 }
             }
             Fallible::Construction(breakable) => {
-                let rules = match &inner {
-                    Expr::CallExpr(call) => self.construction_rules(call),
+                let rules: Vec<(String, String)> = match &inner {
+                    Expr::CallExpr(call) => self
+                        .construction_rules(call)
+                        .into_iter()
+                        .map(|(key, written)| (key.to_string(), written))
+                        .collect(),
                     Expr::BinExpr(_) | Expr::ParenExpr(_) => {
                         let word = jadpo_std::RuleKey::CurrencyMismatch.word();
-                        vec![(word, word.to_string())]
+                        vec![(word.to_string(), word.to_string())]
                     }
+                    // An object literal's rules are those across its fields
+                    // (area 2, "Rules across fields").
+                    Expr::RecordExpr(record) => record
+                        .expr()
+                        .and_then(|head| dotted(&head))
+                        .map(|(first, _)| self.across_rules(&text(&first)))
+                        .unwrap_or_default(),
                     _ => Vec::new(),
                 };
                 let proofs = match &inner {
@@ -768,6 +779,12 @@ impl Body<'_> {
                         .facts
                         .proofs
                         .get(&node_key(call.syntax()))
+                        .cloned()
+                        .unwrap_or_default(),
+                    Expr::RecordExpr(record) => self
+                        .facts
+                        .proofs
+                        .get(&node_key(record.syntax()))
                         .cloned()
                         .unwrap_or_default(),
                     _ => Vec::new(),
@@ -890,10 +907,10 @@ impl Body<'_> {
         // The comparisons that prove a construction, when ranges alone
         // don't (area 2, "Conditions as proof").
         let by: Vec<Origin> = match inner {
-            Expr::CallExpr(call) => self
+            Expr::CallExpr(_) | Expr::RecordExpr(_) => self
                 .facts
                 .proofs
-                .get(&node_key(call.syntax()))
+                .get(&node_key(inner.syntax()))
                 .into_iter()
                 .flatten()
                 .flat_map(|(_, by)| by.iter().cloned())
@@ -909,10 +926,22 @@ impl Body<'_> {
             _ if writes => format!(
                 "Nothing `{written}` writes can break a unique rule, be refused by a reference or name a record that isn't there, so it never fails; `attempt` marks only what can."
             ),
-            Expr::CallExpr(_) if !by.is_empty() => format!(
+            Expr::CallExpr(_) | Expr::RecordExpr(_) if !by.is_empty() => format!(
                 "The declared ranges and {} prove `{written}` always follows its type's rules, so building it never fails; `attempt` marks only what can.",
                 conditions_named(&by)
             ),
+            // An object whose rules across its fields the declared ranges
+            // or its literals prove (area 2, "Rules across fields").
+            Expr::RecordExpr(record)
+                if record
+                    .expr()
+                    .and_then(|head| dotted(&head))
+                    .is_some_and(|(first, _)| !self.across_rules(&text(&first)).is_empty()) =>
+            {
+                format!(
+                    "The values given prove `{written}` always follows its type's rules, so building it never fails; `attempt` marks only what can."
+                )
+            }
             Expr::CallExpr(call)
                 if self
                     .facts
@@ -1036,7 +1065,7 @@ impl Body<'_> {
         attempt: &ast::AttemptExpr,
         arms: &[Arm],
         breakable: &[String],
-        rules: &[(&'static str, String)],
+        rules: &[(String, String)],
         proofs: &[(String, Vec<Origin>)],
         written: &str,
         span: Span,
@@ -1169,7 +1198,7 @@ impl Body<'_> {
         &mut self,
         attempt: &ast::AttemptExpr,
         uncovered: &[String],
-        rules: &[(&'static str, String)],
+        rules: &[(String, String)],
         written: &str,
         span: Span,
     ) {
@@ -1413,12 +1442,7 @@ impl Body<'_> {
 
     /// An arm whose key isn't a condition the operation has: for a
     /// construction, `rules` are its type's rules.
-    fn unknown_mapping(
-        &mut self,
-        arm: &Arm,
-        written: &str,
-        rules: Option<&[(&'static str, String)]>,
-    ) {
+    fn unknown_mapping(&mut self, arm: &Arm, written: &str, rules: Option<&[(String, String)]>) {
         let condition = &arm.key;
         let span = arm.key_span.clone();
         self.flow.open = true;
@@ -1429,7 +1453,7 @@ impl Body<'_> {
         .at(span.clone(), "not a condition here");
         let problem = match rules {
             Some(rules) => {
-                let keys: Vec<String> = rules.iter().map(|(k, _)| (*k).to_string()).collect();
+                let keys: Vec<String> = rules.iter().map(|(k, _)| k.clone()).collect();
                 let near = nearest(condition, keys.iter().map(String::as_str));
                 let problem = problem.reason(format!(
                     "A construction's arms are the rules of its type and the types it builds on; `{written}`'s are {}, and `invalid:` covers any without an arm of its own.{}",

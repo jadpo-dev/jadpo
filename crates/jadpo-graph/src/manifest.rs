@@ -139,6 +139,10 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set("order", i64::from(*order));
             out.set_some("payload", *payload);
         }
+        Detail::Rule { order, condition } => {
+            out.set("order", i64::from(*order));
+            out.set("condition", condition.as_str());
+        }
         Detail::Callable {
             signature,
             isolation,

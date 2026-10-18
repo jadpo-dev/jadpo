@@ -53,7 +53,9 @@ impl Prepared {
             .types()
             .validators()
             .iter()
-            .map(|plan| Validator::new(plan.builtin, plan.rules.clone()))
+            .map(|plan| {
+                Validator::new(plan.builtin, plan.rules.clone()).with_across(plan.across.clone())
+            })
             .collect();
         let mut places = Places::new();
         for callable in plan.callables() {

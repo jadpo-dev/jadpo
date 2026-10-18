@@ -61,6 +61,10 @@ pub enum Def {
     Fields {
         base: FieldsBase,
         fields: Vec<FieldDef>,
+        /// Its rules across its fields, in the order written (area 2,
+        /// "Rules across fields"): only an `Object`'s, `Input`'s or
+        /// `Output`'s, never copied by `include` or `pick`.
+        rules: Vec<super::across::CrossDef>,
         /// When its `include` lines lead back to itself, so its fields
         /// would be copied from themselves: the first name, in name order,
         /// on that loop, where the loop is reported once.
@@ -367,7 +371,7 @@ pub fn derive(
                     }
                 }
             }
-            Line::NotAList(_) | Line::Reserved(_) | Line::Other => {}
+            Line::NotAList(_) | Line::Reserved(_) | Line::Rule(_) | Line::Other => {}
         }
     }
     (fields, problems)
@@ -569,7 +573,18 @@ impl TypeTable {
                     parent: Ty::Error,
                     rules: Box::default(),
                 },
-                ShapeKind::Fields { base, .. } => Def::Fields {
+                ShapeKind::Fields { base, lines } => Def::Fields {
+                    rules: if super::across::has_rules(*base) {
+                        lines
+                            .iter()
+                            .filter_map(|line| match line {
+                                Line::Rule(rule) => Some(rule.clone()),
+                                _ => None,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                     copies_itself: cyclic.get(name).cloned(),
                     base: *base,
                     fields: derived
@@ -619,7 +634,18 @@ impl TypeTable {
                     parent: table.resolve_with(parent, false),
                     rules: Box::default(),
                 },
-                ShapeKind::Fields { base, .. } => Def::Fields {
+                ShapeKind::Fields { base, lines } => Def::Fields {
+                    rules: if super::across::has_rules(*base) {
+                        lines
+                            .iter()
+                            .filter_map(|line| match line {
+                                Line::Rule(rule) => Some(rule.clone()),
+                                _ => None,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                     copies_itself: cyclic.get(name).cloned(),
                     base: *base,
                     fields: resolve_fields(
@@ -683,10 +709,12 @@ impl TypeTable {
                     Def::Fields {
                         base,
                         fields,
+                        rules,
                         copies_itself,
                     },
                     _,
                 ) => Def::Fields {
+                    rules: rules.clone(),
                     copies_itself: copies_itself.clone(),
                     base: *base,
                     fields: field_rules(

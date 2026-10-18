@@ -108,6 +108,7 @@ fn declaration(graph: &Graph, id: NodeId) -> String {
                 format!("{head} {{\n    {}\n}}", lines.join("\n    "))
             }
         }
+        Detail::Rule { condition, .. } => format!("rule {}: {condition}", short(&node.name)),
         Detail::Field {
             ty,
             optional,

@@ -37,6 +37,17 @@ pub fn type_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     for decl in source.decls() {
         checker.decl(&decl);
     }
+    // Where each rule across fields is written, and what it is called
+    // (area 2, "Rules across fields").
+    let fields = |host: &str| match lookup.def(host) {
+        Some(Def::Fields { fields, .. }) => fields.iter().map(|f| f.name.clone()).collect(),
+        _ => Vec::new(),
+    };
+    checker.out.extend(super::across::rule_problems(
+        file.path(db),
+        source.syntax(),
+        &fields,
+    ));
     checker.out
 }
 

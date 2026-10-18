@@ -838,7 +838,38 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
         return Value::object();
     };
     let mut out = Value::object();
-    out.set_some("description", node.doc.as_deref());
+    // OpenAPI can't say most rules across an object's fields, so the
+    // description lists them as written (area 2, "Rules across fields").
+    let mut rules: Vec<(u32, String)> = wire
+        .graph
+        .find(key)
+        .into_iter()
+        .flat_map(|id| wire.graph.children(id))
+        .filter_map(|child| {
+            let child = wire.graph.node(child);
+            match &child.detail {
+                Detail::Rule { order, condition } => Some((
+                    *order,
+                    format!(
+                        "`{}`: `{condition}`",
+                        child.name.rsplit('.').next().unwrap_or(&child.name)
+                    ),
+                )),
+                _ => None,
+            }
+        })
+        .collect();
+    rules.sort();
+    let rules: Vec<String> = rules.into_iter().map(|(_, rule)| rule).collect();
+    let description = match (node.doc.as_deref(), rules.is_empty()) {
+        (doc, true) => doc.map(str::to_string),
+        (None, false) => Some(format!("Rules across its fields: {}.", rules.join("; "))),
+        (Some(doc), false) => Some(format!(
+            "{doc}\n\nRules across its fields: {}.",
+            rules.join("; ")
+        )),
+    };
+    out.set_some("description", description.as_deref());
     match &node.detail {
         Detail::Type {
             base: Base::Enum, ..

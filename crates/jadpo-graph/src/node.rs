@@ -191,6 +191,10 @@ pub enum Detail {
         /// Whether it carries data.
         payload: bool,
     },
+    /// A rule across an object type's fields (area 2, "Rules across
+    /// fields"): its place among its type's rules, which run in that
+    /// order, and its condition as written.
+    Rule { order: u32, condition: String },
     Callable {
         signature: Signature,
         /// An action's or fixture's: the level its transaction runs at,

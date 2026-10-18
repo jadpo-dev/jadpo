@@ -385,10 +385,15 @@ impl<'t> Codecs<'t> {
                     .into_iter()
                     .map(|key| self.codec(&TypeRef::Field(Key::from_text(key))))
                     .collect();
+                // Its rules across its fields, checked once they are read
+                // (area 2, "Rules across fields").
+                let object = TypeRef::Node(key);
+                let validator = (!self.types.across(&object).is_empty())
+                    .then(|| self.types.validator_id(&object));
                 Codec::Object {
                     shape,
                     fields,
-                    validator: None,
+                    validator,
                 }
             }
             Made::Enum(key) => {

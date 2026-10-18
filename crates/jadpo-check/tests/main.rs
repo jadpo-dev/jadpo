@@ -8,6 +8,7 @@ mod syntax_examples;
 
 mod support;
 
+mod across;
 mod ai;
 mod bodies;
 mod calendar;

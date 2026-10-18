@@ -49,6 +49,10 @@ pub(crate) enum Stop {
         /// `json.read`'s first problem, as the `DecodeProblem` a failure
         /// mapped from `mismatch` receives (area 19, "Data formats").
         problem: Option<Value>,
+        /// For a rule an object type names across its fields
+        /// ([`RuleKey::Named`]), its name, which its `attempt` arm is keyed
+        /// by (area 2, "Rules across fields").
+        name: Option<String>,
     },
     Failed(Box<Failure>),
     Fault(Box<Fault>),
@@ -357,9 +361,13 @@ fn is_comparison(op: BinaryOp) -> bool {
     )
 }
 
-/// The arm of an `attempt` that maps rule `rule`: its own, or `invalid:`.
-fn rule_arm(arms: &[RuleArm], rule: RuleKey) -> Option<usize> {
-    let found = RuleArm::for_rule(arms, rule)?;
+/// The arm of an `attempt` that maps rule `rule`, or the rule across an
+/// object's fields called `name`: its own, or `invalid:`.
+fn rule_arm(arms: &[RuleArm], rule: RuleKey, name: Option<&str>) -> Option<usize> {
+    let found = match name {
+        Some(name) => RuleArm::for_named(arms, name)?,
+        None => RuleArm::for_rule(arms, rule)?,
+    };
     arms.iter().position(|arm| std::ptr::eq(arm, found))
 }
 
@@ -948,6 +956,7 @@ impl<'p> Machine<'p> {
                             rule: invalid.key(),
                             written: invalid.broken(None),
                             problem: None,
+                            name: invalid.name().map(str::to_string),
                         });
                     }
                 } else if self.program.proof_checks()
@@ -1003,6 +1012,7 @@ impl<'p> Machine<'p> {
                             rule: invalid.key(),
                             written: invalid.broken(Some(&given.name)),
                             problem: None,
+                            name: invalid.name().map(str::to_string),
                         });
                     }
                 } else if self.program.proof_checks()
@@ -1014,20 +1024,41 @@ impl<'p> Machine<'p> {
             }
             Task::Build { at, count } => {
                 let values = self.take(count);
-                let built = match self.decoded(at) {
+                let (built, across) = match self.decoded(at) {
                     Some(Decoded::Build {
                         shape: Some(shape),
                         fields,
+                        across,
                         ..
-                    }) => self.program.shape(*shape).and_then(|shape| {
-                        shape.build(fields.iter().map(|given| given.slot).zip(values))
-                    }),
-                    _ => None,
+                    }) => (
+                        self.program.shape(*shape).and_then(|shape| {
+                            shape.build(fields.iter().map(|given| given.slot).zip(values))
+                        }),
+                        *across,
+                    ),
+                    _ => (None, None),
                 };
-                match built {
-                    Some(value) => self.values.push(value),
-                    None => return Err(self.defect(ctx, "a build without one of its fields", at)),
+                let Some(value) = built else {
+                    return Err(self.defect(ctx, "a build without one of its fields", at));
+                };
+                // The rules across its fields, once every field has its
+                // value (area 2, "Rules across fields"): one that can break
+                // fails the construction by its name, for its `attempt`.
+                if let Some((validator, breaks)) = across
+                    && (breaks || self.program.proof_checks())
+                    && let Err(invalid) = self.program.validator(validator).check(&value)
+                {
+                    if breaks {
+                        return Err(Stop::Invalid {
+                            rule: invalid.key(),
+                            written: invalid.broken(None),
+                            problem: None,
+                            name: invalid.name().map(str::to_string),
+                        });
+                    }
+                    return Err(self.proof_broken(ctx, &invalid, at));
                 }
+                self.values.push(value);
             }
             Task::List { at, count } => {
                 let items = self.take(count);
@@ -1247,10 +1278,11 @@ impl<'p> Machine<'p> {
                         rule,
                         written,
                         problem,
+                        name,
                     } = stop
                     {
                         self.values.truncate(base);
-                        let Some(index) = rule_arm(arms, rule) else {
+                        let Some(index) = rule_arm(arms, rule, name.as_deref()) else {
                             stop = self.defect(
                                 ctx,
                                 "a construction that can fail, with no failure for it",
@@ -1745,6 +1777,7 @@ impl<'p> Machine<'p> {
                 rule,
                 written: format!("{}:", rule.word()),
                 problem: None,
+                name: None,
             },
             fault => self.value_fault(ctx, fault, at),
         })
@@ -2161,6 +2194,7 @@ impl<'p> Machine<'p> {
                 rule,
                 written: format!("{}:", rule.word()),
                 problem: None,
+                name: None,
             }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
         }
@@ -2215,6 +2249,7 @@ impl<'p> Machine<'p> {
                 rule,
                 written: format!("{}:", rule.word()),
                 problem: None,
+                name: None,
             }),
             Err(fault) => Err(self.value_fault(ctx, fault, at)),
         }
@@ -2251,11 +2286,13 @@ impl<'p> Machine<'p> {
                             rule: RuleKey::Malformed,
                             written: format!("`{}`", RuleKey::Malformed.word()),
                             problem: None,
+                            name: None,
                         },
                         jadpo_value::json::Unread::Mismatch(problem) => Stop::Invalid {
                             rule: RuleKey::Mismatch,
                             written: mismatch_written(&problem),
                             problem: Some(decode_problem(&problem)),
+                            name: None,
                         },
                     })
             }

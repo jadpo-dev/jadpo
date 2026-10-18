@@ -52,7 +52,7 @@ pub(super) enum Term {
 }
 
 impl Term {
-    fn number(n: Num) -> Term {
+    pub(super) fn number(n: Num) -> Term {
         let (mut mantissa, mut scale) = (n.mantissa, n.scale);
         while scale > 0 && mantissa % 10 == 0 {
             mantissa /= 10;
@@ -84,7 +84,7 @@ impl Term {
     }
 
     /// Whether it reads no local, so knowing more about it says nothing.
-    fn is_constant(&self) -> bool {
+    pub(super) fn is_constant(&self) -> bool {
         self.within(&BTreeSet::new())
     }
 }
@@ -132,18 +132,96 @@ impl Same {
     }
 }
 
-/// What holds at one point: a bound per subject, and the amounts known to
-/// be in one currency. A subject with no bound has only its declared
-/// range.
+/// A comparison known to hold between two subjects of any ordered type,
+/// instants and dates as well as numbers: what proves a rule across an
+/// object's fields that compares them (area 2, "Rules across fields").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Relation {
+    pub left: Term,
+    /// `<`, `<=`, `>`, `>=`, `==` or `!=`.
+    pub op: &'static str,
+    pub right: Term,
+    pub from: BTreeSet<Origin>,
+}
+
+impl Relation {
+    fn mentions(&self, local: usize) -> bool {
+        self.left.mentions(local) || self.right.mentions(local)
+    }
+
+    fn within(&self, locals: &BTreeSet<usize>) -> bool {
+        self.left.within(locals) && self.right.within(locals)
+    }
+
+    fn same(&self, other: &Relation) -> bool {
+        self.left == other.left && self.op == other.op && self.right == other.right
+    }
+}
+
+/// `op` written the other way round: `a < b` is `b > a`.
+pub(super) fn flipped(op: &str) -> &'static str {
+    match op {
+        "<" => ">",
+        "<=" => ">=",
+        ">" => "<",
+        ">=" => "<=",
+        "==" => "==",
+        _ => "!=",
+    }
+}
+
+/// Whether knowing `known` holds means `wanted` does, between the same two
+/// sides in the same order.
+fn implies(known: &str, wanted: &str) -> bool {
+    known == wanted
+        || matches!(
+            (known, wanted),
+            ("<", "<=" | "!=") | (">", ">=" | "!=") | ("==", "<=" | ">=")
+        )
+}
+
+/// What holds at one point: a bound per subject, the amounts known to be
+/// in one currency, and the comparisons known to hold between subjects. A
+/// subject with no bound has only its declared range.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Known {
     facts: BTreeMap<Term, Fact>,
     same: Vec<Same>,
+    relations: Vec<Relation>,
 }
 
 impl Known {
     pub(super) fn is_empty(&self) -> bool {
-        self.facts.is_empty() && self.same.is_empty()
+        self.facts.is_empty() && self.same.is_empty() && self.relations.is_empty()
+    }
+
+    /// The comparisons that prove `left op right`, if one known does.
+    pub(super) fn relation(
+        &self,
+        left: &Term,
+        op: &str,
+        right: &Term,
+    ) -> Option<&BTreeSet<Origin>> {
+        self.relations
+            .iter()
+            .find(|known| {
+                (known.left == *left && known.right == *right && implies(known.op, op))
+                    || (known.left == *right
+                        && known.right == *left
+                        && implies(flipped(known.op), op))
+            })
+            .map(|known| &known.from)
+    }
+
+    fn add_relation(&mut self, relation: Relation) {
+        match self
+            .relations
+            .iter_mut()
+            .find(|known| known.same(&relation))
+        {
+            Some(known) => known.from.extend(relation.from),
+            None => self.relations.push(relation),
+        }
     }
 
     /// The class of amounts known to share `term`'s currency.
@@ -197,6 +275,9 @@ impl Known {
         for same in &other.same {
             out.add_same(same.clone());
         }
+        for relation in &other.relations {
+            out.add_relation(relation.clone());
+        }
         out
     }
 
@@ -235,6 +316,15 @@ impl Known {
                 }
             }
         }
+        // Only the comparisons both know.
+        for a in &self.relations {
+            if let Some(b) = other.relations.iter().find(|b| b.same(a)) {
+                out.relations.push(Relation {
+                    from: a.from.union(&b.from).cloned().collect(),
+                    ..a.clone()
+                });
+            }
+        }
         out
     }
 
@@ -247,6 +337,7 @@ impl Known {
     /// Forgets every bound that mentions `local`, which has just been
     /// pointed at a new value.
     pub(super) fn forget(&mut self, local: usize) {
+        self.relations.retain(|relation| !relation.mentions(local));
         self.facts.retain(|term, _| !term.mentions(local));
         for same in &mut self.same {
             same.terms.retain(|term| !term.mentions(local));
@@ -256,6 +347,7 @@ impl Known {
 
     /// Keeps only bounds on subjects made of `locals`, those in scope.
     pub(super) fn keep_within(&mut self, locals: &BTreeSet<usize>) {
+        self.relations.retain(|relation| relation.within(locals));
         self.facts.retain(|term, _| term.within(locals));
         for same in &mut self.same {
             same.terms.retain(|term| term.within(locals));
@@ -431,7 +523,7 @@ impl Body<'_> {
 
     /// Whether `expr` is a number that is never `none`, and whether it is
     /// whole: a literal by how it is written, a value by its type.
-    fn numeric(&self, expr: &Expr) -> Option<bool> {
+    pub(super) fn numeric(&self, expr: &Expr) -> Option<bool> {
         if super::is_literal(expr) {
             return match Const::from_expr(expr) {
                 Const::Number { decimal, .. } => Some(!decimal),
@@ -495,7 +587,9 @@ impl Body<'_> {
                         }
                     }
                     "<" | "<=" | ">" | ">=" | "==" | "!=" => {
-                        self.comparison(binary, &lhs, op.text(), &rhs)
+                        let (mut holds, mut fails) = self.comparison(binary, &lhs, op.text(), &rhs);
+                        self.relate(binary, &lhs, op.text(), &rhs, &mut holds, &mut fails);
+                        (holds, fails)
                     }
                     _ => Default::default(),
                 }
@@ -557,6 +651,56 @@ impl Body<'_> {
         }
         let [holds, fails] = out;
         (holds, fails)
+    }
+
+    /// The comparison `lhs op rhs` itself, between two subjects of any
+    /// type, where it holds and, turned round, where it doesn't: what
+    /// proves a rule across an object's fields (area 2, "Rules across
+    /// fields"). A side that may be `none` relates nothing.
+    fn relate(
+        &self,
+        binary: &ast::BinExpr,
+        lhs: &Expr,
+        op: &str,
+        rhs: &Expr,
+        holds: &mut Known,
+        fails: &mut Known,
+    ) {
+        let nullable = |side: &Expr| {
+            self.facts
+                .types
+                .get(&node_key(side.syntax()))
+                .is_none_or(|ty| ty.has_error() || self.table.is_nullable(ty))
+        };
+        if nullable(lhs) || nullable(rhs) {
+            return;
+        }
+        let (Some(left), Some(right)) = (self.term(lhs), self.term(rhs)) else {
+            return;
+        };
+        if left.is_constant() && right.is_constant() {
+            return;
+        }
+        let from = BTreeSet::from([Origin {
+            key: node_key(binary.syntax()),
+            written: spaced(binary.syntax()),
+        }]);
+        for (known, op) in [(holds, op), (fails, negated(op))] {
+            let op = match op {
+                "<" => "<",
+                "<=" => "<=",
+                ">" => ">",
+                ">=" => ">=",
+                "==" => "==",
+                _ => "!=",
+            };
+            known.add_relation(Relation {
+                left: left.clone(),
+                op,
+                right: right.clone(),
+                from: from.clone(),
+            });
+        }
     }
 
     /// What `lhs == rhs` says when it compares the currencies of amounts

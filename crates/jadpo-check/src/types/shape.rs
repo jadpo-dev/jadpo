@@ -86,6 +86,9 @@ pub enum Line {
     NotAList(&'static str),
     /// `optional`, `include`, `pick` or `omit` used as a field's name.
     Reserved(String),
+    /// `rule ends_after_start: ends > starts`: a rule across the type's
+    /// fields (area 2, "Rules across fields").
+    Rule(super::across::CrossDef),
     /// Not a field: an entity's setting or section, or something the
     /// parser has already reported.
     Other,
@@ -304,6 +307,9 @@ pub fn lines(list: Option<ast::MemberList>, base: FieldsBase) -> Vec<Line> {
         .flat_map(|list| list.member_items())
         .map(|item| match item {
             MemberItem::Member(member) => line(&member, base),
+            MemberItem::RuleMember(rule) => {
+                super::across::CrossDef::from_member(&rule).map_or(Line::Other, Line::Rule)
+            }
             _ => Line::Other,
         })
         .collect()

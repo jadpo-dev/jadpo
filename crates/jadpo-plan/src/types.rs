@@ -53,6 +53,9 @@ const CHAIN: usize = 256;
 #[derive(Debug)]
 pub struct Types {
     graph: Arc<Graph>,
+    /// Each rule across an object's fields, by key, with its typed body
+    /// (area 2, "Rules across fields").
+    rule_bodies: HashMap<Key, Arc<jadpo_graph::body::Body>>,
     validators: Vec<ValidatorPlan>,
     validator_ids: HashMap<TypeRef, ValidatorId>,
     shapes: Vec<ShapePlan>,
@@ -62,9 +65,13 @@ pub struct Types {
 }
 
 impl Types {
-    pub(crate) fn new(graph: Arc<Graph>) -> Types {
+    pub(crate) fn new(
+        graph: Arc<Graph>,
+        rule_bodies: HashMap<Key, Arc<jadpo_graph::body::Body>>,
+    ) -> Types {
         Types {
             graph,
+            rule_bodies,
             validators: Vec::new(),
             validator_ids: HashMap::new(),
             shapes: Vec::new(),
@@ -380,12 +387,193 @@ impl Types {
             Some((builtin, rules)) => ValidatorPlan {
                 builtin: Some(builtin),
                 rules,
+                across: Vec::new(),
             },
             None => ValidatorPlan {
                 builtin: None,
                 rules: self.length_rules(ty),
+                across: self.across(ty),
             },
         }
+    }
+
+    /// The rules across the fields of the object type `ty` names, in the
+    /// order written, each lowered from its typed body (area 2, "Rules
+    /// across fields"); none for any other type.
+    pub fn across(&self, ty: &TypeRef) -> Vec<jadpo_std::across::CrossRule> {
+        let mut current = ty;
+        while let TypeRef::Nullable(inner) = current {
+            current = inner;
+        }
+        let TypeRef::Node(key) = current else {
+            return Vec::new();
+        };
+        let Some(id) = self.graph.find(key) else {
+            return Vec::new();
+        };
+        let mut rules: Vec<(u32, &Node)> = self
+            .graph
+            .children(id)
+            .map(|child| self.graph.node(child))
+            .filter_map(|node| match &node.detail {
+                Detail::Rule { order, .. } => Some((*order, node)),
+                _ => None,
+            })
+            .collect();
+        rules.sort_by_key(|(order, _)| *order);
+        rules
+            .into_iter()
+            .filter_map(|(_, node)| {
+                let body = self.rule_bodies.get(&node.key)?;
+                let jadpo_graph::body::Node::Stmt(jadpo_graph::body::Stmt::Return {
+                    value: Some(value),
+                }) = &body.site(*body.block.first()?).node
+                else {
+                    return None;
+                };
+                Some(jadpo_std::across::CrossRule {
+                    name: last(&node.name).to_string(),
+                    locals: u32::try_from(body.locals.len()).ok()?,
+                    check: self.rule_expr(body, *value)?,
+                })
+            })
+            .collect()
+    }
+
+    /// A rule's condition, or a part of it, as the runtime runs it.
+    fn rule_expr(
+        &self,
+        body: &jadpo_graph::body::Body,
+        at: jadpo_graph::body::SiteId,
+    ) -> Option<jadpo_std::across::RuleExpr> {
+        use jadpo_graph::body::{ArmBody, BinaryOp, Callee, Expr, Node as Site, Pattern, UnaryOp};
+        use jadpo_std::across::{RuleArm, RuleExpr, RuleOp, RulePattern};
+        let site = body.site(at);
+        let Site::Expr(expr) = &site.node else {
+            return None;
+        };
+        let boxed = |at| self.rule_expr(body, at).map(Box::new);
+        Some(match expr {
+            Expr::Literal(literal) => RuleExpr::Constant(self.literal(literal, &site.ty)?),
+            Expr::Local(local) => RuleExpr::Local(local.0),
+            Expr::Field { receiver, field } => RuleExpr::Field {
+                receiver: boxed(*receiver)?,
+                name: self.field_name(field).to_string(),
+            },
+            Expr::List { items } => RuleExpr::List(
+                items
+                    .iter()
+                    .map(|item| self.rule_expr(body, *item))
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            Expr::Binary { op, lhs, rhs } => {
+                let rounding = self
+                    .chain(&body.site(*lhs).ty)
+                    .filter(|(builtin, _)| *builtin == Builtin::Money)
+                    .and_then(|(_, rules)| rules.iter().find_map(|rules| rules.rounding))
+                    .unwrap_or(jadpo_std::Rounding::HalfEven);
+                RuleExpr::Binary {
+                    op: match op {
+                        BinaryOp::Or => RuleOp::Or,
+                        BinaryOp::And => RuleOp::And,
+                        BinaryOp::Equal => RuleOp::Equal,
+                        BinaryOp::NotEqual => RuleOp::NotEqual,
+                        BinaryOp::In => RuleOp::In,
+                        BinaryOp::Less => RuleOp::Less,
+                        BinaryOp::LessEqual => RuleOp::LessEqual,
+                        BinaryOp::Greater => RuleOp::Greater,
+                        BinaryOp::GreaterEqual => RuleOp::GreaterEqual,
+                        BinaryOp::Add => RuleOp::Add,
+                        BinaryOp::Subtract => RuleOp::Subtract,
+                        BinaryOp::Multiply => RuleOp::Multiply,
+                        BinaryOp::Divide => RuleOp::Divide,
+                        BinaryOp::Remainder => RuleOp::Remainder,
+                        BinaryOp::Matches => return None,
+                    },
+                    lhs: boxed(*lhs)?,
+                    rhs: boxed(*rhs)?,
+                    rounding,
+                }
+            }
+            Expr::Unary {
+                op: UnaryOp::Not,
+                operand,
+            } => RuleExpr::Not(boxed(*operand)?),
+            Expr::Unary {
+                op: UnaryOp::Negate,
+                operand,
+            } => RuleExpr::Negate(boxed(*operand)?),
+            Expr::Call {
+                callee: Callee::Std(op),
+                args,
+                ..
+            } => {
+                // As the interpreter gives them: an optional parameter left
+                // out is `none`.
+                let mut given = Vec::new();
+                for (param, arg) in op.operation().params.iter().zip(args) {
+                    match arg {
+                        Some(arg) => given.push(self.rule_expr(body, *arg)?),
+                        None if param.optional => {
+                            given.push(RuleExpr::Constant(Constant::None));
+                        }
+                        None => return None,
+                    }
+                }
+                RuleExpr::Std {
+                    op: *op,
+                    args: given,
+                }
+            }
+            Expr::Build {
+                callee: Callee::Variant(key),
+                fields,
+                ..
+            } if fields.is_empty() => {
+                let shape = self.shape_plan(key)?;
+                let variant = shape.variant?;
+                RuleExpr::Constant(Constant::Variant {
+                    ty: shape.ty,
+                    ordinal: variant.ordinal,
+                    name: variant.name,
+                    fields: Vec::new(),
+                })
+            }
+            Expr::Match {
+                subject: Some(subject),
+                outcome: false,
+                arms,
+            } => RuleExpr::Match {
+                subject: boxed(*subject)?,
+                arms: arms
+                    .iter()
+                    .map(|arm| {
+                        let ArmBody::Value(value) = &arm.body else {
+                            return None;
+                        };
+                        Some(RuleArm {
+                            pattern: match &arm.pattern {
+                                Pattern::Some => RulePattern::Some,
+                                Pattern::None => RulePattern::None,
+                                Pattern::True => RulePattern::True,
+                                Pattern::False => RulePattern::False,
+                                Pattern::Wildcard => RulePattern::Wildcard,
+                                Pattern::Variant(key) => {
+                                    RulePattern::Variant(self.shape_plan(key)?.variant?.ordinal)
+                                }
+                                Pattern::Literal(literal) => RulePattern::Literal(
+                                    self.literal(literal, &body.site(*subject).ty)?,
+                                ),
+                                _ => return None,
+                            },
+                            binding: arm.binding.map(|local| local.0),
+                            body: self.rule_expr(body, *value)?,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+            },
+            _ => return None,
+        })
     }
 
     /// The rules along `ty`'s chain down to a collection, most specific

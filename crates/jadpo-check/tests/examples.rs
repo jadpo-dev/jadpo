@@ -1135,6 +1135,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             }
             Detail::Constant { ty, .. } => shapes(ty, &mut used),
             Detail::Variant { .. }
+            | Detail::Rule { .. }
             | Detail::None
             | Detail::Entity { .. }
             | Detail::Columns { .. }

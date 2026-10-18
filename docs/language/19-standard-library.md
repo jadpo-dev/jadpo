@@ -7666,7 +7666,7 @@ under "Errors").
   are checked as `T?`; elsewhere its first end that isn't `none` gives
   `T`. Its ends are read as `range.start` and `range.end`, each a `T?`.
   Nothing checks that the start isn't after the end, as for an
-  `InstantRange`, until named rules across fields (5.5t).
+  `InstantRange`, until the standard types' rules across fields (5.5t2).
 - **A `range` call's ranges are all one range type,** since each keeps its
   own end rule: an `InstantRange` and a `Range<Instant>` don't mix
   (`type.mismatch`). A range it gives is that range type, so
@@ -8291,7 +8291,7 @@ under "Errors").
   `type.invalid_literal` for a literal, `type.field_unproved` for a
   value, and `LocalTime.hour(raw)` builds one with its `min` and `max`.
   A rule across fields, an `IsoWeek`'s week 53 in a year with 52, waits
-  for 5.5t, as `InstantRange`'s start after its end does; its text is
+  for 5.5t2, as `InstantRange`'s start after its end does; its text is
   refused. `Year` is a record of one `year`, since a standard type
   built on `Int` with rules of its own would need declarations the
   project doesn't have.
@@ -8469,7 +8469,7 @@ under "Errors").
   absent and one written out (text, a variant, an object) known to be
   given, so a literal that breaks one is `type.invalid_literal`, no new
   rule. A part built from a value that may be `none` waits on cross-field
-  rules (chunk 5.5t). A value read from text or JSON is checked as it is
+  rules (chunk 5.5t2). A value read from text or JSON is checked as it is
   read: text that breaks one is `malformed`, and JSON breaks `format` at
   the part.
 - **Its text** is the `VEVENT`'s lines joined by line feeds, as a
@@ -8783,7 +8783,7 @@ under "Errors").
   (`type.invalid_literal`), and checked when an address is read from JSON,
   in a request or `json.read`, breaking `format` at `postal_code`. One
   built in code from values isn't checked until cross-field rules (chunk
-  5.5t) make it a named rule, proved or attempted. Stored addresses are
+  5.5t2) make it a named rule, proved or attempted. Stored addresses are
   read as written.
 - **`UnLocode`** is its five characters with no space, `GBLON`, its
   country a current ISO 3166-1 code, and printed with the space, `GB LON`.
@@ -8836,7 +8836,7 @@ under "Errors").
   form, `PartRule` now reading any number of parts (a document's kind and
   country), proved where a literal writes them all and checked as JSON is
   read, breaking `format` at `number`; one built in code from values waits
-  on cross-field rules (chunk 5.5t). A country that publishes no form
+  on cross-field rules (chunk 5.5t2). A country that publishes no form
   takes any number within the type's bounds, 1 to 25 capitals and digits
   (the longest a US state's licence number may be, by AAMVA's 2020 card
   standard), and 2 to 15 for a VAT number, so a number is never refused
@@ -9602,7 +9602,7 @@ under "Errors").
   form: it is sent as its parts, stored as `jsonb`, and shown in that
   notation. A literal is checked while compiling, a value read from JSON
   as it is read, and one built in code from values waits on cross-field
-  rules (chunk 5.5t).
+  rules (chunk 5.5t2).
 - **`SubtitleCue`** is WebVTT's: a `start` and an `end`, `Duration`s from
   the start of the media to the millisecond, the start at 0 or after and
   the end after it, and its `text`, lines with no control character, no
@@ -9696,7 +9696,7 @@ under "Errors").
 - **Rules across parts,** a rating's and a blood pressure's, are proved for
   a literal that writes both parts as numbers or as quantities of one kind,
   and checked as JSON is read; one built in code from values waits on
-  cross-field rules (chunk 5.5t).
+  cross-field rules (chunk 5.5t2).
 - **`Dimensions`** is a `length`, `width` and `height`, none below 0, sent
   as named fields, stored as `jsonb` and shown in centimetres, or the unit
   `unit:` names, written once, `30 × 20 × 10 cm`. A parcel's weight, which
@@ -9940,7 +9940,7 @@ conservative reading:
   north, not TMS's: a `zoom` from 0 to 30, which keeps `x` and `y` within a
   32-bit integer as PostGIS's `ST_TileEnvelope` takes them, and each below
   2 to the zoom, checked as JSON is read; one built in code from values
-  waits on cross-field rules (chunk 5.5t). It is shown as a tile's URL
+  waits on cross-field rules (chunk 5.5t2). It is shown as a tile's URL
   writes it, `10/511/340`.
 - **`EastingNorthing`** is an `easting` and a `northing`, `Decimal`s held
   as written, and its `Crs`, shown by name, `easting 530,000, northing

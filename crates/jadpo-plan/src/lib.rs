@@ -221,7 +221,18 @@ impl Plan {
             .enumerate()
             .map(|(i, (key, ..))| (key.clone(), i as u32))
             .collect();
-        let mut types = Types::new(Arc::clone(&graph));
+        // Each rule across an object's fields, whose body the type's
+        // validator runs (area 2, "Rules across fields").
+        let mut rule_bodies = HashMap::new();
+        for &file in project.files(db) {
+            for callable in jadpo_check::types::rule_callables(db, file) {
+                let checked = typed_body(db, project, callable);
+                if let Some(key) = checked.key.clone() {
+                    rule_bodies.insert(key, Arc::clone(&checked.body));
+                }
+            }
+        }
+        let mut types = Types::new(Arc::clone(&graph), rule_bodies);
         let (queries, entities, identity) = queries::plans(db, project, &mut types);
         let query_ids: HashMap<Key, u32> = queries
             .iter()
