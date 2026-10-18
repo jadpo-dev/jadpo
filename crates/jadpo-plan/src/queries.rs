@@ -39,6 +39,8 @@ use jadpo_std::read::{
 };
 
 use crate::constant::Constant;
+
+mod aggregates;
 use crate::policy::Row;
 use crate::types::Types;
 use jadpo_check::policy::Effect;
@@ -189,6 +191,10 @@ impl Planner<'_> {
     // --- queries -----------------------------------------------------------------
 
     pub fn query(&mut self, query: &QueryModel) -> Option<QueryPlan> {
+        // An aggregate query (chunk 5.6c) is one grouped statement.
+        if let Some(grouping) = &query.grouping {
+            return self.aggregate(query, grouping);
+        }
         let entity = self.model.entity(&query.entity)?;
         let store = entity.store.clone()?;
         let cardinality = query.cardinality;
@@ -397,6 +403,9 @@ impl Planner<'_> {
                     fields.push((name.clone(), Field::Column(at)));
                 }
                 From::Include(at) => fields.push((name.clone(), Field::Include(*at as u32))),
+                // Only an aggregate query's rows hold entries, and it is
+                // planned on its own.
+                From::Entry { .. } => return None,
             }
         }
         // The keys the includes match.

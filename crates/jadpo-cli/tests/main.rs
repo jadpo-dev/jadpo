@@ -6,6 +6,7 @@ mod support;
 
 mod accept_language;
 mod across;
+mod aggregates;
 mod ai;
 mod binary;
 mod check;

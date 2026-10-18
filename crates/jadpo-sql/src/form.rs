@@ -109,6 +109,9 @@ pub fn has_form(op: Op) -> bool {
             | Op::MoneyMinor
             | Op::MoneyCurrency
             | Op::TemporalPeriodBetween
+            | Op::TemporalYear
+            | Op::TemporalMonth
+            | Op::TemporalDay
             | Op::TextLength
             | Op::TextTrim
             | Op::TextContains
@@ -185,6 +188,27 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
         (Op::MoneyCurrency, [Parts([_, currency])]) => one(format!("({currency})::text")),
         (Op::TemporalPeriodBetween, [Value(start, _), Value(end, _)]) => {
             Some(Form::Parts(period_between(start, end)))
+        }
+        // A date's parts (chunk 5.6c, an aggregate query's time buckets).
+        // PostgreSQL counts no year 0: its 1 BC, whose `extract` gives -1,
+        // is the runtime's year 0, as ISO 8601 counts.
+        (Op::TemporalYear, [Value(x, Held::Builtin(builtin))])
+            if builtin.representation() == Builtin::CalendarDate =>
+        {
+            let year = format!("extract(year FROM {x})");
+            one(format!(
+                "(CASE WHEN {year} < 0 THEN {year} + 1 ELSE {year} END)::bigint"
+            ))
+        }
+        (Op::TemporalMonth, [Value(x, Held::Builtin(builtin))])
+            if builtin.representation() == Builtin::CalendarDate =>
+        {
+            one(format!("extract(month FROM {x})::bigint"))
+        }
+        (Op::TemporalDay, [Value(x, Held::Builtin(builtin))])
+            if builtin.representation() == Builtin::CalendarDate =>
+        {
+            one(format!("extract(day FROM {x})::bigint"))
         }
         (Op::TextLength, [Value(x, held)]) if text(held) => {
             one(format!("char_length({x})::bigint"))
