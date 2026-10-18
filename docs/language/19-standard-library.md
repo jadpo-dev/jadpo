@@ -104,7 +104,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 205 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (for the lead session to accept, "Chosen in chunk 5.5m2"). "(enum)" marks a closed list held as a built-in enum: thirty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 205 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -5427,6 +5427,7 @@ test "a pulse is read in either unit and shown in beats a minute" {
     var pulse: HeartRate = attempt monitored_pulse("72 bpm")
     var in_hertz: HeartRate = attempt monitored_pulse("1.2 Hz")
     assert pulse == in_hertz
+    assert pulse == HeartRate(72bpm)
     assert text.format(pulse, locale: Locale.en_gb) == "72 bpm"
     assert text.from(pulse) == "1.2 Hz"
     assert monitored_pulse("72") fails BadPulse
@@ -5435,6 +5436,11 @@ test "a pulse is read in either unit and shown in beats a minute" {
 }
 
 test "a reading is shown as a clinician reads it" {
+    var at_rest: BloodPressure = BloodPressure {
+        systolic: 120mmHg
+        diastolic: 80mmHg
+    }
+    assert pressure_shown(at_rest, Locale.en_gb) == "120/80 mmHg"
     var in_kilopascals: BloodPressure = BloodPressure {
         systolic: 16kPa
         diastolic: 10.7kPa
@@ -5478,11 +5484,11 @@ while compiling: the pressure between beats is below the pressure as the
 heart beats.
 
 ```jadpo check project=pressure-order expect=type.invalid_literal
-/// A reading typed into the chart in kilopascals.
+/// A reading typed into the chart.
 function typed_reading() -> BloodPressure {
     return BloodPressure {
-        systolic: 10.7kPa
-        diastolic: 16kPa
+        systolic: 80mmHg
+        diastolic: 120mmHg
     }
 }
 ```
@@ -5491,8 +5497,8 @@ function typed_reading() -> BloodPressure {
 error: This `BloodPressure`'s `diastolic` breaks a rule across its parts
  --> main.jadpo:5:20
   |
-5 |         diastolic: 16kPa
-  |                    ^^^^^ not below the systolic
+5 |         diastolic: 120mmHg
+  |                    ^^^^^^^ not below the systolic
   reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9).
   next: Write a `diastolic` below the `systolic`, or swap the two (agent)
   rule: type.invalid_literal
@@ -8465,20 +8471,22 @@ under "Errors").
 
 ### Chosen in chunk 5.5m2
 
-- **Three supporting enums,** for the lead session to accept, beside the
-  247, since a part must be a standard type to be read, sent and stored by
+- **Three supporting enums,** accepted by the lead session ("Decisions"),
+  beside the 247, since a part must be a standard type to be read, sent and stored by
   its code (as `ContentRatingScheme` was): `ClothingSizeSystem` and
   `ShoeSizeSystem`, the systems a size is in, and `RouteOfAdministration`,
   the routes a dose is taken by.
-- **Four units, with no literal suffix,** since question 17 decided the
-  suffixes: `PressureUnit.millimetre_of_mercury` (`mmHg`, 133.322387415 Pa,
-  as CLDR converts it), `FrequencyUnit.beat_per_minute` (`bpm`, 1/60 Hz),
+- **Four units** (accepted by the lead session, "Decisions"):
+  `PressureUnit.millimetre_of_mercury` (`mmHg`, 133.322387415 Pa, as CLDR
+  converts it) and `FrequencyUnit.beat_per_minute` (`bpm`, 1/60 Hz), each
+  a literal's suffix too, `120mmHg`, `72bpm` (question 17, as the lead
+  session added them); and, with no suffix since theirs would hold a `/`,
   `ConcentrationUnit.milligram_per_decilitre` (`mgdL`, 0.01 g/L) and
   `ConcentrationUnit.millimole_of_glucose_per_litre`, glucose's alone,
   whose code is its name: 0.1801557 g/L, by glucose's molar mass of
   180.1557 g/mol, as CLDR converts its `milligram-ofglucose-per-deciliter`.
-  Each is read by its code and written with `units.of`; text and the wire
-  still write a quantity in its base unit.
+  Each is read by its code; text and the wire still write a quantity in
+  its base unit.
 - **The measures are on quantities,** each held in its kind's base unit:
   `HeartRate` a `Frequency` from 0 to 300 beats a minute, shown in whole
   beats a minute (a frequency is held to the millihertz, so 73 bpm is held
@@ -8663,6 +8671,9 @@ under "Errors").
 | `InterestRateBasis` | A standard enum of `aer`, `apr` and `flat`, an `InterestRate`'s basis, added in chunk 5.5i3 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `ContentRatingScheme` | A standard enum of `bbfc`, `mpa`, `pegi` and `esrb`, the body a `ContentRating` is by, added in chunk 5.5p beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `RichTextBlock`, `RichTextSpan` and `RichTextMark` | A `RichText`'s parts, a choice of block, an object of a span's text, marks and link, and an enum of marks, added in chunk 5.5o2 beside the 247 since a part must be a standard type to be read, sent and stored. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` | The systems a `ClothingSize` and a `ShoeSize` are in (`UK`, `EU`, `US`) and the 14 routes of EDQM's Standard Terms a `DosageInstruction` is taken by, added in chunk 5.5m2 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 
@@ -8884,10 +8895,10 @@ Richard's points first, then the first draft's remaining questions. Richard deci
     | `Angle` | `deg`, `rad` | `d` is days; longest wins |
     | `Temperature` | `degC`, `degF`, `kelvin` | `K` reads as thousands ("5K") |
     | `Speed` | `mps`, `kmh`, `mph`, `knot` | `ms` is milliseconds |
-    | `Pressure` | `Pa`, `hPa`, `kPa`, `bar`, `mbar`, `psi` | `h` is hours; longest wins |
+    | `Pressure` | `Pa`, `hPa`, `kPa`, `bar`, `mbar`, `psi`, `mmHg` | `h` is hours; longest wins (`mmHg` before `mm`) |
     | `Energy` | `J`, `kJ`, `Wh`, `kWh`, `kcal` | `cal` refused: food labels mean `kcal` |
     | `Power` | `mW`, `W`, `kW`, `MW` | `mW` and `MW` differ only by case |
-    | `Frequency` | `Hz`, `kHz`, `MHz`, `GHz` | |
+    | `Frequency` | `Hz`, `kHz`, `MHz`, `GHz`, `bpm` | `bps` is bits a second |
     | `Voltage`, `Current` | `mV`, `V`, `kV`; `mA`, `A` | |
     | `Illuminance`, `SoundLevel` | `lx`; `dB` | `d` is days; longest wins |
     | `Concentration` | `mgL`, `gL` | |
@@ -8896,6 +8907,10 @@ Richard's points first, then the first draft's remaining questions. Richard deci
 
     `TemperatureDifference` has no suffix of its own; it comes from
     subtracting two temperatures, or from `units.of`. *Decided 2026-10-17 (Richard):* as recommended.
+    `mmHg` and `bpm` were added by the lead session on 2026-10-18 with
+    chunk 5.5m2's clinical units, clashing with no suffix or keyword; a
+    milligram a decilitre and a millimole of glucose a litre have none,
+    since a suffix can't hold their `/`.
 18. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
     the eight operations, correctly rounded to a named scale, the same on
     every target; area 2's "no `Float` until needed" stands, since this

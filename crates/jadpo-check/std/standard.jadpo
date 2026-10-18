@@ -1406,8 +1406,7 @@ public type DosageInstruction = Object {
 }
 
 /// A heart rate (area 19, LOINC 8867-4), a `Frequency` from 0 to 300
-/// beats a minute: `units.of(72, FrequencyUnit.beat_per_minute)`, shown
-/// `72 bpm`. Health data.
+/// beats a minute, written `72bpm` and shown `72 bpm`. Health data.
 public type HeartRate = Frequency {}
 
 /// A blood pressure (area 19, LOINC 85354-9): its systolic and diastolic

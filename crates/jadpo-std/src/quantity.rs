@@ -254,9 +254,9 @@ pub struct Unit {
     /// matters, as SI writes units.
     pub code: &'static str,
     /// Whether `code` is a literal's suffix in source. The cubic metre, a
-    /// `TemperatureDifference`'s units and the clinical units chunk 5.5m2
-    /// added (a millimetre of mercury, a beat a minute, a milligram a
-    /// decilitre and a millimole of glucose a litre) have none.
+    /// `TemperatureDifference`'s units and the two concentrations chunk
+    /// 5.5m2 added (a milligram a decilitre and a millimole of glucose a
+    /// litre, whose symbols hold a `/`) have none.
     pub suffix: bool,
     /// Its size in the base unit, `num / den`, exact where the unit is
     /// defined exactly (an inch is 0.0254 m) and to 30 digits for a
@@ -620,10 +620,9 @@ pub const UNITS: &[Unit] = &[
         "pounds per square inch",
     ),
     // A millimetre of mercury, as a blood pressure is measured: 133.322387415
-    // Pa exactly, as CLDR converts it (chunk 5.5m2). No literal suffix
-    // (question 17's table), so it is written `units.of(120,
-    // PressureUnit.millimetre_of_mercury)` and read by its code, `mmHg`.
-    unsuffixed(unit(
+    // Pa exactly, as CLDR converts it (chunk 5.5m2), written `120mmHg`,
+    // longer than `mm`, so the longest suffix wins.
+    unit(
         K::Pressure,
         "millimetre_of_mercury",
         "mmHg",
@@ -631,7 +630,7 @@ pub const UNITS: &[Unit] = &[
         "mmHg",
         None,
         "millimetres of mercury",
-    )),
+    ),
     unit(K::Energy, "joule", "J", (1, 1), "J", None, "joules"),
     unit(
         K::Energy,
@@ -814,8 +813,8 @@ pub const UNITS: &[Unit] = &[
         "gigahertz",
     ),
     // A beat a minute, as a heart rate is counted: 1/60 Hz (chunk 5.5m2),
-    // read by its code, `bpm`, with no literal suffix.
-    unsuffixed(unit(
+    // written `72bpm`.
+    unit(
         K::Frequency,
         "beat_per_minute",
         "bpm",
@@ -823,7 +822,7 @@ pub const UNITS: &[Unit] = &[
         "bpm",
         None,
         "beats per minute",
-    )),
+    ),
     unit(
         K::Voltage,
         "millivolt",
@@ -1686,7 +1685,17 @@ mod tests {
         assert_eq!(us, 990_000_000);
         assert_eq!(shown_in(us, mgdl), Some((99, 0)));
         assert_eq!(parse_text(QuantityKind::Pressure, "120 mmHg"), Ok(systolic));
-        assert!(unit_of_suffix("mmHg").is_none(), "no literal suffix");
+        // `mmHg` and `bpm` are literals' suffixes (decided by the lead
+        // session, 2026-10-18), `mmHg` beside `mm` by the longest suffix;
+        // the concentrations, whose symbols hold a `/`, aren't.
+        assert_eq!(base("120mmHg"), systolic);
+        assert_eq!(base("120mm"), 120_000);
+        assert_eq!(base("72bpm"), 1200);
+        assert!(unit_of_suffix("mgdL").is_none());
+        assert!(matches!(
+            parse_literal("120mmhg"),
+            Err(LiteralProblem::NearMiss(..))
+        ));
     }
 
     #[test]

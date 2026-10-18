@@ -180,6 +180,19 @@ function glucose_for_us_lab(glucose: BloodGlucose, viewer: Locale) -> Presentati
     return text.format(glucose, locale: viewer, unit: ConcentrationUnit.milligram_per_decilitre)
 }
 
+/// A reading as the cuff gives it.
+function cuff_reading() -> BloodPressure {
+    return BloodPressure {
+        systolic: 120mmHg
+        diastolic: 80mmHg
+    }
+}
+
+/// A pulse as a nurse counts it.
+function counted_pulse() -> HeartRate {
+    return HeartRate(72bpm)
+}
+
 /// A reading typed in kilopascals.
 function typed_reading() -> BloodPressure {
     return BloodPressure {
@@ -256,6 +269,16 @@ fn a_pulse_is_read_in_either_unit_and_shown_in_beats_a_minute() {
 #[test]
 fn a_reading_is_shown_as_a_clinician_reads_it() {
     let program = main(HEALTH).with_proof_checks();
+    let cuff = value(&program, "cuff_reading", vec![]);
+    assert_eq!(
+        value(&program, "pressure_shown", vec![cuff, locale("en_gb")]),
+        text("120/80 mmHg")
+    );
+    let counted = value(&program, "counted_pulse", vec![]);
+    assert_eq!(
+        value(&program, "pulse_shown", vec![counted, locale("en_gb")]),
+        text("72 bpm")
+    );
     let reading = value(&program, "typed_reading", vec![]);
     assert_eq!(
         value(

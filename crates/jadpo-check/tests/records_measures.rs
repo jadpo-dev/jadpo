@@ -3,9 +3,9 @@
 //! never written; a rating's and a blood pressure's rules across their
 //! parts, and the other records' parts, checked while compiling where a
 //! literal writes them; `text.format`'s `unit:` a unit of the kind a
-//! measure is shown in; the clinical units read by `units.of` with no
-//! literal suffix; and an application's own type refused under a new
-//! standard name.
+//! measure is shown in; the clinical units written `120mmHg` and `72bpm`,
+//! or by `units.of` for the concentrations, which have no suffix; and an
+//! application's own type refused under a new standard name.
 
 use crate::support;
 
@@ -173,17 +173,31 @@ fn a_measure_s_unit_is_of_its_kind() {
 }
 
 #[test]
-fn the_clinical_units_have_no_suffix() {
+fn the_clinical_units_are_written_by_suffix_or_by_units_of() {
     assert_eq!(
         rules(
-            "type Pulse = Frequency {}\n\ntype Top = Pressure {}\n\ntype Fasting = Concentration {}\n\nfunction pulse() -> Pulse {\n    return Pulse(units.of(72, FrequencyUnit.beat_per_minute))\n}\n\nfunction top() -> Top {\n    return Top(units.of(120, PressureUnit.millimetre_of_mercury))\n}\n\nfunction fasting() -> Fasting {\n    return Fasting(units.of(5.5, ConcentrationUnit.millimole_of_glucose_per_litre))\n}\n"
+            "type Pulse = Frequency {}\n\ntype Top = Pressure {}\n\ntype Fasting = Concentration {}\n\nfunction pulse() -> Pulse {\n    return Pulse(72bpm)\n}\n\nfunction top() -> Top {\n    return Top(120mmHg)\n}\n\nfunction fasting() -> Fasting {\n    return Fasting(units.of(5.5, ConcentrationUnit.millimole_of_glucose_per_litre))\n}\n"
         ),
         NONE
     );
     assert_eq!(
-        rules("type Top = Pressure {}\n\nfunction top() -> Top {\n    return Top(120mmHg)\n}\n"),
+        rules("type Top = Pressure {}\n\nfunction top() -> Top {\n    return Top(120mmhg)\n}\n"),
         ["type.unit_unknown"],
-        "question 17's suffixes are unchanged"
+        "a suffix is matched by case"
+    );
+    assert_eq!(
+        rules(
+            "type Fasting = Concentration {}\n\nfunction fasting() -> Fasting {\n    return Fasting(99mgdL)\n}\n"
+        ),
+        ["type.unit_unknown"],
+        "a concentration's units have no suffix"
+    );
+    assert_eq!(
+        rules(
+            "function reading() -> BloodPressure {\n    return BloodPressure {\n        systolic: 80mmHg\n        diastolic: 120mmHg\n    }\n}\n"
+        ),
+        ["type.invalid_literal"],
+        "a reading written with the suffix is proved"
     );
 }
 
