@@ -9154,10 +9154,14 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5r Security types** `opus · high`: the other 17 security types
   (`Password`, `Jwt`, `Jwk`, `Certificate`, `ApiKey` ...) and
   `crypto.verify_jwt`; `verify_totp` follows keys held as data.
-- **5.5s Geospatial and AI types' baselines** `opus · high`: the 17
-  geospatial types and `Vector`, `Embedding`, `TokenCount`, `TokenUsage`
-  and `ChatMessage`, with construction, text and JSON from the contract;
-  their storage and operations come with their own areas.
+- **5.5s Geospatial types' baselines** `opus · high`: the 17
+  geospatial types, with construction, text and JSON from the contract;
+  their storage and operations come with the geospatial area. Split on
+  2026-10-18: the AI types are 5.5s2.
+- **5.5s2 AI types' baselines** `opus · high`: `Vector`, `Embedding`,
+  `TokenCount`, `TokenUsage` and `ChatMessage`, with construction, text
+  and JSON from the contract; their storage and operations come with the
+  AI area.
 - **`type.standard_exists`**: on app code in 5.5a, after 5.4b's declines
   (area 1's question 11), the check in 5.5a and each type's match
   signature with its group; on packages' public types with the publishing
