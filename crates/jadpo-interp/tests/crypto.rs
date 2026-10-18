@@ -27,7 +27,7 @@ const OTHER_KEY: &str = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
 /// RFC 8032's second test key's seed, and its public key.
 const RECEIPT_KEY: &str = "TM0Imyj_ltqdtsNG7BFOD1uKMZ81q6Yk2oz27U-4pvs";
 const RECEIPT_PUBLIC: &str = "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw";
-const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef0123456789abcdef";
+const WEBHOOK_SECRET: &str = "test-signing-key-0123456789abcdef0123456789abcdef";
 
 fn variables(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs
@@ -225,7 +225,10 @@ fn an_hmac_is_the_signing_key_s_and_checks_in_both_keys() {
     let rotated = started(&[
         ("NOTES_KEY", NOTES_KEY),
         ("RECEIPT_KEY", RECEIPT_KEY),
-        ("WEBHOOK_SECRET", "whsec_fedcba9876543210fedcba9876543210"),
+        (
+            "WEBHOOK_SECRET",
+            "test-signing-key-fedcba9876543210fedcba9876543210",
+        ),
         ("WEBHOOK_SECRET_PREVIOUS", WEBHOOK_SECRET),
     ]);
     assert_eq!(
