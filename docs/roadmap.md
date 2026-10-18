@@ -975,14 +975,27 @@ reference only).
   OWASP's parameters as a PHC string; code never makes or reads a key,
   which an executor hands the operation from its setting. What the pages
   left open is area 19's "Chosen in chunk 5.5q2".
-- [ ] **5.5r Security types** `opus · high` (area 19, "The standard
-  types"): the other 17 security types (`Password`, `Jwt`, `Jwk`,
-  `Certificate`, `ApiKey` ...) and `crypto.verify_jwt`; `verify_totp`
-  follows keys held as data. Done when every type passes the harness and
-  `verify_jwt` refuses `none`, a token-chosen algorithm and an expired
-  token.
+- [ ] **5.5r Tokens and `verify_jwt`** `opus · high` (area 19, "The
+  standard types" and "Hashing and cryptography"): `Jwt`, `JwtClaims`,
+  `Jwk`, `OAuthScope` and `OidcClaims`, and `crypto.verify_jwt`. Done when
+  every type passes the harness and `verify_jwt` refuses `none`, a
+  token-chosen algorithm, an expired token, a wrong audience and a
+  tampered payload. Split on 2026-10-18; the secret values are 5.5r2 and
+  the security records 5.5r3.
+- [ ] **5.5r2 Secret values** `opus · high` (area 19, "The standard
+  types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
+  `BearerToken`, `TotpSecret` and `SecretText`, never printed, logged or
+  sent: refused in an `Output`, a failure's fields and `json.write` as a
+  `PasswordHash` is, compared in constant time and redacted in reports.
+  Done when every type passes the harness and each refusal has a checked
+  example.
+- [ ] **5.5r3 Security records** `opus · high` (area 19, "The standard
+  types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,
+  `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
+  `webauthn-rs` stores, for 5.5z) and `EncryptedValue`; `verify_totp`
+  follows keys held as data. Done when every type passes the harness.
 - [ ] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
-  Richard, 2026-10-18), after 5.5q2 and 5.5r: passkeys (WebAuthn, FIDO2)
+  Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
   as the third built-in way to check a person. First finish area 8's
   section (the `sign_in:` option, routes, events, errors, test helpers,
   following magic links), then build registration and sign-in on

@@ -9466,7 +9466,12 @@ first; each group of types then arrives with its baseline and its extras.
   `PrivateKey`, `PublicKey` and `key:` as a compiler-owned place. Built.
 - **5.5r Security types** `opus · high`: the other 17 security types
   (`Password`, `Jwt`, `Jwk`, `Certificate`, `ApiKey` ...) and
-  `crypto.verify_jwt`; `verify_totp` follows keys held as data.
+  `crypto.verify_jwt`; `verify_totp` follows keys held as data. Split on
+  2026-10-18: `verify_jwt` with `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope`
+  and `OidcClaims` first; the secret values (`Password`, `ApiKey`,
+  `BearerToken`, `TotpSecret`, `SecretText`) are 5.5r2, and `Hash`,
+  `Hmac`, `Certificate`, `OneTimeCode`, `PasswordPolicy`,
+  `WebAuthnCredential` and `EncryptedValue` 5.5r3.
 - **5.5s Geospatial and AI types' baselines** `opus · high`: the 17
   geospatial types and `Vector`, `Embedding`, `TokenCount`, `TokenUsage`
   and `ChatMessage`, with construction, text and JSON from the contract;
