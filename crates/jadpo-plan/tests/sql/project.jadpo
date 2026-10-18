@@ -622,3 +622,97 @@ query closest_articles(question_meaning: ArticleMeaning) -> List<Nearest<Article
     order: [HelpArticle.body_meaning nearest question_meaning]
     limit: 50
 }
+
+type Courier = Text {
+    max_length: 40
+}
+
+type DeliveryState = Enum {
+    booked
+    sent
+    lost
+}
+
+type DeliveryDay = CalendarDate {}
+
+type StopCount = Int {
+    min: 0
+}
+
+type DeliveryWeight = Mass {}
+
+type DeliveryFee = Money {
+    currency: Currency.eur
+}
+
+type FeeRate = Decimal {
+    scale: 2
+}
+
+entity Delivery {
+    id: Uuid
+    courier: Courier
+    state: DeliveryState
+    sent_on: DeliveryDay
+    stops: StopCount?
+    weight: DeliveryWeight
+    fee: DeliveryFee
+    rate: FeeRate
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+type CourierYear = Output {
+    courier: Courier
+    sent_year: Int
+    state: DeliveryState
+    deliveries: Int
+    total_weight: Mass
+    total_fee: Money
+    total_rate: Decimal
+    fewest_stops: Delivery.stops
+    mean_stops: Decimal?
+}
+
+/// An aggregate query (chunk 5.6c): a text, a time bucket and an enum as
+/// groups, the enum and the text sorted in Jadpo's order as the
+/// tie-break, a quantity, money and decimal summed, and an average of a
+/// field that may be `none`.
+query courier_years(since: DeliveryDay) -> List<CourierYear> {
+    from: Delivery
+    where: Delivery.sent_on >= since
+    group: {
+        courier: Delivery.courier
+        sent_year: temporal.year(Delivery.sent_on)
+        state: Delivery.state
+    }
+    aggregate: {
+        deliveries: count()
+        total_weight: sum(Delivery.weight)
+        total_fee: sum(Delivery.fee)
+        total_rate: sum(Delivery.rate)
+        fewest_stops: min(Delivery.stops)
+        mean_stops: average(Delivery.stops, scale: 1, rounding: Rounding.half_up)
+    }
+    order: [deliveries desc]
+    limit: 50
+}
+
+type DeliveryTotals = Output {
+    deliveries: Int
+    latest: Delivery.sent_on?
+    first_courier: Delivery.courier?
+}
+
+/// One row over every delivery: a count, and `max` and `min` of none
+/// when there are none.
+query delivery_totals() -> DeliveryTotals {
+    from: Delivery
+    aggregate: {
+        deliveries: count()
+        latest: max(Delivery.sent_on)
+        first_courier: min(Delivery.courier)
+    }
+}

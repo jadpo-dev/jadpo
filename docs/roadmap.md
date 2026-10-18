@@ -1535,12 +1535,22 @@ reference only).
   migrate apply` says when a backfill runs in Jadpo and is slower; an
   expression that can fail is refused unless area 5 says what a failing
   row gets.
-- [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
+- [x] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard
   operations' SQL forms. Design the syntax and errors on area 6's page
   first. Done when a usage-per-month and a counts-by-status query each
   run as one SQL statement and give the same result as the interpreter.
+  Built: `group:` and `aggregate:` blocks shaped like `include:` (area 6,
+  "Counts, sums and groups"), `List<T>` with groups and `T` without, an
+  average as `decimal.divide`'s form, time buckets as new SQL forms of
+  `temporal.year`, `month` and `day` of a date, and four new errors. On
+  live PostgreSQL both queries send one statement each and give, value
+  for value and place for place, what the interpreter works out in code
+  from the same three thousand records (`live PostgreSQL: queries`).
+  What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
+  of an instant, which needs a zone PostgreSQL may not see as Jadpo
+  does, is left for Richard.
 - [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
 

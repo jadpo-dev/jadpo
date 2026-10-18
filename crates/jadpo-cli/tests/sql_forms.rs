@@ -1295,6 +1295,39 @@ fn periods(forms: &mut Forms) {
     );
 }
 
+/// A date's year, month and day (chunk 5.6c): every day of a leap year
+/// and the year 0's, and thousands of days from the year 0 to 9999.
+fn calendar_parts(forms: &mut Forms) {
+    let mut days: Vec<i32> = Vec::new();
+    for (from, to) in [
+        ("0000-01-01", "0000-12-31"),
+        ("0001-01-01", "0001-01-31"),
+        ("2024-01-01", "2024-12-31"),
+    ] {
+        days.extend(day(from)..=day(to));
+    }
+    days.extend([day("1969-12-31"), day("1970-01-01"), day("9999-12-31")]);
+    let (first, last) = (day("0000-01-01"), day("9999-12-31"));
+    let span = u64::try_from(last - first).expect("a span");
+    let mut numbers = Numbers(29);
+    for _ in 0..3000 {
+        days.push(first + i32::try_from(numbers.below(span + 1)).expect("a day"));
+    }
+    let cases: Vec<Vec<In>> = days
+        .iter()
+        .map(|d| {
+            vec![In::Val(
+                Value::Date(*d),
+                DATE,
+                Held::Builtin(Builtin::CalendarDate),
+            )]
+        })
+        .collect();
+    for op in [Op::TemporalYear, Op::TemporalMonth, Op::TemporalDay] {
+        forms.check(op, Out::Bound(SqlType::Int8), cases.clone());
+    }
+}
+
 fn addresses(forms: &mut Forms) {
     let ranges = [
         "192.0.2.0/24",
@@ -1351,6 +1384,7 @@ fn every_sql_form_gives_what_the_runtime_gives() {
     money(&mut forms);
     ranges(&mut forms);
     periods(&mut forms);
+    calendar_parts(&mut forms);
     addresses(&mut forms);
     // Every operation with a form was checked.
     let missing: Vec<Op> = jadpo_std::OPERATIONS

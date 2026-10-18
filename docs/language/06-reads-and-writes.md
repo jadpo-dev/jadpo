@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"; what the page left open is "Chosen in chunk 5.6c", under "Review"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -413,6 +413,300 @@ output TodoPage {
 ```
 
 :::
+
+## Counts, sums and groups
+
+A query can count and add up the records it finds instead of returning
+them. `aggregate:` names each total the database works out, and `group:`
+splits the records into groups, one row per group. Each row is a value of
+an `Output` (or `Object`) type whose every field is a group or an aggregate
+of the same name; nothing else of the entity is read, since the records in
+a group have no one value of any other field. An API service reports its
+calls by month, counts them by how they were replied, and totals an
+account's calls:
+
+```jadpo check project=aggregates file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/call_day.jadpo hidden
+/// The day a call was made, in the account's own zone.
+type CallDay = CalendarDate {}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/spent_tokens.jadpo hidden
+/// The tokens a call spent.
+type SpentTokens = Int {
+    min: 0
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/call_charge.jadpo hidden
+/// What a call was charged, in pounds.
+type CallCharge = Money {
+    currency: Currency.gbp
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/call_wait.jadpo hidden
+/// How long a caller waited for an answer.
+type CallWait = Duration {}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/reply_kind.jadpo hidden
+/// How a call was replied.
+type ReplyKind = Enum {
+    replied
+    throttled
+    refused
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/entities/api_call.jadpo migrate=initial
+use metering/types { CallCharge, CallDay, CallWait, ReplyKind, SpentTokens }
+
+/// One call an account made to the API.
+entity ApiCall {
+    id: Uuid
+    made_on: CallDay
+    tokens_spent: SpentTokens
+    charge: CallCharge
+    reply: ReplyKind
+    wait: CallWait?
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/month_of_calls.jadpo
+use metering/entities { ApiCall }
+
+/// A month of calls on an invoice.
+type MonthOfCalls = Output {
+    call_year: Int
+    call_month: Int
+    calls_made: Int
+    tokens_billed: Int
+    amount_billed: Money
+    largest_call: ApiCall.tokens_spent
+    mean_tokens: Decimal
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/reply_tally.jadpo
+use metering/types { ReplyKind }
+
+/// How many calls were replied one way.
+type ReplyTally = Output {
+    reply: ReplyKind
+    calls_made: Int
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/types/call_summary.jadpo
+use metering/entities { ApiCall }
+
+/// An account's calls since a day, all together.
+type CallSummary = Output {
+    calls_made: Int
+    amount_billed: Money
+    slowest_wait: ApiCall.wait
+    mean_tokens: Decimal?
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/queries/monthly_calls.jadpo
+use metering/entities { ApiCall }
+use metering/types { CallDay, MonthOfCalls }
+
+/// Calls made since `from_day`, by month, the latest month first.
+query monthly_calls(from_day: CallDay) -> List<MonthOfCalls> {
+    from: ApiCall
+    where: ApiCall.made_on >= from_day
+    group: {
+        call_year: temporal.year(ApiCall.made_on)
+        call_month: temporal.month(ApiCall.made_on)
+    }
+    aggregate: {
+        calls_made: count()
+        tokens_billed: sum(ApiCall.tokens_spent)
+        amount_billed: sum(ApiCall.charge)
+        largest_call: max(ApiCall.tokens_spent)
+        mean_tokens: average(ApiCall.tokens_spent, scale: 2, rounding: Rounding.half_even)
+    }
+    order: [call_year desc, call_month desc]
+    limit: 24
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/queries/reply_tallies.jadpo
+use metering/entities { ApiCall }
+use metering/types { CallDay, ReplyTally }
+
+/// How many calls since `from_day` were answered each way, the most first.
+query reply_tallies(from_day: CallDay) -> List<ReplyTally> {
+    from: ApiCall
+    where: ApiCall.made_on >= from_day
+    group: {
+        reply: ApiCall.reply
+    }
+    aggregate: {
+        calls_made: count()
+    }
+    order: [calls_made desc]
+    limit: 3
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/queries/totals_since.jadpo
+use metering/entities { ApiCall }
+use metering/types { CallDay, CallSummary }
+
+/// Every call since `from_day`, all together.
+query totals_since(from_day: CallDay) -> CallSummary {
+    from: ApiCall
+    where: ApiCall.made_on >= from_day
+    aggregate: {
+        calls_made: count()
+        amount_billed: sum(ApiCall.charge)
+        slowest_wait: max(ApiCall.wait)
+        mean_tokens: average(ApiCall.tokens_spent, scale: 2, rounding: Rounding.half_even)
+    }
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/actions/record_call.jadpo hidden
+use metering/entities { ApiCall }
+use metering/types { CallCharge, CallDay, CallWait, ReplyKind, SpentTokens }
+
+/// Records a call the API replied.
+action record_call(
+    made_on: CallDay,
+    tokens_spent: SpentTokens,
+    charge: CallCharge,
+    reply: ReplyKind,
+    wait: CallWait?
+) -> ApiCall {
+    return ApiCall.create {
+        set: {
+            made_on: made_on
+            tokens_spent: tokens_spent
+            charge: charge
+            reply: reply
+            wait: wait
+        }
+    }
+}
+```
+
+```jadpo check project=aggregates file=domains/metering/actions/record_call.test.jadpo
+use metering/entities { ApiCall }
+use metering/types { CallCharge, CallSummary, MonthOfCalls, ReplyKind, ReplyTally }
+use metering/queries { monthly_calls, reply_tallies, totals_since }
+
+test "calls add up by month, and each reply is counted" {
+    var one_penny: CallCharge = CallCharge(money.from_minor(1, Currency.gbp))
+    var calls_recorded: List<ApiCall> = [
+        record_call("2026-08-31", 120, one_penny, ReplyKind.replied, 2s),
+        record_call("2026-09-01", 100, one_penny, ReplyKind.replied, none),
+        record_call("2026-09-30", 41, one_penny, ReplyKind.throttled, 5s),
+        record_call("2026-09-30", 0, one_penny, ReplyKind.replied, none)
+    ]
+    assert list.count(calls_recorded) == 4
+    var by_month: List<MonthOfCalls> = monthly_calls("2026-08-01")
+    assert list.map(by_month, month -> month.call_month) == [9, 8]
+    assert list.map(by_month, month -> month.calls_made) == [3, 1]
+    assert list.map(by_month, month -> month.tokens_billed) == [141, 120]
+    assert list.map(by_month, month -> money.minor(month.amount_billed)) == [3, 1]
+    assert list.map(by_month, month -> month.largest_call) == [100, 120]
+    assert list.map(by_month, month -> month.mean_tokens) == [47.00, 120.00]
+    var tallies: List<ReplyTally> = reply_tallies("2026-08-01")
+    assert list.map(tallies, tally -> tally.reply == ReplyKind.replied) == [true, false]
+    assert list.map(tallies, tally -> tally.calls_made) == [3, 1]
+    var since_september: CallSummary = totals_since("2026-09-01")
+    assert since_september.calls_made == 3
+    assert since_september.slowest_wait == 5s
+    assert since_september.mean_tokens == 47.00
+}
+
+test "a summary of no calls counts nothing" {
+    var nothing: CallSummary = totals_since("2026-01-01")
+    assert nothing.calls_made == 0
+    assert nothing.amount_billed == money.from_minor(0, Currency.gbp)
+    assert nothing.slowest_wait == none
+    assert nothing.mean_tokens == none
+}
+```
+
+`monthly_calls` gives one row for each month that has calls, and
+`reply_tallies` one for each reply that some call got, `refused` among
+them only once a call is refused. `jadpo sql monthly_calls` prints the one
+statement it sends: a `SELECT` of each group and aggregate, the
+conditions, `GROUP BY` the groups, `ORDER BY` and `LIMIT`.
+
+- **The aggregates.** `count()` is how many records there are, an `Int`.
+  `sum(F)` adds up a field built on `Int`, `Decimal` or `Duration`, a
+  quantity, or `Money` whose type fixes `currency:`; it gives what `+` gives, the field's representation (`Int`,
+  `Decimal`, `Duration`, the quantity or `Money`), so Money and quantity
+  sums keep their kind. `min(F)` and `max(F)` give the smallest and
+  largest value of a field a query can sort by, other than an identity
+  (numbers, times, dates, durations, quantities, percentages and text, by
+  code point), as the field's own type. `average(F, scale:, rounding:)`
+  of a field built on `Int`, or on `Decimal` with at most `scale:` places,
+  is a `Decimal` with exactly `scale:` places: the exact mean rounded once
+  as `rounding:` says. Both are written out, a whole number from 0 to 38
+  and a `Rounding`, since an average rarely comes out exact and the
+  rounding is part of what the report says.
+- **The same as code.** Each aggregate gives exactly what code working
+  from the records gives: `count()` is `list.count`; `sum` is `list.sum`,
+  `+` for durations and quantities, or `money.sum` with the type's
+  currency; `min` and `max` are the value `list.min_by` and `list.max_by`
+  find; `average` is `decimal.divide` of the sum, at `scale:` places, by
+  the count, with `rounding:`. A sum past what its type holds, a whole
+  number past 64 bits or a decimal past 38 digits, stops the read, as it
+  is a defect in code.
+- **`none` is left out.** `sum`, `min`, `max` and `average` skip a field's
+  `none` values, as a list of the values that are there would be summed;
+  `count()` counts records, whatever their fields hold. A group whose
+  values are all `none` sums to zero, and its `min`, `max` and `average`
+  are `none`.
+- **The groups.** A group is a field, or a time bucket: `temporal.year`,
+  `temporal.month` or `temporal.day` of a field built on `CalendarDate`,
+  each an `Int` through its SQL form (area 19). The field itself is the
+  day; a year and a month together are a month. A group field is built on
+  `Bool`, `Int`, `Text`, `Uuid` (a reference among them), `CalendarDate`
+  or a plain enum, whose stored values are equal exactly when Jadpo's are;
+  a field that may be `none` puts its records without a value in a group
+  of their own, `none`.
+- **The result type.** Each group and aggregate fills the result's field of
+  its name, which takes its type or one it widens to, as a stored value
+  fills a field (`calls_made: Int`, `largest_call: ApiCall.tokens_spent`).
+  A field that can be `none` needs a `T?`: a group of a field that may be
+  `none`, and `min`, `max` and `average` of one, or with no `group:`.
+- **With `group:`,** the query returns `List<T>` with `order:` and
+  `limit:`, one row per group that has records, so no group is empty: a
+  month without calls gives no row. `order:` names groups and aggregates
+  by their names, and the compiler adds each group it doesn't name as the
+  tie-break, ascending, since the groups tell the rows apart. A group
+  sorts in Jadpo's own order (area 2): numbers by value, text by code
+  point, days in time, `false` before `true` and an enum's variants in
+  their declared order; an aggregate sorts when its type is ordered,
+  which a `Money` sum isn't.
+- **Without `group:`,** the query returns `T`, one row over every record it
+  finds, and takes no `order:`, `limit:` or `missing:`: there is always the
+  row. When nothing matches, `count()` is 0, a sum is zero (in the type's
+  currency for `Money`, at its scale for a `Decimal`), and `min`, `max` and
+  `average` are `none`.
+- **What it doesn't take.** An aggregate query reads one entity: no
+  `include:`, no `page:` and no `nearest` order. Its conditions are a
+  query's usual `where:` and `where_present:` lines, and policy and the
+  lifecycle's `visible:` limit the records it counts as they limit any
+  query's. Every field a group or an aggregate reads is one every caller
+  may read, as an output's fields are (area 9).
+
+Aggregates are the decided exception to "a query computes nothing"
+(area 19, questions 21 and 28): a time bucket and an average are written
+with their standard operations' SQL forms, and the rest are PostgreSQL's
+`count`, `sum`, `min` and `max`, so an aggregate query is always one
+statement, however many records it counts.
 
 ## Children and parents
 
@@ -1444,7 +1738,7 @@ error: `order_by` isn't something a query holds
    |
 15 |     order_by: [Book.id asc]
    |     ^^^^^^^^ not a section
-  reason: A query's block holds `from:`, `where:`, `where_present:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
+  reason: A query's block holds `from:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
   next: Use `order:` (agent)
   rule: query.unknown_section
   help: docs/language/06-reads-and-writes.html#query-unknown-section
@@ -2334,6 +2628,165 @@ error: Includes nest at most two levels
   next: Read the deeper records with a query of their own (human)
   rule: query.include_depth
   help: docs/language/06-reads-and-writes.html#query-include-depth
+
+check failed: 1 error, 1 file
+```
+
+### Groups and aggregates
+
+### `query.group_key`
+
+```jadpo check project=e-group-key expect=query.group_key
+type Title = Text {
+    max_length: 80
+}
+
+entity Loan {
+    id: Uuid
+    title: Title
+    lent_at: Instant
+}
+
+type LoansByYear = Output {
+    lent_year: Int
+    loans_made: Int
+}
+
+query loans_by_year() -> List<LoansByYear> {
+    from: Loan
+    group: {
+        lent_year: temporal.year(Loan.lent_at)
+    }
+    aggregate: {
+        loans_made: count()
+    }
+    order: [lent_year desc]
+    limit: 20
+}
+```
+
+```text output
+error: `temporal.year` groups by a date, and `Loan.lent_at` is `Instant`
+ --> main.jadpo:19:34
+   |
+19 |         lent_year: temporal.year(Loan.lent_at)
+   |                                  ^^^^^^^^^^^^ not a date
+  reason: A time bucket is worked out by the database, which gives exactly what code gives only for a date: an instant has a day only in a zone, and PostgreSQL's time zone database can differ from the one built into Jadpo.
+  next: Keep the day as a `CalendarDate` field, and group by a time bucket of it (agent)
+  rule: query.group_key
+  help: docs/language/06-reads-and-writes.html#query-group-key
+
+check failed: 1 error, 1 file
+```
+
+### `query.aggregate_unknown`
+
+```jadpo check project=e-aggregate-unknown expect=query.aggregate_unknown
+type LeafCount = Int {
+    min: 1
+}
+
+entity Book {
+    id: Uuid
+    leaves: LeafCount
+}
+
+type ShelfLength = Output {
+    mean_leaves: Decimal?
+}
+
+query shelf_length() -> ShelfLength {
+    from: Book
+    aggregate: {
+        mean_leaves: avg(Book.leaves, scale: 1, rounding: Rounding.half_up)
+    }
+}
+```
+
+```text output
+error: `avg` isn't an aggregate
+ --> main.jadpo:17:22
+   |
+17 |         mean_leaves: avg(Book.leaves, scale: 1, rounding: Rounding.half_up)
+   |                      ^^^ not an aggregate
+  reason: An aggregate is `count()`, `sum(F)`, `min(F)`, `max(F)` or `average(F, scale:, rounding:)`, each `F` a field of `Book`. Did you mean `average`?
+  next: Use `average` (agent)
+  rule: query.aggregate_unknown
+  help: docs/language/06-reads-and-writes.html#query-aggregate-unknown
+
+check failed: 1 error, 1 file
+```
+
+### `query.aggregate_argument`
+
+```jadpo check project=e-aggregate-argument expect=query.aggregate_argument
+type LeafCount = Int {
+    min: 1
+}
+
+entity Book {
+    id: Uuid
+    leaves: LeafCount
+}
+
+type ShelfLength = Output {
+    mean_leaves: Decimal?
+}
+
+query shelf_length() -> ShelfLength {
+    from: Book
+    aggregate: {
+        mean_leaves: average(Book.leaves)
+    }
+}
+```
+
+```text output
+error: `average` needs `scale:` and `rounding:`
+ --> main.jadpo:17:22
+   |
+17 |         mean_leaves: average(Book.leaves)
+   |                      ^^^^^^^^^^^^^^^^^^^^ wrong arguments
+  reason: An average rarely comes out exact, so it says how many places it keeps and how the last one is rounded, both written out: `average(Book.<field>, scale: 2, rounding: Rounding.half_even)`.
+  next: Add `scale:` and `rounding:` (agent)
+  rule: query.aggregate_argument
+  help: docs/language/06-reads-and-writes.html#query-aggregate-argument
+
+check failed: 1 error, 1 file
+```
+
+### `query.aggregate_field`
+
+```jadpo check project=e-aggregate-field expect=query.aggregate_field
+type Fine = Money {}
+
+entity Loan {
+    id: Uuid
+    fine: Fine
+}
+
+type FinesOwed = Output {
+    owed: Money
+}
+
+query fines_owed() -> FinesOwed {
+    from: Loan
+    aggregate: {
+        owed: sum(Loan.fine)
+    }
+}
+```
+
+```text output
+error: `sum` adds up money in one currency, and `Loan.fine`'s type doesn't fix one
+ --> main.jadpo:15:19
+   |
+15 |         owed: sum(Loan.fine)
+   |                   ^^^^^^^^^ `Fine`
+  reason: Amounts in two currencies don't add up (`currency_mismatch`), and a sum of no records needs a currency for its zero, so the field's type fixes its currency: `Fine` doesn't.
+  next: Give `Fine` a `currency:` (agent)
+  rule: query.aggregate_field
+  help: docs/language/06-reads-and-writes.html#query-aggregate-field
 
 check failed: 1 error, 1 file
 ```
@@ -3479,7 +3932,7 @@ database.
 | Exports and reports that read a large set: a schedule paging through a query, and whether a consistent snapshot read is needed | 12 | Input to area 12 |
 | Asserting in tests how many records and database queries a query can cost | 13 | Input to area 13 |
 | The build report: each query call's source (store or cache), its row bound and query count, and the indexes it needs | 14 | Input to area 14 |
-| Counts and sums in queries, and totals kept on an entity in the same transaction (computed fields, from the stores mapping §1.8) | 6 | Deferred. Amended 2026-10-17 by area 19 (questions 21 and 28): aggregate queries (`count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using standard operations with SQL forms) are decided in principle and designed and built in roadmap chunk 5.6c; totals kept on an entity stay deferred |
+| Counts and sums in queries, and totals kept on an entity in the same transaction (computed fields, from the stores mapping §1.8) | 6 | Deferred. Amended 2026-10-17 by area 19 (questions 21 and 28): aggregate queries (`count`, `sum`, `min`, `max`, `average`, grouped by a field or a time bucket, using standard operations with SQL forms) are decided in principle; designed and built in chunk 5.6c ("Counts, sums and groups"); totals kept on an entity stay deferred |
 | `expiry:` on lossy-store entities hides expired records from queries and updates like `visible:` | 5 | Answered by area 5 question 15 (2026-10-16): `expires_after:` |
 | Several changing calls: the record, replay and `diverged` | 12 | Question 16 |
 
@@ -3599,6 +4052,70 @@ database.
     checked after reading. Joins and `include`, ranges, other orderings,
     `matches` and other grants are compile errors naming PostgreSQL.
 
+### Chosen in chunk 5.6c
+
+What "Counts, sums and groups" needed that areas 6 and 19 hadn't
+decided, each the most conservative reading:
+
+- **Two blocks shaped like `include:`.** `group:` and `aggregate:` name
+  each entry after the result field it fills; `count`, `sum`, `min`, `max`
+  and `average` are words of `aggregate:` only, so they take no
+  namespace and no name elsewhere. Every field of the result is an entry
+  and every entry a field, and no other field of the entity is read.
+- **The result's shape.** With `group:` the query returns `List<T>` with
+  `order:` and `limit:`, as any list does; without it, `T`, the one row.
+  `T?` and `Page<T>` are refused, and so are `include:`, `page:`,
+  `missing:` and a `nearest` order: a page of groups would need a cursor
+  over groups, and nothing has asked for one.
+- **What each aggregate takes.** `sum` takes what `+` adds and keeps the
+  representation `+` gives, money only when the field's type fixes the
+  currency (two currencies can't be added, and a sum of nothing needs a
+  currency for its zero); percentages aren't summed. `min` and `max` take
+  what `order:` sorts by, less identities (PostgreSQL has no `min` of a
+  `uuid`). `average` takes whole numbers and decimals whose type keeps no
+  more places than `scale:`, so the mean is rounded once; an average of
+  durations, quantities or money waits for an application that needs one.
+- **An average is `decimal.divide`.** The sum at `scale:` places divided
+  by the count of values with `decimal.divide`'s SQL form, which works
+  the quotient out exactly as the runtime does; PostgreSQL's own `avg`
+  and `/` round to places they choose. `scale:` (0 to 38) and `rounding:`
+  are both written out, as `decimal.round`'s are.
+- **`none`.** A field's `none` values are left out of `sum`, `min`, `max`
+  and `average`; `count()` counts records, and counting values is a
+  condition (`where: E.f != none`). A sum of no values is zero, at the
+  field's places for a decimal, as `list.sum` starts from zero.
+- **Groups whose values compare exactly.** A group field is built on
+  `Bool`, `Int`, `Text`, `Uuid` or `CalendarDate`, or is a plain enum.
+  Decimals, quantities and percentages are left out, since `numeric`
+  equality puts `1.0` and `1.00` in one group and only one of them could
+  be shown; an instant, a duration, money and structured values too.
+- **Time buckets of dates only.** `temporal.year`, `temporal.month` and
+  `temporal.day` of a date got SQL forms (area 19). A bucket of an
+  instant needs a zone, and PostgreSQL's time zone database can differ
+  from the one built into every Jadpo build (area 10), so no SQL form of
+  `temporal.in_zone` gives exactly what code gives; until that is decided
+  a report keeps the day as a `CalendarDate` field.
+- **No row for an empty group.** A month without records gives no row,
+  as SQL's `GROUP BY` gives none; filling gaps is the caller's.
+- **The order.** `order:` names entries, never the entity's fields; the
+  groups it doesn't name are added ascending, so rows never swap places.
+  A group sorts in Jadpo's canonical order (an enum by its declared order,
+  through `array_position` of the codes it is stored as, text with
+  `COLLATE "C"`); a `Money` sum isn't sortable, as money isn't in
+  `order:`. A total that may be `none` sorts where PostgreSQL puts `NULL`,
+  as a list query's nullable order field does.
+- **One statement, two levels.** The groups and totals are worked out in
+  a grouped subquery and the outer statement selects, orders and limits
+  them, so an average names its sum and its count once. A `Money` sum's
+  currency is the one its type fixes, sent as a parameter.
+- **Past what a type holds.** A whole number, a duration and money's
+  minor units are summed exactly and cast back to `bigint`, so a sum past
+  64 bits stops the read; a decimal past 38 digits fails as it is read.
+  Both are defects in code.
+- **Policy.** Each field a group or an aggregate reads is one every
+  caller may read, as an output's field is (`policy.output_field_unproved`);
+  the conditions policy and `visible:` add limit the records counted.
+
 ### Decisions
 
 The rows marked "Carried" were decided in earlier areas and bind this page.
@@ -3648,3 +4165,4 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden (Richard) | 2026-10-16 |
 | Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |
 | Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |
+| Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement. Built in chunk 5.6c, as "Chosen in chunk 5.6c" sets out (area 19, questions 21 and 28) | 2026-10-18 |

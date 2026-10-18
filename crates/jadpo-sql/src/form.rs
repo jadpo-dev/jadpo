@@ -513,6 +513,23 @@ mod tests {
                 Arg::Absent,
             ],
         );
+        // A date's month, for an aggregate query's time bucket; a local
+        // time's month has none (chunk 5.6c).
+        value(
+            "extract(month FROM \"made_on\")::bigint",
+            Op::TemporalMonth,
+            &[Arg::Value(
+                "\"made_on\"",
+                Held::Builtin(Builtin::CalendarDate),
+            )],
+        );
+        assert_eq!(
+            operation(
+                Op::TemporalYear,
+                &[Arg::Value("x", Held::Builtin(Builtin::ZonedTime))]
+            ),
+            None
+        );
         // A time has no form for `text.from`, nor a rounding mode that
         // isn't written out, nor an operation the page gives none.
         assert_eq!(
