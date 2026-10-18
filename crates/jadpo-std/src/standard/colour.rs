@@ -37,8 +37,7 @@ pub fn hex(red: u8, green: u8, blue: u8, alpha: u8) -> String {
 /// length of text.
 pub fn read_hex(raw: &str) -> Option<[u8; 4]> {
     let digits = raw.strip_prefix('#')?;
-    if !(digits.len() == 6 || digits.len() == 8) || !digits.bytes().all(|b| b.is_ascii_hexdigit())
-    {
+    if !(digits.len() == 6 || digits.len() == 8) || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     let channel = |at: usize| u8::from_str_radix(digits.get(at..at + 2)?, 16).ok();
@@ -113,7 +112,14 @@ pub const COLOUR_ENTRY: StandardType = StandardType {
         ],
         format: None,
         malformed: &[
-            "1e6fd9", "#1e6fd", "#1e6fd9f", "#fff", "#ffff", "#1e6fdg", "rgb(30 111 217)", "#ffffff ",
+            "1e6fd9",
+            "#1e6fd",
+            "#1e6fd9f",
+            "#fff",
+            "#ffff",
+            "#1e6fdg",
+            "rgb(30 111 217)",
+            "#ffffff ",
             "",
         ],
         of: None,

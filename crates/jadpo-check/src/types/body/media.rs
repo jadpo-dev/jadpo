@@ -46,8 +46,9 @@ fn rate(record: &ast::RecordExpr) -> Option<(i64, i64)> {
 /// A duration the literal writes for `part`, in milliseconds.
 fn millis(record: &ast::RecordExpr, part: &str) -> Option<i64> {
     match Const::from_expr(&value_of(record, part)?) {
-        Const::Duration(text) => jadpo_std::Dur::parse(&text)
-            .and_then(|duration| i64::try_from(duration.millis).ok()),
+        Const::Duration(text) => {
+            jadpo_std::Dur::parse(&text).and_then(|duration| i64::try_from(duration.millis).ok())
+        }
         _ => None,
     }
 }
@@ -62,17 +63,24 @@ impl Body<'_> {
                 whole(record, "seconds"),
                 whole(record, "frames"),
                 rate(record),
-                value_of(record, "drop_frame").and_then(|written| match Const::from_expr(&written) {
-                    Const::Bool(flag) => Some(flag),
-                    _ => None,
+                value_of(record, "drop_frame").and_then(|written| {
+                    match Const::from_expr(&written) {
+                        Const::Bool(flag) => Some(flag),
+                        _ => None,
+                    }
                 }),
             ),
             SUBTITLE_CUE => {
-                let text = value_of(record, "text").and_then(|written| match Const::from_expr(&written) {
-                    Const::Str(text) => Some(text),
-                    _ => None,
-                });
-                cue_broken(millis(record, "start"), millis(record, "end"), text.as_deref())
+                let text =
+                    value_of(record, "text").and_then(|written| match Const::from_expr(&written) {
+                        Const::Str(text) => Some(text),
+                        _ => None,
+                    });
+                cue_broken(
+                    millis(record, "start"),
+                    millis(record, "end"),
+                    text.as_deref(),
+                )
             }
             _ => return,
         };

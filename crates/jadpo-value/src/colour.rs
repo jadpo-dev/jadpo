@@ -66,10 +66,14 @@ fn div(a: Fx, b: Fx) -> Fx {
 /// The rational `n / d` at [`PLACES`].
 const fn ratio(n: i128, d: i128) -> Fx {
     // Rounded half up: every ratio used is positive or rounds the same.
-    let scaled = n * ONE;
-    let (q, r) = (scaled / d, scaled % d);
+    let shifted = n * ONE;
+    let (q, r) = (shifted / d, shifted % d);
     if 2 * r.abs() >= d.abs() {
-        if (scaled < 0) == (d < 0) { q + 1 } else { q - 1 }
+        if (shifted < 0) == (d < 0) {
+            q + 1
+        } else {
+            q - 1
+        }
     } else {
         q
     }
@@ -87,11 +91,19 @@ fn fx(d: Decimal) -> Result<Fx, Fault> {
 }
 
 fn exp(x: Fx) -> Result<Fx, Fault> {
-    fx(crate::maths::exp(decimal(x), PLACES.into(), Rounding::HalfEven)?)
+    fx(crate::maths::exp(
+        decimal(x),
+        PLACES.into(),
+        Rounding::HalfEven,
+    )?)
 }
 
 fn ln(x: Fx) -> Result<Fx, Fault> {
-    fx(crate::maths::ln(decimal(x), PLACES.into(), Rounding::HalfEven)?)
+    fx(crate::maths::ln(
+        decimal(x),
+        PLACES.into(),
+        Rounding::HalfEven,
+    )?)
 }
 
 /// `x` to the power `y`, for `x` at 0 or more.
@@ -122,7 +134,7 @@ fn pi() -> Result<Fx, Fault> {
 
 /// Degrees to radians.
 fn radians(degrees: Fx) -> Result<Fx, Fault> {
-    Ok(mul(div(degrees, 180 * ONE), pi()?))
+    Ok(mul(round_div(degrees, 180), pi()?))
 }
 
 /// A 3 by 3 matrix times a vector.
@@ -151,11 +163,7 @@ const LIN_SRGB_TO_XYZ: [[Fx; 3]; 3] = [
 
 /// CIE XYZ, D65, to linear-light sRGB (`XYZ_to_lin_sRGB`).
 const XYZ_TO_LIN_SRGB: [[Fx; 3]; 3] = [
-    [
-        ratio(12_831, 3_959),
-        ratio(-329, 214),
-        ratio(-1_974, 3_959),
-    ],
+    [ratio(12_831, 3_959), ratio(-329, 214), ratio(-1_974, 3_959)],
     [
         ratio(-851_781, 878_810),
         ratio(1_648_619, 878_810),
@@ -255,10 +263,7 @@ fn linear(c: Fx) -> Result<Fx, Fault> {
     if c <= ratio(4_045, 100_000) {
         return Ok(div(c, ratio(1_292, 100)));
     }
-    pow(
-        div(c + ratio(55, 1000), ratio(1055, 1000)),
-        ratio(24, 10),
-    )
+    pow(div(c + ratio(55, 1000), ratio(1055, 1000)), ratio(24, 10))
 }
 
 /// Linear light to sRGB's transfer function (`gam_sRGB`), with its
@@ -325,8 +330,16 @@ fn to_oklch(rgb: [i64; 3]) -> Result<Oklch, Fault> {
 fn from_oklch_parts(colour: Oklch) -> Result<[i64; 3], Fault> {
     let hue = radians(colour.hue.unwrap_or(0))?;
     let (sine, cosine) = (
-        fx(crate::maths::sin(decimal(hue), PLACES.into(), Rounding::HalfEven)?)?,
-        fx(crate::maths::cos(decimal(hue), PLACES.into(), Rounding::HalfEven)?)?,
+        fx(crate::maths::sin(
+            decimal(hue),
+            PLACES.into(),
+            Rounding::HalfEven,
+        )?)?,
+        fx(crate::maths::cos(
+            decimal(hue),
+            PLACES.into(),
+            Rounding::HalfEven,
+        )?)?,
     );
     let lab = [
         colour.lightness,
@@ -406,8 +419,8 @@ pub fn from_hsl(hue: &Value, saturation: &Value, lightness: &Value) -> Result<Va
     let (hue, saturation, lightness) = (degrees(hue)?, fraction(saturation)?, fraction(lightness)?);
     let a = mul(saturation, lightness.min(ONE - lightness));
     let f = |n: i128| {
-        let k = (n * ONE + div(hue, 30 * ONE)).rem_euclid(12 * ONE);
-        let step = (k - 3 * ONE).min(9 * ONE - k).min(ONE).max(-ONE);
+        let k = (n * ONE + round_div(hue, 30)).rem_euclid(12 * ONE);
+        let step = (k - 3 * ONE).min(9 * ONE - k).clamp(-ONE, ONE);
         channel(lightness - mul(a, step))
     };
     Ok(colour_value([f(0), f(8), f(4), 255]))
@@ -490,19 +503,16 @@ pub fn mix(a: &Value, b: &Value, ratio_of_b: &Value) -> Result<Value, Fault> {
 /// light, by WCAG's own threshold of 0.03928 (no 8-bit channel falls
 /// between it and sRGB's 0.04045), weighted 0.2126, 0.7152 and 0.0722.
 fn luminance(rgba: [i64; 4]) -> Result<Fx, Fault> {
-    let weights = [ratio(2126, 10_000), ratio(7152, 10_000), ratio(722, 10_000)];
+    let coefficients = [ratio(2126, 10_000), ratio(7152, 10_000), ratio(722, 10_000)];
     let mut sum = 0;
-    for (c, weight) in rgba.iter().zip(weights) {
+    for (c, coefficient) in rgba.iter().zip(coefficients) {
         let c = ratio(i128::from(*c), 255);
         let linear = if c <= ratio(3_928, 100_000) {
             div(c, ratio(1_292, 100))
         } else {
-            pow(
-                div(c + ratio(55, 1000), ratio(1055, 1000)),
-                ratio(24, 10),
-            )?
+            pow(div(c + ratio(55, 1000), ratio(1055, 1000)), ratio(24, 10))?
         };
-        sum += mul(weight, linear);
+        sum += mul(coefficient, linear);
     }
     Ok(sum)
 }

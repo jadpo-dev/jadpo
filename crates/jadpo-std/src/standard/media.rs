@@ -314,7 +314,7 @@ pub const PAPER_SIZE_ENTRY: StandardType = StandardType {
     shape: None,
     examples: examples(
         &[("A4", "A4"), ("B5", "B5"), ("Letter", "Letter")],
-        &["A11", "C4", "Ledger", "210x297mm", "A 4", ""],
+        &["A11", "C4", "Executive", "210x297mm", "A 4", ""],
     ),
     release: FIRST_RELEASE,
 };
@@ -415,7 +415,16 @@ pub const FRAME_RATE_ENTRY: StandardType = StandardType {
             ("30000/1001", "30000/1001"),
             ("60000/1001", "60000/1001"),
         ],
-        &["29.97", "30", "0/1", "30/0", "30000 / 1001", "-24/1", "030/1", ""],
+        &[
+            "29.97",
+            "30",
+            "0/1",
+            "30/0",
+            "30000 / 1001",
+            "-24/1",
+            "030/1",
+            "",
+        ],
     ),
     release: FIRST_RELEASE,
 };
@@ -453,7 +462,15 @@ pub const VIDEO_CODEC_ENTRY: StandardType = StandardType {
             ("vp09.00.10.08", "vp09.00.10.08"),
             ("vp8", "vp8"),
         ],
-        &["h264", "avc1", "AVC1.42001E", "vp9", "mp4a.40.2", "avc1.", ""],
+        &[
+            "h264",
+            "avc1",
+            "AVC1.42001E",
+            "vp9",
+            "mp4a.40.2",
+            "avc1.",
+            "",
+        ],
     ),
     release: FIRST_RELEASE,
 };
@@ -503,7 +520,14 @@ pub const TIMECODE_ENTRY: StandardType = StandardType {
     name: TIMECODE,
     holds: Holds::Object(&TIMECODE_FIELDS),
     text: None,
-    json: Json::Fields(&["hours", "minutes", "seconds", "frames", "rate", "drop_frame"]),
+    json: Json::Fields(&[
+        "hours",
+        "minutes",
+        "seconds",
+        "frames",
+        "rate",
+        "drop_frame",
+    ]),
     storage: Storage::Column(SqlType::Json),
     format: Format {
         key: FormatKey::Timecode,
@@ -585,8 +609,8 @@ pub const SUBTITLE_CUE_ENTRY: StandardType = StandardType {
                 "00:01:05.250 --> 00:01:07.500\n— It will perforate your stomach.\n— You could die.",
             ),
             (
-                "100:00:00.000 --> 100:00:00.001\nLate",
-                "100:00:00.000 --> 100:00:00.001\nLate",
+                "100:00:00.000 --> 100:00:00.001\nEnd",
+                "100:00:00.000 --> 100:00:00.001\nEnd",
             ),
         ],
         &[
@@ -670,7 +694,10 @@ pub fn is_rating_of(rating: &str, scheme: &str) -> bool {
 pub const CONTENT_RATING_RULES: &[PartRule] = &[PartRule {
     part: "rating",
     by: &["scheme"],
-    fits: |rating, by| by.first().is_some_and(|scheme| is_rating_of(rating, scheme)),
+    fits: |rating, by| {
+        by.first()
+            .is_some_and(|scheme| is_rating_of(rating, scheme))
+    },
     says: "one of the rating body's categories",
     noun: "a category",
     authority: "the rating body",
@@ -737,7 +764,7 @@ pub const DROP_FRAME_RATE: PartsRule = PartsRule {
 /// tenth.
 pub const DROPPED_LABEL: PartsRule = PartsRule {
     label: "a label drop-frame skips",
-    reason: "Drop-frame counting skips frames 0 and 1 (0 to 3 at 60000/1001) at the start of each minute except every tenth, so that address is never a frame (SMPTE ST 12-1).",
+    reason: "Drop-frame counting skips frames 0 and 1 (0 to 3 at 60000/1001) at the start of each minute except minutes 0, 10, 20, 30, 40 and 50, so that address is never a frame (SMPTE ST 12-1).",
     next: "Write the frame after the skipped ones, or count without drop-frame",
 };
 
@@ -956,7 +983,13 @@ pub fn read_cue(raw: &str) -> Option<(i64, i64, &str)> {
 
 /// A timecode in SMPTE ST 12-1's notation: `hh:mm:ss:ff`, with `;` before
 /// the frames when it counts drop-frame.
-pub fn timecode_notation(hours: i64, minutes: i64, seconds: i64, frames: i64, drop: bool) -> String {
+pub fn timecode_notation(
+    hours: i64,
+    minutes: i64,
+    seconds: i64,
+    frames: i64,
+    drop: bool,
+) -> String {
     let mark = if drop { ';' } else { ':' };
     format!("{hours:02}:{minutes:02}:{seconds:02}{mark}{frames:02}")
 }
@@ -1008,11 +1041,11 @@ mod tests {
         // A sliver keeps a pixel.
         assert_eq!(fit(100_000, 1, 100, 100), (100, 1));
         // The widest sides don't overflow.
+        assert_eq!(fit(MOST_PIXELS, MOST_PIXELS, 1, 1), (1, 1));
         assert_eq!(
-            fit(MOST_PIXELS, MOST_PIXELS, 1, 1),
-            (1, 1)
+            fit(MOST_PIXELS, 2, MOST_PIXELS - 1, 2),
+            (MOST_PIXELS - 1, 1)
         );
-        assert_eq!(fit(MOST_PIXELS, 2, MOST_PIXELS - 1, 2), (MOST_PIXELS - 1, 1));
     }
 
     #[test]
@@ -1026,7 +1059,10 @@ mod tests {
         assert_eq!(skipped(1, 1, 0), None);
         let fifty_nine = Some((60_000, 1001));
         assert!(timecode_broken(Some(1), Some(0), Some(3), fifty_nine, Some(true)).is_some());
-        assert_eq!(timecode_broken(Some(1), Some(0), Some(4), fifty_nine, Some(true)), None);
+        assert_eq!(
+            timecode_broken(Some(1), Some(0), Some(4), fifty_nine, Some(true)),
+            None
+        );
         // By value, however the rate is written.
         assert_eq!(dropped_frames(2997, 100), None);
         assert_eq!(dropped_frames(60_000, 2002), Some(2));

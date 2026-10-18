@@ -199,7 +199,10 @@ fn rate_of(value: Option<&Value>) -> Option<(i64, i64)> {
     let Some(Value::Record(rate)) = value else {
         return None;
     };
-    Some((whole(rate, "numerator").ok()?, whole(rate, "denominator").ok()?))
+    Some((
+        whole(rate, "numerator").ok()?,
+        whole(rate, "denominator").ok()?,
+    ))
 }
 
 /// The part of a `Timecode` or a `SubtitleCue` a rule across its parts

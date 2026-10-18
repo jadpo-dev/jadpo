@@ -18,6 +18,15 @@ discount
 amount_off
 apply_discount
 price
+# `colour`'s parameters and the media types' names and parts (chunk 5.5p)
+hue
+saturation
+lightness
+chroma
+rating
+paper
+video
+subtitle
 
 # Rust keywords and ordinary programming vocabulary
 # ordinary English: `configuration.move_name_taken`

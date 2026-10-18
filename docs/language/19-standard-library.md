@@ -27,7 +27,7 @@ own features needed. This page collects them, adds what real applications
 keep reaching for, says which gaps in the language block the rest and how
 to close them, and says what is left out on purpose and why.
 
-> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); and `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
+> Decided 2026-10-17 (Richard), as recommended: "Trusting your recommendations". Chunk 5.4 wrote it; the "Decisions" table under "Review" records each decision. Built through chunks 5.5h2, 5.5k and 5.5k2: the contract every standard type meets, over the 13 standard types already built, with `type.standard_exists` on app code (5.5a); the clash a release's new standard type makes with an app's own, with `jadpo fix` (5.5a2); editor completion (5.5a3); the list operations (5.5b); the set, map and range operations (5.5c); two-parameter inline functions and `Range<T>` (5.5c2); the number operations (5.5d); maths on `Decimal` (5.5e); the text operations, with `locale:` and NFC at the boundary (5.5f); `hash.sha256`, the encodings and `json.read` and `json.write` in memory (5.5g); the `DecodeProblem` a failure mapped from `mismatch` receives (5.5g2); `Money` and `Currency`, the operator table's `Money` rows and the money operations but `convert`, stored in two columns (5.5h); `ExchangeRate`, `money.convert` and `{price, number, currency}` in messages (5.5h2); ten of the time types, with `CalendarPeriod`'s operator rows and `temporal.period_between` (5.5k); `RecurrenceRule` and `OpeningHours`, with `temporal.occurrences` and `temporal.open_at` (5.5k2); and `Colour` and the media types, with `colour`'s operations and `media.fit` (5.5p). The rest is built by chunks 5.5i to 5.5s, in the order under "Building it"; the "Status" table under "Review" says what each feature waits on. Where this page changes another area, that page carries a dated "Amended 2026-10-17 by area 19" note, or the change is work for the chunk named here. The packages design it builds on is [packages and extension points](research/packages-and-extension-proposals.md) (#88, merged 2026-10-17).
 
 | Namespace | Holds | Operations | Decided in |
 |---|---|---|---|
@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 169 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, the 18 software types in 5.5n2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-four are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 184 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, the 18 software types in 5.5n2, the 15 media and visual types in 5.5p); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason ("Chosen in chunk 5.5p"). "(enum)" marks a closed list held as a built-in enum: twenty-seven are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -127,7 +127,7 @@ exception to the rule.
 | Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
 | Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, **`Allergen`** (enum) | |
-| Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
+| Media and visual (15, and `ContentRatingScheme`) | **`Colour`**, **`ImageDimensions`**, **`AspectRatio`**, **`Rect`**, **`Insets`**, **`PaperSize`** (enum), **`ExifOrientation`** (enum), **`AltText`**, **`FrameRate`**, **`VideoResolution`**, **`VideoCodec`**, **`AudioCodec`**, **`Timecode`**, **`SubtitleCue`**, **`ContentRating`** with **`ContentRatingScheme`** (enum) | `colour`, `media` |
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
@@ -335,7 +335,8 @@ required reason handles them, and review sees each one.
 > migration and the acceptances for a type already stored or on the wire
 > come with area 18's records, and until then such a swap stops (below).
 > Packages' public types come with the publishing bar (chunk 7.1). Its
-> example is under "Errors".
+> example is under "Errors". `Colour`'s signature came with it in chunk
+> 5.5p, its alpha the first field a shape lets an `Object` leave out.
 
 The `Country`, `Language` and `PhoneNumber` lists ship with each Jadpo
 release, as the time-zone database does (#88, "built in or a library
@@ -4019,7 +4020,7 @@ type NotAColour = Failure {
 }
 
 /// The brand colour a settings form names.
-function brand_colour(raw: FormText) fails NotAColour -> Colour {
+function settings_colour(raw: FormText) fails NotAColour -> Colour {
     var typed_colour: Colour = attempt text.parse(raw, as: Colour) {
         malformed: NotAColour
     }
@@ -4031,14 +4032,14 @@ function css_colour(swatch: Colour) -> FormText {
     return FormText(text.from(swatch))
 }
 
-/// Whether body text in `ink` on `paper` meets WCAG 2's AA.
-function readable(ink: Colour, paper: Colour) -> YesNo {
-    return YesNo(colour.contrast(ink, paper) >= 4.5)
+/// Whether body text in `text_colour` on `page_colour` meets WCAG 2's AA.
+function body_text_passes(text_colour: Colour, page_colour: Colour) -> YesNo {
+    return YesNo(colour.contrast(text_colour, page_colour) >= 4.5)
 }
 
 /// A button's hover colour: its hue, lighter.
-function hover_colour(button: Colour) -> Colour {
-    return colour.with_lightness(button, 75%)
+function hover_colour(button_colour: Colour) -> Colour {
+    return colour.with_lightness(button_colour, 75%)
 }
 
 /// A tint of a colour: a fifth of the way to white.
@@ -4053,41 +4054,49 @@ function tint(swatch: Colour) -> Colour {
 }
 
 /// A designer's HSL swatch.
-function hsl_swatch(hue: SwatchHue, saturation: SwatchShare, lightness: SwatchShare) -> Colour {
-    return colour.from_hsl(hue, saturation, lightness)
+function hsl_swatch(
+    swatch_hue: SwatchHue,
+    swatch_saturation: SwatchShare,
+    swatch_lightness: SwatchShare
+) -> Colour {
+    return colour.from_hsl(swatch_hue, swatch_saturation, swatch_lightness)
 }
 
 /// A designer's OKLCH swatch.
-function oklch_swatch(lightness: SwatchShare, chroma: SwatchChroma, hue: SwatchHue) -> Colour {
-    return colour.from_oklch(lightness, chroma, hue)
+function oklch_swatch(
+    swatch_lightness: SwatchShare,
+    swatch_chroma: SwatchChroma,
+    swatch_hue: SwatchHue
+) -> Colour {
+    return colour.from_oklch(swatch_lightness, swatch_chroma, swatch_hue)
 }
 ```
 
 ```jadpo check project=colour file=main.test.jadpo
 test "a colour is read and written as CSS writes it" {
-    var brand: Colour = attempt brand_colour("#1E6FD9")
-    assert css_colour(brand) == "#1e6fd9"
-    assert brand.blue == 217
-    assert brand_colour("#1e6") fails NotAColour
-    assert brand_colour("rgb(30 111 217)") fails NotAColour
+    var house_colour: Colour = attempt settings_colour("#1E6FD9")
+    assert css_colour(house_colour) == "#1e6fd9"
+    assert house_colour.blue == 217
+    assert settings_colour("#1e6") fails NotAColour
+    assert settings_colour("rgb(30 111 217)") fails NotAColour
 }
 
 test "contrast is WCAG 2's ratio, never rounded up" {
-    var black: Colour = attempt brand_colour("#000000")
-    var white: Colour = attempt brand_colour("#ffffff")
-    var mid_grey: Colour = attempt brand_colour("#767676")
-    var light_grey: Colour = attempt brand_colour("#777777")
+    var black: Colour = attempt settings_colour("#000000")
+    var white: Colour = attempt settings_colour("#ffffff")
+    var mid_grey: Colour = attempt settings_colour("#767676")
+    var light_grey: Colour = attempt settings_colour("#777777")
     assert colour.contrast(black, white) == 21.00
     assert colour.contrast(white, white) == 1.00
     assert colour.contrast(mid_grey, white) == 4.54
-    assert readable(mid_grey, white)
-    assert not readable(light_grey, white)
+    assert body_text_passes(mid_grey, white)
+    assert not body_text_passes(light_grey, white)
 }
 
 test "lightness, mixes, HSL and OKLCH give sRGB colours" {
-    var brand: Colour = attempt brand_colour("#1e6fd9")
-    assert css_colour(hover_colour(brand)) == "#5fadff"
-    assert css_colour(tint(brand)) == "#518de3"
+    var house_colour: Colour = attempt settings_colour("#1e6fd9")
+    assert css_colour(hover_colour(house_colour)) == "#5fadff"
+    assert css_colour(tint(house_colour)) == "#518de3"
     assert css_colour(hsl_swatch(120deg, 100%, 25%)) == "#008000"
     assert css_colour(hsl_swatch(210deg, 75%, 45%)) == "#1d73c9"
     assert css_colour(oklch_swatch(62.8%, 0.2577, 29.23deg)) == "#ff0000"
@@ -4130,12 +4139,12 @@ type NotARating = Failure {
 }
 
 /// A still's thumbnail: scaled to fit a 320-pixel square, never enlarged.
-function thumbnail(still: ImageDimensions) -> ImageDimensions {
+function thumbnail(video_still: ImageDimensions) -> ImageDimensions {
     var tile: ImageDimensions = ImageDimensions {
         width: 320
         height: 320
     }
-    return media.fit(still, within: tile)
+    return media.fit(video_still, within: tile)
 }
 
 /// The age rating a film's form names.
@@ -4147,13 +4156,13 @@ function film_rating(raw: FormText) fails NotARating -> ContentRating {
 }
 
 /// Where an edit starts, as the edit list shows it.
-function edit_start(cut: Timecode) -> PresentationText {
-    return text.format(cut, locale: Locale.en_gb)
+function edit_start(edit_point: Timecode) -> PresentationText {
+    return text.format(edit_point, locale: Locale.en_gb)
 }
 
 /// A caption as a WebVTT file writes it.
-function caption_text(caption: SubtitleCue) -> FormText {
-    return FormText(text.from(caption))
+function caption_text(opening_caption: SubtitleCue) -> FormText {
+    return FormText(text.from(opening_caption))
 }
 ```
 
@@ -4163,7 +4172,7 @@ test "a thumbnail fits its tile and is never enlarged" {
         width: 4000
         height: 3000
     }
-    var banner: ImageDimensions = ImageDimensions {
+    var wide_still: ImageDimensions = ImageDimensions {
         width: 1000
         height: 333
     }
@@ -4172,19 +4181,19 @@ test "a thumbnail fits its tile and is never enlarged" {
         height: 100
     }
     assert text.from(thumbnail(landscape)) == "320x240"
-    assert text.from(thumbnail(banner)) == "320x106"
+    assert text.from(thumbnail(wide_still)) == "320x106"
     assert thumbnail(icon) == icon
 }
 
 test "a rating is one of its body's categories" {
-    var rating: ContentRating = attempt film_rating("BBFC 12A")
-    assert rating.scheme == ContentRatingScheme.bbfc
+    var given_rating: ContentRating = attempt film_rating("BBFC 12A")
+    assert given_rating.scheme == ContentRatingScheme.bbfc
     assert film_rating("BBFC PG-13") fails NotARating
     assert film_rating("12A") fails NotARating
 }
 
 test "a timecode is shown in SMPTE's notation, a cue as WebVTT writes it" {
-    var cut: Timecode = Timecode {
+    var edit_point: Timecode = Timecode {
         hours: 1
         minutes: 10
         seconds: 0
@@ -4195,13 +4204,13 @@ test "a timecode is shown in SMPTE's notation, a cue as WebVTT writes it" {
         }
         drop_frame: true
     }
-    assert edit_start(cut) == "01:10:00;00"
-    var caption: SubtitleCue = SubtitleCue {
+    assert edit_start(edit_point) == "01:10:00;00"
+    var opening_caption: SubtitleCue = SubtitleCue {
         start: 1s
         end: 4s
-        text: "Never drink liquid nitrogen."
+        text: "Mind the gap."
     }
-    assert caption_text(caption) == "00:00:01.000 --> 00:00:04.000\nNever drink liquid nitrogen."
+    assert caption_text(opening_caption) == "00:00:01.000 --> 00:00:04.000\nMind the gap."
 }
 ```
 
@@ -5787,7 +5796,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, each other group of types in the chunks after them to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -7613,6 +7622,136 @@ under "Errors").
   structured storage as a `Discount` does; no shape, as no choice has one,
   so an application's `Object { sort_code, account_number }` isn't
   `type.standard_exists`.
+
+### Chosen in chunk 5.5p
+
+- **`Colour` is an object** of `red`, `green`, `blue` and `alpha`, each a
+  whole number from 0 to 255, as question 13 decided. Its canonical text
+  is CSS Color 4's hex, `#1e6fd9` when opaque and `#1e6fd980` otherwise,
+  written in lower case and read in either; CSS's three- and four-digit
+  short forms are refused, so a colour has one length of text, and
+  `#1e6fd9ff` reads as opaque. It is sent as that text, stored a
+  `smallint` column a channel, unordered, and shown as its text in every
+  locale. Not personal data.
+- **`type.standard_exists` matches the page's shape:** a red, a green and
+  a blue, by their names or initials (`red` or `r`), built on `Int` or
+  `Decimal`, and optionally an alpha (`alpha` or `a`). A shape's field may
+  now be marked optional, `Colour`'s alpha the first. The swap renames the
+  fields; a literal of a three-channel type then needs its `alpha`, which
+  `check` asks for.
+- **The operations' types.** `from_oklch` takes its lightness as a
+  `Percentage`, as CSS writes it, its chroma as a `Decimal` and its hue as
+  an `Angle`. A parameter written `Percentage` or a quantity kind in a
+  stub now takes any type built on it, as one written `Money` does, so a
+  named `Angle` or `Percentage` passes; a bare number doesn't
+  (`type.mismatch`, `type.unit_required`).
+- **None fails.** Saturation, lightness and a mix's ratio are clamped to
+  0% to 100% and a hue wraps, as CSS does; an OKLCH lightness is clamped
+  to 0% to 100% and its chroma to 0 to 1 (CSS clamps only below 0; above 1
+  is past every display's gamut and keeps the arithmetic bounded).
+- **CSS Color 4's conversions, exactly:** its sample code's rational sRGB
+  and XYZ matrices and its OKLab matrices to their 16 places, a hue
+  powerless at a chroma of 0.000004 or less. "Clipped into sRGB" is the
+  page's: each channel is clamped to 0 to 1 after the transfer function,
+  not CSS Color 4's chroma-reducing gamut mapping. Each channel is then
+  rounded to the nearest of 0 to 255, a half up, as CSS serialises one and
+  culori's `formatHex` does, so `hsl(120deg 100% 25%)`'s 127.5 is `#008000`.
+- **An angle's degrees.** An `Angle` is held in radians to 9 places, so
+  its degrees are rounded to 6 places before use, which gives an angle
+  written in whole degrees (`120deg`) exactly.
+- **`mix` is CSS Color 5's `color-mix(in oklch, a, b ratio)`:** both in
+  OKLCH, lightness and chroma premultiplied by alpha, the hue the shorter
+  way round, a powerless hue taking the other colour's, and the alpha
+  mixed and rounded as a channel is. `with_lightness` keeps the chroma,
+  hue and alpha, then clips.
+- **Jadpo's own arithmetic:** fixed point to 18 places in an `i128`, with
+  maths on `Decimal`'s correctly rounded `exp`, `ln`, `sin`, `cos`,
+  `atan2`, `sqrt` and π, so every target gives the same channels. The
+  tests hold the operations to CSS Color 4's sample code run in f64 (the
+  page's values and 200 generated ones, leaving out values within a
+  millionth of a rounding boundary, where an f64 can't say which side it
+  is on); every one agrees.
+- **`contrast` is WCAG 2's** relative luminance, by WCAG 2.0 and 2.1's
+  threshold of 0.03928 (2.2's sRGB 0.04045 gives the same for every 8-bit
+  channel), weighted 0.2126, 0.7152 and 0.0722, and `(L1 + 0.05) / (L2 +
+  0.05)` of the lighter and the darker, either way round. It is worked out
+  to 12 places, then rounded down to 2, since WCAG says a ratio isn't
+  rounded up to meet a threshold: `#777777` on white is 4.47 (4.478) and
+  fails 4.5, red on white 3.99. Alpha isn't read. WCAG 3's draft APCA isn't
+  used.
+- **`ImageDimensions` and `VideoResolution`** are a `width` and a `height`
+  in whole pixels from 1 to 2,147,483,647 (PNG's limit, the largest of the
+  common formats'), written `1920x1080`, width first with a lower-case
+  `x`, sent as named fields so nothing reads them the other way round, and
+  stored a column each; unordered. A `VideoResolution` is the same shape
+  under its own name, by its pixels rather than a name like "4K", which
+  names both 3840 and 4096 pixels across.
+- **`AspectRatio`** is a `width` and a `height` of whole numbers from 1,
+  the catalogue's, written `16:9`, held as written as a `Ratio` is (`16:9`
+  and `32:18` are two values), sent as its text and stored as `jsonb`. A
+  cinema's 2.39:1 is `239:100`; a release can take decimals later without
+  changing any value.
+- **`Rect`** is `x` and `y`, any `Decimal`, and `width` and `height`, never
+  below 0; **`Insets`** is `top`, `right`, `bottom` and `left`, never
+  below 0, so a negative margin is refused. Their canonical texts are SVG's
+  `viewBox` (`0 0 300 200`) and CSS's four-value box (`8 16 8 16`), each
+  number with the places it was given, no leading zero and one space
+  between, always every part; each is sent as named fields and stored as
+  `jsonb`.
+- **`PaperSize`** is ISO 216's A0 to A10 and B0 to B10 and ANSI/ASME
+  Y14.1's letter, legal and tabloid, coded `A4`, `Letter`; ISO 269's
+  envelope sizes and ledger (tabloid on its side) are left out.
+- **`ExifOrientation`'s variants** are named for where the stored image's
+  first row and column are seen, as libtiff names TIFF 6.0's values
+  (`top_left` to `left_bottom`), coded `1` to `8` and sent as that text,
+  as every enum's code is.
+- **`AltText`** is one line of 1 to 1,000 characters, the catalogue's
+  length, with no space at either end; an image with nothing to say is
+  `none` in an optional field, not empty text.
+- **`FrameRate`** is a `numerator` and a `denominator` from 1 to
+  2,147,483,647, written `30000/1001` and `25/1`, always with its
+  denominator, held as written and unordered.
+- **`VideoCodec` and `AudioCodec`** are the codec strings the W3C
+  WebCodecs Codec Registry lists, in RFC 6381's form: `av01`, `avc1`,
+  `avc3`, `hev1`, `hvc1` and `vp09` with their elements, and `vp8`;
+  `mp4a` with its elements, `flac`, `mp3`, `opus`, `vorbis`, `ulaw`,
+  `alaw` and the five `pcm-` forms. The elements after the first aren't
+  checked further, and case is kept, as the registry writes them.
+- **`Timecode`** is SMPTE ST 12-1's `hours` (0 to 23), `minutes` and
+  `seconds` (0 to 59) and `frames` (0 to 119, room for 120 frames a
+  second), with its `rate` and whether it counts `drop_frame`. Its frames
+  are below its rate's whole frames a second, rounded up; drop-frame is
+  only at 30000/1001 and 60000/1001, by value, and never on the labels it
+  skips (frames 0 and 1, or 0 to 3, at each minute but every tenth). Its
+  notation, `01:00:00;00`, doesn't say its rate, so it has no single text
+  form: it is sent as its parts, stored as `jsonb`, and shown in that
+  notation. A literal is checked while compiling, a value read from JSON
+  as it is read, and one built in code from values waits on cross-field
+  rules (chunk 5.5t).
+- **`SubtitleCue`** is WebVTT's: a `start` and an `end`, `Duration`s from
+  the start of the media to the millisecond, the start at 0 or after and
+  the end after it, and its `text`, lines with no control character, no
+  blank line and no `-->`. Its canonical text is the cue's timings line,
+  hours in two digits or more, and its text after a line feed, with no
+  identifier or settings; it is sent as named fields and stored as
+  `jsonb`, and its rules are held as a timecode's are.
+- **`ContentRating`** is a `scheme` and a `rating`, one of that body's
+  categories as it writes them, written `BBFC 12A`, the body's code read
+  ignoring case, sent as that text and stored a column each. The bodies
+  are a new standard enum, `ContentRatingScheme`, beside the 247, since a
+  part must be a standard type to be read, sent and stored by its code (as
+  `IdentityDocumentKind` was, for the lead session to accept): the
+  catalogue's four, BBFC (U, PG, 12A, 12, 15, 18, R18), the MPA, the MPAA's
+  name since 2019 (G, PG, PG-13, R, NC-17), PEGI (3, 7, 12, 16, 18) and
+  ESRB (E, E10+, T, M, AO, RP). Others (USK, the ACB, US TV) come with a
+  release.
+- **`media.fit` is CSS's `object-fit: scale-down`,** worked out in whole
+  numbers: the side that limits becomes the box's exactly, the other is
+  scaled with it and rounded down, never below 1, and an image that fits
+  is kept as it is.
+- **Personal data:** none of these types is.
+- **Clashes renamed:** the interpreter's JSON test's `Colour` enum is
+  `Finish`.
 
 ### Decisions
 
