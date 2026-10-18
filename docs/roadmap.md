@@ -1218,13 +1218,26 @@ reference only).
   entities aren't built, so only the GeoJSON round trip is tested; a
   geometry mixing altitudes can't be stored (a fault), open for Richard.
   What the chunk chose is area 20's "Chosen in chunk 5.5u4".
-- [ ] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
+- [x] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
   "Queries"; area 6), after 5.5u3
   and 5.5u4: the `geo.` conditions, the box and circle filters and order
   by distance within a radius, with area 6 amended and golden SQL for
   each, and the GiST indexes they need derived (moved from 5.5u4). Done
   when each of the page's queries runs on PostGIS through its index and
-  agrees with the code's answer on the page's examples.
+  agrees with the code's answer on the page's examples. Built: the index
+  finds, the code decides: each condition is a GiST search a millimetre
+  wider than it (`ST_DWithin`, or a box's envelopes on the point cast to
+  `geometry`), and the runtime holds every row found to the same `geo.`
+  operation a body runs, so a query gives the code's answer, the four
+  `ST_Covers` cases of 5.5u3 included; nearest first is sorted by
+  `geo.distance`, then `id`; the statement asks for what the read keeps
+  and again for four times as many while the recheck leaves it short.
+  The page's queries over two thousand bakeries and three hundred
+  patches, and every case of 5.5u3's file as a query, give the code's
+  answer on PostGIS through their indexes (`EXPLAIN`), and the page's
+  examples are checked and run. A condition stands on its own line or in
+  an `and`; one in an include isn't built yet. What the chunk chose is
+  area 20's "Chosen in chunk 5.5u5".
 - [ ] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
   after 5.5u4: `Feature` and
   `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and

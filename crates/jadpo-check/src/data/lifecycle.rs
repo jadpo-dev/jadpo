@@ -95,7 +95,7 @@ pub fn reads_now(condition: &Condition) -> bool {
         Condition::Compare { value, .. } | Condition::In { value, .. } => {
             matches!(value, Value::Now)
         }
-        Condition::IsNone { .. } | Condition::Distance { .. } => false,
+        Condition::IsNone { .. } | Condition::Distance { .. } | Condition::Geo { .. } => false,
         Condition::And(all) | Condition::Or(all) => all.iter().any(reads_now),
         Condition::Not(inner) => reads_now(inner),
         Condition::Present { condition, .. } => reads_now(condition),

@@ -238,3 +238,267 @@ fn a_geographic_index_is_on_one_geometry_field() {
         "the same index twice"
     );
 }
+
+// --- query conditions (area 20, "Queries"; chunk 5.5u5) ----------------------
+
+/// A bakery with a spot and a patch, and a query of its cards with
+/// `lines` (its `where:` lines and the rest) and the parameters every
+/// condition below uses.
+fn query(lines: &str) -> Vec<String> {
+    query_returning("List<BakeryCard>", lines)
+}
+
+fn query_returning(result: &str, lines: &str) -> Vec<String> {
+    checked(&format!(
+        "type BakeryName = Text {{\n    max_length: 80\n}}\n\ntype SearchReach = Length {{\n    min: 0metre\n    max: 50km\n}}\n\ntype Gap = Length {{}}\n\nentity Bakery {{\n    id: Uuid\n    name: BakeryName\n    spot: Point\n    patch: Polygon?\n    reach: Circle\n}}\n\ntype BakeryCard = Output {{\n    pick: [Bakery.id, Bakery.name]\n}}\n\n/// Bakeries found by where they are.\nquery found(doorstep: Point, max_trip: SearchReach, area: Polygon, areas: MultiPolygon, view: BoundingBox, circle: Circle, line: LineString, shape: Geometry, plain: Gap, name: BakeryName, page: PageSize, after: PageCursor?) -> {result} {{\n    from: Bakery\n{lines}}}\n"
+    ))
+}
+
+const BY_NAME: &str = "    order: [Bakery.name asc]\n    limit: 20\n";
+
+#[test]
+fn each_geo_condition_is_a_query_condition() {
+    for condition in [
+        "geo.within(Bakery.spot, doorstep, distance: max_trip)",
+        "geo.within(Bakery.spot, doorstep, distance: 5km)",
+        "geo.within(Bakery.spot, area)",
+        "geo.within(Bakery.spot, areas)",
+        "geo.within(Bakery.spot, view)",
+        "geo.within(Bakery.spot, circle)",
+        "geo.within(Bakery.patch, area)",
+        "geo.contains(Bakery.patch, doorstep)",
+        "geo.contains(Bakery.patch, line)",
+        "geo.contains(Bakery.patch, shape)",
+        "geo.intersects(Bakery.patch, area)",
+        "geo.intersects(Bakery.spot, shape)",
+    ] {
+        assert_eq!(
+            query(&format!("    where: {condition}\n{BY_NAME}")),
+            NONE,
+            "{condition}"
+        );
+    }
+    assert_eq!(
+        query(&format!(
+            "    where: Bakery.name == name and geo.within(Bakery.spot, view)\n{BY_NAME}"
+        )),
+        NONE,
+        "beside another condition, joined by `and`"
+    );
+    assert_eq!(
+        query_returning(
+            "Page<BakeryCard>",
+            "    where: geo.within(Bakery.spot, view)\n    order: [Bakery.name asc]\n    page: {\n        size: page\n        after: after\n    }\n"
+        ),
+        NONE,
+        "a page"
+    );
+}
+
+#[test]
+fn a_geo_condition_is_refused_where_no_index_serves_it() {
+    let refused = |condition: &str| query(&format!("    where: {condition}\n{BY_NAME}"));
+    assert_eq!(
+        refused("geo.within(doorstep, Bakery.spot, distance: max_trip)"),
+        ["query.condition_unsupported"],
+        "the field second"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.patch, view)"),
+        ["query.condition_unsupported"],
+        "a box on a field that isn't a point (question 11)"
+    );
+    assert_eq!(
+        refused("not geo.within(Bakery.spot, view)"),
+        ["query.condition_unsupported"],
+        "under `not`"
+    );
+    assert_eq!(
+        refused("Bakery.name == name or geo.within(Bakery.spot, view)"),
+        ["query.condition_unsupported"],
+        "under `or`"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.reach, area)"),
+        ["query.condition_unsupported"],
+        "a circle's field is kept in named columns"
+    );
+    assert_eq!(
+        refused("geo.area(Bakery.patch) <= plain"),
+        ["query.condition_unsupported"],
+        "any other function of a field"
+    );
+    assert_eq!(
+        query(&format!(
+            "    where_present: geo.within(Bakery.spot, view)\n{BY_NAME}"
+        )),
+        ["query.condition_unsupported"],
+        "in `where_present:`"
+    );
+}
+
+#[test]
+fn a_geo_condition_s_values_are_typed_as_in_code() {
+    let refused = |condition: &str| query(&format!("    where: {condition}\n{BY_NAME}"));
+    assert_eq!(
+        refused("geo.within(Bakery.patch, doorstep, distance: max_trip)"),
+        ["type.mismatch"],
+        "a distance from a polygon (question 10)"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.spot, area, distance: max_trip)"),
+        ["type.mismatch"],
+        "a distance to a polygon"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.patch, circle)"),
+        ["type.mismatch"],
+        "a circle holds points only"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.spot, doorstep)"),
+        ["type.mismatch"],
+        "inside a point"
+    );
+    assert_eq!(
+        refused("geo.contains(Bakery.patch, name)"),
+        ["type.mismatch"],
+        "text isn't a geometry"
+    );
+    assert_eq!(
+        refused("geo.intersects(Bakery.name, area)"),
+        ["type.mismatch"],
+        "nor is a text field"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.spot, doorstep, distance: plain)"),
+        ["type.argument_negative"],
+        "a length that may be negative"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.spot, doorstep, distance: -5km)"),
+        ["type.argument_negative"],
+        "a negative length"
+    );
+    assert_eq!(
+        refused("geo.within(Bakery.spot, doorstep, distance: name)"),
+        ["type.mismatch"],
+        "a distance is a length"
+    );
+}
+
+#[test]
+fn nearest_first_inside_a_radius() {
+    let near = "    where: geo.within(Bakery.spot, doorstep, distance: max_trip)\n";
+    assert_eq!(
+        query(&format!(
+            "{near}    order: [geo.distance(Bakery.spot, doorstep) asc]\n    limit: 20\n"
+        )),
+        NONE
+    );
+    assert_eq!(
+        query(&format!(
+            "{near}    order: [geo.distance(Bakery.spot, doorstep) desc]\n    limit: 20\n"
+        )),
+        ["query.order_direction"],
+        "farthest first"
+    );
+    assert_eq!(
+        query("    order: [geo.distance(Bakery.spot, doorstep) asc]\n    limit: 20\n"),
+        ["query.order_field"],
+        "no radius (question 4)"
+    );
+    assert_eq!(
+        query(
+            "    where: geo.within(Bakery.spot, circle)\n    order: [geo.distance(Bakery.spot, doorstep) asc]\n    limit: 20\n"
+        ),
+        ["query.order_field"],
+        "a radius from another point"
+    );
+    assert_eq!(
+        query(&format!(
+            "{near}    order: [geo.distance(Bakery.spot, doorstep) asc, Bakery.name asc]\n    limit: 20\n"
+        )),
+        ["query.order_field"],
+        "the only order"
+    );
+    assert_eq!(
+        query_returning(
+            "Page<BakeryCard>",
+            &format!(
+                "{near}    order: [geo.distance(Bakery.spot, doorstep) asc]\n    page: {{\n        size: page\n        after: after\n    }}\n"
+            )
+        ),
+        ["query.order_field"],
+        "a page by distance"
+    );
+    assert_eq!(
+        query(&format!(
+            "{near}    order: [geo.area(Bakery.patch) asc]\n    limit: 20\n"
+        )),
+        ["query.order_field"],
+        "any other function of a field"
+    );
+}
+
+#[test]
+fn a_geo_condition_derives_its_gist_index() {
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Loose,
+        &[(
+            "main.jadpo",
+            "entity Bakery {\n    id: Uuid\n    spot: Point\n    patch: Polygon\n}\n\n/// Near a door.\nquery near(doorstep: Point) -> List<Bakery> {\n    from: Bakery\n    where: geo.within(Bakery.spot, doorstep, distance: 5km)\n    order: [geo.distance(Bakery.spot, doorstep) asc]\n    limit: 20\n}\n\n/// In view.\nquery seen(view: BoundingBox) -> List<Bakery> {\n    from: Bakery\n    where: geo.within(Bakery.spot, view)\n    order: [Bakery.id asc]\n    limit: 20\n}\n\n/// Holding a door.\nquery holding(doorstep: Point) -> List<Bakery> {\n    from: Bakery\n    where: geo.contains(Bakery.patch, doorstep)\n    order: [Bakery.id asc]\n    limit: 20\n}\n",
+        )],
+    );
+    let schema = jadpo_check::data::schema(&db, project);
+    let table = &schema.stores["main"].tables["bakery"];
+    let gist: Vec<(String, Vec<String>, Option<String>)> = table
+        .indexes
+        .iter()
+        .filter_map(|(name, index)| {
+            let method = index.method.as_ref()?;
+            Some((name.clone(), index.columns.clone(), method.cast.clone()))
+        })
+        .collect();
+    assert_eq!(
+        gist,
+        [
+            (
+                "bakery_patch_idx".to_string(),
+                vec!["patch".to_string()],
+                None
+            ),
+            (
+                "bakery_spot_box_idx".to_string(),
+                vec!["spot".to_string()],
+                Some("geometry".to_string())
+            ),
+            (
+                "bakery_spot_idx".to_string(),
+                vec!["spot".to_string()],
+                None
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_geo_condition_isn_t_counted_by_the_database_yet() {
+    // The code decides a `geo.` condition's records, and an aggregate's
+    // totals are the database's (chunk 5.5u5).
+    assert_eq!(
+        checked(
+            "entity Bakery {\n    id: Uuid\n    spot: Point\n}\n\ntype BakeryCount = Output {\n    bakeries: Int\n}\n\n/// How many bakeries a map shows.\nquery counted(view: BoundingBox) -> BakeryCount {\n    from: Bakery\n    where: geo.within(Bakery.spot, view)\n    aggregate: {\n        bakeries: count()\n    }\n}\n"
+        ),
+        ["toolchain.not_built_yet"]
+    );
+    assert_eq!(
+        checked(
+            "entity Bakery {\n    id: Uuid\n    spot: Point\n    area: Polygon\n}\n\nentity Stall {\n    id: Uuid\n    bakery_id: Bakery.id {\n        on_delete: OnDelete.cascade\n    }\n    spot: Point\n}\n\ntype StallView = Output {\n    pick: [Stall.id]\n}\n\ntype BakeryStalls = Output {\n    pick: [Bakery.id]\n    stalls: List<StallView>\n}\n\n/// A bakery's stalls in a view.\nquery stalls_in(bakery_id: Bakery.id, view: BoundingBox) -> BakeryStalls? {\n    from: Bakery\n    where: Bakery.id == bakery_id\n    include: {\n        stalls: {\n            via: Stall.bakery_id\n            where: geo.within(Stall.spot, view)\n            order: [Stall.id asc]\n            limit: 10\n        }\n    }\n}\n"
+        ),
+        ["toolchain.not_built_yet"],
+        "nor are an include's records rechecked yet"
+    );
+}

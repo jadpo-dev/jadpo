@@ -279,7 +279,14 @@ are parameters and their fields, literals, enum values, lists of those and
 `clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
 accepted wherever a literal is, since it is a value fixed while compiling
 (decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
-durations, as they do in a body (area 3). A field that is `none` meets no
+durations, as they do in a body (area 3). Besides `ai.distance` (area
+21), the one function a field may be passed to is a `geo.` test, which a
+GiST index serves: `geo.within`,
+`geo.contains` or `geo.intersects` with a geometry field first and a
+parameter after, on a `where:` line of its own or joined by `and`; the
+index finds the records and Jadpo's own code decides each, so the query
+gives the code's answer ([area 20](20-geospatial.md), "Queries", built
+in chunk 5.5u5). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
 absent; that is what `where_present:` is for. The compiler creates the
@@ -311,6 +318,11 @@ A vector field is ordered by nearness instead, `order: [F nearest v]`,
 the only order of a query returning `List<Nearest<T>>`, with
 `ai.distance(F, v)` compared with a bound in `where:` (area 21, "The
 nearest-neighbour query", built in chunk 5.5v1b).
+A point field is ordered by distance, nearest first, with
+`order: [geo.distance(F, p) asc]`, the only order of a list, beside
+`where: geo.within(F, p, distance: d)` on the same field and point, which
+bounds what is sorted; records are sorted by the distance `geo.distance`
+gives, then `id` (area 20, question 4, built in chunk 5.5u5).
 
 ```jadpo check project=page-input file=types.jadpo hidden
 type TodoStatus = Enum {

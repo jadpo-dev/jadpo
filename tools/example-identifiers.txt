@@ -111,6 +111,7 @@ bakeries_near
 bakeries_recipes
 bakeries_staff
 bakery
+bakery_card
 bakery_day
 bakery_id
 bakery_name
@@ -385,6 +386,7 @@ create_todo
 created_at
 created_on
 crew
+crumbs
 crust
 crust_on
 css_colour
@@ -473,6 +475,7 @@ doubled_checked
 doubled_order
 draft_name
 draft_reply
+draw_patch
 drawn_patch
 drift
 driven
@@ -675,6 +678,7 @@ in_house_uses
 in_kilopascals
 in_miles
 in_name_order
+in_reach
 in_rental
 in_review
 in_shop
@@ -1166,6 +1170,7 @@ past_expiry
 pasted_about
 pastry
 patch_area
+patch_card
 patch_from
 patch_layer
 patch_name
@@ -1454,6 +1459,7 @@ search_from
 search_link
 search_page
 search_phrase
+search_reach
 search_term
 search_todos
 searched
@@ -1831,6 +1837,7 @@ weight
 weight_of
 welcome_email
 welcome_heading
+westminster
 wet_enough
 when_needed
 white
@@ -1851,6 +1858,7 @@ with_vat
 with_x
 withdraw_copy
 withdrawn
+within_five
 work_address
 work_email
 workshop_heater

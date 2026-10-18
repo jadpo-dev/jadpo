@@ -2418,6 +2418,76 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         );
     }
     nearest_indexes(model, &queries.queries, schema);
+    geo_indexes(model, &queries.queries, schema);
+}
+
+/// The GiST indexes the `geo.` conditions search (area 20, "Indexes",
+/// chunk 5.5u5): one on each geometry field a condition tests, with
+/// `geography`'s own operator class, and one on a `Point` field cast to
+/// `geometry` for each a `BoundingBox` filter tests, however many queries
+/// test it. A field declared with `kind: IndexKind.geographic` already has
+/// the first.
+fn geo_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
+    for query in queries {
+        let Some(entity) = model.entity(&query.entity) else {
+            continue;
+        };
+        let Some(store) = &entity.store else { continue };
+        for (tested, test) in queries::geo_tests(&query.filter) {
+            let Some(field) = entity.fields.iter().find(|f| f.name == tested) else {
+                continue;
+            };
+            let Some(table) = schema
+                .stores
+                .get_mut(store)
+                .and_then(|store| store.tables.get_mut(&entity.table))
+            else {
+                continue;
+            };
+            let boxed = test.is_box();
+            let method = physical::IndexMethod {
+                name: "gist".to_string(),
+                operator_class: String::new(),
+                cast: boxed.then(|| "geometry".to_string()),
+                with: Vec::new(),
+            };
+            let column = field.born.clone();
+            if table.indexes.values().any(|index| {
+                index.columns == [column.clone()] && index.method.as_ref() == Some(&method)
+            }) {
+                continue;
+            }
+            let table_name = entity.table.as_str();
+            let mut name = if boxed {
+                physical::object_name(&[table_name, column.as_str(), "box"], "idx")
+            } else {
+                physical::object_name(&[table_name, column.as_str()], "idx")
+            };
+            if table.indexes.contains_key(&name) {
+                name = physical::object_name(&[table_name, column.as_str(), "gist"], "idx");
+            }
+            // Only the records its `visible:` lets queries see, as every
+            // query's index of an entity with a lifecycle (area 5).
+            let predicate = entity
+                .lifecycle
+                .as_ref()
+                .and_then(|lifecycle| lifecycle.visible.as_ref())
+                .filter(|visible| !lifecycle::reads_now(visible))
+                .and_then(|visible| {
+                    jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false)
+                });
+            table.indexes.insert(
+                name,
+                physical::Index {
+                    columns: vec![column],
+                    reason: format!("query {}", query.name),
+                    predicate,
+                    collate: Vec::new(),
+                    method: Some(method),
+                },
+            );
+        }
+    }
 }
 
 /// The HNSW index each nearest-neighbour query searches (area 21, "The

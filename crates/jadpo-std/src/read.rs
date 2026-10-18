@@ -271,6 +271,57 @@ pub enum Source {
     /// A literal or an enum value the statement's condition compares with,
     /// as the storage codec binds it (area 19, chunk 5.5w3b).
     Stored(SqlValue),
+    /// How many rows a read whose `geo.` conditions are rechecked asks for
+    /// (area 20, chunk 5.5u5): the records it keeps at first, and more each
+    /// time the recheck leaves it short ([`Recheck`]).
+    Fetch,
+    /// One side of an envelope a `BoundingBox` filter searches (area 20,
+    /// chunk 5.5u5), worked out from the box the read's argument at
+    /// `index` (or a field inside it, `path`) holds.
+    Envelope {
+        index: u32,
+        path: Vec<String>,
+        part: EnvelopePart,
+    },
+}
+
+/// The sides of the two envelopes a `BoundingBox` filter searches, in
+/// longitude (area 20, "Queries", chunk 5.5u5): a box that crosses the
+/// antimeridian is two, from its west to 180 and from -180 to its east;
+/// one that ends on the antimeridian also searches the line at the other
+/// end, -180 being 180; any other box is one, given twice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum EnvelopePart {
+    FirstWest,
+    FirstEast,
+    SecondWest,
+    SecondEast,
+}
+
+impl EnvelopePart {
+    /// This side, in degrees, of the envelopes for a box from `west` to
+    /// `east`.
+    pub fn of(self, west: &crate::Num, east: &crate::Num) -> crate::Num {
+        let degrees = crate::Num::whole;
+        let crosses = west.compare(*east) == std::cmp::Ordering::Greater;
+        let at = |side: &crate::Num, d: i128| side.compare(degrees(d)) == std::cmp::Ordering::Equal;
+        let second = if crosses {
+            (degrees(-180), *east)
+        } else if at(west, -180) {
+            (degrees(180), degrees(180))
+        } else if at(east, 180) {
+            (degrees(-180), degrees(-180))
+        } else {
+            (*west, *east)
+        };
+        match self {
+            EnvelopePart::FirstWest => *west,
+            EnvelopePart::FirstEast if crosses => degrees(180),
+            EnvelopePart::FirstEast => *east,
+            EnvelopePart::SecondWest => second.0,
+            EnvelopePart::SecondEast => second.1,
+        }
+    }
 }
 
 /// One parameter: `$1` is the first.
@@ -338,6 +389,10 @@ pub enum Column {
     /// chunk 5.5v1b), a `float8`, read as `ai.distance` gives it: the
     /// decimal PostgreSQL writes the double as.
     Distance,
+    /// The distance PostGIS measured for a query ordered by `geo.distance`
+    /// (area 20, chunk 5.5u5), a `float8` in metres: never a field, read
+    /// only by the [`Recheck`] to know when it has fetched enough.
+    Measured,
 }
 
 /// Where a record's field comes from.
@@ -446,6 +501,81 @@ pub struct ReadPlan {
     /// For a read of exactly one record: the failure when nothing matches,
     /// the query's `missing:` or the entity's not-found failure for `get`.
     pub missing: Option<MissingPlan>,
+    /// For a query with `geo.` conditions or ordered by `geo.distance`: the
+    /// test each row the statement found is held to again, in Jadpo's own
+    /// code, before it becomes a record (area 20, chunk 5.5u5).
+    pub recheck: Option<Recheck>,
+}
+
+/// How far, in metres, the statement of a query with `geo.` conditions
+/// searches past what the condition says (area 20, "Queries", chunk
+/// 5.5u5): PostGIS measures in doubles, good to some nanometres, and Jadpo
+/// exactly, so a record the code finds within a radius, or touching a
+/// shape, is always among the rows the index finds; the recheck then
+/// decides each. Written into the statement's text as it is here.
+pub const GEO_MARGIN: &str = "0.001";
+
+/// [`GEO_MARGIN`] as a double, for comparing with a distance PostGIS
+/// measured.
+pub const GEO_MARGIN_METRES: f64 = 0.001;
+
+/// A `geo.` condition worked out again in Jadpo's own code (area 20,
+/// "Queries", chunk 5.5u5): `geo.within`, `geo.contains` or
+/// `geo.intersects` with the field's value first, as the query wrote it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GeoOp {
+    Within,
+    Contains,
+    Intersects,
+}
+
+/// One `geo.` condition a row is held to again.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GeoCheck {
+    pub op: GeoOp,
+    /// The statement's column holding the field's geometry; a record whose
+    /// field is `none` never meets the condition.
+    pub column: u32,
+    /// What the field is compared with: a geometry, a `BoundingBox` or a
+    /// `Circle`, from the read's arguments.
+    pub value: Source,
+    /// `within`'s `distance:`, a `Length`: an argument, or a literal as
+    /// the storage codec binds it, in metres.
+    pub distance: Option<Source>,
+}
+
+/// A query ordered by `geo.distance(field, point) asc` (area 20,
+/// question 4): records nearest first by the distance `geo.distance`
+/// gives, rounded to the micrometre, then by `id`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GeoOrder {
+    /// The statement's column holding the field's point.
+    pub column: u32,
+    /// The point it measures from.
+    pub point: Source,
+    /// The statement's column holding the distance PostGIS measured, which
+    /// it is ordered by.
+    pub measured: u32,
+    /// The statement's column holding the record's `id`.
+    pub id: u32,
+}
+
+/// What a read with `geo.` conditions works out again in Jadpo's own code
+/// (area 20, "Queries", chunk 5.5u5). Its statement finds, through the
+/// index, every row the code could keep and perhaps a few more; each row
+/// is then held to the code's own test, and a query ordered by
+/// `geo.distance` is sorted by the code's distances. The statement asks
+/// for as many rows as the read keeps ([`Source::Fetch`]), and asks again
+/// for four times as many while the recheck leaves it short, or while a
+/// row it didn't fetch could still come before the last it keeps.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Recheck {
+    pub checks: Vec<GeoCheck>,
+    pub order: Option<GeoOrder>,
+    /// How many records a list keeps: its `limit:`. A page keeps its size
+    /// and one more; a read of one record, found by a unique field, keeps
+    /// every row that passes.
+    pub limit: Option<Size>,
 }
 
 /// The failure a read or a write raises when the record it names isn't
@@ -468,4 +598,34 @@ pub enum MissingValue {
     Constant(Constant),
     /// The operation's clock.
     Now,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Num;
+
+    fn sides(west: i128, east: i128) -> [String; 4] {
+        let (west, east) = (Num::whole(west), Num::whole(east));
+        [
+            EnvelopePart::FirstWest,
+            EnvelopePart::FirstEast,
+            EnvelopePart::SecondWest,
+            EnvelopePart::SecondEast,
+        ]
+        .map(|part| part.of(&west, &east).to_string())
+    }
+
+    #[test]
+    fn a_box_s_envelopes_reach_round_the_antimeridian() {
+        assert_eq!(sides(-10, 10), ["-10", "10", "-10", "10"], "one, twice");
+        assert_eq!(sides(170, -170), ["170", "180", "-180", "-170"], "across");
+        assert_eq!(
+            sides(-180, -170),
+            ["-180", "-170", "180", "180"],
+            "from -180"
+        );
+        assert_eq!(sides(170, 180), ["170", "180", "-180", "-180"], "to 180");
+        assert_eq!(sides(-180, 180), ["-180", "180", "180", "180"], "all of it");
+    }
 }
