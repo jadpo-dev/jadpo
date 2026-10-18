@@ -1305,7 +1305,7 @@ reference only).
   comparing one is `toolchain.not_built_yet`, and an application's own
   structured fields stay refused. What it chose is area 19's "Chosen in
   chunk 5.5w2b".
-- [ ] **5.5w3 Every boundary through the contract: one encoder**
+- [x] **5.5w3 Every boundary through the contract: one encoder**
   `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
   and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`
   and quantity arms) and OpenAPI's `scalar_schema` read each type's entry
@@ -1317,6 +1317,16 @@ reference only).
   contract's JSON or text for a standard type, and a test fails if one
   names a standard type held by a built-in type. Split on 2026-10-18: the
   SQL literals are 5.5w3b.
+  Built: `Money`, `ZonedTime` and the quantities are sent as their
+  entry's members (`Json::Parts`), which one contract module reads and
+  writes (`jadpo_value::standard::json`) and OpenAPI describes
+  (`routes::wire::standard_schema`); standard types are looked up in
+  tables rather than by scanning every entry; the harness, moved to
+  `jadpo-interp`, builds its codecs with `jadpo_plan::standard_codecs`;
+  `no_boundary_has_an_encoder_of_its_own` in
+  `jadpo-cli/tests/standard_boundaries.rs` holds the JSON boundary and
+  OpenAPI to it. What clients see change is area 19's "Chosen in chunk
+  5.5w3".
 - [ ] **5.5w3b Every boundary through the contract: SQL literals**
   `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
   compile-time SQL literals (`jadpo-sql`'s conditions, backfills in

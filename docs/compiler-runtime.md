@@ -321,6 +321,13 @@ parameter `WriteSource::Json`, and the runtime's `store` is given the
 table with the program's validators and shapes (`JsonCodecs`, as
 `json.read` is given them), so its `jsonb` holds what `json.write` writes
 and reads back as `json.read` reads.
+Since chunk 5.5w3 a codec of a standard type a built-in type holds reads
+and writes it through the contract's JSON (`jadpo_value::standard::json`),
+by its entry's `Json`: its canonical text, or an object of the members
+`Json::Parts` lists (`Money`, `ZonedTime`, the quantities), which
+OpenAPI's schema reads too (`routes::wire::scalar_schema`), so neither
+names a built-in type; `jadpo_plan::standard_codecs` makes any standard
+type's codecs over an empty graph, for the per-type harness.
 Since chunk 5.5q the table marks the operations that read the generator
 (`Op::reads_generator`, `random`'s five): the one exception to every
 operation being pure. The checker refuses them outside actions and tests
