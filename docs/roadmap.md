@@ -981,6 +981,16 @@ reference only).
   follows keys held as data. Done when every type passes the harness and
   `verify_jwt` refuses `none`, a token-chosen algorithm and an expired
   token.
+- [ ] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
+  Richard, 2026-10-18), after 5.5q2 and 5.5r: passkeys (WebAuthn, FIDO2)
+  as the third built-in way to check a person. First finish area 8's
+  section (the `sign_in:` option, routes, events, errors, test helpers,
+  following magic links), then build registration and sign-in on
+  `webauthn-rs` (challenge, expiry, origin and relying party, counter, no
+  attestation), credentials as `WebAuthnCredential`, several per person,
+  recovery by magic link. Done when a test registers and signs in with a
+  virtual authenticator, a replayed or wrong-origin assertion is refused,
+  and a person with no passkey left recovers through a magic link.
 - [ ] **5.5s Geospatial and AI types' baselines** `opus · high` (area 19,
   "The standard types"): the 17 geospatial types and `Vector`,
   `Embedding`, `TokenCount`, `TokenUsage` and `ChatMessage`, with
