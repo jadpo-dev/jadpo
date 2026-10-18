@@ -1,5 +1,6 @@
 //! Area 20's geodesic measures against a sample of GeographicLib's test
-//! set, as a program the gate (tools/verify.py) builds for
+//! set, and its predicates and shapes against PostGIS's answers (chunk
+//! 5.5u3), as a program the gate (tools/verify.py) builds for
 //! `wasm32-unknown-unknown` and runs under Node (tools/run_wasm.mjs), so
 //! the answers are checked under WebAssembly as well as natively. Its exit
 //! code is how many disagree, at most 255; 255 too when there were none to
@@ -10,6 +11,7 @@
 //! records the figures).
 
 mod check;
+mod shapes;
 
 use std::process::ExitCode;
 
@@ -19,11 +21,13 @@ fn main() -> ExitCode {
         bench::all();
         return ExitCode::SUCCESS;
     }
-    let (wrong, count) = check::mismatches();
+    let (mut wrong, count) = check::mismatches();
+    let (shapes_wrong, shapes, _) = shapes::mismatches();
+    wrong.extend(shapes_wrong);
     for mismatch in &wrong {
         eprintln!("{mismatch}");
     }
-    if count == 0 {
+    if count == 0 || shapes == 0 {
         return ExitCode::from(u8::MAX);
     }
     ExitCode::from(u8::try_from(wrong.len()).unwrap_or(u8::MAX))

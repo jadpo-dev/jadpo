@@ -9,9 +9,11 @@
 //! between two meridians half a turn apart goes over a pole. Its
 //! longitudes are the shorter way between its ends, as a great circle's
 //! longitude only grows or only shrinks along an edge under half the
-//! globe. A polygon holding a pole reaches it, at every longitude. A pole
-//! has no longitude: whatever it is written with, it is in a box that
-//! reaches its latitude.
+//! globe. A shape holding a pole, a point there, a line through it or a
+//! polygon around or touching it, reaches it at every longitude, since
+//! every meridian meets there: its box runs from -180 to 180, and only
+//! such a box holds it, whatever longitude its point at the pole is
+//! written with (area 20, "Operations").
 
 use std::cmp::Ordering;
 
@@ -121,8 +123,6 @@ pub struct Reach {
     /// The longitudes it covers, each run from its west going east to its
     /// east (the two the same for one meridian).
     pub runs: Vec<(Num, Num)>,
-    /// A pole's own longitude, for a shape that is only poles.
-    pub pole_longitude: Option<Num>,
 }
 
 impl Reach {
@@ -166,42 +166,32 @@ fn add_edge(
         add_point_longitude(reach, p);
         return;
     }
-    match (is_pole(p.0), is_pole(q.0)) {
-        (true, true) => return,
-        (true, false) => {
-            reach
-                .runs
-                .push((east_of_antimeridian(q.1), east_of_antimeridian(q.1)));
-            return;
-        }
-        (false, true) => {
-            reach
-                .runs
-                .push((east_of_antimeridian(p.1), east_of_antimeridian(p.1)));
-            return;
-        }
-        (false, false) => {}
+    if is_pole(p.0) || is_pole(q.0) {
+        reach.every_longitude = true;
+        return;
     }
     let (west, east) = (east_of_antimeridian(p.1), east_of_antimeridian(q.1));
     let gain = turn(exact(east).sub(&exact(west)));
     let half = degrees(180);
     if gain == half {
         // Two meridians half a turn apart: over the pole their ends lean
-        // towards, unless the ends are opposite, which no edge joins.
-        reach.runs.push((west, west));
-        reach.runs.push((east, east));
+        // towards, so through it, unless the ends are opposite, which no
+        // edge joins.
         let lean = exact(p.0).add(&exact(q.0));
-        match lean.signum() {
-            1 => reach.latitude(Latitude::Exact(Num {
-                mantissa: 90,
-                scale: 0,
-            })),
-            -1 => reach.latitude(Latitude::Exact(Num {
-                mantissa: -90,
-                scale: 0,
-            })),
-            _ => {}
-        }
+        let pole = match lean.signum() {
+            1 => 90,
+            -1 => -90,
+            _ => {
+                reach.runs.push((west, west));
+                reach.runs.push((east, east));
+                return;
+            }
+        };
+        reach.latitude(Latitude::Exact(Num {
+            mantissa: pole,
+            scale: 0,
+        }));
+        reach.every_longitude = true;
         return;
     }
     if gain.is_zero() {
@@ -225,9 +215,7 @@ fn add_edge(
 
 fn add_point_longitude(reach: &mut Reach, p: &Position) {
     if is_pole(p.0) {
-        if reach.pole_longitude.is_none() {
-            reach.pole_longitude = Some(p.1);
-        }
+        reach.every_longitude = true;
     } else {
         let at = east_of_antimeridian(p.1);
         reach.runs.push((at, at));
@@ -252,7 +240,6 @@ pub fn reach(shape: &Shape) -> Option<Reach> {
         north: Latitude::Exact(first.0),
         every_longitude: false,
         runs: Vec::new(),
-        pole_longitude: None,
     };
     for p in &shape.points {
         reach.latitude(Latitude::Exact(p.0));
@@ -276,8 +263,8 @@ pub fn reach(shape: &Shape) -> Option<Reach> {
             add_edge(&mut reach, (p, pp, pu), (q, qp, qu));
         }
     }
-    // A polygon holding a pole reaches it at every longitude; holes lie
-    // inside the outer ring, so the outer ring decides.
+    // A polygon holding a pole reaches it at every longitude; one with
+    // the pole on its edge already does, by that edge.
     for area in &shape.areas {
         let region = region(area);
         for (pole, latitude) in [
@@ -306,7 +293,7 @@ pub fn reach(shape: &Shape) -> Option<Reach> {
                     scale: 0,
                 },
             ));
-            if region.place(&at) == Place::Inside {
+            if region.place(&at) != Place::Outside {
                 reach.latitude(Latitude::Exact(latitude));
                 reach.every_longitude = true;
             }
@@ -333,12 +320,6 @@ pub fn smallest_box(reach: &Reach) -> (Latitude, Num, Latitude, Num) {
     );
     let (west, east) = if reach.every_longitude {
         all
-    } else if reach.runs.is_empty() {
-        let at = reach.pole_longitude.unwrap_or(Num {
-            mantissa: 0,
-            scale: 0,
-        });
-        (at, at)
     } else {
         widest_gap_complement(&reach.runs).unwrap_or(all)
     };

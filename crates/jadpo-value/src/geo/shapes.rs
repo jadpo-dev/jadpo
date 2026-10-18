@@ -141,7 +141,9 @@ pub fn contains(a: &Value, b: &Value) -> Result<Value, Fault> {
 pub fn within(a: &Value, b: &Value, distance: &Value) -> Result<Value, Fault> {
     match distance {
         Value::None => contains(b, a),
-        Value::Quantity(reach) => near(a, b, reach.amount).map(Value::Bool),
+        Value::Quantity(reach) => {
+            near(geometry(a)?.0, geometry(b)?.0, reach.amount).map(Value::Bool)
+        }
         _ => Err(Fault::Shape),
     }
 }

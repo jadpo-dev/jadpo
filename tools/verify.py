@@ -243,7 +243,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
                  ['node', 'tools/run_wasm.mjs',
                   f'target/{WASM}/debug/examples/formats.wasm'], lane='cargo'),
             # The geodesic measures (area 20, chunk 5.5u2): GeographicLib's
-            # test sample and the digest of every answer, as natively.
+            # test sample and the digest of every answer, as natively; and
+            # the predicates and shapes against PostGIS's answers (chunk
+            # 5.5u3), with the digest of theirs.
             Step('geodesic measures check for wasm32', 'wasm32',
                  ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
                   '--example', 'geodesics'], lane='cargo'),

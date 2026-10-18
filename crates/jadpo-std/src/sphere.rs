@@ -292,13 +292,36 @@ mod tests {
             (cap.1.as_str(), cap.2.as_str(), cap.3.as_str()),
             ("-180", "90", "180")
         );
-        assert_eq!(sides(&spot("90", "45")), s("90", "45", "90", "45"));
+        assert_eq!(sides(&spot("90", "45")), s("90", "-180", "90", "180"));
+        let over_the_pole = line(&["85 0", "85 180"]);
+        assert_eq!(sides(&over_the_pole), s("85", "-180", "90", "180"));
+        let held = |n: &str| Num::parse(n).expect("a number");
+        assert!(!box_holds(
+            held("84"),
+            held("-1"),
+            held("90"),
+            held("180"),
+            &over_the_pole
+        ));
+        assert!(box_holds(
+            held("84"),
+            held("-180"),
+            held("90"),
+            held("180"),
+            &over_the_pole
+        ));
+        assert!(!box_holds(
+            held("89"),
+            held("40"),
+            held("90"),
+            held("50"),
+            &spot("90", "45")
+        ));
         assert_eq!(
             sides(&line(&["0 179", "0 -179"])),
             s("0", "179", "0", "-179")
         );
         let (s2, w2, n2, e2) = sides(&band);
-        let held = |n: &str| Num::parse(n).expect("a number");
         assert!(box_holds(held(&s2), held(&w2), held(&n2), held(&e2), &band));
         assert!(!box_holds(
             held("50"),
