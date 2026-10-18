@@ -712,6 +712,28 @@ impl Lower<'_> {
                 };
             }
         }
+        // `Enum.all` (area 19): a list of every variant it lists.
+        if let Some((host, listed)) = self.facts.all_variants.get(&key).cloned() {
+            if let Some((first, rest)) = dotted(expr) {
+                let refs: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
+                self.path_names(&refs);
+            }
+            let ty = self.ty(&Ty::Named(host.clone()));
+            let items = listed
+                .iter()
+                .map(|variant| {
+                    let id = self.alloc();
+                    let build = typed::Expr::Build {
+                        callee: Callee::Variant(variant_key(self.names, &host, variant)),
+                        fields: Vec::new(),
+                        fallible: typed::Fallible::Never,
+                    };
+                    self.fill(id, expr.syntax(), ty.clone(), typed::Node::Expr(build));
+                    SiteId(id as u32)
+                })
+                .collect();
+            return typed::Expr::List { items };
+        }
         if let Some((host, variant)) = self.facts.variants.get(&key).cloned() {
             if let Some((first, rest)) = dotted(expr) {
                 let refs: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();

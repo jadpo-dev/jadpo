@@ -17,16 +17,16 @@ use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
 pub mod addresses_data;
+mod contact;
 mod identifiers;
 pub mod opening_hours;
-mod people;
 pub mod person_names_data;
 pub mod places;
 mod places_data;
 pub mod recurrence;
 mod schedules;
 
-pub use people::{LINE_MAX, LINE_PATTERN};
+pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
 
 /// What a standard type's values are held as.
@@ -808,7 +808,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
-    people::EMAIL_WITH_NAME,
+    contact::EMAIL_WITH_NAME,
     // A rate between two currencies at an instant (area 19, "Money and
     // payments"): what `money.convert` applies, never fetched.
     StandardType {
@@ -873,7 +873,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
-    people::FAMILY_NAME,
+    contact::FAMILY_NAME,
     StandardType {
         name: FILE_TYPE,
         holds: Holds::Enum(FILE_TYPES),
@@ -896,7 +896,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
-    people::GIVEN_NAME,
+    contact::GIVEN_NAME,
     identifiers::IBAN,
     StandardType {
         name: "Instant",
@@ -1162,9 +1162,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     schedules::OPENING_HOURS,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
-    people::PERSON_NAME,
-    people::PHONE_EXTENSION,
-    people::POSTAL_ADDRESS,
+    contact::PERSON_NAME,
+    contact::PHONE_EXTENSION,
+    contact::POSTAL_ADDRESS,
     // A quarter of a calendar year, ordered by year and quarter.
     time_object(
         "Quarter",
@@ -1226,7 +1226,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
     identifiers::UK_SORT_CODE,
     identifiers::UK_UTR,
-    people::UPRN,
+    contact::UPRN,
     checked(
         "Url",
         Builtin::Url,
@@ -1241,7 +1241,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     identifiers::US_EIN,
     identifiers::US_SSN,
-    people::USERNAME,
+    contact::USERNAME,
     // An offset from UTC, as a zone has at a moment; unordered.
     time_object(
         "UtcOffset",
@@ -1563,7 +1563,7 @@ impl StandardType {
     pub fn personal(&self) -> Option<&'static str> {
         match self.holds {
             Holds::Text { personal, .. } => personal,
-            _ => people::PERSONAL
+            _ => contact::PERSONAL
                 .iter()
                 .find(|(name, _)| *name == self.name)
                 .map(|(_, category)| *category),
@@ -1584,6 +1584,15 @@ impl StandardType {
         match self.storage {
             Storage::Column(_) => &[],
             Storage::Columns { parts, .. } => parts,
+        }
+    }
+
+    /// Whether the part its named column `at` holds may be `none`: an
+    /// object's part written `Part::Optional` (chunk 5.5l).
+    pub fn part_may_be_none(&self, at: usize) -> bool {
+        match self.holds {
+            Holds::Object(fields) => fields.get(at).is_some_and(|(_, part)| part.required().1),
+            _ => false,
         }
     }
 

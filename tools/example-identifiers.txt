@@ -274,6 +274,7 @@ confirm_sign_in
 confirm_total
 consent
 consent_id
+consignment
 contact_address
 contact_email
 contact_text
@@ -292,9 +293,7 @@ count_todos
 counted_or_missing
 counter
 counter_id
-country
-country_id
-country_view
+countess
 course
 create_booking
 create_member
@@ -327,6 +326,7 @@ cyd
 day_count
 days_left
 days_overdue
+de_parcel
 dearer
 declare_lost
 decline_reason
@@ -336,6 +336,7 @@ dees_place
 deleted_at
 deliver_to
 delivered
+delivered_to
 deliveries_in
 deliveries_on
 delivery
@@ -427,6 +428,7 @@ fee
 fee_charged
 fee_for
 fees
+file_text
 fill_tray
 fill_trays
 find_article
@@ -471,6 +473,7 @@ grain
 grams
 grams_in
 greeting
+greeting_name
 gross
 grown
 growth
@@ -560,6 +563,7 @@ jar_name
 job_run_at
 joined_at
 jot_down
+jp_parcel
 judge_note
 keep_memo
 keeper
@@ -669,6 +673,7 @@ lowest
 loyalty
 lunch
 lunch_overlap
+made_in
 mail_api_key
 make_badge
 manual
@@ -726,6 +731,7 @@ new_staff
 new_todo
 new_york_autumn
 new_york_spring
+newsletter
 next_classes
 next_day
 next_free
@@ -847,6 +853,7 @@ owner
 owner_email
 owner_id
 owners
+packer
 page_count
 page_todos
 paid
@@ -855,6 +862,8 @@ pantry
 parcel
 parcel_count
 parcel_held
+parcel_label
+parcel_to
 parcels
 partner
 partner_added
@@ -885,7 +894,6 @@ per_kilo
 per_todo
 per_tray
 percent_of
-phone
 phone_linked
 phone_token_id
 phone_tokens
@@ -908,7 +916,6 @@ platform_staff
 pong
 portion_count
 portions
-postal_code
 postcode
 postcodes
 poster_line
@@ -1198,6 +1205,7 @@ street
 street_address
 stripe_v2024
 subscribe
+subscribed
 subscription
 subtitle
 subtotal
@@ -1206,6 +1214,7 @@ summarise_line
 summary_view
 supplier
 supplier_contact
+supplier_country
 supplier_desk
 supplier_label
 supplier_line
@@ -1231,6 +1240,9 @@ team_id
 temperature
 temperature_for
 tenth
+territory
+territory_id
+territory_view
 terse
 test_configuration
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
@@ -1253,6 +1265,7 @@ title_again
 title_back
 title_blank
 titles
+to_belgrade
 todo
 todo_by_id
 todo_changes
@@ -1297,6 +1310,7 @@ two_open_todos
 typed_name
 uk_bands
 uk_rate
+unknown_country
 unknown_failure
 unlink_phone
 unlinked
@@ -1369,4 +1383,5 @@ written_at
 written_by_dee
 wrong_rate
 wrong_total
+yamada
 zopf

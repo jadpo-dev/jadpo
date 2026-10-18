@@ -28,6 +28,8 @@ use crate::read::SqlType;
 pub struct ClosedList {
     /// The standard enum it is.
     pub ty: &'static str,
+    /// The authority that publishes it, as an error names it: `ISO 3166-1`.
+    pub authority: &'static str,
     /// Each other code system with the code of every variant, in the
     /// variants' order: what `form:` reads and writes.
     pub forms: &'static [(CodeForm, &'static [&'static str])],
@@ -78,11 +80,13 @@ pub const TEXT_DIRECTIONS: &[(&str, &str)] = &[("left_to_right", "ltr"), ("right
 pub const CLOSED_LISTS: &[ClosedList] = &[
     ClosedList {
         ty: crate::CURRENCY,
+        authority: "ISO 4217",
         forms: &[],
         retired: crate::money::CURRENCIES_RETIRED,
     },
     ClosedList {
         ty: COUNTRY,
+        authority: "ISO 3166-1",
         forms: &[
             (CodeForm::Alpha3, COUNTRY_ALPHA3),
             (CodeForm::Numeric, COUNTRY_NUMERIC),
@@ -91,6 +95,7 @@ pub const CLOSED_LISTS: &[ClosedList] = &[
     },
     ClosedList {
         ty: NATIONALITY,
+        authority: "ISO 3166-1",
         forms: &[
             (CodeForm::Alpha3, COUNTRY_ALPHA3),
             (CodeForm::Numeric, COUNTRY_NUMERIC),
@@ -99,26 +104,31 @@ pub const CLOSED_LISTS: &[ClosedList] = &[
     },
     ClosedList {
         ty: COUNTRY_SUBDIVISION,
+        authority: "ISO 3166-2",
         forms: &[],
         retired: SUBDIVISIONS_RETIRED,
     },
     ClosedList {
         ty: CONTINENT,
+        authority: "UN M49",
         forms: &[(CodeForm::Numeric, CONTINENT_NUMERIC)],
         retired: &[],
     },
     ClosedList {
         ty: LANGUAGE,
+        authority: "ISO 639-1",
         forms: &[(CodeForm::Alpha3, LANGUAGE_ALPHA3)],
         retired: LANGUAGES_RETIRED,
     },
     ClosedList {
         ty: WRITING_SCRIPT,
+        authority: "ISO 15924",
         forms: &[(CodeForm::Numeric, SCRIPT_NUMERIC)],
         retired: &[],
     },
     ClosedList {
         ty: TEXT_DIRECTION,
+        authority: "HTML",
         forms: &[],
         retired: &[],
     },

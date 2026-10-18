@@ -4,6 +4,12 @@
 # vocabulary, or a word the language itself defines. Never add an example
 # application's own nouns (todo, invoice, customer) to make a check pass.
 
+# Words the language itself defines: `Enum.all` lists an enum's variants
+# (area 19, question 22), and the standard types' names and parts
+all
+phone
+postal_code
+
 # Rust keywords and ordinary programming vocabulary
 # ordinary English: `configuration.move_name_taken`
 taken

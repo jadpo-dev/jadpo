@@ -8,9 +8,11 @@ rules:
   - type.argument_empty
   - type.argument_negative
   - type.money_split
+  - type.reserved_variant_name
   - type.standard_clash
   - type.standard_exists
   - type.temporal_format_part_missing
+  - type.variant_retired
 ---
 
 # Standard library
@@ -98,7 +100,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 46 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, 17 payment and identity numbers in 5.5i, `RecurrenceRule` and `OpeningHours` in 5.5k2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: five are built (`Currency` in chunk 5.5h, `Month` in 5.5k), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 61 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, 17 payment and identity numbers in 5.5i, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review. "(enum)" marks a closed list held as a built-in enum: twelve are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -112,8 +114,8 @@ exception to the rule.
 
 | Group | Types | Extras in |
 |---|---|---|
-| People and contact (12) | `PersonName`, `GivenName`, `FamilyName`, `Username`, **`Email`**, `EmailWithName`, `PhoneNumber`, `PhoneExtension`, `PostalAddress`, `PostalCode`, `Uprn`, `Nationality` (enum) | `web` |
-| Places (10) | `Country` (enum), `CountrySubdivision` (enum), `Continent` (enum), `UnLocode`, `CallingCode`, `Language` (enum), `WritingScript` (enum), `TextDirection` (enum), **`Locale`** (enum), **`Zone`** (enum) | |
+| People and contact (12) | **`PersonName`**, **`GivenName`**, **`FamilyName`**, **`Username`**, **`Email`**, **`EmailWithName`**, `PhoneNumber`, **`PhoneExtension`**, **`PostalAddress`**, `PostalCode`, **`Uprn`**, **`Nationality`** (enum) | `web` |
+| Places (10) | **`Country`** (enum), **`CountrySubdivision`** (enum), **`Continent`** (enum), `UnLocode`, `CallingCode`, **`Language`** (enum), **`WritingScript`** (enum), **`TextDirection`** (enum), **`Locale`** (enum), **`Zone`** (enum) | |
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
 | Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, `Price`, `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints`, `InterestRate`, **`PaymentCardNumber`**, `MaskedCardNumber`, `CardBrand` (enum), **`CardBin`**, `CardExpiry`, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, `BankAccount`, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11) | `VatNumber`, `TaxId`, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, `PassportNumber`, `DrivingLicenceNumber`, `IdentityDocument`, **`NhsNumber`** | |
@@ -3131,6 +3133,99 @@ test "they are shown as they are printed" {
 > and the identity documents. What the page left open is "Chosen in chunk
 > 5.5i", under "Review".
 
+A shop sends parcels abroad and prints each label for the person who
+packs it, greets its customers by name, and reads the countries a
+supplier's file gives by their three-letter codes:
+
+```jadpo check project=people-and-places
+type FileText = Text {}
+
+type UnknownCountry = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A parcel's label, as its packer reads an address: in the order of the
+/// parcel's country for the packer's language.
+function parcel_label(parcel_to: PostalAddress, packer: Locale) -> PresentationText {
+    return text.format(parcel_to, locale: packer)
+}
+
+/// A customer's name as a greeting writes it in the reader's language.
+function greeting_name(customer: PersonName, viewer: Locale) -> PresentationText {
+    return text.format(customer, locale: viewer)
+}
+
+/// The country a supplier's file gives by its three-letter code.
+function supplier_country(raw: FileText) fails UnknownCountry -> Country {
+    var made_in: Country = attempt text.parse(raw, as: Country, form: CodeForm.alpha3) {
+        malformed: UnknownCountry
+    }
+    return made_in
+}
+```
+
+```jadpo check project=people-and-places file=main.test.jadpo
+test "an address is in its country's order for the reader" {
+    var jp_parcel: PostalAddress = PostalAddress {
+        lines: ["丸の内2-7-2"]
+        locality: "千代田区"
+        region: "東京都"
+        postal_code: "100-8994"
+        country: Country.jp
+    }
+    assert parcel_label(jp_parcel, Locale.ja_jp) == "〒100-8994\n東京都千代田区\n丸の内2-7-2"
+    assert parcel_label(jp_parcel, Locale.en_gb) == "丸の内2-7-2\n千代田区, 東京都\n100-8994\nJapan"
+    var de_parcel: PostalAddress = PostalAddress {
+        lines: ["Platz der Republik 1"]
+        locality: "Berlin"
+        region: none
+        postal_code: "11011"
+        country: Country.de
+    }
+    assert parcel_label(de_parcel, Locale.de_de) == "Platz der Republik 1\n11011 Berlin"
+    assert parcel_label(de_parcel, Locale.en_us) == "Platz der Republik 1\n11011 Berlin\nGermany"
+}
+
+test "a name is in the order the reader's language gives" {
+    var countess: PersonName = PersonName {
+        given: "Ada"
+        family: "Lovelace"
+    }
+    assert greeting_name(countess, Locale.en_gb) == "Ada Lovelace"
+    assert greeting_name(countess, Locale.hu_hu) == "Lovelace Ada"
+    var yamada: PersonName = PersonName {
+        given: "太郎"
+        family: "山田"
+    }
+    assert greeting_name(yamada, Locale.en_gb) == "山田太郎"
+}
+
+test "a closed list reads its codes and its other code systems" {
+    var made_in: Country = attempt supplier_country("gbr")
+    assert made_in == Country.gb
+    assert supplier_country("UK") fails UnknownCountry
+    assert text.from(Country.in_) == "IN"
+    assert text.from(Country.gb, form: CodeForm.numeric) == "826"
+    assert text.format(Country.gb, locale: Locale.fr_fr) == "Royaume-Uni"
+    assert text.format(Language.ja, locale: Locale.en_gb) == "Japanese"
+    assert list.count(Country.all) == 249
+}
+```
+
+> Built in chunk 5.5l for 15 of people and places: the closed lists
+> `Country`, `CountrySubdivision`, `Continent`, `Language`,
+> `WritingScript`, `TextDirection` and `Nationality`, each with `.all`,
+> its other code systems as `form:` and its withdrawn codes read but not
+> written (`type.variant_retired`), with the currencies ISO 4217 withdrew
+> since 2021; `GivenName`, `FamilyName`, `Username`, `PhoneExtension` and
+> `Uprn` held as text; and `PersonName`, `EmailWithName` and
+> `PostalAddress` as objects with parts that may be `none`, each stored in
+> a column per part. A name is shown by CLDR's person-name patterns and an
+> address by libaddressinput's formats, since CLDR has none for
+> addresses. `PhoneNumber`, `CallingCode`, `PostalCode` and `UnLocode` are
+> chunk 5.5l2. What the page left open is "Chosen in chunk 5.5l", under
+> "Review".
+
 ## Logic and bits
 
 `and`, `or` and `not` are the logical operators (area 3), and exclusive or
@@ -3724,6 +3819,70 @@ error: `TimeFormat.date_time_short` shows a part `LocalTime` doesn't have
 check failed: 1 error, 1 file
 ```
 
+### `type.variant_retired`
+
+A closed list keeps a code its authority withdraws (question 22), so
+stored data and old messages still read, but new code that writes one
+is refused: a shipment can't be sent to Yugoslavia. It is declinable,
+since code that reads old records names the code on purpose, with
+`decline type.variant_retired: "..."` and its reason above the
+declaration. A `match` arm on one is reading, and isn't refused.
+
+```jadpo check project=e-variant-retired expect=type.variant_retired
+type Consignment = Object {
+    delivered_to: Country
+}
+
+/// A consignment to a country by its old code.
+function to_belgrade() -> Consignment {
+    return Consignment {
+        delivered_to: Country.yu
+    }
+}
+```
+
+```text output
+error: `Country.yu` is a retired code
+ --> main.jadpo:8:23
+  |
+8 |         delivered_to: Country.yu
+  |                       ^^^^^^^^^^ only read
+  reason: ISO 3166-1 withdrew `YU` (Yugoslavia). `Country.yu` stays so that stored data and old messages still read, but new code doesn't write it.
+  next: Use the code that replaced it, or write `decline type.variant_retired: "<why>"` above it if this is deliberate (agent)
+  rule: type.variant_retired
+  help: docs/language/19-standard-library.html#type-variant-retired
+
+check failed: 1 error, 1 file
+```
+
+### `type.reserved_variant_name`
+
+`.all` lists every variant of an enum whose variants carry no data
+(question 22), so no enum declares a variant called `all`. A closed list
+whose code is `all` writes it with a trailing `_`, as Albania's lek is
+`Currency.all_`.
+
+```jadpo check project=e-reserved-variant-name expect=type.reserved_variant_name
+type Newsletter = Enum {
+    subscribed
+    all
+}
+```
+
+```text output
+error: `all` can't be a variant of `Newsletter`
+ --> main.jadpo:3:5
+  |
+3 |     all
+  |     ^^^ reserved
+  reason: `Newsletter.all` lists every variant of `Newsletter`, so no variant takes the name `all`.
+  next: Rename the variant (agent)
+  rule: type.reserved_variant_name
+  help: docs/language/19-standard-library.html#type-reserved-variant-name
+
+check failed: 1 error, 1 file
+```
+
 ## Review
 
 ### Status
@@ -3735,7 +3894,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, 17 payment and identity numbers in 5.5i, each other group of types in 5.5i2 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, ten time types in 5.5k, 17 payment and identity numbers in 5.5i, 15 of people and places in 5.5l, each other group of types in 5.5i2 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -4613,6 +4772,115 @@ under "Errors").
   GLEIF's LEIs), and made up to the rules where it doesn't; each entry
   says which.
 
+### Chosen in chunk 5.5l
+
+- **Split.** 15 of the 19 are built here; `PhoneNumber`, `CallingCode`,
+  `PostalCode` and `UnLocode` are chunk 5.5l2, since the first two share
+  libphonenumber's metadata and the last two each need a list per
+  country. Until then a `PostalAddress`'s `postal_code` is a line of text.
+- **The lists, and where they come from** (each shipped with the release,
+  generated once into `jadpo_std::standard::places_data`):
+  - `Country` is ISO 3166-1's 249 assigned codes as CLDR 48.2 carries
+    them (its regular regions less the exceptionally reserved `AC`, `CP`,
+    `CQ`, `DG`, `EA`, `IC` and `TA` and the user-assigned `XK`), with
+    alpha-3 and numeric codes from CLDR's code mappings. Its retired
+    codes are the eleven ISO 3166-3 codes CLDR marks deprecated (`AN`,
+    `BU`, `CS`, `DD`, `FX`, `NT`, `SU`, `TP`, `YD`, `YU`, `ZR`), shown by
+    ISO 3166-3's English names, since CLDR names none of them.
+  - `CountrySubdivision` is ISO 3166-2 as CLDR 48.2 carries it: 5,027
+    codes, and the 626 CLDR marks deprecated, retired.
+  - `Language` is ISO 639-1's 183 codes, from the Library of Congress's
+    ISO 639-2 list (2026-10-18), its alpha-3 form ISO 639-2/T; `in`, `iw`,
+    `ji`, `jw` and `mo` are retired. A language with only a three-letter
+    code isn't in the list.
+  - `WritingScript` is ISO 15924's 224 codes (2026-10-18) less the
+    private-use range, its numeric form ISO 15924's number.
+  - `Continent` is UN M49's five regions and Antarctica, which M49 lists
+    beside them: the authority's list, the Americas one region. Its codes
+    are digits, so each variant's code is its own name, as a `Weekday`'s
+    is, and M49's number is its numeric form.
+  - `TextDirection` is the enum `locale.direction` already gave, its codes
+    `ltr` and `rtl` as HTML's `dir` and its wording write them.
+  - `Nationality` takes `Country`'s codes and names, as a passport names
+    a nationality by its country: CLDR has no names for nationalities,
+    and ICAO's codes for travel documents are `IdentityDocument`'s.
+  - `Currency` gains the six codes ISO 4217 withdrew since 2021 (`ANG`,
+    `BGN`, `CUC`, `HRK`, `SLL`, `ZWL`), retired, as chunk 5.5h left them.
+- **Variants** are the code in lower case, and a code that is one of area
+  1's reserved words or `all` takes a trailing `_` (`Country.in_`,
+  `Language.or_`), as decided.
+- **`.all`** lists an enum's variants in its order (a closed list's by
+  code) as a `List` of the enum, its retired codes left out, since a
+  dropdown never offers Yugoslavia. On an enum whose variants carry data
+  it is `type.unknown_enum_variant`, and a variant called `all` is the new
+  rule `type.reserved_variant_name`.
+- **A retired code is refused where code writes it as a value**
+  (`type.variant_retired`, declinable), comparisons included, which is
+  what a decline's reason is for. A `match` arm on one isn't refused: it
+  reads, and a `match` lists every variant anyway (area 3).
+- **`form:`** is a `CodeForm` written out (`alpha3`, `numeric`): a value
+  is `type.mismatch`, and a form the type has no codes in is
+  `type.temporal_option_unused`, as an option that means nothing for a
+  type is, so no new rule. `text.parse` reads a form's code ignoring case,
+  and a code a retired variant shares with a current one reads as the
+  current one (`ind` is `Language.id`, not `Language.in_`).
+- **At a boundary** a standard enum's code is read ignoring case, as the
+  question says, in JSON as in settings.
+- **Stored:** a closed list's column holds its code (`GB`, and `IN`
+  rather than `in_`), as `Currency`'s does. An object is stored in a
+  column per part, `<field>_<part>`, through chunk 5.5h's named columns:
+  a part that may be `none` is a column that may be `NULL`, a
+  `PostalAddress`'s lines a `text[]`, its country its code.
+- **Shown:** a country, a continent, a language and a script by CLDR's
+  name in the reader's locale (ICU4X's display names), a withdrawn code by
+  its list's English name; a subdivision by CLDR's English name in every
+  locale, since CLDR names few in other languages and ICU4X doesn't bake
+  them; a continent by CLDR's name for its M49 region, Antarctica by its
+  territory's.
+- **`PersonName`** is its given name and, where the person has one, their
+  family name: a single name is a given name, as CLDR holds a mononym, so
+  no cross-field rule is needed. It has no single text form; its JSON is
+  its parts. `text.format` applies CLDR's medium, formal pattern for
+  referring to a person, from CLDR 48.2's person-name data: the name's
+  locale is the reader's when the name is in the reader's script, else
+  the likeliest for its script, which then formats it; the reader's
+  locale's lists give the order, and its own space between the parts
+  (none in Japanese). ICU4X's formatter is experimental, leaves a pattern's
+  literals behind ("Ada Lovelace ,") and doesn't derive the order, so
+  Jadpo applies the patterns itself.
+- **`PostalAddress`** is the catalogue's shape: its lines as written, then
+  a locality, a region and a postal code, each one line that may be
+  `none`, and its `Country`. The region is text as the envelope writes it,
+  not a `CountrySubdivision`; a dependent locality or a sorting code goes
+  in the lines, and the recipient is the application's. CLDR has no
+  address formats, so `text.format` uses libaddressinput's (Google's,
+  from UPU data, Apache-2.0, commit `81eb962` of 2026-05-15): the country's
+  own format for a reader of one of its languages and its Latin-script
+  format for anyone else, the text between fields only where the fields
+  beside it are there, and the country's CLDR name last for a reader in
+  another country. Nothing is put in capitals: UPU's capitals are for the
+  envelope, not for people reading.
+- **`EmailWithName`** is a name that may be `none` and an `Email`. Its
+  canonical text is RFC 5322's mailbox with RFC 6532's UTF-8, `Ada
+  Lovelace <ada@example.com>`, the name quoted only where it must be and
+  the address alone with no name; only that is read. Its JSON is its
+  parts.
+- **A line**, an object's part of text, is 1 to 200 characters with no
+  control character and no space at either end, as an invoice number is,
+  proved in a literal while compiling.
+- **Held as text:** `GivenName` and `FamilyName` are a line; `Username`
+  the catalogue's `[a-z0-9_.-]{1,64}`; `PhoneExtension` up to 20 digits,
+  the longest libphonenumber reads after `ext.`; `Uprn` 1 to 12 digits
+  with no leading zero, held as text so none is lost.
+- **Personal data:** a name, a given or family name and a username are
+  `identifying`; a mailbox, an address, an extension and a UPRN
+  `contact`; a nationality `demographic`. The lists of places aren't.
+- **No shapes:** `type.standard_exists` matches none of the new objects,
+  since `{ name, email }` and `{ first_name, last_name }` are too common
+  in applications' own types to be distinctive (question 5).
+- **Area 6's rename:** `query.include_depth`'s `Country` entity is
+  `Territory`.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -5084,7 +5352,9 @@ first; each group of types then arrives with its baseline and its extras.
   whose parts code reads, with optional parts and an all-day form.
 - **5.5l People and places** `opus · high`: the 19 new types, with
   `PhoneNumber`'s E.164 metadata, `PostalAddress` and `PersonName` in each
-  locale's order, and `PostalCode` per country.
+  locale's order, and `PostalCode` per country. 15 built; split on
+  2026-10-18, `PhoneNumber`, `CallingCode`, `PostalCode` and `UnLocode`
+  are 5.5l2.
 - **5.5m Commerce, health, travel and the rest** `opus · high`: 45 types,
   mostly codes with a pattern or check digit (`Ean13`, `Isbn`, `Vin`,
   `IataAirport`).

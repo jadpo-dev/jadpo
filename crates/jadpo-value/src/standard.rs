@@ -94,7 +94,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Duration, Value::Duration(millis)) => jadpo_std::iso_duration(*millis),
         (TextForm::Money, Value::Money(money)) => money.to_string(),
         (TextForm::ExchangeRate, Value::Record(record)) => exchange_rate_text(record)?,
-        (TextForm::Mailbox, Value::Record(record)) => crate::people::mailbox_text(record)?,
+        (TextForm::Mailbox, Value::Record(record)) => crate::mailbox::mailbox_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -337,7 +337,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Code => code(entry, raw),
         TextForm::Money => crate::money::read(raw).map(Value::Money),
         TextForm::ExchangeRate => read_exchange_rate(raw),
-        TextForm::Mailbox => crate::people::read_mailbox(entry, raw),
+        TextForm::Mailbox => crate::mailbox::read_mailbox(entry, raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.
@@ -630,8 +630,8 @@ pub fn shown(
                 None => canonical(entry, value)?,
             }
         }
-        (FormatKey::PersonName, value) => present::people::person_name(value, tag)?,
-        (FormatKey::PostalAddress, value) => present::people::postal_address(value, tag)?,
+        (FormatKey::PersonName, value) => present::contact::person_name(value, tag)?,
+        (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // A payment or identity number's printed form (area 19, chunk
         // 5.5i): grouped, or its last four after a mask.
         (FormatKey::Grouped(grouping), value) => grouping.apply(&canonical(entry, value)?),

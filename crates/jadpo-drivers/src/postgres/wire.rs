@@ -231,7 +231,7 @@ pub(crate) fn decode(oid: u32, raw: &[u8]) -> Result<SqlValue, String> {
 /// the runtime writes none.
 fn text_array_from_wire(raw: &[u8]) -> Result<Vec<SqlValue>, String> {
     let mut at = 0usize;
-    let mut next = |at: &mut usize| -> Result<i32, String> {
+    let next = |at: &mut usize| -> Result<i32, String> {
         let bytes = raw.get(*at..*at + 4).ok_or_else(|| length("text[]", raw))?;
         *at += 4;
         Ok(i32::from_be_bytes(fixed(bytes, "text[]")?))

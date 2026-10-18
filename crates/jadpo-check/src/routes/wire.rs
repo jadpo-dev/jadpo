@@ -449,8 +449,9 @@ fn whole(n: Num) -> Option<i64> {
 }
 
 /// A standard object type's schema, from its data entry (area 19): an
-/// object of its fields, each its built-in type's, all required; a type
-/// sent as its canonical text (`LocalTime`, chunk 5.5k) is a string.
+/// object of its fields, each its part's, all required, a part that may be
+/// `none` also `null`; a type sent as its canonical text (`LocalTime`,
+/// chunk 5.5k) is a string.
 pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut out = Value::object();
     if entry.json == jadpo_std::standard::Json::Text {
@@ -462,13 +463,7 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     let mut required = Vec::new();
     if let jadpo_std::standard::Holds::Object(fields) = entry.holds {
         for (name, part) in fields {
-            let schema = match (part.builtin(), part) {
-                (Some(builtin), _) => scalar_schema(builtin, &Rules::default()),
-                (None, jadpo_std::Part::Standard(other)) => jadpo_std::standard_type(other)
-                    .map_or_else(Value::object, standard_object_schema),
-                _ => Value::object(),
-            };
-            properties.set(name, schema);
+            properties.set(name, part_schema(*part));
             required.push(*name);
         }
     }
@@ -476,6 +471,53 @@ pub fn standard_object_schema(entry: &jadpo_std::StandardType) -> Value {
     out.set("required", required);
     out.set("additionalProperties", false);
     out
+}
+
+/// One part of a standard object (area 19): its built-in type's schema with
+/// the rules the part keeps (a line's pattern), a standard enum by its
+/// codes, a type held as text with its pattern, another standard object's,
+/// `null` too for a part that may be `none`, or an array of the part.
+fn part_schema(part: jadpo_std::Part) -> Value {
+    match part {
+        jadpo_std::Part::Optional(inner) => {
+            let mut null = Value::object();
+            null.set("type", "null");
+            let mut out = Value::object();
+            out.set("anyOf", vec![part_schema(*inner), null]);
+            out
+        }
+        jadpo_std::Part::List(inner) => {
+            let mut out = Value::object();
+            out.set("type", "array");
+            out.set("items", part_schema(*inner));
+            out
+        }
+        jadpo_std::Part::Standard(other) => match jadpo_std::standard_type(other) {
+            Some(entry) if entry.codes().is_some() => {
+                let mut out = Value::object();
+                out.set("type", "string");
+                out.set(
+                    "enum",
+                    entry
+                        .codes()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|(_, code)| Value::from(*code))
+                        .collect::<Vec<_>>(),
+                );
+                out
+            }
+            Some(entry) => match jadpo_std::standard::text_rules(entry.name) {
+                Some(rules) => scalar_schema(Builtin::Text, &rules),
+                None => standard_object_schema(entry),
+            },
+            None => Value::object(),
+        },
+        part => match part.builtin() {
+            Some(builtin) => scalar_schema(builtin, &part.rules()),
+            None => Value::object(),
+        },
+    }
 }
 
 /// A built-in type's schema, with its rules; a standard type stored and

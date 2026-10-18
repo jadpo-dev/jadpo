@@ -1,6 +1,6 @@
 // @generated once from cldr-json's cldr-person-names-full 48.2.0 and CLDR
-// 48.2's root.xml (release-48-2), Unicode-3.0, by a script kept with the
-// chunk that made it (5.5l); regenerating is a change of its own.
+// 48.2's root.xml (release-48-2), Unicode-3.0, in chunk 5.5l;
+// regenerating is a change of its own.
 
 /// CLDR's root person-name data, for a locale with none of its own: the
 /// languages whose names go given name first, those whose go family name

@@ -888,10 +888,18 @@ impl Reader<'_> {
                 field.sql_type = Some(sql);
             }
             Ok(sql) => {
+                // A compound standard type (area 19): `Money`, built in, or
+                // an object stored in a column per part (`PostalAddress`,
+                // chunk 5.5l).
+                let object = match self.lookup.structure(&ty) {
+                    Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name),
+                    _ => None,
+                };
                 field.compound = self
                     .lookup
                     .representation(&ty)
                     .and_then(jadpo_std::standard::of_builtin)
+                    .or(object)
                     .filter(|entry| !entry.columns().is_empty())
                     .map(|entry| entry.name);
                 field.sql_type = Some(sql);
@@ -1889,7 +1897,10 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                     position,
                     field: Some(field.born.clone()),
                     sql_type: sql_type.clone(),
-                    nullable: field.nullable,
+                    // An object's part that may be `none` (`PostalAddress`'s
+                    // region) is a column that may be `NULL`.
+                    nullable: field.nullable
+                        || entry.is_some_and(|entry| entry.part_may_be_none(at)),
                     retired: false,
                     allows: Some(allows),
                 },

@@ -982,6 +982,8 @@ rules! {
         "02-values-and-types.html#type-redundant-nullability", "Type is already nullable";
     TYPE_RESERVED_FIELD_NAME: "type.reserved_field_name", area 2, Error, Agent,
         "02-values-and-types.html#type-reserved-field-name", "Field uses a reserved name";
+    TYPE_RESERVED_VARIANT_NAME: "type.reserved_variant_name", area 19, Error, Agent,
+        "19-standard-library.html#type-reserved-variant-name", "Variant is called `all`, which lists an enum's variants";
     TYPE_SETTING_VALUE: "type.setting_value", area 2, Error, Agent,
         "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,
@@ -1026,6 +1028,8 @@ rules! {
         "03-logic.html#type-unknown-value", "Name is not defined in this scope";
     TYPE_UNKNOWN_VARIANT_FIELD: "type.unknown_variant_field", area 2, Error, Agent,
         "02-values-and-types.html#type-unknown-variant-field", "Variant has no such field";
+    TYPE_VARIANT_RETIRED: "type.variant_retired", area 19, Declinable, Agent,
+        "19-standard-library.html#type-variant-retired", "Code writes a retired code";
     VISIBILITY_PRIVATE_CROSS_DOMAIN: "visibility.private_cross_domain", area 1, Error, Human,
         "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
     VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,

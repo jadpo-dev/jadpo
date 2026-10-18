@@ -1,7 +1,7 @@
 // @generated once from CLDR 48.2 (release-48-2), the Library of Congress's
 // ISO 639-2 list (ISO-639-2_utf-8.txt, 2026-10-18) and ISO 15924's list
-// (iso15924.txt, 2026-10-18) by a script kept with the chunk that made
-// it (5.5l); regenerating is a change of its own. Unicode-3.0 (CLDR).
+// (iso15924.txt, 2026-10-18) in chunk 5.5l;
+// regenerating is a change of its own. Unicode-3.0 (CLDR).
 
 /// `Country`'s variants with their ISO 3166-1 alpha-2 codes, sorted by
 /// code, the retired ones among them.

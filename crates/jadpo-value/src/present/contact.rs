@@ -242,7 +242,7 @@ pub fn postal_address(value: &Value, tag: &str) -> Result<String, Fault> {
             .ok_or(Fault::Shape)?,
         _ => return Err(Fault::Shape),
     };
-    let street: Vec<&str> = match record.get("lines") {
+    let written_lines: Vec<&str> = match record.get("lines") {
         Some(Value::List(lines)) => lines
             .iter()
             .filter_map(|line| match line {
@@ -275,7 +275,7 @@ pub fn postal_address(value: &Value, tag: &str) -> Result<String, Fault> {
     };
     let field = |letter: char| -> Vec<&str> {
         match letter {
-            'A' => street.clone(),
+            'A' => written_lines.clone(),
             'C' => text(record, "locality").into_iter().collect(),
             'S' => text(record, "region").into_iter().collect(),
             'Z' => text(record, "postal_code").into_iter().collect(),

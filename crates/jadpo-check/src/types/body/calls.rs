@@ -1051,6 +1051,17 @@ impl Body<'_> {
         if let (Some(table), Some((shown, entry))) = (table, &contract) {
             self.contract_options(table, call, &args, &slots, (*entry, shown), written);
         }
+        if let (Some(table), Some((target, _))) = (table, &parsed)
+            && table.op == jadpo_std::Op::TextParse
+        {
+            let entry = jadpo_std::standard_type(&target.to_string())
+                .or_else(|| self.table.standard_text(target))
+                .or_else(|| match self.table.structure(target) {
+                    Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name),
+                    _ => None,
+                });
+            self.form_option(table, &args, &slots, entry, target);
+        }
         if let Some((target, _)) = parsed {
             let raw = args
                 .iter()

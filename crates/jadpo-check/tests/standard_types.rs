@@ -358,6 +358,17 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 for field in fields {
                     assert!(properties.get(field).is_some(), "{name}: `{field}`");
                 }
+                // A part that may be `none` is `null` too (chunk 5.5l).
+                if let Holds::Object(parts) = entry.holds {
+                    for (field, part) in parts {
+                        let schema = properties.get(field).expect("a property");
+                        assert_eq!(
+                            schema.get("anyOf").is_some(),
+                            part.required().1,
+                            "{name}: `{field}` may be `null` exactly when it may be `none`"
+                        );
+                    }
+                }
             }
         }
     }

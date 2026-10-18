@@ -80,11 +80,11 @@ pub const GIVEN_NAME: StandardType = text(
     Some("identifying"),
     examples(
         &[
-            ("Ada", "Ada"),
+            ("Mary", "Mary"),
             ("José María", "José María"),
             ("太郎", "太郎"),
         ],
-        &["", " Ada", "Ada ", "Ada\nLovelace"],
+        &["", " Mary", "Mary ", "Mary\nSomerville"],
     ),
 );
 
@@ -95,11 +95,11 @@ pub const FAMILY_NAME: StandardType = text(
     Some("identifying"),
     examples(
         &[
-            ("Lovelace", "Lovelace"),
+            ("Somerville", "Somerville"),
             ("van der Berg", "van der Berg"),
             ("山田", "山田"),
         ],
-        &["", " Lovelace", "Lovelace\t", "Love\nlace"],
+        &["", " Somerville", "Somerville\t", "Somer\nville"],
     ),
 );
 
@@ -110,8 +110,11 @@ pub const USERNAME: StandardType = text(
     "[a-z0-9_.-]{1,64}",
     Some("identifying"),
     examples(
-        &[("ada", "ada"), ("ada.lovelace_1815", "ada.lovelace_1815")],
-        &["Ada", "ada lovelace", "ada@example.com", ""],
+        &[
+            ("mary", "mary"),
+            ("mary.somerville_1780", "mary.somerville_1780"),
+        ],
+        &["Mary", "mary somerville", "mary@example.com", ""],
     ),
 );
 
@@ -133,7 +136,7 @@ pub const UPRN: StandardType = text(
     "Uprn",
     "[1-9][0-9]{0,11}",
     Some("contact"),
-    // 10 Downing Street's, from OS Places, and the smallest.
+    // Buckingham Palace's, from OS Places, and the smallest.
     examples(
         &[("1", "1"), ("100023336956", "100023336956")],
         &["0", "0100023336956", "1000233369561", "UPRN1", ""],
@@ -163,21 +166,21 @@ pub const EMAIL_WITH_NAME: StandardType = StandardType {
     examples: examples(
         &[
             (
-                "Ada Lovelace <ada@example.com>",
-                "Ada Lovelace <ada@example.com>",
+                "Mary Somerville <mary@example.com>",
+                "Mary Somerville <mary@example.com>",
             ),
             (
-                "\"Lovelace, Ada\" <ada@example.com>",
-                "\"Lovelace, Ada\" <ada@example.com>",
+                "\"Somerville, Mary\" <mary@example.com>",
+                "\"Somerville, Mary\" <mary@example.com>",
             ),
-            ("ada@example.com", "ada@example.com"),
+            ("mary@example.com", "mary@example.com"),
         ],
         &[
-            "Ada Lovelace",
-            "<ada@example.com>",
-            "Ada Lovelace <ada>",
-            "\"Ada Lovelace\" <ada@example.com>",
-            "Ada Lovelace  <ada@example.com>",
+            "Mary Somerville",
+            "<mary@example.com>",
+            "Mary Somerville <mary>",
+            "\"Mary Somerville\" <mary@example.com>",
+            "Mary Somerville  <mary@example.com>",
             "",
         ],
     ),
@@ -208,14 +211,17 @@ pub const PERSON_NAME: StandardType = StandardType {
     shape: None,
     examples: examples(
         &[
-            (r#"{"given":"Ada","family":"Lovelace"}"#, "Ada Lovelace"),
+            (
+                r#"{"given":"Mary","family":"Somerville"}"#,
+                "Mary Somerville",
+            ),
             (r#"{"given":"Sukarno","family":null}"#, "Sukarno"),
         ],
         &[
-            r#"{"family":"Lovelace"}"#,
-            r#"{"given":"","family":"Lovelace"}"#,
-            r#"{"given":"Ada\nLovelace","family":null}"#,
-            r#""Ada Lovelace""#,
+            r#"{"family":"Somerville"}"#,
+            r#"{"given":"","family":"Somerville"}"#,
+            r#"{"given":"Mary\nSomerville","family":null}"#,
+            r#""Mary Somerville""#,
         ],
     ),
     release: FIRST_RELEASE,
@@ -257,8 +263,8 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
     examples: examples(
         &[
             (
-                r#"{"lines":["10 Downing Street"],"locality":"London","region":null,"postal_code":"SW1A 2AA","country":"GB"}"#,
-                "10 Downing Street\nLondon\nSW1A 2AA",
+                r#"{"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"SW1A 1AA","country":"GB"}"#,
+                "Buckingham Palace\nLondon\nSW1A 1AA",
             ),
             (
                 r#"{"lines":["2-7-2 Marunouchi"],"locality":"Chiyoda-ku","region":"Tokyo","postal_code":"100-8994","country":"JP"}"#,
@@ -266,10 +272,10 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
             ),
         ],
         &[
-            r#"{"lines":["10 Downing Street"],"locality":"London","region":null,"postal_code":"SW1A 2AA"}"#,
-            r#"{"lines":["10 Downing Street"],"locality":" London","region":null,"postal_code":null,"country":"GB"}"#,
+            r#"{"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"SW1A 1AA"}"#,
+            r#"{"lines":["Buckingham Palace"],"locality":" London","region":null,"postal_code":null,"country":"GB"}"#,
             r#"{"lines":[],"locality":null,"region":null,"postal_code":null,"country":"UK"}"#,
-            r#""10 Downing Street, London""#,
+            r#""Buckingham Palace, London""#,
         ],
     ),
     release: FIRST_RELEASE,

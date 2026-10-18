@@ -1,7 +1,6 @@
 // @generated once from libaddressinput's testdata/countryinfo.txt (commit
-// 81eb9628382b07d371d8ea0b11badf7de3857fd5, 2026-05-15), Apache-2.0, by a
-// script kept with the chunk that made it (5.5l); regenerating is a change
-// of its own.
+// 81eb9628382b07d371d8ea0b11badf7de3857fd5, 2026-05-15), Apache-2.0, in chunk
+// 5.5l; regenerating is a change of its own.
 
 /// The format of an address in a country with no format of its own.
 pub const DEFAULT_FORMAT: &str = "%N%n%O%n%A%n%C";
