@@ -22,7 +22,7 @@ use jadpo_std::standard::{Holds, LOOP_SIGNALS, LoopShape};
 use jadpo_std::{Builtin, Num, StandardType};
 
 use crate::types::{callables_of, typed_body};
-use canonical::{C, Canon, normal};
+use canonical::{C, Canon, without_zeros};
 
 /// A kind of signal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -98,8 +98,8 @@ pub struct Finding {
     pub reason: String,
     /// How many words of its names the signal matched, which decides
     /// between two types that fire on one snippet.
-    weight: usize,
-    /// Its place among the entries, the tie-break after `weight`.
+    strength: usize,
+    /// Its place among the entries, the tie-break after `strength`.
     order: usize,
 }
 
@@ -224,7 +224,7 @@ fn exact(p: u128, q: u128) -> Option<Num> {
     if q != 1 || scale > 9 || p > 10u128.pow(12) {
         return None;
     }
-    Some(normal(Num {
+    Some(without_zeros(Num {
         mantissa: i128::try_from(p).ok()?,
         scale,
     }))
@@ -247,7 +247,7 @@ fn readings() -> Vec<Reading> {
         let mut conversions: Vec<Num> = signals
             .conversions
             .iter()
-            .filter_map(|text| Num::parse(text).map(normal))
+            .filter_map(|text| Num::parse(text).map(without_zeros))
             .collect();
         let mut format_literals: Vec<String> = signals
             .format_literals
@@ -393,17 +393,17 @@ fn first_line(text: &str) -> String {
 
 fn snippet(
     path: &str,
-    file_text: &str,
+    source: &str,
     start: u32,
     end: u32,
     shown: Option<String>,
     canonical: &C,
 ) -> Snippet {
-    let text = slice(file_text, start, end);
+    let text = slice(source, start, end);
     let canonical = canonical.render();
     Snippet {
         path: path.to_string(),
-        line: line_of(file_text, start),
+        line: line_of(source, start),
         start,
         end,
         shown: shown.unwrap_or_else(|| first_line(&text)),
@@ -496,7 +496,7 @@ fn settle(mut found: Vec<Finding>) -> Vec<Finding> {
     found.sort_by(|a, b| {
         (&a.snippet.path, a.snippet.start, a.snippet.end)
             .cmp(&(&b.snippet.path, b.snippet.start, b.snippet.end))
-            .then(b.weight.cmp(&a.weight))
+            .then(b.strength.cmp(&a.strength))
             .then(a.order.cmp(&b.order))
     });
     found.dedup_by(|later, kept| {
@@ -527,7 +527,7 @@ fn finding(
     snippet: Snippet,
     signal: Signal,
     reading: &Reading,
-    weight: usize,
+    strength: usize,
     reason: String,
 ) -> Finding {
     Finding {
@@ -535,7 +535,7 @@ fn finding(
         signal,
         suggestion: reading.entry.name.to_string(),
         reason,
-        weight,
+        strength,
         order: reading.order,
     }
 }
@@ -765,8 +765,8 @@ fn named(
         if matched(&declared, &reading.names) > 0 {
             continue;
         }
-        let weight = matched(&written, &reading.names);
-        if weight == 0 {
+        let strength = matched(&written, &reading.names);
+        if strength == 0 {
             continue;
         }
         let held = match shown {
@@ -777,7 +777,7 @@ fn named(
             "`{name}` is named like a `{}` but holds {held}, so nothing checks its unit or meaning.",
             reading.entry.name
         );
-        found.push(finding(snip(), Signal::Name, reading, weight, reason));
+        found.push(finding(snip(), Signal::Name, reading, strength, reason));
     }
 }
 
@@ -833,7 +833,7 @@ fn taught_at(
         } else {
             format!("`jadpo suggest found` recorded this pattern: {}", t.reason)
         },
-        weight: 1,
+        strength: 1,
         order: usize::MAX,
     });
 }
@@ -919,7 +919,7 @@ fn body(
                                         "This loop is {}, which `{}` does in one call.",
                                         signal.described, signal.operation
                                     ),
-                                    weight: 1,
+                                    strength: 1,
                                     order: usize::MAX,
                                 });
                             }
@@ -963,15 +963,21 @@ fn conversion(
         let Some(by) = numbers.iter().find(|n| reading.conversions.contains(n)) else {
             continue;
         };
-        let weight = matched(&written, &reading.names);
-        if weight == 0 {
+        let strength = matched(&written, &reading.names);
+        if strength == 0 {
             continue;
         }
         let reason = format!(
             "Multiplying or dividing a value named like a `{}` by {by} converts it by hand; `{}` makes the conversion itself.",
             reading.entry.name, reading.entry.name
         );
-        found.push(finding(snip(), Signal::Conversion, reading, weight, reason));
+        found.push(finding(
+            snip(),
+            Signal::Conversion,
+            reading,
+            strength,
+            reason,
+        ));
     }
 }
 

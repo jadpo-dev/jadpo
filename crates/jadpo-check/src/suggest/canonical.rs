@@ -75,7 +75,7 @@ impl C {
 }
 
 /// `num` without trailing zeros after the point: `100.0` is `100`.
-pub fn normal(num: Num) -> Num {
+pub fn without_zeros(num: Num) -> Num {
     let mut num = num;
     while num.scale > 0 && num.mantissa % 10 == 0 {
         num.mantissa /= 10;
@@ -85,7 +85,7 @@ pub fn normal(num: Num) -> Num {
 }
 
 fn product(a: Num, b: Num) -> Option<Num> {
-    Some(normal(Num {
+    Some(without_zeros(Num {
         mantissa: a.mantissa.checked_mul(b.mantissa)?,
         scale: a.scale.checked_add(b.scale)?,
     }))
@@ -94,7 +94,7 @@ fn product(a: Num, b: Num) -> Option<Num> {
 fn sum(a: Num, b: Num) -> Option<Num> {
     let scale = a.scale.max(b.scale);
     let lift = |n: Num| n.mantissa.checked_mul(10i128.checked_pow(scale - n.scale)?);
-    Some(normal(Num {
+    Some(without_zeros(Num {
         mantissa: lift(a)?.checked_add(lift(b)?)?,
         scale,
     }))
@@ -103,7 +103,7 @@ fn sum(a: Num, b: Num) -> Option<Num> {
 /// `1 / num` when that is a whole number other than 1: `0.01` gives
 /// `100`, `0.5` gives `2`.
 fn reciprocal(num: Num) -> Option<Num> {
-    let num = normal(num);
+    let num = without_zeros(num);
     if num.scale == 0 || num.mantissa == 0 {
         return None;
     }
@@ -112,7 +112,7 @@ fn reciprocal(num: Num) -> Option<Num> {
 }
 
 fn is_one(num: Num) -> bool {
-    normal(num) == Num::whole(1)
+    without_zeros(num) == Num::whole(1)
 }
 
 fn is_zero(num: Num) -> bool {
@@ -133,7 +133,7 @@ pub struct Canon<'a> {
     graph: &'a Graph,
     /// Each variable never reassigned, with the site of its value.
     defs: HashMap<LocalId, SiteId>,
-    memo: HashMap<SiteId, C>,
+    done: HashMap<SiteId, C>,
     depth: u32,
 }
 
@@ -154,14 +154,14 @@ impl<'a> Canon<'a> {
             body,
             graph,
             defs,
-            memo: HashMap::new(),
+            done: HashMap::new(),
             depth: 0,
         }
     }
 
     /// The canonical form of a statement or expression.
     pub fn site(&mut self, id: SiteId) -> C {
-        if let Some(done) = self.memo.get(&id) {
+        if let Some(done) = self.done.get(&id) {
             return done.clone();
         }
         // A cycle can't happen in a checked body, but a broken one is
@@ -175,7 +175,7 @@ impl<'a> Canon<'a> {
             Node::Stmt(stmt) => self.stmt(stmt),
         };
         self.depth -= 1;
-        self.memo.insert(id, out.clone());
+        self.done.insert(id, out.clone());
         out
     }
 
@@ -243,7 +243,7 @@ impl<'a> Canon<'a> {
 
     fn expr(&mut self, expr: &Expr) -> C {
         match expr {
-            Expr::Literal(Literal::Number { value, .. }) => C::Num(normal(*value)),
+            Expr::Literal(Literal::Number { value, .. }) => C::Num(without_zeros(*value)),
             Expr::Literal(Literal::Text(text)) => C::Text(text.clone()),
             Expr::Literal(other) => C::Atom(other.written()),
             Expr::Local(id) => match self.defs.get(id).copied() {
@@ -305,7 +305,7 @@ impl<'a> Canon<'a> {
             Expr::Constant { constant } => {
                 match self.graph.get(constant).map(|node| &node.detail) {
                     Some(Detail::Constant { value, .. }) => match Num::parse(value) {
-                        Some(num) => C::Num(normal(num)),
+                        Some(num) => C::Num(without_zeros(num)),
                         None => C::Atom(value.clone()),
                     },
                     _ => C::Name(vec![constant.written().to_string()]),

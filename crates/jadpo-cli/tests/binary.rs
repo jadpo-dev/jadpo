@@ -116,6 +116,7 @@ fn bash_completes_commands_and_values() {
             "api",
             "declines",
             "fix",
+            "suggest",
             "translations",
             "config",
             "completions",
