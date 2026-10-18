@@ -438,6 +438,8 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
         (Value::Quantity(quantity), SqlType::Numeric) => SqlValue::Numeric(
             jadpo_std::quantity::number_text(quantity.amount, quantity.kind.scale()),
         ),
+        // The fraction it is (area 19).
+        (Value::Percentage(fraction), SqlType::Numeric) => SqlValue::Numeric(fraction.to_string()),
         (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => SqlValue::Text(
             jadpo_std::standard::stored_variant(&variant.ty, &variant.name).to_string(),
         ),
@@ -481,6 +483,11 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
                 amount,
             })
         }
+        // The fraction it is: 20% is 0.20 (area 19).
+        (SqlValue::Numeric(text), Column::Percentage) => match Value::decimal(text) {
+            Some(Value::Decimal(fraction)) => Value::Percentage(fraction),
+            _ => return Err("a percentage with more than 38 digits".to_string()),
+        },
         (SqlValue::Text(text), Column::Text) => Value::text(text),
         (SqlValue::Bytes(bytes), Column::Bytes) => Value::Bytes(Rc::from(bytes.as_slice())),
         (SqlValue::Uuid(bytes), Column::Uuid) => Value::uuid(&uuid_text(bytes)),

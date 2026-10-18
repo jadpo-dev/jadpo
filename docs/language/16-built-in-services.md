@@ -1315,7 +1315,7 @@ the feature they belong to.
 | Stable identity for branches as well as declarations | 5 | Question 13 |
 | Loosened thresholds need an acceptance | 7 | Question 16 |
 | `jadpo path`; path IDs in `jadpo trace` and `incident`; agent-proposed thresholds through MCP | 17 | Questions 13 and 15 |
-| `FileContents`, `Document` and the batch types; `store.read`; `5%` in `free_space_floor:` | 2 | Questions 7 and 19 |
+| `FileContents`, `Document` and the batch types; `store.read`; `5%` in `free_space_floor:` (the `%` literal decided by area 19, built in chunk 5.5j2) | 2 | Questions 7 and 19 |
 | The batch helpers (`csv.read`, `csv.write` ...), the outbox feeding search engines, `receiving` and `publishing` | 12 | Questions 7, 12 and 8 |
 | Faked capabilities: `bot_check_failed`, the documents placeholder PDF, PostgreSQL search in tests | 13 | Questions 12, 18 and 19 |
 | Search engines and erasure; `AuditEntryRecorded` copies of hashed fields | 15 | Questions 9 and 12 |

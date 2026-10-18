@@ -1781,6 +1781,7 @@ impl<'a> Reader<'a> {
                             | Prim::Text
                             | Prim::Uuid
                             | Prim::Quantity(_)
+                            | Prim::Percentage
                     )
                 );
             if !sortable {
@@ -1791,7 +1792,7 @@ impl<'a> Reader<'a> {
                     )
                     .at(item_span.clone(), format!("`{}`", field_type_name(&field.ty)))
                     .reason(format!(
-                        "A query sorts by numbers, times, dates, durations, quantities, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
+                        "A query sorts by numbers, times, dates, durations, quantities, percentages, text and identities, which the database and Jadpo order the same way; `{written}` is `{}`.",
                         field.ty
                     ))
                     .next("Sort by another field"),
@@ -2953,6 +2954,7 @@ pub(crate) fn ordered(lookup: &dyn TypeView, ty: &Ty) -> bool {
                 | Prim::CalendarDate
                 | Prim::Duration
                 | Prim::Quantity(_)
+                | Prim::Percentage
         )
     )
 }

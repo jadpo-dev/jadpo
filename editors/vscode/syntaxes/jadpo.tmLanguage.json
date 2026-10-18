@@ -100,6 +100,10 @@
     "numbers": {
       "patterns": [
         {
+          "name": "constant.numeric.percentage.jadpo",
+          "match": "\\b\\d+(?:\\.\\d+)?%(?![A-Za-z0-9_])"
+        },
+        {
           "name": "constant.numeric.quantity.jadpo",
           "match": "\\b\\d+(?:\\.\\d+)?[A-Za-z_][A-Za-z0-9_]*\\b"
         },

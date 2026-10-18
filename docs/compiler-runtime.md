@@ -617,6 +617,22 @@ write `Quantity` and `QuantityUnit` (`Kind::Quantity`,
 column (`Column::Quantity`), sent as `{ "value": "2.5", "unit": "kg" }`,
 and shown by `present::units` over ICU4X's CLDR unit names where it has
 them.
+Since chunk 5.5j2 `Percentage` is `Builtin::Percentage`, held as
+`Value::Percentage`, the exact `Decimal` fraction (20% is 0.20), with its
+operator rows in `jadpo_value::ops` and the checker's `ops.rs`
+(`percentage_arithmetic`, and money's and quantities' rows taking it).
+The lexer reads digits touching `%` as one `UNIT_NUMBER` token, which the
+checker reads as `Const::Percentage` and the graph holds as
+`Literal::Percentage`; a number, `%` and a name or number all touching is
+`LexErrorKind::PercentOrRemainder`, `syntax.percent_ambiguous`.
+`jadpo_std::percentage` holds the literal's and the three types' texts.
+A construction into a type built on `Percentage` takes a `Decimal` ratio,
+which `Validator::store` turns into a percentage. It is stored in one
+`numeric` column (`Column::Percentage`), sent as its text, `"20%"`, and
+shown by `present::percent` over ICU4X's percent formatter; a message
+writes it through `translation::Style::Percent`. `Ratio` and `Fraction`
+are standard objects held as text on the wire and in storage, as the
+time objects are.
 Since chunk 5.5l a closed list (question 22) is a standard enum with a
 `ClosedList` in `jadpo_std::standard::places`: its authority, its other
 code systems (`CodeForm`, each a list of codes in the variants' order,

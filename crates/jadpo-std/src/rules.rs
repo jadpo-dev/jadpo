@@ -270,6 +270,33 @@ impl Rules {
         Ok(())
     }
 
+    /// A percentage, the fraction it is, against `min` and `max`, held
+    /// as fractions too and written as percentages: `max: 100%` (area 19).
+    pub fn check_percentage(&self, fraction: Num) -> Result<(), Broken> {
+        let shown = |bound: Num| crate::percentage::canonical(bound.mantissa, bound.scale);
+        if let Some(min) = self.min
+            && fraction.compare(min) == Ordering::Less
+        {
+            let min = shown(min);
+            return broken(
+                RuleKey::Min,
+                format!("min: {min}"),
+                format!("is below {min}"),
+            );
+        }
+        if let Some(max) = self.max
+            && fraction.compare(max) == Ordering::Greater
+        {
+            let max = shown(max);
+            return broken(
+                RuleKey::Max,
+                format!("max: {max}"),
+                format!("is above {max}"),
+            );
+        }
+        Ok(())
+    }
+
     /// A length against `min_length` and `max_length`; `unit` names what
     /// was counted, `characters` or `items`.
     pub fn check_length(&self, length: u64, unit: &str) -> Result<(), Broken> {

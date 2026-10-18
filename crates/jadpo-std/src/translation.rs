@@ -23,6 +23,9 @@ pub enum ParamKind {
     /// A value built on `Money`: written `{price, number, currency}`, as
     /// `text.format` shows it in the locale (area 19).
     Money,
+    /// A value built on `Percentage`: written `{rate, number, percent}`,
+    /// as `text.format` shows it in the locale (area 19).
+    Percent,
     /// A `PluralCount`: picks the plural form, and `{count}` writes it the
     /// locale's way.
     Plural,
@@ -38,6 +41,7 @@ impl ParamKind {
             ParamKind::Text => "text",
             ParamKind::Number => "a number",
             ParamKind::Money => "an amount of money",
+            ParamKind::Percent => "a percentage",
             ParamKind::Plural => "a plural count",
             ParamKind::Choice => "an enum",
         }
@@ -156,11 +160,55 @@ pub enum Piece {
     /// `{field, number, currency}`: an amount of money, as `text.format`
     /// shows it (area 19).
     Currency(String),
+    /// `{field, number, percent}`: a percentage, as `text.format` shows it
+    /// (area 19).
+    Percent(String),
 }
 
-/// What follows a field's name in `{price, number, currency}`, the one
-/// style a wording writes (area 19, question 16).
+/// What follows a field's name in `{price, number, currency}`, the style
+/// a wording writes an amount of money with (area 19, question 16).
 pub const CURRENCY_STYLE: &str = ", number, currency";
+
+/// What follows a field's name in `{rate, number, percent}`, the style a
+/// wording writes a percentage with (area 19, question 16).
+pub const PERCENT_STYLE: &str = ", number, percent";
+
+/// The style a field is written with, after its name: one of the two a
+/// wording has (area 19, question 16).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Style {
+    /// `{price, number, currency}`: an amount of money.
+    Currency,
+    /// `{rate, number, percent}`: a percentage.
+    Percent,
+}
+
+impl Style {
+    /// What follows the field's name: `, number, currency`.
+    pub fn written(self) -> &'static str {
+        match self {
+            Style::Currency => CURRENCY_STYLE,
+            Style::Percent => PERCENT_STYLE,
+        }
+    }
+
+    /// The kind of parameter it writes.
+    pub fn kind(self) -> ParamKind {
+        match self {
+            Style::Currency => ParamKind::Money,
+            Style::Percent => ParamKind::Percent,
+        }
+    }
+
+    /// The style a kind of parameter is written with, if it has one.
+    pub fn of(kind: ParamKind) -> Option<Style> {
+        match kind {
+            ParamKind::Money => Some(Style::Currency),
+            ParamKind::Percent => Some(Style::Percent),
+            _ => None,
+        }
+    }
+}
 
 /// A wording: its pieces in order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -196,6 +244,12 @@ impl Template {
                     out.push_str(CURRENCY_STYLE);
                     out.push('}');
                 }
+                Piece::Percent(name) => {
+                    out.push('{');
+                    out.push_str(name);
+                    out.push_str(PERCENT_STYLE);
+                    out.push('}');
+                }
             }
         }
         out
@@ -204,7 +258,9 @@ impl Template {
     /// The fields the wording writes, in order, repeats included.
     pub fn fields(&self) -> impl Iterator<Item = &str> {
         self.pieces.iter().filter_map(|piece| match piece {
-            Piece::Field(name) | Piece::Currency(name) => Some(name.as_str()),
+            Piece::Field(name) | Piece::Currency(name) | Piece::Percent(name) => {
+                Some(name.as_str())
+            }
             Piece::Text(_) => None,
         })
     }
@@ -217,8 +273,9 @@ pub struct FieldUse {
     pub name: String,
     pub start: usize,
     pub end: usize,
-    /// Written `{name, number, currency}`.
-    pub currency: bool,
+    /// The style it is written with: `{name, number, currency}` or
+    /// `{name, number, percent}`; `None` for `{name}`.
+    pub style: Option<Style>,
 }
 
 /// What is wrong with a wording: where, and the words for it.
@@ -302,8 +359,12 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                     chars.get(close).map_or(source.len(), |(at, _)| *at)
                 });
                 let inside = &source[offset + 1..reaches];
-                // An amount of money, the one field written with a style.
-                if let Some(name) = inside.strip_suffix(CURRENCY_STYLE)
+                // An amount of money or a percentage, the two fields
+                // written with a style.
+                let styled = [Style::Currency, Style::Percent]
+                    .into_iter()
+                    .find_map(|style| Some((inside.strip_suffix(style.written())?, style)));
+                if let Some((name, style)) = styled
                     && is_field_name(name)
                     && close.is_some_and(|close| {
                         chars.get(close).is_some_and(|(_, closer)| *closer == '}')
@@ -312,12 +373,15 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                     if !text.is_empty() {
                         pieces.push(Piece::Text(std::mem::take(&mut text)));
                     }
-                    pieces.push(Piece::Currency(name.to_string()));
+                    pieces.push(match style {
+                        Style::Currency => Piece::Currency(name.to_string()),
+                        Style::Percent => Piece::Percent(name.to_string()),
+                    });
                     uses.push(FieldUse {
                         name: name.to_string(),
                         start: offset,
                         end: reaches + 1,
-                        currency: true,
+                        style: Some(style),
                     });
                     at = close.map_or(chars.len(), |close| close + 1);
                     continue;
@@ -327,8 +391,8 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                         offset,
                         name_end,
                         "not a field",
-                        "A wording's only syntax is `{field}`: there is no ICU MessageFormat, so a plural or a choice is one wording for each plural form or each value of the enum, written as members, and a number is written the locale's way without a style. The one style is an amount of money's, `{field, number, currency}`, written exactly so.",
-                        "Write the field's name alone between the braces (or `{field, number, currency}` for an amount of money), and give each form its own wording",
+                        "A wording's only syntax is `{field}`: there is no ICU MessageFormat, so a plural or a choice is one wording for each plural form or each value of the enum, written as members, and a number is written the locale's way without a style. The two styles are an amount of money's, `{field, number, currency}`, and a percentage's, `{field, number, percent}`, written exactly so.",
+                        "Write the field's name alone between the braces (or `{field, number, currency}` for an amount of money, `{field, number, percent}` for a percentage), and give each form its own wording",
                     ));
                 }
                 let Some(close) = close else {
@@ -379,7 +443,7 @@ pub fn parse_template(source: &str) -> Result<(Template, Vec<FieldUse>), Templat
                     name: name.to_string(),
                     start: offset,
                     end: end_offset + 1,
-                    currency: false,
+                    style: None,
                 });
                 at = close + 1;
             }
@@ -513,7 +577,7 @@ mod tests {
                 name: "name".into(),
                 start: 6,
                 end: 12,
-                currency: false,
+                style: None,
             }
         );
         assert_eq!(
@@ -564,7 +628,7 @@ mod tests {
                 name: "price".into(),
                 start: 7,
                 end: 32,
-                currency: true,
+                style: Some(Style::Currency),
             }
         );
         assert_eq!(template.written(), "Total: {price, number, currency}.");
@@ -573,7 +637,14 @@ mod tests {
         let at = |source: &str| parse_template(source).err().map(|e| (e.start, e.end));
         assert_eq!(at("{price, number}"), Some((0, 6)));
         assert_eq!(at("{price,number,currency}"), Some((0, 6)));
-        assert_eq!(at("{price, number, percent}"), Some((0, 6)));
+        assert_eq!(at("{price, number, integer}"), Some((0, 6)));
+        let (template, uses) = read("Off: {rate, number, percent}");
+        assert_eq!(
+            template.pieces,
+            vec![Piece::Text("Off: ".into()), Piece::Percent("rate".into())]
+        );
+        assert_eq!(uses[0].style, Some(Style::Percent));
+        assert_eq!(template.written(), "Off: {rate, number, percent}");
         assert_eq!(at("{Price, number, currency}"), Some((0, 1)));
         assert_eq!(at("{price, number, currency"), Some((0, 6)));
     }

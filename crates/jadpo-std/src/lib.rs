@@ -63,6 +63,7 @@ mod migration;
 pub mod money;
 mod num;
 mod operations;
+pub mod percentage;
 pub mod policy;
 pub mod quantity;
 pub mod read;

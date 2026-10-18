@@ -119,6 +119,14 @@ impl Validator {
     /// The value as the type keeps it: a decimal at the type's fixed scale,
     /// rounded half to even; `None` past 38 digits.
     pub fn store(&self, value: Value) -> Option<Value> {
+        // A ratio becomes a percentage by construction, `Percentage(0.25)`
+        // being 25% (area 19).
+        if self.builtin == Some(Builtin::Percentage) {
+            return Some(match value {
+                Value::Decimal(ratio) => Value::Percentage(ratio),
+                value => value,
+            });
+        }
         match (value, self.scale) {
             (Value::Decimal(d), Some(scale)) if d.scale != scale => {
                 d.rescale(scale, Rounding::HalfEven).map(Value::Decimal)
@@ -157,6 +165,12 @@ impl Validator {
                 // A quantity type's bounds are held in its base unit at its
                 // kind's scale, as the value is (area 19).
                 Value::Quantity(quantity) => rules.check_quantity(quantity.kind, quantity.amount),
+                // A percentage type's bounds are held as fractions, as its
+                // values are: `max: 100%` is 1.00 (area 19).
+                Value::Percentage(fraction) => rules.check_percentage(Num {
+                    mantissa: fraction.mantissa,
+                    scale: fraction.scale,
+                }),
                 _ => Ok(()),
             }
             .map_err(Invalid::Broken)?;

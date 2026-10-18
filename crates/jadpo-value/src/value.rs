@@ -378,6 +378,8 @@ pub enum Value {
     Money(Money),
     /// A physical quantity in its kind's base unit (area 19).
     Quantity(Quantity),
+    /// A percentage, as the exact fraction it is: `20%` is 0.20 (area 19).
+    Percentage(Decimal),
     List(Rc<[Value]>),
     /// Kept in the canonical order without repeats, so equality is set
     /// equality.
@@ -466,6 +468,9 @@ impl Value {
                 kind: *kind,
                 amount: *amount,
             }),
+            Constant::Percentage { mantissa, scale } => {
+                Value::Percentage(Decimal::new(*mantissa, *scale))
+            }
             Constant::Variant {
                 ty,
                 ordinal,
@@ -526,6 +531,11 @@ impl fmt::Display for Value {
             Value::Quantity(quantity) => f.write_str(&jadpo_std::quantity::written(
                 quantity.kind,
                 quantity.amount,
+            )),
+            // As its literal is written: `20%` (area 19).
+            Value::Percentage(fraction) => f.write_str(&jadpo_std::percentage::canonical(
+                fraction.mantissa,
+                fraction.scale,
             )),
             Value::List(items) | Value::Set(items) => {
                 f.write_str("[")?;

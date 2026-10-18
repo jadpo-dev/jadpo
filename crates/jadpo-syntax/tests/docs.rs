@@ -48,11 +48,6 @@ const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
     ),
     (
         "docs/language/16-built-in-services.md",
-        "free_space_floor: 5%",
-        "`5%` as a percentage literal is carried to area 2 and not decided yet",
-    ),
-    (
-        "docs/language/16-built-in-services.md",
         "metric checkouts_completed = Counter {",
         "`metric` declarations, decided 2026-10-16 (area 16), parse once telemetry is built; the block also shows a bare statement",
     ),

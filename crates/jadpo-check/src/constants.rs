@@ -655,7 +655,7 @@ impl<'db> Eval<'db> {
         }
         match literal::check(&cx.lookup, &target, &value.to_const()) {
             Ok(()) => Ok(value),
-            Err(Problem::Kind { .. }) => Err(Stop::Unknown),
+            Err(Problem::Kind { .. } | Problem::PercentRequired(_)) => Err(Stop::Unknown),
             Err(Problem::UnitRequired(kind)) => {
                 let span = cx.span(expr.syntax());
                 cx.problems.push(literal::unit_required(

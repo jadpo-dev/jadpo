@@ -185,6 +185,7 @@ fn literal_type(value: &Const) -> Ty {
         Const::Quantity(_) => value
             .quantity()
             .map_or(Ty::Error, |(unit, _)| Ty::Prim(Prim::Quantity(unit.kind))),
+        Const::Percentage(_) => Ty::Prim(Prim::Percentage),
         Const::None => Ty::None,
         _ => Ty::Error,
     }

@@ -2033,6 +2033,32 @@ impl Body<'_> {
             return (target, Fallible::Unknown);
         }
         let value = &args[0].1;
+        let into_percentage = self.table.representation(&target) == Some(Prim::Percentage);
+        // A ratio becomes a percentage by construction, `Percentage(0.25)`
+        // being 25% (area 19, "Chosen in chunk 5.5d").
+        if into_percentage
+            && is_literal(value)
+            && let Const::Number {
+                value: number,
+                decimal,
+            } = Const::from_expr(value)
+        {
+            if !decimal {
+                self.not_a_ratio(value, &target, Some(number));
+                return (target, Fallible::Unknown);
+            }
+            let as_percent = Const::Percentage(jadpo_std::percentage::canonical(
+                number.mantissa,
+                number.scale,
+            ));
+            if let Err(problem) = super::super::literal::check(self.table, &target, &as_percent) {
+                self.literal_problem(value, &target, problem, true);
+            }
+            self.facts
+                .types
+                .insert(node_key(value.syntax()), target.clone());
+            return (target, Fallible::Never);
+        }
         if is_literal(value) {
             // Checked while compiling (area 2), and decoded as the type it
             // builds: `DueAt("2026-10-25T08:30:00Z")` is an instant.
@@ -2075,6 +2101,19 @@ impl Body<'_> {
         }
         if self.table.assignable(&actual, &target) {
             return (target, Fallible::Never);
+        }
+        if into_percentage {
+            match self.table.representation(&actual) {
+                Some(Prim::Decimal) => {
+                    let fallible = self.proved(value, &actual, &target, call);
+                    return (target, fallible);
+                }
+                Some(Prim::Percentage) => {}
+                _ => {
+                    self.not_a_ratio(value, &target, None);
+                    return (target, Fallible::Unknown);
+                }
+            }
         }
         if is_collection(&self.table.structure(&target)) {
             if !self.collection_input(value, &actual, &target) {
@@ -2142,6 +2181,40 @@ impl Body<'_> {
         }
         let fallible = self.proved(value, &actual, &target, call);
         (target, fallible)
+    }
+
+    /// `Percentage(value)` from something that isn't a ratio: a whole
+    /// number, which could be a ratio or a percentage already, or a value
+    /// that isn't a `Decimal` (area 19).
+    fn not_a_ratio(&mut self, value: &Expr, target: &Ty, whole: Option<jadpo_std::Num>) {
+        let written = tree::written(value.syntax());
+        let span = self.span(value);
+        let problem = Diagnostic::new(
+            &rule::TYPE_CONSTRUCTOR_INPUT,
+            format!("`{target}` can't be built from `{written}`"),
+        );
+        let problem = match whole {
+            Some(number) => problem
+                .at(span, "a whole number")
+                .reason(format!(
+                    "A percentage is built from a ratio, a `Decimal` where 0.25 is 25%, and `{written}` is a whole number, which could be a ratio or a percentage already."
+                ))
+                .next(super::super::literal::percent_readings(number, &written)),
+            None => {
+                let actual = self
+                    .facts
+                    .types
+                    .get(&node_key(value.syntax()))
+                    .map_or_else(|| "this".to_string(), |ty| format!("`{ty}`"));
+                problem
+                    .at(span, format!("this is {actual}"))
+                    .reason(format!(
+                        "A percentage is built from a ratio, a value built on `Decimal` where 0.25 is 25%, or from another percentage; {actual} is neither."
+                    ))
+                    .next("Pass a `Decimal` ratio, or write the percentage with `%`")
+            }
+        };
+        self.out.push(problem);
     }
 
     /// Whether `Type(value)` can fail: the rules of `target` neither the
