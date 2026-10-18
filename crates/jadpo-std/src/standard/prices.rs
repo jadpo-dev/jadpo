@@ -198,7 +198,7 @@ pub const DISCOUNT_ENTRY: StandardType = StandardType {
             // A percentage as a bare number, a variant it hasn't, no tag,
             // a variant without its part.
             r#"{"tag":"percentage_off","percentage":0.2}"#,
-            r#"{"tag":"free_delivery"}"#,
+            r#"{"tag":"bogof"}"#,
             r#"{"percentage":"20%"}"#,
             r#"{"tag":"amount_off"}"#,
             r#""20%""#,

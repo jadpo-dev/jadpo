@@ -12,6 +12,12 @@ phone
 postal_code
 passport
 vat
+# `Discount` and its `amount_off`, `money.apply_discount`, and `UnitPrice`'s
+# `price` (chunk 5.5i3)
+discount
+amount_off
+apply_discount
+price
 
 # Rust keywords and ordinary programming vocabulary
 # ordinary English: `configuration.move_name_taken`

@@ -2029,7 +2029,7 @@ them, as they refuse a `PostalAddress`. `money.apply_discount` takes a
 discount off a price; a percentage's share is rounded before it comes
 off, so a receipt's discount line and its total agree.
 
-A bakery puts offers on its cakes, works out the VAT on a net price, and
+A bakery puts offers on its cakes, works out the VAT on a price before tax, and
 labels its apples and its loan as the law and the lender write them:
 
 ```jadpo check project=prices
@@ -2047,35 +2047,36 @@ type NotARate = Failure {
     kind: FailureKind.invalid_value
 }
 
-/// A cake's price with an offer taken off it; an amount off in another
+/// A cake's price with a deal taken off it; an amount off in another
 /// currency fails.
-function on_offer(price: Price, offer: Discount) fails WrongCurrency -> Price {
-    var reduced: Price = attempt money.apply_discount(price, offer) {
+function with_deal(price: Price, deal: Discount) fails WrongCurrency -> Price {
+    var reduced: Price = attempt money.apply_discount(price, deal) {
         currency_mismatch: WrongCurrency
     }
     return reduced
 }
 
-/// An offer as the shop's window shows it.
-function offer_label(offer: Discount, customer: Locale) -> PresentationText {
-    return text.format(offer, locale: customer)
+/// A deal as the shop's window shows it.
+function deal_label(deal: Discount, customer: Locale) -> PresentationText {
+    return text.format(deal, locale: customer)
 }
 
-/// The share of the price an offer takes off, where it names one.
-function share_off(offer: Discount) -> ShareOff? {
-    return match offer {
+/// The share of the price a deal takes off, where it names one.
+function share_off(deal: Discount) -> ShareOff? {
+    return match deal {
         Discount.amount_off -> none
         Discount.percentage_off(off) -> ShareOff(off.percentage)
     }
 }
 
-/// The tax on a net price at `rate`, rounded half to even to a penny.
-function tax_on(net: Price, rate: TaxRate) -> CakeAmount {
-    return CakeAmount(net.amount * rate)
+/// The VAT on a price before tax at `rate`, rounded half to even to a
+/// penny.
+function vat_on(untaxed: Price, rate: TaxRate) -> CakeAmount {
+    return CakeAmount(untaxed.amount * rate)
 }
 
-/// A tax rate typed into the till's settings.
-function tax_rate(raw: FormText) fails NotARate -> TaxRate {
+/// A VAT rate typed into the till's settings.
+function vat_rate_from(raw: FormText) fails NotARate -> TaxRate {
     var rate: TaxRate = attempt text.parse(raw, as: TaxRate) {
         malformed: NotARate
         invalid: NotARate
@@ -2101,7 +2102,7 @@ function loan_rate() -> InterestRate {
 ```
 
 ```jadpo check project=prices file=main.test.jadpo
-test "an offer comes off a price either way" {
+test "a deal comes off a price either way" {
     var cake: Price = Price {
         amount: money.from_minor(1250, Currency.gbp)
         includes_tax: true
@@ -2112,17 +2113,17 @@ test "an offer comes off a price either way" {
     var fifth_off: Discount = Discount.percentage_off {
         percentage: 20%
     }
-    var after_five: Price = attempt on_offer(cake, five_off)
+    var after_five: Price = attempt with_deal(cake, five_off)
     assert after_five.amount == money.from_minor(750, Currency.gbp)
     assert after_five.includes_tax
-    var after_fifth: Price = attempt on_offer(cake, fifth_off)
+    var after_fifth: Price = attempt with_deal(cake, fifth_off)
     assert after_fifth.amount == money.from_minor(1000, Currency.gbp)
     var in_euros: Discount = Discount.amount_off {
         amount: money.from_minor(500, Currency.eur)
     }
-    assert on_offer(cake, in_euros) fails WrongCurrency
-    assert offer_label(five_off, Locale.en_gb) == "£5.00"
-    assert offer_label(fifth_off, Locale.en_gb) == "20%"
+    assert with_deal(cake, in_euros) fails WrongCurrency
+    assert deal_label(five_off, Locale.en_gb) == "£5.00"
+    assert deal_label(fifth_off, Locale.en_gb) == "20%"
     assert share_off(fifth_off) == 20%
     assert share_off(five_off) == none
 }
@@ -2135,24 +2136,24 @@ test "more off than the price leaves nothing" {
     var five_off: Discount = Discount.amount_off {
         amount: money.from_minor(500, Currency.gbp)
     }
-    var after: Price = attempt on_offer(bun, five_off)
+    var after: Price = attempt with_deal(bun, five_off)
     assert after.amount == money.from_minor(0, Currency.gbp)
 }
 
 test "rates are shown as they are quoted" {
-    var net: Price = Price {
+    var untaxed: Price = Price {
         amount: money.from_minor(1000, Currency.gbp)
         includes_tax: false
     }
-    var vat: TaxRate = attempt tax_rate("20%")
-    assert tax_on(net, vat) == money.from_minor(200, Currency.gbp)
-    assert tax_rate("-5%") fails NotARate
-    assert tax_rate("20") fails NotARate
+    var vat: TaxRate = attempt vat_rate_from("20%")
+    assert vat_on(untaxed, vat) == money.from_minor(200, Currency.gbp)
+    assert vat_rate_from("-5%") fails NotARate
+    assert vat_rate_from("20") fails NotARate
     assert text.format(apples(), locale: Locale.en_gb) == "£2.50/1 kg"
     assert text.format(loan_rate(), locale: Locale.en_gb) == "6.9% APR"
-    var spread: BasisPoints = 25
-    assert text.format(spread, locale: Locale.en_gb) == "25 bp"
-    assert text.from(spread) == "25"
+    var over_base: BasisPoints = 25
+    assert text.format(over_base, locale: Locale.en_gb) == "25 bp"
+    assert text.from(over_base) == "25"
 }
 ```
 
@@ -2192,23 +2193,23 @@ application {}
 ```
 
 ```jadpo check project=loan-rates file=domains/bakery/entities/loan.jadpo migrate=initial
-/// A loan the bakery took out, at a rate above base.
+/// A loan the bakery took out, at a rate above the base rate.
 entity Loan {
     id: Uuid
-    spread: BasisPoints  // one `bigint` column: 25 for 0.25%
-    tax: TaxRate  // one `numeric` column: 0.2 for 20%
+    over_base: BasisPoints  // one `bigint` column: 25 for 0.25%
+    vat_rate: TaxRate  // one `numeric` column: 0.2 for 20%
 }
 ```
 
 ```jadpo check project=loan-rates file=domains/bakery/actions/take_loan.jadpo hidden
 use bakery/entities { Loan }
 
-/// Records a loan at `spread` over base.
-action take_loan(spread: BasisPoints, tax: TaxRate) -> Loan {
+/// Records a loan at `over_base` above the base rate.
+action take_loan(over_base: BasisPoints, vat_rate: TaxRate) -> Loan {
     return Loan.create {
         set: {
-            spread: spread
-            tax: tax
+            over_base: over_base
+            vat_rate: vat_rate
         }
     }
 }
@@ -2217,11 +2218,11 @@ action take_loan(spread: BasisPoints, tax: TaxRate) -> Loan {
 ```jadpo check project=loan-rates file=domains/bakery/actions/take_loan.test.jadpo
 use bakery/entities { Loan }
 
-test "a loan keeps its spread as it was written" {
+test "a loan keeps its rate over base as it was written" {
     var taken: Loan = take_loan(25, 20%)
     var on_file: Loan = attempt Loan.get(taken.id)
-    assert on_file.spread == 25
-    assert on_file.tax == 20%
+    assert on_file.over_base == 25
+    assert on_file.vat_rate == 20%
 }
 ```
 

@@ -16,6 +16,9 @@ Uuid
 # A standard type (area 19, chunk 5.5h), which an archived research page's
 # one-page sketch declares as an application's own
 Money
+# A standard type (area 19, chunk 5.5i3), which an archived research page's
+# sketch declares as a `Decimal`
+Price
 # The standard library stubs' word for a quantity of any kind (area 19,
 # chunk 5.5j), which area 2's and area 4's examples declare as an `Int`
 Quantity
