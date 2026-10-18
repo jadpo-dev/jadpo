@@ -365,6 +365,14 @@ bytes (`security::made_by`, read in the rule verdict), so
 canonical order compare every `Bytes` in constant time. `OneTimeCode`
 joined the secret values, and a `Bytes` part of a standard object is
 bounded by its length (`Part::Bounded` on `Bytes`).
+Since chunk 5.5r5 `Certificate` is a standard object read only from what
+it parses (`standard::certificates::read_only`): its canonical text and
+JSON are its PEM (`TextForm::Pem`), which `jadpo_value::certificate` reads
+strictly, the DER checked as DER by its own walk and then read by
+`x509-parser` (pure Rust, so it builds for wasm32), the parts made from
+the DER and written back from its `der` part. The checker refuses an
+object literal of one (`type.constructor_input`), so no executor ever
+holds parts its DER doesn't say.
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the
@@ -2017,6 +2025,28 @@ ended the session. The plan appends a `RoutePlan` with `Run::Exchange` for
 `POST /auth/exchange` in the first API that accepts service keys, whose
 sign-in signs the token the response gives; the API record, OpenAPI and
 `jadpo routes` list it from `Identity::exchanges`.
+
+Built in chunk 5.5z: passkeys (area 8, "Passkeys"). The identity reads
+`sign_in: { passkey: }` into `Identity::passkey`, kept only with a browser
+session and its `origin:`; the schema adds `jadpo_passkeys` and
+`jadpo_passkey_challenges` beside `jadpo_sessions`. The plan appends one
+`RoutePlan` per `jadpo_std::http::PasskeyStep` under `path:`, with
+`Run::Passkey`, in the first API that accepts browser sessions, and writes
+`PasskeyPlan::lookup`, a passkey by its credential ID joined laterally to
+its user's record and `active:`. The HTTP component answers them in
+`http::passkeys`, after signing in and with no idempotency key: it keeps
+each challenge server-side by its BLAKE3 verifier, bound to a
+`<cookie>_passkey` cookie's verifier or the session, takes it once with
+`DELETE … RETURNING` before the answer is checked, and starts the session
+in the transaction that writes the passkey's new counter, only if the
+counter is still the one read. The ceremonies are a host capability,
+`Host::passkeys` (`jadpo_runtime::Passkeys`), with the configured origin
+and plain data across it, so the runtime crate stays free of them on
+wasm32: the native host and a test's host carry `webauthn-rs` 0.5.5,
+whose OpenSSL doesn't build for wasm32, so a Workers host waits for its
+pure-Rust release; `jadpo_host_native::test_authenticator` (feature
+`test-authenticator`, tests only) is a software device the live tests
+sign in with.
 
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,

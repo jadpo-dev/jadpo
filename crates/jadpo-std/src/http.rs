@@ -160,6 +160,157 @@ pub enum Run {
     /// service keys (area 8, "Ways to sign in"): the service key the
     /// request signed in with, traded for a short-lived signed token.
     Exchange,
+    /// One of the routes `passkey:` generates (area 8, "Passkeys"), which
+    /// the runtime answers itself.
+    Passkey(PasskeyStep),
+}
+
+/// The routes `sign_in: { passkey: }` generates (area 8, "Passkeys"),
+/// each under its `path:`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum PasskeyStep {
+    /// `POST <path>/sign-in/options`: a challenge to sign in with.
+    SignInOptions,
+    /// `POST <path>/sign-in`: the device's answer, which starts a browser
+    /// session.
+    SignIn,
+    /// `POST <path>/register/options`: a challenge to add a passkey with.
+    RegisterOptions,
+    /// `POST <path>/register`: the new passkey and its name, kept.
+    Register,
+    /// `GET <path>`: the person's passkeys.
+    List,
+    /// `PATCH <path>/{passkey_id}`: renames one.
+    Rename,
+    /// `DELETE <path>/{passkey_id}`: removes one.
+    Remove,
+}
+
+impl PasskeyStep {
+    pub const ALL: [PasskeyStep; 7] = [
+        PasskeyStep::SignInOptions,
+        PasskeyStep::SignIn,
+        PasskeyStep::RegisterOptions,
+        PasskeyStep::Register,
+        PasskeyStep::List,
+        PasskeyStep::Rename,
+        PasskeyStep::Remove,
+    ];
+
+    pub fn method(self) -> crate::HttpMethod {
+        match self {
+            PasskeyStep::List => crate::HttpMethod::Get,
+            PasskeyStep::Rename => crate::HttpMethod::Patch,
+            PasskeyStep::Remove => crate::HttpMethod::Delete,
+            _ => crate::HttpMethod::Post,
+        }
+    }
+
+    /// Its segments after `path:`; [`PASSKEY_ID`] is the placeholder.
+    pub fn tail(self) -> &'static [&'static str] {
+        match self {
+            PasskeyStep::SignInOptions => &["sign-in", "options"],
+            PasskeyStep::SignIn => &["sign-in"],
+            PasskeyStep::RegisterOptions => &["register", "options"],
+            PasskeyStep::Register => &["register"],
+            PasskeyStep::List => &[],
+            PasskeyStep::Rename | PasskeyStep::Remove => &[PASSKEY_ID],
+        }
+    }
+
+    /// Signing in is open to anyone; adding a passkey reads the person's
+    /// record now, so a disabled account adds none even with a revocation
+    /// delay; listing, renaming and removing need the person signed in.
+    pub fn authentication(self) -> Authentication {
+        match self {
+            PasskeyStep::SignInOptions | PasskeyStep::SignIn => Authentication::Public,
+            PasskeyStep::RegisterOptions | PasskeyStep::Register => Authentication::Fresh,
+            _ => Authentication::Required,
+        }
+    }
+
+    pub fn status(self) -> crate::SuccessStatus {
+        match self {
+            PasskeyStep::Register => crate::SuccessStatus::Created,
+            PasskeyStep::SignIn | PasskeyStep::Remove => crate::SuccessStatus::NoContent,
+            _ => crate::SuccessStatus::Ok,
+        }
+    }
+
+    /// What `jadpo routes` and the API record say it runs: `passkey
+    /// sign-in options`.
+    pub fn label(self) -> &'static str {
+        match self {
+            PasskeyStep::SignInOptions => "passkey sign-in options",
+            PasskeyStep::SignIn => "passkey sign-in",
+            PasskeyStep::RegisterOptions => "passkey registration options",
+            PasskeyStep::Register => "passkey registration",
+            PasskeyStep::List => "passkey listing",
+            PasskeyStep::Rename => "passkey renaming",
+            PasskeyStep::Remove => "passkey removal",
+        }
+    }
+
+    /// What it answers with, by the name the API record gives it: the
+    /// options WebAuthn's own `PublicKeyCredential*OptionsJSON` reads, or
+    /// a passkey as its holder sees it.
+    pub fn output(self) -> Option<&'static str> {
+        match self {
+            PasskeyStep::SignInOptions => Some(PASSKEY_REQUEST_OPTIONS),
+            PasskeyStep::RegisterOptions => Some(PASSKEY_CREATION_OPTIONS),
+            PasskeyStep::Register | PasskeyStep::Rename => Some(PASSKEY_VIEW),
+            PasskeyStep::List => Some("List<PasskeyView>"),
+            PasskeyStep::SignIn | PasskeyStep::Remove => None,
+        }
+    }
+
+    /// Its full path's segments under `path`.
+    pub fn segments(self, path: &[String]) -> Vec<String> {
+        path.iter()
+            .cloned()
+            .chain(self.tail().iter().map(|text| text.to_string()))
+            .collect()
+    }
+}
+
+/// The placeholder in the paths that name one passkey.
+pub const PASSKEY_ID: &str = "{passkey_id}";
+
+/// Where `passkey:`'s routes go unless its `path:` says otherwise.
+pub const PASSKEY_PATH: [&str; 2] = ["auth", "passkey"];
+
+/// How long a passkey ceremony's challenge lasts unless `expires_after:`
+/// says otherwise (area 8, chosen in chunk 5.5z), and the shortest and
+/// longest it may.
+pub const PASSKEY_EXPIRES_MS: i64 = 5 * 60 * 1000;
+pub const PASSKEY_EXPIRES_MIN_MS: i64 = 60 * 1000;
+pub const PASSKEY_EXPIRES_MAX_MS: i64 = 10 * 60 * 1000;
+
+/// The most passkeys one person has (area 8, "Passkeys").
+pub const PASSKEY_LIMIT: i64 = 20;
+
+/// What the options routes answer with, as the API record names them.
+pub const PASSKEY_CREATION_OPTIONS: &str = "PasskeyCreationOptions";
+pub const PASSKEY_REQUEST_OPTIONS: &str = "PasskeyRequestOptions";
+
+/// A passkey as its holder sees it: `id`, `name`, `registered_at` and
+/// `last_used_at`, never its key or credential ID.
+pub const PASSKEY_VIEW: &str = "PasskeyView";
+
+/// What `passkey:` generates and how the runtime answers it (area 8,
+/// "Passkeys").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasskeyPlan {
+    /// `path:`'s segments.
+    pub path: Vec<String>,
+    /// How long a challenge lasts, in milliseconds.
+    pub expires_after_ms: i64,
+    /// A passkey found by its credential ID with its user's record, `$1`
+    /// the credential ID and `$2` the time now: the passkey's `id`, its
+    /// `WebAuthnCredential` JSON, its user handle, the user's `id` and
+    /// subject, and whether the user's `active:` holds. None when no
+    /// passkey has it or its user isn't visible.
+    pub lookup: String,
 }
 
 /// What one argument of the call is made from.
@@ -424,6 +575,8 @@ pub struct IdentityPlan {
     /// `Origin` must be exactly it. `None` takes the server's own, the one
     /// the `Host` header names.
     pub origin: Option<String>,
+    /// `sign_in: { passkey: }` (area 8, "Passkeys"), when declared.
+    pub passkeys: Option<PasskeyPlan>,
 }
 
 /// Listing, issuing and revoking credentials, limited to holders whose

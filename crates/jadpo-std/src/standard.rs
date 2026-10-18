@@ -21,6 +21,7 @@ pub mod addresses_data;
 pub mod ai;
 pub mod banks;
 pub mod card_types;
+pub mod certificates;
 mod codes;
 pub mod colour;
 mod contact;
@@ -403,6 +404,11 @@ pub enum TextForm {
     /// 4648's standard alphabet, padded, in its one spelling, as `Bytes`
     /// is sent in JSON, its bytes passing the entry's check.
     Base64,
+    /// An X.509 certificate's PEM (RFC 7468, chunk 5.5r5,
+    /// [`certificates`]): one `CERTIFICATE` block, its DER in Base64 lines
+    /// of 64 characters, each line ending in a line feed (or each in a
+    /// carriage return and a line feed, when read), and nothing else.
+    Pem,
     /// HTML as the sanitiser keeps it (chunk 5.5o, [`markup::sanitise`]):
     /// written as it is held, and read from any text, made safe rather than
     /// refused, so reading it never fails.
@@ -1378,6 +1384,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     card_types::CARD_EXPIRY_TYPE,
     codes::CARRIER,
     lists::CEFR_LEVEL_ENTRY,
+    certificates::CERTIFICATE_ENTRY,
     ai::CHAT_MESSAGE_ENTRY,
     ai::CHAT_ROLE_ENTRY,
     web::CIDR,
@@ -2953,7 +2960,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 256, "the 256 standard types built so far");
+        assert_eq!(names.len(), 257, "the 257 standard types built so far");
     }
 
     #[test]

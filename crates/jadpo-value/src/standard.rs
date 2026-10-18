@@ -97,6 +97,8 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
     Ok(match (form, value) {
         (TextForm::Checked | TextForm::Html, Value::Text(text)) => text.to_string(),
         (TextForm::Base64, Value::Bytes(bytes)) => crate::encoding::to_base64(bytes),
+        // A certificate's DER as one PEM block (chunk 5.5r5).
+        (TextForm::Pem, Value::Record(record)) => crate::certificate::pem_text(record)?,
         (TextForm::Uuid, Value::Uuid(text)) => text.to_ascii_lowercase(),
         // A latitude, a longitude, a bearing, with its places (chunk 5.5s).
         (TextForm::Decimal, Value::Decimal(decimal)) => decimal.to_string(),
@@ -451,6 +453,9 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
                     .is_some_and(|validator| validator.accepts_bytes(bytes))
             })
             .map(|bytes| Value::Bytes(std::rc::Rc::from(bytes))),
+        // An X.509 certificate, its parts read from its DER (chunk
+        // 5.5r5).
+        TextForm::Pem => crate::certificate::read_pem(raw),
         TextForm::Uuid => entry
             .validator
             .is_some_and(|validator| validator.accepts(raw))
@@ -981,8 +986,10 @@ pub fn shown(
         // The first part named that the value has (chunk 5.5r): text as
         // written, an instant as its canonical text.
         (FormatKey::FirstPart(parts), Value::Record(record)) => {
+            // Text that is empty is passed over, as a certificate's empty
+            // subject is (chunk 5.5r5).
             let shown = parts.iter().find_map(|name| match record.get(name) {
-                Some(Value::Text(text)) => Some(text.to_string()),
+                Some(Value::Text(text)) if !text.is_empty() => Some(text.to_string()),
                 Some(Value::Instant(at)) => Some(jadpo_std::format_instant(*at)),
                 _ => None,
             });

@@ -24,7 +24,8 @@ license.workspace = true
 # CommonMark for `markup.to_html` (area 19, "Text formats"). serde's
 # traits read a token's JSON refusing a member named twice
 # (`crypto.verify_jwt`, area 19, chunk 5.5r). subtle compares a secret
-# value in constant time (area 19, chunk 5.5r2).
+# value in constant time (area 19, chunk 5.5r2). x509-parser reads a
+# `Certificate`'s DER (area 19, chunk 5.5r5).
 [dependencies]
 jadpo-std.workspace = true
 jiff.workspace = true
@@ -52,6 +53,7 @@ hmac.workspace = true
 ed25519-dalek.workspace = true
 subtle.workspace = true
 pulldown-cmark.workspace = true
+x509-parser.workspace = true
 
 [lints]
 workspace = true

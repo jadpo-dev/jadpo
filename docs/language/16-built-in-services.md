@@ -889,6 +889,18 @@ Built in chunk 5.4e: these twelve messages are in Jadpo's catalogue (area
 has the feature on until magic-link sign-in is built, so none is listed,
 required or rewordable yet.
 
+Passkeys (area 8, "Passkeys") bring no email, only their failures' wording,
+which a client app shows; they are on, listed, required in an app's other
+locales and rewordable once `passkey:` is declared (chunk 5.5z):
+
+| Message | `en_gb` wording |
+|---|---|
+| `passkey_challenge_expired` | "That took too long. Try your passkey again." |
+| `passkey_rejected` | "We couldn't sign you in with that passkey. Try another passkey, or sign in with your email." |
+| `passkey_already_registered` | "This passkey is already set up." |
+| `passkey_limit_reached` | "You have as many passkeys as an account can hold. Remove one to add another." |
+| `passkey_not_found` | "That passkey isn't on your account." |
+
 **Level 3: branding.** Every email, built in or the app's own, is wrapped
 in the app's shared email layout, so built-in emails carry the app's
 branding with no other change. The layout is optional, one per app, in

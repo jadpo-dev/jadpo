@@ -36,6 +36,9 @@
 )]
 
 pub mod http;
+pub mod passkeys;
+#[cfg(feature = "test-authenticator")]
+pub mod test_authenticator;
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -150,7 +153,15 @@ impl NativeHost {
     }
 }
 
+/// The passkey ceremonies every native host carries.
+static PASSKEYS: passkeys::WebauthnPasskeys = passkeys::WebauthnPasskeys;
+
 impl Host for NativeHost {
+    /// `webauthn-rs` (area 8, "Passkeys").
+    fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
+        Some(&PASSKEYS)
+    }
+
     fn database(&self, store: &str) -> Option<&dyn Database> {
         self.stores.get(store).map(|store| store as &dyn Database)
     }

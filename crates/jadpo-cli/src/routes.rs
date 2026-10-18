@@ -8,7 +8,9 @@
 //! row per route in the order a URL is read; the footer counts them. A
 //! route the runtime answers itself, the key exchange a revocation delay
 //! and service keys bring (area 8), is listed in each API that accepts
-//! service keys, running `generated exchange`, written `generated`.
+//! service keys, running `generated exchange`, written `generated`; so are
+//! the routes passkeys bring (`generated passkey sign-in` and the rest), in
+//! the first API that accepts browser sessions.
 
 use std::path::PathBuf;
 
@@ -39,6 +41,38 @@ pub fn routes(call: &Call) -> Reply {
     let groups: &Groups = groups(db, project);
     let graph = jadpo_check::graph::graph(db, project);
     let mut lines = listing(groups, graph);
+    // The passkey routes, in the first API that accepts browser sessions
+    // (area 8, "Passkeys").
+    if let Some(passkey) = jadpo_check::identity::identity(db, project).passkeys() {
+        let api = apis.apis.iter().find(|api| {
+            jadpo_check::routes::apis::accepted_methods(db, project, &api.name)
+                .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
+        });
+        if let Some(api) = api {
+            for step in jadpo_std::http::PasskeyStep::ALL {
+                let path: String = step
+                    .segments(&passkey.path)
+                    .iter()
+                    .map(|text| format!("/{text}"))
+                    .collect();
+                lines.push(Line {
+                    api: api.name.clone(),
+                    method: step.method().word().to_string(),
+                    path,
+                    runs: format!("generated {}", step.label()),
+                    authentication: match step.authentication() {
+                        jadpo_std::http::Authentication::Public => "none",
+                        jadpo_std::http::Authentication::Fresh => "fresh",
+                        jadpo_std::http::Authentication::Required => "required",
+                    },
+                    file: String::new(),
+                    line: 0,
+                    place: "generated".to_string(),
+                });
+            }
+            lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+        }
+    }
     if jadpo_check::identity::identity(db, project).exchanges() {
         for api in &apis.apis {
             let methods = jadpo_check::routes::apis::accepted_methods(db, project, &api.name);

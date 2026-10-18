@@ -24,6 +24,18 @@ hyper-util = { workspace = true, features = ["tokio"] }
 http-body-util.workspace = true
 # The operating system's cryptographic generator (area 19, "Randomness").
 getrandom.workspace = true
+# The passkey ceremonies (area 8, chunk 5.5z), behind the runtime's
+# `Passkeys` capability.
+webauthn-rs.workspace = true
+webauthn-rs-core.workspace = true
+serde_cbor_2.workspace = true
+serde_json.workspace = true
+# A software authenticator for tests (`test-authenticator`): ES256 keys
+# and signatures on the OpenSSL `webauthn-rs` already links.
+openssl = { workspace = true, optional = true }
+
+[features]
+test-authenticator = ["dep:openssl"]
 
 [lints]
 workspace = true

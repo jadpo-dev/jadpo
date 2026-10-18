@@ -268,6 +268,51 @@ pub(crate) fn table(
             line: 0,
         });
     }
+    // The passkey routes the runtime answers (area 8, "Passkeys"): in the
+    // first API that accepts browser sessions, whose cookie they read and
+    // start.
+    let passkey_api = out.apis.iter().position(|api| {
+        api.methods
+            .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
+    });
+    if let Some(passkey) = identity.passkeys()
+        && let Some(api) = passkey_api
+    {
+        let id = codecs.codec(&TypeRef::Builtin(jadpo_std::Builtin::Uuid));
+        for step in jadpo_std::http::PasskeyStep::ALL {
+            let segments = step.segments(&passkey.path);
+            out.routes.push(RoutePlan {
+                key: format!("route {} /{}", step.method().word(), segments.join("/")),
+                method: step.method(),
+                segments: segments
+                    .into_iter()
+                    .map(|text| {
+                        if text == jadpo_std::http::PASSKEY_ID {
+                            Segment::Param {
+                                name: "passkey_id".to_string(),
+                                codec: id,
+                            }
+                        } else {
+                            Segment::Fixed(text)
+                        }
+                    })
+                    .collect(),
+                api: api as u32,
+                input: None,
+                output: None,
+                status: step.status(),
+                deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+                run: Run::Passkey(step),
+                keys: None,
+                args: Vec::new(),
+                authentication: step.authentication(),
+                caller: (step.authentication().needs_caller())
+                    .then_some(jadpo_std::http::PrincipalKind::User),
+                file: "generated".to_string(),
+                line: 0,
+            });
+        }
+    }
     out.codecs = codecs.codecs;
     out
 }

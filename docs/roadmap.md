@@ -1021,8 +1021,11 @@ reference only).
   Auth0's tokens verify; and typed custom claims, `verify_jwt(token,
   keys:, as: MyClaims)` decoding the claims beyond the registered seven
   into an application's `Object` through `json.read(as:)`'s decoding and
-  typed failures, `JwtClaims` still giving the registered ones. HS256
-  still waits for keys held as data. Done when an RS256 and an ES256
+  typed failures, `JwtClaims` still giving the registered ones; and
+  `crypto.read_certificate(der)` giving a `Certificate`, failing
+  `malformed`, on 5.5r5's reader, which a key set's `x5c` needs (decided
+  by the lead session, 2026-10-18). HS256 still waits for keys held as
+  data. Done when an RS256 and an ES256
   token verify against the RFCs' vectors, the attack suite refuses each
   attack under both, and a token's custom claims decode as a declared
   type or fail `mismatch`.
@@ -1042,13 +1045,21 @@ reference only).
   `webauthn-rs` 0.5.2's stored `Credential`, its key a COSE_Key in CBOR,
   what it doesn't hold filled by 5.5z as it loads one. What the pages left
   open is area 19's "Chosen in chunk 5.5r3".
-- [ ] **5.5r5 Certificates** `opus · high` (area 19, "The standard
+- [x] **5.5r5 Certificates** `opus · high` (area 19, "The standard
   types"; split from 5.5r3), after 5.5r3: `Certificate`, an X.509
   certificate (RFC 5280) read from PEM or DER on an audited crate built for
   wasm32, its subject, issuer, validity and SHA-256 fingerprint (a `Hash`)
   read-only, never set by code. Chain validation is out of scope unless
-  the page says otherwise. Done when the type passes the harness.
-- [ ] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
+  the page says otherwise. Done when the type passes the harness. Built on
+  `x509-parser` 0.16.0, already in the lock, so no crate was added: a
+  standard object read only from its PEM (one `CERTIFICATE` block, strict
+  DER, a positive serial of at most 20 octets), its subject and issuer
+  in RFC 4514's text, its serial in hexadecimal, its validity as two
+  instants, its fingerprint a `Hash` and its DER; sent and stored as the
+  PEM, and an object literal of one refused. Reading DER bytes is 5.5r4's
+  `crypto.read_certificate(der)`. What the page left open is area 19's
+  "Chosen in chunk 5.5r5".
+- [x] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
   Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
   as the third built-in way to check a person. First finish area 8's
   section (the `sign_in:` option, routes, events, errors, test helpers,
@@ -1057,7 +1068,17 @@ reference only).
   attestation), credentials as `WebAuthnCredential`, several per person,
   recovery by magic link. Done when a test registers and signs in with a
   virtual authenticator, a replayed or wrong-origin assertion is refused,
-  and a person with no passkey left recovers through a magic link.
+  and a removed passkey can't sign in. Split on 2026-10-18: magic links
+  are 7.3b and events area 12, both later, so recovery, the check that
+  magic links are on, the route-test helpers and the events are 5.5z2.
+  Built, on `webauthn-rs` 0.5.5 through the host's `Passkeys` capability
+  (its OpenSSL doesn't build for wasm32, so Workers waits for a pure-Rust
+  release): seven routes under `path:`, registering, signing in with a
+  discoverable passkey, listing, renaming and removing; challenges kept
+  server-side, used once, expiring and bound to the browser or session;
+  the strict counter check; a stored credential's extensions are never
+  read, so `WebAuthnCredential` gains no part. What the pages left open is
+  area 8's "Chosen in chunk 5.5z".
 - [x] **5.5s Geospatial types' baselines** `opus · high` (area 19,
   "The standard types"): the 17 geospatial types, with construction, text
   and JSON from the contract, GeoJSON (RFC 7946) on the wire and
@@ -1345,6 +1366,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the wrong-code and send limits, `on_first_sign_in` for every way in, the
   built-in emails' five levels (area 16), the sign-in failures and events.
   Google and other providers stay after the first build.
+- [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
+  from 5.5z), after 7.3b and the events of area 12: `passkey:` needs
+  `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
+  example gains it; the device lists a passkey under `magic_link:`'s
+  `address:` rather than the principal's subject; `test_passkeys.register`
+  and `.sign_in` with `TestPasskey` in route tests; `SignedIn` and
+  `SignInRefused` for passkeys, `PasskeyAdded` and `PasskeyRemoved`. Done
+  when a person with no passkey left recovers through a magic link and
+  adds a new one, in a route test written with `test_passkeys`.
 - [ ] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the

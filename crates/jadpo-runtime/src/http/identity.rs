@@ -1370,6 +1370,7 @@ mod tests {
         let kept = Some(kept.as_str());
         let plan = IdentityPlan {
             origin: Some("browser_origin".into()),
+            passkeys: None,
             ..plan()
         };
         let values =
@@ -1409,6 +1410,7 @@ mod tests {
             revocation_delay_ms: None,
             signing_keys: Vec::new(),
             origin: None,
+            passkeys: None,
         }
     }
 

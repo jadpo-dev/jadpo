@@ -162,6 +162,13 @@ ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fas
 # crate above, whose comparisons pass through an optimisation barrier so
 # the compiler can't turn them back into an early exit.
 subtle = { version = "=2.6.1", default-features = false }
+# X.509 certificates for `Certificate` (area 19, chunk 5.5r5; jadpo-value
+# only): Rusticata's `x509-parser`, MIT or Apache-2.0, pure Rust over
+# `nom` and `der-parser`, fuzzed and written to be panic-free, already in
+# the lock through `webauthn-rs-core`, so no crate is added. No `verify`
+# feature (`ring`): a certificate is read, never checked against a chain,
+# and it builds for wasm32.
+x509-parser = { version = "=0.16.0", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of
@@ -187,6 +194,25 @@ bytes = "=1.12.1"
 # here: a Workers host takes the Web Crypto API's, and `jadpo-value` takes
 # random bytes only from the host.
 getrandom = { version = "=0.4.3", default-features = false }
+# Passkeys (area 8, "Passkeys", chunk 5.5z; jadpo-host-native only): the
+# registration and sign-in ceremonies on Kanidm's `webauthn-rs`, MPL-2.0,
+# used unmodified. Its 0.5 line verifies with OpenSSL, which doesn't build
+# for wasm32, so the runtime reaches it through the host's `Passkeys`
+# capability and a Workers host waits for its pure-Rust release. No
+# attestation (`default-features = false`); `conditional-ui` signs in with
+# a discoverable credential, so no address is asked for first;
+# `danger-allow-state-serialisation` keeps a ceremony's state in the
+# database, server-side and single-use, never in a cookie; and
+# `danger-credential-internals` loads a stored `WebAuthnCredential` part by
+# part, whose types `webauthn-rs-core` names; `serde_cbor_2` reads and
+# writes its COSE key. Both are already under `webauthn-rs`.
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["conditional-ui", "danger-allow-state-serialisation", "danger-credential-internals"] }
+webauthn-rs-core = { version = "=0.5.5", default-features = false }
+serde_cbor_2 = { version = "=0.13.0", default-features = false, features = ["std"] }
+# The test authenticator's ES256 keys (jadpo-host-native's
+# `test-authenticator`, for tests only): the OpenSSL bindings `webauthn-rs`
+# already links.
+openssl = { version = "=0.10.81", default-features = false }
 # HTTP for the native host (jadpo-host-native only; docs/compiler-runtime.md §2.6).
 hyper = { version = "=1.12.0", default-features = false }
 hyper-util = { version = "=0.1.21", default-features = false }

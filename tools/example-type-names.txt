@@ -16,6 +16,7 @@ Code
 Comment
 Company
 Count
+Counter
 Cutoff
 Day
 Days

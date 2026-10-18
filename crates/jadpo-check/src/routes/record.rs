@@ -84,6 +84,21 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
         locales: crate::locales::locales(db, project).plan.as_ref(),
     };
     let apis = super::api_table(db, project);
+    let identity = crate::identity::identity(db, project);
+    // The passkey routes belong to the first API that accepts browser
+    // sessions (area 8, "Passkeys"), routes of its own or not.
+    let passkey_api = identity.passkeys().and_then(|_| {
+        apis.apis
+            .iter()
+            .find(|api| {
+                super::apis::accepted_methods(db, project, &api.name)
+                    .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
+            })
+            .map(|api| api.name.clone())
+    });
+    if let Some(api) = &passkey_api {
+        by_api.entry(api.clone()).or_default();
+    }
     by_api
         .into_iter()
         .map(|(api, routes)| {
@@ -91,9 +106,18 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
             // changes what a browser's requests carry (area 8).
             let methods = super::apis::accepted_methods(db, project, &api);
             // The exchange the runtime answers where services sign in.
-            let exchange = crate::identity::identity(db, project).exchanges()
-                && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
-            let mut body = write(&wire, &lookup, routes, exchange);
+            let mut generated = Vec::new();
+            if identity.exchanges()
+                && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey)
+            {
+                generated.push(exchange_entry());
+            }
+            if let Some(passkey) = identity.passkeys()
+                && passkey_api.as_deref() == Some(api.as_str())
+            {
+                generated.extend(passkey_entries(&passkey.path));
+            }
+            let mut body = write(&wire, &lookup, routes, generated);
             let mut head = String::new();
             if !methods.is_empty() {
                 let names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
@@ -122,46 +146,124 @@ fn method_order(route: &RouteModel) -> usize {
         .unwrap_or(0)
 }
 
-/// The generated `POST /auth/exchange` (area 8, "Ways to sign in"), as
-/// its record lists it: the runtime's, for services.
-fn exchange_entry() -> String {
-    format!(
-        "POST /{}\n    generated: exchange\n    caller: service\n    output: {}\n    status: 200\n\n",
-        jadpo_std::http::EXCHANGE_PATH.join("/"),
-        jadpo_std::http::EXCHANGED_TOKEN
-    )
+/// A route the runtime answers itself, as its API's record lists it:
+/// where it sorts among the routes, its entry, and the sections of what
+/// it answers with.
+struct Generated {
+    at: (String, usize),
+    entry: String,
+    sections: Vec<(String, String)>,
 }
 
-/// The record's section for what the exchange answers with.
-fn exchanged_section() -> String {
-    format!(
-        "output {}\n    token: ServiceToken\n    expires_at: Instant\n",
-        jadpo_std::http::EXCHANGED_TOKEN
-    )
+fn order_of(method: jadpo_std::HttpMethod) -> usize {
+    jadpo_std::HttpMethod::ALL
+        .iter()
+        .position(|m| *m == method)
+        .unwrap_or(0)
+}
+
+/// The generated `POST /auth/exchange` (area 8, "Ways to sign in"), as
+/// its record lists it: the runtime's, for services.
+fn exchange_entry() -> Generated {
+    let path = format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/"));
+    Generated {
+        entry: format!(
+            "POST {path}\n    generated: exchange\n    caller: service\n    output: {}\n    status: 200\n\n",
+            jadpo_std::http::EXCHANGED_TOKEN
+        ),
+        at: (path, order_of(jadpo_std::HttpMethod::Post)),
+        sections: vec![(
+            jadpo_std::http::EXCHANGED_TOKEN.to_string(),
+            format!(
+                "output {}\n    token: ServiceToken\n    expires_at: Instant\n",
+                jadpo_std::http::EXCHANGED_TOKEN
+            ),
+        )],
+    }
+}
+
+/// The routes `passkey:` generates under `path` (area 8, "Passkeys"), as
+/// the record lists them: the runtime's, each body and answer fixed.
+fn passkey_entries(path: &[String]) -> Vec<Generated> {
+    use jadpo_std::http::{PASSKEY_ID, PASSKEY_VIEW, PasskeyStep};
+    PasskeyStep::ALL
+        .into_iter()
+        .map(|step| {
+            let shown: String = step
+                .segments(path)
+                .iter()
+                .map(|text| {
+                    if text == PASSKEY_ID {
+                        "/{passkey_id: Uuid}".to_string()
+                    } else {
+                        format!("/{text}")
+                    }
+                })
+                .collect();
+            let sorted: String = step
+                .segments(path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let mut entry = format!(
+                "{} {shown}\n    generated: passkey\n",
+                step.method().word()
+            );
+            if step.authentication().needs_caller() {
+                entry.push_str("    caller: user\n");
+            } else {
+                entry.push_str("    authentication: none\n");
+            }
+            let input = match step {
+                PasskeyStep::SignIn => Some("PasskeyAnswer"),
+                PasskeyStep::Register => Some("PasskeyRegistration"),
+                PasskeyStep::Rename => Some("PasskeyName"),
+                _ => None,
+            };
+            if let Some(input) = input {
+                entry.push_str(&format!("    input: {input} (body)\n"));
+            }
+            if let Some(output) = step.output() {
+                entry.push_str(&format!("    output: {output}\n"));
+            }
+            entry.push_str(&format!("    status: {}\n\n", step.status().code()));
+            let mut sections = Vec::new();
+            if step.output().is_some_and(|output| output.contains(PASSKEY_VIEW)) {
+                sections.push((
+                    PASSKEY_VIEW.to_string(),
+                    format!(
+                        "output {PASSKEY_VIEW}\n    id: Uuid\n    name: Text\n    registered_at: Instant\n    last_used_at: Instant?\n"
+                    ),
+                ));
+            }
+            Generated {
+                at: (sorted, order_of(step.method())),
+                entry,
+                sections,
+            }
+        })
+        .collect()
 }
 
 fn write(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     mut routes: Vec<(&GroupModel, &RouteModel)>,
-    exchange: bool,
+    mut generated: Vec<Generated>,
 ) -> String {
     routes.sort_by_key(|(_, route)| (route.path(), method_order(route)));
+    generated.sort_by(|a, b| a.at.cmp(&b.at));
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failures: BTreeSet<Key> = BTreeSet::new();
     let mut out = String::new();
-    let exchange_at = (
-        format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")),
-        jadpo_std::HttpMethod::ALL
-            .iter()
-            .position(|m| *m == jadpo_std::HttpMethod::Post)
-            .unwrap_or(0),
-    );
-    let mut exchange_due = exchange;
+    let mut generated_sections: Vec<(String, String)> = generated
+        .iter()
+        .flat_map(|generated| generated.sections.clone())
+        .collect();
+    let mut due = generated.into_iter().peekable();
     for (_, route) in &routes {
-        if exchange_due && (route.path(), method_order(route)) > exchange_at {
-            out.push_str(&exchange_entry());
-            exchange_due = false;
+        while let Some(next) = due.next_if(|next| (route.path(), method_order(route)) > next.at) {
+            out.push_str(&next.entry);
         }
         let path: String = route
             .segments
@@ -236,8 +338,8 @@ fn write(
         }
         out.push('\n');
     }
-    if exchange_due {
-        out.push_str(&exchange_entry());
+    for rest in due {
+        out.push_str(&rest.entry);
     }
     // Failures' client fields name types too.
     let mut failure_text = String::new();
@@ -357,11 +459,9 @@ fn write(
         }
         sections.insert(name, text);
     }
-    if exchange {
-        sections.insert(
-            jadpo_std::http::EXCHANGED_TOKEN.to_string(),
-            exchanged_section(),
-        );
+    generated_sections.dedup();
+    for (name, text) in generated_sections {
+        sections.insert(name, text);
     }
     for text in sections.values() {
         out.push_str(text);

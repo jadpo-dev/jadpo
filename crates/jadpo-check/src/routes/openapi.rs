@@ -185,7 +185,20 @@ pub fn document(
         .routes()
         .filter(|(group, _)| group.api == api)
         .collect();
-    if routes.is_empty() {
+    let identity = crate::identity::identity(db, project);
+    // The passkey routes belong to the first API that accepts browser
+    // sessions (area 8, "Passkeys").
+    let passkeys = identity.passkeys().filter(|_| {
+        super::api_table(db, project)
+            .apis
+            .iter()
+            .find(|found| {
+                super::apis::accepted_methods(db, project, &found.name)
+                    .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
+            })
+            .is_some_and(|found| found.name == api)
+    });
+    if routes.is_empty() && passkeys.is_none() {
         return None;
     }
     let wire = Wire {
@@ -194,7 +207,6 @@ pub fn document(
     };
     let declared = super::api_table(db, project).get(api);
     let required = declared.is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required);
-    let identity = crate::identity::identity(db, project);
     // The methods it accepts: its own list, or every declared one.
     let methods = super::apis::accepted_methods(db, project, api);
     let mut refs: BTreeSet<Key> = BTreeSet::new();
@@ -226,6 +238,20 @@ pub fn document(
             .or_insert_with(Value::object);
         entry.set("post", exchange_operation(&methods, &mut failure_schemas));
     }
+    if let Some(passkey) = passkeys {
+        for step in jadpo_std::http::PasskeyStep::ALL {
+            let path: String = step
+                .segments(&passkey.path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let entry = paths.entry(path).or_insert_with(Value::object);
+            entry.set(
+                &step.method().word().to_ascii_lowercase(),
+                passkey_operation(step, &methods, &mut failure_schemas),
+            );
+        }
+    }
 
     // Every object and enum the routes name, until none is new.
     let mut schemas: BTreeMap<String, Value> = BTreeMap::new();
@@ -243,6 +269,12 @@ pub fn document(
         schemas.insert(
             jadpo_std::http::EXCHANGED_TOKEN.to_string(),
             exchanged_schema(),
+        );
+    }
+    if passkeys.is_some() {
+        schemas.insert(
+            jadpo_std::http::PASSKEY_VIEW.to_string(),
+            passkey_view_schema(),
         );
     }
     for (_, name, code, description) in SHARED {
@@ -395,6 +427,285 @@ fn exchange_operation(
     responses.set("500", shared_response("InternalFault"));
     responses.set("504", shared_response("DeadlineExceeded"));
     out.set("responses", responses);
+    out
+}
+
+/// One of the runtime's passkey routes (area 8, "Passkeys"): WebAuthn's
+/// own JSON in and out of the ceremonies, a passkey as its holder sees it
+/// from the rest, with every failure it can answer.
+fn passkey_operation(
+    step: jadpo_std::http::PasskeyStep,
+    methods: &[jadpo_std::AuthenticationMethod],
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::http::PasskeyStep as S;
+    let object = |description: &str| {
+        let mut out = Value::object();
+        out.set("type", "object");
+        out.set("description", description);
+        out
+    };
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "{}_{}",
+            step.method().word().to_ascii_lowercase(),
+            step.label().replace([' ', '-'], "_")
+        ),
+    );
+    out.set(
+        "description",
+        match step {
+            S::SignInOptions => "Gives the options for `navigator.credentials.get()` and a cookie binding them to this browser; the challenge is used once and expires.",
+            S::SignIn => "Checks the device's answer, as WebAuthn's `toJSON()` writes it, against the challenge this browser was given, and starts a browser session.",
+            S::RegisterOptions => "Gives the options for `navigator.credentials.create()`, bound to this session; the challenge is used once and expires.",
+            S::Register => "Checks the device's new passkey against the challenge this session was given, and keeps it with the person's name for it.",
+            S::List => "The signed-in person's passkeys, oldest first.",
+            S::Rename => "Renames one of the signed-in person's passkeys.",
+            S::Remove => "Removes one of the signed-in person's passkeys.",
+        },
+    );
+    out.set("x-jadpo-generated", true);
+    if !step.authentication().needs_caller() {
+        out.set("security", Vec::<Value>::new());
+    }
+    if matches!(step, S::Rename | S::Remove) {
+        let mut parameter = Value::object();
+        parameter.set("name", "passkey_id");
+        parameter.set("in", "path");
+        parameter.set("required", true);
+        let mut schema = Value::object();
+        schema.set("type", "string");
+        schema.set("format", "uuid");
+        parameter.set("schema", schema);
+        out.set("parameters", vec![parameter]);
+    }
+    let body: Option<(Vec<&str>, Value)> = match step {
+        S::SignIn => Some((vec!["credential"], Value::object())),
+        S::Register => Some((vec!["name", "credential"], Value::object())),
+        S::Rename => Some((vec!["name"], Value::object())),
+        _ => None,
+    };
+    if let Some((fields, _)) = body {
+        let mut properties = Value::object();
+        for field in &fields {
+            properties.set(
+                field,
+                if *field == "credential" {
+                    object("The device's answer, as WebAuthn's `PublicKeyCredential.toJSON()` writes it.")
+                } else {
+                    let mut name = Value::object();
+                    name.set("type", "string");
+                    name.set("description", "The person's name for the passkey: one line, 1 to 200 characters.");
+                    name
+                },
+            );
+        }
+        let mut schema = Value::object();
+        schema.set("type", "object");
+        schema.set("properties", properties);
+        schema.set(
+            "required",
+            fields
+                .iter()
+                .map(|field| Value::from(*field))
+                .collect::<Vec<_>>(),
+        );
+        schema.set("additionalProperties", false);
+        let mut json = Value::object();
+        json.set("schema", schema);
+        let mut content = Value::object();
+        content.set("application/json", json);
+        let mut request = Value::object();
+        request.set("required", true);
+        request.set("content", content);
+        out.set("requestBody", request);
+    }
+    let mut responses = Value::object();
+    let status = step.status().code().to_string();
+    let success = match step {
+        S::SignInOptions => response(
+            "WebAuthn's request options under `publicKey`, with `mediation`.",
+            Some(object(
+                "`{ publicKey, mediation }`, as `PublicKeyCredential.parseRequestOptionsFromJSON()` reads `publicKey`.",
+            )),
+        ),
+        S::RegisterOptions => response(
+            "WebAuthn's creation options under `publicKey`.",
+            Some(object(
+                "`{ publicKey }`, as `PublicKeyCredential.parseCreationOptionsFromJSON()` reads `publicKey`.",
+            )),
+        ),
+        S::Register | S::Rename => response(
+            "The passkey, as its holder sees it.",
+            Some(reference(jadpo_std::http::PASSKEY_VIEW)),
+        ),
+        S::List => {
+            let mut list = Value::object();
+            list.set("type", "array");
+            list.set("items", reference(jadpo_std::http::PASSKEY_VIEW));
+            response("The person's passkeys, oldest first.", Some(list))
+        }
+        S::SignIn => response("Signed in: the response sets the session's cookies.", None),
+        S::Remove => response("Removed.", None),
+    };
+    responses.set(&status, success);
+    let mut failures: Vec<(&str, &str, &str, &str)> = Vec::new();
+    match step {
+        S::SignInOptions => {}
+        S::SignIn => {
+            failures.push((
+                "401",
+                "PasskeyChallengeExpired",
+                "passkey_challenge_expired",
+                "The challenge expired, was used, was replaced, or was given to another browser.",
+            ));
+            failures.push((
+                "401",
+                "PasskeyRejected",
+                "passkey_rejected",
+                "The answer doesn't check, or its passkey isn't registered.",
+            ));
+            failures.push((
+                "403",
+                "AccountDisabled",
+                "user_disabled",
+                "The signed-in user's record isn't active.",
+            ));
+        }
+        S::RegisterOptions => {}
+        S::Register => {
+            failures.push((
+                "401",
+                "PasskeyChallengeExpired",
+                "passkey_challenge_expired",
+                "The challenge expired, was used, was replaced, or was given to another session.",
+            ));
+            failures.push((
+                "401",
+                "PasskeyRejected",
+                "passkey_rejected",
+                "The answer doesn't check, or its passkey isn't registered.",
+            ));
+            failures.push((
+                "409",
+                "PasskeyAlreadyRegistered",
+                "passkey_already_registered",
+                "The passkey is registered already.",
+            ));
+            failures.push((
+                "409",
+                "PasskeyLimitReached",
+                "passkey_limit_reached",
+                "The person has 20 passkeys already.",
+            ));
+        }
+        S::List => {}
+        S::Rename | S::Remove => {
+            failures.push((
+                "404",
+                "PasskeyNotFound",
+                "passkey_not_found",
+                "No passkey of the signed-in person has this `id`.",
+            ));
+        }
+    }
+    if !step.authentication().needs_caller() {
+        failures.push(("403", "CsrfRejected", "csrf_rejected", "A write that came with the session's cookie has no `Origin` naming this server, or no `X-Jadpo-CSRF` matching the session."));
+    } else {
+        use jadpo_std::AuthenticationMethod as M;
+        let users = methods
+            .iter()
+            .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+        for (status, name, code, description, when) in SIGN_IN {
+            let answers = match when {
+                When::Always | When::Users => true,
+                When::CookieWrite => step.method() != jadpo_std::HttpMethod::Get,
+                When::OtherKind => methods.contains(&M::ServiceKey) && users,
+                When::Services => false,
+            };
+            if answers {
+                failures.push((status, name, code, description));
+            }
+        }
+    }
+    let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (status, name, code, description) in failures {
+        failure_schemas.insert(name.to_string(), envelope(code, description, None));
+        by_status.entry(status).or_default().push((code, name));
+    }
+    for (status, mut failures) in by_status {
+        failures.sort();
+        failures.dedup();
+        let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
+        let codes: Vec<String> = failures
+            .iter()
+            .map(|(code, _)| format!("`{code}`"))
+            .collect();
+        let schema = if schemas.len() == 1 {
+            schemas.remove(0)
+        } else {
+            let mut any = Value::object();
+            any.set("oneOf", schemas);
+            any
+        };
+        responses.set(
+            status,
+            response(
+                &format!("Fails with {}.", crate::and_list(&codes)),
+                Some(schema),
+            ),
+        );
+    }
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+/// The JSON Schema of a passkey as its holder sees it.
+fn passkey_view_schema() -> Value {
+    let mut out = Value::object();
+    out.set(
+        "description",
+        "A passkey as its holder sees it: never its key or credential ID.",
+    );
+    out.set("type", "object");
+    let mut properties = Value::object();
+    let field = |ty: Value, format: Option<&str>| {
+        let mut out = Value::object();
+        out.set("type", ty);
+        if let Some(format) = format {
+            out.set("format", format);
+        }
+        out
+    };
+    properties.set("id", field(Value::from("string"), Some("uuid")));
+    properties.set("name", field(Value::from("string"), None));
+    properties.set(
+        "registered_at",
+        field(Value::from("string"), Some("date-time")),
+    );
+    properties.set(
+        "last_used_at",
+        field(
+            Value::from(vec![Value::from("string"), Value::from("null")]),
+            Some("date-time"),
+        ),
+    );
+    out.set("properties", properties);
+    out.set(
+        "required",
+        ["id", "name", "registered_at", "last_used_at"]
+            .iter()
+            .map(|name| Value::from(*name))
+            .collect::<Vec<_>>(),
+    );
     out
 }
 
