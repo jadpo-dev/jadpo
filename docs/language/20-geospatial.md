@@ -1,7 +1,7 @@
 ---
 title: Geospatial
 area: 20
-status: proposed
+status: decided
 checked-with: nothing yet; the examples are fragments until chunks 5.5u2 to 5.5u6 build them
 rules: []
 ---
@@ -17,9 +17,9 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Proposed, not decided (chunk 5.5u, 2026-10-18). Nothing on this page beyond area 19's types is built; chunks 5.5u2 to 5.5u6 build what Richard decides here. Where this page and a decided area disagree, the area wins, unless an open question below proposes amending it. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Nothing on this page beyond area 19's types is built yet; chunks 5.5u2 to 5.5u6 build it, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
-| Part | Proposed | Builds on |
+| Part | Decided | Builds on |
 |---|---|---|
 | Operations | 10 in `geo`: distance, length, bearing, area, intersects, contains, within (with or without `distance:`), centroid, bounding box; and WKT's two | Area 19's scope; 5.5e's decimal maths |
 | Storage | One PostGIS `geography` column per geometry, checked to its type and WGS84; GiST indexes derived from queries | Area 5; 5.5w's storage rule |
@@ -183,9 +183,12 @@ the rest.
   Question 2 makes every coordinate the former, as a `Vector`'s items are
   held as single-precision floats (5.5s2). An altitude has 6 places, so it
   comes back unchanged up to a million kilometres (15 significant digits).
-- **The extension.** The first migration that adds a geometry column
-  starts with `CREATE EXTENSION IF NOT EXISTS postgis;`, in the
-  migration's transaction like the rest (question 5).
+- **The extension, only when something needs it** (question 5). The
+  first migration that adds a geometry column or a geometry index starts
+  with `CREATE EXTENSION IF NOT EXISTS postgis;`, in the migration's
+  transaction like the rest. An application with no geometry column or
+  index never creates the extension and never needs PostGIS on its
+  server, as an application with no entity needs no database (area 5).
 
 ```jadpo fragment
 // domains/baking/entities/bakery.jadpo
@@ -239,7 +242,8 @@ the exact test.
 
 | Store | What happens |
 |---|---|
-| PostgreSQL with PostGIS available | The migration creates the extension; nothing to configure. Neon, Supabase, Amazon RDS and Google Cloud SQL all offer PostGIS (assumption from their documentation, not tested here) |
+| Any store, in an application with no geometry column or index | Nothing: PostGIS is never needed |
+| PostgreSQL with PostGIS available | The first migration with a geometry column or index creates the extension; nothing to configure. Neon, Supabase, Amazon RDS and Google Cloud SQL all offer PostGIS (assumption from their documentation, not tested here) |
 | PostgreSQL without it, or a role that can't create it | `jadpo migrate apply` stops before changing anything, with a new error, `migration.extension_missing`, naming the extension and that a role allowed to create it runs `CREATE EXTENSION postgis` once. PostGIS is not a trusted extension, so creating it needs a superuser or the provider's own admin role (verified). The application's refusal to start against a database whose migrations aren't applied (area 5, Phase 8) covers the rest |
 | Redis (area 6), and D1 when it arrives | A geometry field is kept in the entity's JSON as its GeoJSON, as every Redis entity keeps its fields; any `geo.` condition or order is area 6's existing compile error naming PostgreSQL |
 
@@ -350,7 +354,7 @@ LIMIT 20
 
 ## Interop
 
-| Format | Proposed | Where the axis order lives |
+| Format | Decided | Where the axis order lives |
 |---|---|---|
 | GeoJSON geometries | As 5.5s built: strict RFC 7946, every ring written by the right-hand rule | `geo.from_geojson` and the wire |
 | GeoJSON `Feature`, `FeatureCollection` | Two standard generic types, `Feature<G, P>` (a `geometry` of type `G` and `properties` of type `P`) and `FeatureCollection<G, P>` (its `features`), read and written as RFC 7946 objects (question 6) | The geometry inside |
@@ -399,7 +403,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 | Feature | Status |
 |---|---|
 | The 17 geospatial types, GeoJSON geometries, `type.standard_exists` for `Point` | Decided (area 19) and built (5.5s) |
-| Everything else on this page | Proposed (chunk 5.5u); built by 5.5u2 to 5.5u6 once decided |
+| Everything else on this page | Decided 2026-10-18; built by 5.5u2 to 5.5u6 |
 
 ### Consistency with the rest of the language
 
@@ -425,6 +429,23 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   `LineString`'s and `Polygon`'s `type.standard_exists` shapes, which
   5.5s left here, come with 5.5u6.
 
+### Decisions
+
+| Topic | Decision | Date |
+|---|---|---|
+| Edges | Great circles in code and in the database, as PostGIS's `geography` draws them, not RFC 7946's straight lines (Richard, as recommended, question 1) | 2026-10-18 |
+| Coordinates | Held as the shortest decimal of the nearest double, so storage and GeoJSON are exact; amends 5.5s's "held as written" (Richard, as recommended, question 2) | 2026-10-18 |
+| Measures | `geo.distance`, `length`, `bearing` and `area` on the WGS84 ellipsoid by Karney's methods, in Jadpo's decimal code, the same on every target; amends area 19's "on the sphere" (Richard, as recommended, question 3) | 2026-10-18 |
+| Order by distance | Only `asc`, only beside `geo.within(field, point, distance:)` on the same field and point, only in a `List`, sorted by `ST_Distance` (Richard, as recommended, question 4) | 2026-10-18 |
+| PostGIS | Required only once an application has a geometry column or index: the first migration adding one writes `CREATE EXTENSION postgis`; `jadpo migrate apply` fails with `migration.extension_missing` when it can't; Redis and D1 keep GeoJSON and refuse `geo.` conditions at compile time (Richard, as recommended, clarified, question 5) | 2026-10-18 |
+| GeoJSON features | `Feature<G, P>` and `FeatureCollection<G, P>` as standard types, read strictly, no `id` (Richard, as recommended, question 6) | 2026-10-18 |
+| `BoundingBox` and `Circle` storage | Named columns: a box's four sides as `numeric`, a circle's centre as `geography` and radius as `numeric(38, 6)`; amends 5.5s (Richard, as recommended, question 7) | 2026-10-18 |
+| Polygon validity | Simple rings, holes inside, edges under 180° of arc, under half the globe: `format` when read, the rule `rings_valid` when built (Richard, as recommended, question 8) | 2026-10-18 |
+| WKT and WKB | `geo.from_wkt` and `geo.to_wkt`, longitude first, `SRID=4326;` read and any other refused; WKB inside the driver only (Richard, as recommended, question 9) | 2026-10-18 |
+| Point-only distance | `geo.distance` and `within(distance:)` between points only for now (Richard, as recommended, question 10) | 2026-10-18 |
+| Box filter | On `Point` fields only, through an index on the column cast to `geometry` (Richard, as recommended, question 11) | 2026-10-18 |
+| The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written (Richard, as recommended) | 2026-10-18 |
+
 ### Open questions
 
 1. **Are edges great circles?** RFC 7946 §3.1.1 says a line between two
@@ -438,6 +459,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
    the database, so a query and `geo.contains` mean the same shape. A
    zone drawn with long straight edges on a web map should have points
    added along them; city-sized delivery patches are unaffected.
+   *Decided 2026-10-18 (Richard):* as recommended.
 2. **Is every coordinate held as the shortest decimal of a double?** 5.5s
    holds a coordinate built in code as written, so `51.50720000001234567`
    would be stored by PostGIS as `51.50720000001235` and read back as a
@@ -446,6 +468,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
    floats (5.5s2). Every coordinate with up to 15 significant digits,
    which is all a person writes and every GPS gives, is unchanged; it
    makes storage and GeoJSON exact. Amends 5.5s's choice.
+   *Decided 2026-10-18 (Richard):* as recommended.
 3. **Distance on the ellipsoid by Karney's method, not on the sphere?**
    Area 19's scope said "metres, on the sphere". A sphere is up to 0.5%
    off (367 m between London and Paris, verified), and PostGIS's
@@ -454,6 +477,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
    simpler but fails to converge for points nearly opposite each other.
    *Recommendation:* the ellipsoid, by Karney's method, in Jadpo's
    decimal code; amends area 19's scope row.
+   *Decided 2026-10-18 (Richard):* as recommended.
 4. **Does ordering by distance need a radius?** PostGIS's only
    index-ordered nearest search, `<->`, measures on a sphere (verified),
    so its order can disagree with `geo.distance`. *Recommendation:* yes:
@@ -461,15 +485,21 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
    `geo.within(field, point, distance:)` on the same field and point, in
    a `List` with `limit:`, sorted by `ST_Distance`. "Nearest anywhere" is
    a large radius. Pages by distance stay out.
+   *Decided 2026-10-18 (Richard):* as recommended.
 5. **What happens without PostGIS?** The compiler can't see the server.
-   *Recommendation:* the first geometry migration writes `CREATE
-   EXTENSION IF NOT EXISTS postgis`; `jadpo migrate apply` fails before
+   *Recommendation:* the first migration that adds a geometry column or
+   index writes `CREATE EXTENSION IF NOT EXISTS postgis`; `jadpo migrate apply` fails before
    changing anything with `migration.extension_missing` when the server
    lacks PostGIS or the role can't create it (it is not a trusted
    extension, verified); Redis and D1 keep geometries as GeoJSON and
    refuse `geo.` conditions at compile time with area 6's existing error.
    The alternative, the operator creating the extension by hand, adds a
    setup step to every new database for no safety gained.
+   *Decided 2026-10-18 (Richard):* as recommended, clarified: PostGIS is
+   required only once the application has code that needs it. The first
+   migration that adds a geometry column or index writes `CREATE
+   EXTENSION postgis`, and an application with no geometry never needs
+   PostGIS.
 6. **GeoJSON `Feature` and `FeatureCollection` as standard types?** 5.5s
    refused them. Map libraries (Leaflet, MapLibre) take a
    `FeatureCollection`, so without them every application declares the
@@ -480,6 +510,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
    identity goes in `properties`), so a feature arriving with one is
    `unknown_field`, as every input refuses a field it doesn't have. Two
    names added beside the 247, each on area 19's list.
+   *Decided 2026-10-18 (Richard):* as recommended.
 7. **`BoundingBox` and `Circle` stored as named columns, not
    `geography`?** 5.5s planned `geography` for both. A box's edges are
    parallels and meridians, which a `geography` polygon would turn into
@@ -487,17 +518,20 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
    named columns, by 5.5w's rule: a box's four sides as `numeric`, a
    circle's centre as `geography` and its radius as `numeric(38, 6)`.
    Amends 5.5s's storage choice.
-8. **Polygon validity as proposed, including no edge of half the globe
+   *Decided 2026-10-18 (Richard):* as recommended.
+8. **Polygon validity as above, including no edge of half the globe
    and no polygon covering more than half of it?** Without the last two,
    a ring's meaning is ambiguous: PostGIS reads a ring either way round as
    the smaller area (verified). *Recommendation:* yes, `format` when read
    and the named rule `rings_valid` when built in code.
+   *Decided 2026-10-18 (Richard):* as recommended.
 9. **WKT at named edges, WKB inside the driver only?** WKT turns up in
    CSV exports and other systems' APIs; WKB only between programs and
    databases, which the driver handles. *Recommendation:* `geo.from_wkt`
    and `geo.to_wkt`, longitude first as PostGIS and every GIS tool write
    it for WGS84, `SRID=4326;` read and any other refused; no WKB
    operation.
+   *Decided 2026-10-18 (Richard):* as recommended.
 10. **`geo.distance` and `within(distance:)` between points only, for
     now?** Distance from a point to a line or polygon ("within 500 m of
     the route") is a further geodesic algorithm, and PostGIS measures it
@@ -505,17 +539,18 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
     have to reproduce exactly to agree. *Recommendation:* points only in
     this build; a line or polygon is `type.mismatch` naming this page, and
     the wider form comes when a scenario needs it.
+    *Decided 2026-10-18 (Richard):* as recommended.
 11. **The `BoundingBox` filter on `Point` fields only?** A box filter on
     a stored line or polygon would compare great-circle edges with a
     box of parallels, two shapes with different edges. *Recommendation:*
     `Point` fields only, through an index on the column cast to
     `geometry`, which is exact for points; a shape field uses
     `geo.intersects` with a `Polygon`.
+    *Decided 2026-10-18 (Richard):* as recommended.
 
 ### Building it
 
-Five chunks, each one session, placed after 5.5u on the roadmap and
-waiting for Richard's decision on this page:
+Five chunks, each one session, placed after 5.5u on the roadmap:
 
 - **5.5u2 Geospatial measures** `opus · xhigh`: `geo.distance`,
   `geo.length`, `geo.bearing` and `geo.area` by Karney's methods in

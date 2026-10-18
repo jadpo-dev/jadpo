@@ -9,7 +9,7 @@ compiled native and WebAssembly deployables.
 
 - Outstanding work, in order: [docs/roadmap.md](docs/roadmap.md). It is the
   only tracker; each session takes the first unticked chunk.
-- What the language means: [docs/language](docs/language/README.md), nineteen
+- What the language means: [docs/language](docs/language/README.md), twenty
   decided areas. Where anything else disagrees, the area page wins.
 - How it is built: [docs/compiler-runtime.md](docs/compiler-runtime.md).
 - Other decisions: [docs/decision-register.md](docs/decision-register.md).
