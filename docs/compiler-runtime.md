@@ -1907,7 +1907,14 @@ recording (`Ctx::record_random`), and none at all, never a weaker source,
 when there is neither a generator nor a seed. The native host reads the
 operating system's generator through `getrandom`. A store's refusal becomes what the
 runtime raises: `unavailable`, a rerun after a concurrent change, and
-otherwise the `Store` fault with the driver's reason.
+otherwise the `Store` fault with the driver's reason. Since chunk 5.6c
+an aggregate query (area 6, "Counts, sums and groups") is read into a
+`QueryModel` whose `grouping` holds its groups and aggregates, and
+`jadpo-plan` writes it as one statement (`jadpo_sql::statement::grouped`):
+a grouped subquery selecting each entry, then an outer one that orders,
+limits and works out what needs several totals (an average from its sum
+and count, through `decimal.divide`'s SQL form). Its rows are ordinary
+read-plan records, so the runtime reads them as it reads any query's.
 
 Built in chunk 3.3: the runtime runs a write plan
 (`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s
