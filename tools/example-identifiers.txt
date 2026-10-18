@@ -98,6 +98,7 @@ balance
 band
 band_rate
 bap
+bar_hours
 basket
 basket_empty
 basket_line
@@ -225,6 +226,7 @@ check_note
 check_out
 check_shelf
 check_title
+checked_at
 checked_note
 checked_on
 checkout
@@ -239,11 +241,15 @@ chores
 citation
 citation_id
 citation_view
+class_count
+class_schedule
+class_time
 clear_cart
 clock_reading
 close_enough
 close_outlet
 close_project
+club_hours
 code_bytes
 code_digest
 code_unknown
@@ -318,7 +324,6 @@ customer_reference
 customer_status
 customs
 cyd
-daily
 day_count
 days_left
 days_overdue
@@ -444,6 +449,7 @@ flour
 flour_for
 flour_needed
 flour_short
+fold_days
 follow_up
 forget_memos
 form_text
@@ -456,6 +462,7 @@ free_delivery_from
 from_address
 from_count
 from_flag
+gap_days
 give_note
 gluten
 goals
@@ -535,6 +542,7 @@ invoice_date
 invoice_dated
 invoice_document
 invoice_transfer
+is_open
 is_overdue
 isbn
 issue_card
@@ -700,6 +708,7 @@ missing_success
 misuse_test_boundary
 mix_dough
 mixed_currencies
+monday_classes
 morning
 moved_in
 my_bakeries
@@ -717,6 +726,7 @@ new_staff
 new_todo
 new_york_autumn
 new_york_spring
+next_classes
 next_day
 next_free
 next_page
@@ -773,7 +783,6 @@ open_outlet
 open_outlets
 open_project_with_board
 open_todos
-opening_hours
 opening_sign
 opening_unclear
 openings
@@ -949,6 +958,7 @@ projects
 proving
 proving_time
 proxy_hops
+pub_hours
 publish_appraisal
 published_at
 publisher
@@ -1073,6 +1083,7 @@ scale_recipe
 scaled
 scaled_recipe
 scone
+search_from
 search_phrase
 search_todos
 seat_count

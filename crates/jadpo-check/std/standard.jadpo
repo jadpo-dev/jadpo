@@ -140,6 +140,12 @@ public type Month = Enum {
 /// `9434765919`, shown to people as `943 476 5919`. Personal data.
 public type NhsNumber = Text {}
 
+/// When a place is open each week and the days that differ, read by the
+/// clock in its zone (area 19, OpenStreetMap's `opening_hours`): `Mo-Fr
+/// 09:00-17:30; Sa 10:00-16:00; 2026 Dec 25 off [Europe/London]`.
+/// `temporal.open_at` asks whether it is open at an instant.
+public type OpeningHours = Text {}
+
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last
 /// four only, `•••• 4242`. Personal data.
@@ -167,6 +173,12 @@ public type Range = Object {
     start: T?
     end: T?
 }
+
+/// When something recurs (area 19, RFC 5545): its first occurrence as a
+/// local time in its zone, a line feed, then its rule:
+/// `DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO`.
+/// `temporal.occurrences` gives the next ones.
+public type RecurrenceRule = Text {}
 
 /// A UK bank account number (area 19), eight digits with leading zeros
 /// kept: `66374958`. Personal data.

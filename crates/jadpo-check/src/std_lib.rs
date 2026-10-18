@@ -77,10 +77,14 @@ fn kind_of(ty: &TypeRef) -> Option<Kind> {
         {
             Some(Kind::Any)
         }
-        // A standard object type the runtime builds as a record (area 19).
+        // A standard object type the runtime builds as a record, or one held
+        // as text (area 19).
         (other, 0)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
-                matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                matches!(
+                    entry.holds,
+                    jadpo_std::standard::Holds::Object(_) | jadpo_std::standard::Holds::Text { .. }
+                )
             }) =>
         {
             jadpo_std::standard_type(other).map(|entry| Kind::Std(entry.name))

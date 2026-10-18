@@ -21,6 +21,9 @@ use jadpo_std::{
     ZONE, ZONES,
 };
 
+use jadpo_std::standard::opening_hours::OpeningHours;
+use jadpo_std::standard::recurrence::{End, LocalAt, Rule};
+
 use crate::{Fault, Value, Zoned};
 
 const DAY: i64 = 86_400_000;
@@ -130,6 +133,93 @@ pub fn resolve(day: i32, clock: u32, zone: u32, dst: Dst) -> Result<Zoned, Fault
         millis: instant(resolved.timestamp().as_millisecond())?,
         zone,
     })
+}
+
+/// A local time of a recurrence as RFC 5545 reads it in a zone (3.3.5 and
+/// 3.8.5.3, chosen in chunk 5.5k2): in an overlap, its first instant; in a
+/// gap, none, since a recurrence ignores a local time the clocks skip and
+/// doesn't count it, except the start itself, which takes the offset
+/// before the gap and so lands as far after it.
+fn recurrence_instant(at: LocalAt, zone: u32, first: bool) -> Result<Option<Zoned>, Fault> {
+    let tz = zone_at(zone)?;
+    let time = civil::Time::new(
+        i8::try_from(at.second / 3600).map_err(|_| Fault::Shape)?,
+        i8::try_from(at.second / 60 % 60).map_err(|_| Fault::Shape)?,
+        i8::try_from(at.second % 60).map_err(|_| Fault::Shape)?,
+        0,
+    )
+    .map_err(|_| Fault::Shape)?;
+    let ambiguous = tz.to_ambiguous_zoned(civil_date(at.date)?.to_datetime(time));
+    if !first && matches!(ambiguous.offset(), tz::AmbiguousOffset::Gap { .. }) {
+        return Ok(None);
+    }
+    let resolved = ambiguous
+        .disambiguate(Disambiguation::Compatible)
+        .map_err(|_| Fault::TimeRange)?;
+    let millis = resolved.timestamp().as_millisecond();
+    Ok((INSTANT_MIN..=INSTANT_MAX)
+        .contains(&millis)
+        .then_some(Zoned { millis, zone }))
+}
+
+/// `temporal.occurrences`: the next `count` occurrences of the recurrence
+/// `rule` holds at or after `from`, in its zone, fewer when it ends first.
+/// `COUNT` counts from the start, every occurrence the zone's clocks show;
+/// `UNTIL` is an instant, included.
+pub fn occurrences(rule: &str, from: i64, count: i64) -> Result<Vec<Zoned>, Fault> {
+    let rule = Rule::read(rule).ok_or(Fault::Shape)?;
+    let wanted = usize::try_from(count)
+        .ok()
+        .filter(|count| (1..=1000).contains(count))
+        .ok_or(Fault::Shape)?;
+    // With no `COUNT` to count from the start, an expansion starts a
+    // period before the one holding `from`'s day, which no zone's offset
+    // reaches past.
+    let first = match rule.end {
+        End::Count(_) => 0,
+        _ => {
+            let day = from.div_euclid(DAY) - 1;
+            rule.period_holding(i32::try_from(day).map_err(|_| Fault::TimeRange)?) - 1
+        }
+    };
+    let mut found = Vec::new();
+    let mut counted: u64 = 0;
+    let mut last = None;
+    for at in rule.local_occurrences(first) {
+        let Some(zoned) = recurrence_instant(at, rule.zone, at == rule.start)? else {
+            continue;
+        };
+        // A start moved past a gap can meet the rule's next local time.
+        if last.is_some_and(|last| zoned.millis <= last) {
+            continue;
+        }
+        last = Some(zoned.millis);
+        match rule.end {
+            End::Until(until) if zoned.millis > until => break,
+            End::Count(most) if counted >= u64::from(most) => break,
+            _ => {}
+        }
+        counted += 1;
+        if zoned.millis >= from {
+            found.push(zoned);
+            if found.len() == wanted {
+                break;
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// `temporal.open_at`: whether the opening hours `hours` holds are open at
+/// the instant `at`, by the clock in their zone.
+pub fn open_at(hours: &str, at: i64) -> Result<bool, Fault> {
+    let hours = OpeningHours::read(hours).ok_or(Fault::Shape)?;
+    let (local, _) = local(Zoned {
+        millis: instant(at)?,
+        zone: hours.zone,
+    })
+    .ok_or(Fault::TimeRange)?;
+    Ok(hours.open_at(local.date, local.clock))
 }
 
 /// A date or a zoned time.

@@ -22,12 +22,9 @@ ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 # always called through the namespace (area 10); none waits for a stub
 # now. `collection` moved whole to `list`, `set` and `map` (area 19,
 # question 6): it has no operations, and stays reserved so that a call
-# through it is `semantic.standard_operation_moved`. `temporal`'s
-# `occurrences` and `open_at` wait for `RecurrenceRule` and
-# `OpeningHours` (chunk 5.5k2).
+# through it is `semantic.standard_operation_moved`.
 [namespaces]
 collection:
-temporal: occurrences open_at
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until

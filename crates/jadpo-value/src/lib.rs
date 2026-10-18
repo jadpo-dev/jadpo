@@ -274,6 +274,8 @@ pub fn run(
             | Op::TemporalMinute
             | Op::TemporalMonth
             | Op::TemporalMonthBounds
+            | Op::TemporalOccurrences
+            | Op::TemporalOpenAt
             | Op::TemporalPeriodBetween
             | Op::TemporalResolve
             | Op::TemporalWeekBounds
@@ -614,6 +616,13 @@ fn run_temporal(op: Op, args: &[Value]) -> Result<Value, Fault> {
         (Op::TemporalPeriodBetween, [Value::Date(start), Value::Date(end)]) => {
             calendar::period_between(*start, *end)
         }
+        (Op::TemporalOccurrences, [Value::Text(rule), Value::Instant(from), Value::Int(count)]) => {
+            temporal::occurrences(rule, *from, *count)
+                .map(|found| Value::list(found.into_iter().map(Value::Zoned).collect()))
+        }
+        (Op::TemporalOpenAt, [Value::Text(hours), Value::Instant(at)]) => {
+            temporal::open_at(hours, *at).map(Value::Bool)
+        }
         _ => Err(Fault::Shape),
     }
 }
@@ -842,6 +851,17 @@ mod tests {
                 }
                 Op::TemporalBetween => vec![Value::Instant(0), Value::Instant(1000)],
                 Op::TemporalPeriodBetween => vec![date.clone(), date.clone()],
+                Op::TemporalOccurrences => vec![
+                    Value::text(
+                        "DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO",
+                    ),
+                    Value::Instant(0),
+                    Value::Int(3),
+                ],
+                Op::TemporalOpenAt => vec![
+                    Value::text("Mo-Fr 09:00-17:30 [Europe/London]"),
+                    Value::Instant(0),
+                ],
                 Op::TemporalInZone => vec![Value::Instant(0), london.clone()],
                 Op::TemporalResolve => vec![
                     date.clone(),
