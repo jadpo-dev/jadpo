@@ -401,7 +401,8 @@ impl Reader<'_> {
             .as_ref()
             .map_or_else(|| span.clone(), |(_, _, at)| at.clone());
         let mut claims = vec![variable.clone()];
-        if is_secret && self.lookup.base_prim(&ty) == Some(Prim::SigningKey) {
+        let rotates = self.lookup.base_prim(&ty).is_some_and(Prim::rotates);
+        if is_secret && rotates {
             claims.push(previous_variable(&variable));
         }
         for claim in claims {
@@ -448,7 +449,6 @@ impl Reader<'_> {
             return None;
         };
         let generated = is_secret.then(|| self.generated(&ty)).flatten();
-        let rotates = self.lookup.base_prim(&ty) == Some(Prim::SigningKey);
         Some(Setting {
             name: name.to_string(),
             ty,
@@ -826,6 +826,7 @@ impl Reader<'_> {
         match self.lookup.base_prim(ty)? {
             Prim::PostgresUrl => Some(TestSecret::PostgresUrl),
             Prim::RedisUrl => Some(TestSecret::RedisUrl),
+            Prim::EncryptionKey | Prim::PrivateKey => Some(TestSecret::Key),
             _ => {
                 let mut min = jadpo_std::SIGNING_KEY_MIN as u64;
                 let mut max: Option<u64> = None;
@@ -909,8 +910,12 @@ pub fn reads_in(source: &ast::SourceFile) -> Vec<(String, ast::FieldExpr)> {
 }
 
 /// Whether `expr` is the value of a member a secret may be given to: in
-/// `application { }` or `authentication { }`, one of [`SECRET_SINKS`].
+/// `application { }` or `authentication { }`, one of [`SECRET_SINKS`]; or
+/// a `crypto` call's `key:` ([`is_key_argument`]).
 fn is_sink(expr: &ast::FieldExpr) -> bool {
+    if is_key_argument(expr) {
+        return true;
+    }
     let Some(member) = expr.syntax().parent().and_then(ast::Member::cast) else {
         return false;
     };
@@ -930,6 +935,46 @@ fn is_sink(expr: &ast::FieldExpr) -> bool {
         .any(|decl| {
             decl.keyword()
                 .is_some_and(|word| matches!(word.text(), "application" | "authentication"))
+        })
+}
+
+/// Whether `expr` is the `key:` of a `crypto` call that takes a key
+/// setting there (area 19, "Hashing and cryptography"): written by name,
+/// `key: config.<name>`, the one place code may give a key, which the
+/// compiler owns as it owns a connection's `url:`. That the setting is the
+/// key the operation takes is the call's type check.
+pub fn is_key_argument(expr: &ast::FieldExpr) -> bool {
+    let Some(arg) = expr.syntax().parent().and_then(ast::Arg::cast) else {
+        return false;
+    };
+    let named_key = arg
+        .name()
+        .and_then(|name| name.ident_token())
+        .is_some_and(|token| token.text() == "key");
+    if !named_key || arg.expr().map(|value| value.syntax().clone()) != Some(expr.syntax().clone()) {
+        return false;
+    }
+    let Some(call) = arg
+        .syntax()
+        .parent()
+        .and_then(|list| list.parent())
+        .and_then(ast::CallExpr::cast)
+    else {
+        return false;
+    };
+    let Some((first, rest)) = call.expr().as_ref().and_then(dotted) else {
+        return false;
+    };
+    let ([member], Some(namespace)) = (rest.as_slice(), tree::name_ref_text(&first)) else {
+        return false;
+    };
+    tree::name_ref_text(member)
+        .and_then(|member| jadpo_std::operation(&namespace, &member))
+        .is_some_and(|operation| {
+            operation.params.iter().any(|param| {
+                param.name == "key"
+                    && matches!(param.kind, jadpo_std::Kind::Builtin(builtin) if builtin.is_key())
+            })
         })
 }
 
@@ -958,7 +1003,12 @@ pub fn use_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic
             continue;
         };
         if fact.secret && !is_sink(&field) {
-            out.push(secret_flow(&name, &field, span));
+            let key = Lookup::new(db, project)
+                .base_prim(&fact.ty)
+                // A signing key also signs sessions, so it keeps the
+                // general wording.
+                .filter(|prim| matches!(prim, Prim::EncryptionKey | Prim::PrivateKey));
+            out.push(secret_flow(&name, &field, span, key));
         }
     }
     out
@@ -988,7 +1038,24 @@ fn unknown_setting(db: &dyn Db, project: Project, name: &str, span: Span) -> Dia
     }
 }
 
-fn secret_flow(name: &str, field: &ast::FieldExpr, span: Span) -> Diagnostic {
+/// A secret read where the compiler doesn't own the place; `key` is the
+/// key type a setting holds whose one place is a `crypto` call's `key:`
+/// (an `EncryptionKey` or a `PrivateKey`).
+fn secret_flow(name: &str, field: &ast::FieldExpr, span: Span, key: Option<Prim>) -> Diagnostic {
+    if let Some(key) = key {
+        return Diagnostic::new(
+            &rule::CONFIGURATION_SECRET_FLOW,
+            format!("`config.{name}` is a key"),
+        )
+        .at(span, "a key, read here")
+        .reason(format!(
+            "A `{}` is opaque: code never reads, prints, stores, compares or passes on a key, so the one place it goes is a `crypto` call's `key:`, which the compiler owns.",
+            key.name()
+        ))
+        .next(format!(
+            "Give `config.{name}` only as a `crypto` call's `key:`, written `key: config.{name}`"
+        ));
+    }
     let compared = field
         .syntax()
         .parent()
@@ -997,7 +1064,7 @@ fn secret_flow(name: &str, field: &ast::FieldExpr, span: Span) -> Diagnostic {
     let reason = if compared {
         "Comparing a secret with something gives a yes or no that leaks it one guess at a time, so a secret is never compared, returned, stored, logged, put in a failure or used to build another value."
     } else {
-        "A secret never leaves the server, so it is accepted only where the compiler itself owns the place: a connection's `url:`, an integration's `credential:` and an authentication `signing_key:`. Returning it, storing it, logging it, putting it in a failure, building another value from it or comparing it with something could leak it."
+        "A secret never leaves the server, so it is accepted only where the compiler itself owns the place: a connection's `url:`, an integration's `credential:`, an authentication `signing_key:` and a `crypto` call's `key:`. Returning it, storing it, logging it, putting it in a failure, building another value from it or comparing it with something could leak it."
     };
     Diagnostic::new(
         &rule::CONFIGURATION_SECRET_FLOW,
@@ -1006,7 +1073,7 @@ fn secret_flow(name: &str, field: &ast::FieldExpr, span: Span) -> Diagnostic {
     .at(span, "a secret, read here")
     .reason(reason)
     .next(format!(
-        "Give `config.{name}` to the connection, integration or authentication that needs it in `app.jadpo` or `authentication.jadpo`, or leave `secret: true` off `{name}` if its value is public"
+        "Give `config.{name}` to the connection, integration or authentication that needs it in `app.jadpo` or `authentication.jadpo`, or as a `crypto` call's `key:`, or leave `secret: true` off `{name}` if its value is public"
     ))
 }
 

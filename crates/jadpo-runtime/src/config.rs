@@ -190,6 +190,12 @@ impl ConfigValues {
         self.entries.get(at as usize)?.text.as_deref()
     }
 
+    /// The previous value of setting number `at`, a key's while a
+    /// deployment rotates it.
+    pub fn previous_at(&self, at: u32) -> Option<&str> {
+        self.entries.get(at as usize)?.previous.as_deref()
+    }
+
     pub fn is_secret(&self, name: &str) -> bool {
         self.entry(name).is_some_and(|entry| entry.secret)
     }
@@ -399,6 +405,36 @@ pub fn decode(
     }
 }
 
+/// The key setting number `at` of `plan` holds, with the one it replaced
+/// (area 19, "Hashing and cryptography"): what a `crypto` call's `key:
+/// config.<name>` gives the operation, and nothing else. An
+/// `EncryptionKey`'s and a `PrivateKey`'s text is 32 bytes as unpadded
+/// Base64url, which the check before the app starts has held it to; a
+/// `SigningKey`'s text's bytes are the HMAC key. `None` for a setting that
+/// isn't a key, or has no value in this run.
+pub fn key_ring(
+    plan: &ConfigPlan,
+    values: &ConfigValues,
+    at: u32,
+) -> Option<jadpo_value::crypto::KeyRing> {
+    let field = plan.fields.get(at as usize)?;
+    let Some(jadpo_std::http::Codec::Scalar { builtin, .. }) =
+        plan.codecs.get(field.codec.0 as usize)
+    else {
+        return None;
+    };
+    let (current, previous) = (values.text_at(at)?, values.previous_at(at));
+    match builtin {
+        jadpo_std::Builtin::EncryptionKey | jadpo_std::Builtin::PrivateKey => {
+            jadpo_value::crypto::KeyRing::from_key_text(current, previous)
+        }
+        jadpo_std::Builtin::SigningKey => Some(jadpo_value::crypto::KeyRing::from_signing_text(
+            current, previous,
+        )),
+        _ => None,
+    }
+}
+
 /// A setting that holds a duration, in milliseconds: the value the
 /// application started with for setting number `at` of `plan`.
 pub fn duration_ms(
@@ -434,6 +470,13 @@ fn generate(kind: TestSecret, random: &dyn Fn(&mut [u8]) -> bool) -> Option<Stri
         }
         TestSecret::PostgresUrl => Some(format!("postgres://test:{}@127.0.0.1:1/test", hex(32)?)),
         TestSecret::RedisUrl => Some(format!("redis://:{}@127.0.0.1:1/0", hex(32)?)),
+        TestSecret::Key => {
+            let mut bytes = [0u8; jadpo_std::KEY_BYTES];
+            if !random(&mut bytes) {
+                return None;
+            }
+            Some(jadpo_value::encoding::to_base64url(&bytes))
+        }
     }
 }
 
