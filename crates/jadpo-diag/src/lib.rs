@@ -1279,7 +1279,8 @@ mod tests {
                 "constant.similar_exists",
                 "library.similar_exists",
                 "translation.field_unused",
-                "type.standard_exists"
+                "type.standard_exists",
+                "type.variant_retired"
             ]
         );
     }

@@ -135,8 +135,8 @@ fn filled(pattern: &str, given: &str, family: Option<&str>, space: &str) -> Stri
         match piece {
             (Some(value), _) => out.push_str(value),
             (None, literal) => {
-                let before = pieces[..at].iter().any(present);
-                let after = pieces[at + 1..].iter().any(present);
+                let before = pieces.iter().take(at).any(present);
+                let after = pieces.iter().skip(at + 1).any(present);
                 if before && after {
                     out.push_str(literal);
                 }
@@ -304,18 +304,19 @@ pub fn postal_address(value: &Value, tag: &str) -> Result<String, Fault> {
                 // there: before the first, only if the next is; after the
                 // last, only if that one is.
                 Piece::Literal(text) => {
-                    let before = pieces[..at]
+                    let is_field = |piece: &&Piece<'_>| matches!(piece, Piece::Field(_));
+                    let before = pieces.iter().take(at).rposition(|piece| is_field(&piece));
+                    let after = pieces
                         .iter()
-                        .rposition(|piece| matches!(piece, Piece::Field(_)));
-                    let after = pieces[at + 1..]
-                        .iter()
-                        .position(|piece| matches!(piece, Piece::Field(_)))
+                        .skip(at + 1)
+                        .position(|piece| is_field(&piece))
                         .map(|offset| at + 1 + offset);
+                    let there = |at: usize| filled.get(at).copied().unwrap_or(false);
                     let keep = match (before, after) {
                         _ if fields == 0 => true,
-                        (Some(before), Some(after)) => filled[before] && filled[after],
-                        (None, Some(after)) => filled[after],
-                        (Some(before), None) => filled[before],
+                        (Some(before), Some(after)) => there(before) && there(after),
+                        (None, Some(after)) => there(after),
+                        (Some(before), None) => there(before),
                         (None, None) => true,
                     };
                     if keep {
