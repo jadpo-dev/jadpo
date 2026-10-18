@@ -73,13 +73,13 @@ pub(crate) fn held_secret(
             seen.push(name.clone());
             match table.def(name) {
                 Some(Def::Scalar { parent, .. }) => held_secret(table, parent, seen),
-                Some(Def::Fields { base, fields, .. })
-                    if matches!(base, FieldsBase::Object | FieldsBase::Input) =>
-                {
-                    fields
-                        .iter()
-                        .find_map(|field| held_secret(table, &field.declared, seen))
-                }
+                Some(Def::Fields {
+                    base: FieldsBase::Object | FieldsBase::Input,
+                    fields,
+                    ..
+                }) => fields
+                    .iter()
+                    .find_map(|field| held_secret(table, &field.declared, seen)),
                 Some(Def::Enum { variants }) => variants
                     .iter()
                     .flat_map(|variant| variant.fields.iter().flatten())
