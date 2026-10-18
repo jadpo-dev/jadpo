@@ -7704,9 +7704,8 @@ under "Errors").
 - **Its entries are `Locale`s like any other,** which the page left open:
   read from a request or from JSON, only a supported locale is accepted
   (an unsupported tag breaks `variant`, and OpenAPI lists only the
-  supported tags as its keys); written in code, any locale is. That needs
-  no new rule, and text stored before a locale left `supported:` is still
-  read back from storage.
+  supported tags as its keys); written in code, any locale is, as for
+  any `Locale` value. That needs no new rule.
 - **`text.pick` walks area 10's chain** over the value's entries: the
   locale's own; one of its language, CLDR's likely one first, then in the
   canonical order; the application's default locale's. The page has it
