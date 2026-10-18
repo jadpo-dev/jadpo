@@ -11,7 +11,7 @@ use crate::support;
 use jadpo_db::Layout;
 use support::{problems, rules};
 
-const TYPES: &str = "type Note = Text {\n    max_length: 2000\n}\n\ntype RecordId = Text {}\n\ntype Sealed = Bytes {}\n\ntype Opened = Bytes {}\n\ntype Mac = Bytes {}\n\ntype Genuine = Bool {}\n\ntype PasswordText = Text {\n    min_length: 12\n}\n\ntype Shown = Text {}\n\ntype NoteUnreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\nconfig {\n    notes_key: EncryptionKey\n    receipt_key: PrivateKey\n    webhook_secret: SigningKey\n}\n\n";
+const TYPES: &str = "type Note = Text {\n    max_length: 2000\n}\n\ntype RecordId = Text {}\n\ntype Sealed = Bytes {}\n\ntype Opened = Bytes {}\n\ntype Mac = Bytes {}\n\ntype Genuine = Bool {}\n\ntype PasswordText = Password {\n    min_length: 12\n}\n\ntype Shown = Text {}\n\ntype NoteUnreadable = Failure {\n    kind: FailureKind.invalid_value\n}\n\nconfig {\n    notes_key: EncryptionKey\n    receipt_key: PrivateKey\n    webhook_secret: SigningKey\n}\n\n";
 
 fn check(source: &str) -> Vec<String> {
     rules(
@@ -58,11 +58,11 @@ fn a_pure_body_cant_seal_or_hash() {
     // A nonce and a salt are read from the generator, as `random` is.
     for call in [
         "Sealed(crypto.encrypt(note, key: config.notes_key, context: \"row\"))",
-        "Sealed(encoding.to_utf8(crypto.hash_password(note)))",
+        "Sealed(encoding.to_utf8(crypto.hash_password(password)))",
     ] {
         assert_eq!(
             check(&format!(
-                "function f(note: Note) -> Sealed {{\n    return {call}\n}}\n"
+                "function f(note: Note, password: PasswordText) -> Sealed {{\n    return {call}\n}}\n"
             )),
             ["type.random_context"],
             "{call}"

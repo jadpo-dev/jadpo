@@ -617,6 +617,23 @@ impl Decls<'_> {
                         self.password_hash_field(base, host, name, &value);
                         continue;
                     }
+                    // A secret value never leaves the server, nor is kept
+                    // in an event (area 19, chunk 5.5r2).
+                    if super::secrets::refuses(base, self.failure)
+                        && let Some(secret) =
+                            super::secrets::held_secret(self.table, &declared, &mut Vec::new())
+                    {
+                        let span = self.span(value.syntax());
+                        self.out.push(super::secrets::field(
+                            base,
+                            self.failure,
+                            host,
+                            name,
+                            secret,
+                            span,
+                        ));
+                        continue;
+                    }
                     let field = FieldCtx {
                         input: base == FieldsBase::Input,
                         later: base.has_later_settings(),

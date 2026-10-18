@@ -700,6 +700,17 @@ pub fn scalar_schema(builtin: Builtin, rules: &Rules) -> Value {
             if let Some(pattern) = rules.pattern.as_deref().or(standard) {
                 out.set("pattern", format!("^(?:{pattern})$"));
             }
+            // A secret value is only ever sent to the server, never back
+            // (chunk 5.5r2), and a password is hidden as it is typed.
+            if let Some(secret) = rules
+                .standard
+                .and_then(jadpo_std::standard::security::secret_value)
+            {
+                out.set("writeOnly", true);
+                if secret == jadpo_std::standard::security::PASSWORD {
+                    out.set("format", "password");
+                }
+            }
         }
         Builtin::Bytes => {
             string(&mut out, None);

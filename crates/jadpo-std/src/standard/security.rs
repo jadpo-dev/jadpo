@@ -16,6 +16,16 @@
 //! signature, times, issuer and audience held; and two values a token or
 //! an identity provider carries, `OAuthScope` (RFC 6749) and `OidcClaims`
 //! (OpenID Connect Core 1.0).
+//!
+//! Chunk 5.5r2 added the secret values, and made `Jwt` one: `Password`,
+//! what a person types; `ApiKey`, a key for an API; `BearerToken`, an RFC
+//! 6750 access token; `TotpSecret`, an authenticator's shared secret (RFC
+//! 6238); and `SecretText`, any other secret. Each is read from text and
+//! JSON, never written, shown or stored as itself ([`SECRET_VALUES`]):
+//! its text form is [`TextForm::Secret`], its JSON [`Json::Secret`], its
+//! format [`FormatKey::Redacted`] and its storage [`Storage::Never`], and
+//! the runtime holds it as `jadpo-value`'s `Secret`, compared in constant
+//! time and written only redacted.
 
 use super::{
     Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
@@ -40,6 +50,273 @@ pub const JWK: &str = "Jwk";
 pub const OAUTH_SCOPE: &str = "OAuthScope";
 /// `OidcClaims` (area 19, chunk 5.5r).
 pub const OIDC_CLAIMS: &str = "OidcClaims";
+/// `Password` (area 19, chunk 5.5r2).
+pub const PASSWORD: &str = "Password";
+/// `ApiKey` (area 19, chunk 5.5r2).
+pub const API_KEY: &str = "ApiKey";
+/// `BearerToken` (area 19, chunk 5.5r2).
+pub const BEARER_TOKEN: &str = "BearerToken";
+/// `TotpSecret` (area 19, chunk 5.5r2).
+pub const TOTP_SECRET: &str = "TotpSecret";
+/// `SecretText` (area 19, chunk 5.5r2).
+pub const SECRET_TEXT: &str = "SecretText";
+
+/// The secret values (area 19, "Secret values", chunk 5.5r2): never in a
+/// response, an `Output`, a failure, an event, an email, a message,
+/// `json.write` or a log, compared in constant time, and redacted
+/// wherever a value is shown to a person.
+pub const SECRET_VALUES: [&str; 6] = [
+    PASSWORD,
+    API_KEY,
+    BEARER_TOKEN,
+    TOTP_SECRET,
+    SECRET_TEXT,
+    JWT,
+];
+
+/// The secret value standard type named `name`, as the static name the
+/// runtime keeps with a secret's text.
+pub fn secret_value(name: &str) -> Option<&'static str> {
+    SECRET_VALUES.into_iter().find(|secret| *secret == name)
+}
+
+/// Whether a secret value of type `name` may one day be stored, sealed
+/// with an encrypted field's key ("Language gaps": keys held as data, with
+/// encrypted fields), so that storing one now is not built yet rather than
+/// refused: a `TotpSecret`, which checking a code needs back, and a
+/// `SecretText`. A password, a key, a token and a JWT are never stored as
+/// themselves, only as a hash (chosen in chunk 5.5r2).
+pub fn stored_encrypted_later(name: &str) -> bool {
+    matches!(name, TOTP_SECRET | SECRET_TEXT)
+}
+
+/// The fewest and most characters a `Password` has: NIST SP 800-63B's
+/// minimum of 8, which an application raises with its own `min_length:`
+/// (15 where a password is the only factor), and a bound past its "at
+/// least 64" so hashing one never works through unbounded text (chosen in
+/// chunk 5.5r2).
+pub const PASSWORD_MIN_LENGTH: usize = 8;
+pub const PASSWORD_MAX_LENGTH: usize = 256;
+
+/// The most characters an `ApiKey` has (chosen in chunk 5.5r2).
+pub const API_KEY_MAX_LENGTH: usize = 512;
+
+/// The most characters a `BearerToken` has: a `Jwt`'s, since a bearer
+/// token is often one (chosen in chunk 5.5r2).
+pub const BEARER_TOKEN_MAX_LENGTH: usize = JWT_MAX_LENGTH;
+
+/// The fewest and most bytes a `TotpSecret` holds: RFC 4226's 128 bits
+/// (R6, "MUST be at least 128 bits"), and 512 (chosen in chunk 5.5r2).
+pub const TOTP_SECRET_MIN_BYTES: usize = 16;
+pub const TOTP_SECRET_MAX_BYTES: usize = 64;
+
+/// The most characters a `SecretText` has: room for a PEM private key or
+/// a service account's JSON (chosen in chunk 5.5r2).
+pub const SECRET_TEXT_MAX_LENGTH: usize = 8192;
+
+/// Whether `text` is a `Password`: 8 to 256 characters, none of them a
+/// control character; spaces and any other Unicode are allowed, as NIST SP
+/// 800-63B asks.
+pub fn is_password(text: &str) -> bool {
+    let length = text.chars().count();
+    (PASSWORD_MIN_LENGTH..=PASSWORD_MAX_LENGTH).contains(&length)
+        && !text.chars().any(char::is_control)
+}
+
+/// Whether `text` is an `ApiKey`: 1 to 512 printable ASCII characters
+/// with no spaces, which every provider's keys are, whatever their prefix.
+pub fn is_api_key(text: &str) -> bool {
+    (1..=API_KEY_MAX_LENGTH).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_graphic())
+}
+
+/// Whether `text` is a `BearerToken`: RFC 6750's `b64token`, one or more
+/// of letters, digits, `-`, `.`, `_`, `~`, `+` and `/`, then any `=`, at
+/// most 8,192 characters.
+pub fn is_bearer_token(text: &str) -> bool {
+    let body = text.trim_end_matches('=');
+    text.len() <= BEARER_TOKEN_MAX_LENGTH
+        && !body.is_empty()
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~+/".contains(&b))
+}
+
+/// The bytes a `TotpSecret`'s text holds: RFC 4648 Base32 in upper case
+/// with no padding, in its one spelling (the bits past the last whole byte
+/// zero), as authenticator apps read a key; `None` for anything else.
+pub fn decode_base32(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() * 5 / 8);
+    let mut bits: u32 = 0;
+    let mut held: u32 = 0;
+    for byte in text.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'2'..=b'7' => byte - b'2' + 26,
+            _ => return None,
+        };
+        bits = (bits << 5) | u32::from(value);
+        held += 5;
+        if held >= 8 {
+            held -= 8;
+            out.push((bits >> held) as u8);
+            bits &= (1 << held) - 1;
+        }
+    }
+    // What is left over is padding bits, fewer than 5 and all zero; a
+    // length no bytes give (1, 3 or 6 characters over) leaves 5 or more.
+    (held < 5 && bits == 0 && !text.is_empty()).then_some(out)
+}
+
+/// Whether `text` is a `TotpSecret`: 16 to 64 bytes as Base32
+/// ([`decode_base32`]).
+pub fn is_totp_secret(text: &str) -> bool {
+    decode_base32(text)
+        .is_some_and(|bytes| (TOTP_SECRET_MIN_BYTES..=TOTP_SECRET_MAX_BYTES).contains(&bytes.len()))
+}
+
+/// Whether `text` is a `SecretText`: 1 to 8,192 characters of any kind,
+/// line breaks included.
+pub fn is_secret_text(text: &str) -> bool {
+    (1..=SECRET_TEXT_MAX_LENGTH).contains(&text.chars().count())
+}
+
+/// What every secret value shares: read from text and JSON, never
+/// written, shown or stored as itself, and not ordered.
+const fn secret_entry(
+    name: &'static str,
+    pattern: &'static str,
+    validator: Validator,
+    examples: Examples,
+) -> StandardType {
+    StandardType {
+        name,
+        holds: Holds::Text {
+            pattern,
+            personal: None,
+        },
+        text: Some(TextForm::Secret),
+        json: Json::Secret,
+        storage: Storage::Never,
+        format: Format {
+            key: FormatKey::Redacted,
+            options: NO_OPTIONS,
+        },
+        ordered: false,
+        validator: Some(validator),
+        shape: None,
+        examples,
+        release: FIRST_RELEASE,
+    }
+}
+
+/// A password as a person types it (area 19, chunk 5.5r2): taken from an
+/// `Input`, hashed with `crypto.hash_password`, never kept or sent back.
+pub const PASSWORD_ENTRY: StandardType = secret_entry(
+    PASSWORD,
+    r"[^\p{Cc}]+",
+    Validator::Password,
+    Examples {
+        valid: &[
+            ("correct horse battery staple", "<redacted Password>"),
+            ("Tr0ub4dor&3", "<redacted Password>"),
+            ("mot de passe très long", "<redacted Password>"),
+        ],
+        format: None,
+        // Seven characters, a tab, a line break, nothing at all.
+        malformed: &["Tr0ub4d", "tab\there!", "two\nlines", ""],
+        of: None,
+        settings: "",
+    },
+);
+
+/// An API key (area 19, chunk 5.5r2): kept, where it must be, as a hash.
+pub const API_KEY_ENTRY: StandardType = secret_entry(
+    API_KEY,
+    r"[\x21-\x7E]+",
+    Validator::ApiKey,
+    Examples {
+        valid: &[
+            ("example_key_0123456789abcdef", "<redacted ApiKey>"),
+            ("AKEXAMPLE7QZ2", "<redacted ApiKey>"),
+        ],
+        format: None,
+        // A space, a line break, a letter outside ASCII, nothing at all.
+        malformed: &["example key", "example\nkey", "exämple_key", ""],
+        of: None,
+        settings: "",
+    },
+);
+
+/// An access token sent as `Authorization: Bearer` (RFC 6750, area 19,
+/// chunk 5.5r2).
+pub const BEARER_TOKEN_ENTRY: StandardType = secret_entry(
+    BEARER_TOKEN,
+    r"[A-Za-z0-9\-._~+/]+=*",
+    Validator::BearerToken,
+    Examples {
+        // RFC 6750 §2.1's example, and one padded.
+        valid: &[
+            ("mF_9.B5f-4.1JqM", "<redacted BearerToken>"),
+            ("dGhpcyBpcyBhIHRva2Vu==", "<redacted BearerToken>"),
+        ],
+        format: None,
+        // A space, `=` before the end, a character outside the grammar,
+        // only padding, nothing at all.
+        malformed: &["mF_9 B5f", "mF=9", "mF_9!B5f", "==", ""],
+        of: None,
+        settings: "",
+    },
+);
+
+/// An authenticator's shared secret (RFC 6238, area 19, chunk 5.5r2), as
+/// RFC 4648 Base32: stored once keys held as data arrive.
+pub const TOTP_SECRET_ENTRY: StandardType = secret_entry(
+    TOTP_SECRET,
+    r"[A-Z2-7]+",
+    Validator::TotpSecret,
+    Examples {
+        // RFC 6238's test secret, `12345678901234567890`, and 16 bytes,
+        // the fewest.
+        valid: &[
+            ("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", "<redacted TotpSecret>"),
+            ("AAAQEAYEAUDAOCAJBIFQYDIOB4", "<redacted TotpSecret>"),
+        ],
+        format: None,
+        // Lower case, padded, ten bytes, a bit set past the last byte, a
+        // digit Base32 doesn't use, nothing at all.
+        malformed: &[
+            "gezdgnbvgy3tqojqgezdgnbvgy3tqojq",
+            "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ====",
+            "GAYTEMZUGU3DOOBZ",
+            "AAAQEAYEAUDAOCAJBIFQYDIOB5",
+            "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJ1",
+            "",
+        ],
+        of: None,
+        settings: "",
+    },
+);
+
+/// Any other secret (area 19, chunk 5.5r2): never printed in a log, a
+/// failure or a trace.
+pub const SECRET_TEXT_ENTRY: StandardType = secret_entry(
+    SECRET_TEXT,
+    r"(?s).+",
+    Validator::SecretText,
+    Examples {
+        valid: &[
+            ("whsec_example", "<redacted SecretText>"),
+            (
+                "-----BEGIN EXAMPLE-----\nAAAA\n-----END EXAMPLE-----",
+                "<redacted SecretText>",
+            ),
+        ],
+        format: None,
+        malformed: &[""],
+        of: None,
+        settings: "",
+    },
+);
 
 /// The longest a `Jwt` is, in characters, so reading and checking one
 /// never works through an unbounded token: 8 KiB, twice the 4 KiB a
@@ -393,15 +670,13 @@ pub const JWT_ENTRY: StandardType = StandardType {
         pattern: r"[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+",
         personal: None,
     },
-    text: Some(TextForm::Checked),
-    json: Json::Text,
-    storage: Storage::Column(SqlType::Text),
-    // A token is a credential: shown as its last four only, as a card
-    // number is.
+    // A token is a credential, so a secret value since chunk 5.5r2: read,
+    // never written, shown or stored (decided by the lead session).
+    text: Some(TextForm::Secret),
+    json: Json::Secret,
+    storage: Storage::Never,
     format: Format {
-        key: FormatKey::LastFour {
-            mask: "•••• "
-        },
+        key: FormatKey::Redacted,
         options: NO_OPTIONS,
     },
     ordered: false,
@@ -413,11 +688,11 @@ pub const JWT_ENTRY: StandardType = StandardType {
             // Ed25519 signature.
             (
                 "eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-                "•••• EjXk",
+                "<redacted Jwt>",
             ),
             (
                 "eyJhbGciOiJFZERTQSJ9.RXhhbXBsZSBvZiBFZDI1NTE5IHNpZ25pbmc.hgyY0il_MGCjP0JzlnLWG1PPOt7-09PGcvMg3AIbQR6dWbhijcNR4ki4iylGjg5BhVsPt9g7sVvpAr_MuM0KAg",
-                "•••• 0KAg",
+                "<redacted Jwt>",
             ),
         ],
         format: None,
@@ -781,5 +1056,45 @@ mod tests {
         }
         let long = format!("{}.e30.AAAA", "A".repeat(JWT_MAX_LENGTH));
         assert!(!is_jwt(&long));
+    }
+
+    #[test]
+    fn secret_values_have_their_bounds() {
+        for entry in [
+            PASSWORD_ENTRY,
+            API_KEY_ENTRY,
+            BEARER_TOKEN_ENTRY,
+            TOTP_SECRET_ENTRY,
+            SECRET_TEXT_ENTRY,
+            JWT_ENTRY,
+        ] {
+            assert_eq!(secret_value(entry.name), Some(entry.name));
+            for (valid, _) in entry.examples.valid {
+                assert!(entry.accepts(valid), "{}: {valid}", entry.name);
+            }
+            for malformed in entry.examples.malformed {
+                assert!(!entry.accepts(malformed), "{}: {malformed}", entry.name);
+            }
+        }
+        assert_eq!(secret_value(PASSWORD_HASH), None);
+        // A password's length is counted in characters, at both ends.
+        assert!(is_password("ééééééé!"));
+        assert!(is_password(&"é".repeat(PASSWORD_MAX_LENGTH)));
+        assert!(!is_password(&"é".repeat(PASSWORD_MAX_LENGTH + 1)));
+        assert!(is_api_key(&"k".repeat(API_KEY_MAX_LENGTH)));
+        assert!(!is_api_key(&"k".repeat(API_KEY_MAX_LENGTH + 1)));
+        assert!(!is_bearer_token(&"t".repeat(BEARER_TOKEN_MAX_LENGTH + 1)));
+        assert!(is_secret_text(&"s".repeat(SECRET_TEXT_MAX_LENGTH)));
+        assert!(!is_secret_text(&"s".repeat(SECRET_TEXT_MAX_LENGTH + 1)));
+        // 64 bytes is the most a TOTP secret holds.
+        let most = "AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQTCQKRMFYYDENBWHA5DYPSAIJCEMSCKJRHFAUSUKZMFUXC6MBRGIZTINJWG44DSOR3HQ6T4PY";
+        assert_eq!(decode_base32(most).map(|bytes| bytes.len()), Some(64));
+        assert!(is_totp_secret(most));
+        assert!(!is_totp_secret(&format!("{most}AA")));
+        assert_eq!(
+            decode_base32("GEZDGNBVGY3TQOJQ").as_deref(),
+            Some(&b"1234567890"[..])
+        );
+        assert!(stored_encrypted_later(TOTP_SECRET) && !stored_encrypted_later(PASSWORD));
     }
 }

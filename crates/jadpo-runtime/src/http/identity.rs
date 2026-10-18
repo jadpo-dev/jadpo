@@ -712,10 +712,11 @@ fn verifier(token: &str) -> String {
     blake3::hash(token.as_bytes()).to_hex().to_string()
 }
 
-/// 32 random bytes as 64 hexadecimal digits.
+/// 32 random bytes as 64 hexadecimal digits, never kept on a recording's
+/// tape (chunk 5.5r2), so a recorded request holds no credential.
 fn new_token(ctx: &mut Ctx<'_>) -> Option<String> {
     let mut bytes = [0u8; 32];
-    if !ctx.random_bytes(&mut bytes) {
+    if !ctx.secret_random_bytes(&mut bytes) {
         return None;
     }
     Some(bytes.iter().map(|byte| format!("{byte:02x}")).collect())

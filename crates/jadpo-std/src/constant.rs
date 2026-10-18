@@ -45,4 +45,22 @@ pub enum Constant {
         name: String,
         fields: Vec<(String, Constant)>,
     },
+    /// A secret value written where its type goes (area 19, chunk 5.5r2),
+    /// in a test or a fixture: the standard type it is (`Password`) and
+    /// its text, which is held so it is never printed.
+    Secret {
+        kind: &'static str,
+        text: Hidden,
+    },
+}
+
+/// A secret value's text in a plan, printed by `{:?}` as `Hidden(..)` so
+/// a plan's dump never shows it (chunk 5.5r2).
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Hidden(pub String);
+
+impl std::fmt::Debug for Hidden {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Hidden(..)")
+    }
 }

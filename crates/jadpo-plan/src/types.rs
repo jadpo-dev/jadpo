@@ -495,7 +495,27 @@ impl Types {
         let scale = chain
             .as_ref()
             .and_then(|(_, rules)| rules.iter().find_map(|rules| rules.scale));
-        constant::literal(literal, builtin, scale)
+        let decoded = constant::literal(literal, builtin, scale)?;
+        Some(Self::kept_secret(chain.as_ref(), decoded))
+    }
+
+    /// `decoded` held as a secret value when the type is built on one (area
+    /// 19, chunk 5.5r2), so a literal `Password` is never printed either.
+    fn kept_secret(chain: Option<&(Builtin, Vec<Rules>)>, decoded: Constant) -> Constant {
+        let secret = chain.and_then(|(_, rules)| {
+            rules.iter().find_map(|rules| {
+                rules
+                    .standard
+                    .and_then(jadpo_std::standard::security::secret_value)
+            })
+        });
+        match (secret, decoded) {
+            (Some(kind), Constant::Text(text)) => Constant::Secret {
+                kind,
+                text: jadpo_std::Hidden(text),
+            },
+            (_, decoded) => decoded,
+        }
     }
 
     /// `text` as a literal of `ty` holds it, when `ty` is built on a
@@ -503,7 +523,8 @@ impl Types {
     /// otherwise.
     pub fn text(&self, ty: &TypeRef, text: &str) -> Option<Constant> {
         let builtin = self.representation(ty)?;
-        constant::text(Some(builtin), text)
+        let decoded = constant::text(Some(builtin), text)?;
+        Some(Self::kept_secret(self.chain(ty).as_ref(), decoded))
     }
 
     /// The fields whose parent is `parent`, in the order they are declared,

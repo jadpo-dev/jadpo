@@ -387,6 +387,10 @@ pub enum Value {
     Map(Rc<BTreeMap<Value, Value>>),
     Record(Rc<Record>),
     Variant(Rc<Variant>),
+    /// A secret value (area 19, chunk 5.5r2): a `Password`, an `ApiKey`, a
+    /// `BearerToken`, a `TotpSecret`, a `SecretText` or a `Jwt`, written
+    /// out only redacted and compared in constant time.
+    Secret(crate::secret::Secret),
 }
 
 impl PartialOrd for Value {
@@ -485,7 +489,14 @@ impl Value {
                     .map(|(name, field)| (Rc::from(name.as_str()), Value::constant(field)))
                     .collect(),
             ),
+            Constant::Secret { kind, text } => Value::secret(kind, &text.0),
         }
+    }
+
+    /// `text` held as a secret value of standard type `kind` (chunk
+    /// 5.5r2).
+    pub fn secret(kind: &'static str, text: &str) -> Value {
+        Value::Secret(crate::secret::Secret::new(kind, text))
     }
 
     /// The items of a list or a set.
@@ -568,6 +579,8 @@ impl fmt::Display for Value {
                 }
                 fields(f, &variant.fields)
             }
+            // Redacted: `<redacted Password>` (chunk 5.5r2).
+            Value::Secret(secret) => write!(f, "{secret}"),
         }
     }
 }

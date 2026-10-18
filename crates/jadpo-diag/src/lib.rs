@@ -990,6 +990,8 @@ rules! {
         "02-values-and-types.html#type-reserved-field-name", "Field uses a reserved name";
     TYPE_RESERVED_VARIANT_NAME: "type.reserved_variant_name", area 19, Error, Agent,
         "19-standard-library.html#type-reserved-variant-name", "Variant is called `all`, which lists an enum's variants";
+    TYPE_SECRET_EXPOSED: "type.secret_exposed", area 19, Error, Agent,
+        "19-standard-library.html#type-secret-exposed", "Secret value is sent, stored, logged or read as text";
     TYPE_SETTING_VALUE: "type.setting_value", area 2, Error, Agent,
         "02-values-and-types.html#type-setting-value", "Setting has the wrong kind of value";
     TYPE_SIBLING_MISMATCH: "type.sibling_mismatch", area 2, Error, Agent,

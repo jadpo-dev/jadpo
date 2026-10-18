@@ -285,6 +285,17 @@ impl<'p> Ctx<'p> {
         true
     }
 
+    /// Fills `out` with random bytes a credential is made of (a session's
+    /// or an API token's, a service key's, a CSRF token's; area 8): the
+    /// host's, or under a seed the seed's, as [`Ctx::random_bytes`] gives,
+    /// but never kept on a recording's tape nor taken from a replayed one,
+    /// so a recording never holds what would sign someone in (area 17,
+    /// chunk 5.5r2). A replayed run makes a fresh credential, and the
+    /// draws around it still replay in order.
+    pub fn secret_random_bytes(&mut self, out: &mut [u8]) -> bool {
+        self.fresh_random(out)
+    }
+
     /// Random bytes no recording gave: the host's, or the seed's.
     fn fresh_random(&mut self, out: &mut [u8]) -> bool {
         if self.host.random(out) {
@@ -884,6 +895,40 @@ mod tests {
             !format!("{recorded:?}").contains("90, 90"),
             "never the bytes"
         );
+    }
+
+    #[test]
+    fn a_credential_s_bytes_are_never_on_a_recording() {
+        let places = places();
+        let live = Env {
+            seed: None,
+            clock: crate::Clock::TEST,
+        };
+        let host = Random(0x5a);
+        let mut recorded = Ctx::new(&places, &host, live);
+        recorded.record_random();
+        let mut code = [0u8; 4];
+        assert!(recorded.random_bytes(&mut code));
+        let mut token = [0u8; 32];
+        assert!(recorded.secret_random_bytes(&mut token));
+        let mut after = [0u8; 4];
+        assert!(recorded.random_bytes(&mut after));
+        // Only the draws a program makes are kept, in order.
+        let tape = recorded.recorded_random().expect("recording").to_vec();
+        assert_eq!(tape, [code, after].concat());
+        // A replay gives them back in order, and the token's draw takes
+        // fresh bytes of its own, never the recording's.
+        let other = Random(0x11);
+        let mut replayed = Ctx::new(&places, &other, live);
+        replayed.replay_random(tape);
+        let mut again = [0u8; 4];
+        assert!(replayed.random_bytes(&mut again));
+        assert_eq!(again, code);
+        let mut fresh = [0u8; 32];
+        assert!(replayed.secret_random_bytes(&mut fresh));
+        assert_ne!(fresh, token);
+        assert!(replayed.random_bytes(&mut again));
+        assert_eq!(again, after);
     }
 
     #[test]

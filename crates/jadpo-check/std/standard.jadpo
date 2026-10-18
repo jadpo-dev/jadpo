@@ -567,7 +567,8 @@ public type Jwk = Object {
 /// A signed token (area 19, RFC 7519) in JWS compact form, three parts of
 /// unpadded Base64url joined by `.`, at most 8,192 characters; an
 /// unsecured token, with no signature, is never one. `crypto.verify_jwt`
-/// checks it. Shown to people as its last four only.
+/// checks it. A secret value (chunk 5.5r2): never sent, logged, stored or
+/// shown, and compared in constant time.
 public type Jwt = Text {}
 
 /// A token's registered claims (area 19, RFC 7519 §4.1), once
@@ -763,6 +764,30 @@ public type PasswordCheck = Enum {
 /// Argon2id, `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, which a
 /// sign-in checks a password against.
 public type PasswordHash = Text {}
+
+/// A password as a person types it (area 19, NIST SP 800-63B): 8 to 256
+/// characters, none a control character. Taken from an `Input`, hashed
+/// with `crypto.hash_password` and checked with `crypto.verify_password`;
+/// a secret value, never sent, logged, stored or shown.
+public type Password = Text {}
+
+/// A key for an API (area 19): 1 to 512 printable ASCII characters with no
+/// spaces. A secret value; what is kept of one is `hash.sha256` of it.
+public type ApiKey = Text {}
+
+/// An access token sent as `Authorization: Bearer` (area 19, RFC 6750's
+/// `b64token`), at most 8,192 characters. A secret value; what is kept of
+/// one is `hash.sha256` of it.
+public type BearerToken = Text {}
+
+/// An authenticator's shared secret (area 19, RFC 6238): 16 to 64 bytes
+/// as RFC 4648 Base32 in upper case, unpadded. A secret value, stored
+/// once keys held as data arrive.
+public type TotpSecret = Text {}
+
+/// Any other secret text (area 19): 1 to 8,192 characters. A secret value,
+/// never sent, logged, stored or shown.
+public type SecretText = Text {}
 
 /// A payment card's number (area 19, ISO/IEC 7812), 12 to 19 digits with
 /// a Luhn check digit: `4242424242424242`. Shown to people as its last

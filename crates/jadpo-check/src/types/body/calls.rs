@@ -840,6 +840,19 @@ impl Body<'_> {
                 continue;
             };
             let param = params[*slot].1.clone();
+            // A secret value goes only to the operation made to take it
+            // (area 19, chunk 5.5r2); `json.write` says why it can't write
+            // one itself.
+            if let (Some(given), Some(table)) = (&ty, table)
+                && table.op != jadpo_std::Op::JsonWrite
+                && let Some(secret) = super::super::secrets::secret_in(self.table, given)
+                && !super::super::secrets::taken_by(table.op, *slot, secret)
+            {
+                let span = self.span(&value);
+                self.out
+                    .push(super::super::secrets::argument(written, secret, span));
+                continue;
+            }
             if let Ty::Function(from, to) = &param {
                 match &value {
                     Expr::LambdaExpr(lambda) => {
@@ -2156,6 +2169,19 @@ impl Body<'_> {
         let actual = self.infer(value);
         // A value already reported as wrong proves nothing either way.
         if actual.has_error() || target.has_error() || self.out.len() > before {
+            return (target, Fallible::Unknown);
+        }
+        // A secret value builds only a type built on the same secret
+        // (area 19, chunk 5.5r2): `StaffPassword(password)`, never text.
+        if let Some(secret) = super::super::secrets::secret_in(self.table, &actual)
+            && super::super::secrets::secret_of(self.table, &target) != Some(secret)
+        {
+            let span = self.span(value);
+            self.out.push(super::super::secrets::made_from(
+                &format!("`{written}(...)`"),
+                secret,
+                span,
+            ));
             return (target, Fallible::Unknown);
         }
         if self.table.is_nullable(&actual) && !self.table.is_nullable(&target) {

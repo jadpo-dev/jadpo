@@ -149,6 +149,13 @@ impl Body<'_> {
                     .to_string(),
             ));
         }
+        // A secret value is never written out (area 19, chunk 5.5r2).
+        if let Some(secret) = super::super::secrets::secret_of(self.table, ty) {
+            return Some((
+                ty.strip_nullable().to_string(),
+                format!("a `{secret}`, a secret value, which is never written out"),
+            ));
+        }
         let found = self.table.structure(ty);
         match &found {
             Ty::Error | Ty::Unknown(_) | Ty::Var(_) => None,

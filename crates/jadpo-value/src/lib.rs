@@ -57,6 +57,7 @@ pub mod present;
 pub mod random;
 pub mod range;
 mod rounding;
+pub mod secret;
 pub mod semver;
 pub mod set;
 pub mod shape;
@@ -426,6 +427,12 @@ pub fn run(
         // SHA-256 of bytes, or of text's UTF-8 (area 19, question 24).
         (Op::HashSha256, [Value::Bytes(bytes)]) => Ok(bytes_value(&hash::sha256(bytes))),
         (Op::HashSha256, [Value::Text(text)]) => Ok(bytes_value(&hash::sha256(text.as_bytes()))),
+        // An API key's or a bearer token's verifier, which is what is
+        // stored of one (chunk 5.5r2): the checker lets no other secret
+        // value in.
+        (Op::HashSha256, [Value::Secret(secret)]) => {
+            Ok(bytes_value(&hash::sha256(secret.expose().as_bytes())))
+        }
         (Op::HashSha256, _) => Err(Fault::Shape),
         // `json.read` and `json.write` take the codec the plan numbers for
         // their call besides their values, so each executor runs them

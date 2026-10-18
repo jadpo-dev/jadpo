@@ -688,6 +688,8 @@ const SIGNING_KEY: Kind = Kind::Builtin(Builtin::SigningKey);
 const PRIVATE_KEY: Kind = Kind::Builtin(Builtin::PrivateKey);
 /// What `crypto.hash_password` gives: the PHC string.
 const PASSWORD_HASH: Kind = Kind::Std(crate::standard::security::PASSWORD_HASH);
+/// A password as a person types it, a secret value (chunk 5.5r2).
+const PASSWORD: Kind = Kind::Std(crate::standard::security::PASSWORD);
 
 /// A sealed value no key opens for its context, or one altered since:
 /// known only when the program runs, so only an `attempt` settles it.
@@ -1079,7 +1081,7 @@ pub const OPERATIONS: &[Operation] = &[
     crypto(
         Op::CryptoHashPassword,
         "hash_password",
-        &[param("password", TEXT)],
+        &[param("password", PASSWORD)],
         PASSWORD_HASH,
         &[],
         "crypto::hash_password",
@@ -1139,7 +1141,7 @@ pub const OPERATIONS: &[Operation] = &[
     crypto(
         Op::CryptoVerifyPassword,
         "verify_password",
-        &[param("password", TEXT), param("hash", PASSWORD_HASH)],
+        &[param("password", PASSWORD), param("hash", PASSWORD_HASH)],
         Kind::Enum(crate::standard::security::PASSWORD_CHECK),
         &[],
         "crypto::verify_password",

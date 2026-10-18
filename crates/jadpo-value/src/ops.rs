@@ -252,6 +252,11 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::Int(_), Value::Decimal(_)) | (Value::Decimal(_), Value::Int(_)) => {
             decimals(a, b).is_some_and(|(x, y)| x == y)
         }
+        // A secret value against text written in source, in constant time
+        // (chunk 5.5r2); two secrets compare so through `==` too.
+        (Value::Secret(secret), Value::Text(text)) | (Value::Text(text), Value::Secret(secret)) => {
+            crate::secret::constant_time_eq(secret.expose().as_bytes(), text.as_bytes())
+        }
         _ => a == b,
     }
 }
