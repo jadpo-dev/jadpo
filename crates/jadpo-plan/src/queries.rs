@@ -255,7 +255,11 @@ impl Planner<'_> {
             let tested = field(entity, name)?;
             let column = columns.add(&tested.name, self.column(entity, tested)?);
             let (op, value, distance) = match test {
-                GeoTest::Near { point, distance } => (GeoOp::Within, point, Some(distance)),
+                GeoTest::Near {
+                    point,
+                    distance,
+                    measure,
+                } => (GeoOp::Within, point, Some((distance, *measure))),
                 GeoTest::Within { area: value }
                 | GeoTest::InBox { bounds: value }
                 | GeoTest::InCircle { circle: value } => (GeoOp::Within, value, None),
@@ -263,7 +267,7 @@ impl Planner<'_> {
                 GeoTest::Intersects { shape } => (GeoOp::Intersects, shape, None),
             };
             let distance = match distance {
-                Some(distance) => Some(self.length_source(distance)?),
+                Some((distance, measure)) => Some(self.length_source(distance, measure)?),
                 None => None,
             };
             checks.push(GeoCheck {
@@ -678,16 +682,14 @@ impl Planner<'_> {
 
     /// Where `within`'s `distance:` comes from when a row is rechecked: an
     /// argument, or a literal as the storage codec binds it, in metres.
-    fn length_source(&self, value: &Value) -> Option<Source> {
+    fn length_source(&self, value: &Value, measure: jadpo_std::Builtin) -> Option<Source> {
         match value {
             Value::Literal(literal) => {
                 let metres = jadpo_sql::Column {
                     name: "",
                     nullable: false,
                     ty: Some(SqlType::Numeric),
-                    builtin: Some(jadpo_std::Builtin::Quantity(
-                        jadpo_std::QuantityKind::Length,
-                    )),
+                    builtin: Some(measure),
                     scale: None,
                 };
                 Some(Source::Stored(jadpo_sql::condition::literal(

@@ -279,8 +279,9 @@ are parameters and their fields, literals, enum values, lists of those and
 `clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
 accepted wherever a literal is, since it is a value fixed while compiling
 (decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
-durations, as they do in a body (area 3). The one function a field may
-be passed to is a `geo.` test, which a GiST index serves: `geo.within`,
+durations, as they do in a body (area 3). Besides `ai.distance` (area
+21), the one function a field may be passed to is a `geo.` test, which a
+GiST index serves: `geo.within`,
 `geo.contains` or `geo.intersects` with a geometry field first and a
 parameter after, on a `where:` line of its own or joined by `and`; the
 index finds the records and Jadpo's own code decides each, so the query

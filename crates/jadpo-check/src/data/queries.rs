@@ -3921,7 +3921,11 @@ impl Reader<'_> {
                 }
                 let point = test_value(self)?;
                 let distance = self.geo_reach(scope, reach)?;
-                GeoTest::Near { point, distance }
+                GeoTest::Near {
+                    point,
+                    distance,
+                    measure: Prim::Quantity(jadpo_std::QuantityKind::Length),
+                }
             }
             ("within", None) => match kind {
                 Some(POLYGON | MULTI_POLYGON) => GeoTest::Within {

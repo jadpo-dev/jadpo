@@ -818,13 +818,13 @@ test "bakeries near a door come nearest first, within the trip" {
             altitude: none
         }
     )
-    var near: List<BakeryCard> = bakeries_near(big_ben, 6km)
-    assert text.join(list.map(near, card -> card.name), ", ") == text.join(
+    var in_reach: List<BakeryCard> = bakeries_near(big_ben, 6km)
+    assert text.join(list.map(in_reach, card -> card.name), ", ") == text.join(
         [loaf.name, crumbs.name],
         ", "
     )
-    var walk: List<BakeryCard> = bakeries_near(big_ben, 5km)
-    assert text.join(list.map(walk, card -> card.name), ", ") == loaf.name
+    var within_five: List<BakeryCard> = bakeries_near(big_ben, 5km)
+    assert text.join(list.map(within_five, card -> card.name), ", ") == loaf.name
 }
 
 test "a customer on a patch's edge is delivered to" {

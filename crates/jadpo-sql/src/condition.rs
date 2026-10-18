@@ -153,8 +153,13 @@ pub enum Condition {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum GeoTest {
     /// `geo.within(F, point, distance: d)`: a `Point` field within `d`, a
-    /// `Length`, of a point.
-    Near { point: Value, distance: Value },
+    /// `Length`, of a point; `measure` is the built-in type the checker
+    /// found `d` to be, which a literal is decoded for.
+    Near {
+        point: Value,
+        distance: Value,
+        measure: Builtin,
+    },
     /// `geo.within(F, area)`: inside a `Polygon` or a `MultiPolygon`.
     Within { area: Value },
     /// `geo.within(F, view)`: a `Point` field inside a `BoundingBox`.
@@ -438,15 +443,19 @@ pub fn condition(
 /// its edge, and whatever `ST_Covers` would wrongly leave out), and a box
 /// by its envelopes on the column cast to `geometry`.
 fn geo(bind: &mut dyn Bind, column: &str, test: &GeoTest) -> Option<String> {
-    let length = Column {
-        name: column,
-        nullable: false,
-        ty: Some(SqlType::Numeric),
-        builtin: Some(Builtin::Quantity(jadpo_std::QuantityKind::Length)),
-        scale: None,
-    };
     Some(match test {
-        GeoTest::Near { point, distance } => {
+        GeoTest::Near {
+            point,
+            distance,
+            measure,
+        } => {
+            let length = Column {
+                name: column,
+                nullable: false,
+                ty: Some(SqlType::Numeric),
+                builtin: Some(*measure),
+                scale: None,
+            };
             let point = bind.bind(point, SqlType::Geography)?;
             let distance = self::value(bind, distance, &length)?;
             format!("ST_DWithin({column}, {point}, {distance} + {GEO_MARGIN})")
@@ -835,7 +844,8 @@ mod tests {
             field: "spot".into(),
             test: GeoTest::Near {
                 point: param(0),
-                distance: Value::Literal(Literal::Quantity("5km".into())),
+                distance: param(1),
+                measure: Builtin::Decimal,
             },
         };
         let mut params = Collected::default();
