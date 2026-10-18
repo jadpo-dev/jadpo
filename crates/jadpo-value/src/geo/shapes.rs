@@ -206,7 +206,7 @@ fn excess(unit: &Unit, a: &[Real; 3], b: &[Real; 3], c: &[Real; 3]) -> Real {
 fn normalised(unit: &Unit, v: &[Real; 3]) -> [Real; 3] {
     let size = length(unit, v);
     if size.is_zero() {
-        return v.clone();
+        return *v;
     }
     [
         unit.div(&v[0], &size),

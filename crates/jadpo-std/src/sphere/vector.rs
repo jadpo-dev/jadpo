@@ -484,24 +484,23 @@ impl Bounds {
     /// the most the arc bows out from its chord, under half the chord's
     /// square.
     pub fn arc(a: &Point, b: &Point) -> Bounds {
-        let chord: i128 = (0..3)
-            .map(|i| {
-                let d = i128::from(a.a[i]) - i128::from(b.a[i]);
-                d * d
-            })
-            .sum();
+        let [ax, ay, az] = a.a;
+        let [bx, by, bz] = b.a;
+        let square = |d: i64| i128::from(d) * i128::from(d);
+        let chord = square(ax - bx) + square(ay - by) + square(az - bz);
         let bow = i64::try_from((chord >> (APPROX + 1)) + 1).unwrap_or(i64::MAX / 4);
         let reach = bow + 2 * SLACK;
-        let mut low = [0i64; 3];
-        let mut high = [0i64; 3];
-        for i in 0..3 {
-            low[i] = a.a[i].min(b.a[i]) - reach;
-            high[i] = a.a[i].max(b.a[i]) + reach;
+        Bounds {
+            low: [ax.min(bx) - reach, ay.min(by) - reach, az.min(bz) - reach],
+            high: [ax.max(bx) + reach, ay.max(by) + reach, az.max(bz) + reach],
         }
-        Bounds { low, high }
     }
 
     pub fn overlaps(&self, other: &Bounds) -> bool {
-        (0..3).all(|i| self.low[i] <= other.high[i] && other.low[i] <= self.high[i])
+        self.low
+            .iter()
+            .zip(&other.high)
+            .chain(other.low.iter().zip(&self.high))
+            .all(|(low, high)| low <= high)
     }
 }

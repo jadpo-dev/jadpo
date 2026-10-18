@@ -346,7 +346,7 @@ fn widest_gap_complement(runs: &[(Num, Num)]) -> Option<(Num, Num)> {
             intervals.push((minus, east));
         }
     }
-    intervals.sort_by(|a, b| exact(a.0).cmp(&exact(b.0)));
+    intervals.sort_by_key(|interval| exact(interval.0));
     let mut merged: Vec<(Num, Num)> = Vec::new();
     for (start, end) in intervals {
         match merged.last_mut() {

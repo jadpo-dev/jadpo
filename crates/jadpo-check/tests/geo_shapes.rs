@@ -133,6 +133,9 @@ fn closed(corners: &[&'static str]) -> Vec<&'static str> {
 
 const SQUARE: &[&str] = &["0 0", "0 10", "10 10", "10 0"];
 
+/// A way to break `rings_valid`: what it is, the outer ring and the holes.
+type Case = (&'static str, Vec<&'static str>, Vec<Vec<&'static str>>);
+
 #[test]
 fn a_valid_polygon_literal_checks() {
     assert_eq!(check(&literal(&closed(SQUARE), &[]), false), NONE);
@@ -147,7 +150,7 @@ fn a_valid_polygon_literal_checks() {
 
 #[test]
 fn every_way_a_literal_breaks_rings_valid_is_refused_while_compiling() {
-    let cases: Vec<(&str, Vec<&str>, Vec<Vec<&str>>)> = vec![
+    let cases: Vec<Case> = vec![
         ("not closed", SQUARE.to_vec(), vec![]),
         ("three points", vec!["0 0", "0 1", "0 0"], vec![]),
         (

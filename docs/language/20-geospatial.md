@@ -2,7 +2,7 @@
 title: Geospatial
 area: 20
 status: decided
-checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the other examples are fragments until chunks 5.5u3 to 5.5u6 build them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the other examples are fragments until chunks 5.5u4 to 5.5u6 build them
 rules: []
 ---
 
@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunks 5.5u3 to 5.5u6 build the rest, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunks 5.5u4 to 5.5u6 build the rest, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -178,12 +178,145 @@ test "a round is its legs summed" {
 }
 ```
 
-`delivers_to` waits for `geo.contains` (chunk 5.5u3):
+The predicates and shapes, built in chunk 5.5u3, on the bakery's
+patches, its pins on a map and its shops:
 
-```jadpo fragment
+```jadpo check project=geo-shapes
+type Delivers = Bool {}
+
+type InView = Bool {}
+
+type WalkingReach = Length {
+    min: 0metre
+}
+
 /// Whether a customer is inside one of the bakery's patches.
-function delivers_to(patches: List<Polygon>, customer: Point) -> Bool {
-    return list.any(patches, patch -> geo.contains(patch, customer))
+function delivers_to(patches: List<Polygon>, customer: Point) -> Delivers {
+    return Delivers(list.any(patches, patch -> geo.contains(patch, customer)))
+}
+
+/// Whether a van's round passes through a patch.
+function passes_through(round: LineString, patch: Polygon) -> Delivers {
+    return Delivers(geo.intersects(round, patch))
+}
+
+/// Whether a shop's pin is inside the map a person is looking at.
+function in_view(pin: Point, view: BoundingBox) -> InView {
+    return InView(geo.within(pin, view))
+}
+
+/// Whether two shops are near enough to walk between.
+function walkable(from: Point, to: Point, reach: WalkingReach) -> InView {
+    return InView(geo.within(from, to, distance: reach))
+}
+
+/// Where a patch's name goes on the map.
+function label_at(patch: Polygon) -> Point {
+    return geo.centroid(patch)
+}
+
+/// The view that shows a whole patch.
+function view_of(patch: Polygon) -> BoundingBox {
+    return geo.bounding_box(patch)
+}
+```
+
+A customer on a patch's edge is inside it, and a box's sides are
+parallels and meridians, so the patch's northern edge, a great circle,
+bows past 51.54° N between its corners and the box that shows the whole
+patch reaches further:
+
+```jadpo check project=geo-shapes file=main.test.jadpo
+test "a customer on a patch's edge is delivered to" {
+    var patch: Polygon = Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+    var big_ben: Point = Point {
+        latitude: 51.5007
+        longitude: -0.1246
+        altitude: none
+    }
+    var on_the_edge: Point = Point {
+        latitude: 51.5
+        longitude: -0.2
+        altitude: none
+    }
+    var eiffel_tower: Point = Point {
+        latitude: 48.8566
+        longitude: 2.3522
+        altitude: none
+    }
+    assert delivers_to([patch], big_ben)
+    assert delivers_to([patch], on_the_edge)
+    assert not delivers_to([patch], eiffel_tower)
+    assert in_view(big_ben, view_of(patch))
+    assert not in_view(eiffel_tower, view_of(patch))
+    assert walkable(big_ben, on_the_edge, 6km)
+    assert not walkable(big_ben, on_the_edge, 5km)
+}
+
+test "a patch's label and the view that shows it" {
+    var patch: Polygon = Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+    assert label_at(patch).latitude == 51.51501933808094
+    assert label_at(patch).longitude == -0.12499999998684845
+    assert view_of(patch).north == 51.54002390691161
+    assert view_of(patch).south == 51.49
 }
 ```
 
@@ -206,8 +339,107 @@ A polygon read from GeoJSON or WKT that isn't valid is refused, `format`
 at the ring's place, as 5.5s's other reading checks are. One built in
 code breaks a named rule, `rings_valid`, mapped like any cross-field rule
 (area 2, chunk 5.5t). Checking costs about n log n in the points (a sweep
-over the edges); a country's outline of 10,000 points is the case the
-build measures (estimate: well under a second).
+over the edges); a country's outline of 10,000 points takes about 70 ms
+(measured in chunk 5.5u3).
+
+A polygon built from values is attempted:
+
+```jadpo check project=geo-shapes file=patches.jadpo
+type NotAPatch = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A patch from the corners a planner clicked, back to the first.
+function patch_from(clicked: List<Point>, first: Point) fails NotAPatch -> Polygon {
+    return attempt Polygon {
+        outer: list.append(clicked, first)
+        holes: []
+    } {
+        rings_valid: NotAPatch  // edges that cross, or a corner clicked twice
+    }
+}
+```
+
+```jadpo check project=geo-shapes file=patches.test.jadpo
+test "a patch whose edges cross isn't one" {
+    var corner: Point = Point {
+        latitude: 0.0
+        longitude: 0.0
+        altitude: none
+    }
+    var bow_tie: List<Point> = [
+        corner,
+        Point {
+            latitude: 10.0
+            longitude: 10.0
+            altitude: none
+        },
+        Point {
+            latitude: 10.0
+            longitude: 0.0
+            altitude: none
+        },
+        Point {
+            latitude: 0.0
+            longitude: 10.0
+            altitude: none
+        }
+    ]
+    assert patch_from(bow_tie, corner) fails NotAPatch
+}
+```
+
+A polygon written out is checked while compiling:
+
+```jadpo check project=drawn-patch expect=type.invalid_literal
+/// The patch a planner drew, its edges crossing.
+function drawn_patch() -> Polygon {
+    return Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+}
+```
+
+```text output
+error: This `Polygon` breaks its rule `rings_valid`
+ --> main.jadpo:4:16
+  |
+4 |         outer: [
+  |                ^ these rings don't make a valid polygon
+  reason: A `Polygon`'s rings are closed with four points or more, never cross or touch themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, "Polygons are valid when built"). A literal is checked while compiling.
+  next: Close each ring and move its points so no edge meets another, with each hole inside the outer ring (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
 
 ## Storage
 
@@ -462,7 +694,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 |---|---|
 | The 17 geospatial types, GeoJSON geometries, `type.standard_exists` for `Point` | Decided (area 19) and built (5.5s) |
 | `geo.distance`, `length`, `bearing` and `area`; coordinates held as doubles' shortest decimals | Decided 2026-10-18; built (5.5u2) |
-| Everything else on this page | Decided 2026-10-18; built by 5.5u3 to 5.5u6 |
+| `geo.intersects`, `contains`, `within` (with `distance:`, a `BoundingBox` and a `Circle`), `centroid`, `bounding_box`; `rings_valid` | Decided 2026-10-18; built (5.5u3) |
+| Everything else on this page | Decided 2026-10-18; built by 5.5u4 to 5.5u6 |
 
 ### Consistency with the rest of the language
 
@@ -585,8 +818,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 - **`geo.area` rounds once:** each ring's area, the smaller of the two
   sides it bounds, is worked out unrounded, the holes taken away and a
   `MultiPolygon`'s polygons added, then the total is rounded half to even
-  to the square millimetre. Until chunk 5.5u3's `rings_valid`, a polygon
-  whose holes outweigh its outer ring gives the difference as it is.
+  to the square millimetre. Since chunk 5.5u3's `rings_valid`, a hole lies
+  inside its outer ring, so holes never outweigh it.
 - **What each measure takes.** `distance` and `bearing` take `Point`s
   only (question 10); `length` a `LineString` or a `MultiLineString`;
   `area` a `Polygon` or a `MultiPolygon`. Anything else, a `Geometry`
@@ -604,6 +837,116 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 - **The page's examples corrected:** a `Point` written in code gives
   `altitude: none`, since area 2 has every field given when a value is
   built.
+
+### Chosen in chunk 5.5u3
+
+- **Exact on the sphere, by whole numbers.** A position's direction is
+  `(cos φ cos λ, cos φ sin λ, sin φ)` with each sine and cosine one of
+  5.5u2's working values, taken to within 45° of 0 on the decimal before
+  it becomes radians, and each product kept whole: every component is a
+  whole number over 2²⁷². Points on one meridian are then exactly in a
+  plane with the poles, points on the equator exactly at `z = 0`, a pole
+  is `(0, 0, ±1)` at any longitude, -180 is 180, and opposite points are
+  exact negations. Every predicate is the sign of a polynomial in the
+  components, worked out in whole numbers as wide as it needs (about 820
+  bits for three points, 1,100 for where two edges cross), after a 40-bit
+  unit vector beside each point settles the clear cases; so a point
+  exactly on an edge, a corner, a meridian or the equator, is found on it,
+  and inside includes the edge with no tolerance. Where three points are
+  exactly on one great circle, counting the edges a path crosses breaks
+  the tie by Simulation of Simplicity, as Google's S2 does (its `Sign`,
+  `CrossingSign`, `VertexCrossing` and `AngleContainsVertex`, Apache 2.0):
+  whether a point is inside a ring is the inside known at a corner from
+  the angle there, flipped by each edge the path from that corner to the
+  point crosses. No float decides anything, so every target gives one
+  answer; the native and wasm32 digests of every case below are one.
+- **A ring's inside is the smaller side,** as PostGIS reads a ring either
+  way round, chosen from the ring's area on the sphere, summed by Van
+  Oosterom and Strackee's formula in working values: exact unless the two
+  sides are within about 10⁻³⁵ of each other, and a ring exactly on one
+  great circle, both sides equal, breaks `rings_valid`.
+- **Where it lives.** The geometry is `jadpo-std`'s `sphere` module, and
+  5.5u2's fixed-point maths moved there from `jadpo-value`, so the checker
+  reads a polygon literal by the same code the runtime runs, as every
+  standard rule is read; `jadpo-value`'s `geo` module reads values into it.
+- **Agreement with PostGIS.** `tools/geo_cases.py` writes 169 cases, every
+  operation, with PostGIS 3.4.2's answers on PostgreSQL 16.3 (this
+  machine), to `crates/jadpo-value/examples/geodesics/shapes.tsv`: small,
+  continental and pole-holding polygons, polygons across the antimeridian
+  and the equator, holes, concave shapes, lines and multi-part shapes, the
+  verified box whose edges bow towards the pole, away from every boundary
+  but exact ones (a polygon's own corner, a point on a meridian edge). The
+  gate checks them natively and under WebAssembly, as it does
+  GeographicLib's sample. Every yes or no is PostGIS's but four; each
+  centroid is within 4 × 10⁻¹² of a degree of `ST_Centroid(x, false)`'s
+  (half a micrometre); each box's side within 3 × 10⁻¹⁴ of a degree of the
+  box round PostGIS's points every 100 m along the shape.
+- **The four, where the page's meaning and `ST_Covers` part.** `ST_Covers`
+  on `geography` compares two polygons ring by ring: it doesn't see a hole
+  of `a` that `b` covers (it says a square with a hole covers a square over
+  the hole), and it counts rings lying along each other as crossing (it
+  says a square doesn't cover the same square with a hole). With a
+  multi-part `a` it wants all of `b` in one part, so two points each in one
+  part aren't covered. `geo.contains` keeps the page's "no point of `b`
+  lies outside `a`" in each; the file records PostGIS's answer beside the
+  page's. Chunk 5.5u5 has to settle these for `where: geo.contains(...)`,
+  whose SQL form is `ST_Covers`: a polygon field holding holes against a
+  polygon value, and a multi-part field.
+- **Rings may not touch at all.** Two rings sharing even one point break
+  `rings_valid`: the page's "no two rings cross or overlap", read
+  strictly, which also keeps a polygon's inside in one piece without a
+  check of its own (OGC lets a hole touch the outer ring at one point).
+  A ring touching itself anywhere but its closing point, a point repeated
+  in a row, and a ring that turns straight back along an edge all break
+  it too.
+- **`rings_valid` checks closing.** A polygon built in code wasn't checked
+  for closed rings of four points or more; the rule now does, as GeoJSON
+  reading did. A `MultiPolygon` has no rule of its own: each of its
+  polygons is valid, and they may overlap, the predicates taking the
+  multi-polygon as the union of its parts.
+- **A shape holding a pole reaches every longitude:** a point at a pole, a
+  line through one, or a polygon around or touching one has a bounding box
+  from -180 to 180, and only such a box holds it, whatever longitude a
+  point at the pole is written with, since every meridian meets there.
+- **A box holds any geometry in code,** its latitudes and longitudes
+  compared directly with the shape's, an edge's highest or lowest point
+  and the longitudes between its ends included; the query filter stays on
+  `Point` fields (question 11). A side of `bounding_box` worked out from an
+  edge is rounded outwards to a double, so a shape is always inside its
+  own box; when two boxes are equally narrow, it takes the one that
+  doesn't cross the antimeridian.
+- **A `Circle` holds points only,** as `within(distance:)` measures between
+  points only (question 10): `geo.contains(circle, shape)` and
+  `within(shape, circle)` with anything but a `Point` are `type.mismatch`
+  naming question 10, as is `within(a, b, distance:)` unless both are
+  points. A distance is proved never below 0 while compiling, as a count
+  is (`type.argument_negative`): a length written out, or a type with
+  `min: 0metre`. A line edge between two opposite points, which no great
+  circle joins, is its two ends.
+- **`centroid` is PostGIS's, quirks included,** as the page chose it to be
+  reproducible: a multi-point's points weigh one each; a line's edges each
+  give both ends the edge's angle; a polygon is cut into triangles from the
+  first corner of its first outer ring to every edge of every ring, each
+  triangle's centre (its corners summed) weighted by its area, always
+  counted positive. So a hole adds weight rather than taking it away, and
+  a concave polygon's centroid moves with the corner its ring starts at,
+  as PostGIS's does (verified: an L-shaped polygon's is 3.214° N, 3.236° E
+  from one corner and 4.151° N, 4.159° E from another). A point's centroid
+  is itself without its altitude; one whose weights cancel (two opposite
+  points) is a defect, as PostGIS gives no number there. It is rounded to
+  the nearest double, as every coordinate is.
+- **Benchmarks** (`cargo run --release -p jadpo-value --example geodesics
+  -- bench`, the machine this chunk was built on): a point in a 100-point
+  patch 0.44 ms, in a 1,000-point one 4.3 ms; a 100-point patch in
+  another 30 ms (each piece of every edge is classified, about n² in the
+  points); two 100-point patches intersecting 0.9 ms; `within(distance:)`
+  33 µs; a 100-point patch's centroid 0.37 ms and its box 1.2 ms;
+  `rings_valid` 0.6 ms for 100 points, 6.8 ms for 1,000 and 68 ms for a
+  10,000-point outline. Turning each corner into a direction (two sines
+  and cosines) is most of a small polygon's cost.
+- **The page's examples corrected:** `delivers_to` returned `Bool`, which
+  a signature can't name (`type.primitive_signature`); it returns a
+  `Delivers` built on it.
 
 ### Open questions
 
