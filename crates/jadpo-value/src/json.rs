@@ -162,10 +162,14 @@ impl Codecs<'_> {
             }
             Codec::Enum { ty, variants } => match json {
                 serde_json::Value::String(name) => {
-                    match variants
-                        .iter()
-                        .find(|v| v.wire == *name && v.fields.is_none())
-                    {
+                    // A standard enum's code is read ignoring case (area
+                    // 19, question 22): `gb` typed into a form is `GB`.
+                    let coded = jadpo_std::standard::stored_by_code(ty).is_some()
+                        || jadpo_std::standard_type(ty).is_some();
+                    match variants.iter().find(|v| {
+                        v.fields.is_none()
+                            && (v.wire == *name || (coded && v.wire.eq_ignore_ascii_case(name)))
+                    }) {
                         Some(variant) => Some(Value::variant(
                             ty,
                             variant.ordinal,

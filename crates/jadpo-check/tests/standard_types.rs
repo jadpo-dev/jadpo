@@ -89,19 +89,30 @@ fn every_stub_agrees_with_its_data_entry() {
                     .iter()
                     .map(|(name, ty)| (name.clone(), format!("{ty:?}")))
                     .collect();
+                // A part as a stub writes it: `Text` for a line, `T?` for
+                // a part that may be `none`, `List<T>` for a list.
+                fn written(part: jadpo_std::Part) -> jadpo_check::types::TypeRef {
+                    use jadpo_check::types::TypeRef;
+                    match part {
+                        jadpo_std::Part::Optional(inner) => {
+                            TypeRef::Nullable(Box::new(written(*inner)))
+                        }
+                        jadpo_std::Part::List(inner) => {
+                            TypeRef::Path(vec!["List".to_string()], vec![written(*inner)])
+                        }
+                        jadpo_std::Part::Standard(other) => {
+                            TypeRef::Path(vec![other.to_string()], Vec::new())
+                        }
+                        part => TypeRef::Path(
+                            vec![part.builtin().map_or("", Builtin::name).to_string()],
+                            Vec::new(),
+                        ),
+                    }
+                }
                 let expected: Vec<(String, String)> = fields
                     .iter()
                     .map(|(name, part): &(&str, jadpo_std::Part)| {
-                        let written = match (part.builtin(), part) {
-                            (Some(builtin), _) => builtin.name(),
-                            (None, jadpo_std::Part::Standard(other)) => other,
-                            _ => "",
-                        };
-                        let ty = jadpo_check::types::TypeRef::Path(
-                            vec![written.to_string()],
-                            Vec::new(),
-                        );
-                        ((*name).to_string(), format!("{:?}", Some(ty)))
+                        ((*name).to_string(), format!("{:?}", Some(written(*part))))
                     })
                     .collect();
                 assert_eq!(declared, expected, "{}'s fields", entry.name);
@@ -191,11 +202,17 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
         } else {
             "\n        invalid: Unreadable"
         };
+        // A type with no single text form (`PersonName`) has none to read.
+        let parsed: &[&str] = if entry.text.is_some() {
+            &[]
+        } else {
+            &["type.mismatch"]
+        };
         assert_eq!(
             check(&format!(
                 "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable{others}\n    }}\n    return read\n}}\n"
             )),
-            Vec::<String>::new(),
+            parsed,
             "{name}: text.parse"
         );
         // `<`, where the type is ordered.

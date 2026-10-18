@@ -1777,7 +1777,12 @@ pub const OPERATIONS: &[Operation] = &[
         op: Op::TextFrom,
         namespace: "text",
         name: "from",
-        params: &[param("value", Kind::Contract)],
+        // `form:` writes a closed list's code in another code system (area
+        // 19, question 22).
+        params: &[
+            param("value", Kind::Contract),
+            by_type("form", Kind::Enum(crate::CodeForm::NAME)),
+        ],
         result: Kind::Builtin(Builtin::Text),
         at_least: None,
         conditions: &[],
@@ -1841,6 +1846,7 @@ pub const OPERATIONS: &[Operation] = &[
         params: &[
             param("raw", Kind::Builtin(Builtin::Text)),
             param("as", Kind::Type),
+            by_type("form", Kind::Enum(crate::CodeForm::NAME)),
         ],
         result: Kind::Any,
         at_least: None,

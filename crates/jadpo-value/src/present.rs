@@ -38,6 +38,7 @@ use crate::{Fault, Value, Zoned, temporal};
 mod message;
 pub mod money;
 pub(crate) mod names;
+pub(crate) mod people;
 pub mod pseudo;
 mod relative;
 

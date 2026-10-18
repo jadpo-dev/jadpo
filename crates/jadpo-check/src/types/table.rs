@@ -1145,6 +1145,30 @@ pub trait TypeView {
     }
 }
 
+/// What a standard object's part is to the checker: the built-in type it is
+/// built on, a standard enum or a type held as text by its name, as a
+/// declared one is named (`ExchangeRate`'s currencies compare with
+/// `Currency.gbp`, a `PersonName`'s given name is a `GivenName`), another
+/// standard object, or the part or `none`, or a list of it (chunk 5.5l).
+fn part_ty(part: jadpo_std::Part) -> Ty {
+    match part {
+        jadpo_std::Part::Of(builtin) => Ty::Prim(builtin),
+        jadpo_std::Part::Whole(..) => Ty::Prim(Prim::Int),
+        jadpo_std::Part::Line => Ty::Prim(Prim::Text),
+        jadpo_std::Part::Standard(other)
+            if jadpo_std::standard_type(other).is_some_and(|entry| {
+                entry.codes().is_some()
+                    || matches!(entry.holds, jadpo_std::standard::Holds::Text { .. })
+            }) =>
+        {
+            Ty::Named(other.to_string())
+        }
+        jadpo_std::Part::Standard(other) => Ty::Opaque(other.to_string(), Vec::new()),
+        jadpo_std::Part::Optional(inner) => part_ty(*inner).nullable(),
+        jadpo_std::Part::List(inner) => Ty::List(Box::new(part_ty(*inner))),
+    }
+}
+
 /// The fields of the standard object type `name` (area 19), from its data
 /// entry, or `None` when it isn't one: each built on its built-in type, a
 /// whole number with its range as the field's own rules (`LocalTime`'s
@@ -1174,35 +1198,10 @@ pub fn standard_fields(name: &str) -> Option<&'static [FieldDef]> {
 }
 
 fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
-    let whole = |n: i64| jadpo_std::Num {
-        mantissa: i128::from(n),
-        scale: 0,
-    };
-    let (declared, rules) = match part {
-        jadpo_std::Part::Of(builtin) => (Ty::Prim(builtin), Rules::default()),
-        jadpo_std::Part::Whole(min, max) => (
-            Ty::Prim(Prim::Int),
-            Rules {
-                min: Some(whole(min)),
-                max: Some(whole(max)),
-                ..Rules::default()
-            },
-        ),
-        // A standard enum is named as a declared one is: `ExchangeRate`'s
-        // currencies compare with `Currency.gbp` (area 19).
-        jadpo_std::Part::Standard(other)
-            if jadpo_std::standard_type(other).is_some_and(|entry| entry.codes().is_some()) =>
-        {
-            (Ty::Named(other.to_string()), Rules::default())
-        }
-        jadpo_std::Part::Standard(other) => {
-            (Ty::Opaque(other.to_string(), Vec::new()), Rules::default())
-        }
-    };
     FieldDef {
         name: name.to_string(),
-        declared,
-        rules,
+        declared: part_ty(part),
+        rules: part.rules(),
         optional: false,
         default: None,
         header: None,

@@ -509,7 +509,9 @@ impl<'t> Codecs<'t> {
                 let shape = self.types.standard_shape(entry.name, fields);
                 let fields = fields
                     .iter()
-                    .map(|(_, part)| self.codec(&crate::types::part_type(*part)))
+                    .map(|(field, part)| {
+                        self.codec(&crate::types::part_type(entry.name, field, *part))
+                    })
                     .collect();
                 Codec::Object { shape, fields }
             }

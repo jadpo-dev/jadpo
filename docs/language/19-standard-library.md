@@ -384,7 +384,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Bic`, `CalendarDate`, `CalendarPeriod`, `CardBin`, `Currency`, `DateRange`, `Duration`, `Email`, `ExchangeRate`, `FileType`, `Iban`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Lei`, `LocalDateTime`, `LocalTime`, `Locale`, `Money`, `Month`, `NhsNumber`, `OpeningHours`, `PaymentCardNumber`, `PaymentReference`, `Quarter`, `Range`, `RecurrenceRule`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Url`, `UsEin`, `UsSsn`, `UtcOffset`, `Uuid`, `Weekday`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Bic`, `CalendarDate`, `CalendarPeriod`, `CardBin`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `DateRange`, `Duration`, `Email`, `EmailWithName`, `ExchangeRate`, `FamilyName`, `FileType`, `GivenName`, `Iban`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isin`, `IsoWeek`, `Language`, `Lei`, `LocalDateTime`, `LocalTime`, `Locale`, `Money`, `Month`, `Nationality`, `NhsNumber`, `OpeningHours`, `PaymentCardNumber`, `PaymentReference`, `PersonName`, `PhoneExtension`, `PostalAddress`, `Quarter`, `Range`, `RecurrenceRule`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under

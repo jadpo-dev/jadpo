@@ -34,6 +34,36 @@ pub fn entry_of(value: &Value) -> Option<&'static StandardType> {
     jadpo_std::standard::of_builtin(builtin)
 }
 
+/// `text.from(value, form:)`: the value's canonical text, or its code in
+/// the code system `form` names (a `CodeForm` variant, or `none` for the
+/// type's own), which the checker has made sure the type has data for.
+pub fn from_in(value: &Value, form: &Value) -> Result<Value, Fault> {
+    let Some(form) = code_form(form)? else {
+        return from(value);
+    };
+    let Value::Variant(variant) = value else {
+        return Err(Fault::Shape);
+    };
+    let code = standard_type(&variant.ty)
+        .and_then(|entry| entry.form_codes(form))
+        .and_then(|codes| codes.get(variant.ordinal as usize))
+        .ok_or(Fault::Shape)?;
+    Ok(Value::text(code))
+}
+
+/// The code system a `form:` argument names, `None` for `none`.
+fn code_form(form: &Value) -> Result<Option<jadpo_std::CodeForm>, Fault> {
+    match form {
+        Value::None => Ok(None),
+        Value::Variant(variant) if &*variant.ty == jadpo_std::CodeForm::NAME => {
+            jadpo_std::CodeForm::from_name(&variant.name)
+                .map(Some)
+                .ok_or(Fault::Shape)
+        }
+        _ => Err(Fault::Shape),
+    }
+}
+
 /// `text.from(value)`: the value's canonical text.
 pub fn from(value: &Value) -> Result<Value, Fault> {
     let text = match (entry_of(value), value) {
@@ -64,6 +94,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Duration, Value::Duration(millis)) => jadpo_std::iso_duration(*millis),
         (TextForm::Money, Value::Money(money)) => money.to_string(),
         (TextForm::ExchangeRate, Value::Record(record)) => exchange_rate_text(record)?,
+        (TextForm::Mailbox, Value::Record(record)) => crate::people::mailbox_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -121,11 +152,31 @@ pub fn read_range(raw: &str, item: &str) -> Result<Value, Fault> {
 }
 
 /// A compound standard type's value as the columns its entry lists hold
-/// it (area 19): `Money`'s minor units and currency code. `None` for a
-/// type stored in one column.
+/// it (area 19): `Money`'s minor units and currency code, an object's parts
+/// in its fields' order (chunk 5.5l), a standard enum's as its code. `None`
+/// for a type stored in one column.
 pub fn to_parts(value: &Value) -> Option<Vec<Value>> {
     match value {
         Value::Money(money) => Some(vec![Value::Int(money.minor), Value::text(money.code())]),
+        Value::Record(record) => {
+            let entry = standard_type(&record.ty)?;
+            let Holds::Object(fields) = entry.holds else {
+                return None;
+            };
+            if entry.columns().len() != fields.len() {
+                return None;
+            }
+            fields
+                .iter()
+                .map(|(name, _)| match record.get(name)? {
+                    Value::Variant(variant) => standard_type(&variant.ty)
+                        .and_then(StandardType::codes)
+                        .and_then(|codes| codes.get(variant.ordinal as usize))
+                        .map(|(_, code)| Value::text(code)),
+                    other => Some(other.clone()),
+                })
+                .collect()
+        }
         _ => None,
     }
 }
@@ -140,6 +191,23 @@ pub fn from_parts(entry: &StandardType, parts: &[Value]) -> Result<Value, Fault>
                 currency,
                 crate::money::minor(i128::from(*minor))?,
             ))
+        }
+        (Holds::Object(fields), parts) if parts.len() == fields.len() => {
+            let values = fields
+                .iter()
+                .zip(parts)
+                .map(|((name, part), value)| {
+                    let value = match (part.required().0, value) {
+                        (jadpo_std::Part::Standard(other), Value::Text(code)) => {
+                            let other = standard_type(other).ok_or(Fault::Shape)?;
+                            read(other, code.trim()).map_err(|_| Fault::Shape)?
+                        }
+                        (_, value) => value.clone(),
+                    };
+                    Ok(((*name).into(), value))
+                })
+                .collect::<Result<Vec<_>, Fault>>()?;
+            Ok(Value::record(entry.name, values))
         }
         _ => Err(Fault::Shape),
     }
@@ -166,6 +234,39 @@ fn interval<'v>(
         | (Some(start @ Value::Date(_)), Some(end @ Value::Date(_))) => Ok((start, end)),
         _ => Err(Fault::Shape),
     }
+}
+
+/// `text.parse(raw, as:, form:)`: as [`parse`], or, given a `CodeForm`
+/// variant, a closed list's variant by its code in that code system,
+/// ignoring case; a code a retired variant shares with a current one reads
+/// as the current one.
+pub fn parse_in(raw: &str, ty: &str, form: &Value) -> Result<Value, Fault> {
+    let Some(form) = code_form(form)? else {
+        return parse(raw, ty);
+    };
+    let entry = standard_type(ty).ok_or(Fault::Shape)?;
+    let (Some(codes), Some(forms)) = (entry.codes(), entry.form_codes(form)) else {
+        return Err(Fault::Shape);
+    };
+    let matching = |current: bool| {
+        forms.iter().enumerate().find(|(at, code)| {
+            !code.is_empty()
+                && code.eq_ignore_ascii_case(raw)
+                && codes
+                    .get(*at)
+                    .is_some_and(|(name, _)| entry.is_retired(name) != current)
+        })
+    };
+    let (at, _) = matching(true)
+        .or_else(|| matching(false))
+        .ok_or(MALFORMED)?;
+    let (name, _) = codes.get(at).ok_or(Fault::Shape)?;
+    Ok(Value::variant(
+        entry.name,
+        u32::try_from(at).map_err(|_| Fault::Shape)?,
+        name,
+        Vec::new(),
+    ))
 }
 
 /// `text.parse(raw, as:)`, given the name of the standard type or the
@@ -236,6 +337,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Code => code(entry, raw),
         TextForm::Money => crate::money::read(raw).map(Value::Money),
         TextForm::ExchangeRate => read_exchange_rate(raw),
+        TextForm::Mailbox => crate::people::read_mailbox(entry, raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.
@@ -493,6 +595,43 @@ pub fn shown(
         (FormatKey::CurrencyName, value) => {
             present::money::currency_name(&canonical(entry, value)?, tag)?
         }
+        // A place, a language or a script by CLDR's name for it, a
+        // withdrawn code by its list's English name (chunk 5.5l).
+        (FormatKey::RegionName, Value::Variant(variant)) => {
+            let code = canonical(entry, value)?;
+            match present::names::region(&code, tag)? {
+                Some(name) => name,
+                None => fallback_name(entry, variant, &code),
+            }
+        }
+        (FormatKey::ContinentName, Value::Variant(variant)) => {
+            let region = jadpo_std::standard::places::CONTINENT_REGIONS
+                .get(variant.ordinal as usize)
+                .ok_or(Fault::Shape)?;
+            present::names::region(region, tag)?.unwrap_or_else(|| canonical_or_name(variant))
+        }
+        (FormatKey::LanguageName, Value::Variant(variant)) => {
+            let code = canonical(entry, value)?;
+            match present::names::language(&code, tag)? {
+                Some(name) => name,
+                None => fallback_name(entry, variant, &code),
+            }
+        }
+        (FormatKey::ScriptName, Value::Variant(variant)) => {
+            let code = canonical(entry, value)?;
+            match present::names::script(&code, tag)? {
+                Some(name) => name,
+                None => fallback_name(entry, variant, &code),
+            }
+        }
+        (FormatKey::SubdivisionName, Value::Variant(variant)) => {
+            match jadpo_std::standard::subdivision_name(variant.ordinal) {
+                Some(name) => name.to_string(),
+                None => canonical(entry, value)?,
+            }
+        }
+        (FormatKey::PersonName, value) => present::people::person_name(value, tag)?,
+        (FormatKey::PostalAddress, value) => present::people::postal_address(value, tag)?,
         // A payment or identity number's printed form (area 19, chunk
         // 5.5i): grouped, or its last four after a mask.
         (FormatKey::Grouped(grouping), value) => grouping.apply(&canonical(entry, value)?),
@@ -515,6 +654,19 @@ pub fn shown(
         }
         _ => return Err(Fault::Shape),
     })
+}
+
+/// A withdrawn code's English name from its list, which CLDR doesn't
+/// name, or the code itself.
+fn fallback_name(entry: &StandardType, variant: &crate::Variant, code: &str) -> String {
+    jadpo_std::standard::retired(entry.name, &variant.name)
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| code.to_string(), str::to_string)
+}
+
+/// A variant's own name, for a continent CLDR has no name for.
+fn canonical_or_name(variant: &crate::Variant) -> String {
+    variant.name.to_string()
 }
 
 fn text_of(value: Value) -> Result<String, Fault> {

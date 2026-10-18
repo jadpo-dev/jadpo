@@ -35,8 +35,9 @@ public library text {
     /// `value` shown to a person in `locale`, in the type's own words.
     function format(value: T, locale: Locale, zone: Zone?, format: TimeFormat?, precision: MoneyPrecision?, display: MoneyDisplay?, sign: MoneySign?) -> PresentationText {}
 
-    /// `value`'s canonical text, the form `parse` reads back.
-    function from(value: T) -> Text {}
+    /// `value`'s canonical text, the form `parse` reads back, or its code
+    /// in another code system a closed list has, `form: CodeForm.alpha3`.
+    function from(value: T, form: CodeForm?) -> Text {}
 
     /// The items with `separator` between them.
     function join(items: List<Text>, separator: Text) -> Text {}
@@ -57,8 +58,10 @@ public library text {
     /// points long; never cut.
     function pad_start(value: Text, length: Int, fill: Text) -> Text {}
 
-    /// The value of type `as` that `raw`, its canonical text, holds.
-    function parse(raw: Text, as: Type) -> T {}
+    /// The value of type `as` that `raw`, its canonical text, holds, or
+    /// its code in another code system a closed list has, `form:
+    /// CodeForm.numeric`.
+    function parse(raw: Text, as: Type, form: CodeForm?) -> T {}
 
     /// `value` with every `find` replaced by `with`, left to right.
     function replace(value: Text, find: Text, with: Text) -> Text {}
