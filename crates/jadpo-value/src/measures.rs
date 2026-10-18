@@ -7,7 +7,7 @@
 //! `jadpo_std::standard::records`' and `health`'s.
 
 use jadpo_std::QuantityUnit;
-use jadpo_std::standard::{FormatKey, ShownIn, StandardType, order_rules, standard_type};
+use jadpo_std::standard::{FormatKey, ShownIn, StandardType, standard_type};
 
 use crate::{Fault, Record, Value, present};
 
@@ -192,19 +192,4 @@ pub fn dosage(record: &Record, tag: &str) -> Result<String, Fault> {
         text.push_str(", when needed");
     }
     Ok(text)
-}
-
-/// The part of a standard object a rule ordering its parts refuses, if
-/// any, for a value read from JSON.
-pub fn broken_part(record: &Record) -> Option<&'static str> {
-    order_rules(&record.ty)
-        .iter()
-        .find(|rule| {
-            let (Some(lower), Some(upper)) = (record.get(rule.lower), record.get(rule.upper))
-            else {
-                return false;
-            };
-            crate::ops::compare(lower, upper).is_some_and(|order| !rule.holds(order))
-        })
-        .map(|rule| rule.at)
 }

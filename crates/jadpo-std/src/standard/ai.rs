@@ -6,9 +6,10 @@
 //! [`Storage::Vector`], which a field can't use yet. What the page left
 //! open is area 19's "Chosen in chunk 5.5s2".
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, OrderRule, Part,
-    StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -88,15 +89,15 @@ pub const TOKEN_USAGE_FIELDS: [(&str, Part); 3] = [
     ("cached", Part::Optional(&Part::Standard(TOKEN_COUNT))),
 ];
 
-/// The cached tokens are some of the input's.
-pub const TOKEN_USAGE_RULES: &[OrderRule] = &[OrderRule {
-    lower: "cached",
-    upper: "input",
-    strict: false,
-    at: "cached",
+/// `TokenUsage`'s rule across its parts (chunk 5.5t2): the cached tokens
+/// are some of the input's.
+pub const TOKEN_USAGE_RULES: &[StandardRule] = &[StandardRule {
+    name: "cached_within_input",
+    written: "cached <= input, where it is given",
     label: "more than the input",
     reason: "A `TokenUsage`'s `cached` tokens are the input tokens the provider's cache served, counted within its `input`, so they are never more.",
     next: "Write a `cached` count at or below the `input`",
+    check: in_order(&[Order::at_most("cached", "input")], "cached"),
 }];
 
 /// The tokens one call to a model used: sent as named fields and stored a
@@ -372,14 +373,6 @@ pub fn float(text: &str) -> Option<String> {
         return None;
     }
     Some(written)
-}
-
-/// The rules ordering the parts of the AI type `ty`.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        TOKEN_USAGE => TOKEN_USAGE_RULES,
-        _ => &[],
-    }
 }
 
 #[cfg(test)]

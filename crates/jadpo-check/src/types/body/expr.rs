@@ -1093,6 +1093,7 @@ impl Body<'_> {
                     node_key(record.syntax()),
                     super::facts::BuildFact::Object(name.clone()),
                 );
+                let before = self.out.len();
                 self.fields_given(
                     record.member_list(),
                     &name,
@@ -1102,11 +1103,13 @@ impl Body<'_> {
                     head_span,
                     &[],
                 );
-                self.part_rules_hold(&name, record);
-                self.event_rules_hold(&name, record);
-                self.media_rules_hold(&name, record);
-                self.order_rules_hold(&name, record);
-                self.object_built(record);
+                // Its rules across its parts, once every part is known to
+                // be right (chunk 5.5t2).
+                if self.out.len() == before {
+                    self.standard_rules(record, &name, None);
+                } else {
+                    self.object_built(record);
+                }
                 Ty::Opaque(name, Vec::new())
             }
             ([], Some(Def::Scalar { .. })) | ([], None)
@@ -1480,6 +1483,7 @@ impl Body<'_> {
             node_key(record.syntax()),
             super::facts::BuildFact::Object(jadpo_std::RANGE.to_string()),
         );
+        let before = self.out.len();
         self.fields_given(
             record.member_list(),
             jadpo_std::RANGE,
@@ -1489,7 +1493,12 @@ impl Body<'_> {
             head_span,
             &[],
         );
-        self.object_built(record);
+        // Its start not after its end (chunk 5.5t2).
+        if self.out.len() == before {
+            self.standard_rules(record, jadpo_std::RANGE, Some(&item));
+        } else {
+            self.object_built(record);
+        }
         Ty::Opaque(jadpo_std::RANGE.to_string(), vec![item])
     }
 
@@ -1501,96 +1510,6 @@ impl Body<'_> {
                 .table
                 .representation(item)
                 .is_some_and(|prim| jadpo_std::RANGE_ITEMS.contains(&prim))
-    }
-
-    /// A standard object's rules across its parts (area 19, chunk 5.5l2),
-    /// proved where its literal writes both parts: an address's postal
-    /// code written as text and its country as a variant. One built from
-    /// values waits on cross-field rules (chunk 5.5t).
-    fn part_rules_hold(&mut self, name: &str, record: &ast::RecordExpr) {
-        let Some(jadpo_std::standard::Holds::Object(parts)) =
-            jadpo_std::standard_type(name).map(|entry| entry.holds)
-        else {
-            return;
-        };
-        let members = tree::members(record.member_list());
-        let value_of = |part: &str| {
-            members
-                .iter()
-                .find(|(field, _)| tree::name_text(field).as_deref() == Some(part))
-                .and_then(|(_, member)| member.value())
-        };
-        'rules: for rule in jadpo_std::standard::part_rules(name) {
-            let Some(written) = value_of(rule.part) else {
-                continue;
-            };
-            let Const::Str(given) = Const::from_expr(&written) else {
-                continue;
-            };
-            // Text that breaks the part's own rules is reported by them.
-            let own = parts
-                .iter()
-                .find(|(field, _)| *field == rule.part)
-                .map(|(_, part)| part.rules());
-            if own.is_some_and(|rules| rules.check_text(&given).is_err()) {
-                continue;
-            }
-            // Each part the rule reads, written out as a variant of its
-            // enum: its code, and how the code names it.
-            let mut codes = Vec::new();
-            let mut named = Vec::new();
-            for by in rule.by {
-                let Some(value) = value_of(by) else {
-                    continue 'rules;
-                };
-                let Some(jadpo_std::Part::Standard(list)) = parts
-                    .iter()
-                    .find(|(field, _)| field == by)
-                    .map(|(_, part)| part.required().0)
-                else {
-                    continue 'rules;
-                };
-                let Some((head, rest)) = dotted(&value) else {
-                    continue 'rules;
-                };
-                let ([variant], true) = (rest.as_slice(), text(&head) == list) else {
-                    continue 'rules;
-                };
-                let variant = text(variant);
-                let Some(code) = jadpo_std::standard_type(list)
-                    .and_then(jadpo_std::StandardType::codes)
-                    .and_then(|codes| codes.iter().find(|(listed, _)| *listed == variant))
-                    .map(|(_, code)| *code)
-                else {
-                    continue 'rules;
-                };
-                codes.push(code);
-                named.push(format!("`{list}.{variant}`"));
-            }
-            if (rule.fits)(&given, &codes) {
-                continue;
-            }
-            let shown = tree::written(written.syntax());
-            let by = rule
-                .by
-                .iter()
-                .map(|by| format!("`{by}`"))
-                .collect::<Vec<_>>()
-                .join(" and ");
-            let of = named.join(" and ");
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TYPE_INVALID_LITERAL,
-                    format!("`{shown}` isn't {}", rule.says),
-                )
-                .at(self.span(&written), format!("not {} of {of}", rule.noun))
-                .reason(format!(
-                    "A `{name}`'s `{}` is in the form {} of its {by} writes, and a literal is checked while compiling.",
-                    rule.part, rule.authority
-                ))
-                .next(format!("Write {} of {of} in its canonical text, or change {by}", rule.noun)),
-            );
-        }
     }
 
     fn object_built(&mut self, record: &ast::RecordExpr) {

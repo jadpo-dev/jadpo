@@ -9,9 +9,10 @@
 //! can't use yet. What the page left open is area 19's "Chosen in chunk
 //! 5.5s".
 
+use super::across::{Check, Order, StandardRule, Verdict, in_order};
 use super::{
-    Examples, FIRST_RELEASE, FieldMatch, Format, FormatKey, Holds, Json, NO_OPTIONS, OrderRule,
-    Part, StandardType, Storage, TextForm, Validator,
+    Examples, FIRST_RELEASE, FieldMatch, Format, FormatKey, Holds, Json, NO_OPTIONS, Part,
+    StandardType, Storage, TextForm, Validator,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -764,14 +765,43 @@ pub const BOUNDING_BOX_FIELDS: [(&str, Part); 4] = [
 ];
 
 /// The rule across a bounding box's sides.
-pub const BOUNDING_BOX_RULES: &[OrderRule] = &[OrderRule {
-    lower: "south",
-    upper: "north",
-    strict: false,
-    at: "north",
+pub const BOUNDING_BOX_RULES: &[StandardRule] = &[StandardRule {
+    name: "south_not_above_north",
+    written: "south <= north",
     label: "south of the south",
     reason: "A `BoundingBox`'s `north` is its northernmost latitude, so it is at or above its `south` (RFC 7946, §5).",
     next: "Write a `north` at or above the `south`",
+    check: in_order(&[Order::at_most("south", "north")], "north"),
+}];
+
+/// `MapTile`'s rule across its parts (chunk 5.5t2): its column and row
+/// each below 2 to its zoom.
+pub const MAP_TILE_RULES: &[StandardRule] = &[StandardRule {
+    name: "within_zoom",
+    written: "x and y are each below 2 to the zoom",
+    label: "past its zoom's tiles",
+    reason: "A `MapTile` at zoom `z` is one of 2 to the `z` columns and as many rows, so its `x` and `y` are each below 2 to the `z` (the XYZ tile scheme).",
+    next: "Write a column and a row below 2 to the zoom, or a deeper zoom",
+    check: Check::By(|parts| {
+        let whole = |name: &str| parts.part(name).value().and_then(|n| n.whole());
+        let Some(tiles) = whole("zoom")
+            .and_then(|zoom| u32::try_from(zoom).ok())
+            .and_then(|zoom| 1i64.checked_shl(zoom))
+        else {
+            return Verdict::Unknown;
+        };
+        let mut verdict = Verdict::Holds;
+        for name in ["x", "y"] {
+            match whole(name) {
+                Some(n) if n >= tiles => {
+                    return Verdict::Breaks(if name == "x" { "x" } else { "y" });
+                }
+                Some(_) => {}
+                None => verdict = Verdict::Unknown,
+            }
+        }
+        verdict
+    }),
 }];
 
 /// A rectangle on the map by its four sides, named, never RFC 7946's
@@ -861,14 +891,6 @@ pub const CIRCLE_ENTRY: StandardType = StandardType {
     ),
     release: FIRST_RELEASE,
 };
-
-/// The rules across the parts of the geospatial records here.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        BOUNDING_BOX => BOUNDING_BOX_RULES,
-        _ => &[],
-    }
-}
 
 /// The GeoJSON geometry `type` a standard type is sent as, for the five
 /// that are one; `Geometry` is sent as its variant's.

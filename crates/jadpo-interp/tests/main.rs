@@ -43,6 +43,7 @@ mod security_records;
 mod sets_maps;
 mod software;
 mod soundness;
+mod standard_rules;
 mod text;
 mod text_formats;
 mod tokens;

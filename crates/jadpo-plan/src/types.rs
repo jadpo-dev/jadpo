@@ -399,15 +399,34 @@ impl Types {
 
     /// The rules across the fields of the object type `ty` names, in the
     /// order written, each lowered from its typed body (area 2, "Rules
-    /// across fields"); none for any other type.
+    /// across fields"), or a standard object type's rules across its parts,
+    /// each run by its check in `jadpo-std` (area 19, chunk 5.5t2), through
+    /// a field or a type built on it; none for any other type.
     pub fn across(&self, ty: &TypeRef) -> Vec<jadpo_std::across::CrossRule> {
-        let mut current = ty;
-        while let TypeRef::Nullable(inner) = current {
-            current = inner;
+        let mut current = ty.clone();
+        for _ in 0..CHAIN {
+            match current {
+                TypeRef::Nullable(inner) => current = *inner,
+                TypeRef::Std(name, _) => return jadpo_std::standard::across::cross_rules(&name),
+                TypeRef::Field(key) => match self.node(&key).map(|node| &node.detail) {
+                    Some(Detail::Field { ty, .. }) => current = ty.clone(),
+                    _ => return Vec::new(),
+                },
+                TypeRef::Node(key) => match self.node(&key).map(|node| &node.detail) {
+                    Some(Detail::Type {
+                        base: Base::Refines(parent),
+                        ..
+                    }) => current = parent.clone(),
+                    _ => return self.declared_across(&key),
+                },
+                _ => return Vec::new(),
+            }
         }
-        let TypeRef::Node(key) = current else {
-            return Vec::new();
-        };
+        Vec::new()
+    }
+
+    /// The rules the object type `key` names across its fields.
+    fn declared_across(&self, key: &Key) -> Vec<jadpo_std::across::CrossRule> {
         let Some(id) = self.graph.find(key) else {
             return Vec::new();
         };

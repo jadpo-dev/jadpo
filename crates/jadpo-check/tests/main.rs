@@ -65,6 +65,7 @@ mod setting_move;
 mod signed;
 mod software;
 mod soundness;
+mod standard_rules;
 mod standard_types;
 mod stores;
 mod text;

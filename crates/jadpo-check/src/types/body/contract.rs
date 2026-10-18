@@ -300,6 +300,15 @@ impl Body<'_> {
     /// or representation it reads doesn't already guarantee, as a
     /// construction's.
     pub(super) fn parse_fallible(&mut self, call: &ast::CallExpr, raw: &Expr, target: &Ty) {
+        // A standard object's rules across its parts, which the value read
+        // is checked by (chunk 5.5t2).
+        let across: Vec<String> = match self.contract_of(target) {
+            Contract::Standard(entry) => jadpo_std::standard::across::rules(entry.name)
+                .iter()
+                .map(|rule| rule.name.to_string())
+                .collect(),
+            _ => Vec::new(),
+        };
         let base = match self.contract_of(target) {
             Contract::Standard(entry) => match entry.holds {
                 Holds::Builtin(builtin) => Some(Ty::Prim(builtin)),
@@ -368,6 +377,7 @@ impl Body<'_> {
         } else if let Some(base) = base {
             rules.extend(self.verdict(raw, &base, target).breakable);
         }
+        rules.extend(across);
         self.facts
             .parsed
             .insert(node_key(call.syntax()), target.clone());
@@ -402,6 +412,14 @@ impl Body<'_> {
                 ));
             }
             rules.extend(self.rules_of(target));
+            // A standard object's rules across its parts (chunk 5.5t2).
+            if let Contract::Standard(entry) = self.contract_of(target) {
+                rules.extend(
+                    jadpo_std::standard::across::rules(entry.name)
+                        .iter()
+                        .map(|rule| (rule.name, rule.shown())),
+                );
+            }
         }
         rules
     }

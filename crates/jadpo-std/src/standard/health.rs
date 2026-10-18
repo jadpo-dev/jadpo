@@ -10,9 +10,10 @@
 //! (chunk 5.5m). What the page left open is area 19's "Chosen in chunk
 //! 5.5m2".
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, OrderRule,
-    Part, QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
+    Examples, FIRST_RELEASE, Format, FormatKey, FormatOption, Holds, Json, NO_OPTIONS, Part,
+    QUANTITY_FIELDS, ShownIn, StandardType, Storage, TextForm,
 };
 use crate::read::SqlType;
 use crate::{Builtin, Num, QuantityKind};
@@ -368,14 +369,13 @@ pub const BLOOD_PRESSURE_FIELDS: [(&str, Part); 2] = [
 
 /// The rule across a blood pressure's parts: the pressure between beats is
 /// below the pressure as the heart beats.
-pub const BLOOD_PRESSURE_RULES: &[OrderRule] = &[OrderRule {
-    lower: "diastolic",
-    upper: "systolic",
-    strict: true,
-    at: "diastolic",
+pub const BLOOD_PRESSURE_RULES: &[StandardRule] = &[StandardRule {
+    name: "diastolic_below_systolic",
+    written: "diastolic < systolic",
     label: "not below the systolic",
     reason: "A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9).",
     next: "Write a `diastolic` below the `systolic`, or swap the two",
+    check: in_order(&[Order::below("diastolic", "systolic")], "diastolic"),
 }];
 
 /// A blood pressure (LOINC 85354-9): its systolic and diastolic
@@ -480,11 +480,3 @@ pub const BLOOD_GLUCOSE_ENTRY: StandardType = StandardType {
     ),
     release: FIRST_RELEASE,
 };
-
-/// The rules across the parts of the measures here.
-pub fn order_rules(ty: &str) -> &'static [OrderRule] {
-    match ty {
-        BLOOD_PRESSURE => BLOOD_PRESSURE_RULES,
-        _ => &[],
-    }
-}

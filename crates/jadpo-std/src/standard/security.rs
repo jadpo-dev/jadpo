@@ -35,9 +35,10 @@
 //! `PasswordPolicy`, NIST SP 800-63B's rules for a password; and
 //! `WebAuthnCredential`, a passkey as `webauthn-rs` keeps one.
 
+use super::across::{Order, StandardRule, in_order};
 use super::{
-    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, OrderRule, Part,
-    StandardType, Storage, TextForm, Validator,
+    Examples, FIRST_RELEASE, Format, FormatKey, Holds, Json, NO_OPTIONS, Part, StandardType,
+    Storage, TextForm, Validator,
 };
 use crate::Builtin;
 use crate::read::SqlType;
@@ -1231,16 +1232,15 @@ pub const PASSWORD_POLICY_FIELDS: [(&str, Part); 3] = [
     ("check_breached", Part::Of(Builtin::Bool)),
 ];
 
-/// A policy's fewest characters are never more than its most (chunk
-/// 5.5r3).
-pub const PASSWORD_POLICY_ORDER: &[OrderRule] = &[OrderRule {
-    lower: "min_length",
-    upper: "max_length",
-    strict: false,
-    at: "min_length",
+/// `PasswordPolicy`'s rule across its parts (chunk 5.5t2): its fewest
+/// characters are never more than its most (chunk 5.5r3).
+pub const PASSWORD_POLICY_RULES: &[StandardRule] = &[StandardRule {
+    name: "min_not_above_max",
+    written: "min_length <= max_length",
     label: "more than its `max_length`",
     reason: "A password policy's fewest characters can't be more than its most, or no password would meet it.",
     next: "Give `min_length` a number no greater than `max_length`",
+    check: in_order(&[Order::at_most("min_length", "max_length")], "min_length"),
 }];
 
 /// The rules a password must meet (NIST SP 800-63B, area 19, chunk 5.5r3):

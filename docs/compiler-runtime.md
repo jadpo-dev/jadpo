@@ -388,6 +388,18 @@ implementation. A broken one is `RuleKey::Named` with the rule's name,
 which `RuleArm::named` maps; the checker's proof reads the condition as a
 positionless `types::across::Cond` with comparisons known around the
 construction (`known::Relation`).
+Since chunk 5.5t2 a standard object type's rules across its parts are
+`jadpo_std::standard::across`'s `StandardRule`s, each one check over what
+is known of the parts (`Known`, `Given`, `Parts`): the checker reads a
+literal by it (`types/body/standard_rules.rs`) and proves a rule ordering
+two parts through the same `Cond` proof; the plan gives a standard
+object's validator a `CrossRule` per rule whose check is
+`RuleExpr::Standard`, which `jadpo_value::across` runs over the value's
+fields, so builds, `text.parse`, the codecs and compiled code read one
+implementation. `jadpo_value::across::broken_standard` names the rule a
+value sent as its text breaks. The checks it replaced (`order_rules`,
+`part_rules`, `events::broken`, the media and geo ones) are gone, and no
+text reader checks a rule across parts any more.
 
 Since chunk 3.12 everything the runtime needs of a plan is that kind of
 plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
@@ -737,15 +749,13 @@ generated once, its patterns compiled on first use), and
 `standard::postal` checks and reads postal codes by each country's
 pattern (`postal_codes_data`). `text.parse` takes `country:` (a `Country`
 value; `country_option` in `types/body/contract.rs` refuses it for other
-types), which `jadpo-value`'s `parse_in` hands to those modules. A rule
-across a standard object's parts (`standard::part_rules`, a postal code
-fitting its address's country) is proved for a literal in
-`types/body/expr.rs` and checked by the JSON codec as an object is read
-(`jadpo_value::standard::broken_part`).
+types), which `jadpo-value`'s `parse_in` hands to those modules. A postal
+code fitting its address's country is a rule across the address's parts,
+`standard::across` since chunk 5.5t2.
 Since chunk 5.5i2 the cards (`jadpo_std::standard::card_types`) and the
 identity documents (`standard::documents`) are entries like the rest: a
-`PartRule` reads any number of parts (`by`, a document's kind and
-country), its wording from the rule, and each country's forms are tables
+number's rule reads its document's kind and country (`standard::across::fits`
+since chunk 5.5t2), and each country's forms are tables
 of a pattern and an optional check digit (`CountryForm`), with bounds for
 a country that has none. `Part::Matching` is a part of text matching a
 pattern (a masked card's last four). `money.mask` (`Op::MoneyMask`) makes
@@ -822,9 +832,8 @@ and a WebVTT cue (`TextForm::Cue`); `Timecode` has no text form and is
 shown by `FormatKey::Timecode`. `jadpo_value::colour` runs `colour`'s five
 operations by CSS Color 4's conversions in fixed point at 18 places over
 `maths`' correctly rounded functions, so every target gives the same
-channels, and `jadpo_value::media` runs `media.fit` and checks a timecode's
-and a cue's rules where JSON is read; the checker proves them on literals
-(`types/body/media.rs`). A shape's `FieldMatch` may be `optional`
+channels, and `jadpo_value::media` runs `media.fit`; a timecode's and a
+cue's rules are rules across their parts (chunk 5.5t2). A shape's `FieldMatch` may be `optional`
 (`Colour`'s alpha), and a stub parameter written `Percentage` or a
 quantity kind takes any type built on it.
 Since chunk 5.5m2 the records and measures are entries in
@@ -843,10 +852,8 @@ its unit (`with_unit`), so a unit can follow several numbers. A type built
 on a quantity with `UnitsIn` (`HeartRate`) is named to `text.format` by
 the checker as a type held as text is, since the runtime holds only the
 quantity, and `StandardType::unit_kind` gives the kind `unit:` names a
-unit of. `standard::order_rules` orders two parts of an object (a
-rating's, a blood pressure's): the checker proves them on literals
-(`types/body/measures.rs`) and the JSON codec as it reads one
-(`jadpo_value::measures::broken_part`). A `Part::Bounded` on a `Duration`
+unit of. A rating's and a blood pressure's parts are ordered by rules
+across them (chunk 5.5t2). A `Part::Bounded` on a `Duration`
 keeps its bounds in milliseconds as `min_duration` and `max_duration`.
 Four units joined the table with no literal suffix (`mmHg`, `bpm`,
 `mgdL` and the glucose millimole). `CodeForm::Isbn10` is a form read and
@@ -885,11 +892,8 @@ OpenAPI's `minItems` and `maxItems`. A vector's storage is
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
-(days or times, their order, a recurrence from the event's start) over
-what is known of each (`Known`): the checker proves them for a literal in
-`types/body/events.rs`, reading a part written `none` as absent and one
-written out as given, and `jadpo_value::event` checks a value read from
-text or JSON by them. A part may be another standard object
+(days or times, their order, a recurrence from the event's start), named
+rules since chunk 5.5t2. A part may be another standard object
 (`Part::Standard("LocalDateTime")`), sent as its canonical text and stored
 as it in a `text` column (`to_parts`), or text over several lines
 (`Part::Paragraph`); a `date` part reads back from PostgreSQL as a date.

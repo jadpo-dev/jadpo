@@ -626,13 +626,20 @@ impl Lower<'_> {
                         }
                         (None, _) => Vec::new(),
                     };
-                    let named = if across { rule.clone() } else { None };
-                    // An arm naming no rule is reported; it maps nothing.
-                    let rule = match rule.as_deref().map(RuleKey::from_word) {
+                    // An arm keyed by no rule of the language names a rule
+                    // across an object's parts, a standard object's that
+                    // `text.parse` reads (chunk 5.5t2); one naming no rule
+                    // at all is reported, and maps nothing.
+                    let keyed = rule.as_deref().map(RuleKey::from_word);
+                    let named = match keyed {
+                        _ if across => rule.clone(),
+                        Some(None) => rule.clone(),
+                        _ => None,
+                    };
+                    let rule = match keyed {
                         _ if across => None,
-                        None => None,
                         Some(Some(key)) => Some(key),
-                        Some(None) => continue,
+                        _ => None,
                     };
                     // `json.read`'s first problem, for the failure's
                     // `problem: DecodeProblem` field (area 19).
@@ -995,12 +1002,19 @@ impl Lower<'_> {
                     typed::Fallible::Unknown
                 }
             }
+            // A rule that isn't one of the language's is a rule across an
+            // object's parts, by name: a standard object's that
+            // `text.parse` reads (area 19, chunk 5.5t2).
             Some(Fallible::Construction(rules)) => typed::Fallible::Construction {
                 rules: rules
                     .iter()
                     .filter_map(|rule| RuleKey::from_word(rule))
                     .collect(),
-                named: Vec::new(),
+                named: rules
+                    .iter()
+                    .filter(|rule| RuleKey::from_word(rule).is_none())
+                    .cloned()
+                    .collect(),
             },
             Some(Fallible::Unknown) | None => typed::Fallible::Unknown,
         }

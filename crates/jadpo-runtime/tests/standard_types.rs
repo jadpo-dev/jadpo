@@ -218,10 +218,15 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
                 variant: None,
                 fields: plans,
             }));
+            // Its rules across its parts, checked once it is read (chunk
+            // 5.5t2), as the plan's validator checks them.
+            let across = jadpo_std::standard::across::cross_rules(entry.name);
+            let validator = (!across.is_empty())
+                .then(|| tables.validator(Validator::new(None, Vec::new()).with_across(across)));
             tables.codecs[at.0 as usize] = Codec::Object {
                 shape,
                 fields: tops,
-                validator: None,
+                validator,
             };
             at
         }
@@ -287,10 +292,12 @@ fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
                 variant: None,
                 fields: plans,
             }));
+            let across = jadpo_std::standard::across::cross_rules(jadpo_std::RANGE);
+            let validator = tables.validator(Validator::new(None, Vec::new()).with_across(across));
             tables.codecs[at.0 as usize] = Codec::Object {
                 shape,
                 fields: vec![end, end],
-                validator: None,
+                validator: Some(validator),
             };
             at
         }
@@ -638,11 +645,19 @@ fn every_standard_type_meets_the_contract() {
                 assert_eq!(read_json(&table, text), None, "{name}: {text} isn't one");
                 continue;
             }
-            assert_eq!(
-                read(entry, text),
-                Err(Fault::Broke(RuleKey::Malformed)),
-                "{name}: `{text}` is malformed"
-            );
+            // Text that isn't one at all, or one that breaks a rule across
+            // its parts, which it is checked by once read (chunk 5.5t2).
+            match read(entry, text) {
+                Err(fault) => assert_eq!(
+                    fault,
+                    Fault::Broke(RuleKey::Malformed),
+                    "{name}: `{text}` is malformed"
+                ),
+                Ok(value) => assert!(
+                    jadpo_value::across::broken_standard(&value).is_some(),
+                    "{name}: `{text}` is refused"
+                ),
+            }
             // A type held as text refuses it wherever it is built: its
             // own check breaks `format`, and JSON doesn't read it.
             if let Holds::Text { .. } = entry.holds {
@@ -803,10 +818,13 @@ fn postal_codes_follow_each_country_s_rules() {
             );
             let (read, problems) = posted(typed, examples.country);
             assert_eq!(read, None, "{typed} in an address in {}", examples.country);
+            // Refused at `postal_code` by its own check, or by the rule
+            // across the address's parts (chunk 5.5t2).
             assert!(
                 problems
                     .iter()
-                    .any(|problem| problem.field.ends_with("postal_code")),
+                    .any(|problem| problem.field.ends_with("postal_code")
+                        || problem.rule == "postal_code_of_country"),
                 "{problems:?}"
             );
         }
@@ -833,7 +851,13 @@ fn identity_documents_follow_each_country_s_forms() {
                     matches!(read, Ok(_) | Err(Fault::Broke(RuleKey::Malformed))),
                     "{text}: {read:?}"
                 );
-                return (read.ok(), vec!["number".to_string()]);
+                // A number not in its country's form breaks the type's
+                // rule, which the value is checked by once read (chunk
+                // 5.5t2).
+                let kept = read
+                    .ok()
+                    .filter(|value| jadpo_value::across::broken_standard(value).is_none());
+                return (kept, vec!["number".to_string()]);
             }
             let mut json = serde_json::json!({
                 "country": examples.country,
@@ -845,7 +869,10 @@ fn identity_documents_follow_each_country_s_forms() {
             }
             let mut problems = Vec::new();
             let read = table.read(CodecId(0), &json, &Path::default(), &mut problems);
-            let fields = problems.iter().map(|p| p.field.clone()).collect();
+            let fields = problems
+                .iter()
+                .map(|p| format!("{} {}", p.field, p.rule))
+                .collect();
             (read, fields)
         };
         for number in examples.valid {
@@ -864,8 +891,10 @@ fn identity_documents_follow_each_country_s_forms() {
                 "{} {number} isn't one of {}'s",
                 examples.ty, examples.country
             );
+            // Refused at `number` by its own pattern, or by the rule
+            // across its parts, `number_of_country` (chunk 5.5t2).
             assert!(
-                problems.iter().any(|field| field.ends_with("number")),
+                problems.iter().any(|problem| problem.contains("number")),
                 "{} {number}: {problems:?}",
                 examples.ty
             );
@@ -935,26 +964,34 @@ fn an_event_s_parts_are_checked_together_as_json_is_read() {
     };
     let (read, problems) = posted(serde_json::json!({}));
     assert!(read.is_some(), "{problems:?}");
-    let broken = |changes: serde_json::Value, part: &str| {
+    // Each rule broken is reported by its name at the event's path
+    // (chunk 5.5t2).
+    let broken = |changes: serde_json::Value, rule: &str| {
         let (read, problems) = posted(changes.clone());
         assert_eq!(read, None, "{changes}");
         assert!(
             problems
                 .iter()
-                .any(|problem| problem.field.ends_with(part) && problem.rule == "format"),
+                .any(|problem| problem.field.is_empty() && problem.rule == rule),
             "{changes}: {problems:?}"
         );
     };
-    broken(serde_json::json!({ "first_day": "2026-10-24" }), "last_day");
+    broken(
+        serde_json::json!({ "first_day": "2026-10-24" }),
+        "days_or_times",
+    );
     broken(
         serde_json::json!({ "first_day": "2026-10-24", "last_day": "2026-10-26" }),
-        "start",
+        "days_or_times",
     );
-    broken(serde_json::json!({ "zone": null }), "zone");
-    broken(serde_json::json!({ "end": "2026-10-24T21:00:00" }), "end");
+    broken(serde_json::json!({ "zone": null }), "days_or_times");
+    broken(
+        serde_json::json!({ "end": "2026-10-24T21:00:00" }),
+        "end_after_start",
+    );
     broken(
         serde_json::json!({ "recurrence": "DTSTART;TZID=Europe/Paris:20261024T220000\nRRULE:FREQ=WEEKLY" }),
-        "recurrence",
+        "recurrence_from_start",
     );
     broken(
         serde_json::json!({
@@ -965,6 +1002,6 @@ fn an_event_s_parts_are_checked_together_as_json_is_read() {
             "zone": null,
             "recurrence": null,
         }),
-        "last_day",
+        "last_day_not_before_first",
     );
 }
