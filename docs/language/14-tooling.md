@@ -570,9 +570,13 @@ to `.gitignore`.
   `.jadpo/suggest_pending` and `.jadpo/suggest_signals` hold one JSON
   object per line, since they hold source text; only the committed record
   is in Jadpo's readable format.
-- **Taught signals are local.** They live in `.jadpo/suggest_signals`,
-  untracked, as the pending file does, until sharing decides how a team
-  shares them.
+- **Taught signals are local for now.** They live in
+  `.jadpo/suggest_signals`, untracked, as the pending file does. *Decided
+  2026-10-18 (lead session):* taught patterns are shared by the team, like
+  ignores: roadmap 5.5y moves them to a committed
+  `taught_suggestions.jadpo_record` at the project root (area 1's root list
+  gains it), so a teammate's scan finds what another taught, and
+  `.jadpo/suggest_signals` stays only as a cache.
 - **Hashes.** 16 hex digits of BLAKE3 for both the canonical form and the
   text.
 - **Validation texts are their own data.** Each type lists the texts a

@@ -1262,6 +1262,11 @@ reference only).
   beside the accepted ones, and narrows or removes it (tested against the
   accepted snippets so it keeps catching what it got right), and proposes,
   never builds, language features.
+  Taught patterns from `found` move to a committed
+  `taught_suggestions.jadpo_record` at the project root (area 1's root list
+  gains it), so a teammate's scan finds what another taught;
+  `.jadpo/suggest_signals` stays only as a cache (lead session,
+  2026-10-18).
   Done when the whole exchange runs against the fake in tests, nothing is
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
