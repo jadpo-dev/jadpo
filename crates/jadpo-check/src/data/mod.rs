@@ -1666,6 +1666,11 @@ pub const SESSIONS: &str = "jadpo_sessions";
 /// when service keys are declared (area 8).
 pub const SERVICE_KEYS: &str = "jadpo_service_keys";
 
+/// The passkeys' table and their ceremonies', beside the sessions they
+/// start, when `passkey:` is declared (area 8, "Passkeys").
+pub const PASSKEYS: &str = "jadpo_passkeys";
+pub const PASSKEY_CHALLENGES: &str = "jadpo_passkey_challenges";
+
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
 /// in a wrong store are left out; their errors stop the build anyway.
@@ -1708,6 +1713,18 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         found
             .tables
             .insert(SESSIONS.to_string(), columns::system_table("sessions"));
+    }
+    if let Some(store) = crate::identity::identity(db, project).sessions_store()
+        && crate::identity::identity(db, project).passkeys().is_some()
+        && let Some(found) = schema.stores.get_mut(store)
+    {
+        found
+            .tables
+            .insert(PASSKEYS.to_string(), columns::system_table("passkeys"));
+        found.tables.insert(
+            PASSKEY_CHALLENGES.to_string(),
+            columns::system_table("passkey_challenges"),
+        );
     }
     if let Some(store) = crate::identity::identity(db, project).keys_store()
         && let Some(found) = schema.stores.get_mut(store)

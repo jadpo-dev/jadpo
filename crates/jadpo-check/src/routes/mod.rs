@@ -483,6 +483,42 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             continue;
         }
+        // The runtime answers the routes passkeys generate (area 8,
+        // "Passkeys").
+        if let Some(passkey) = crate::identity::identity(db, project).passkeys() {
+            let generated = jadpo_std::http::PasskeyStep::ALL.into_iter().find(|step| {
+                let segments: Vec<Segment> = step
+                    .segments(&passkey.path)
+                    .into_iter()
+                    .map(|text| {
+                        if text == jadpo_std::http::PASSKEY_ID {
+                            Segment::Param {
+                                name: "passkey_id".to_string(),
+                                ty: Ty::Error,
+                            }
+                        } else {
+                            Segment::Fixed(text)
+                        }
+                    })
+                    .collect();
+                route.method == step.method() && overlaps(&route.segments, &segments)
+            });
+            if let Some(step) = generated {
+                out.push(
+                    Diagnostic::new(
+                        &rule::ROUTE_PATH_OVERLAP,
+                        format!("`{}` is the runtime's {}", route.label(), step.label()),
+                    )
+                    .at(span.clone(), "answered by the runtime")
+                    .reason("With `passkey:` in `sign_in:`, the runtime answers the passkey routes under its `path:` itself, so this route would never run.")
+                    .next(format!(
+                        "Give `{}` in `{group}` another path, or move the passkey routes with `path:`",
+                        route.label()
+                    )),
+                );
+                continue;
+            }
+        }
         // The runtime answers its health checks before any route (area 7,
         // "Health").
         let fixed: Vec<&str> = route

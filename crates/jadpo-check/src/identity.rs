@@ -11,9 +11,10 @@
 //! chunk 4.3: browser sessions; in chunk 4.3b: API tokens and service
 //! keys; in chunk 5.1b: the revocation delay, with each method's
 //! `signing_key:` and a browser session's `origin:` read from settings
-//! (area 10), and the generated `POST /auth/exchange`. External tokens,
-//! sign-in providers and acting as an OAuth provider come after the
-//! first build: each is `toolchain.not_built_yet` where it is written.
+//! (area 10), and the generated `POST /auth/exchange`; in chunk 5.5z:
+//! `sign_in:` with `passkey:`, whose routes the runtime answers. External
+//! tokens, magic links, sign-in providers and acting as an OAuth provider
+//! come later: each is `toolchain.not_built_yet` where it is written.
 
 use std::sync::Arc;
 
@@ -79,6 +80,12 @@ pub const PRINCIPAL: &str = "Principal";
 /// The settings `browser_session` takes.
 const BROWSER_SESSION: [&str; 3] = ["cookie", "origin", "signing_key"];
 
+/// The settings `passkey` takes (area 8, "Passkeys").
+const PASSKEY: [&str; 2] = ["expires_after", "path"];
+
+/// The ways `sign_in:` checks a person (area 8, "Checking the person").
+const SIGN_IN_WAYS: [&str; 3] = ["magic_link", "passkey", "providers"];
+
 /// What `authentication { }` may hold besides its methods, each built by a
 /// later chunk.
 const LATER_BLOCKS: [(&str, &str); 2] = [
@@ -121,6 +128,16 @@ pub struct Method {
     pub origin: Option<String>,
 }
 
+/// `sign_in: { passkey: }` (area 8, "Passkeys"), read cleanly and with
+/// the browser session and origin it needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Passkey {
+    /// How long a ceremony's challenge lasts, in milliseconds.
+    pub expires_after_ms: i64,
+    /// Where the generated routes go: `path:`'s segments.
+    pub path: Vec<String>,
+}
+
 /// Area 8's declarations, read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Identity {
@@ -135,6 +152,9 @@ pub struct Identity {
     /// `application { revocation_delay: }` in milliseconds, when it is a
     /// duration above zero.
     pub revocation_delay: Option<i64>,
+    /// `sign_in: { passkey: }`, when it reads cleanly and a browser session
+    /// with its `origin:` signs the person in.
+    pub passkey: Option<Passkey>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -219,6 +239,14 @@ impl Identity {
     /// trades its key for a short-lived signed token there.
     pub fn exchanges(&self) -> bool {
         self.revocation_delay.is_some() && self.keys_store().is_some()
+    }
+
+    /// The passkeys the runtime answers for (area 8, "Passkeys"), kept
+    /// beside the sessions they start.
+    pub fn passkeys(&self) -> Option<&Passkey> {
+        self.passkey
+            .as_ref()
+            .filter(|_| self.sessions_store().is_some())
     }
 }
 
@@ -714,7 +742,10 @@ impl Reader<'_> {
             .iter()
             .copied()
             .chain(LATER_BLOCKS.iter().map(|(name, _)| *name))
+            .chain(["sign_in"])
             .collect();
+        // `passkey:`'s settings and where it is written, once read.
+        let mut passkey: Option<(Passkey, Span)> = None;
         let mut seen: Vec<(String, Span)> = Vec::new();
         // The built methods with no `signing_key:`, which a revocation
         // delay needs.
@@ -754,6 +785,12 @@ impl Reader<'_> {
                 continue;
             }
             seen.push((word.clone(), span.clone()));
+            if word == "sign_in" {
+                if let Some(member) = &member {
+                    passkey = self.sign_in(&path, &span, member);
+                }
+                continue;
+            }
             if let Some((_, why)) = LATER_BLOCKS.iter().find(|(name, _)| *name == word) {
                 self.later(span, &format!("`{word}:`"), why);
                 continue;
@@ -859,6 +896,31 @@ impl Reader<'_> {
                 );
             }
             self.out.methods.push(read);
+        }
+        // A passkey is bound to the browser session's origin.
+        if let Some((read, span)) = passkey {
+            let session = self.out.method(AuthenticationMethod::BrowserSession);
+            match session.map(|session| session.origin.is_some()) {
+                None => self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`passkey:` needs a browser session",
+                    )
+                    .at(span, "no `browser_session:`")
+                    .reason("A passkey signs a person in to a browser session, at the origin the session's pages are served from, which every answer from a device is checked against.")
+                    .next("Declare `browser_session: { cookie: \"<name>\"  origin: config.<name> }`"),
+                ),
+                Some(false) => self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_REQUIRED,
+                        "`passkey:` needs the browser session's `origin:`",
+                    )
+                    .at(span, "no origin to bind to")
+                    .reason("A passkey works only on the site it was made for: every answer from a device is checked against the origin `browser_session:`'s `origin:` reads from configuration (area 10), never one the request names.")
+                    .next("Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting"),
+                ),
+                Some(true) => self.out.passkey = Some(read),
+            }
         }
         // With a revocation delay every method signs what it gives, with a
         // key from secret configuration.
@@ -1152,6 +1214,185 @@ impl Reader<'_> {
         })
     }
 
+    /// `sign_in: { ... }`: the ways the language checks a person. Only
+    /// `passkey:` is built; it is given with where it is written when it
+    /// reads cleanly.
+    fn sign_in(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<(Passkey, Span)> {
+        let Some(list) = member.block() else {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`sign_in:` isn't a block",
+                )
+                .at(span.clone(), "a block goes here")
+                .reason("`sign_in:` lists the ways the language checks a person, each a block of its own settings.")
+                .next("Write `sign_in: { passkey: {} }`"),
+            );
+            return None;
+        };
+        let mut seen: Vec<(String, Span)> = Vec::new();
+        let mut passkey = None;
+        for (key, setting) in tree::members(Some(list)) {
+            let Some(word) = tree::name_text(&key) else {
+                continue;
+            };
+            let key_span = node_span(path, key.syntax());
+            if let Some((_, first)) = seen.iter().find(|(seen, _)| *seen == word) {
+                self.out.problems.push(
+                    Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_METHOD_DUPLICATE,
+                        format!("`{word}:` is declared twice"),
+                    )
+                    .at(key_span, "declared again")
+                    .also(first.clone(), "first declared here")
+                    .reason("Each way to check a person is one block, written once, so its settings are in one place.")
+                    .next(format!("Move the settings into the first `{word}:`, and remove this one")),
+                );
+                continue;
+            }
+            seen.push((word.clone(), key_span.clone()));
+            match word.as_str() {
+                "passkey" => {
+                    passkey = self
+                        .passkey(path, &key_span, &setting)
+                        .map(|read| (read, key_span));
+                }
+                "magic_link" => self.later(
+                    key_span,
+                    "`magic_link:`",
+                    "Magic links come with chunk 7.3b, once the application can send email",
+                ),
+                "providers" => self.later(
+                    key_span,
+                    "`providers:`",
+                    "Signing in through a provider such as Google comes after magic links (area 8, question 11)",
+                ),
+                other => {
+                    let near = nearest(other, SIGN_IN_WAYS.iter().copied());
+                    let problem = Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_METHOD_UNKNOWN,
+                        format!("`{other}` isn't a way to check a person"),
+                    )
+                    .at(key_span.clone(), "not a way to sign in")
+                    .reason(format!(
+                        "`sign_in:` lists the ways the language checks a person: `magic_link`, `passkey` and `providers`; each ends by starting a session.{}",
+                        near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+                    ));
+                    self.out.problems.push(match near {
+                        Some(near) => problem
+                            .next(format!("Use `{near}` instead of `{other}`"))
+                            .edit(key_span, near),
+                        None => problem.next(format!("Remove `{other}:`")),
+                    });
+                }
+            }
+        }
+        passkey
+    }
+
+    /// `passkey: { ... }`: how long a challenge lasts and where the routes
+    /// go. `None` when it doesn't read cleanly.
+    fn passkey(&mut self, path: &str, span: &Span, member: &ast::Member) -> Option<Passkey> {
+        let Some(list) = member.block() else {
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`passkey:` isn't a block",
+                )
+                .at(span.clone(), "a block goes here")
+                .reason("Passkeys are declared as a block of their settings, empty when the defaults suit.")
+                .next("Write `passkey: {}`"),
+            );
+            return None;
+        };
+        let mut read = Passkey {
+            expires_after_ms: jadpo_std::http::PASSKEY_EXPIRES_MS,
+            path: jadpo_std::http::PASSKEY_PATH
+                .iter()
+                .map(|text| text.to_string())
+                .collect(),
+        };
+        let mut ok = true;
+        for (key, setting) in tree::members(Some(list)) {
+            let Some(name) = tree::name_text(&key) else {
+                continue;
+            };
+            let key_span = node_span(path, key.syntax());
+            let value = setting.value();
+            let value_span = value
+                .as_ref()
+                .map_or_else(|| key_span.clone(), |v| node_span(path, v.syntax()));
+            match name.as_str() {
+                "expires_after" => {
+                    let written = value
+                        .as_ref()
+                        .map(|v| tree::written(v.syntax()))
+                        .unwrap_or_default();
+                    let millis = jadpo_std::Dur::parse(&written)
+                        .and_then(|dur| i64::try_from(dur.millis).ok());
+                    match millis {
+                        Some(millis)
+                            if (jadpo_std::http::PASSKEY_EXPIRES_MIN_MS
+                                ..=jadpo_std::http::PASSKEY_EXPIRES_MAX_MS)
+                                .contains(&millis) =>
+                        {
+                            read.expires_after_ms = millis;
+                        }
+                        _ => {
+                            ok = false;
+                            self.out.problems.push(
+                                Diagnostic::new(
+                                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                    format!("`{written}` can't be how long a passkey's challenge lasts"),
+                                )
+                                .at(value_span, if millis.is_some() { "not 1m to 10m" } else { "not a duration" })
+                                .reason("`expires_after:` is how long a device has to answer a passkey's challenge, from `1m` to `10m`: long enough for the browser's own prompt, short enough that a challenge seen by someone else is soon of no use.")
+                                .next("Write a duration from `1m` to `10m`, such as `5m`"),
+                            );
+                        }
+                    }
+                }
+                "path" => match value.as_ref().map(Const::from_expr) {
+                    Some(Const::Str(text)) if fixed_path(&text).is_some() => {
+                        read.path = fixed_path(&text).unwrap_or_default();
+                    }
+                    _ => {
+                        ok = false;
+                        self.out.problems.push(
+                            Diagnostic::new(
+                                &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                "`path:` isn't a path of fixed segments",
+                            )
+                            .at(value_span, "not a fixed path")
+                            .reason("`path:` moves the generated passkey routes: `/` and one or more segments of lower-case letters, digits, `-` and `_`, in quotes, such as `\"/account/passkeys\"`.")
+                            .next("Write a path such as `path: \"/account/passkeys\"`"),
+                        );
+                    }
+                },
+                other => {
+                    ok = false;
+                    let near = nearest(other, PASSKEY.iter().copied());
+                    let problem = Diagnostic::new(
+                        &rule::SEMANTIC_AUTH_SETTING_UNKNOWN,
+                        format!("`{other}` isn't a `passkey` setting"),
+                    )
+                    .at(key_span.clone(), "unknown setting")
+                    .reason(format!(
+                        "Passkeys take `expires_after:`, how long a challenge lasts, and `path:`, where the routes go; the language sets the ceremonies, the checks and what is kept.{}",
+                        near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
+                    ));
+                    self.out.problems.push(match near {
+                        Some(near) => problem
+                            .next(format!("Use `{near}` instead of `{other}`"))
+                            .edit(key_span, near),
+                        None => problem.next(format!("Remove `{other}:`")),
+                    });
+                }
+            }
+        }
+        ok.then_some(read)
+    }
+
     fn later(&mut self, span: Span, what: &str, why: &str) {
         self.out.problems.push(
             Diagnostic::new(
@@ -1163,6 +1404,22 @@ impl Reader<'_> {
             .next(format!("Leave {what} out for now")),
         );
     }
+}
+
+/// The segments of a path written as `/` and one or more segments of
+/// lower-case letters, digits, `-` and `_`: where generated routes go.
+fn fixed_path(text: &str) -> Option<Vec<String>> {
+    let rest = text.strip_prefix('/')?;
+    let segments: Vec<String> = rest.split('/').map(str::to_string).collect();
+    segments
+        .iter()
+        .all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+        })
+        .then_some(segments)
 }
 
 /// Whether `text` can name the session's cookie: a letter, then letters,
