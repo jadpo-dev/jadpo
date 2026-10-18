@@ -1143,6 +1143,7 @@ mod tests {
                     drop_frame.map_or(Known::Unknown, |flag| Known::Given(Some(Given::Bool(flag)))),
                 ),
             ],
+            ..Listed::default()
         };
         TIMECODE_RULES
             .iter()

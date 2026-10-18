@@ -1179,13 +1179,25 @@ reference only).
   `attempt`; a line's length sums its edges' rounded distances and an
   area rounds once; a coordinate is rounded to the nearest double as it
   is built. What the chunk chose is area 20's "Chosen in chunk 5.5u2".
-- [ ] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
+- [x] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
   "Operations"), after 5.5u2:
   `geo.intersects`, `contains` and `within` (with `distance:`, a
   `BoundingBox` and a `Circle`), `centroid`, `bounding_box`, and
   `rings_valid` on the sphere. Done when each agrees with PostGIS on cases
   away from a boundary and every validity case reads and builds as the
-  page says.
+  page says. Built: an exact great-circle geometry in `jadpo-std`
+  (`sphere`), points as whole-number directions and every predicate a
+  sign worked out in whole numbers, ties broken as S2 breaks them, so a
+  point on an edge is found on it; 5.5u2's fixed-point maths moved to
+  `jadpo-std` so the checker reads a polygon literal by it. 169 cases
+  from PostGIS 3.4.2, written by `tools/geo_cases.py`, agree natively and
+  under wasm32 with one digest, but four where `ST_Covers` misses a hole
+  or a multi-part `a`, which keep the page's meaning and are recorded for
+  5.5u5; centroids within 4 × 10⁻¹² of a degree. `rings_valid` is read
+  from literals, attempted on values and `format` in GeoJSON, each
+  validity case tested; rings may not touch at all; a 10,000-point
+  outline checks in 70 ms. What the chunk chose is area 20's "Chosen in
+  chunk 5.5u3".
 - [ ] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
   "Storage"): `geography` columns
   with their checks, `BoundingBox` and `Circle` as named columns, `CREATE

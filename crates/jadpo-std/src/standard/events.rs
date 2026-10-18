@@ -678,6 +678,7 @@ mod tests {
     ) -> Option<(&'static str, &'static str)> {
         let listed = super::super::across::Listed {
             parts: parts.to_vec(),
+            ..Default::default()
         };
         RULES.iter().find_map(|rule| match rule.verdict(&listed) {
             Verdict::Breaks(at) => Some((rule.name, at)),

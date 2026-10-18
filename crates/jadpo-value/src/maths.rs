@@ -17,7 +17,7 @@
 //! `r` they aren't exact at (Lindemann–Weierstrass), and π is.
 
 mod big;
-mod fixed;
+pub(crate) use jadpo_std::fixed;
 pub(crate) mod geodesic;
 mod series;
 

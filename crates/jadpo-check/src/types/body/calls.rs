@@ -1129,6 +1129,7 @@ impl Body<'_> {
             self.counts(table, &args, &slots, written);
             self.bounded(table, &args, &slots, written);
             self.never_empty(table, &args, &slots, written);
+            self.geo_pairs(table, &args, &slots, written);
         }
         if let Some(table) = table {
             self.std_options(table, call, &args, &slots, written);
@@ -1411,9 +1412,17 @@ impl Body<'_> {
             }
             let span = self.span(&value);
             let shown = tree::written(value.syntax());
+            let negative_quantity = |text: &str| {
+                jadpo_std::quantity::parse_literal(text).is_ok_and(|(_, amount)| amount < 0)
+            };
             let (message, label, why) = if is_literal(&value) {
                 match Const::from_expr(&value) {
                     Const::Number { value: number, .. } if number.mantissa < 0 => (
+                        format!("`{written}`'s `{}` is never negative", param.name),
+                        "below `0`".to_string(),
+                        format!("`{shown}` is below `0`."),
+                    ),
+                    Const::Quantity(text) if negative_quantity(&text) => (
                         format!("`{written}`'s `{}` is never negative", param.name),
                         "below `0`".to_string(),
                         format!("`{shown}` is below `0`."),
@@ -1428,7 +1437,7 @@ impl Body<'_> {
                             && !self.table.is_nullable(&ty)
                             && matches!(
                                 self.table.representation(&ty),
-                                Some(Prim::Int | Prim::Decimal)
+                                Some(Prim::Int | Prim::Decimal | Prim::Quantity(_))
                             ) =>
                     {
                         if self.never_below_zero(&ty) {
@@ -1454,6 +1463,10 @@ impl Body<'_> {
                 jadpo_std::Op::DecimalSqrt => (
                     "is a number whose square root is taken, and one below `0` has none",
                     "Pass a value whose type has `min: 0`, building it where a negative one is handled",
+                ),
+                jadpo_std::Op::GeoWithin => (
+                    "is how far apart the two points may be (area 20, \"Operations\")",
+                    "Pass a length whose type has `min: 0metre`, or a length written out",
                 ),
                 jadpo_std::Op::DecimalPower => (
                     "says how many times `value` is multiplied by itself, so the result stays exact",
@@ -1805,13 +1818,28 @@ impl Body<'_> {
         if ty.has_error() || accepts.iter().any(fits) {
             return;
         }
-        let wanted = accepts
-            .iter()
-            .map(|name| format!("a `{name}`"))
-            .collect::<Vec<_>>()
-            .join(" or ");
+        let any_geometry = accepts.contains(&jadpo_std::standard::geo::GEOMETRY);
+        let wanted = if any_geometry {
+            let containers = accepts.contains(&jadpo_std::standard::geo::BOUNDING_BOX);
+            format!(
+                "a geometry{}",
+                if containers {
+                    ", a `BoundingBox` or a `Circle`"
+                } else {
+                    ""
+                }
+            )
+        } else {
+            accepts
+                .iter()
+                .map(|name| format!("a `{name}`"))
+                .collect::<Vec<_>>()
+                .join(" or ")
+        };
         let why = if accepts == [jadpo_std::standard::geo::POINT] {
             "measures between points only: from a point to a line or a polygon is a further geodesic algorithm, left out until a scenario needs it (area 20, question 10)"
+        } else if any_geometry {
+            "compares shapes, each a `Point`, a `LineString`, a `Polygon`, one of the three multi-part geometries, or a `Geometry` holding one (area 20, \"Operations\")"
         } else {
             "measures only those (area 20, \"Operations\"); a `Geometry` is matched first, to measure the shape it holds"
         };
@@ -1825,6 +1853,81 @@ impl Body<'_> {
             .reason(format!("`{written}`'s `{param}` takes {wanted}: it {why}."))
             .next(format!("Pass {wanted} here")),
         );
+    }
+
+    /// What `geo.contains` and `geo.within` take together (area 20,
+    /// "Operations"): with `distance:`, `within` measures between two
+    /// points, and a `Circle` holds points, both only points since a
+    /// distance from a point to a line or a polygon is left out (question
+    /// 10). A `BoundingBox` holds any geometry, its sides compared
+    /// directly.
+    fn geo_pairs(
+        &mut self,
+        table: &jadpo_std::Operation,
+        args: &[ast::Arg],
+        slots: &[Option<usize>],
+        written: &str,
+    ) {
+        let at = |wanted: usize| {
+            args.iter()
+                .zip(slots)
+                .find(|(_, slot)| **slot == Some(wanted))
+                .and_then(|(arg, _)| arg.expr())
+        };
+        let (container, inner) = match table.op {
+            jadpo_std::Op::GeoContains => (0, 1),
+            jadpo_std::Op::GeoWithin => (1, 0),
+            _ => return,
+        };
+        let point = jadpo_std::standard::geo::POINT;
+        let circle = jadpo_std::standard::geo::CIRCLE;
+        let measured = table.op == jadpo_std::Op::GeoWithin && at(2).is_some();
+        let holder = at(container);
+        let is = |body: &Self, value: &Expr, name: &str| {
+            let standard = body.table.resolve_std(&super::super::TypeRef::Path(
+                vec![name.to_string()],
+                Vec::new(),
+            ));
+            body.facts
+                .types
+                .get(&node_key(value.syntax()))
+                .is_some_and(|ty| !ty.has_error() && body.table.assignable(ty, &standard))
+        };
+        let circled = holder.as_ref().is_some_and(|value| is(self, value, circle));
+        if !measured && !circled {
+            return;
+        }
+        let mut checked = vec![inner];
+        if measured {
+            checked.push(container);
+        }
+        for slot in checked {
+            let Some(value) = at(slot) else { continue };
+            let Some(ty) = self.facts.types.get(&node_key(value.syntax())).cloned() else {
+                continue;
+            };
+            if ty.has_error() || is(self, &value, point) {
+                continue;
+            }
+            let name = table.params.get(slot).map_or("", |param| param.name);
+            let because = if measured {
+                "with `distance:` it measures between two points"
+            } else {
+                "a `Circle` holds the points within its radius of its centre"
+            };
+            let span = self.span(&value);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_MISMATCH,
+                    format!("`{ty}` can't be used where a `Point` is required"),
+                )
+                .at(span, format!("this is `{ty}`"))
+                .reason(format!(
+                    "`{written}`'s `{name}` takes a `Point` here: {because}, and a distance from a point to a line or a polygon is a further geodesic algorithm, left out until a scenario needs it (area 20, question 10)."
+                ))
+                .next("Pass a `Point` here, or compare the shape with a `Polygon`"),
+            );
+        }
     }
 
     /// An argument to a parameter that takes `none` or a value built on one
