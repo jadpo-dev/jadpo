@@ -20,12 +20,14 @@ pub mod addresses_data;
 pub mod banks;
 pub mod card_types;
 mod codes;
+pub mod colour;
 mod contact;
 pub mod documents;
 pub mod emoji_data;
 pub mod events;
 mod identifiers;
 pub mod lists;
+pub mod media;
 pub mod modulus;
 pub mod opening_hours;
 pub mod person_names_data;
@@ -305,6 +307,25 @@ pub enum TextForm {
     /// SemVer 2.0.0's text, `1.2.3-alpha.1+build.5`, with no `v` before it
     /// (chunk 5.5n2, [`software::read_version`]).
     SemanticVersion,
+    /// CSS Color 4's hex colour, `#rrggbb`, or `#rrggbbaa` when it isn't
+    /// opaque, written in lower case and read in either (chunk 5.5p,
+    /// [`colour::read_hex`]).
+    Colour,
+    /// An object's parts, each a whole number with no sign or leading
+    /// zero within its part's range, in order, joined by the separator:
+    /// `1920x1080`, `16:9`, `30000/1001` (chunk 5.5p).
+    Wholes(&'static str),
+    /// An object's parts, each a decimal number with the places it was
+    /// given and no leading zero, within its part's bounds, in order,
+    /// joined by the separator: a `Rect`'s `0 0 300 200` (chunk 5.5p).
+    Decimals(&'static str),
+    /// An object of an enum and a text part: the enum's code, a space,
+    /// and the text, the rules across the parts held: `BBFC 12A` (chunk
+    /// 5.5p).
+    CodeThenText,
+    /// A WebVTT cue's timings line and its text (chunk 5.5p,
+    /// [`media::read_cue`]).
+    Cue,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -456,6 +477,9 @@ pub enum FormatKey {
         parts: &'static [&'static str],
         mask: &'static str,
     },
+    /// SMPTE ST 12-1's notation, `01:00:00:00`, with `;` before the frames
+    /// when it counts drop-frame, the same in every locale (chunk 5.5p).
+    Timecode,
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -655,6 +679,9 @@ pub struct FieldMatch {
     /// Whether a field holding an enum matches too, as a currency held as
     /// a project's own enum does.
     pub or_enum: bool,
+    /// Whether an `Object` may leave the field out and still match, as a
+    /// colour's alpha (chunk 5.5p).
+    pub optional: bool,
 }
 
 /// How a standard type is stored (area 5, "Storage types"; area 19).
@@ -975,11 +1002,13 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
 /// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), the 20 web
 /// and network types (chunk 5.5n, in `web`), the money group's records
-/// (chunk 5.5i3, in `prices`), and the 18 software types (chunk 5.5n2, in
-/// `software`).
+/// (chunk 5.5i3, in `prices`), the 18 software types (chunk 5.5n2, in
+/// `software`), and the 15 media and visual types with
+/// `ContentRatingScheme` (chunk 5.5p, in `colour` and `media`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
+    media::ALT_TEXT_ENTRY,
     quantity(
         crate::QuantityKind::Angle,
         &[
@@ -996,6 +1025,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("10000 sqm", "10,000 m²"),
         ],
     ),
+    media::ASPECT_RATIO_ENTRY,
+    media::AUDIO_CODEC_ENTRY,
     banks::BANK_ACCOUNT_ENTRY,
     prices::BASIS_POINTS_ENTRY,
     identifiers::BIC,
@@ -1062,6 +1093,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     codes::CARRIER,
     lists::CEFR_LEVEL_ENTRY,
     web::CIDR,
+    colour::COLOUR_ENTRY,
     quantity(
         crate::QuantityKind::Concentration,
         &[
@@ -1072,6 +1104,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     software::CONTAINER_IMAGE,
     codes::CONTAINER_NUMBER,
+    media::CONTENT_RATING_ENTRY,
+    media::CONTENT_RATING_SCHEME_ENTRY,
     places::CONTINENT_ENTRY,
     web::COOKIE,
     places::COUNTRY_ENTRY,
@@ -1137,12 +1171,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 names: &["start", "starts_on", "start_date"],
                 built_on: &[Builtin::CalendarDate],
                 or_enum: false,
+                optional: false,
             },
             FieldMatch {
                 meaning: "a last day",
                 names: &["end", "ends_on", "end_date"],
                 built_on: &[Builtin::CalendarDate],
                 or_enum: false,
+                optional: false,
             },
         ]),
         examples: Examples {
@@ -1236,24 +1272,28 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 names: &["from", "from_currency", "base", "base_currency"],
                 built_on: &[Builtin::Text],
                 or_enum: true,
+                optional: false,
             },
             FieldMatch {
                 meaning: "a currency it converts to",
                 names: &["to", "to_currency"],
                 built_on: &[Builtin::Text],
                 or_enum: true,
+                optional: false,
             },
             FieldMatch {
                 meaning: "a rate",
                 names: &["rate", "exchange_rate"],
                 built_on: &[Builtin::Decimal],
                 or_enum: false,
+                optional: false,
             },
             FieldMatch {
                 meaning: "an instant it was quoted at",
                 names: &["at", "as_of", "quoted_at"],
                 built_on: &[Builtin::Instant],
                 or_enum: false,
+                optional: false,
             },
         ]),
         examples: Examples {
@@ -1282,6 +1322,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    media::EXIF_ORIENTATION_ENTRY,
     contact::FAMILY_NAME,
     software::FILE_NAME,
     software::FILE_PATH,
@@ -1325,12 +1366,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 names: &["numerator"],
                 built_on: &[Builtin::Int],
                 or_enum: false,
+                optional: false,
             },
             FieldMatch {
                 meaning: "a denominator",
                 names: &["denominator"],
                 built_on: &[Builtin::Int],
                 or_enum: false,
+                optional: false,
             },
         ]),
         examples: Examples {
@@ -1346,6 +1389,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    media::FRAME_RATE_ENTRY,
     quantity(
         crate::QuantityKind::Frequency,
         &[
@@ -1377,8 +1421,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("100000 lx", "100,000 lx"),
         ],
     ),
+    media::IMAGE_DIMENSIONS_ENTRY,
     web::IMEI,
     lists::INCOTERM_ENTRY,
+    media::INSETS_ENTRY,
     StandardType {
         name: "Instant",
         holds: Holds::Builtin(Builtin::Instant),
@@ -1426,12 +1472,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 names: &["start", "starts_at", "start_at"],
                 built_on: &[Builtin::Instant],
                 or_enum: false,
+                optional: false,
             },
             FieldMatch {
                 meaning: "an end",
                 names: &["end", "ends_at", "end_at"],
                 built_on: &[Builtin::Instant],
                 or_enum: false,
+                optional: false,
             },
         ]),
         examples: Examples {
@@ -1611,12 +1659,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 names: &["amount", "value", "amount_minor", "minor", "cents", "pence"],
                 built_on: &[Builtin::Int, Builtin::Decimal],
                 or_enum: false,
+                optional: false,
             },
             FieldMatch {
                 meaning: "a currency",
                 names: &["currency", "currency_code"],
                 built_on: &[Builtin::Text],
                 or_enum: true,
+                optional: false,
             },
         ]),
         examples: Examples {
@@ -1671,6 +1721,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     schedules::OPENING_HOURS,
     codes::ORCID,
     software::PACKAGE_URL,
+    media::PAPER_SIZE_ENTRY,
     documents::PASSPORT_NUMBER_TYPE,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
@@ -1798,12 +1849,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
                 names: &["numerator"],
                 built_on: &[Builtin::Decimal],
                 or_enum: false,
+                optional: false,
             },
             FieldMatch {
                 meaning: "a denominator",
                 names: &["denominator"],
                 built_on: &[Builtin::Decimal],
                 or_enum: false,
+                optional: false,
             },
         ]),
         examples: Examples {
@@ -1819,6 +1872,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    media::RECT_ENTRY,
     schedules::RECURRENCE_RULE,
     software::REGULAR_EXPRESSION,
     web::RELATIVE_URL,
@@ -1846,6 +1900,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         ],
     ),
     codes::SSCC,
+    media::SUBTITLE_CUE_ENTRY,
     documents::TAX_ID_TYPE,
     prices::TAX_RATE_ENTRY,
     quantity(
@@ -1866,6 +1921,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     lists::TENURE_ENTRY,
     places::TEXT_DIRECTION_ENTRY,
+    media::TIMECODE_ENTRY,
     software::TRACE_ID,
     software::TRACE_PARENT,
     identifiers::UK_ACCOUNT_NUMBER,
@@ -1940,6 +1996,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     documents::VAT_NUMBER_TYPE,
     software::VERSION_RANGE,
+    media::VIDEO_CODEC_ENTRY,
+    media::VIDEO_RESOLUTION_ENTRY,
     codes::VIN,
     quantity(
         crate::QuantityKind::Voltage,
@@ -2315,6 +2373,7 @@ pub fn part_rules(ty: &str) -> &'static [PartRule] {
     }];
     match ty {
         "PostalAddress" => POSTAL_ADDRESS,
+        media::CONTENT_RATING => media::CONTENT_RATING_RULES,
         _ => documents::part_rules(ty),
     }
 }
@@ -2505,7 +2564,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 172, "the 172 standard types built so far");
+        assert_eq!(names.len(), 188, "the 188 standard types built so far");
     }
 
     #[test]

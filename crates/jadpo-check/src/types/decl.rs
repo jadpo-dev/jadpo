@@ -1614,7 +1614,8 @@ fn is_enum(table: &dyn TypeView, ty: &Ty) -> bool {
 
 /// The standard type whose shape `name`'s fields are (area 19, question
 /// 5): an `Object` whose fields are exactly a shape's, by their common
-/// names in any order and what each is built on, none of them optional;
+/// names in any order and what each is built on, none of them optional,
+/// though the shape may let it leave out a field it marks optional;
 /// `only` keeps to the standard type of that name.
 pub(crate) fn standard_match(
     table: &dyn TypeView,
@@ -1627,10 +1628,12 @@ pub(crate) fn standard_match(
             continue;
         }
         let Some(shape) = entry.shape else { continue };
-        if shape.len() != fields.len() {
+        let required = shape.iter().filter(|wanted| !wanted.optional).count();
+        if fields.len() < required || fields.len() > shape.len() {
             continue;
         }
         let mut matched: Vec<MatchedField> = Vec::new();
+        let mut missing = false;
         for wanted in shape {
             let found = fields.iter().find(|field| {
                 wanted.names.contains(&field.name.as_str())
@@ -1647,10 +1650,15 @@ pub(crate) fn standard_match(
                     written: field.name.clone(),
                     standard: wanted.names[0],
                 }),
-                None => break,
+                // A colour's alpha may be left out (chunk 5.5p).
+                None if wanted.optional => {}
+                None => {
+                    missing = true;
+                    break;
+                }
             }
         }
-        if matched.len() == shape.len() {
+        if !missing && matched.len() == fields.len() {
             return Some(StandardMatch {
                 standard: entry,
                 fields: matched,

@@ -168,6 +168,11 @@ pub struct Condition {
 /// Which operation, for an exhaustive match in each executor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Op {
+    ColourContrast,
+    ColourFromHsl,
+    ColourFromOklch,
+    ColourMix,
+    ColourWithLightness,
     DecimalAbs,
     DecimalAtan2,
     DecimalCos,
@@ -236,6 +241,7 @@ pub enum Op {
     MapValues,
     MapWith,
     MapWithout,
+    MediaFit,
     MoneyAllocate,
     MoneyApplyDiscount,
     MoneyConvert,
@@ -827,8 +833,90 @@ const fn text(
     }
 }
 
+/// A `colour` or `media` operation (area 19, "Colour" and "Media", chunk
+/// 5.5p), each one function in `jadpo-value`'s `colour` or `media` module.
+/// None fails: an argument out of range is clamped, as CSS clamps it.
+const fn media_op(
+    op: Op,
+    namespace: &'static str,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace,
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+const COLOUR: Kind = Kind::Std(crate::standard::colour::COLOUR);
+const PERCENTAGE: Kind = Kind::Builtin(Builtin::Percentage);
+const ANGLE: Kind = Kind::Builtin(Builtin::Quantity(crate::QuantityKind::Angle));
+const DIMENSIONS: Kind = Kind::Std(crate::standard::media::IMAGE_DIMENSIONS);
+
 /// Every operation, sorted by namespace and name.
 pub const OPERATIONS: &[Operation] = &[
+    // `colour`'s operations (area 19, "Colour"): each gives an sRGB
+    // `Colour`, worked out through CSS Color 4's conversions.
+    media_op(
+        Op::ColourContrast,
+        "colour",
+        "contrast",
+        &[param("a", COLOUR), param("b", COLOUR)],
+        DECIMAL,
+        "colour::contrast",
+    ),
+    media_op(
+        Op::ColourFromHsl,
+        "colour",
+        "from_hsl",
+        &[
+            param("hue", ANGLE),
+            param("saturation", PERCENTAGE),
+            param("lightness", PERCENTAGE),
+        ],
+        COLOUR,
+        "colour::from_hsl",
+    ),
+    media_op(
+        Op::ColourFromOklch,
+        "colour",
+        "from_oklch",
+        &[
+            param("lightness", PERCENTAGE),
+            param("chroma", DECIMAL),
+            param("hue", ANGLE),
+        ],
+        COLOUR,
+        "colour::from_oklch",
+    ),
+    media_op(
+        Op::ColourMix,
+        "colour",
+        "mix",
+        &[
+            param("a", COLOUR),
+            param("b", COLOUR),
+            param("ratio", PERCENTAGE),
+        ],
+        COLOUR,
+        "colour::mix",
+    ),
+    media_op(
+        Op::ColourWithLightness,
+        "colour",
+        "with_lightness",
+        &[param("value", COLOUR), param("lightness", PERCENTAGE)],
+        COLOUR,
+        "colour::with_lightness",
+    ),
     // The number operations (area 19, "Numbers"), each one function in
     // `jadpo-value`'s `integer` or `decimal` module. `min` and `max` give
     // one of their two values as it is, so they keep its named type; `abs`
@@ -1408,6 +1496,15 @@ pub const OPERATIONS: &[Operation] = &[
         &[ENTRIES, param("key", Kind::Any)],
         Kind::Map,
         "map::without",
+    ),
+    // `media`'s operation (area 19, "Media").
+    media_op(
+        Op::MediaFit,
+        "media",
+        "fit",
+        &[param("dimensions", DIMENSIONS), param("within", DIMENSIONS)],
+        DIMENSIONS,
+        "media::fit",
     ),
     // The money operations (area 19, "Money and payments"), each one
     // function in `jadpo-value`'s `money` module. Arithmetic is the

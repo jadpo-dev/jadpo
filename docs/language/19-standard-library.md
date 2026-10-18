@@ -392,7 +392,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerImage`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LogLevel`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3972,23 +3972,242 @@ XML is deferred: it waits for an XML byte format in a later release.
 
 ## Colour
 
-`Colour` holds `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB.
-Every operation gives an sRGB `Colour`; other spaces appear only as
-arguments.
+`Colour` holds `red`, `green`, `blue` and `alpha`, each 0 to 255, in sRGB,
+and is written as CSS writes a hex colour, `#1e6fd9`, or `#1e6fd980` when
+it isn't opaque. Every operation gives an sRGB `Colour`; other spaces
+appear only as arguments. The conversions are CSS Color 4's, and none
+fails: a percentage or a chroma out of range is clamped, as CSS clamps it,
+and a colour sRGB can't show is clipped into it, channel by channel.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `colour.from_hsl(hue, saturation, lightness)` | `Colour`; `hue` an `Angle`, the others `Percentage` | | none |
-| `colour.from_oklch(lightness, chroma, hue)` | `Colour`, clipped into sRGB | | none |
-| `colour.mix(a, b, ratio)` | `Colour`, mixed in OKLCH; `ratio` a `Percentage` of `b` | | none |
-| `colour.with_lightness(value, lightness)` | `Colour` with its OKLCH lightness set, hue kept | | none |
-| `colour.contrast(a, b)` | `Decimal`, WCAG 2's contrast ratio, 1.00 to 21.00 | | none |
+| `colour.from_oklch(lightness, chroma, hue)` | `Colour`, clipped into sRGB; `lightness` a `Percentage`, `chroma` a `Decimal`, `hue` an `Angle` | | none |
+| `colour.mix(a, b, ratio)` | `Colour`, mixed in OKLCH as CSS's `color-mix()` mixes; `ratio` a `Percentage` of `b` | | none |
+| `colour.with_lightness(value, lightness)` | `Colour` with its OKLCH lightness set, chroma, hue and alpha kept | | none |
+| `colour.contrast(a, b)` | `Decimal`, WCAG 2's contrast ratio, 1.00 to 21.00, rounded down to 2 places | | none |
+
+`contrast` is WCAG 2's ratio of relative luminances, the one its success
+criteria 1.4.3 and 1.4.6 test against (4.5 and 7 for body text), rounded
+down so that `>= 4.5` never passes a pair just below it; WCAG 3's draft
+contrast method (APCA) isn't used. Alpha isn't read, since WCAG 2 defines
+contrast for opaque colours.
+
+A design system reads its brand colour from a form, checks that body text
+is readable on its page colour, lightens a button for its hover state,
+makes a tint and turns a designer's HSL and OKLCH into colours:
+
+```jadpo check project=colour
+type FormText = Text {}
+
+type YesNo = Bool {}
+
+type SwatchHue = Angle {}
+
+type SwatchShare = Percentage {
+    min: 0%
+    max: 100%
+}
+
+type SwatchChroma = Decimal {
+    scale: 4
+    min: 0.0000
+}
+
+type NotAColour = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// The brand colour a settings form names.
+function brand_colour(raw: FormText) fails NotAColour -> Colour {
+    var typed_colour: Colour = attempt text.parse(raw, as: Colour) {
+        malformed: NotAColour
+    }
+    return typed_colour
+}
+
+/// A colour as a style sheet writes it.
+function css_colour(swatch: Colour) -> FormText {
+    return FormText(text.from(swatch))
+}
+
+/// Whether body text in `ink` on `paper` meets WCAG 2's AA.
+function readable(ink: Colour, paper: Colour) -> YesNo {
+    return YesNo(colour.contrast(ink, paper) >= 4.5)
+}
+
+/// A button's hover colour: its hue, lighter.
+function hover_colour(button: Colour) -> Colour {
+    return colour.with_lightness(button, 75%)
+}
+
+/// A tint of a colour: a fifth of the way to white.
+function tint(swatch: Colour) -> Colour {
+    var white: Colour = Colour {
+        red: 255
+        green: 255
+        blue: 255
+        alpha: 255
+    }
+    return colour.mix(swatch, white, 20%)
+}
+
+/// A designer's HSL swatch.
+function hsl_swatch(hue: SwatchHue, saturation: SwatchShare, lightness: SwatchShare) -> Colour {
+    return colour.from_hsl(hue, saturation, lightness)
+}
+
+/// A designer's OKLCH swatch.
+function oklch_swatch(lightness: SwatchShare, chroma: SwatchChroma, hue: SwatchHue) -> Colour {
+    return colour.from_oklch(lightness, chroma, hue)
+}
+```
+
+```jadpo check project=colour file=main.test.jadpo
+test "a colour is read and written as CSS writes it" {
+    var brand: Colour = attempt brand_colour("#1E6FD9")
+    assert css_colour(brand) == "#1e6fd9"
+    assert brand.blue == 217
+    assert brand_colour("#1e6") fails NotAColour
+    assert brand_colour("rgb(30 111 217)") fails NotAColour
+}
+
+test "contrast is WCAG 2's ratio, never rounded up" {
+    var black: Colour = attempt brand_colour("#000000")
+    var white: Colour = attempt brand_colour("#ffffff")
+    var mid_grey: Colour = attempt brand_colour("#767676")
+    var light_grey: Colour = attempt brand_colour("#777777")
+    assert colour.contrast(black, white) == 21.00
+    assert colour.contrast(white, white) == 1.00
+    assert colour.contrast(mid_grey, white) == 4.54
+    assert readable(mid_grey, white)
+    assert not readable(light_grey, white)
+}
+
+test "lightness, mixes, HSL and OKLCH give sRGB colours" {
+    var brand: Colour = attempt brand_colour("#1e6fd9")
+    assert css_colour(hover_colour(brand)) == "#5fadff"
+    assert css_colour(tint(brand)) == "#518de3"
+    assert css_colour(hsl_swatch(120deg, 100%, 25%)) == "#008000"
+    assert css_colour(hsl_swatch(210deg, 75%, 45%)) == "#1d73c9"
+    assert css_colour(oklch_swatch(62.8%, 0.2577, 29.23deg)) == "#ff0000"
+}
+```
+
+> Built in chunk 5.5p with the media types. What the page left open is
+> "Chosen in chunk 5.5p", under "Review".
 
 ## Media
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `media.fit(dimensions, within:)` | `ImageDimensions` scaled to fit inside `within`, keeping the aspect ratio, never larger than the original, rounded down to whole pixels | | none |
+| `media.fit(dimensions, within:)` | `ImageDimensions` scaled to fit inside `within`, keeping the aspect ratio, never larger than the original, rounded down to whole pixels and never below 1 | | none |
+
+`fit` is CSS's `object-fit: scale-down`: the side that limits becomes the
+box's, the other is scaled with it and rounded down, and an image that
+already fits is kept as it is. Each media type follows its standard and is
+read only in its canonical text: an `ImageDimensions` and a
+`VideoResolution` are whole pixels, `1920x1080`, sent as named fields; an
+`AspectRatio` is `16:9` and a `FrameRate` `30000/1001`, each held as
+written; a `Rect` is SVG's `viewBox` text, `0 0 300 200`, and `Insets` the
+CSS box model's four sides, `8 16 8 16`; a `PaperSize` is ISO 216's or a US
+size, `A4`, `Letter`; an `ExifOrientation` is EXIF's value, `1` to `8`; an
+`AltText` is one line of WCAG's text alternative; a `VideoCodec` and an
+`AudioCodec` are the W3C WebCodecs registry's codec strings, `avc1.42001E`,
+`opus`; a `Timecode` is SMPTE ST 12-1's address with its rate, counted
+drop-frame or not, and shown as `01:00:00;00`; a `SubtitleCue` is a WebVTT
+cue, `00:00:01.000 --> 00:00:04.000` and its text; and a `ContentRating`
+is a classification body's category, `BBFC 12A`, `PEGI 16`.
+
+A video library makes thumbnails, reads a film's age rating, shows where
+an edit starts and writes captions:
+
+```jadpo check project=media
+type FormText = Text {}
+
+type NotARating = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A still's thumbnail: scaled to fit a 320-pixel square, never enlarged.
+function thumbnail(still: ImageDimensions) -> ImageDimensions {
+    var tile: ImageDimensions = ImageDimensions {
+        width: 320
+        height: 320
+    }
+    return media.fit(still, within: tile)
+}
+
+/// The age rating a film's form names.
+function film_rating(raw: FormText) fails NotARating -> ContentRating {
+    var typed_rating: ContentRating = attempt text.parse(raw, as: ContentRating) {
+        malformed: NotARating
+    }
+    return typed_rating
+}
+
+/// Where an edit starts, as the edit list shows it.
+function edit_start(cut: Timecode) -> PresentationText {
+    return text.format(cut, locale: Locale.en_gb)
+}
+
+/// A caption as a WebVTT file writes it.
+function caption_text(caption: SubtitleCue) -> FormText {
+    return FormText(text.from(caption))
+}
+```
+
+```jadpo check project=media file=main.test.jadpo
+test "a thumbnail fits its tile and is never enlarged" {
+    var landscape: ImageDimensions = ImageDimensions {
+        width: 4000
+        height: 3000
+    }
+    var banner: ImageDimensions = ImageDimensions {
+        width: 1000
+        height: 333
+    }
+    var icon: ImageDimensions = ImageDimensions {
+        width: 200
+        height: 100
+    }
+    assert text.from(thumbnail(landscape)) == "320x240"
+    assert text.from(thumbnail(banner)) == "320x106"
+    assert thumbnail(icon) == icon
+}
+
+test "a rating is one of its body's categories" {
+    var rating: ContentRating = attempt film_rating("BBFC 12A")
+    assert rating.scheme == ContentRatingScheme.bbfc
+    assert film_rating("BBFC PG-13") fails NotARating
+    assert film_rating("12A") fails NotARating
+}
+
+test "a timecode is shown in SMPTE's notation, a cue as WebVTT writes it" {
+    var cut: Timecode = Timecode {
+        hours: 1
+        minutes: 10
+        seconds: 0
+        frames: 0
+        rate: FrameRate {
+            numerator: 30000
+            denominator: 1001
+        }
+        drop_frame: true
+    }
+    assert edit_start(cut) == "01:10:00;00"
+    var caption: SubtitleCue = SubtitleCue {
+        start: 1s
+        end: 4s
+        text: "Never drink liquid nitrogen."
+    }
+    assert caption_text(caption) == "00:00:01.000 --> 00:00:04.000\nNever drink liquid nitrogen."
+}
+```
+
+> Built in chunk 5.5p for `Colour` and the 14 media types, with
+> `ContentRatingScheme`, the body a rating is by, beside them. What the
+> page left open is "Chosen in chunk 5.5p", under "Review".
 
 ## Web and software
 

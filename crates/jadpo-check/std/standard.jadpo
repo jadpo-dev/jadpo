@@ -36,6 +36,11 @@ public type Allergen = Enum {
     tree_nuts
 }
 
+/// What an image shows, for someone who can't see it (area 19, WCAG 2.2's
+/// text alternative): one line of 1 to 1,000 characters. An image with
+/// nothing to say has `none`.
+public type AltText = Text {}
+
 /// An angle, held in radians to 9 places (area 19), written `90deg` or
 /// `1.5rad`.
 public type Angle = Angle {}
@@ -43,6 +48,17 @@ public type Angle = Angle {}
 /// An area, held in square metres to 6 places (area 19), written `12sqm`
 /// or `2ha`; a `Length` times a `Length`.
 public type Area = Area {}
+
+/// Width to height in whole numbers (area 19), written `16:9`: `16:9` and
+/// `32:18` are two values.
+public type AspectRatio = Object {
+    width: Int
+    height: Int
+}
+
+/// An audio codec as the W3C WebCodecs Codec Registry names it (area 19,
+/// RFC 6381's form): `mp4a.40.2`, `opus`.
+public type AudioCodec = Text {}
 
 /// A bank account to pay into or take from (area 19): a UK sort code and
 /// account number, an IBAN, or another country's account by its country,
@@ -177,6 +193,22 @@ public type CefrLevel = Enum {
 /// passing: `CSQU3054383`, printed `CSQU 305438 3`.
 public type ContainerNumber = Text {}
 
+/// An age rating by the body that gave it (area 19), written `BBFC 12A`:
+/// `rating` is one of `scheme`'s categories.
+public type ContentRating = Object {
+    scheme: ContentRatingScheme
+    rating: Text
+}
+
+/// A body that rates films or games for age (area 19), written as it
+/// writes its name: `BBFC`, `MPA`, `PEGI`, `ESRB`.
+public type ContentRatingScheme = Enum {
+    bbfc
+    mpa
+    pegi
+    esrb
+}
+
 /// A continent (area 19), as UN M49 groups the world: written as its own
 /// name, `europe`, and as M49's number with `form: CodeForm.numeric`.
 public type Continent = Enum {
@@ -202,6 +234,16 @@ public type CountrySubdivision = Enum {}
 /// as `IpAddress` writes it, `/` and the prefix's length, every bit after
 /// the prefix zero: `192.0.2.0/24`, `2001:db8::/32`.
 public type Cidr = Text {}
+
+/// A colour in sRGB with its alpha (area 19, question 13), each channel
+/// from 0 to 255, written `#1e6fd9`, or `#1e6fd980` when it isn't opaque.
+/// `colour`'s operations convert, mix and compare colours.
+public type Colour = Object {
+    red: Int
+    green: Int
+    blue: Int
+    alpha: Int
+}
 
 /// A cookie as a server sets it (area 19, RFC 6265 and RFC 6265bis's
 /// `SameSite`): its name and value, then its attributes after `; ` in the
@@ -309,9 +351,30 @@ public type Fraction = Object {
     denominator: Int
 }
 
+/// Frames a second as an exact fraction (area 19), written `30000/1001`
+/// for 29.97 and `25/1` for 25: both parts at least 1, held as written.
+public type FrameRate = Object {
+    numerator: Int
+    denominator: Int
+}
+
 /// A family name (area 19), one line as the person writes it. Personal
 /// data.
 public type FamilyName = Text {}
+
+/// How a stored image is turned to be seen upright (area 19, EXIF 2.32's
+/// orientation), named for where its first row and column are seen and
+/// written as EXIF's value: `top_left` is `1`, `right_top` is `6`.
+public type ExifOrientation = Enum {
+    top_left
+    top_right
+    bottom_right
+    bottom_left
+    left_top
+    right_top
+    right_bottom
+    left_bottom
+}
 
 /// A given name (area 19), one line as the person writes it. Personal
 /// data.
@@ -366,6 +429,14 @@ public type Iban = Text {}
 /// Luhn check digit passing. Personal data.
 public type Imei = Text {}
 
+/// An image's width and height in whole pixels (area 19), written
+/// `1920x1080`, each from 1 to 2,147,483,647. `media.fit` scales one to fit
+/// inside another.
+public type ImageDimensions = Object {
+    width: Int
+    height: Int
+}
+
 /// What kind of identity document one is (area 19), written as its own
 /// name: `passport`, `identity_card`, `driving_licence`,
 /// `residence_permit`.
@@ -416,6 +487,15 @@ public type Incoterm = Enum {
     fas
     fca
     fob
+}
+
+/// Space inside each edge (area 19, the CSS box model), never negative,
+/// written in CSS's order: `8 16 8 16`.
+public type Insets = Object {
+    top: Decimal
+    right: Decimal
+    bottom: Decimal
+    left: Decimal
 }
 
 /// One moment for everyone (area 10), written `2026-10-25T09:30:00Z`.
@@ -584,6 +664,36 @@ public type PassportNumber = Object {
     number: Text
 }
 
+/// A paper size (area 19): ISO 216's A and B series and the US letter,
+/// legal and tabloid, written `A4`, `Letter`.
+public type PaperSize = Enum {
+    a0
+    a1
+    a2
+    a3
+    a4
+    a5
+    a6
+    a7
+    a8
+    a9
+    a10
+    b0
+    b1
+    b2
+    b3
+    b4
+    b5
+    b6
+    b7
+    b8
+    b9
+    b10
+    letter
+    legal
+    tabloid
+}
+
 /// A researcher's ORCID iD (area 19), its ISO 7064 check character
 /// passing: `0000-0002-1825-0097`.
 public type Orcid = Text {}
@@ -696,6 +806,15 @@ public type Ratio = Object {
 /// `temporal.occurrences` gives the next ones.
 public type RecurrenceRule = Text {}
 
+/// A rectangle by its top-left corner and its size, never negative (area
+/// 19), written as SVG writes a `viewBox`: `0 0 300 200`.
+public type Rect = Object {
+    x: Decimal
+    y: Decimal
+    width: Decimal
+    height: Decimal
+}
+
 /// A relative reference (area 19, RFC 3986): a path, a query or a
 /// fragment, or a host after `//`, with no scheme: `../images/logo.png`,
 /// `?page=2`. `web.resolve` makes a `Url` of one.
@@ -721,6 +840,16 @@ public type SnomedConcept = Text {}
 /// A serial shipping container code (area 19, GS1), 18 digits, its check
 /// digit passing: `106141412345678908`.
 public type Sscc = Text {}
+
+/// A timed caption (area 19, WebVTT): when it starts and ends from the
+/// start of the media, its end after its start, and its text, written as
+/// the cue's timings line and text: `00:00:01.000 --> 00:00:04.000` and a
+/// line feed.
+public type SubtitleCue = Object {
+    start: Duration
+    end: Duration
+    text: Text
+}
 
 /// How land in England and Wales is held (area 19, HM Land Registry),
 /// written as its own name, `freehold`.
@@ -947,6 +1076,18 @@ public type SpdxLicence = Text {}
 /// digits, not all zero.
 public type TraceId = Text {}
 
+/// A frame's SMPTE ST 12-1 address (area 19): hours, minutes, seconds and
+/// frames at `rate`, counted drop-frame or not. It has no single text form,
+/// since `01:00:00;00` doesn't say its rate, and is shown that way.
+public type Timecode = Object {
+    hours: Int
+    minutes: Int
+    seconds: Int
+    frames: Int
+    rate: FrameRate
+    drop_frame: Bool
+}
+
 /// A `traceparent` header's value (area 19, W3C Trace Context, version
 /// `00`): `00-<trace id>-<span id>-<flags>`.
 public type TraceParent = Text {}
@@ -958,6 +1099,17 @@ public type Ulid = Text {}
 /// A range of versions (area 19, node-semver's grammar in one spelling):
 /// `^1.2.3`, `>=1.0.0 <2.0.0`, `1.2.x || >=2.5.0-beta.1`.
 public type VersionRange = Text {}
+
+/// A video codec as the W3C WebCodecs Codec Registry names it (area 19,
+/// RFC 6381's form): `avc1.42001E`, `vp09.00.10.08`.
+public type VideoCodec = Text {}
+
+/// A video's frame size in pixels (area 19), written `1920x1080`: by its
+/// pixels, not a name like "4K".
+public type VideoResolution = Object {
+    width: Int
+    height: Int
+}
 
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}

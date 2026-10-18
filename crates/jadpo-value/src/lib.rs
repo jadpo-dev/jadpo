@@ -32,6 +32,7 @@
 )]
 
 pub mod calendar;
+pub mod colour;
 pub mod decimal;
 pub mod encoding;
 mod event;
@@ -43,6 +44,7 @@ pub mod locale;
 mod mailbox;
 pub mod map;
 mod maths;
+pub mod media;
 pub mod money;
 pub mod ops;
 pub mod order;
@@ -280,6 +282,27 @@ pub fn run(
         // `semver`'s operation (area 19, "Web and software").
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
+        // `colour`'s and `media`'s operations (area 19, "Colour" and
+        // "Media").
+        (Op::ColourFromHsl, [hue, saturation, lightness]) => {
+            colour::from_hsl(hue, saturation, lightness)
+        }
+        (Op::ColourFromOklch, [lightness, chroma, hue]) => {
+            colour::from_oklch(lightness, chroma, hue)
+        }
+        (Op::ColourMix, [a, b, ratio]) => colour::mix(a, b, ratio),
+        (Op::ColourWithLightness, [value, lightness]) => colour::with_lightness(value, lightness),
+        (Op::ColourContrast, [a, b]) => colour::contrast(a, b),
+        (Op::MediaFit, [dimensions, within]) => media::fit(dimensions, within),
+        (
+            Op::ColourFromHsl
+            | Op::ColourFromOklch
+            | Op::ColourMix
+            | Op::ColourWithLightness
+            | Op::ColourContrast
+            | Op::MediaFit,
+            _,
+        ) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -762,6 +785,41 @@ mod tests {
                     vec![Value::text("192.0.2.0/24"), Value::text("192.0.2.7")]
                 }
                 Op::WebResolve => vec![Value::text("https://example.com/a/b"), Value::text("../c")],
+                Op::ColourFromHsl => vec![
+                    units::value(jadpo_std::QuantityKind::Angle, 2_094_395_102),
+                    Value::Percentage(Decimal::new(100, 2)),
+                    Value::Percentage(Decimal::new(25, 2)),
+                ],
+                Op::ColourFromOklch => vec![
+                    Value::Percentage(Decimal::new(628, 3)),
+                    Value::Decimal(Decimal::new(2577, 4)),
+                    units::value(jadpo_std::QuantityKind::Angle, 510_201_234),
+                ],
+                Op::ColourMix => vec![
+                    colour::colour_value([30, 111, 217, 255]),
+                    colour::colour_value([255, 255, 255, 255]),
+                    Value::Percentage(Decimal::new(20, 2)),
+                ],
+                Op::ColourWithLightness => vec![
+                    colour::colour_value([30, 111, 217, 255]),
+                    Value::Percentage(Decimal::new(75, 2)),
+                ],
+                Op::ColourContrast => vec![
+                    colour::colour_value([0, 0, 0, 255]),
+                    colour::colour_value([255, 255, 255, 255]),
+                ],
+                Op::MediaFit => {
+                    let size = |width: i64, height: i64| {
+                        Value::record(
+                            jadpo_std::standard::media::IMAGE_DIMENSIONS,
+                            vec![
+                                ("width".into(), Value::Int(width)),
+                                ("height".into(), Value::Int(height)),
+                            ],
+                        )
+                    };
+                    vec![size(4000, 3000), size(320, 320)]
+                }
                 Op::SemverSatisfies => vec![
                     semver::read_version("1.2.3").expect("a version"),
                     Value::text("^1.0.0"),
