@@ -459,7 +459,7 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
         )),
         Builtin::EncryptionKey | Builtin::PrivateKey if !is_key_text(text) => Err(format!(
             "isn't a key, which is {} random bytes written as {} characters of Base64url without padding",
-            crate::builtin::KEY_BYTES,
+            crate::builtin::KEY_SIZE,
             KEY_TEXT_LENGTH
         )),
         Builtin::IpAddress if !is_ip_address(text) => Err("isn't an IPv4 or IPv6 address".into()),
@@ -542,7 +542,7 @@ pub const KEY_TEXT_LENGTH: usize = 43;
 /// last character carries no bits past the 256th, so each key has one
 /// spelling (decided by the lead session for chunk 5.5q2); `None` for
 /// anything else, which the check before the app starts refuses.
-pub fn key_bytes(text: &str) -> Option<[u8; crate::builtin::KEY_BYTES]> {
+pub fn decode_key(text: &str) -> Option<[u8; crate::builtin::KEY_SIZE]> {
     fn sextet(byte: u8) -> Option<u32> {
         Some(match byte {
             b'A'..=b'Z' => byte - b'A',
@@ -557,7 +557,7 @@ pub fn key_bytes(text: &str) -> Option<[u8; crate::builtin::KEY_BYTES]> {
     if bytes.len() != KEY_TEXT_LENGTH {
         return None;
     }
-    let mut out = [0u8; crate::builtin::KEY_BYTES];
+    let mut out = [0u8; crate::builtin::KEY_SIZE];
     let mut at = 0;
     for chunk in bytes.chunks(4) {
         let mut bits: u32 = 0;
@@ -582,9 +582,9 @@ pub fn key_bytes(text: &str) -> Option<[u8; crate::builtin::KEY_BYTES]> {
     (at == out.len()).then_some(out)
 }
 
-/// Whether `text` is a key's text ([`key_bytes`]).
+/// Whether `text` is a key's text ([`decode_key`]).
 pub fn is_key_text(text: &str) -> bool {
-    key_bytes(text).is_some()
+    decode_key(text).is_some()
 }
 
 pub fn is_ip_address(text: &str) -> bool {
@@ -600,11 +600,14 @@ mod tests {
         // RFC 8032's first test key, and RFC 4648's URL alphabet at both
         // ends.
         let key = "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A";
-        let bytes = key_bytes(key).expect("a key");
+        let bytes = decode_key(key).expect("a key");
         assert_eq!(bytes[0], 0x9d);
         assert_eq!(bytes[31], 0x60);
-        assert_eq!(key_bytes(&format!("{}8", "_".repeat(42))), Some([0xff; 32]));
-        assert_eq!(key_bytes(&"A".repeat(43)), Some([0; 32]));
+        assert_eq!(
+            decode_key(&format!("{}8", "_".repeat(42))),
+            Some([0xff; 32])
+        );
+        assert_eq!(decode_key(&"A".repeat(43)), Some([0; 32]));
         for refused in [
             // Padded, standard alphabet, too short, too long, spare bits
             // set, a space, empty.
@@ -616,7 +619,7 @@ mod tests {
             "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2 ",
             "",
         ] {
-            assert_eq!(key_bytes(refused), None, "{refused:?}");
+            assert_eq!(decode_key(refused), None, "{refused:?}");
             assert!(check_builtin_text(Builtin::EncryptionKey, refused).is_err());
             assert!(check_builtin_text(Builtin::PrivateKey, refused).is_err());
         }

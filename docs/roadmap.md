@@ -946,7 +946,7 @@ reference only).
   of random bytes per invocation that records and replays, and the native
   host on `getrandom` 0.4.3. What the pages left open is area 19's "Chosen
   in chunk 5.5q".
-- [ ] **5.5q2 Cryptography** `opus · high` (area 19, "Hashing and
+- [x] **5.5q2 Cryptography** `opus · high` (area 19, "Hashing and
   cryptography", question 9; split from 5.5q), after 5.5q: `crypto`'s 8
   operations that need no keys held as data; `EncryptionKey`,
   `PasswordHash`, `PasswordCheck`, `PrivateKey`, `PublicKey` and `key:`
@@ -958,7 +958,14 @@ reference only).
   environment variable is 32 bytes as unpadded Base64url, anything else
   refused at startup by the pre-start check; `crypto.hmac` with a
   `SigningKey` uses the key's text bytes directly, so outside systems that
-  share the secret can verify.
+  share the secret can verify. Built, on `chacha20poly1305` 0.11,
+  `argon2` 0.6, `hmac` 0.13 and `ed25519-dalek` 3.0 with the standards'
+  known-answer tests (RFC 8439, the XChaCha draft, RFC 4231, RFC 9106 and
+  OpenSSL's Argon2id, RFC 8032): a sealed value carries a version, an
+  algorithm and the key's identity and binds its context; Argon2id at
+  OWASP's parameters as a PHC string; code never makes or reads a key,
+  which an executor hands the operation from its setting. What the pages
+  left open is area 19's "Chosen in chunk 5.5q2".
 - [ ] **5.5r Security types** `opus · high` (area 19, "The standard
   types"): the other 17 security types (`Password`, `Jwt`, `Jwk`,
   `Certificate`, `ApiKey` ...) and `crypto.verify_jwt`; `verify_totp`

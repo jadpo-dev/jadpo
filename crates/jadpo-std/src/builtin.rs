@@ -84,7 +84,7 @@ pub const SIGNING_KEY_MIN: usize = 32;
 
 /// How many bytes an [`Builtin::EncryptionKey`] and a
 /// [`Builtin::PrivateKey`] hold: 256 bits.
-pub const KEY_BYTES: usize = 32;
+pub const KEY_SIZE: usize = 32;
 
 /// `PageSize`'s own rules: from 1 to 100 (area 6, "Order and pages").
 static PAGE_SIZE_RULES: crate::Rules = crate::Rules {

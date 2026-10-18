@@ -1049,7 +1049,12 @@ fn secret_flow(name: &str, field: &ast::FieldExpr, span: Span, key: Option<Prim>
         )
         .at(span, "a key, read here")
         .reason(format!(
-            "A `{}` is opaque: code never reads, prints, stores, compares or passes on a key, so the one place it goes is a `crypto` call's `key:`, which the compiler owns.",
+            "{} `{}` is opaque: code never reads, prints, stores, compares or passes on a key, so the one place it goes is a `crypto` call's `key:`, which the compiler owns.",
+            if key.name().starts_with(['A', 'E', 'I', 'O', 'U']) {
+                "An"
+            } else {
+                "A"
+            },
             key.name()
         ))
         .next(format!(

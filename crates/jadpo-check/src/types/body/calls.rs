@@ -2080,7 +2080,8 @@ impl Body<'_> {
                 )
                 .at(span, "a key made in code")
                 .reason(format!(
-                    "A `{}` is a secret that comes only from its setting, so it never lands in the source, a log or the database; code never holds one, and gives the setting, `config.<name>`, only where the compiler owns the place, such as a `crypto` call's `key:`.",
+                    "{} `{}` is a secret that comes only from its setting, so it never lands in the source, a log or the database; code never holds one, and gives the setting, `config.<name>`, only where the compiler owns the place, such as a `crypto` call's `key:`.",
+                    if key.name().starts_with('E') { "An" } else { "A" },
                     key.name()
                 ))
                 .next(format!(

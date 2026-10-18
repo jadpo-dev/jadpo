@@ -147,7 +147,8 @@ sha2 = { version = "=0.11.1", default-features = false }
 # above, and dalek's Ed25519 for signatures. None reads randomness itself
 # (no `getrandom` or `rand_core` features): a nonce and a salt are the
 # invocation's random bytes, as `random`'s are, so a test repeats and
-# everything builds for wasm32. `zeroize` wipes key material when dropped.
+# everything builds for wasm32. `zeroize` wipes the crates' own copies of
+# a key when dropped.
 chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
 argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
 hmac = { version = "=0.13.0", default-features = false }

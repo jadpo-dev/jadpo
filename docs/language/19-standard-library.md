@@ -104,7 +104,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 189 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-seven are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 192 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-seven are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -132,7 +132,7 @@ exception to the rule.
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
-| Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
+| Security (20) | `Password`, **`PasswordHash`**, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, **`PublicKey`**, **`PrivateKey`**, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, `FlightNumber`, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), `Jurisdiction`, `ModelId` | |
 | AI (3) | `TokenCount`, `TokenUsage`, `ChatMessage` | AI area |
@@ -397,7 +397,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3653,6 +3653,197 @@ on its own line, and a `LocalisedText` as `text.pick` gives it.
   application, never one per person: area 15 decided against per-person
   keys (question 5 there), and this keeps that.
 
+A clinic seals each clinical note to its own record, hashes its staff's
+passwords, checks the webhooks its payment provider sends with the secret
+they share, and signs the receipts it issues. The keys are settings,
+each given as a call's `key:` and read nowhere else:
+
+```jadpo check project=cryptography file=config.jadpo
+config {
+    notes_key: EncryptionKey
+    payments_webhook_secret: SigningKey
+    receipt_key: PrivateKey
+}
+```
+
+```jadpo check project=cryptography
+type ClinicalNote = Text {
+    max_length: 4000
+}
+
+type NoteId = Text {}
+
+type SealedNote = Bytes {}
+
+type StaffPassword = Text {
+    min_length: 12
+    max_length: 128
+}
+
+type WebhookBody = Text {
+    max_length: 100000
+}
+
+type WebhookSignature = Bytes {}
+
+type Receipt = Text {
+    max_length: 2000
+}
+
+type ReceiptSignature = Bytes {}
+
+type Genuine = Bool {}
+
+type NoteUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A clinical note sealed to its own record, so it can't be moved to
+/// another.
+action seal_note(note: ClinicalNote, record: NoteId) -> SealedNote {
+    return SealedNote(crypto.encrypt(note, key: config.notes_key, context: record))
+}
+
+/// A sealed note's text: another record's id, an altered note or another
+/// key can't open it.
+function open_note(sealed_note: SealedNote, record: NoteId) fails NoteUnreadable -> ClinicalNote {
+    var note_bytes: Bytes = attempt crypto.decrypt(
+        sealed_note,
+        key: config.notes_key,
+        context: record
+    ) {
+        unreadable: NoteUnreadable
+    }
+    var note_text: Text = attempt encoding.from_utf8(note_bytes) {
+        malformed: NoteUnreadable
+    }
+    return attempt ClinicalNote(note_text) {
+        max_length: NoteUnreadable
+    }
+}
+
+/// The hash a member of staff's password is stored as.
+action stored_password(staff_password: StaffPassword) -> PasswordHash {
+    return crypto.hash_password(staff_password)
+}
+
+/// Whether a password signs in; `correct_outdated` asks for a fresh hash.
+function sign_in_check(staff_password: StaffPassword, stored_hash: PasswordHash) -> PasswordCheck {
+    return crypto.verify_password(staff_password, stored_hash)
+}
+
+/// The signature on a webhook the clinic sends to the payment provider.
+function webhook_signature(body: WebhookBody) -> WebhookSignature {
+    return WebhookSignature(crypto.hmac(body, key: config.payments_webhook_secret))
+}
+
+/// Whether a webhook came from the payment provider, which shares the
+/// secret.
+function from_provider(body: WebhookBody, provider_signature: WebhookSignature) -> Genuine {
+    return Genuine(
+        crypto.verify_hmac(body, provider_signature, key: config.payments_webhook_secret)
+    )
+}
+
+/// A receipt's signature, which anyone with the clinic's public key can
+/// check.
+function receipt_signature(receipt: Receipt) -> ReceiptSignature {
+    return ReceiptSignature(crypto.sign(receipt, key: config.receipt_key))
+}
+
+/// Whether a receipt was signed with the private half of `issuer_key`.
+function receipt_from(
+    receipt: Receipt,
+    claimed_signature: ReceiptSignature,
+    issuer_key: PublicKey
+) -> Genuine {
+    return Genuine(crypto.verify_signature(receipt, claimed_signature, issuer_key))
+}
+```
+
+A test run makes its own throwaway keys, and its nonces and salts come
+from the test's seed, as `random`'s values do. The older hash is the
+same password at 4 MiB and 3 passes, and the signature RFC 8032's second
+test vector, the message `r` under its key:
+
+```jadpo check project=cryptography file=main.test.jadpo
+test "a sealed note opens only for its own record" {
+    var sealed_copy: SealedNote = seal_note("Allergic to penicillin.", "note-1")
+    var read_back: ClinicalNote = attempt open_note(sealed_copy, "note-1")
+    assert read_back == "Allergic to penicillin."
+    assert open_note(sealed_copy, "note-2") fails NoteUnreadable
+    assert seal_note("Allergic to penicillin.", "note-1") != sealed_copy
+}
+
+test "a password signs in, and an older hash asks for a fresh one" {
+    var stored_hash: PasswordHash = stored_password("correct horse battery staple")
+    assert sign_in_check("correct horse battery staple", stored_hash) == PasswordCheck.correct
+    assert sign_in_check("correct horse battery stapler", stored_hash) == PasswordCheck.wrong
+    assert sign_in_check(
+        "correct horse battery staple",
+        "$argon2id$v=19$m=4096,t=3,p=1$AAECAwQFBgcICQoLDA0ODw$VTsSHiMxkq48zEo8LUSymjr7JjaRSgsxGX2Z8HQE9Cw"
+    ) == PasswordCheck.correct_outdated
+}
+
+test "a webhook is checked against its signature" {
+    var body: WebhookBody = "{\"paid\": true}"
+    assert from_provider(body, webhook_signature(body))
+    assert not from_provider("{\"paid\": false}", webhook_signature(body))
+}
+
+test "a receipt's signature checks with its issuer's public key" {
+    var rfc_signature_bytes: Bytes = attempt encoding.from_hex(
+        "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"
+    ) {
+        malformed: NoteUnreadable
+    }
+    var rfc_signature: ReceiptSignature = ReceiptSignature(rfc_signature_bytes)
+    assert receipt_from("r", rfc_signature, "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw")
+    assert not receipt_from("R", rfc_signature, "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw")
+    assert text.length(encoding.to_hex(receipt_signature("r"))) == 128
+}
+```
+
+Reading a key anywhere but a `key:` is `configuration.secret_flow`
+(area 10), a fingerprint of it included:
+
+```jadpo check project=e-key-read expect=configuration.secret_flow
+type KeyFingerprint = Bytes {}
+
+config {
+    notes_key: EncryptionKey
+}
+
+/// A fingerprint of the notes key, to tell in a log which key is in use.
+function key_fingerprint() -> KeyFingerprint {
+    return KeyFingerprint(hash.sha256(config.notes_key))
+}
+```
+
+```text output
+error: `config.notes_key` is a key
+ --> main.jadpo:9:39
+  |
+9 |     return KeyFingerprint(hash.sha256(config.notes_key))
+  |                                       ^^^^^^^^^^^^^^^^ a key, read here
+  reason: An `EncryptionKey` is opaque: code never reads, prints, stores, compares or passes on a key, so the one place it goes is a `crypto` call's `key:`, which the compiler owns.
+  next: Give `config.notes_key` only as a `crypto` call's `key:`, written `key: config.notes_key` (agent)
+  rule: configuration.secret_flow
+  help: docs/language/10-configuration-and-time.html#configuration-secret-flow
+
+check failed: 1 error, 1 file
+```
+
+> Built in chunk 5.5q2: the eight operations in `jadpo-value`'s `crypto`
+> module, on RustCrypto's `chacha20poly1305`, `argon2`, `hmac` and
+> `sha2` and dalek's `ed25519-dalek`, each checked against its standard's
+> known answers and built for wasm32; `EncryptionKey` and `PrivateKey` as
+> built-in secret types beside `SigningKey`, and `PasswordHash`,
+> `PasswordCheck` and `PublicKey` on the contract. A key reaches an
+> operation from its setting alone: the executor gives it the setting's
+> key, never a value code could hold. What the page left open is under
+> "Chosen in chunk 5.5q2".
+
 ## Randomness
 
 `random` is a generated namespace like `clock` (question 19): it reads
@@ -5468,7 +5659,7 @@ operations it unblocks kept on this page.
 | No map literal | `[]` where a map is expected; a literal with entries designed in area 2 | 2 | 5.5c, built | Building maps |
 | Inline functions take one parameter | Two parameters, `(a, b) -> ...`, for standard operations only (area 3's question 13 widened) | 3 | 5.5c2, built | `list.zip_with`, `map.filter`, `map.map_values` |
 | No `Float` and no maths | Maths on `Decimal` with `scale:` and `rounding:`, deterministic everywhere; still no `Float` | 2 (question 8 there) | 5.5e, built | 8 `decimal` operations; geospatial distance |
-| Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q2 | `crypto` |
+| Code can't read a secret | Opaque key settings, used only as a `crypto` call's `key:` | 10 | 5.5q2, built | `crypto` |
 | Keys held as data (per device, per person) | An encrypted field of a key type, usable only as `key:` | 10, 15 | With encrypted fields, after the first build (personal data) | Per-device signatures, `crypto.verify_totp` |
 | No randomness | Generated `random`, actions only, seeded in tests, recorded for replay | 10, 13, 17 | 5.5q, built | `random.*`, `encrypt`, `hash_password` |
 | Text has no locale order or case | `locale:` on `list.sort_by`, `text.lower` and `text.upper`, through ICU4X's collator and case mapping (two more crates of the pinned ICU4X) | 10 | 5.5f, built | Locale sorting and case |
@@ -6094,7 +6285,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, each other group of types in the chunks after them to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
@@ -6102,7 +6293,7 @@ check failed: 1 error, 1 file
 | `Email`, `Url`, `IpAddress`, `FileType`, `InstantRange` | Decided (areas 2, 10, 16) and built |
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
-| `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto` in 5.5q2 |
+| `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built with computed backfills (chunk 5.6) |
 | Geospatial, AI | Decided as future areas, planned in 5.5u and 5.5v |
@@ -8243,6 +8434,76 @@ under "Errors").
   text bytes directly as the HMAC key, so an outside system that shares
   the secret can verify what the app signs.
 
+### Chosen in chunk 5.5q2
+
+Choices the page left open when `crypto` was built, each the most
+conservative reading:
+
+- **The sealed format,** version 1: a version byte, an algorithm byte
+  (1, XChaCha20-Poly1305), the key's identity (4 bytes), the 24-byte
+  random nonce, the ciphertext and its 16-byte tag. The associated data
+  is the first six bytes and the call's `context:` as UTF-8, so the
+  header, the context and the ciphertext are all authenticated. The key's
+  identity is the first four bytes of HMAC-SHA-256 of a fixed label under
+  the key, which says nothing of the key; `decrypt` tries each of the
+  current and the previous key whose identity the value carries, current
+  first. Anything else, too short, another version or algorithm, an
+  altered byte, another context or key, is `unreadable`, never saying
+  which. Nothing sealed is allowed (an empty value seals and opens).
+- **Argon2id's parameters,** OWASP's first: 19,456 KiB, 2 passes, 1 lane,
+  version 19, a 16-byte salt from the invocation's random bytes and a
+  32-byte hash, written as the reference PHC string
+  (`$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, standard Base64 without
+  padding). A hash checks `correct_outdated` when any of the memory,
+  passes, lanes or hash length differs from the release's.
+- **`PasswordHash` reads only Argon2id at version 19,** the one
+  construction, in its one spelling, with bounded costs: at most 2 GiB
+  (RFC 9106's costliest recommendation), 16 passes and 16 lanes, a salt of
+  8 to 64 bytes and a hash of 16 to 64, so a hash from outside can't make
+  a sign-in allocate without bound. `verify_password` reads it again and
+  gives `wrong` for anything else, never a fault. It otherwise meets the
+  contract as every standard type does: stored and sent as its PHC string.
+- **`PublicKey` is an Ed25519 key's 32 bytes as unpadded Base64url,** the
+  `PrivateKey` setting's spelling; its construction checks the spelling,
+  and `verify_signature` verifies strictly (RFC 8032's checks, refusing
+  small-order keys and non-canonical signatures), so a key that isn't a
+  point on the curve, or a signature of another length, is `false`.
+  Signing is pure Ed25519, with no prehash and no context.
+- **`PrivateKey` is a built-in secret type,** as `SigningKey` is: only a
+  setting holds one until keys held as data arrive, so it has none of the
+  contract's text, JSON or storage, the secret rule winning over the
+  contract's "never". It reads no `_PREVIOUS`: whoever checks a
+  signature holds the public key, so a rotation is the verifiers'. An
+  `EncryptionKey` rotates as a `SigningKey` does.
+- **`PasswordCheck` is a standard enum** written and stored as its
+  variant's name.
+- **`key:` is written by name and reads a setting.** A key given by
+  position, or read anywhere else, is `configuration.secret_flow`, whose
+  message for an `EncryptionKey` or a `PrivateKey` names the one place it
+  goes; a `key:` given a value that isn't `config.<name>`, a parameter or
+  text, is `type.mismatch`. Code never makes a key: building an
+  `EncryptionKey`, a `PrivateKey` or a `SigningKey` from a value is
+  `type.constructor_input`, which closes a `SigningKey` written in source
+  that construction allowed before. A key type has no JSON form
+  (`json.write` and `json.read`) and no storage yet.
+- **A key is never a value.** Each executor gives the operation the key
+  its setting holds, by the setting's number (`Program`'s key rings in the
+  interpreter, `jadpo_runtime::config::key_ring` for both), never a value
+  code could hold; the ring prints as `KeyRing { .. }`. `verify_hmac`
+  computes both keys' MACs whatever the first gives, each compared in
+  constant time, so its time says nothing of which matched.
+- **A test run's keys** are 32 random bytes as Base64url for each
+  `EncryptionKey` and `PrivateKey`, made for the run as a signing key's
+  are, while a nonce and a salt come from the test's seed; a deployable
+  takes both from the host's generator, so no key and nonce repeat.
+- **The crates,** pinned exactly: `chacha20poly1305` 0.11.0, `argon2`
+  0.6.0, `hmac` 0.13.0 over `sha2` 0.11.1, and `ed25519-dalek` 3.0.0 with
+  its precomputed tables; none reads randomness itself, and the cipher,
+  Argon2 and Ed25519 wipe their own copies of a key when dropped (the
+  settings themselves are held as the configuration holds every secret).
+  `argon2` and `blake2` are optimised in test
+  builds, since the release's Argon2id takes seconds unoptimised.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -8762,7 +9023,7 @@ first; each group of types then arrives with its baseline and its extras.
   with test seeding. Split on 2026-10-18, cryptography is 5.5q2. Built.
 - **5.5q2 Cryptography** `opus · high`: `crypto`'s 8 operations that need
   no keys held as data; `EncryptionKey`, `PasswordHash`, `PasswordCheck`,
-  `PrivateKey`, `PublicKey` and `key:` as a compiler-owned place.
+  `PrivateKey`, `PublicKey` and `key:` as a compiler-owned place. Built.
 - **5.5r Security types** `opus · high`: the other 17 security types
   (`Password`, `Jwt`, `Jwk`, `Certificate`, `ApiKey` ...) and
   `crypto.verify_jwt`; `verify_totp` follows keys held as data.

@@ -42,7 +42,7 @@ use jadpo_std::standard::security::{
     ARGON2_HASH_BYTES, ARGON2_LANES, ARGON2_MEMORY_KIB, ARGON2_PASSES, ARGON2_SALT_BYTES,
     PASSWORD_CHECK, read_phc,
 };
-use jadpo_std::{KEY_BYTES, RuleKey};
+use jadpo_std::{KEY_SIZE, RuleKey};
 use sha2::Sha256;
 
 use crate::random::Source;
@@ -93,11 +93,11 @@ impl KeyRing {
     /// `None` for text that isn't one.
     pub fn from_key_text(current: &str, previous: Option<&str>) -> Option<KeyRing> {
         let previous = match previous {
-            Some(text) => Some(jadpo_std::key_bytes(text)?.to_vec()),
+            Some(text) => Some(jadpo_std::decode_key(text)?.to_vec()),
             None => None,
         };
         Some(KeyRing {
-            current: jadpo_std::key_bytes(current)?.to_vec(),
+            current: jadpo_std::decode_key(current)?.to_vec(),
             previous,
         })
     }
@@ -118,7 +118,7 @@ impl KeyRing {
     }
 
     /// The current key as the 32 bytes encryption and signing take.
-    fn current_32(&self) -> Result<&[u8; KEY_BYTES], Fault> {
+    fn current_32(&self) -> Result<&[u8; KEY_SIZE], Fault> {
         self.current.as_slice().try_into().map_err(|_| Fault::Shape)
     }
 }
@@ -131,27 +131,29 @@ fn fill(source: &mut Source<'_>, bytes: &mut [u8]) -> Result<(), Fault> {
     }
 }
 
-fn hmac_sha256(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
-    // HMAC takes a key of any length.
-    let mut mac = <HmacSha256 as KeyInit>::new_from_slice(key).unwrap_or_else(|_| unreachable!());
+/// HMAC-SHA-256 of `parts`, one after another, under `key`. HMAC takes a
+/// key of any length, so this never fails in practice.
+fn hmac_sha256(key: &[u8], parts: &[&[u8]]) -> Result<[u8; 32], Fault> {
+    let mut mac = <HmacSha256 as KeyInit>::new_from_slice(key).map_err(|_| Fault::Shape)?;
     for part in parts {
         mac.update(part);
     }
-    mac.finalize().into_bytes().into()
+    Ok(mac.finalize().into_bytes().into())
 }
 
 /// The identity a sealed value carries of the key that sealed it.
-fn key_identity(key: &[u8]) -> [u8; KEY_IDENTITY] {
-    let mac = hmac_sha256(key, &[IDENTITY_LABEL]);
+fn key_identity(key: &[u8]) -> Result<[u8; KEY_IDENTITY], Fault> {
+    let mac = hmac_sha256(key, &[IDENTITY_LABEL])?;
     let mut out = [0u8; KEY_IDENTITY];
     out.copy_from_slice(&mac[..KEY_IDENTITY]);
-    out
+    Ok(out)
 }
 
-/// The associated data: the header but its nonce, then the context.
-fn associated(header: &[u8], context: &str) -> Vec<u8> {
-    let mut aad = Vec::with_capacity(BOUND_HEADER + context.len());
-    aad.extend_from_slice(&header[..BOUND_HEADER]);
+/// The associated data: the header's version, algorithm and key identity,
+/// then the context.
+fn associated(bound: &[u8], context: &str) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(bound.len() + context.len());
+    aad.extend_from_slice(bound);
     aad.extend_from_slice(context.as_bytes());
     aad
 }
@@ -168,11 +170,11 @@ pub fn encrypt(
     let mut sealed = Vec::with_capacity(HEADER + value.len() + TAG);
     sealed.push(SEALED_VERSION);
     sealed.push(XCHACHA20_POLY1305);
-    sealed.extend_from_slice(&key_identity(key));
+    sealed.extend_from_slice(&key_identity(key)?);
+    let aad = associated(&sealed, context);
     let mut nonce = [0u8; NONCE];
     fill(source, &mut nonce)?;
     sealed.extend_from_slice(&nonce);
-    let aad = associated(&sealed, context);
     let cipher = XChaCha20Poly1305::new(key.into());
     let body = cipher
         .encrypt(
@@ -193,20 +195,28 @@ pub fn encrypt(
 /// that aren't a sealed value at all, never saying which.
 pub fn decrypt(sealed: &[u8], keys: &KeyRing, context: &str) -> Result<Vec<u8>, Fault> {
     let unreadable = Fault::Broke(RuleKey::Unreadable);
-    if sealed.len() < HEADER + TAG || sealed[0] != SEALED_VERSION || sealed[1] != XCHACHA20_POLY1305
-    {
+    let (Some(bound), Some(nonce), Some(body)) = (
+        sealed.get(..BOUND_HEADER),
+        sealed.get(BOUND_HEADER..HEADER),
+        sealed.get(HEADER..),
+    ) else {
+        return Err(unreadable);
+    };
+    let [version, algorithm, identity @ ..] = bound else {
+        return Err(unreadable);
+    };
+    if *version != SEALED_VERSION || *algorithm != XCHACHA20_POLY1305 || body.len() < TAG {
         return Err(unreadable);
     }
-    let (header, body) = sealed.split_at(HEADER);
-    let aad = associated(header, context);
-    let nonce = XNonce::try_from(&header[BOUND_HEADER..]).map_err(|_| Fault::Shape)?;
+    let aad = associated(bound, context);
+    let nonce = XNonce::try_from(nonce).map_err(|_| Fault::Shape)?;
     for key in keys.each() {
-        let Ok(key) = <&[u8; KEY_BYTES]>::try_from(key) else {
+        let Ok(key) = <&[u8; KEY_SIZE]>::try_from(key) else {
             continue;
         };
         // Only a key whose identity the value carries; two whose identities
         // collide are both tried.
-        if key_identity(key) != header[2..BOUND_HEADER] {
+        if key_identity(key)? != identity {
             continue;
         }
         let cipher = XChaCha20Poly1305::new(key.into());
@@ -296,7 +306,7 @@ pub fn verify_password(password: &str, hash: &str) -> PasswordCheck {
 }
 
 /// `crypto.hmac(value, key:)`: HMAC-SHA-256 under the current key.
-pub fn hmac(value: &[u8], keys: &KeyRing) -> [u8; 32] {
+pub fn hmac(value: &[u8], keys: &KeyRing) -> Result<[u8; 32], Fault> {
     hmac_sha256(&keys.current, &[value])
 }
 
@@ -327,7 +337,7 @@ pub fn sign(value: &[u8], keys: &KeyRing) -> Result<[u8; SIGNATURE_BYTES], Fault
 /// non-canonical signatures refused); `false` for a key that isn't a point
 /// on the curve and for a signature of the wrong length.
 pub fn verify_signature(value: &[u8], signature: &[u8], public_key: &str) -> bool {
-    let Some(key) = jadpo_std::key_bytes(public_key) else {
+    let Some(key) = jadpo_std::decode_key(public_key) else {
         return false;
     };
     let Ok(key) = VerifyingKey::from_bytes(&key) else {
@@ -403,7 +413,7 @@ pub fn run(
         (Op::CryptoVerifyPassword, [password, hash]) => {
             Ok(verify_password(text_of(password)?, text_of(hash)?).value())
         }
-        (Op::CryptoHmac, [value, _]) => Ok(bytes_value(&hmac(bytes_of(value)?, keys()?))),
+        (Op::CryptoHmac, [value, _]) => Ok(bytes_value(&hmac(bytes_of(value)?, keys()?)?)),
         (Op::CryptoVerifyHmac, [value, Value::Bytes(mac), _]) => {
             Ok(Value::Bool(verify_hmac(bytes_of(value)?, mac, keys()?)))
         }
@@ -507,7 +517,7 @@ mod tests {
         );
         // The same key as an `EncryptionKey` setting's text.
         assert_eq!(
-            jadpo_std::key_bytes(KEY_TEXT).map(|k| k.to_vec()),
+            jadpo_std::decode_key(KEY_TEXT).map(|k| k.to_vec()),
             Some(key)
         );
     }
@@ -558,7 +568,7 @@ mod tests {
                 current: key.to_vec(),
                 previous: None,
             };
-            let mac = hmac(data, &keys);
+            let mac = hmac(data, &keys).expect("a MAC");
             assert!(
                 to_hex(&mac).starts_with(expected),
                 "RFC 4231 test case {}",
@@ -775,7 +785,10 @@ mod tests {
             decrypt(&sealed_after, &old, "row"),
             Err(Fault::Broke(RuleKey::Unreadable))
         );
-        assert_eq!(&sealed_after[2..6], &key_identity(&rotated.current));
+        assert_eq!(
+            &sealed_after[2..6],
+            &key_identity(&rotated.current).expect("an identity")
+        );
         // Once the previous key is removed, what it sealed is unreadable.
         assert_eq!(
             decrypt(&sealed_before, &ring(KEY_TEXT, None), "row"),
@@ -810,10 +823,13 @@ mod tests {
         let key = "whsec_0123456789abcdef0123456789abcdef";
         let old = "whsec_fedcba9876543210fedcba9876543210";
         let keys = KeyRing::from_signing_text(key, None);
-        let mac = hmac(b"{\"paid\":true}", &keys);
+        let mac = hmac(b"{\"paid\":true}", &keys).expect("a MAC");
         // What any HMAC-SHA-256 gives with the text's bytes as the key, as
         // a provider sharing the secret computes it.
-        assert_eq!(mac, hmac_sha256(key.as_bytes(), &[b"{\"paid\":", b"true}"]));
+        assert_eq!(
+            Ok(mac),
+            hmac_sha256(key.as_bytes(), &[b"{\"paid\":", b"true}"])
+        );
         assert!(verify_hmac(b"{\"paid\":true}", &mac, &keys));
         assert!(!verify_hmac(b"{\"paid\":false}", &mac, &keys));
         assert!(!verify_hmac(b"{\"paid\":true}", &mac[..31], &keys));
@@ -822,7 +838,7 @@ mod tests {
         altered[31] ^= 0x80;
         assert!(!verify_hmac(b"{\"paid\":true}", &altered, &keys));
         // Signed with the old key: accepted while it is the previous one.
-        let old_mac = hmac(b"body", &KeyRing::from_signing_text(old, None));
+        let old_mac = hmac(b"body", &KeyRing::from_signing_text(old, None)).expect("a MAC");
         assert!(verify_hmac(
             b"body",
             &old_mac,
