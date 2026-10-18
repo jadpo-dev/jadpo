@@ -388,6 +388,13 @@ impl Codecs<'_> {
                     .field(slot)
                     .is_some_and(|(n, _)| jadpo_std::standard::wire_name(shape.ty(), n) == name)
             }) {
+                // A key set's members a `Jwk` doesn't hold are ignored, as
+                // RFC 7517 §4 requires, but a private key's (chunk 5.5r4).
+                if shape.ty() == jadpo_std::standard::security::JWK
+                    && jadpo_std::standard::jwk::ignores_member(name)
+                {
+                    continue;
+                }
                 Self::problem(problems, &path.with(name.clone()), "unknown_field");
             }
         }

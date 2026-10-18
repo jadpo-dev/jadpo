@@ -2236,6 +2236,14 @@ impl<'p> Machine<'p> {
         // `verify_jwt` checks a token's times against the invocation's
         // clock, as `clock.now` reads it (area 19, chunk 5.5r).
         let now = if op.reads_clock() { ctx.now() } else { 0 };
+        // With `as:`, its claims of the application's own type are read
+        // with the codec the plan numbers for the call (chunk 5.5r4).
+        if op == Op::CryptoVerifyJwt
+            && let Some(Decoded::Json(number)) = self.decoded(at)
+        {
+            let number = *number;
+            return self.claims(ctx, values, number, now, at);
+        }
         let made = jadpo_value::crypto::run(
             op,
             values,
@@ -2252,6 +2260,62 @@ impl<'p> Machine<'p> {
                 name: None,
             }),
             Err(fault) => Err(self.value_fault(ctx, fault, at)),
+        }
+    }
+
+    /// `crypto.verify_jwt(..., as:)` (chunk 5.5r4): the token checked as
+    /// without `as:`, then its own claims read through the codec for the
+    /// type `as:` names, `mismatch` naming the first problem's field and
+    /// rule, never the value, as `json.read`'s does.
+    fn claims(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        values: &[Value],
+        number: u32,
+        now: i64,
+        at: SiteId,
+    ) -> Result<Value, Stop> {
+        let codec = self.program.plan().json().codec_of(number);
+        let (Some(codec), [token, Value::List(keys), issuer, audience, ..]) = (codec, values)
+        else {
+            return Err(self.defect(ctx, "a token's claims the plan gave no codec", at));
+        };
+        let token = match token {
+            Value::Secret(secret) => secret.expose().to_string(),
+            Value::Text(text) => text.to_string(),
+            _ => return Err(self.defect(ctx, "a token that isn't a `Jwt`", at)),
+        };
+        let option = |value: &Value| match value {
+            Value::Text(text) => Some(text.to_string()),
+            _ => None,
+        };
+        let codecs = self.program.json_codecs();
+        let read = jadpo_value::jwt::verify_jwt_as(
+            &token,
+            keys,
+            option(issuer).as_deref(),
+            option(audience).as_deref(),
+            now,
+            &codecs,
+            codec,
+        );
+        match read {
+            Ok(value) => Ok(value),
+            Err(jadpo_value::jwt::Refusal::Token(jadpo_value::Fault::Broke(rule))) => {
+                Err(Stop::Invalid {
+                    rule,
+                    written: format!("{}:", rule.word()),
+                    problem: None,
+                    name: None,
+                })
+            }
+            Err(jadpo_value::jwt::Refusal::Token(fault)) => Err(self.value_fault(ctx, fault, at)),
+            Err(jadpo_value::jwt::Refusal::Mismatch(problem)) => Err(Stop::Invalid {
+                rule: RuleKey::Mismatch,
+                written: mismatch_written(&problem),
+                problem: Some(decode_problem(&problem)),
+                name: None,
+            }),
         }
     }
 

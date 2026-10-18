@@ -551,17 +551,25 @@ public type IsoWeek = Object {
 /// `~0` for `~` and `~1` for `/`, and empty for the whole document.
 public type JsonPointer = Text {}
 
-/// A public key a token is checked against (area 19, RFC 7517 and RFC
-/// 8037): an Ed25519 key, `kty` `OKP`, `crv` `Ed25519` and `x` its 32
-/// bytes as unpadded Base64url, with an optional key id; `use_` is sent
-/// as `use`. Never a private key or a shared secret.
+/// A public key a token is checked against (area 19, RFC 7517, RFC 7518
+/// and RFC 8037), one of three kinds by its `kty`: `OKP`, an Ed25519 key,
+/// `crv` `Ed25519` and `x`; `RSA`, `n` and `e`, its modulus 2,048 to 4,096
+/// bits; or `EC`, a P-256 key, `crv` `P-256`, `x` and `y`, a point on the
+/// curve; each in unpadded Base64url, used with one algorithm, `EdDSA`,
+/// `RS256` or `ES256`, with an optional key id and certificates (`x5c`,
+/// each standard Base64 DER); `use_` is sent as `use`. Never a private key
+/// or a shared secret; members it doesn't hold are ignored.
 public type Jwk = Object {
     kty: Text
-    crv: Text
-    x: Text
+    crv: Text?
+    x: Text?
+    y: Text?
+    n: Text?
+    e: Text?
     kid: Text?
     alg: Text?
     use_: Text?
+    x5c: List<Text>?
 }
 
 /// A signed token (area 19, RFC 7519) in JWS compact form, three parts of

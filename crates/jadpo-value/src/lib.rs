@@ -452,6 +452,9 @@ pub fn run(
             | Op::RandomToken,
             _,
         ) => Err(Fault::Shape),
+        // A certificate from its DER (chunk 5.5r4), which needs no key.
+        (Op::CryptoReadCertificate, [Value::Bytes(der)]) => certificate::read_certificate(der),
+        (Op::CryptoReadCertificate, _) => Err(Fault::Shape),
         // `crypto` takes the key its call's `key:` names, the invocation's
         // random bytes and its clock, so each executor runs it through
         // [`crypto::run`] (area 19, "Hashing and cryptography").
@@ -843,6 +846,14 @@ mod tests {
                 Op::EncodingFromBase64 => vec![Value::text("bG9hZg==")],
                 Op::EncodingFromBase64url => vec![Value::text("bG9hZg")],
                 Op::EncodingFromHex => vec![Value::text("6c6f6166")],
+                Op::CryptoReadCertificate => {
+                    let Some(Value::Record(read)) =
+                        certificate::read_pem(jadpo_std::standard::certificates::SELF_SIGNED)
+                    else {
+                        panic!("the self-signed certificate reads");
+                    };
+                    vec![read.get("der").cloned().unwrap_or(Value::None)]
+                }
                 Op::TextFormat => {
                     vec![
                         Value::Instant(0),

@@ -31,6 +31,7 @@ pub mod events;
 pub mod geo;
 pub mod health;
 mod identifiers;
+pub mod jwk;
 pub mod lists;
 pub mod markup;
 pub mod media;

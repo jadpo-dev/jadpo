@@ -182,6 +182,7 @@ pub enum Op {
     CryptoHashPassword,
     CryptoHmac,
     CryptoPublicKey,
+    CryptoReadCertificate,
     CryptoSign,
     CryptoVerifyHmac,
     CryptoVerifyJwt,
@@ -705,7 +706,8 @@ const ON_UNREADABLE: Condition = Condition {
 /// Why `crypto.verify_jwt` refuses a token (area 19, chunk 5.5r): each
 /// known only when the program runs, so only an `attempt` settles it.
 /// `wrong_issuer` can happen only when the call names an `issuer:`, so the
-/// checker asks for its arm only then.
+/// checker asks for its arm only then, and `mismatch`, a token's claims
+/// that aren't the type `as:` names, only when it names one (chunk 5.5r4).
 const ON_JWT: &[Condition] = &[
     Condition {
         key: RuleKey::InvalidSignature,
@@ -729,6 +731,10 @@ const ON_JWT: &[Condition] = &[
     },
     Condition {
         key: RuleKey::WrongIssuer,
+        option: None,
+    },
+    Condition {
+        key: RuleKey::Mismatch,
         option: None,
     },
 ];
@@ -1106,6 +1112,17 @@ pub const OPERATIONS: &[Operation] = &[
         &[],
         "crypto::public_key",
     ),
+    // A certificate from its DER (chunk 5.5r4), on `Certificate`'s reader
+    // (chunk 5.5r5): a key set's `x5c`, a file's bytes. It needs no key
+    // and reads nothing, so it runs through [`crate::Op`]'s plain `run`.
+    crypto(
+        Op::CryptoReadCertificate,
+        "read_certificate",
+        &[param("der", BYTES_VALUE)],
+        Kind::Std(crate::standard::certificates::CERTIFICATE),
+        &[ON_MALFORMED],
+        "certificate::read_certificate",
+    ),
     crypto(
         Op::CryptoSign,
         "sign",
@@ -1137,6 +1154,7 @@ pub const OPERATIONS: &[Operation] = &[
             param("keys", Kind::List),
             option("issuer", TEXT),
             option("audience", TEXT),
+            option("as", Kind::Type),
         ],
         Kind::Std(crate::standard::security::JWT_CLAIMS),
         ON_JWT,
