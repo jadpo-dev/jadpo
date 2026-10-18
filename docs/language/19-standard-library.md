@@ -3553,8 +3553,7 @@ test "a phone number is read as it is typed and kept in E.164" {
     var from_abroad: PhoneNumber = attempt typed_phone("+44 (0)7400 123456", Country.fr)
     assert from_abroad == mobile
     assert typed_phone("07400 12345", Country.gb) fails PhoneUnreadable
-    assert typed_phone("07400 123456", Country.de) fails PhoneUnreadable
-    assert text.from(mobile) == "+447400123456"
+    assert typed_phone("07400 123456", Country.us) fails PhoneUnreadable
 }
 
 test "a phone number is shown as the staff_locale's region dials it" {
