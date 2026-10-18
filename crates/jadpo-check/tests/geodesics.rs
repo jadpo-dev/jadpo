@@ -2,7 +2,7 @@
 //! `bearing` and `area` take the geometries they measure and nothing else,
 //! a distance or a bearing between points only (question 10), naming the
 //! page; `bearing` fails with `same_point` unless its `attempt` maps it;
-//! and the rest of the page's operations are named but not built yet.
+//! and WKT's two operations are named but not built yet (chunk 5.5u6).
 
 use crate::support;
 
@@ -71,10 +71,10 @@ fn length_and_area_take_the_shapes_they_measure() {
 }
 
 #[test]
-fn the_rest_of_the_page_is_not_built_yet() {
+fn wkt_is_not_built_yet() {
     assert_eq!(
         check(
-            "function inside(patch: Polygon, at: Point) -> Inside {\n    return Inside(geo.contains(patch, at))\n}\n",
+            "type Wire = Text {}\n\nfunction written(patch: Polygon) -> Wire {\n    return Wire(geo.to_wkt(patch))\n}\n",
             false
         ),
         ["toolchain.not_built_yet"]

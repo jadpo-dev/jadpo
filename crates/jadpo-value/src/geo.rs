@@ -835,6 +835,60 @@ mod tests {
     }
 
     #[test]
+    fn a_polygon_that_isn_t_valid_is_refused_at_its_ring() {
+        // Area 20, "Polygons are valid when built": each rule, read from
+        // GeoJSON, refused as `format` at the ring that breaks it.
+        let square = "[0,0],[10,0],[10,10],[0,10],[0,0]";
+        let cases = [
+            ("[[0,0],[10,10],[0,10],[10,0],[0,0]]", 0),
+            ("[[0,0],[10,0],[5,0],[5,10],[0,0]]", 0),
+            ("[[0,0],[10,0],[10,0],[10,10],[0,0]]", 0),
+            ("[[0,10],[180,-10],[90,0],[0,10]]", 0),
+            ("[[0,0],[90,0],[180,0],[-90,0],[0,0]]", 0),
+        ];
+        for (rings, ring) in cases {
+            let text = format!(r#"{{"type":"Polygon","coordinates":[{rings}]}}"#);
+            assert_eq!(
+                read_text(POLYGON, &text),
+                Err(Unreadable {
+                    at: vec!["coordinates".into(), ring.to_string()],
+                    rule: "format"
+                }),
+                "{text}"
+            );
+        }
+        let holes = [
+            ("[[20,20],[20,21],[21,21],[20,20]]", 1),
+            ("[[5,5],[15,5],[15,6],[5,5]]", 1),
+            ("[[0,0],[2,1],[1,2],[0,0]]", 1),
+            (
+                "[[1,1],[9,1],[9,9],[1,9],[1,1]],[[2,2],[2,3],[3,3],[2,2]]",
+                2,
+            ),
+        ];
+        for (rings, ring) in holes {
+            let text = format!(r#"{{"type":"Polygon","coordinates":[[{square}],{rings}]}}"#);
+            assert_eq!(
+                read_text(POLYGON, &text),
+                Err(Unreadable {
+                    at: vec!["coordinates".into(), ring.to_string()],
+                    rule: "format"
+                }),
+                "{text}"
+            );
+        }
+        // Inside a multi-polygon, at its polygon and its ring.
+        let text = r#"{"type":"MultiPolygon","coordinates":[[[[0,0],[1,0],[1,1],[0,0]]],[[[0,0],[10,10],[0,10],[10,0],[0,0]]]]}"#;
+        assert_eq!(
+            read_text(MULTI_POLYGON, text),
+            Err(Unreadable {
+                at: vec!["coordinates".into(), "1".into(), "0".into()],
+                rule: "format"
+            })
+        );
+    }
+
+    #[test]
     fn a_double_is_read_as_its_shortest_decimal() {
         let number = |text: &str| decimal_of(&serde_json::from_str(text).expect("a number"));
         assert_eq!(number("51.5072"), Some(Decimal::new(515_072, 4)));
