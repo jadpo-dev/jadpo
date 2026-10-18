@@ -27,6 +27,7 @@ pub fn entry_of(value: &Value) -> Option<&'static StandardType> {
         Value::Zoned(_) => jadpo_std::Builtin::ZonedTime,
         Value::Duration(_) => jadpo_std::Builtin::Duration,
         Value::Money(_) => jadpo_std::Builtin::Money,
+        Value::Quantity(quantity) => jadpo_std::Builtin::Quantity(quantity.kind),
         Value::Variant(variant) => return standard_type(&variant.ty),
         Value::Record(record) => return standard_type(&record.ty),
         _ => return None,
@@ -63,6 +64,9 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::Zoned, Value::Zoned(zoned)) => zoned.to_string(),
         (TextForm::Duration, Value::Duration(millis)) => jadpo_std::iso_duration(*millis),
         (TextForm::Money, Value::Money(money)) => money.to_string(),
+        (TextForm::Quantity, Value::Quantity(quantity)) => {
+            jadpo_std::quantity::canonical(quantity.kind, quantity.amount)
+        }
         (TextForm::ExchangeRate, Value::Record(record)) => exchange_rate_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
@@ -235,6 +239,18 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Duration => crate::json::iso_duration(raw).map(Value::Duration),
         TextForm::Code => code(entry, raw),
         TextForm::Money => crate::money::read(raw).map(Value::Money),
+        TextForm::Quantity => {
+            let Holds::Builtin(jadpo_std::Builtin::Quantity(kind)) = entry.holds else {
+                return Err(Fault::Shape);
+            };
+            return match jadpo_std::quantity::parse_text(kind, raw) {
+                Ok(amount) => Ok(Value::Quantity(crate::Quantity { kind, amount })),
+                Err(jadpo_std::quantity::TextProblem::Malformed) => Err(MALFORMED),
+                Err(jadpo_std::quantity::TextProblem::UnknownUnit) => {
+                    Err(Fault::Broke(RuleKey::UnknownUnit))
+                }
+            };
+        }
         TextForm::ExchangeRate => read_exchange_rate(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
@@ -407,6 +423,21 @@ impl MoneyOptions {
     }
 }
 
+/// The unit a quantity is shown in: `unit:` as a call gives it, a variant
+/// of the kind's unit enum, or the kind's base unit when left out.
+pub fn unit_of(
+    kind: jadpo_std::QuantityKind,
+    unit: &Value,
+) -> Result<&'static jadpo_std::QuantityUnit, Fault> {
+    match unit {
+        Value::None => Ok(kind.base_unit()),
+        Value::Variant(variant) if &*variant.ty == kind.unit_enum() => {
+            kind.unit_named(&variant.name).ok_or(Fault::Shape)
+        }
+        _ => Err(Fault::Shape),
+    }
+}
+
 /// `text.format` as a call runs it: given, besides the value and its
 /// options, the name of the standard type held as text the value is, which
 /// the checker fills (an IBAN is text to the runtime), or `none`.
@@ -417,6 +448,7 @@ pub fn format_as(
     zone: &Value,
     format_spec: &Value,
     options: &MoneyOptions,
+    unit: &Value,
 ) -> Result<Value, Fault> {
     if let (Value::Text(name), Value::Text(_)) = (standard, value)
         && let Some(entry) = standard_type(name)
@@ -425,22 +457,26 @@ pub fn format_as(
         let tag = present::tag_of(locale)?;
         return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
     }
-    format(value, locale, zone, format_spec, options)
+    format(value, locale, zone, format_spec, options, unit)
 }
 
 /// `text.format(value, locale:, zone:, format:, precision:, display:,
-/// sign:)`: the value for people in `locale`, as its entry's format key
-/// says. Each option is `none` where the type doesn't take it.
+/// sign:, unit:)`: the value for people in `locale`, as its entry's format
+/// key says. Each option is `none` where the type doesn't take it.
 pub fn format(
     value: &Value,
     locale: &Value,
     zone: &Value,
     format_spec: &Value,
     options: &MoneyOptions,
+    unit: &Value,
 ) -> Result<Value, Fault> {
     let tag = present::tag_of(locale)?;
     let text = match (entry_of(value), value) {
         (Some(_), Value::Money(money)) => present::money::format(*money, tag, options)?,
+        (Some(_), Value::Quantity(quantity)) => {
+            present::units::format(quantity.amount, unit_of(quantity.kind, unit)?, tag)?
+        }
         (Some(entry), value) => shown(entry, value, tag, zone, format_spec)?,
         // `Email`, `Url` and `IpAddress` are shown as they are written.
         (None, Value::Text(text)) => text.to_string(),
@@ -489,6 +525,9 @@ pub fn shown(
         (FormatKey::ZoneName, value) => present::names::zone(&canonical(entry, value)?, tag)?,
         (FormatKey::Money, Value::Money(money)) => {
             present::money::format(*money, tag, &MoneyOptions::default())?
+        }
+        (FormatKey::Units, Value::Quantity(quantity)) => {
+            present::units::format(quantity.amount, quantity.kind.base_unit(), tag)?
         }
         (FormatKey::CurrencyName, value) => {
             present::money::currency_name(&canonical(entry, value)?, tag)?

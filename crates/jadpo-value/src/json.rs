@@ -126,6 +126,10 @@ impl Codecs<'_> {
                     serde_json::Value::Object(entries) if *builtin == Builtin::Money => {
                         money_from_json(entries, path, problems)?
                     }
+                    serde_json::Value::Object(entries) => match builtin {
+                        Builtin::Quantity(kind) => json_quantity(*kind, entries, path, problems)?,
+                        _ => Err("type"),
+                    },
                     serde_json::Value::String(text) => scalar_from_text(*builtin, text),
                     serde_json::Value::Bool(flag) if *builtin == Builtin::Bool => {
                         Ok(Value::Bool(*flag))
@@ -713,6 +717,74 @@ fn money_from_json(
     }
 }
 
+/// A physical quantity from `{ "value": "2.5", "unit": "kg" }` (area 19,
+/// "Physical quantities"): the number as a string, as area 2 sends every
+/// `Decimal`, and the code of one of the kind's units, exactly as written;
+/// each problem reported at its own field: `type` for a number that isn't a
+/// decimal string, `unknown_unit` for a unit of another kind.
+fn json_quantity(
+    kind: jadpo_std::QuantityKind,
+    entries: &serde_json::Map<String, serde_json::Value>,
+    path: &Path,
+    problems: &mut Vec<Problem>,
+) -> Option<Result<Value, &'static str>> {
+    let before = problems.len();
+    let [value_field, unit_field] = jadpo_std::standard::QUANTITY_FIELDS;
+    let number = match entries.get(value_field) {
+        Some(serde_json::Value::String(text)) => {
+            let found = jadpo_std::Num::parse(text).filter(|_| {
+                let digits = text.strip_prefix('-').unwrap_or(text);
+                let (whole, places) = digits.split_once('.').unwrap_or((digits, "0"));
+                let plain =
+                    |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+                plain(whole) && plain(places)
+            });
+            if found.is_none() {
+                Codecs::problem(problems, &path.with(value_field), "type");
+            }
+            found
+        }
+        Some(_) => {
+            Codecs::problem(problems, &path.with(value_field), "type");
+            None
+        }
+        None => {
+            Codecs::problem(problems, &path.with(value_field), "required");
+            None
+        }
+    };
+    let unit = match entries.get(unit_field) {
+        Some(serde_json::Value::String(code)) => {
+            let found = kind.unit_coded(code);
+            if found.is_none() {
+                Codecs::problem(problems, &path.with(unit_field), "unknown_unit");
+            }
+            found
+        }
+        Some(_) => {
+            Codecs::problem(problems, &path.with(unit_field), "type");
+            None
+        }
+        None => {
+            Codecs::problem(problems, &path.with(unit_field), "required");
+            None
+        }
+    };
+    for name in entries.keys() {
+        if name != value_field && name != unit_field {
+            Codecs::problem(problems, &path.with(name.clone()), "unknown_field");
+        }
+    }
+    match (number, unit) {
+        (Some(number), Some(unit)) if problems.len() == before => Some(
+            jadpo_std::quantity::to_base(number.mantissa, number.scale, unit)
+                .map(|amount| Value::Quantity(crate::Quantity { kind, amount }))
+                .ok_or("max"),
+        ),
+        _ => None,
+    }
+}
+
 /// A scalar read from its text, before its rules are checked. Every
 /// text a request carries comes through here, from a body, a path, a
 /// query string, a header or a map's key, and is composed to NFC first,
@@ -786,6 +858,18 @@ fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
                 jadpo_std::MONEY_FIELDS[1]
             );
             write_string(money.code(), out);
+            out.push('}');
+        }
+        // In its kind's base unit, the number as a string (area 19).
+        Value::Quantity(quantity) => {
+            let [value_field, unit_field] = jadpo_std::standard::QUANTITY_FIELDS;
+            let _ = write!(out, "{{\"{value_field}\":");
+            write_string(
+                &jadpo_std::quantity::number_text(quantity.amount, quantity.kind.scale()),
+                out,
+            );
+            let _ = write!(out, ",\"{unit_field}\":");
+            write_string(quantity.kind.base_unit().code, out);
             out.push('}');
         }
         Value::Bytes(bytes) => write_string(&crate::encoding::to_base64(bytes), out),

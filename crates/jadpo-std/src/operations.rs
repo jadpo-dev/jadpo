@@ -60,6 +60,15 @@ pub enum Kind {
     /// representation whose canonical text it reads; the call's result is
     /// that type.
     Type,
+    /// A physical quantity (area 19, "Physical quantities"): a value
+    /// built on any quantity kind, `Quantity` in its stub, fixed by the
+    /// argument or by the unit a call gives, so a result of this kind is
+    /// that kind.
+    Quantity,
+    /// A unit of a quantity, `QuantityUnit` in its stub: a variant of one
+    /// kind's unit enum (`LengthUnit.kilometre`), which fixes the call's
+    /// quantity kind.
+    QuantityUnit,
 }
 
 /// One parameter: its name, which a call may give it by (area 3), and its
@@ -288,6 +297,9 @@ pub enum Op {
     TextStartsWith,
     TextTrim,
     TextUpper,
+    UnitsIn,
+    UnitsOf,
+    UnitsSum,
 }
 
 /// One standard-library operation.
@@ -665,6 +677,26 @@ const fn money(
 }
 
 const MONEY: Kind = Kind::Builtin(Builtin::Money);
+
+/// A `units` operation (area 19, "Physical quantities", question 17).
+const fn units(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "units",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
 const CURRENCY: Kind = Kind::Enum(crate::CURRENCY);
 
 /// Two amounts, or an amount and a list's currency, in different
@@ -1761,6 +1793,7 @@ pub const OPERATIONS: &[Operation] = &[
             by_type("precision", Kind::Enum(crate::MoneyPrecision::NAME)),
             by_type("display", Kind::Enum(crate::MoneyDisplay::NAME)),
             by_type("sign", Kind::Enum(crate::MoneySign::NAME)),
+            by_type("unit", Kind::QuantityUnit),
             // The standard type held as text the value is (an IBAN is text
             // to the runtime), or `none` (area 19, chunk 5.5i).
             Param {
@@ -1883,6 +1916,45 @@ pub const OPERATIONS: &[Operation] = &[
         &[VALUE, option("locale", LOCALE)],
         TEXT,
         "text::upper",
+    ),
+    // The `units` operations (area 19, "Physical quantities", question
+    // 17): making a quantity from a number and a unit, reading one in a
+    // unit, and adding a list of one kind up. `+`, `-`, comparisons and the
+    // products and quotients are the operator table's.
+    units(
+        Op::UnitsIn,
+        "in",
+        &[
+            param("value", Kind::Quantity),
+            param("unit", Kind::QuantityUnit),
+            SCALE,
+            param("rounding", ROUNDING),
+        ],
+        DECIMAL,
+        "units::in_unit",
+    ),
+    units(
+        Op::UnitsOf,
+        "of",
+        &[
+            param("value", Kind::Number),
+            param("unit", Kind::QuantityUnit),
+        ],
+        Kind::Quantity,
+        "units::of",
+    ),
+    units(
+        Op::UnitsSum,
+        "sum",
+        &[
+            ITEMS,
+            Param {
+                implicit: true,
+                ..param("zero", Kind::Quantity)
+            },
+        ],
+        Kind::Quantity,
+        "units::sum",
     ),
 ];
 

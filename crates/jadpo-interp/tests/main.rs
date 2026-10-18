@@ -25,6 +25,7 @@ mod money;
 mod named_collections;
 mod numbers;
 mod proofs;
+mod quantities;
 mod reports;
 mod schedules;
 mod sets_maps;

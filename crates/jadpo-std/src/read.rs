@@ -161,6 +161,9 @@ pub enum Column {
     Date,
     /// Milliseconds, kept as `bigint`.
     Duration,
+    /// A physical quantity, kept as `numeric` in its kind's base unit at
+    /// its scale (area 19).
+    Quantity(crate::QuantityKind),
     /// A plain variant, stored as its name: the enum and its variants in
     /// declared order.
     Enum {

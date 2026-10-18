@@ -18,6 +18,9 @@ pub enum Problem {
     Builtin(String),
     /// A rule is broken: which type declares it, and how.
     Broken(String, Broken),
+    /// A bare number where a quantity of this kind goes, which needs its
+    /// unit (area 19, `type.unit_required`).
+    UnitRequired(jadpo_std::QuantityKind),
 }
 
 /// Checks a constant against the type it goes into.
@@ -74,6 +77,24 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         return Err(Problem::Kind { fix });
     };
     let representation = base.representation();
+    // A quantity is always made with its unit (area 19): a bare number is
+    // the mistake its type exists to prevent. A suffix that names no unit
+    // is reported where the literal is read.
+    if let Prim::Quantity(kind) = representation {
+        match value {
+            Const::Number { .. } | Const::TooLong => return Err(Problem::UnitRequired(kind)),
+            Const::Quantity(_) => match value.quantity() {
+                None => return Ok(()),
+                Some((unit, _)) if unit.kind != kind => return Err(Problem::Kind { fix: None }),
+                Some(_) => {}
+            },
+            _ => return Err(Problem::Kind { fix: None }),
+        }
+        for (host, rules) in table.rule_chain(expected) {
+            check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
+        }
+        return Ok(());
+    }
     let fits = match value {
         Const::Number { decimal: false, .. } => representation == Prim::Int,
         Const::Number { decimal: true, .. } => representation == Prim::Decimal,
@@ -213,6 +234,7 @@ pub fn diagnostic(
                 None => problem.next(format!("Use a `{expected}` value here")),
             }
         }
+        Problem::UnitRequired(kind) => unit_required(kind, written, &expected.to_string(), span),
         Problem::Builtin(why) => {
             let base = table
                 .base_prim(expected)
@@ -258,6 +280,98 @@ pub fn diagnostic(
     }
 }
 
+/// `type.unit_required` (area 19): `written`, a bare number, where a
+/// quantity of `kind` goes, as type `expected`. Never declinable.
+pub fn unit_required(
+    kind: jadpo_std::QuantityKind,
+    written: &str,
+    expected: &str,
+    span: Span,
+) -> Diagnostic {
+    let base = kind.base_unit();
+    let literal = written.parse::<f64>().is_ok() || written.starts_with('-');
+    let made = format!("units.of({written}, {}.{})", kind.unit_enum(), base.name);
+    let next = if literal && base.suffix {
+        format!(
+            "Write its unit after the number, such as `{written}{}`, or make it with `{made}` in any of `{}`'s units",
+            base.code,
+            kind.unit_enum()
+        )
+    } else {
+        format!(
+            "Make it with its unit, `{made}`, in any of `{}`'s units",
+            kind.unit_enum()
+        )
+    };
+    let an = if kind.name().starts_with(['A', 'E', 'I', 'O', 'U']) {
+        "An"
+    } else {
+        "A"
+    };
+    Diagnostic::new(
+        &rule::TYPE_UNIT_REQUIRED,
+        format!("`{expected}` needs a unit, and `{written}` is a bare number"),
+    )
+    .at(span, "no unit")
+    .reason(format!(
+        "{an} `{}` is always made with its unit, so a number alone could be any {}: a number without its unit is the mistake the type exists to prevent.",
+        kind.name(),
+        kind.name().to_lowercase()
+    ))
+    .next(next)
+}
+
+/// `type.unit_unknown` (area 19): a number written with a suffix that is
+/// no duration's or quantity's unit, naming each unit it misses only by
+/// case (`5mw`, between `mW` and `MW`).
+pub fn unit_unknown(written: &str, span: Span) -> Diagnostic {
+    let suffix = jadpo_std::quantity::suffix_of(written);
+    let near = jadpo_std::quantity::near_misses(suffix);
+    let number = written.strip_suffix(suffix).unwrap_or(written);
+    if near.is_empty() {
+        return Diagnostic::new(
+            &rule::TYPE_UNIT_UNKNOWN,
+            format!("`{suffix}` isn't a unit, so `{written}` is no value"),
+        )
+        .at(span, "no such unit")
+        .reason(format!(
+            "A number's suffix is a duration's unit (`ms`, `s`, `m`, `h`, `d`) or a quantity's, as SI writes it and case matters; no unit is written `{suffix}`. Metres are `metre`, since `m` is minutes, and inches `inch`, since `in` is a keyword."
+        ))
+        .next("Write a unit Jadpo knows, as the editor offers after the number, or make the value with `units.of`");
+    }
+    let named: Vec<String> = near
+        .iter()
+        .map(|unit| format!("`{number}{}` ({})", unit.code, unit.meaning))
+        .collect();
+    let mut problem = Diagnostic::new(
+        &rule::TYPE_UNIT_UNKNOWN,
+        format!(
+            "`{written}` has no unit `{suffix}`: did you mean {}?",
+            crate::or_list(&named)
+        ),
+    )
+    .at(span.clone(), "unit in the wrong case")
+    .reason(format!(
+        "Units are written as SI writes them, and case matters: {}.",
+        crate::and_list(
+            &near
+                .iter()
+                .map(|unit| format!("`{}` is {}", unit.code, unit.meaning))
+                .collect::<Vec<_>>()
+        )
+    ));
+    problem = match near.as_slice() {
+        [only] => problem
+            .next(format!("Write `{number}{}`", only.code))
+            .edit(span, format!("{number}{}", only.code)),
+        _ => problem.next(format!(
+            "Write {}, whichever is meant",
+            crate::or_list(&named)
+        )),
+    };
+    problem
+}
+
 /// A literal in the reader's words.
 fn describe(written: &str) -> &'static str {
     if written == "none" {
@@ -270,8 +384,12 @@ fn describe(written: &str) -> &'static str {
         "a list"
     } else if written.contains('.') {
         "a decimal number"
-    } else if written.ends_with(|c: char| c.is_ascii_alphabetic()) {
+    } else if written.ends_with(|c: char| c.is_ascii_alphabetic())
+        && super::rules::is_duration_suffix(jadpo_std::quantity::suffix_of(written))
+    {
         "a duration"
+    } else if written.ends_with(|c: char| c.is_ascii_alphabetic()) {
+        "a quantity"
     } else {
         "a whole number"
     }

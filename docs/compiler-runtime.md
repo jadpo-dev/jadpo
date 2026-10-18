@@ -600,6 +600,23 @@ new. `text.format` is given the type's name by an implicit argument the
 checker fills (`standard`), since the runtime holds only the text, and
 shows it grouped or masked to its last four (`FormatKey::Grouped`,
 `FormatKey::LastFour`).
+Since chunk 5.5j (area 19, "Physical quantities") each of the 17
+quantities with `DataSize` and `Bitrate` is `Builtin::Quantity(kind)`
+(`jadpo_std::QuantityKind`), held as `Value::Quantity`, a mantissa in the
+kind's SI base unit at its scale. `jadpo_std::quantity` is the one table
+of units (each kind's unit enum, its suffix, its size as an exact fraction
+and an offset for temperatures) and of the products and quotients, with
+the exact conversions and the table's arithmetic both the checker and
+`jadpo-value`'s `units` module use; `unit_suffixes()` reads it for the
+editor. A suffixed literal is `Const::Quantity` and `Literal::Quantity`
+(any suffix but a duration's), checked by `literal::check`, which also
+reports a bare number as `type.unit_required`; `types/body/quantities.rs`
+types the `units` operations and `text.format`'s `unit:`, whose stubs
+write `Quantity` and `QuantityUnit` (`Kind::Quantity`,
+`Kind::QuantityUnit`). A quantity is stored in one `numeric(38, <scale>)`
+column (`Column::Quantity`), sent as `{ "value": "2.5", "unit": "kg" }`,
+and shown by `present::units` over ICU4X's CLDR unit names where it has
+them.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

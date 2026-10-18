@@ -52,13 +52,14 @@ pub mod shape;
 pub mod standard;
 pub mod temporal;
 pub mod text;
+pub mod units;
 pub mod validate;
 mod value;
 
 pub use jadpo_std::{LocalePlan, Op, Rounding};
 pub use ops::Fault;
 pub use validate::{Invalid, Validator};
-pub use value::{Decimal, Money, QUOTIENT_PLACES, Record, Value, Variant, Zoned};
+pub use value::{Decimal, Money, QUOTIENT_PLACES, Quantity, Record, Value, Variant, Zoned};
 
 /// Runs one standard-library operation with the values of its parameters
 /// in table order, its inline-function parameter left out; `each` runs the
@@ -256,6 +257,13 @@ pub fn run(
             | Op::MoneyAllocate,
             _,
         ) => Err(Fault::Shape),
+        // The `units` operations (area 19, "Physical quantities").
+        (Op::UnitsOf, [value, unit]) => units::of(value, unit),
+        (Op::UnitsIn, [value, unit, scale, rounding]) => {
+            units::in_unit(value, unit, scale, rounding)
+        }
+        (Op::UnitsSum, [items, zero]) => units::sum(items, zero),
+        (Op::UnitsOf | Op::UnitsIn | Op::UnitsSum, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -304,6 +312,7 @@ pub fn run(
                 precision,
                 display,
                 sign,
+                unit,
                 standard,
             ],
         ) => standard::format_as(
@@ -313,6 +322,7 @@ pub fn run(
             zone,
             format,
             &standard::MoneyOptions::of(precision, display, sign)?,
+            unit,
         ),
         (Op::TextFrom, [value]) => standard::from(value),
         (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
@@ -637,7 +647,7 @@ fn decimal_of(value: &Value) -> Result<Decimal, Fault> {
     }
 }
 
-fn rounding_of(value: &Value) -> Result<Rounding, Fault> {
+pub(crate) fn rounding_of(value: &Value) -> Result<Rounding, Fault> {
     match value {
         Value::Variant(variant) if variant.fields.is_empty() => {
             Rounding::from_name(&variant.name).ok_or(Fault::Shape)
@@ -692,6 +702,7 @@ mod tests {
             _ => None,
         };
         let bytes = Value::Bytes(std::rc::Rc::from(&b"loaf"[..]));
+        let mile = Value::variant("LengthUnit", 7, "mile", Vec::new());
         for operation in jadpo_std::OPERATIONS {
             let args: Vec<Value> = match operation.op {
                 // Run with the plan's codecs (`json`'s own tests).
@@ -715,8 +726,20 @@ mod tests {
                         Value::None,
                         Value::None,
                         Value::None,
+                        Value::None,
                     ]
                 }
+                Op::UnitsOf => vec![Value::Int(5), mile.clone()],
+                Op::UnitsIn => vec![
+                    units::value(jadpo_std::QuantityKind::Length, 5_000_000_000),
+                    mile.clone(),
+                    Value::Int(2),
+                    variant("half_even"),
+                ],
+                Op::UnitsSum => vec![
+                    Value::list(vec![units::value(jadpo_std::QuantityKind::Length, 1)]),
+                    units::value(jadpo_std::QuantityKind::Length, 0),
+                ],
                 Op::MoneyFromMinor => vec![Value::Int(1050), pounds.clone()],
                 Op::MoneyOf => vec![Value::Decimal(Decimal::new(1050, 2)), pounds.clone()],
                 Op::MoneyMinor | Op::MoneyCurrency => vec![price.clone()],

@@ -434,6 +434,10 @@ pub fn to_sql(value: &Value, ty: SqlType) -> Result<SqlValue, String> {
         }
         (Value::Date(day), SqlType::Date) => SqlValue::Date(*day),
         (Value::Duration(millis), SqlType::Int8) => SqlValue::Int8(*millis),
+        // In its kind's base unit at its scale (area 19).
+        (Value::Quantity(quantity), SqlType::Numeric) => SqlValue::Numeric(
+            jadpo_std::quantity::number_text(quantity.amount, quantity.kind.scale()),
+        ),
         (Value::Variant(variant), SqlType::Text) if variant.fields.is_empty() => SqlValue::Text(
             jadpo_std::standard::stored_variant(&variant.ty, &variant.name).to_string(),
         ),
@@ -463,6 +467,19 @@ pub fn from_sql(sql: &SqlValue, column: &Column) -> Result<Value, String> {
         (SqlValue::Int8(n), Column::Duration) => Value::Duration(*n),
         (SqlValue::Numeric(text), Column::Decimal) => {
             Value::decimal(text).ok_or("a decimal with more than 38 digits")?
+        }
+        // Held in its kind's base unit at its scale, which the column's
+        // type keeps (area 19).
+        (SqlValue::Numeric(text), Column::Quantity(kind)) => {
+            let number = jadpo_std::Num::parse(text).ok_or("a quantity that isn't a number")?;
+            let amount = number
+                .at_scale(kind.scale())
+                .ok_or("a quantity with more than 38 digits")?
+                .mantissa;
+            Value::Quantity(jadpo_value::Quantity {
+                kind: *kind,
+                amount,
+            })
         }
         (SqlValue::Text(text), Column::Text) => Value::text(text),
         (SqlValue::Bytes(bytes), Column::Bytes) => Value::Bytes(Rc::from(bytes.as_slice())),

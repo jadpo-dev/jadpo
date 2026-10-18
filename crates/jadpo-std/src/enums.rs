@@ -464,12 +464,12 @@ impl HttpMethod {
 
 /// Every enum declared here, by name, with its variants in order: the
 /// ones Rust interprets, then `Zone`, `Locale`, `FileType` and `Currency`
-/// from their tables.
+/// from their tables, then each quantity's unit enum from its units.
 pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
     let names = |list: &'static [(&'static str, &'static str)]| {
         list.iter().map(|(variant, _)| *variant).collect()
     };
-    vec![
+    let mut all = vec![
         (Rounding::NAME, Rounding::NAMES.to_vec()),
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
@@ -514,7 +514,15 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (LOCALE, names(crate::zones::LOCALES)),
         (crate::FILE_TYPE, names(crate::FILE_TYPES)),
         (crate::CURRENCY, names(crate::CURRENCIES)),
-    ]
+    ];
+    // Each quantity's units (area 19, "Physical quantities"): `LengthUnit`.
+    all.extend(crate::QuantityKind::ALL.into_iter().map(|kind| {
+        (
+            kind.unit_enum(),
+            kind.units().iter().map(|unit| unit.name).collect(),
+        )
+    }));
+    all
 }
 
 /// Where variant `variant` stands among enum `name`'s variants, from 0, in
@@ -557,7 +565,8 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
             .position(|(v, _)| *v == variant),
         crate::FILE_TYPE => crate::FILE_TYPES.iter().position(|(v, _)| *v == variant),
         crate::CURRENCY => crate::CURRENCIES.iter().position(|(v, _)| *v == variant),
-        _ => None,
+        other => crate::QuantityKind::of_unit_enum(other)
+            .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant)),
     };
     found.and_then(|at| u32::try_from(at).ok())
 }

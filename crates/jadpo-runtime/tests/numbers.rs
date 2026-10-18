@@ -144,7 +144,8 @@ fn the_number_operations_give_the_page_s_values() {
                 Value::None,
                 Value::None,
                 Value::None,
-                // No standard type held as text (area 19).
+                // No `unit:`, and no standard type held as text (area 19).
+                Value::None,
                 Value::None,
             ],
         )

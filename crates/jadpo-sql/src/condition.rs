@@ -311,6 +311,12 @@ pub fn literal(literal: &Literal, ty: SqlType) -> Option<String> {
             Dur::parse(written)?.millis.to_string()
         }
         Literal::Duration(_) => return None,
+        // A quantity is held in its kind's base unit (area 19).
+        Literal::Quantity(written) if ty == SqlType::Numeric => {
+            let (unit, amount) = jadpo_std::quantity::parse_literal(written).ok()?;
+            jadpo_std::quantity::number_text(amount, unit.kind.scale())
+        }
+        Literal::Quantity(_) => return None,
     })
 }
 

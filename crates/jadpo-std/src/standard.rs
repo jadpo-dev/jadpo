@@ -142,6 +142,11 @@ pub enum TextForm {
     /// 2026-10-18T09:00:00Z`: one pound is 1.17 euros (chosen in chunk
     /// 5.5h2); the codes are read ignoring case.
     ExchangeRate,
+    /// A physical quantity (chosen in chunk 5.5j): its number in its
+    /// kind's base unit with no trailing zeros, a space, and the base
+    /// unit's code, `2.5 kg`, `1000 metre`; read back with any of the
+    /// kind's units, `5 km`, the space optional.
+    Quantity,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -200,6 +205,11 @@ pub enum FormatKey {
     Money,
     /// CLDR's currency display names: "British Pound".
     CurrencyName,
+    /// A quantity in the unit `unit:` names, its kind's base unit by
+    /// default: the locale's number and CLDR's short unit pattern where
+    /// ICU4X has one (`2.5 m`, `247,62 cm`), else the number, a space and
+    /// the unit's symbol (`21 °C`) (chosen in chunk 5.5j).
+    Units,
     /// Its canonical text in groups, as it is printed: an IBAN in fours,
     /// a sort code in pairs with dashes. The locale doesn't change it.
     Grouped(Grouping),
@@ -484,6 +494,48 @@ const fn time_object(
     }
 }
 
+/// A quantity's fields on the wire, in order: its number in the unit and
+/// the unit's code (`{ "value": "2.5", "unit": "kg" }`), the number as a
+/// string, as area 2 sends every `Decimal` (chosen in chunk 5.5j).
+pub const QUANTITY_FIELDS: [&str; 2] = ["value", "unit"];
+
+/// Texts no quantity reads: no number, no unit, or neither.
+const NOT_A_QUANTITY: &[&str] = &["5", "", "1.2.3", "five"];
+
+/// A physical quantity (area 19, "Physical quantities", chunk 5.5j): one
+/// `numeric` column in its base unit at its scale, ordered, shown in the
+/// unit `unit:` names.
+const fn quantity(
+    kind: crate::QuantityKind,
+    valid: &'static [(&'static str, &'static str)],
+) -> StandardType {
+    StandardType {
+        name: kind.name(),
+        holds: Holds::Builtin(Builtin::Quantity(kind)),
+        text: Some(TextForm::Quantity),
+        json: Json::Fields(&QUANTITY_FIELDS),
+        storage: Storage::Column(SqlType::Numeric),
+        format: Format {
+            key: FormatKey::Units,
+            options: &[FormatOption {
+                name: "unit",
+                needed: false,
+            }],
+        },
+        ordered: true,
+        validator: None,
+        shape: None,
+        examples: Examples {
+            valid,
+            format: None,
+            malformed: NOT_A_QUANTITY,
+            of: None,
+            settings: "",
+        },
+        release: FIRST_RELEASE,
+    }
+}
+
 const fn shown_as(key: FormatKey) -> Format {
     Format {
         key,
@@ -573,7 +625,31 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `schedules`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
+    quantity(
+        crate::QuantityKind::Angle,
+        &[
+            ("0 rad", "0 rad"),
+            ("1.570796327 rad", "1.570796327 rad"),
+            ("3.141592654 rad", "3.141592654 rad"),
+        ],
+    ),
+    quantity(
+        crate::QuantityKind::Area,
+        &[
+            ("0.5 sqm", "0.5 m²"),
+            ("12 sqm", "12 m²"),
+            ("10000 sqm", "10,000 m²"),
+        ],
+    ),
     identifiers::BIC,
+    quantity(
+        crate::QuantityKind::Bitrate,
+        &[
+            ("8000 bps", "8,000 bit/s"),
+            ("1000000 bps", "1,000,000 bit/s"),
+            ("100000000 bps", "100,000,000 bit/s"),
+        ],
+    ),
     // Day-and-month calendar dates, ordered by day.
     StandardType {
         name: "CalendarDate",
@@ -619,6 +695,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
     ),
     identifiers::CARD_BIN,
+    quantity(
+        crate::QuantityKind::Concentration,
+        &[
+            ("0.005 gL", "0.005 g/L"),
+            ("1 gL", "1 g/L"),
+            ("35 gL", "35 g/L"),
+        ],
+    ),
     // The active ISO 4217 codes (area 19, "Money and payments", question
     // 22), written as their codes and shown by CLDR's display names.
     StandardType {
@@ -643,6 +727,18 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    quantity(
+        crate::QuantityKind::Current,
+        &[("0.005 A", "0.005 A"), ("1 A", "1 A"), ("16 A", "16 A")],
+    ),
+    quantity(
+        crate::QuantityKind::DataSize,
+        &[
+            ("0 B", "0 B"),
+            ("1024 B", "1,024 B"),
+            ("5000000 B", "5,000,000 B"),
+        ],
+    ),
     // The dates from `start` to `end`, both included (area 19, "Ranges").
     StandardType {
         name: DATE_RANGE,
@@ -726,6 +822,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             of: None,
             settings: "",
         },
+    ),
+    quantity(
+        crate::QuantityKind::Energy,
+        &[
+            ("0.5 J", "0.5 J"),
+            ("4184 J", "4,184 J"),
+            ("3600000 J", "3,600,000 J"),
+        ],
     ),
     // A rate between two currencies at an instant (area 19, "Money and
     // payments"): what `money.convert` applies, never fetched.
@@ -813,7 +917,23 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    quantity(
+        crate::QuantityKind::Frequency,
+        &[
+            ("50 Hz", "50 Hz"),
+            ("440 Hz", "440 Hz"),
+            ("2400000000 Hz", "2,400,000,000 Hz"),
+        ],
+    ),
     identifiers::IBAN,
+    quantity(
+        crate::QuantityKind::Illuminance,
+        &[
+            ("0.5 lx", "0.5 lx"),
+            ("500 lx", "500 lx"),
+            ("100000 lx", "100,000 lx"),
+        ],
+    ),
     StandardType {
         name: "Instant",
         holds: Holds::Builtin(Builtin::Instant),
@@ -912,6 +1032,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
     ),
     identifiers::LEI,
+    quantity(
+        crate::QuantityKind::Length,
+        &[
+            ("-1.5 metre", "-1.5 m"),
+            ("0.0254 metre", "0.0254 m"),
+            ("1000 metre", "1,000 m"),
+        ],
+    ),
     // A date and a clock time with no zone: not an instant until a zone
     // is chosen.
     time_object(
@@ -981,6 +1109,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    quantity(
+        crate::QuantityKind::Mass,
+        &[
+            ("0.25 kg", "0.25 kg"),
+            ("2.5 kg", "2.5 kg"),
+            ("1000 kg", "1,000 kg"),
+        ],
+    ),
     // An amount in a currency's minor units (area 19, "Money and
     // payments", question 16): its JSON is the amount and the code, as
     // Stripe sends it, and it is stored in two columns, a `bigint` of minor
@@ -1076,6 +1212,22 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     schedules::OPENING_HOURS,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
+    quantity(
+        crate::QuantityKind::Power,
+        &[
+            ("0.001 W", "0.001 W"),
+            ("60 W", "60 W"),
+            ("3000 W", "3,000 W"),
+        ],
+    ),
+    quantity(
+        crate::QuantityKind::Pressure,
+        &[
+            ("0 Pa", "0 Pa"),
+            ("1013.25 Pa", "1,013.25 Pa"),
+            ("101325 Pa", "101,325 Pa"),
+        ],
+    ),
     // A quarter of a calendar year, ordered by year and quarter.
     time_object(
         "Quarter",
@@ -1131,6 +1283,38 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     schedules::RECURRENCE_RULE,
+    quantity(
+        crate::QuantityKind::SoundLevel,
+        &[
+            ("-3.5 dB", "-3.5 dB"),
+            ("60 dB", "60 dB"),
+            ("120 dB", "120 dB"),
+        ],
+    ),
+    quantity(
+        crate::QuantityKind::Speed,
+        &[
+            ("0.5 mps", "0.5 m/s"),
+            ("13.4112 mps", "13.4112 m/s"),
+            ("340 mps", "340 m/s"),
+        ],
+    ),
+    quantity(
+        crate::QuantityKind::Temperature,
+        &[
+            ("0 kelvin", "0 K"),
+            ("273.15 kelvin", "273.15 K"),
+            ("373.15 kelvin", "373.15 K"),
+        ],
+    ),
+    quantity(
+        crate::QuantityKind::TemperatureDifference,
+        &[
+            ("-5 kelvin", "-5 K"),
+            ("0 kelvin", "0 K"),
+            ("5 kelvin", "5 K"),
+        ],
+    ),
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
@@ -1191,6 +1375,22 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    quantity(
+        crate::QuantityKind::Voltage,
+        &[
+            ("1.5 V", "1.5 V"),
+            ("230 V", "230 V"),
+            ("11000 V", "11,000 V"),
+        ],
+    ),
+    quantity(
+        crate::QuantityKind::Volume,
+        &[
+            ("0.0005 cubic_metre", "0.0005 m³"),
+            ("0.001 cubic_metre", "0.001 m³"),
+            ("2 cubic_metre", "2 m³"),
+        ],
+    ),
     StandardType {
         name: crate::Weekday::NAME,
         holds: Holds::Enum(WEEKDAYS),
@@ -1487,6 +1687,7 @@ impl StandardType {
             (SqlType::Timestamp, _) => Column::Instant,
             (SqlType::Date, _) => Column::Date,
             (SqlType::Int8, Holds::Builtin(Builtin::Duration)) => Column::Duration,
+            (SqlType::Numeric, Holds::Builtin(Builtin::Quantity(kind))) => Column::Quantity(kind),
             _ => return None,
         })
     }
@@ -1494,6 +1695,9 @@ impl StandardType {
     /// The PostgreSQL column type its storage is: the first named column's,
     /// for a type stored in more than one.
     pub fn column_type(&self) -> &'static str {
+        if let Holds::Builtin(Builtin::Quantity(kind)) = self.holds {
+            return kind.column_type();
+        }
         let storage = match self.storage {
             Storage::Column(storage) => storage,
             Storage::Columns { parts, .. } => {
@@ -1545,7 +1749,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 46, "the 46 standard types built so far");
+        assert_eq!(names.len(), 65, "the 65 standard types built so far");
     }
 
     #[test]
@@ -1636,7 +1840,8 @@ mod tests {
             }
             for option in entry.format.options {
                 assert!(
-                    ["zone", "format", "precision", "display", "sign"].contains(&option.name),
+                    ["zone", "format", "precision", "display", "sign", "unit"]
+                        .contains(&option.name),
                     "{}: `{}:` is one of `text.format`'s options",
                     entry.name,
                     option.name
