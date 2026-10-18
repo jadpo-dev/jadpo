@@ -58,6 +58,14 @@ pub enum Decided {
     /// the SQL expression each existing row gets, reading the row's own
     /// columns as `"table"."column"`, filled in batches.
     Computed(String),
+    /// A computed backfill with an operation that has no SQL form (chunk
+    /// 5.6b2): `jadpo migrate apply` reads each batch's `reads` columns,
+    /// works the values out in Jadpo with the code whose digest is `code`,
+    /// and writes them back.
+    InJadpo {
+        reads: Vec<String>,
+        code: String,
+    },
     Retired,
 }
 
@@ -392,8 +400,14 @@ pub fn migration_sql(
                     let key = new
                         .map(|t| t.primary_key.columns.clone())
                         .unwrap_or_default();
-                    plan.columns
-                        .extend(backfill(table, &key, column, &[], need, decided));
+                    plan.columns.extend(backfill(
+                        table,
+                        &key,
+                        (column, &col.sql_type),
+                        &[],
+                        need,
+                        decided,
+                    ));
                 }
             }
             Change::AlterColumn { table, column, .. } => {
@@ -457,7 +471,7 @@ pub fn migration_sql(
                         plan.columns.extend(backfill(
                             table,
                             &key,
-                            column,
+                            (column, &now.sql_type),
                             &refit(was, now, column),
                             need,
                             decided,
@@ -584,12 +598,41 @@ struct Plan {
 fn backfill(
     table: &str,
     key: &[String],
-    column: &str,
+    (column, sql_type): (&str, &str),
     broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
 ) -> Vec<Statement> {
     match (need.kind, decided(need)) {
+        // The same steps, each batch read, worked out in Jadpo and written
+        // back by `jadpo migrate apply`, and the rows written meanwhile
+        // too (chunk 5.6b2).
+        (NeededKind::Backfill, Some(Decided::InJadpo { reads, code })) if key.len() == 1 => vec![
+            Statement {
+                sql: table::backfill_in_jadpo(
+                    &need.key(),
+                    table,
+                    &key[0],
+                    column,
+                    sql_type,
+                    &reads,
+                    &code,
+                ),
+                does: "fill existing rows in batches in Jadpo",
+            },
+            Statement {
+                sql: table::lock_against_writes(table),
+                does: "lock against writes",
+            },
+            Statement {
+                sql: table::fill_in_jadpo(&need.key(), table, &key[0], column, sql_type, &reads),
+                does: "fill rows written meanwhile in Jadpo",
+            },
+            Statement {
+                sql: table::set_not_null(table, column),
+                does: "require a value",
+            },
+        ],
         // Filled in batches, each its own transaction, then the rows
         // written meanwhile filled with the table locked against writes,
         // and the column made required, in the migration's last step
@@ -878,6 +921,67 @@ mod tests {
             jadpo_std::Step::Once(format!(
                 "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nUPDATE \"todo\" SET \"rank\" = {value} WHERE \"rank\" IS NULL;\nALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;"
             ))
+        );
+    }
+
+    #[test]
+    fn a_backfill_in_jadpo_reads_and_writes_each_batch_and_its_last_step() {
+        let before = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+        ]);
+        let after = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+            ("rank", "bigint", false, false),
+        ]);
+        let sql = migration_sql(&before, &after, &|_| {
+            Some(Decided::InJadpo {
+                reads: vec!["flag".into()],
+                code: "0123456789abcdef".into(),
+            })
+        })
+        .expect("sql");
+        assert!(
+            sql.summary()
+                .contains(&"fill existing rows in batches in Jadpo")
+        );
+        let document = sql.to_document("x");
+        let section = &sections(&document)[0];
+        let steps = jadpo_std::Migration {
+            name: "x".into(),
+            digest: section_digest(&section.sql),
+            sql: section.sql.clone(),
+        }
+        .steps();
+        assert_eq!(steps.len(), 3, "{document}");
+        let jadpo_std::Step::Batches(batches) = &steps[1] else {
+            panic!("{document}");
+        };
+        assert_eq!(batches.how, jadpo_std::IN_JADPO);
+        assert_eq!(
+            batches.batch,
+            "SELECT \"id\", \"flag\" FROM \"todo\" WHERE \"id\" > $1 AND \"rank\" IS NULL ORDER BY \"id\" LIMIT 1000 FOR NO KEY UPDATE"
+        );
+        let write = "UPDATE \"todo\" SET \"rank\" = \"jadpo_value\".\"value\" FROM unnest($1::uuid[], $2::bigint[]) AS \"jadpo_value\"(\"key\", \"value\") WHERE \"todo\".\"id\" = \"jadpo_value\".\"key\" AND \"todo\".\"rank\" IS NULL";
+        assert_eq!(batches.write.as_deref(), Some(write));
+        assert!(
+            document.contains("its code's digest 0123456789abcdef\n"),
+            "{document}"
+        );
+        assert_eq!(
+            steps[2],
+            jadpo_std::Step::Mixed(vec![
+                jadpo_std::migration::Part::Sql("LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;".into()),
+                jadpo_std::migration::Part::Fill(jadpo_std::migration::Fill {
+                    field: "Todo.rank".into(),
+                    read: "SELECT \"id\", \"flag\" FROM \"todo\" WHERE \"rank\" IS NULL ORDER BY \"id\"".into(),
+                    write: write.into(),
+                }),
+                jadpo_std::migration::Part::Sql(
+                    "ALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;".into()
+                ),
+            ])
         );
     }
 

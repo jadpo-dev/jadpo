@@ -42,6 +42,7 @@ allergy
 already_archived
 altered
 amendment
+amount_billed
 amount_too_precise
 animal_free
 ann
@@ -49,6 +50,7 @@ ann_on_bob
 anns
 answer_customer
 answer_question
+api_call
 app_orders
 app_version
 apples
@@ -207,6 +209,7 @@ by_dee
 by_editor
 by_faster_payments
 by_member
+by_month
 by_outsider
 by_owner
 by_partner
@@ -230,7 +233,15 @@ cake_stand
 cake_view
 cakes
 calendar_text
+call_charge
+call_day
+call_month
+call_summary
+call_wait
+call_year
 caller_address
+calls_made
+calls_recorded
 can_take
 cancel_token
 cancel_unpaid_orders
@@ -541,6 +552,8 @@ find_books
 find_customer
 find_note
 find_todo
+fine
+fines_owed
 finish_review
 first_leg
 first_loan
@@ -575,6 +588,7 @@ fresh_meaning
 from_abroad
 from_address
 from_count
+from_day
 from_flag
 from_office
 from_provider
@@ -749,6 +763,7 @@ languages_header
 large_order
 large_order_fee
 larger
+largest_call
 largest_page
 last_lent_at
 last_seen_at
@@ -761,6 +776,7 @@ latest_due_at
 launch
 laurel
 lead_id
+leaf_count
 leaflet_dose
 ledger
 ledger_account
@@ -774,6 +790,8 @@ lemon
 lend
 lend_count
 lending
+lent_at
+lent_year
 let_go
 letter_bytes
 letter_text
@@ -812,7 +830,9 @@ loan_rate
 loan_status
 loan_view
 loans
+loans_by_year
 loans_due
+loans_made
 loaves
 loaves_from
 loaves_total
@@ -845,6 +865,7 @@ loyalty
 lunch
 lunch_overlap
 made_in
+made_on
 made_up
 mail_api_key
 make_badge
@@ -855,6 +876,8 @@ market_street
 max_login_attempts
 max_trip
 may_change
+mean_leaves
+mean_tokens
 member_by_email
 member_handle
 member_id
@@ -898,6 +921,8 @@ model_reply
 monday_classes
 monitor_text
 monitored_pulse
+month_of_calls
+monthly_calls
 morning
 morning_rate
 morning_slot
@@ -1004,6 +1029,7 @@ on_shelf
 on_shelves
 on_show
 on_the_edge
+one_penny
 open_bakery
 open_note
 open_outlet
@@ -1079,6 +1105,7 @@ over_maximum
 over_plan
 overdue
 overdue_reminders
+owed
 owner
 owner_email
 owner_id
@@ -1304,6 +1331,7 @@ recipe_title
 recipes
 recipient
 recognised
+record_call
 record_delivery
 record_payment
 record_payment_webhook
@@ -1349,10 +1377,14 @@ rental
 rental_day
 rental_end
 rental_term
+replied
 replies
 reply_count
+reply_kind
 reply_locale
 reply_meaning
+reply_tallies
+reply_tally
 reply_total
 reprice
 reprice_line
@@ -1518,6 +1550,7 @@ signed_in
 signed_up
 signup_ip
 similar_drafts
+since_september
 size_of
 size_price
 slice_count
@@ -1527,6 +1560,7 @@ slot_backwards
 slot_request
 slot_taken
 slot_time
+slowest_wait
 small_order_fee
 snooze_days
 snooze_todo
@@ -1536,6 +1570,7 @@ source_company_id
 southbank
 spacer
 spelt
+spent_tokens
 split_evenly
 sponge
 spot
@@ -1625,6 +1660,7 @@ take_loan
 take_off_menu
 take_on
 takings
+tallies
 tea_query
 tea_term
 team
@@ -1640,6 +1676,7 @@ test_configuration
 text_colour
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
 this_partner
+throttled
 throw_die
 thumbnail
 ticket_status
@@ -1685,12 +1722,15 @@ todos
 todos_by_ids
 todos_for_owner
 together
+tokens_billed
+tokens_spent
 too_big
 too_heavy
 too_many_guests
 top_shelf
 top_tier
 total_weight
+totals_since
 touch
 town
 trade_term

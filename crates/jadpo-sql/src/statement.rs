@@ -121,6 +121,70 @@ pub fn nearest_exact<S: AsRef<str>>(
     sql
 }
 
+/// The alias of an aggregate read's grouped rows.
+const GROUPED: &str = "grouped";
+
+/// An aggregate read (area 6, "Counts, sums and groups"; chunk 5.6c), one
+/// statement however many records it counts: inside, each of `columns`
+/// (an expression and the name it is selected as) from `table` where
+/// `conditions` hold, `GROUP BY` the `groups` expressions when there are
+/// any; outside, each of `rows` (an expression of the inside's names and
+/// the name it is selected as), ordered by `order` (an expression of the
+/// inside's names and whether it sorts descending) and at most `most`
+/// rows. Outside, a value worked out from several totals (an average from
+/// its sum and its count) names each of them once.
+pub fn grouped(
+    columns: &[(String, String)],
+    table: &str,
+    conditions: &[String],
+    groups: &[String],
+    rows: &[(String, String)],
+    order: &[(String, bool)],
+    most: Option<&str>,
+) -> String {
+    let selected: Vec<String> = columns
+        .iter()
+        .map(|(expr, name)| format!("    {expr} AS {}", ident(name)))
+        .collect();
+    let mut inner = format!(
+        "  SELECT\n{}\n  FROM {}",
+        selected.join(",\n"),
+        ident(table)
+    );
+    where_clause(&mut inner, conditions, "  ");
+    if !groups.is_empty() {
+        inner.push_str(&format!("\n  GROUP BY {}", groups.join(", ")));
+    }
+    let outside: Vec<String> = rows
+        .iter()
+        .map(|(expr, name)| {
+            if *expr == ident(name) {
+                expr.clone()
+            } else {
+                format!("{expr} AS {}", ident(name))
+            }
+        })
+        .collect();
+    let mut sql = format!(
+        "SELECT {}\nFROM (\n{inner}\n) AS {}",
+        outside.join(", "),
+        ident(GROUPED)
+    );
+    if !order.is_empty() {
+        let terms: Vec<String> = order
+            .iter()
+            .map(|(expr, descending)| {
+                format!("{expr} {}", if *descending { "DESC" } else { "ASC" })
+            })
+            .collect();
+        sql.push_str(&format!("\nORDER BY {}", terms.join(", ")));
+    }
+    if let Some(n) = most {
+        limit(&mut sql, n, "");
+    }
+    sql
+}
+
 /// `SELECT 1` from `table`: whether a row is there.
 pub fn select_one(table: &str) -> String {
     format!("SELECT 1\nFROM {}", ident(table))

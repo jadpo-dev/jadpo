@@ -510,10 +510,18 @@ rules! {
         "21-ai.html#prompt-placeholder-unused", "A prompt's field is written nowhere in its text";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "21-ai.html#prompt-section-missing", "A prompt and its file don't make its two sections, each once and in order";
+    QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";
+    QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-aggregate-field", "Aggregate cannot be worked out over this field";
+    QUERY_AGGREGATE_UNKNOWN: "query.aggregate_unknown", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-aggregate-unknown", "Aggregate entry is not count, sum, min, max or average";
     QUERY_CONDITION_UNSUPPORTED: "query.condition_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-condition-unsupported", "Query condition is not one an index can serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
         "06-reads-and-writes.html#query-from-not-entity", "Query reads something that is not an entity";
+    QUERY_GROUP_KEY: "query.group_key", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-group-key", "Records cannot be grouped by this";
     QUERY_INCLUDE_DEPTH: "query.include_depth", area 6, Error, Human,
         "06-reads-and-writes.html#query-include-depth", "Includes nest more than two levels";
     QUERY_INCLUDE_RESULT: "query.include_result", area 6, Error, Agent,
