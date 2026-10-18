@@ -915,7 +915,11 @@ impl Body<'_> {
                     // `text.format` is told which standard type held as
                     // text its value is, which the runtime can't see.
                     if let Some(entry) = entry
-                        && matches!(entry.holds, jadpo_std::standard::Holds::Text { .. })
+                        && matches!(
+                            entry.holds,
+                            jadpo_std::standard::Holds::Text { .. }
+                                | jadpo_std::standard::Holds::Whole { .. }
+                        )
                     {
                         self.facts.shown.insert(node_key(call.syntax()), entry.name);
                     }

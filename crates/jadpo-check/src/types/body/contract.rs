@@ -303,8 +303,9 @@ impl Body<'_> {
         let base = match self.contract_of(target) {
             Contract::Standard(entry) => match entry.holds {
                 Holds::Builtin(builtin) => Some(Ty::Prim(builtin)),
-                // Its own check is what `malformed` already covers.
-                Holds::Text { .. } => Some(Ty::Named(entry.name.to_string())),
+                // Its own check, or its range, is what `malformed` already
+                // covers.
+                Holds::Text { .. } | Holds::Whole { .. } => Some(Ty::Named(entry.name.to_string())),
                 _ => None,
             },
             Contract::Representation(prim) => Some(Ty::Prim(prim)),
@@ -318,7 +319,37 @@ impl Body<'_> {
         if matches!(base, Some(Ty::Prim(Prim::Quantity(_)))) {
             rules.push(RuleKey::UnknownUnit.word().to_string());
         }
-        if let Some(base) = base {
+        // A whole number is read within its standard type's range (chunk
+        // 5.5n): only a narrower range the type `as:` names can break.
+        let range = base
+            .as_ref()
+            .and_then(|base| match base {
+                Ty::Named(name) => standard_type(name),
+                _ => None,
+            })
+            .and_then(|entry| match entry.holds {
+                Holds::Whole { min, max } => Some((min, max)),
+                _ => None,
+            });
+        if let Some((min, max)) = range {
+            let chain = self.table.rule_chain(target);
+            let (min, max) = (
+                jadpo_std::Num::whole(i128::from(min)),
+                jadpo_std::Num::whole(i128::from(max)),
+            );
+            if chain
+                .iter()
+                .any(|(_, own)| own.min.is_some_and(|n| n.compare(min).is_gt()))
+            {
+                rules.push(RuleKey::Min.word().to_string());
+            }
+            if chain
+                .iter()
+                .any(|(_, own)| own.max.is_some_and(|n| n.compare(max).is_lt()))
+            {
+                rules.push(RuleKey::Max.word().to_string());
+            }
+        } else if let Some(base) = base {
             rules.extend(self.verdict(raw, &base, target).breakable);
         }
         self.facts

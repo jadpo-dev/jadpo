@@ -57,6 +57,7 @@ pub mod text;
 pub mod units;
 pub mod validate;
 mod value;
+pub mod web;
 
 pub use jadpo_std::{LocalePlan, Op, Rounding};
 pub use ops::Fault;
@@ -266,6 +267,11 @@ pub fn run(
         }
         (Op::UnitsSum, [items, zero]) => units::sum(items, zero),
         (Op::UnitsOf | Op::UnitsIn | Op::UnitsSum, _) => Err(Fault::Shape),
+        // The `web` operations (area 19, "Web and software").
+        (Op::WebCidrContains, [range, address]) => web::cidr_contains(range, address),
+        (Op::WebResolve, [base, relative]) => web::resolve(base, relative),
+        (Op::WebWithQuery, [url, query]) => web::with_query(url, query),
+        (Op::WebCidrContains | Op::WebResolve | Op::WebWithQuery, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -743,6 +749,19 @@ mod tests {
                 Op::UnitsSum => vec![
                     Value::list(vec![units::value(jadpo_std::QuantityKind::Length, 1)]),
                     units::value(jadpo_std::QuantityKind::Length, 0),
+                ],
+                Op::WebCidrContains => {
+                    vec![Value::text("192.0.2.0/24"), Value::text("192.0.2.7")]
+                }
+                Op::WebResolve => vec![
+                    Value::text("https://example.com/a/b"),
+                    Value::text("../c"),
+                ],
+                Op::WebWithQuery => vec![
+                    Value::text("https://example.com/"),
+                    Value::Map(std::rc::Rc::new(
+                        [(Value::text("q"), Value::text("tea"))].into_iter().collect(),
+                    )),
                 ],
                 Op::MoneyFromMinor => vec![Value::Int(1050), pounds.clone()],
                 Op::MoneyOf => vec![Value::Decimal(Decimal::new(1050, 2)), pounds.clone()],

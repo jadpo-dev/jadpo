@@ -300,6 +300,9 @@ pub enum Op {
     UnitsIn,
     UnitsOf,
     UnitsSum,
+    WebCidrContains,
+    WebResolve,
+    WebWithQuery,
 }
 
 /// One standard-library operation.
@@ -698,6 +701,29 @@ const fn units(
     }
 }
 const CURRENCY: Kind = Kind::Enum(crate::CURRENCY);
+
+/// A `web` operation (area 19, "Web and software", chunk 5.5n), each one
+/// function in `jadpo-value`'s `web` module over `jadpo_std::standard::web`.
+const fn web(
+    op: Op,
+    name: &'static str,
+    params: &'static [Param],
+    result: Kind,
+    rust: &'static str,
+) -> Operation {
+    Operation {
+        op,
+        namespace: "web",
+        name,
+        params,
+        result,
+        at_least: None,
+        conditions: &[],
+        rust,
+    }
+}
+
+const URL: Kind = Kind::Builtin(Builtin::Url);
 
 /// Two amounts, or an amount and a list's currency, in different
 /// currencies, where only the running program knows them: settled only by
@@ -1964,6 +1990,32 @@ pub const OPERATIONS: &[Operation] = &[
         ],
         Kind::Quantity,
         "units::sum",
+    ),
+    // The web operations (area 19, "Web and software"): none fails, since
+    // each takes values whose construction checked them.
+    web(
+        Op::WebCidrContains,
+        "cidr_contains",
+        &[
+            param("range", Kind::Std("Cidr")),
+            param("address", Kind::Builtin(Builtin::IpAddress)),
+        ],
+        BOOL,
+        "web::cidr_contains",
+    ),
+    web(
+        Op::WebResolve,
+        "resolve",
+        &[param("base", URL), param("relative", Kind::Std("RelativeUrl"))],
+        URL,
+        "web::resolve",
+    ),
+    web(
+        Op::WebWithQuery,
+        "with_query",
+        &[param("url", URL), param("query", Kind::Map)],
+        URL,
+        "web::with_query",
     ),
 ];
 

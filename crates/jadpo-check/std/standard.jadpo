@@ -89,6 +89,17 @@ public type Country = Enum {}
 /// `GB-ENG`, its variant `CountrySubdivision.gb_eng`.
 public type CountrySubdivision = Enum {}
 
+/// An address range (area 19, RFC 4632 and RFC 4291): its first address
+/// as `IpAddress` writes it, `/` and the prefix's length, every bit after
+/// the prefix zero: `192.0.2.0/24`, `2001:db8::/32`.
+public type Cidr = Text {}
+
+/// A cookie as a server sets it (area 19, RFC 6265 and RFC 6265bis's
+/// `SameSite`): its name and value, then its attributes after `; ` in the
+/// RFC's order and spelling, `SID=31d4d96e; Path=/; Secure; HttpOnly`.
+/// Personal data.
+public type Cookie = Text {}
+
 /// A mass in a volume, held in kilograms per cubic metre to 9 places
 /// (area 19), written `5mgL` or `1gL`; a `Mass` over a `Volume`.
 public type Concentration = Concentration {}
@@ -123,6 +134,10 @@ public type EmailWithName = Object {
     name: Text?
     address: Email
 }
+
+/// One emoji (area 19, UTS #51), fully qualified, as Unicode's list
+/// writes it: a red heart is `U+2764 U+FE0F`.
+public type Emoji = Text {}
 
 /// Energy, held in joules to 3 places (area 19), written `2kWh` or
 /// `250kcal`.
@@ -160,10 +175,40 @@ public type GivenName = Text {}
 /// `2.4GHz`.
 public type Frequency = Frequency {}
 
+/// A host (area 19, RFC 3986): a domain name, or an IP address as
+/// `IpAddress` writes it, an IPv6 address without brackets.
+public type Hostname = Text {}
+
+/// A domain name (area 19, IDNA 2008 by UTS 46), lower case, each label
+/// beyond ASCII as its A-label, with no dot at the end:
+/// `xn--mnchen-3ya.de`. Every domain name is a `Hostname`.
+public type DomainName = Hostname {}
+
+/// An HTTP field name (area 19, RFC 9110), a token in lower case:
+/// `content-type`.
+public type HttpHeaderName = Text {}
+
+/// An HTTP method (area 19, RFC 9110), one a route is written with,
+/// written as its token, `GET`.
+public type HttpMethod = Enum {
+    get
+    post
+    put
+    patch
+    delete
+}
+
+/// An HTTP response's status code (area 19, RFC 9110), from 100 to 599.
+public type HttpStatus = Int {}
+
 /// An IBAN (area 19, ISO 13616) in its electronic form, upper case with
 /// no spaces, its mod-97 check digits passing: `GB29NWBK60161331926819`.
 /// Shown to people in fours.
 public type Iban = Text {}
+
+/// A mobile device's IMEI (area 19, 3GPP TS 23.003): 15 digits, its
+/// Luhn check digit passing. Personal data.
+public type Imei = Text {}
 
 /// Illuminance, held in lux to 3 places (area 19), written `500lx`.
 public type Illuminance = Illuminance {}
@@ -196,6 +241,10 @@ public type IsoWeek = Object {
     week: Int
 }
 
+/// A pointer into a JSON document (area 19, RFC 6901): `/foo/0`, with
+/// `~0` for `~` and `~1` for `/`, and empty for the whole document.
+public type JsonPointer = Text {}
+
 /// A language (area 19, ISO 639-1), written as its code, `en`; `form:
 /// CodeForm.alpha3` writes ISO 639-2's `eng`. `Language.or_` is Odia.
 public type Language = Enum {}
@@ -226,6 +275,11 @@ public type LocalTime = Object {
 /// A CLDR locale (area 10), written as its BCP 47 tag, `en-GB`.
 public type Locale = Enum {}
 
+/// A hardware address (area 19, IEEE 802's EUI-48) in IEEE's form, six
+/// pairs of upper-case hexadecimal digits joined by `-`:
+/// `AC-DE-48-00-00-80`. Personal data.
+public type MacAddress = Text {}
+
 /// A mass, held in kilograms to 9 places, a microgram (area 19), written
 /// `250g`, `2.5kg` or `500mcg`.
 public type Mass = Mass {}
@@ -249,6 +303,9 @@ public type Month = Enum {
 /// A person's nationality (area 19), named by the country, as ISO 3166-1
 /// codes it: `GB`. Personal data.
 public type Nationality = Enum {}
+
+/// A TCP or UDP port (area 19, IANA), from 1 to 65535.
+public type NetworkPort = Int {}
 
 /// An NHS number (area 19), ten digits with a mod-11 check digit:
 /// `9434765919`, shown to people as `943 476 5919`. Personal data.
@@ -312,6 +369,22 @@ public type Power = Power {}
 /// A pressure, held in pascals to 3 places (area 19), written `1013hPa`.
 public type Pressure = Pressure {}
 
+/// An HTTP API's error body (area 19, RFC 9457): what kind of problem it
+/// is (`about:blank` when `none`), the status, a short title, a detail
+/// for people and the URL of this occurrence, each of which may be
+/// `none`. `type_` is sent as `type`, a reserved word in code.
+public type ProblemDetails = Object {
+    type_: Url?
+    status: HttpStatus?
+    title: Text?
+    detail: Text?
+    instance: Url?
+}
+
+/// A device's push notification token (area 19), from Apple's or
+/// Google's service, opaque. Personal data.
+public type PushToken = Text {}
+
 /// A quarter of a calendar year (area 19), written `2026-Q4`: `quarter`
 /// from 1 to 4.
 public type Quarter = Object {
@@ -343,6 +416,16 @@ public type Ratio = Object {
 /// `DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO`.
 /// `temporal.occurrences` gives the next ones.
 public type RecurrenceRule = Text {}
+
+/// A relative reference (area 19, RFC 3986): a path, a query or a
+/// fragment, or a host after `//`, with no scheme: `../images/logo.png`,
+/// `?page=2`. `web.resolve` makes a `Url` of one.
+public type RelativeUrl = Text {}
+
+/// A URL-safe identifier (area 19): lower-case letters and digits in
+/// words joined by single hyphens, `autumn-sale`, as `text.slug` writes
+/// one.
+public type Slug = Text {}
 
 /// Which way text runs (area 19), written as HTML's `dir` writes it, `ltr`
 /// and `rtl`: what `locale.direction` gives.
@@ -399,6 +482,10 @@ public type Uprn = Text {}
 /// An `http://` or `https://` URL with a host (area 2).
 public type Url = Url {}
 
+/// A URL's path (area 19, RFC 3986): `/` and its segments, with no query
+/// or fragment, `/products/42`. Every path is a `RelativeUrl`.
+public type UrlPath = RelativeUrl {}
+
 /// A US Employer Identification Number (area 19), nine digits:
 /// `123456789`, shown to people as `12-3456789`.
 public type UsEin = Text {}
@@ -407,6 +494,10 @@ public type UsEin = Text {}
 /// have issued: `123456789`. Shown to people as its last four only,
 /// `•••-••-6789`. Personal data.
 public type UsSsn = Text {}
+
+/// What an HTTP client says it is (area 19, RFC 9110's `User-Agent`):
+/// products and comments, `curl/8.7.1`. Personal data.
+public type UserAgent = Text {}
 
 /// A login handle (area 19): lower-case letters, digits, `_`, `.` and
 /// `-`, 1 to 64 of them. Personal data.
@@ -418,6 +509,18 @@ public type UtcOffset = Object {
     minutes: Int
 }
 
+/// Where a visit came from (area 19, Google Analytics' UTM parameters):
+/// written as the query that carries them,
+/// `utm_source=newsletter&utm_medium=email&utm_campaign=autumn_sale`; the
+/// term and the content only where a campaign uses them.
+public type UtmParameters = Object {
+    source: Text
+    medium: Text
+    campaign: Text
+    term: Text?
+    content: Text?
+}
+
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
 
@@ -427,6 +530,11 @@ public type Voltage = Voltage {}
 /// A volume, held in cubic metres to 9 places (area 19), written
 /// `500ml` or `2litre`; an `Area` times a `Length`.
 public type Volume = Volume {}
+
+/// A web origin (area 19, RFC 6454): `http` or `https`, the host, and a
+/// port only where it isn't the scheme's default:
+/// `https://example.com`, `http://localhost:8080`.
+public type WebOrigin = Text {}
 
 /// A day of the week (area 10).
 public type Weekday = Enum {

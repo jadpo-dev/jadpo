@@ -61,6 +61,11 @@ impl Shape {
         }
     }
 
+    /// The object's type or entity, or the variant's enum.
+    pub fn ty(&self) -> &str {
+        &self.ty
+    }
+
     /// How many fields it has.
     pub fn len(&self) -> usize {
         self.fields.len()

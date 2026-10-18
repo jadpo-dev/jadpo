@@ -318,6 +318,9 @@ impl Codecs<'_> {
             let Some((name, absent)) = shape.field(slot) else {
                 continue;
             };
+            // A standard object's part named for a reserved word is sent
+            // without its `_` (chunk 5.5n).
+            let name = jadpo_std::standard::wire_name(shape.ty(), name);
             let at = path.with(name);
             match entries.get(name) {
                 None if absent => {}
@@ -333,7 +336,11 @@ impl Codecs<'_> {
             }
         }
         for name in entries.keys() {
-            if !(0..shape.len()).any(|slot| shape.field(slot).is_some_and(|(n, _)| n == name)) {
+            if !(0..shape.len()).any(|slot| {
+                shape.field(slot).is_some_and(|(n, _)| {
+                    jadpo_std::standard::wire_name(shape.ty(), n) == name
+                })
+            }) {
                 Self::problem(problems, &path.with(name.clone()), "unknown_field");
             }
         }
@@ -528,18 +535,25 @@ impl Codecs<'_> {
                 out.push('{');
                 let mut first = true;
                 let omitted = record.omitted.as_deref().unwrap_or(&[]);
+                // A problem's members that are `none` are left out, as RFC
+                // 9457 sends them (chunk 5.5n).
+                let members = jadpo_std::standard_type(&record.ty).is_some_and(|entry| {
+                    matches!(entry.json, jadpo_std::standard::Json::Members(_))
+                });
                 for (at, ((name, field), codec)) in record.fields.iter().zip(fields).enumerate() {
                     // An optional `Input` field left out is left out on the
                     // wire too, so it never reads back as one sent as
                     // `null` (area 6, "patch").
-                    if omitted.iter().any(|place| *place as usize == at) {
+                    if omitted.iter().any(|place| *place as usize == at)
+                        || (members && *field == Value::None)
+                    {
                         continue;
                     }
                     if !first {
                         out.push(',');
                     }
                     first = false;
-                    write_string(name, out);
+                    write_string(jadpo_std::standard::wire_name(&record.ty, name), out);
                     out.push(':');
                     self.write(*codec, field, out);
                 }

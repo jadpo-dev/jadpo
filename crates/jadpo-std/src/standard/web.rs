@@ -1123,23 +1123,17 @@ pub const NETWORK_PORT: StandardType = whole_type(
 );
 
 /// An HTTP API's error body (RFC 9457): each of its five members may be
-/// left out, as the RFC allows; sent as its object, stored a column per
-/// member, and shown as its title and detail.
+/// left out, as the RFC allows; sent and stored as its object, and shown
+/// as its title and detail.
 pub const PROBLEM_DETAILS_ENTRY: StandardType = StandardType {
     name: PROBLEM_DETAILS,
     holds: Holds::Object(&PROBLEM_FIELDS),
     text: None,
     json: Json::Members(&["type", "status", "title", "detail", "instance"]),
-    storage: Storage::Columns {
-        parts: &[
-            ("type", "text"),
-            ("status", "integer"),
-            ("title", "text"),
-            ("detail", "text"),
-            ("instance", "text"),
-        ],
-        fixed: None,
-    },
+    // Stored as its JSON, as `InstantRange` is: every member may be
+    // `none`, so a column per member couldn't tell an empty problem from
+    // no problem at all.
+    storage: Storage::Column(SqlType::Json),
     format: Format {
         key: FormatKey::ProblemDetails,
         options: NO_OPTIONS,
