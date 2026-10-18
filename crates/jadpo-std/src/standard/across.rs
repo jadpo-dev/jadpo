@@ -59,6 +59,20 @@ impl<T: Copy> Known<T> {
     }
 }
 
+impl<T> Known<T> {
+    /// Its value, where it is given and known, taken.
+    pub fn into_value(self) -> Option<T> {
+        match self {
+            Known::Given(value) => value,
+            _ => None,
+        }
+    }
+}
+
+/// A polygon's rings as a rule reads them: each ring's points, each a
+/// latitude and a longitude in degrees as held (area 20).
+pub type Rings = Vec<Vec<(Num, Num)>>;
+
 /// A part's value, as a rule reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Given<'a> {
@@ -171,12 +185,22 @@ impl<'a> Given<'a> {
 /// An object's parts as a rule reads them, by name.
 pub trait Parts {
     fn part(&self, name: &str) -> Known<Given<'_>>;
+
+    /// A part that is a list of points, a polygon's ring (one ring), or a
+    /// list of lists of them, its holes (each a ring), as `rings_valid`
+    /// reads it (area 20); unknown for any other part.
+    fn rings(&self, name: &str) -> Known<Rings> {
+        let _ = name;
+        Known::Unknown
+    }
 }
 
 /// Parts listed by name; any not listed is unknown.
 #[derive(Clone, Debug, Default)]
 pub struct Listed<'a> {
     pub parts: Vec<(&'a str, Known<Given<'a>>)>,
+    /// The parts that are rings, as [`Parts::rings`] reads them.
+    pub rings: Vec<(&'a str, Known<Rings>)>,
 }
 
 impl Parts for Listed<'_> {
@@ -185,6 +209,13 @@ impl Parts for Listed<'_> {
             .iter()
             .find(|(listed, _)| *listed == name)
             .map_or(Known::Unknown, |(_, known)| *known)
+    }
+
+    fn rings(&self, name: &str) -> Known<Rings> {
+        self.rings
+            .iter()
+            .find(|(listed, _)| *listed == name)
+            .map_or(Known::Unknown, |(_, known)| known.clone())
     }
 }
 
@@ -374,6 +405,27 @@ pub fn part_standard(ty: &str, part: &str) -> Option<&'static str> {
     }
 }
 
+/// Whether part `part` of standard object `ty` is a ring of points (1),
+/// a list of rings (2), or neither: a `Polygon`'s `outer` and `holes`
+/// (area 20), which [`Parts::rings`] reads.
+pub fn ring_depth(ty: &str, part: &str) -> Option<usize> {
+    let super::Holds::Object(fields) = super::standard_type(ty)?.holds else {
+        return None;
+    };
+    let mut part = fields
+        .iter()
+        .find(|(name, _)| *name == part)?
+        .1
+        .required()
+        .0;
+    let mut depth = 0;
+    while let super::Part::List(inner) = part {
+        depth += 1;
+        part = *inner;
+    }
+    (part == super::Part::Standard(super::geo::POINT) && depth > 0).then_some(depth)
+}
+
 /// `Range<T>`, `InstantRange` and `DateRange`: a start not after the end.
 /// An open end of a `Range<T>` keeps it.
 pub const RANGE_RULES: &[StandardRule] = &[StandardRule {
@@ -400,6 +452,7 @@ pub fn rules(ty: &str) -> &'static [StandardRule] {
         super::health::BLOOD_PRESSURE => super::health::BLOOD_PRESSURE_RULES,
         super::geo::MAP_TILE => super::geo::MAP_TILE_RULES,
         super::geo::BOUNDING_BOX => super::geo::BOUNDING_BOX_RULES,
+        super::geo::POLYGON => super::geo::POLYGON_RULES,
         super::ai::TOKEN_USAGE => super::ai::TOKEN_USAGE_RULES,
         super::security::PASSWORD_POLICY => super::security::PASSWORD_POLICY_RULES,
         super::security::JWK => super::jwk::RULES,
@@ -464,6 +517,7 @@ mod tests {
     fn listed<'a>(parts: &[(&'a str, Known<Given<'a>>)]) -> Listed<'a> {
         Listed {
             parts: parts.to_vec(),
+            ..Listed::default()
         }
     }
 

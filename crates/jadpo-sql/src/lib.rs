@@ -7,6 +7,9 @@
 //!   query's `where:` lines, a lifecycle's `visible:` and `when:`) and its
 //!   renderer, which the plan's statements and the checker's partial
 //!   indexes both use, through a [`Bind`] that says where a parameter goes.
+//! - [`form`]: the SQL form of each standard operation that has one
+//!   (area 19, "SQL forms"), written from its arguments' SQL, for computed
+//!   backfills.
 //! - [`literal`]: a value written into a statement's text where it takes
 //!   no parameters, as the storage codec made it (chunk 5.5w3b).
 //! - [`statement`]: the reads, writes and purges the plan runs.
@@ -19,6 +22,7 @@
 //! table called `user` or `order` is a name, not a keyword.
 
 pub mod condition;
+pub mod form;
 pub mod literal;
 pub mod policy;
 pub mod statement;

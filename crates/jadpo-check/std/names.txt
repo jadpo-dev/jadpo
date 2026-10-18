@@ -25,9 +25,9 @@ ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 # through it is `semantic.standard_operation_moved`.
 [namespaces]
 collection:
-# The rest of area 20's operations, built by chunks 5.5u3 and 5.5u6; the
+# The rest of area 20's operations, built by chunk 5.5u6; the
 # constructions from pairs and GeoJSON text are area 19's.
-geo: intersects contains within centroid bounding_box from_wkt to_wkt from_geojson from_lng_lat from_lat_lng
+geo: from_wkt to_wkt from_geojson from_lng_lat from_lat_lng
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until

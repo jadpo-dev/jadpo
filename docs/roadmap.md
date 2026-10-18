@@ -1179,13 +1179,25 @@ reference only).
   `attempt`; a line's length sums its edges' rounded distances and an
   area rounds once; a coordinate is rounded to the nearest double as it
   is built. What the chunk chose is area 20's "Chosen in chunk 5.5u2".
-- [ ] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
+- [x] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
   "Operations"), after 5.5u2:
   `geo.intersects`, `contains` and `within` (with `distance:`, a
   `BoundingBox` and a `Circle`), `centroid`, `bounding_box`, and
   `rings_valid` on the sphere. Done when each agrees with PostGIS on cases
   away from a boundary and every validity case reads and builds as the
-  page says.
+  page says. Built: an exact great-circle geometry in `jadpo-std`
+  (`sphere`), points as whole-number directions and every predicate a
+  sign worked out in whole numbers, ties broken as S2 breaks them, so a
+  point on an edge is found on it; 5.5u2's fixed-point maths moved to
+  `jadpo-std` so the checker reads a polygon literal by it. 169 cases
+  from PostGIS 3.4.2, written by `tools/geo_cases.py`, agree natively and
+  under wasm32 with one digest, but four where `ST_Covers` misses a hole
+  or a multi-part `a`, which keep the page's meaning and are recorded for
+  5.5u5; centroids within 4 × 10⁻¹² of a degree. `rings_valid` is read
+  from literals, attempted on values and `format` in GeoJSON, each
+  validity case tested; rings may not touch at all; a 10,000-point
+  outline checks in 70 ms. What the chunk chose is area 20's "Chosen in
+  chunk 5.5u3".
 - [ ] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
   "Storage"): `geography` columns
   with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
@@ -1493,12 +1505,36 @@ reference only).
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
   snippet's text can be shared once approved.
-- [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
-  2026-10-15): `backfill:` as an expression over each row's own fields,
-  filled in batches, one `UPDATE` each where it has a SQL form and by
-  `jadpo migrate apply` otherwise, then made required; with the SQL form
-  of each standard operation (area 19, "SQL forms"), each tested against
-  the runtime on the same inputs.
+- [x] **5.6 SQL forms** `opus · high` (area 19, "SQL forms", decided
+  2026-10-17), the first half of computed backfills: the SQL form of each
+  standard operation the operation tables give one, rendered in one place
+  (`jadpo-sql`) from its arguments' SQL, and each tested against the
+  runtime on the same inputs against live PostgreSQL, so the database and
+  Jadpo agree exactly, rounding, text in code points, Unicode white space
+  and `none` included. A form that can't match the runtime exactly is
+  rewritten until it does or dropped, and the page's table says so (the
+  caveats earlier chunks flagged: `temporal.period_between` against
+  `age`, `web.cidr_contains`). The page's SQL form column and the
+  renderer agree, by a test. Split on 2026-10-18 because the whole chunk
+  is more than a session: the backfills themselves are 5.6b. Built: all
+  38 operations' forms in `jadpo_sql::form`, agreeing with the runtime on
+  over a hundred thousand inputs (`live PostgreSQL: SQL forms` in the
+  gate); none dropped, three rewritten (`decimal.round` keeps fewer
+  places, `period_between` without `age`, whole numbers widened to
+  `bigint`), area 19's "Chosen in chunk 5.6".
+- [ ] **5.6b Computed backfills** `opus · high` (area 5, "Computed
+  backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
+  each row's own fields, constants and pure functions, typed against the
+  field it fills; filled in batches, one `UPDATE` each where every
+  operation in it has a SQL form (5.6's, and the operators' and
+  conditionals' forms, each tested the same way) and by `jadpo migrate
+  apply` otherwise, then made required. The batch size, locking (each
+  batch its own transaction, never a long table lock), resuming after a
+  crash and progress output chosen and recorded on area 5; a failure
+  midway leaves the column consistent and the migration resumable; `jadpo
+  migrate apply` says when a backfill runs in Jadpo and is slower; an
+  expression that can fail is refused unless area 5 says what a failing
+  row gets.
 - [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard

@@ -826,6 +826,17 @@ with `+` and `-` (area 6); aggregate queries would be their second user
 - Each SQL form is tested against the runtime on the same inputs, Unicode
   edge cases included, before a backfill may use it.
 
+> Built in chunk 5.6: every form in the tables below, rendered in one
+> place (`jadpo_sql::form`) from its arguments' SQL, and tested against
+> the runtime on live PostgreSQL on over a hundred thousand inputs, the
+> edges of each operation among them, read in a session with unusual
+> settings. A test holds the tables' SQL form column and the renderer to
+> the same operations. Three forms changed to match the runtime exactly:
+> `decimal.round` keeps a value with fewer places as it is,
+> `temporal.period_between` doesn't use `age`, and a whole number is
+> always `bigint`. The backfills that use them are chunk 5.6b. What the
+> page left open is "Chosen in chunk 5.6", under "Review".
+
 In the tables below, `x` is the first argument and `a`, `b` the others.
 
 ## Lists
@@ -836,7 +847,7 @@ is written inline, `item -> expression` (area 3).
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `count(items)` | `Int`, at least 0 (decided) | | `jsonb_array_length(x)` |
+| `count(items)` | `Int`, at least 0 (decided) | | `jsonb_array_length(x)::bigint` |
 | `contains(items, item)` | `Bool`: an item `==` `item` (decided) | | none |
 | `map(items, each)` | `List<U>`, in order (decided) | | none |
 | `filter(items, keep)` | `List<T>`, the items `keep` accepts, in order (decided) | | none |
@@ -1036,7 +1047,7 @@ Each operation is called as `set.<name>`. All return a new set.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `count(items)` | `Int`, at least 0 | | `jsonb_array_length(x)` |
+| `count(items)` | `Int`, at least 0 | | `jsonb_array_length(x)::bigint` |
 | `contains(items, item)` | `Bool` | | none |
 | `with(items, item)` | `Set<T>` with `item`; the same set if already there | | none |
 | `without(items, item)` | `Set<T>` without `item` | | none |
@@ -1433,7 +1444,7 @@ what an operator can't.
 | `decimal.divide(dividend, divisor, rounding:)` | `Decimal` (decided, area 3) | | every mode: as `integer.divide`, on the values scaled to the dividend's places |
 | `decimal.abs(value)` | `Decimal`, at least 0, the same scale | | `abs(x)` |
 | `decimal.min(a, b)`, `decimal.max(a, b)` | as for `integer` | | `LEAST(a, b)`, `GREATEST(a, b)` |
-| `decimal.round(value, scale:, rounding:)` | `Decimal` with at most `scale` places; `scale:` a whole number written out, at least 0 | | `round(x, s)` for `half_up`; a `CASE` on the dropped digits for the others |
+| `decimal.round(value, scale:, rounding:)` | `Decimal` with at most `scale` places; `scale:` a whole number written out, at least 0 | | `x` when it has at most `s` places, where `round` would add zeros; otherwise `round(x, s)` for `half_up`, `trunc(x, s)` for `down` and a `CASE` on the dropped digits for the others |
 | `decimal.sqrt(value, scale:, rounding:)` | `Decimal`; `value` never negative | | none |
 | `decimal.power(value, exponent)` | `Decimal`, exact; `exponent` a whole number, never negative | overflow is a defect | none |
 | `decimal.exp(value, scale:, rounding:)`, `decimal.ln(value, scale:, rounding:)` | `Decimal`; `ln`'s `value` above 0 | `ln`: `out_of_range` | none |
@@ -2906,7 +2917,7 @@ Area 10's 21 `temporal` operations stand. The new time types add three.
 |---|---|---|---|
 | `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, an `Instant`, in the rule's zone; from a `CalendarDate`, `List<CalendarDate>`, the days they fall on, which a rule on dates gives (chunk 5.5k4); `count` 1 to 1000 | | none |
 | `temporal.open_at(hours, at)` | `Bool`: an `OpeningHours` is open at the `Instant`, in its zone, across midnight and its exceptions | | none |
-| `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | `age(b, a)`, reduced to years, months and days |
+| `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | the months between the two months, one fewer or more by the day of the month, stepped once toward zero where adding them clamps past the end, and the days left; not `age`, which borrows days from the start's month (chunk 5.6) |
 
 `CalendarPeriod` is an amount of calendar time, `P1Y2M10D` in ISO 8601:
 whole years, months and days, unlike a `Duration`, which is exact time,
@@ -3529,11 +3540,11 @@ take it.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `length(value)` | `Int`, at least 0, in code points | | `char_length(x)` |
+| `length(value)` | `Int`, at least 0, in code points | | `char_length(x)::bigint` |
 | `trim(value)` | `Text` without Unicode white space at either end; never longer | | `btrim(x, chars)`, `chars` the Unicode `White_Space` characters |
 | `lower(value, locale:)`, `upper(value, locale:)` | `Text` in Unicode's default case mapping, or a locale's (`İ` in Turkish) with `locale:` | | none |
 | `contains(value, part)` | `Bool` | | `strpos(x, a) > 0` |
-| `starts_with(value, prefix)`, `ends_with(value, suffix)` | `Bool` | | `starts_with(x, a)`; `right(x, char_length(a)) = a` |
+| `starts_with(value, prefix)`, `ends_with(value, suffix)` | `Bool` | | `starts_with(x, a)`; `right(x, char_length(a)) = a COLLATE "C"` |
 | `replace(value, find, with)` | `Text` with every `find` replaced, left to right; `find` never empty | | `replace(x, a, b)` |
 | `split(value, separator)` | `List<Text>`, at least one item; `separator` never empty; `""` gives `[""]`, and separators side by side give `""` between them | | none |
 | `join(items, separator)` | `Text`, the items with `separator` between them | | none |
@@ -7646,7 +7657,7 @@ check failed: 1 error, 1 file
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
-| SQL forms | Decided; built with computed backfills (chunk 5.6) |
+| SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b |
 | Geospatial, AI | Decided as future areas, planned in 5.5u ([area 20](20-geospatial.md)) and 5.5v; the geospatial types' baseline built in 5.5s, area 20's measures in 5.5u2, the AI types' in 5.5s2 |
 
 ### Consistency with the rest of the language
@@ -8559,7 +8570,8 @@ under "Errors").
   from the start's month and adds back past the end (29 January to 1
   March 2028 is `age`'s 1 month 3 days, here `P1M1D`), its SQL form
   differs; chunk 5.6, its first user, checks the form against the
-  runtime before relying on it.
+  runtime before relying on it. (Chunk 5.6 wrote one that doesn't use
+  `age`; see "Chosen in chunk 5.6".)
 
 ### Chosen in chunk 5.5k2
 
@@ -9319,7 +9331,7 @@ under "Errors").
   any query the URL has and before its fragment, and an empty map leaves
   the URL as it was. `web.resolve` is RFC 3986 §5.2's strict resolution,
   normalising nothing but dot segments. `web.cidr_contains`' SQL form
-  comes with the SQL forms (chunk 5.6).
+  comes with the SQL forms (built in chunk 5.6).
 - **No shapes:** `type.standard_exists` matches none of the new types:
   an application's object can't have `ProblemDetails`' `type`, and
   `UtmParameters`' part names are too common to be distinctive.
@@ -10545,6 +10557,7 @@ in the order they are checked, and as OpenAPI's description lists them:
 | `TokenUsage` | `cached_within_input` | `cached <= input`, where it is given |
 | `PasswordPolicy` | `min_not_above_max` | `min_length <= max_length` |
 | `BoundingBox` | `south_not_above_north` | `south <= north` |
+| `Polygon` | `rings_valid` | each ring closed and simple, no rings touching, holes inside the outer ring, every edge under half the globe (area 20, chunk 5.5u3) |
 
 A slot built from two instants a form sent is attempted by its rule, and
 one a condition orders needs no `attempt`:
@@ -11033,6 +11046,79 @@ What the pages left open, each the most conservative reading:
   refused as `query.optional_value`; it compiles now.
 - **`jadpo sql`** shows a bound literal's parameter as SQL writes its
   value: `$3: 'live' · text`.
+
+### Chosen in chunk 5.6
+
+What the page left open, each the most conservative reading, and what
+testing every form against the runtime changed:
+
+- **Split.** The SQL forms are this chunk; the computed backfills that
+  use them, with batching and `jadpo migrate apply`, are 5.6b.
+- **One renderer, in the SQL leaf.** `jadpo_sql::form::operation` writes
+  an operation's form from its arguments, each a SQL expression and how
+  it is held (a built-in type's column, JSON, a range of a built-in
+  type), money's two columns, or what a call writes out: a rounding mode,
+  `decimal.round`'s `scale:`, `text.pad_start`'s `fill:`. An operation
+  has no form for arguments the tables don't cover: a rounding mode that
+  isn't written out, `text.from` with `form:` or of a time, `hash.sha256`
+  of a secret value.
+- **Given values, never `NULL`.** Code tests a value that may be `none`
+  before calling an operation on it, so a form never decides what `none`
+  means; `range.intersection`, whose result may be `none`, gives `NULL`
+  for it.
+- **A whole number is always `bigint`.** A field with a narrow range is
+  stored in a `smallint` or an `integer` (area 5), whose `abs` and `/`
+  overflow at -32768 where an `Int`'s don't, so `integer`'s operations
+  widen their arguments first, and `char_length` and
+  `jsonb_array_length` are cast, so arithmetic on what they give
+  overflows exactly where the runtime's does. A value tested against a
+  range is cast to the range's end type for the same reason.
+- **A decimal keeps the places the runtime keeps.** A `numeric` carries
+  its places as a runtime `Decimal` does, so the forms read them with
+  `scale()`. `decimal.round` keeps a value with at most `scale:` places
+  as it is, where `round(x, s)` adds zeros (`1.5` to two places stays
+  `1.5`). `decimal.divide` works the quotient out from the two mantissas
+  with `div` and `mod`, exactly, as the runtime does, never with
+  PostgreSQL's `/`, which rounds to the places it chooses.
+- **A defect stops the statement.** Where the runtime stops with a
+  defect, a whole number past 64 bits or a decimal past 38 digits, the
+  form fails too: `bigint` overflows where an `Int` does, and
+  `decimal.divide`'s mantissa passes through `numeric(38, 0)`, so a
+  backfill stops at the row the runtime would.
+- **`temporal.period_between` without `age`.** The form counts the
+  months between the two months, one fewer when the end's day of the
+  month hasn't reached the start's (one more going back), then steps once
+  toward zero where adding them to the start, years first and then
+  months, each clamped to a month's last day, would pass the end; the
+  days are what is left. The runtime steps until it stops passing; once
+  is always enough, since a clamped day is never past the start's. Year
+  0 is PostgreSQL's 1 BC, whose `extract` gives -1, so the form counts
+  from year 0 as the runtime does. It names its two dates once, in a
+  subquery, and gives the three columns a `CalendarPeriod` is stored in.
+- **Counts and positions clamped to `integer`.** `left`, `right`,
+  `substr` and `lpad` take PostgreSQL's 32-bit `integer`; text is never
+  longer than a gigabyte, so a larger count means what the largest does
+  and is clamped rather than cast, which would fail.
+- **Text in code points, whatever the collation.** `ends_with` compares
+  with `COLLATE "C"`; `strpos`, `starts_with`, `replace` and `btrim`
+  match code points already. `trim`'s characters are Unicode's 25
+  `White_Space` characters, which Rust's `str::trim` removes; a test holds
+  the list to every character Rust calls white space.
+- **No session setting changes a form.** The test reads every form in a
+  session with the time zone `Pacific/Chatham`, dates day first, the SQL
+  standard's intervals and `standard_conforming_strings` off: dates are
+  added without a zone, escapes are written `E'...'`.
+- **Every form is tested, and only these.** The test runs each operation
+  with a form in the runtime and as its form, on the same columns a
+  backfill reads, written through the storage codec, and compares what
+  each gives as the codec binds it or as the runtime reads it back,
+  places and widths included; an input the runtime stops on must fail the
+  statement. It covers every rounding mode on halves either side of zero,
+  the largest and smallest whole numbers in each column width, decimals
+  of 38 digits, every white space character, four-byte characters and
+  combining marks, open and held range ends, every pair of days across a
+  leap February and thousands of pairs from the year 0 to 9999, and
+  IPv4-mapped IPv6 addresses. No form was dropped.
 
 ### Decisions
 

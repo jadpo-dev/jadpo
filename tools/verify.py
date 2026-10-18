@@ -150,6 +150,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # their guards; then purge through the runtime's entry point, with
         # cascades, restricted references and batches (area 5).
         ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
+        # Every standard operation's SQL form gives what the runtime gives
+        # on the same inputs (area 19, "SQL forms"; chunk 5.6).
+        ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),
         # Routes over real HTTP: `jadpo dev` on the native host, requests
         # over TCP, the failure envelope, query and header input, rate
         # limits and reloading; and the golden OpenAPI document (area 7).
@@ -248,7 +251,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
                  ['node', 'tools/run_wasm.mjs',
                   f'target/{WASM}/debug/examples/formats.wasm'], lane='cargo'),
             # The geodesic measures (area 20, chunk 5.5u2): GeographicLib's
-            # test sample and the digest of every answer, as natively.
+            # test sample and the digest of every answer, as natively; and
+            # the predicates and shapes against PostGIS's answers (chunk
+            # 5.5u3), with the digest of theirs.
             Step('geodesic measures check for wasm32', 'wasm32',
                  ['cargo', 'build', '--locked', '--target', WASM, '-p', 'jadpo-value',
                   '--example', 'geodesics'], lane='cargo'),

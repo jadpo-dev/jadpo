@@ -1,5 +1,6 @@
 //! Area 20's geodesic measures against a sample of GeographicLib's test
-//! set, as a program the gate (tools/verify.py) builds for
+//! set, and its predicates and shapes against PostGIS's answers (chunk
+//! 5.5u3), as a program the gate (tools/verify.py) builds for
 //! `wasm32-unknown-unknown` and runs under Node (tools/run_wasm.mjs), so
 //! the answers are checked under WebAssembly as well as natively. Its exit
 //! code is how many disagree, at most 255; 255 too when there were none to
@@ -10,6 +11,7 @@
 //! records the figures).
 
 mod check;
+mod shapes;
 
 use std::process::ExitCode;
 
@@ -19,11 +21,13 @@ fn main() -> ExitCode {
         bench::all();
         return ExitCode::SUCCESS;
     }
-    let (wrong, count) = check::mismatches();
+    let (mut wrong, count) = check::mismatches();
+    let (shapes_wrong, shapes, _) = shapes::mismatches();
+    wrong.extend(shapes_wrong);
     for mismatch in &wrong {
         eprintln!("{mismatch}");
     }
-    if count == 0 {
+    if count == 0 || shapes == 0 {
         return ExitCode::from(u8::MAX);
     }
     ExitCode::from(u8::try_from(wrong.len()).unwrap_or(u8::MAX))
@@ -154,6 +158,86 @@ mod bench {
             "geo.area, a 100-point patch",
             "area",
             &[polygon(patch(100))],
+        );
+        // The predicates and shapes (chunk 5.5u3).
+        let doorstep = point("51.51", "-0.12");
+        time(
+            "geo.contains, a point in a 100-point patch",
+            "contains",
+            &[polygon(patch(100)), doorstep.clone()],
+        );
+        time(
+            "geo.contains, a point in a 1,000-point patch",
+            "contains",
+            &[polygon(patch(1000)), doorstep.clone()],
+        );
+        time(
+            "geo.contains, a 100-point patch in another",
+            "contains",
+            &[polygon(patch(100)), polygon(patch(100))],
+        );
+        time(
+            "geo.intersects, two 100-point patches",
+            "intersects",
+            &[polygon(patch(100)), polygon(patch(100))],
+        );
+        time(
+            "geo.within, 5 km of a point",
+            "within",
+            &[
+                doorstep.clone(),
+                london.clone(),
+                Value::Quantity(jadpo_value::Quantity {
+                    kind: jadpo_std::QuantityKind::Length,
+                    amount: 5_000_000_000,
+                }),
+            ],
+        );
+        time(
+            "geo.centroid, a 100-point patch",
+            "centroid",
+            &[polygon(patch(100))],
+        );
+        time(
+            "geo.bounding_box, a 100-point patch",
+            "bounding_box",
+            &[polygon(patch(100))],
+        );
+        validity("rings_valid, a 100-point patch", 100);
+        validity("rings_valid, a 1,000-point patch", 1_000);
+        validity("rings_valid, a 10,000-point outline", 10_000);
+    }
+
+    /// How long checking a ring of `n` points takes.
+    fn validity(name: &str, n: i128) {
+        let ring: Vec<(jadpo_std::Num, jadpo_std::Num)> = patch(n)
+            .iter()
+            .filter_map(|point| match point {
+                Value::Record(record) => match (record.get("latitude"), record.get("longitude")) {
+                    (Some(Value::Decimal(lat)), Some(Value::Decimal(lon))) => Some((
+                        jadpo_std::Num {
+                            mantissa: lat.mantissa,
+                            scale: lat.scale,
+                        },
+                        jadpo_std::Num {
+                            mantissa: lon.mantissa,
+                            scale: lon.scale,
+                        },
+                    )),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        let rounds = if n > 1000 { 3 } else { 20 };
+        let start = Instant::now();
+        for _ in 0..rounds {
+            let _ = jadpo_std::sphere::rings_broken(&ring, &[]);
+        }
+        let each = start.elapsed().as_secs_f64() * 1e3 / f64::from(rounds);
+        println!(
+            "{name}: {each:.1} ms ({:?})",
+            jadpo_std::sphere::rings_broken(&ring, &[])
         );
     }
 }
