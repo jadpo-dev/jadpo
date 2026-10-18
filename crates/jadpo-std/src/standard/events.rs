@@ -128,25 +128,67 @@ pub struct Parts<'a> {
     pub recurrence: Known<&'a str>,
 }
 
-/// A rule across an event's parts that they break: the part it points at,
-/// and what that part must be.
+/// A rule across an event's parts: what a part breaking it is, as a
+/// problem's label says, why (its reason), and what to write instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PartsRule {
+    pub label: &'static str,
+    pub reason: &'static str,
+    pub next: &'static str,
+}
+
+/// A rule across an event's parts that they break, and the part it points
+/// at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Broken {
     pub part: &'static str,
-    pub says: &'static str,
+    pub rule: &'static PartsRule,
 }
 
-const DAYS_OR_TIMES: &str = "an event's days, or its start, end and zone: an all-day event has a first and a last day, a timed one a start, an end and a zone, and none has both";
+/// An event has its days or its times, never both.
+pub const DAYS_OR_TIMES: PartsRule = PartsRule {
+    label: "an event has its days or its times",
+    reason: "A `CalendarEvent` is all-day, with a `first_day` and a `last_day`, or timed, with a `start`, an `end` and a `zone`; never parts of both.",
+    next: "Give an all-day event both days and `none` for `start`, `end` and `zone`, or a timed one those three and `none` for both days",
+};
+
+/// An all-day event's last day is on or after its first.
+pub const LAST_DAY_FIRST: PartsRule = PartsRule {
+    label: "before the first day",
+    reason: "An all-day event's `last_day` is the last day it covers, included, so it is on or after its `first_day`; a one-day event's two days are the same.",
+    next: "Write a last day on or after the first",
+};
+
+/// A timed event ends after it starts.
+pub const END_AFTER_START: PartsRule = PartsRule {
+    label: "not after the start",
+    reason: "A timed event's `end` is later than its `start`, as RFC 5545 requires; one that runs past midnight ends on the next day's date.",
+    next: "Write an end later than the start",
+};
+
+/// Only a timed event recurs.
+pub const TIMED_RECURRENCE: PartsRule = PartsRule {
+    label: "an all-day event doesn't recur",
+    reason: "A `RecurrenceRule` starts at a local time in a zone, which an all-day event doesn't have.",
+    next: "Make the event timed, or leave its `recurrence` as `none`",
+};
+
+/// A recurrence starts when its event does.
+pub const RECURRENCE_STARTS: PartsRule = PartsRule {
+    label: "doesn't start when the event does",
+    reason: "An event's recurrence starts at the event's own `start`, in its `zone`: a `VEVENT` writes one `DTSTART` for both.",
+    next: "Write the recurrence's `DTSTART` as the event's start in its zone",
+};
 
 /// The first rule across an event's parts that `parts` breaks, by what is
 /// known of them; a part whose value isn't known breaks nothing.
 pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
-    let refuse = |part, says| Some(Broken { part, says });
+    let refuse = |part, rule| Some(Broken { part, rule });
     if parts.first_day.given() || parts.last_day.given() {
         // All day.
         for (part, known) in [("first_day", parts.first_day), ("last_day", parts.last_day)] {
             if known.absent() {
-                return refuse(part, DAYS_OR_TIMES);
+                return refuse(part, &DAYS_OR_TIMES);
             }
         }
         for (part, given) in [
@@ -155,19 +197,16 @@ pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
             ("zone", parts.zone.given()),
         ] {
             if given {
-                return refuse(part, DAYS_OR_TIMES);
+                return refuse(part, &DAYS_OR_TIMES);
             }
         }
         if let (Some(first), Some(last)) = (parts.first_day.value(), parts.last_day.value())
             && last < first
         {
-            return refuse("last_day", "an event's last day, on or after its first");
+            return refuse("last_day", &LAST_DAY_FIRST);
         }
         if parts.recurrence.given() {
-            return refuse(
-                "recurrence",
-                "a timed event's recurrence: a recurrence starts at a local time in a zone, which an all-day event doesn't have",
-            );
+            return refuse("recurrence", &TIMED_RECURRENCE);
         }
         return None;
     }
@@ -178,18 +217,18 @@ pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
     ];
     if timed.iter().any(|(_, given, _)| *given) {
         if let Some((part, _, _)) = timed.iter().find(|(_, _, absent)| *absent) {
-            return refuse(part, DAYS_OR_TIMES);
+            return refuse(part, &DAYS_OR_TIMES);
         }
     } else if parts.first_day.absent()
         && parts.last_day.absent()
         && timed.iter().all(|(_, _, absent)| *absent)
     {
-        return refuse("first_day", DAYS_OR_TIMES);
+        return refuse("first_day", &DAYS_OR_TIMES);
     }
     if let (Some(start), Some(end)) = (parts.start.value(), parts.end.value())
         && end <= start
     {
-        return refuse("end", "a timed event's end, later than its start");
+        return refuse("end", &END_AFTER_START);
     }
     if let (Some(text), Some(start), Some(zone)) = (
         parts.recurrence.value(),
@@ -197,10 +236,7 @@ pub fn broken(parts: &Parts<'_>) -> Option<Broken> {
         parts.zone.value(),
     ) && Rule::read(text).is_none_or(|rule| rule.start != *start || rule.zone != *zone)
     {
-        return refuse(
-            "recurrence",
-            "a recurrence that starts when the event does, at its start in its zone",
-        );
+        return refuse("recurrence", &RECURRENCE_STARTS);
     }
     None
 }
@@ -446,14 +482,14 @@ const VALID: &[(&str, &str)] = &[
             "DTEND;VALUE=DATE:20261027",
             "SUMMARY:Half-term walk",
             "LOCATION:Keswick\\, Cumbria",
-            "DESCRIPTION:Boots\\; maps\\nand a flask",
+            "DESCRIPTION:Boots\\; maps\\nFlask",
         ),
         vevent!(
             "DTSTART;VALUE=DATE:20261024",
             "DTEND;VALUE=DATE:20261027",
             "SUMMARY:Half-term walk",
             "LOCATION:Keswick\\, Cumbria",
-            "DESCRIPTION:Boots\\; maps\\nand a flask",
+            "DESCRIPTION:Boots\\; maps\\nFlask",
         ),
     ),
     (
@@ -528,7 +564,7 @@ const MALFORMED: &[&str] = &[
         "DTSTART;VALUE=DATE:20261225",
         "DTEND;VALUE=DATE:20261226",
         "SUMMARY:Christmas Day",
-        "DESCRIPTION:Crackers\\Nand cake",
+        "DESCRIPTION:Boots\\Nmaps",
     ),
     vevent!(
         "DTSTART;VALUE=DATE:20261225",
@@ -624,10 +660,7 @@ mod tests {
             }
         );
         assert_eq!(event.location.as_deref(), Some("Keswick, Cumbria"));
-        assert_eq!(
-            event.description.as_deref(),
-            Some("Boots; maps\nand a flask")
-        );
+        assert_eq!(event.description.as_deref(), Some("Boots; maps\nFlask"));
         // The last day a date holds has no day after it to write.
         let last = Event {
             summary: "The end".to_string(),

@@ -2185,9 +2185,10 @@ need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 > `CalendarPeriod`'s operator rows, `temporal.period_between` and
 > `DateRange` in the `range` operations. Built in chunk 5.5k2:
 > `RecurrenceRule` with `temporal.occurrences` and `OpeningHours` with
-> `temporal.open_at`; `CalendarEvent` is not built yet (chunk 5.5k3). The
-> choices the page didn't make are under "Chosen in chunk 5.5k" and
-> "Chosen in chunk 5.5k2".
+> `temporal.open_at`. Built in chunk 5.5k3: `CalendarEvent`, an object
+> whose canonical text is an RFC 5545 `VEVENT`. The choices the page
+> didn't make are under "Chosen in chunk 5.5k", "Chosen in chunk 5.5k2"
+> and "Chosen in chunk 5.5k3".
 
 | Type | Fields | Canonical text and JSON | Shown in `en_gb` |
 |---|---|---|---|
@@ -2203,6 +2204,7 @@ need a `dst:` choice; it uses `temporal.add_months` and its siblings.
 | `CalendarPeriod` | `years`, `months`, `days` | `P1Y2M10D` | "1 year, 2 months, 10 days" |
 | `RecurrenceRule` | held as its text (RFC 5545): the first occurrence as a local time in its zone, a line feed, the rule | `DTSTART;TZID=Europe/London:20261026T093000` and `RRULE:FREQ=WEEKLY;BYDAY=MO`, on two lines | as written |
 | `OpeningHours` | held as its text (OpenStreetMap's `opening_hours`) and its zone | `Mo-Fr 09:00-17:30; Sa 10:00-16:00 [Europe/London]` | as written |
+| `CalendarEvent` | `summary`; an all-day event's `first_day` and `last_day`, both included, or a timed one's `start` and `end` (`LocalDateTime`) and `zone`; `location`, `description` and `recurrence` (`RecurrenceRule`), each may be `none` | an RFC 5545 `VEVENT`, an all-day `DTEND` the day after the last; JSON its parts | as written |
 
 A rental runs for a calendar period from its first day, and how long
 someone has lived somewhere is a period between two days, whatever the
@@ -2378,6 +2380,245 @@ test "a night past midnight is open by the clock on the wall" {
     assert not is_open(club_hours, "2026-03-08T07:00:00Z")
     assert is_open(club_hours, "2026-11-01T06:30:00Z")
     assert not is_open(club_hours, "2026-11-01T07:00:00Z")
+}
+```
+
+A calendar event is all-day or timed. An all-day event holds its first
+and last days, both included, and no zone: a holiday on 25 December is on
+25 December wherever it is read, so it never moves a day for a reader in
+Kiritimati, fourteen hours ahead of UTC, or Pago Pago, eleven behind. A
+timed event holds its local start and end and the zone they are in, as a
+recurrence does, so a shift that starts at 22:00 keeps starting at 22:00
+when the clocks change. Its text is RFC 5545's `VEVENT`, where an all-day
+event's end is the day after its last, and its JSON is its parts:
+
+```jadpo check project=calendar-events
+type DiaryText = Text {}
+
+type DiaryJson = Text {}
+
+type DiaryUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type ReaderDay = CalendarDate {}
+
+type SeenAt = Instant {}
+
+type CoversReaderDay = Bool {}
+
+type SearchFrom = Instant {}
+
+type ShiftCount = Int {
+    min: 1
+    max: 10
+}
+
+/// An event read back from the text calendars exchange.
+function diary_entry_from_text(calendar_text: DiaryText) fails DiaryUnreadable -> CalendarEvent {
+    return attempt text.parse(calendar_text, as: CalendarEvent) {
+        malformed: DiaryUnreadable
+    }
+}
+
+/// An event read back from its JSON.
+function diary_entry_from_json(sent: DiaryJson) fails DiaryUnreadable -> CalendarEvent {
+    return attempt json.read(sent, as: CalendarEvent) {
+        malformed: DiaryUnreadable
+        mismatch: DiaryUnreadable
+    }
+}
+
+/// Whether an all-day event covers the day it is for someone in `zone` at
+/// `at`: its own days, whichever zone they are read in. A timed event has
+/// no days of its own.
+function covers_reader_day(event: CalendarEvent, at: SeenAt, zone: Zone) -> CoversReaderDay {
+    var reader_local_day: ReaderDay = ReaderDay(temporal.date(temporal.in_zone(at, zone)))
+    return match event.first_day {
+        some(first) -> match event.last_day {
+            some(last) -> CoversReaderDay(
+                range.contains(
+                    DateRange {
+                        start: first
+                        end: last
+                    },
+                    reader_local_day
+                )
+            )
+            none -> CoversReaderDay(false)
+        }
+        none -> CoversReaderDay(false)
+    }
+}
+
+/// When the next `count` of a repeating event start, at its local time in
+/// its zone; none for one that doesn't repeat.
+function next_shift_starts(
+    event: CalendarEvent,
+    from: SearchFrom,
+    count: ShiftCount
+) -> List<SeenAt> {
+    return match event.recurrence {
+        some(rule) -> list.map(
+            temporal.occurrences(rule, from: from, count: count),
+            at -> SeenAt(temporal.instant(at))
+        )
+        none -> []
+    }
+}
+```
+
+```jadpo check project=calendar-events file=main.test.jadpo
+test "an all-day event keeps its days, wherever and whenever it is read" {
+    var half_term: CalendarEvent = CalendarEvent {
+        summary: "Half-term walk"
+        first_day: "2026-10-24"
+        last_day: "2026-10-26"
+        start: none
+        end: none
+        zone: none
+        location: "Keswick, Cumbria"
+        description: none
+        recurrence: none
+    }
+    var half_term_vevent: DiaryText = DiaryText(text.from(half_term))
+    assert half_term_vevent == "BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261024\nDTEND;VALUE=DATE:20261027\nSUMMARY:Half-term walk\nLOCATION:Keswick\\, Cumbria\nEND:VEVENT"
+    var half_term_from_text: CalendarEvent = attempt diary_entry_from_text(half_term_vevent)
+    assert half_term_from_text == half_term
+    var half_term_json: DiaryJson = DiaryJson(json.write(half_term))
+    assert half_term_json == "{\"summary\":\"Half-term walk\",\"first_day\":\"2026-10-24\",\"last_day\":\"2026-10-26\",\"start\":null,\"end\":null,\"zone\":null,\"location\":\"Keswick, Cumbria\",\"description\":null,\"recurrence\":null}"
+    var half_term_from_json: CalendarEvent = attempt diary_entry_from_json(half_term_json)
+    assert half_term_from_json == half_term
+    assert covers_reader_day(half_term, "2026-10-26T10:30:00Z", Zone.pacific_pago_pago)
+    assert not covers_reader_day(half_term, "2026-10-26T10:30:00Z", Zone.pacific_kiritimati)
+    assert covers_reader_day(half_term, "2026-10-23T10:30:00Z", Zone.pacific_kiritimati)
+    assert not covers_reader_day(half_term, "2026-10-23T10:30:00Z", Zone.pacific_pago_pago)
+    assert covers_reader_day(half_term, "2026-10-25T01:30:00Z", Zone.europe_london)
+}
+
+test "a timed event runs past midnight and repeats at its local time" {
+    var night_shift: CalendarEvent = CalendarEvent {
+        summary: "Night shift"
+        first_day: none
+        last_day: none
+        start: LocalDateTime {
+            date: "2026-10-24"
+            time: LocalTime {
+                hour: 22
+                minute: 0
+                second: 0
+            }
+        }
+        end: LocalDateTime {
+            date: "2026-10-25"
+            time: LocalTime {
+                hour: 2
+                minute: 0
+                second: 0
+            }
+        }
+        zone: Zone.europe_london
+        location: none
+        description: "Keys at the front desk; sign in, then out"
+        recurrence: "DTSTART;TZID=Europe/London:20261024T220000\nRRULE:FREQ=WEEKLY;COUNT=4"
+    }
+    var shift_vevent: DiaryText = DiaryText(text.from(night_shift))
+    assert shift_vevent == "BEGIN:VEVENT\nDTSTART;TZID=Europe/London:20261024T220000\nDTEND;TZID=Europe/London:20261025T020000\nSUMMARY:Night shift\nDESCRIPTION:Keys at the front desk\\; sign in\\, then out\nRRULE:FREQ=WEEKLY;COUNT=4\nEND:VEVENT"
+    var shift_from_text: CalendarEvent = attempt diary_entry_from_text(shift_vevent)
+    assert shift_from_text == night_shift
+    var shift_from_json: CalendarEvent = attempt diary_entry_from_json(
+        DiaryJson(json.write(night_shift))
+    )
+    assert shift_from_json == night_shift
+    assert next_shift_starts(night_shift, "2026-10-01T00:00:00Z", 3) == [
+        SeenAt("2026-10-24T21:00:00Z"),
+        SeenAt("2026-10-31T22:00:00Z"),
+        SeenAt("2026-11-07T22:00:00Z")
+    ]
+    assert diary_entry_from_text(
+        "BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261024\nDTEND;VALUE=DATE:20261024\nSUMMARY:Half-term walk\nEND:VEVENT"
+    ) fails DiaryUnreadable
+    assert diary_entry_from_json(
+        "{\"summary\":\"Night shift\",\"first_day\":\"2026-10-24\",\"last_day\":\"2026-10-26\",\"start\":null,\"end\":null,\"zone\":\"Europe/London\",\"location\":null,\"description\":null,\"recurrence\":null}"
+    ) fails DiaryUnreadable
+}
+```
+
+An event is stored a column per part, its days `date` columns, so a stored
+event comes back as it was written:
+
+```jadpo check project=diary-bookings file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=diary-bookings file=domains/diary/entities/booking.jadpo migrate=initial
+/// A slot in someone's diary: a day off or a shift.
+entity Booking {
+    id: Uuid
+    slot: CalendarEvent  // a column per part, its days `date`s
+}
+```
+
+```jadpo check project=diary-bookings file=domains/diary/actions/book.jadpo hidden
+use diary/entities { Booking }
+
+/// Books a slot in the diary.
+action book(slot: CalendarEvent) -> Booking {
+    return Booking.create {
+        set: {
+            slot: slot
+        }
+    }
+}
+```
+
+```jadpo check project=diary-bookings file=domains/diary/actions/book.test.jadpo
+use diary/entities { Booking }
+
+test "an event is kept part by part" {
+    var half_term: CalendarEvent = CalendarEvent {
+        summary: "Half-term walk"
+        first_day: "2026-10-24"
+        last_day: "2026-10-26"
+        start: none
+        end: none
+        zone: none
+        location: "Keswick, Cumbria"
+        description: none
+        recurrence: none
+    }
+    var half_term_booked: Booking = book(half_term)
+    var half_term_kept: Booking = attempt Booking.get(half_term_booked.id)
+    assert half_term_kept.slot == half_term
+    assert text.from(half_term_kept.slot) == text.from(half_term)
+    var night_shift: CalendarEvent = CalendarEvent {
+        summary: "Night shift"
+        first_day: none
+        last_day: none
+        start: LocalDateTime {
+            date: "2026-10-24"
+            time: LocalTime {
+                hour: 22
+                minute: 0
+                second: 0
+            }
+        }
+        end: LocalDateTime {
+            date: "2026-10-25"
+            time: LocalTime {
+                hour: 2
+                minute: 0
+                second: 0
+            }
+        }
+        zone: Zone.europe_london
+        location: none
+        description: "Keys at the front desk"
+        recurrence: "DTSTART;TZID=Europe/London:20261024T220000\nRRULE:FREQ=WEEKLY;COUNT=4"
+    }
+    var shift_booked: Booking = book(night_shift)
+    var shift_kept: Booking = attempt Booking.get(shift_booked.id)
+    assert shift_kept.slot == night_shift
 }
 ```
 
@@ -5220,6 +5461,75 @@ under "Errors").
   the clocks go back, a bar open to 02:00 is open both times 01:30 comes
   round, and on the night they go forward the skipped hour never comes.
 
+### Chosen in chunk 5.5k3
+
+- **Its parts,** in order: a `summary`, one line of text; an all-day
+  event's `first_day` and `last_day`, `CalendarDate`s, the last included as
+  a `DateRange`'s end is; a timed event's `start` and `end`,
+  `LocalDateTime`s, and its `zone`; and a `location` (one line), a
+  `description` (text over several lines, with no control character but a
+  tab or a line feed, which RFC 5545 text can't hold) and a `recurrence`
+  (a `RecurrenceRule`), each of which may be `none`. Every part but the
+  summary may be `none`, and the rules below say which go together.
+- **No `UID` or `DTSTAMP`.** RFC 5545 requires both of a `VEVENT` in a
+  calendar file, but they are that file's copy of the event, not the event:
+  an identity and the time a calendar store last revised it. A value is the
+  event itself, so two with the same parts are equal; an application keeps
+  its own identity and times beside one (an entity's `id`), and the chunk
+  that writes calendar files writes them from those. A text with either is
+  `malformed`.
+- **Days or times, never both, and one zone.** An all-day event has both
+  days and none of `start`, `end` and `zone`; a timed one all three and
+  neither day. A timed event's start and end are in its one zone (a flight
+  between zones is two local times in one of them), its end later than
+  its start, as RFC 5545 requires; an all-day event's last day is on or
+  after its first. A floating time (no zone) and a time in UTC aren't
+  read.
+- **A recurrence only on a timed event, from its start.** A
+  `RecurrenceRule` starts at a local time in a zone, so an all-day event
+  doesn't recur until a later chunk lets a rule start on a date (a
+  birthday); a timed event's rule starts at the event's own `start` in its
+  `zone`, since a `VEVENT` writes one `DTSTART` for both.
+- **These rules are proved where a literal shows them,** as an address's
+  postal code is (chunk 5.5l2): a part written `none` is known to be
+  absent and one written out (text, a variant, an object) known to be
+  given, so a literal that breaks one is `type.invalid_literal`, no new
+  rule. A part built from a value that may be `none` waits on cross-field
+  rules (chunk 5.5t). A value read from text or JSON is checked as it is
+  read: text that breaks one is `malformed`, and JSON breaks `format` at
+  the part.
+- **Its text** is the `VEVENT`'s lines joined by line feeds, as a
+  `RecurrenceRule`'s are, in one order: `BEGIN:VEVENT`, `DTSTART`, `DTEND`,
+  `SUMMARY`, then `LOCATION`, `DESCRIPTION` and `RRULE` where it has them,
+  and `END:VEVENT`. An all-day event's are dates, `DTSTART;VALUE=DATE:`
+  and its `DTEND` the day after its last, as RFC 5545 writes it; a timed
+  one's are local times with the zone, `DTSTART;TZID=Europe/London:`, as a
+  recurrence's start is, and its `RRULE` is the recurrence's rule line.
+  Text values escape `\`, `;`, `,` and a line feed as RFC 5545 3.3.11
+  does (`\n`, never `\N`). Only that form is read: no carriage return,
+  folded line, other property or parameter, or `DURATION` for an end. A
+  calendar file's writer (a later chunk) adds the carriage returns and
+  folding RFC 5545 asks of a file. An event whose last day is 31 December
+  9999 has no day after it to write, the fault `time_out_of_range`.
+- **JSON is its parts,** each in its own canonical text and `null` where
+  it is `none`: `{"summary": "Half-term walk", "first_day": "2026-10-24",
+  "last_day": "2026-10-26", "start": null, ...}`, a local time
+  `"2026-10-24T22:00:00"`, the zone `"Europe/London"`, the recurrence its
+  two lines.
+- **Stored a column per part** through chunk 5.5h's named columns, each
+  that may be `none` a column that may be `NULL`: the days in `date`
+  columns, which no reader's zone moves; a local time as its canonical
+  text in a `text` column, as a time type is stored as its text until
+  chunk 5.5w's native columns (`timestamp` without a zone); the zone its
+  IANA name; the recurrence its text.
+- **Shown to people as its canonical text,** as a recurrence is: CLDR has
+  no pattern for an event, and an application shows the parts it wants,
+  each by its own format (`event.first_day` by a date format).
+- **Not ordered;** `==` compares part by part. No shape:
+  `type.standard_exists` matches no application's event type, since `{
+  title, start, end }` is too common to be distinctive (question 5). It
+  isn't personal data of itself.
+
 ### Chosen in chunk 5.5i
 
 - **Split.** The 17 that are text are built here; the 15 that are
@@ -5936,7 +6246,7 @@ first; each group of types then arrives with its baseline and its extras.
   (`temporal.open_at`). Built; split on 2026-10-18, `CalendarEvent` is
   5.5k3.
 - **5.5k3 Calendar events** `opus · high`: `CalendarEvent`, an object
-  whose parts code reads, with optional parts and an all-day form.
+  whose parts code reads, with optional parts and an all-day form. Built.
 - **5.5l People and places** `opus · high`: the 19 new types, with
   `PhoneNumber`'s E.164 metadata, `PostalAddress` and `PersonName` in each
   locale's order, and `PostalCode` per country. 15 built; split on
