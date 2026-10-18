@@ -173,9 +173,12 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
         # Geometries in PostGIS: every geometry stored and read back
         # unchanged, each column's check, and a store without PostGIS, or a
-        # role that can't create it, refused (area 20, chunk 5.5u4). The
-        # server needs PostGIS: CI's image has it (tools/postgres/Dockerfile).
-        ('live PostgreSQL: geography', [('jadpo-cli', 'geography')], []),
+        # role that can't create it, refused (area 20, chunk 5.5u4); each
+        # `geo.` condition and the order by distance giving the code's
+        # answer through its index (chunk 5.5u5). The server needs
+        # PostGIS: CI's image has it (tools/postgres/Dockerfile).
+        ('live PostgreSQL: geography',
+         [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

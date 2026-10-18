@@ -381,6 +381,9 @@ Since chunk 3.10 a text field a query sorts by is indexed in code-point
 order (`"title" COLLATE "C"`), the order a query sorts text in (area 6),
 so the sorted read uses the index; its name ends `_sorted_idx`, apart from
 an index on the same columns that tests them with `==`.
+Since chunk 5.5u5 a geometry field a `geo.` condition tests gets a GiST
+index, and a `Point` field a box filter tests one on the point cast to
+`geometry` ([area 20](20-geospatial.md), "Indexes").
 
 ## Caches
 

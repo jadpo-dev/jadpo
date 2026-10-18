@@ -832,6 +832,9 @@ fn the_page_s_queries_give_the_code_s_answer_through_their_indexes() {
     }
 }
 
+/// What the code says of a sample.
+type Test = Box<dyn Fn(&Value) -> bool>;
+
 /// Chunk 5.5u3's cases, beside this crate's sibling.
 const CASES: &str = include_str!("../../jadpo-value/examples/geodesics/shapes.tsv");
 
@@ -922,9 +925,7 @@ fn every_predicate_case_gives_the_code_s_answer_as_a_query() {
     let mut checked = 0;
     let mut parted = Vec::new();
     for case in &cases {
-        let (query, args, test): (&str, Vec<Value>, Box<dyn Fn(&Value) -> bool>) = match case
-            .operation
-        {
+        let (query, args, test): (&str, Vec<Value>, Test) = match case.operation {
             "contains" => {
                 let value = geometry("Geometry", case.value);
                 let v = value.clone();

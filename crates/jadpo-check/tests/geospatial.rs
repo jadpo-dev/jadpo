@@ -409,9 +409,9 @@ fn nearest_first_inside_a_radius() {
         "no radius (question 4)"
     );
     assert_eq!(
-        query(&format!(
+        query(
             "    where: geo.within(Bakery.spot, circle)\n    order: [geo.distance(Bakery.spot, doorstep) asc]\n    limit: 20\n"
-        )),
+        ),
         ["query.order_field"],
         "a radius from another point"
     );

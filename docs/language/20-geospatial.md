@@ -2,7 +2,7 @@
 title: Geospatial
 area: 20
 status: decided
-checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the other examples are fragments until chunks 5.5u5 and 5.5u6 build them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the interop examples are fragments until chunk 5.5u6 builds them
 rules: []
 ---
 
@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunks 5.5u5 and 5.5u6 build the rest, in the order under "Building it". Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunk 5.5u5 built the query conditions, the order by distance and the derived indexes, as "Chosen in chunk 5.5u5" records; chunk 5.5u6 builds the rest, as "Building it" says. Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -69,9 +69,10 @@ PostGIS, query conditions and indexes, and the formats other systems use.
 | `geo.centroid(shape)` | `Point`: the centre on the sphere, weighted by area, length or count by the shape's kind; may lie outside a concave polygon | weights that cancel (two antipodal points) are a defect | `ST_Centroid(x, false)` |
 | `geo.bounding_box(shape)` | `BoundingBox`: the smallest box of parallels and meridians holding the shape, an edge's highest or lowest point counted; across the antimeridian when that box is narrower | | none |
 
-The SQL forms are what query conditions compile to (below) and what
-5.6c's aggregates can use; `bounding_box` and `centroid` have no query
-use. `ST_Azimuth` gives `NULL` for two equal points (verified), which a
+The SQL forms are PostGIS's own, which 5.6c's aggregates can use; a
+query condition doesn't compile to its form but searches with a wider one
+and leaves the answer to the code ("Queries", chunk 5.5u5).
+`bounding_box` and `centroid` have no query use. `ST_Azimuth` gives `NULL` for two equal points (verified), which a
 query never needs, so `same_point` exists only in code.
 
 - **Distance and length agree with GeographicLib to well under a
@@ -595,8 +596,9 @@ other fields uses their ordinary indexes beside it, which PostgreSQL
 combines. Verified: `ST_DWithin`, `ST_Covers` and the box test each use
 these indexes, the first two through `&&` on the geography's box, then
 the exact test. Chunk 5.5u4 built the declared index (`Bakery`'s
-`by_spot` above); the derived ones come with the conditions that need
-them, in chunk 5.5u5.
+`by_spot` above), and chunk 5.5u5 the derived ones: one on a field
+however many queries test it, none where a declared geographic index
+already holds the field, `_gist_idx` when the name is taken.
 
 ### A store with no PostGIS
 
@@ -627,37 +629,127 @@ compared with a value. This page adds the `geo.` conditions to that list,
 since a GiST index serves each one: the field first, values after. A
 function of a field otherwise stays refused.
 
-| In a query | Means | SQL |
-|---|---|---|
-| `where: geo.within(Bakery.spot, doorstep, distance: max_trip)` | Bakeries within `max_trip` of `doorstep`; a `Point` field and value | `ST_DWithin("spot", $1, $2)` |
-| `where: geo.within(Bakery.spot, area)` | Inside a polygon or multi-polygon value | `ST_CoveredBy("spot", $1)` |
-| `where: geo.within(Bakery.spot, view)` | Inside a `BoundingBox`; a `Point` field only (question 11) | `"spot"::geometry && ST_MakeEnvelope($west, $south, $east, $north, 4326)`, two envelopes when the box crosses the antimeridian |
-| `where: geo.within(Bakery.spot, circle)` | Inside a `Circle` | `ST_DWithin("spot", $centre, $radius)` |
-| `where: geo.contains(DeliveryPatch.outline, customer)` | Patches holding a point or shape | `ST_Covers("outline", $1)` |
-| `where: geo.intersects(DeliveryPatch.outline, area)` | Patches touching a shape | `ST_Intersects("outline", $1)` |
-| `order: [geo.distance(Bakery.spot, doorstep) asc]` | Nearest first; needs a `within(distance:)` on the same field and point (question 4) | `ORDER BY ST_Distance("spot", $1), "id"` |
+| In a query | Means | The index searches | Then the code decides |
+|---|---|---|---|
+| `where: geo.within(Bakery.spot, doorstep, distance: max_trip)` | Bakeries within `max_trip` of `doorstep`; a `Point` field and value | `ST_DWithin("spot", $1, $2 + 0.001)` | `geo.within(spot, doorstep, distance: max_trip)` |
+| `where: geo.within(Bakery.spot, area)` | Inside a polygon or multi-polygon value | `ST_DWithin("spot", $1, 0.001)` | `geo.within(spot, area)` |
+| `where: geo.within(Bakery.spot, view)` | Inside a `BoundingBox`; a `Point` field only (question 11) | `"spot"::geometry && ST_MakeEnvelope(...)`, two envelopes (below) | `geo.within(spot, view)` |
+| `where: geo.within(Bakery.spot, circle)` | Inside a `Circle`; a `Point` field only | `ST_DWithin("spot", $centre, $radius + 0.001)` | `geo.within(spot, circle)` |
+| `where: geo.contains(DeliveryPatch.outline, customer)` | Patches holding a point or shape | `ST_DWithin("outline", $1, 0.001)` | `geo.contains(outline, customer)` |
+| `where: geo.intersects(DeliveryPatch.outline, area)` | Patches touching a shape | `ST_DWithin("outline", $1, 0.001)` | `geo.intersects(outline, area)` |
+| `order: [geo.distance(Bakery.spot, doorstep) asc]` | Nearest first; needs a `within(distance:)` on the same field and point (question 4) | `ORDER BY ST_Distance("spot", $1), "id"` | sorted again by `geo.distance`, then `id` |
 
+- **The index finds, the code decides** (chunk 5.5u5). A query gives
+  exactly the records the code's own `geo.` operation keeps, the field's
+  stored value against the call's: `list.filter` over every record with
+  the same operation would give the same list. PostGIS decides in doubles
+  with its own tolerances, and its `ST_Covers` on `geography` compares two
+  polygons ring by ring (the four cases "Chosen in chunk 5.5u3" records),
+  so its predicates aren't the condition. The statement searches through
+  the GiST index for every record within a millimetre of what the
+  condition says, a margin some hundred thousand times PostGIS's error,
+  so no record the code keeps is left out; the runtime then works the
+  condition out again, in Jadpo's code, on each record found. A point on
+  an edge is in, and the four cases give the page's answer (verified on
+  PostGIS 3.4.2 by chunk 5.5u5's live test, every case of
+  `tools/geo_cases.py` as a query; the gate runs it on CI's 3.6.4 too).
+- **A box is two envelopes.** The box filter searches the point cast to
+  `geometry`, whose `&&` compares longitude and latitude directly, as a
+  box's sides are parallels and meridians, through an index of its own. A
+  box across the antimeridian searches from its west to 180 and from
+  -180 to its east; one with a side on the antimeridian also searches the
+  line at the other end, -180 being 180; any other box is searched twice
+  as one. `&&` rounds to single precision, outwards, and a point at a
+  pole is in only a box of every longitude, which the code decides.
 - **Nearest first inside a radius.** PostGIS's index-ordered `<->`
   measures on a sphere: London to Paris is 343,530 m by `<->` and
   343,897 m by `ST_Distance` (verified), so ordering by it would disagree
   with `geo.distance` for two shops a few hundred metres apart in
-  distance. Ordering by `ST_Distance` agrees, and the radius keeps the
-  sort to the rows the index found. Verified plan: an index scan on
-  `&&`, then `ST_DWithin`, then a sort of the matches.
+  distance. The statement orders the rows inside the radius by
+  `ST_Distance`, and the runtime sorts them again by `geo.distance`,
+  rounded to the micrometre as code gives it, then by `id`, so two
+  bakeries the same distance away come in `id` order and the order is
+  the code's to the last digit. Verified plan: an index scan on `&&`, then
+  `ST_DWithin`, then a sort of the matches.
+- **As many rows as it keeps.** The statement asks for as many rows as
+  the list keeps, `LIMIT $n`, or a page's size and one more. When the code
+  turns some down, or when a row past those fetched could still be nearer
+  than the last kept (PostGIS's distance to it, less the margin, isn't
+  past the code's distance to the last), it asks again for four times as
+  many, in the same transaction, until it has enough or the rows run out.
+  The margin is a millimetre, so a second statement is rare: it takes
+  rows within a millimetre of the condition, or `ST_Covers`'s four cases.
 - **Only `asc`, and only in a `List`.** Farthest first can't use the
   radius to bound anything, and a page by distance would need a cursor on
   a computed value; both are refused, `query.order_direction` and
-  `query.order_field`, with reasons naming this page.
+  `query.order_field`, with reasons naming this page. `geo.distance` is the
+  query's only order.
 - **The result doesn't carry the distance.** A result type picks fields
   (area 6); the action works the distance out with `geo.distance`, which
-  gives the same metres as the query measured.
+  gives the same metres as the query ordered by.
+- **On its own line.** A `geo.` condition is a `where:` line of its own or
+  joined to the others with `and`: an index finds the records it holds
+  for, never those it doesn't, so it can't be under `not` or `or`, and its
+  value is always given, so it isn't a `where_present:` line. An
+  include's records aren't rechecked yet, so a `geo.` condition in an
+  include is `toolchain.not_built_yet`.
 - **Errors reuse area 6's rules** with new reasons: a `geo.` call with the
-  field anywhere but first, a box on a field that isn't a `Point`, or a
-  pair PostGIS's `ST_Covers` doesn't handle is
-  `query.condition_unsupported`; `migration.extension_missing` is the
-  only new rule.
+  field anywhere but first, a box on a field that isn't a `Point`, a
+  `BoundingBox` or `Circle` field, or a condition under `not` or `or` is
+  `query.condition_unsupported`; a value of the wrong kind is
+  `type.mismatch` and a distance that may be negative
+  `type.argument_negative`, as in code; an order by `geo.distance` without
+  its radius, beside another order or in a page is `query.order_field`.
+  `migration.extension_missing` is the only new rule (chunk 5.5u4).
 
-```jadpo fragment
+The page's queries, on the bakeries and patches above:
+
+```jadpo check project=geo-storage file=domains/baking/types/search_reach.jadpo hidden
+/// How far a customer looks for a bakery.
+type SearchReach = Length {
+    min: 0metre
+    max: 50km
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/types/bakery_card.jadpo hidden
+use baking/entities { Bakery }
+
+/// A bakery in a list or on a map.
+type BakeryCard = Output {
+    pick: [Bakery.id, Bakery.name, Bakery.spot]
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/types/patch_card.jadpo hidden
+use baking/entities { DeliveryPatch }
+
+/// A delivery patch in a list.
+type PatchCard = Output {
+    pick: [DeliveryPatch.id, DeliveryPatch.name]
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/actions/draw_patch.jadpo hidden
+use baking/entities { Bakery, DeliveryPatch }
+use baking/types { PatchName }
+
+/// Draws a patch a bakery delivers to.
+action draw_patch(bakery: Bakery, name: PatchName, outline: Polygon) -> DeliveryPatch {
+    return DeliveryPatch.create {
+        set: {
+            bakery_id: bakery.id  // a loaded record's id: the bakery is there
+            name: name
+            outline: outline
+        }
+    }
+}
+```
+
+```jadpo check project=geo-storage file=domains/baking/queries/bakeries_near.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryCard, SearchReach }
+
 /// Bakeries near a customer, nearest first.
 query bakeries_near(doorstep: Point, max_trip: SearchReach) -> List<BakeryCard> {
     from: Bakery
@@ -665,6 +757,11 @@ query bakeries_near(doorstep: Point, max_trip: SearchReach) -> List<BakeryCard> 
     order: [geo.distance(Bakery.spot, doorstep) asc]
     limit: 20
 }
+```
+
+```jadpo check project=geo-storage file=domains/baking/queries/bakeries_in_view.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryCard }
 
 /// The pins inside the map a person is looking at.
 query bakeries_in_view(view: BoundingBox) -> List<BakeryCard> {
@@ -673,6 +770,11 @@ query bakeries_in_view(view: BoundingBox) -> List<BakeryCard> {
     order: [Bakery.name asc]
     limit: 200
 }
+```
+
+```jadpo check project=geo-storage file=domains/baking/queries/patches_for.jadpo migrate=geo_queries
+use baking/entities { DeliveryPatch }
+use baking/types { PatchCard }
 
 /// The patches that deliver to a customer's door.
 query patches_for(customer: Point) -> List<PatchCard> {
@@ -683,12 +785,124 @@ query patches_for(customer: Point) -> List<PatchCard> {
 }
 ```
 
+A customer on a patch's edge is delivered to by the query as by
+`geo.contains`, and the bakery 5.3 km away is inside a six-kilometre trip
+and outside a five-kilometre one, run on PostGIS:
+
+```jadpo check project=geo-storage file=domains/baking/queries/patches_for.test.jadpo
+use baking/entities { Bakery, DeliveryPatch }
+use baking/types { BakeryCard, BakeryName, PatchName }
+use baking/actions { draw_patch, open_bakery }
+use baking/queries { bakeries_in_view, bakeries_near }
+
+test "bakeries near a door come nearest first, within the trip" {
+    var big_ben: Point = Point {
+        latitude: 51.5007
+        longitude: -0.1246
+        altitude: none
+    }
+    var crumbs: Bakery = open_bakery(
+        BakeryName("Crumbs"),
+        Point {
+            latitude: 51.5
+            longitude: -0.2
+            altitude: none
+        }
+    )
+    var loaf: Bakery = open_bakery(
+        BakeryName("Loaf"),
+        Point {
+            latitude: 51.5072
+            longitude: -0.1276
+            altitude: none
+        }
+    )
+    var near: List<BakeryCard> = bakeries_near(big_ben, 6km)
+    assert text.join(list.map(near, card -> card.name), ", ") == text.join(
+        [loaf.name, crumbs.name],
+        ", "
+    )
+    var walk: List<BakeryCard> = bakeries_near(big_ben, 5km)
+    assert text.join(list.map(walk, card -> card.name), ", ") == loaf.name
+}
+
+test "a customer on a patch's edge is delivered to" {
+    var crumbs: Bakery = open_bakery(
+        BakeryName("Crumbs"),
+        Point {
+            latitude: 51.5
+            longitude: -0.2
+            altitude: none
+        }
+    )
+    var outline: Polygon = Polygon {
+        outer: [
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.05
+                altitude: none
+            },
+            Point {
+                latitude: 51.54
+                longitude: -0.2
+                altitude: none
+            },
+            Point {
+                latitude: 51.49
+                longitude: -0.2
+                altitude: none
+            }
+        ]
+        holes: []
+    }
+    var westminster: DeliveryPatch = draw_patch(crumbs, PatchName("Westminster"), outline)
+    assert text.join(
+        list.map(patches_for(crumbs.spot), card -> card.name),
+        ", "
+    ) == westminster.name
+    var in_view: List<BakeryCard> = bakeries_in_view(geo.bounding_box(outline))
+    assert text.join(list.map(in_view, card -> card.name), ", ") == crumbs.name
+}
+```
+
+Their statements (`jadpo sql`; the box's envelopes and the rows to fetch
+are worked out as the read runs), and the GiST indexes derived for them,
+beside `Bakery`'s declared `by_spot`, which already serves `spot`:
+
 ```sql
 -- bakeries_near
-SELECT "id", "name", "spot" FROM "bakery"
-WHERE ST_DWithin("spot", $1, $2)
-ORDER BY ST_Distance("spot", $1), "id"
-LIMIT 20
+SELECT "id", "name", "spot", ST_Distance("spot", $1) AS "jadpo_measured"
+FROM "bakery"
+WHERE ST_DWithin("spot", $1, $2 + 0.001)
+ORDER BY "jadpo_measured", "id"
+LIMIT $3
+
+-- bakeries_in_view
+SELECT "id", "name", "spot"
+FROM "bakery"
+WHERE ("spot"::geometry && ST_MakeEnvelope($3, $1, $4, $2, 4326) OR "spot"::geometry && ST_MakeEnvelope($5, $1, $6, $2, 4326))
+ORDER BY "name" COLLATE "C" ASC, "id" ASC
+LIMIT $7
+
+-- patches_for, its outline selected for the code to decide
+SELECT "id", "name", "outline"
+FROM "delivery_patch"
+WHERE ST_DWithin("outline", $1, 0.001)
+ORDER BY "name" COLLATE "C" ASC, "id" ASC
+LIMIT $2
+
+CREATE INDEX "bakery_spot_box_idx" ON "bakery" USING gist (("spot"::geometry));
+CREATE INDEX "delivery_patch_outline_idx" ON "delivery_patch" USING gist ("outline");
 ```
 
 ## Precision and determinism
@@ -699,7 +913,7 @@ LIMIT 20
 | Reading GeoJSON | The double JSON gives, held as its shortest decimal (5.5s) | Yes |
 | Coordinates built in code | Rounded to the nearest double's shortest decimal at construction (question 2) | Yes |
 | Storage | PostGIS doubles; exact, given the row above | Yes |
-| Query conditions and order | PostGIS's own doubles: GeographicLib for distance, its spherical edge tests for `ST_Covers` and `ST_Intersects` | One server, one answer; may differ from code at a boundary |
+| Query conditions and order | PostGIS's doubles find the rows, through the index and a millimetre wider than the condition; Jadpo's own code decides each and sorts them (chunk 5.5u5) | Yes: the code's answer |
 
 - **No floats in Jadpo's own code.** Karney's inverse method is
   additions, multiplications, divisions, square roots, `sin`, `cos` and
@@ -714,13 +928,18 @@ LIMIT 20
   as long. A request measures a handful; a batch measuring millions, or
   the area of a 10,000-point outline (about half a second), would
   notice. "Chosen in chunk 5.5u2" has the figures.
-- **Where code and the database can disagree:** a point on, or within a
-  hair of, a polygon's edge, and a distance within a hair of a radius,
-  since PostGIS decides in doubles with its own tolerances and Jadpo in
-  decimals (estimate: under a millimetre; the build measures the band).
-  Tests stay outside it. Text sorting was made to agree by forcing the
-  `C` collation (area 5); no such switch exists for PostGIS's maths, and
-  reimplementing its queries outside the database would lose the index.
+- **Where code and the database could disagree, they don't.** A point
+  on, or within a hair of, a polygon's edge, and a distance within a hair
+  of a radius, are decided by PostGIS in doubles with its own tolerances
+  and by Jadpo exactly; `ST_Covers` also parts from the page on four
+  kinds of polygon (chunk 5.5u3). So a query's condition uses PostGIS
+  only to find the rows, through the index, a millimetre wider than the
+  condition, and the runtime decides each row with the same code a body
+  runs ("Queries"). The index is kept, and the answer is the code's. What
+  it costs is the code's test on each row found: about 40 µs a distance
+  natively and 0.44 ms a point in a 100-point patch ("Chosen in chunk
+  5.5u3"), so a radius holding a thousand bakeries spends some 40 ms
+  sorting them by distance.
 
 ## Interop
 
@@ -776,7 +995,8 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
 | `geo.distance`, `length`, `bearing` and `area`; coordinates held as doubles' shortest decimals | Decided 2026-10-18; built (5.5u2) |
 | `geo.intersects`, `contains`, `within` (with `distance:`, a `BoundingBox` and a `Circle`), `centroid`, `bounding_box`; `rings_valid` | Decided 2026-10-18; built (5.5u3) |
 | Storage: `geography` columns and their checks, `BoundingBox` and `Circle` in named columns, PostGIS created by the first migration that needs it, `migration.extension_missing`, `kind: IndexKind.geographic` | Decided 2026-10-18; built (5.5u4) |
-| Everything else on this page | Decided 2026-10-18; built by 5.5u5 and 5.5u6 |
+| Query conditions, the box and circle filters, order by distance inside a radius, derived GiST indexes | Decided 2026-10-18; built (5.5u5) |
+| Everything else on this page | Decided 2026-10-18; built by 5.5u6 |
 
 ### Consistency with the rest of the language
 
@@ -787,7 +1007,7 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   is built for `IndexKind.geographic`; derived indexes gain GiST.
 - **Area 6:** "A condition must be one the database can use an index for"
   gains the `geo.` conditions; `order:` gains `geo.distance`. Amended on
-  area 6 when 5.5u5 builds them.
+  area 6 by chunk 5.5u5.
 - **Area 13:** the test server needs PostGIS. Postgres.app's PostgreSQL
   16 ships PostGIS 3.4.2 (verified); CI's `postgres:16` image doesn't, so
   CI moves to `postgis/postgis:16-3.4`. *Amended by chunk 5.5v1:* CI runs
@@ -1114,6 +1334,85 @@ function patch_layer(patches: List<DeliveryPatch>) -> FeatureCollection<Polygon,
   PostGIS's `ST_DWithin` uses the declared index. It runs on CI's image
   (PostGIS 3.6.4) and on Postgres.app here (PostGIS 3.4.2).
 
+### Chosen in chunk 5.5u5
+
+- **The index finds, the code decides.** Chunk 5.5u3 left four kinds of
+  polygon where `ST_Covers` on `geography` and the page part, and PostGIS
+  decides an edge or a radius in doubles with tolerances Jadpo doesn't
+  share. Rather than refuse those pairs, which a query can't see (the
+  shapes are the rows'), or give a different answer in a query than in a
+  body, each `geo.` condition is written as a search the GiST index
+  serves that can't leave out a record the code keeps, and the runtime
+  holds each row found to the code's own operation: the field's stored
+  value and the call's value through `jadpo-value`'s `geo.within`,
+  `contains` and `intersects`, as a body calls them, so the interpreter
+  and every compiled target decide alike. The page's SQL column changes
+  accordingly, and "a pair PostGIS's `ST_Covers` doesn't handle" is no
+  longer refused.
+- **The margin is a millimetre** (`GEO_MARGIN`): `ST_DWithin(field,
+  point, distance + 0.001)` for a radius or a circle, and `ST_DWithin(field,
+  shape, 0.001)` for `within`, `contains` and `intersects`, since anything
+  inside a shape, on its edge or touching it is within no distance of it,
+  ring by ring or not. PostGIS's distances are good to some nanometres, so
+  a millimetre is far past what it can miss, and close enough that it
+  rarely finds a row the code turns down. Verified: the four cases are each
+  within the margin (`ST_DWithin` true where `ST_Covers` is false), and
+  every case of `tools/geo_cases.py`, run as a query against every case's
+  shape at once on PostGIS 3.4.2 (Postgres.app), gives the code's answer;
+  CI runs the same test on its 3.6.4.
+- **A box's envelopes are worked out when the read runs**
+  (`EnvelopePart`), from the box's west and east, so the statement's text
+  stays fixed: across the antimeridian, from the west to 180 and from -180
+  to the east; with a side on the antimeridian, the line at the other end
+  too, since the code takes -180 as 180; otherwise the box twice.
+- **Nearest first is the code's order.** The statement orders by
+  `ST_Distance` and selects it; the runtime sorts the rows the code keeps
+  by `geo.distance` as it rounds it, to the micrometre, then by `id`, the
+  tie-break a list ordered by a field has. It has fetched enough when the
+  last row it keeps is nearer, by the code, than PostGIS's distance to the
+  last row fetched less the margin, so no row it didn't fetch could come
+  before it.
+- **The statement asks for what the read keeps, then four times as
+  many** (`Source::Fetch`): a list's `limit:`, a page's size and one more,
+  every row for a query of one record (found by a unique field). Each ask
+  runs the whole statement again in the same transaction and keeps the
+  last answer, so it reads one state of the table; a page's cursor comes
+  from the rows the code kept.
+- **Where a condition may stand.** Its own `where:` line or an `and`'s
+  part: under `not` the index can't serve it, and under `or` the rows the
+  code turns down would need the other side's answer, which the statement
+  doesn't give (both `query.condition_unsupported`); `where_present:`
+  doesn't take one, its value never being absent; an include's records
+  aren't rechecked yet (`toolchain.not_built_yet`). A record whose field
+  is `none` meets no `geo.` condition. The values are parameters or
+  fields inside one; `within`'s `distance:` may also be a length written
+  out, proved never negative as in code.
+- **What each form takes**, as in code: `within(distance:)` and the circle
+  a `Point` field (`type.mismatch`, question 10); the box a `Point` field
+  (`query.condition_unsupported`, question 11); `within` a `Polygon`, a
+  `MultiPolygon`, a `BoundingBox` or a `Circle` (the forms the page
+  lists); `contains` and `intersects` any geometry. A `BoundingBox` or
+  `Circle` field, kept in named columns, can't be tested. `geo.distance`
+  in `order:` is the only order, of a `List`, `asc`, beside a radius from
+  the same point on the same field; any other function of a field in
+  `order:` is `query.order_field` (before, one was silently left out).
+- **Derived indexes.** One GiST index on each geometry field a condition
+  tests, `<table>_<field>_idx`, and one on a `Point` field cast to
+  `geometry` for a box filter, `<table>_<field>_box_idx` (the index's
+  method now records the cast); none where a declared geographic index
+  holds the field; partial for `visible:` as every derived index is.
+- **`jadpo sql`** says what runs after the statement (`then:`), and where
+  the rows to fetch and a box's envelopes come from.
+- **Where it was tested.** `jadpo-check`'s geospatial tests for each form
+  and error; the golden SQL of six queries (`jadpo-plan`'s `tests/sql`);
+  and `jadpo-cli`'s `geo_queries`, in the gate's geography step: the
+  page's queries over two thousand bakeries and three hundred patches,
+  each the code's answer and each through its index (`EXPLAIN`), boxes
+  across and onto the antimeridian and round the pole, the recheck asking
+  again, ties by `id`, and every case of chunk 5.5u3's file as a query.
+  The page's queries are checked examples, and their test runs on PostGIS
+  with the docs.
+
 ### Open questions
 
 1. **Are edges great circles?** RFC 7946 §3.1.1 says a line between two
@@ -1245,7 +1544,9 @@ Five chunks, each one session, placed after 5.5u on the roadmap:
   5.5u4: the `geo.` conditions, the box and circle filters and order by
   distance, with area 6 amended and golden SQL for each. Done when each
   query on the page runs against PostGIS through its index and agrees with
-  the code's answer on the page's examples.
+  the code's answer on the page's examples. *Built:* every condition rechecked in code
+  after an index search a millimetre wider, so the query's answer is the
+  code's, the four `ST_Covers` cases included ("Chosen in chunk 5.5u5").
 - **5.5u6 Geospatial interop** `opus · high`, after 5.5u4: `Feature` and
   `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done
