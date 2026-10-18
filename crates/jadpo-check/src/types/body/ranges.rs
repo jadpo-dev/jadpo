@@ -337,6 +337,8 @@ struct Combined {
     /// A rate type's `from` and `to` currencies (chunk 5.5h4).
     rate_from: Option<u32>,
     rate_to: Option<u32>,
+    /// A vector type's one length (chunk 5.5s2).
+    dimensions: Option<u64>,
     /// The standard type held as text whose own check the chain makes
     /// (area 19, chunk 5.5i), which counts as `format`.
     standard: Option<&'static str>,
@@ -389,6 +391,7 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
         out.currency = out.currency.or(rules.currency);
         out.rate_from = out.rate_from.or(rules.rate_from);
         out.rate_to = out.rate_to.or(rules.rate_to);
+        out.dimensions = out.dimensions.or(rules.dimensions);
         out.standard = out.standard.or(rules.standard);
     }
     out
@@ -415,6 +418,9 @@ impl Combined {
         if let Some(n) = self.max_length {
             out.push(("max_length", format!("max_length: {n}")));
         }
+        if let Some(n) = self.dimensions {
+            out.push(("dimensions", format!("dimensions: {n}")));
+        }
         if let Some(pattern) = self.patterns.first() {
             out.push(("pattern", format!("pattern: \"{pattern}\"")));
         }
@@ -422,7 +428,9 @@ impl Combined {
             out.push(("format", "format: TextFormat.email".to_string()));
         } else if let Some(builtin) = self.checked {
             out.push(("format", builtin.name().to_string()));
-        } else if let Some(standard) = self.standard {
+        } else if let Some(standard) = self.standard
+            && !jadpo_std::standard::ai::rounds(standard)
+        {
             out.push(("format", standard.to_string()));
         }
         if let Some(scale) = self.scale {
@@ -725,7 +733,7 @@ impl Body<'_> {
         {
             out.push("max".to_string());
         }
-        if needs.min_length.is_some() || needs.max_length.is_some() {
+        if needs.min_length.is_some() || needs.max_length.is_some() || needs.dimensions.is_some() {
             let counted = self.counted(value, actual);
             // A text operation's result is never longer than the text it
             // cuts (`at_most_length_of`, area 19, question 29).
@@ -747,7 +755,12 @@ impl Body<'_> {
             // least one: nothing proves two items differ.
             let collapses = matches!(self.table.structure(target), Ty::Set(_))
                 && matches!(self.table.structure(actual), Ty::List(_));
-            if let Some(n) = needs.min_length {
+            // A vector type's one length decides its lengths, checked
+            // first, so a value that has it has them too (chunk 5.5s2).
+            let decided = needs.dimensions.is_some_and(|n| {
+                needs.min_length.is_none_or(|m| m <= n) && needs.max_length.is_none_or(|m| m >= n)
+            });
+            if let Some(n) = needs.min_length.filter(|_| !decided) {
                 if (collapses && n > 1) || !at_least_length(n, low, counted.as_ref()) {
                     out.push("min_length".to_string());
                 } else if !at_least_length(n, low, None) {
@@ -755,12 +768,27 @@ impl Body<'_> {
                     proved.push(("min_length".to_string(), by));
                 }
             }
-            if let Some(n) = needs.max_length {
+            if let Some(n) = needs.max_length.filter(|_| !decided) {
                 if !at_most_length(n, high, counted.as_ref()) {
                     out.push("max_length".to_string());
                 } else if !at_most_length(n, high, None) {
                     let by = counted.as_ref().map(|c| c.by.clone()).unwrap_or_default();
                     proved.push(("max_length".to_string(), by));
+                }
+            }
+            // A vector type's one length (chunk 5.5s2): the value's own
+            // type fixing the same, a list written out with that many
+            // items, or a condition on its length.
+            if let Some(n) = needs.dimensions {
+                let fixed = has.dimensions == Some(n);
+                let exactly = |counted: Option<&Counted>| {
+                    at_least_length(n, low, counted) && at_most_length(n, high, counted)
+                };
+                if !fixed && !exactly(counted.as_ref()) {
+                    out.push("dimensions".to_string());
+                } else if !fixed && !exactly(None) {
+                    let by = counted.as_ref().map(|c| c.by.clone()).unwrap_or_default();
+                    proved.push(("dimensions".to_string(), by));
                 }
             }
         }
@@ -788,6 +816,7 @@ impl Body<'_> {
         let standard = needs.standard.is_none_or(|name| {
             has.standard == Some(name)
                 || jadpo_std::standard::markup::sanitises(name)
+                || jadpo_std::standard::ai::rounds(name)
                 || self.made_as(value) == Some(name)
         });
         if (needs.email && !is_email) || !checked || !standard {

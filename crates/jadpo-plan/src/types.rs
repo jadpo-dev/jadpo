@@ -414,6 +414,12 @@ impl Types {
                     }
                     _ => break,
                 },
+                // A `Vector`'s own lengths, and its items kept as floats
+                // (chunk 5.5s2).
+                TypeRef::Std(name, _) => {
+                    rules.extend(jadpo_std::standard::collection_rules(&name));
+                    break;
+                }
                 _ => break,
             }
         }
@@ -656,6 +662,8 @@ impl Types {
 pub(crate) fn part_type(host: &str, field: &str, part: jadpo_std::Part) -> TypeRef {
     match part {
         jadpo_std::Part::Of(builtin) => TypeRef::Builtin(builtin),
+        // A vector's item, a decimal to code (chunk 5.5s2).
+        jadpo_std::Part::Float => TypeRef::Builtin(jadpo_std::Builtin::Decimal),
         jadpo_std::Part::Whole(..)
         | jadpo_std::Part::Bounded { .. }
         | jadpo_std::Part::Line

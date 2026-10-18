@@ -1034,6 +1034,44 @@ pub fn shown(
             crate::geo::coordinate(*value, positive, negative, tag)?
         }
         (FormatKey::Geometry, value) => crate::geo::shown(value, tag)?,
+        // A vector's numbers, an embedding's model and vector (chunk
+        // 5.5s2).
+        (FormatKey::Vector, Value::List(items)) => {
+            let numbers = items
+                .iter()
+                .map(|item| present::number(item, tag))
+                .collect::<Result<Vec<_>, _>>()?;
+            format!("[{}]", numbers.join("; "))
+        }
+        (FormatKey::Vector, Value::Record(record)) => {
+            let (Some(model), Some(vector)) = (record.get("model"), record.get("vector")) else {
+                return Err(Fault::Shape);
+            };
+            let models = entry_of(model).ok_or(Fault::Shape)?;
+            format!(
+                "{} {}",
+                shown(models, model, tag, zone, format_spec)?,
+                shown(entry, vector, tag, zone, format_spec)?
+            )
+        }
+        // Each part the value has, by its label (chunk 5.5s2).
+        (FormatKey::ByLabel(labels), Value::Record(record)) => {
+            let mut out = Vec::new();
+            for (label, part) in labels {
+                let shown = match record.get(part) {
+                    None | Some(Value::None) => continue,
+                    Some(value @ (Value::Int(_) | Value::Decimal(_))) => {
+                        present::number(value, tag)?
+                    }
+                    Some(value) => {
+                        let entry = entry_of(value).ok_or(Fault::Shape)?;
+                        shown(entry, value, tag, zone, format_spec)?
+                    }
+                };
+                out.push(format!("{label} {shown}"));
+            }
+            out.join(", ")
+        }
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
         // code, international otherwise (chunk 5.5l2).

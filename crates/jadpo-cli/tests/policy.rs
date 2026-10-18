@@ -431,8 +431,8 @@ action audit() -> AuditView {
 "#,
     ),
     (
-        "domains/desk/types/token_count.jadpo",
-        r#"type TokenCount = Int {}
+        "domains/desk/types/tokens_issued.jadpo",
+        r#"type TokensIssued = Int {}
 "#,
     ),
     (
@@ -454,10 +454,10 @@ action list_token_ids(person: Principal.user) -> List<TokenId> {
     ),
     (
         "domains/desk/actions/count_tokens.jadpo",
-        r#"use desk/types { TokenCount }
+        r#"use desk/types { TokensIssued }
 
-action count_tokens(person: Principal.user) -> TokenCount {
-    return TokenCount(list.count(sessions.tokens(person.id)))
+action count_tokens(person: Principal.user) -> TokensIssued {
+    return TokensIssued(list.count(sessions.tokens(person.id)))
 }
 "#,
     ),

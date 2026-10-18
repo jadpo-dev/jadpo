@@ -102,6 +102,10 @@ pub enum Codec {
     /// `LocalTime` is `"09:30:00"`, read and written by the contract's
     /// one implementation for the type called `ty`.
     Standard { ty: String },
+    /// A vector's item (area 19, chunk 5.5s2): a JSON number, held as the
+    /// decimal that is the nearest single-precision float
+    /// (`standard::ai::float`) and written as that decimal.
+    Float,
 }
 
 /// One variant of an enum codec.

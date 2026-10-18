@@ -1508,6 +1508,46 @@ public type ModelId = Object {
     name: Text
 }
 
+/// How many tokens a prompt or an answer holds, by its model's tokenizer
+/// (area 19): a whole number from 0.
+public type TokenCount = Int {}
+
+/// The tokens one call to a model used (area 19): what it read, what it
+/// wrote, and how many of those it read its provider's cache served, where
+/// it says.
+public type TokenUsage = Object {
+    input: TokenCount
+    output: TokenCount
+    cached: TokenCount?
+}
+
+/// Who wrote a message in a conversation with a model (area 19).
+public type ChatRole = Enum {
+    system
+    user
+    assistant
+    tool
+}
+
+/// One message in a conversation with a model (area 19): who wrote it and
+/// what it says, sent `{"role": "user", "content": "..."}`.
+public type ChatMessage = Object {
+    role: ChatRole
+    content: Text
+}
+
+/// A list of 1 to 16,000 numbers, each a single-precision float, as a
+/// model's embedding is (area 19). A type built on it fixes how many with
+/// `dimensions:`.
+public type Vector = List<Decimal> {}
+
+/// A vector with the model that made it (area 19), since vectors from
+/// different models can't be compared.
+public type Embedding = Object {
+    model: ModelId
+    vector: Vector
+}
+
 /// An amount of a medicine (area 19), by mass or by volume, above nothing.
 /// Shown in milligrams or millilitres: `500 mg`, `5 ml`.
 public type Dose = Enum {

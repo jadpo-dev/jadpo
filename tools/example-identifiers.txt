@@ -62,7 +62,9 @@ arrivals
 arrived_at
 article
 article_id
+article_meaning
 article_title
+article_vector
 article_view
 articles
 asked_words
@@ -459,6 +461,7 @@ egg
 email_on_completion
 email_on_done
 email_taken
+embedding_unreadable
 emma
 emptied
 empty_patch
@@ -844,6 +847,7 @@ misuse_test_boundary
 mix_dough
 mixed_currencies
 mobile
+model_reply
 monday_classes
 monitor_text
 monitored_pulse
