@@ -131,6 +131,9 @@ fn what(secret: &str) -> &'static str {
         }
         security::JWT => "A token is checked with `crypto.verify_jwt`",
         security::TOTP_SECRET => "An authenticator's secret checks the codes it makes",
+        security::ONE_TIME_CODE => {
+            "A one-time code is checked when it arrives and never kept, so it can't be used again"
+        }
         _ => "A secret is passed only to what needs it",
     }
 }
@@ -214,7 +217,10 @@ pub(crate) fn stored(entity: &str, name: &str, secret: &str, span: Span) -> Diag
             "Store `crypto.hash_password(...)` of it in a `PasswordHash` field in `{name}`'s place"
         ),
         security::API_KEY | security::BEARER_TOKEN => format!(
-            "Store `hash.sha256(...)` of it in a `Bytes` field in `{name}`'s place, and look it up by that"
+            "Store `Hash(hash.sha256(...))` of it in a `Hash` field in `{name}`'s place, and look it up by that"
+        ),
+        security::ONE_TIME_CODE => format!(
+            "Remove `{name}`, check the code when it arrives, and keep only when it was used"
         ),
         _ => {
             format!("Remove `{name}`, and check the token with `crypto.verify_jwt` when it arrives")

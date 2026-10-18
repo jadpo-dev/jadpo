@@ -75,6 +75,9 @@ pub fn from(value: &Value) -> Result<Value, Fault> {
         (None, Value::Bool(flag)) => flag.to_string(),
         // `Email`, `Url` and `IpAddress` are their text.
         (None, Value::Text(text)) => text.to_string(),
+        // A type built on `Bytes` (`Hash`, `EncryptedValue`) is its Base64,
+        // as JSON sends it (chunk 5.5r3).
+        (None, Value::Bytes(bytes)) => crate::encoding::to_base64(bytes),
         _ => return Err(Fault::Shape),
     };
     Ok(Value::text(&text))
@@ -93,6 +96,7 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
     }
     Ok(match (form, value) {
         (TextForm::Checked | TextForm::Html, Value::Text(text)) => text.to_string(),
+        (TextForm::Base64, Value::Bytes(bytes)) => crate::encoding::to_base64(bytes),
         (TextForm::Uuid, Value::Uuid(text)) => text.to_ascii_lowercase(),
         // A latitude, a longitude, a bearing, with its places (chunk 5.5s).
         (TextForm::Decimal, Value::Decimal(decimal)) => decimal.to_string(),
@@ -481,6 +485,15 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         // A secret value, held so that it is never written out (chunk
         // 5.5r2).
         TextForm::Secret => entry.accepts(raw).then(|| Value::secret(entry.name, raw)),
+        // A type built on `Bytes`, its bytes passing its check (chunk
+        // 5.5r3).
+        TextForm::Base64 => crate::encoding::from_base64(raw)
+            .filter(|bytes| {
+                entry
+                    .validator
+                    .is_some_and(|validator| validator.accepts_bytes(bytes))
+            })
+            .map(|bytes| Value::Bytes(std::rc::Rc::from(bytes))),
         TextForm::Uuid => entry
             .validator
             .is_some_and(|validator| validator.accepts(raw))
@@ -878,6 +891,9 @@ pub fn format(
         (Some(entry), value) => shown(entry, value, tag, zone, format_spec)?,
         // `Email`, `Url` and `IpAddress` are shown as they are written.
         (None, Value::Text(text)) => text.to_string(),
+        // A type built on `Bytes` is shown as its canonical text, its
+        // Base64 (chunk 5.5r3).
+        (None, Value::Bytes(bytes)) => crate::encoding::to_base64(bytes),
         // A number in the locale's digits and separators (area 19,
         // "Numbers").
         (None, Value::Int(_) | Value::Decimal(_)) => present::number(value, tag)?,

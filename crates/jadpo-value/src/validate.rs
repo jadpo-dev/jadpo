@@ -188,7 +188,9 @@ impl Validator {
                 // A broken rule names the rule, never the text (chunk
                 // 5.5r2).
                 Value::Secret(secret) => rules.check_text_with(secret.expose(), pattern.as_ref()),
-                Value::Bytes(bytes) => rules.check_length(bytes.len() as u64, "bytes"),
+                // Its length, and the check of a standard type built on
+                // `Bytes` (chunk 5.5r3).
+                Value::Bytes(bytes) => rules.check_bytes(bytes),
                 Value::List(items) | Value::Set(items) => {
                     rules.check_length(items.len() as u64, "items")
                 }

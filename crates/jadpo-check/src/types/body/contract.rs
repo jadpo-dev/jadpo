@@ -310,7 +310,11 @@ impl Body<'_> {
                 }
                 // Its own check, or its range, is what `malformed` already
                 // covers.
-                Holds::Text { .. } | Holds::Whole { .. } => Some(Ty::Named(entry.name.to_string())),
+                // Its own check, or its range, or the check of one built on
+                // `Bytes` (chunk 5.5r3), is what `malformed` already covers.
+                Holds::Text { .. } | Holds::Whole { .. } | Holds::Bytes => {
+                    Some(Ty::Named(entry.name.to_string()))
+                }
                 // Read as the type it is built on, its bounds checked as a
                 // construction's (chunk 5.5i3).
                 Holds::Bounded { of, .. } => Some(Ty::Prim(of)),

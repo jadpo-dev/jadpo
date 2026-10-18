@@ -354,7 +354,7 @@ impl Quantity {
 /// A runtime value. Named types are erased to what they are built on: a
 /// value has already been checked against its type's rules when it was
 /// built. A nullable value is the value itself or [`Value::None`].
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Unit,
     None,
@@ -392,6 +392,38 @@ pub enum Value {
     /// out only redacted and compared in constant time.
     Secret(crate::secret::Secret),
 }
+
+impl PartialEq for Value {
+    /// Contents compared, `Bytes` in time that depends on their lengths
+    /// alone, wherever they are, so how long comparing two digests, tags or
+    /// sealed values takes says nothing of where they differ (chunk 5.5r3);
+    /// a secret value compares so too (chunk 5.5r2).
+    fn eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Bytes(a), Value::Bytes(b)) => crate::secret::constant_time_eq(a, b),
+            (Value::Unit, Value::Unit) | (Value::None, Value::None) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Int(a), Value::Int(b))
+            | (Value::Instant(a), Value::Instant(b))
+            | (Value::Duration(a), Value::Duration(b)) => a == b,
+            (Value::Decimal(a), Value::Decimal(b))
+            | (Value::Percentage(a), Value::Percentage(b)) => a == b,
+            (Value::Text(a), Value::Text(b)) | (Value::Uuid(a), Value::Uuid(b)) => a == b,
+            (Value::Date(a), Value::Date(b)) => a == b,
+            (Value::Zoned(a), Value::Zoned(b)) => a == b,
+            (Value::Money(a), Value::Money(b)) => a == b,
+            (Value::Quantity(a), Value::Quantity(b)) => a == b,
+            (Value::List(a), Value::List(b)) | (Value::Set(a), Value::Set(b)) => a == b,
+            (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Record(a), Value::Record(b)) => a == b,
+            (Value::Variant(a), Value::Variant(b)) => a == b,
+            (Value::Secret(a), Value::Secret(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Value {}
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Value) -> Option<Ordering> {

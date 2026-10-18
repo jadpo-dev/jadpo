@@ -170,6 +170,12 @@ fn every_stub_agrees_with_its_data_entry() {
                 assert_eq!(base, wide, "{} is text", entry.name);
                 assert!(members.is_empty(), "{}'s check is its entry's", entry.name);
             }
+            // A type built on `Bytes`, its check in its entry (chunk
+            // 5.5r3).
+            Holds::Bytes => {
+                assert_eq!(base, "Bytes", "{} is bytes", entry.name);
+                assert!(members.is_empty(), "{}'s check is its entry's", entry.name);
+            }
             // A type built on `Int`, its range in its entry (chunk 5.5n).
             Holds::Whole { .. } => {
                 assert_eq!(base, "Int", "{} is a whole number", entry.name);
@@ -462,8 +468,8 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 );
                 schema
             }
-            Holds::Whole { .. } => {
-                let (builtin, rules) = jadpo_std::standard::declared(name).expect("a range");
+            Holds::Whole { .. } | Holds::Bytes => {
+                let (builtin, rules) = jadpo_std::standard::declared(name).expect("its rules");
                 scalar_schema(builtin, &rules)
             }
             // A geometry: its GeoJSON object (chunk 5.5s).
