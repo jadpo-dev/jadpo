@@ -167,6 +167,11 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
         (TextForm::CodeThenText, Value::Record(record)) => {
             crate::media::code_then_text(entry, record)?
         }
+        // Two parts joined, a flight's designator (chunk 5.5m2).
+        (TextForm::Joined(separator), Value::Record(record)) => {
+            crate::media::joined_text(entry, record, separator)?
+        }
+        (TextForm::FlightNumber, Value::Record(record)) => crate::measures::flight_text(record)?,
         (TextForm::Cue, Value::Record(record)) => crate::media::cue_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
@@ -323,6 +328,13 @@ pub fn parse_in(raw: &str, ty: &str, form: &Value, country: &Value) -> Result<Va
     let Some(form) = code_form(form)? else {
         return parse(raw, ty);
     };
+    // A form read but never written: an `Isbn` from an ISBN-10 (chunk
+    // 5.5m2), `malformed` for a wrong check character.
+    if jadpo_std::standard::reads_form(ty, form) {
+        return jadpo_std::standard::isbn_from_isbn10(raw)
+            .map(|isbn| Value::text(&isbn))
+            .ok_or(MALFORMED);
+    }
     let entry = standard_type(ty).ok_or(Fault::Shape)?;
     let (Some(codes), Some(forms)) = (entry.codes(), entry.form_codes(form)) else {
         return Err(Fault::Shape);
@@ -377,6 +389,9 @@ pub fn broken_part(record: &crate::Record) -> Option<&'static str> {
         return crate::event::broken_part(record).map(|broken| broken.part);
     }
     if let Some(part) = crate::media::broken_part(record) {
+        return Some(part);
+    }
+    if let Some(part) = crate::measures::broken_part(record) {
         return Some(part);
     }
     jadpo_std::standard::part_rules(&record.ty)
@@ -469,7 +484,14 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::Code => code(entry, raw),
         TextForm::Money => crate::money::read(raw).map(Value::Money),
         TextForm::Quantity => {
-            let Holds::Builtin(jadpo_std::Builtin::Quantity(kind)) = entry.holds else {
+            // A quantity, or a type built on one with bounds of its own (a
+            // heart rate, chunk 5.5m2), whose bounds its construction keeps.
+            let (Holds::Builtin(jadpo_std::Builtin::Quantity(kind))
+            | Holds::Bounded {
+                of: jadpo_std::Builtin::Quantity(kind),
+                ..
+            }) = entry.holds
+            else {
                 return Err(Fault::Shape);
             };
             return match jadpo_std::quantity::parse_text(kind, raw) {
@@ -529,6 +551,8 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             crate::media::read_numbers(entry, raw, separator)
         }
         TextForm::CodeThenText => crate::media::read_code_then_text(entry, raw),
+        TextForm::Joined(separator) => crate::media::read_joined(entry, raw, separator),
+        TextForm::FlightNumber => crate::measures::read_flight(entry, raw),
         TextForm::Cue => crate::media::read_cue(entry, raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
@@ -784,6 +808,18 @@ pub fn format_as(
         let tag = present::tag_of(locale)?;
         return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
     }
+    // A type built on a quantity shown in units of its own (a heart rate
+    // in beats a minute, chunk 5.5m2), which the runtime holds as the
+    // quantity.
+    if let (Value::Text(name), Value::Quantity(_)) = (standard, value)
+        && let Some(entry) = standard_type(name)
+        && matches!(entry.format.key, FormatKey::UnitsIn(_))
+    {
+        let tag = present::tag_of(locale)?;
+        return Ok(Value::text(&crate::measures::units_in(
+            entry, value, unit, tag,
+        )?));
+    }
     format(value, locale, zone, format_spec, options, unit)
 }
 
@@ -805,6 +841,10 @@ pub fn format(
             present::units::format(quantity.amount, unit_of(quantity.kind, unit)?, tag)?
         }
         (Some(_), Value::Percentage(fraction)) => present::percent(fraction, tag)?,
+        // Measures in the unit `unit:` names, for their kind (chunk 5.5m2).
+        (Some(entry), value) if matches!(entry.format.key, FormatKey::Measures { .. }) => {
+            crate::measures::measures(entry, value, unit, tag)?
+        }
         (Some(entry), value) => shown(entry, value, tag, zone, format_spec)?,
         // `Email`, `Url` and `IpAddress` are shown as they are written.
         (None, Value::Text(text)) => text.to_string(),
@@ -921,6 +961,14 @@ pub fn shown(
         (FormatKey::ProblemDetails, Value::Record(record)) => crate::web::problem_text(record)?,
         // SMPTE's notation, the same in every locale (chunk 5.5p).
         (FormatKey::Timecode, Value::Record(record)) => crate::media::timecode_shown(record)?,
+        // In the units a reader expects (chunk 5.5m2).
+        (FormatKey::UnitsIn(_), value) => {
+            crate::measures::units_in(entry, value, &Value::None, tag)?
+        }
+        (FormatKey::Measures { .. }, value) => {
+            crate::measures::measures(entry, value, &Value::None, tag)?
+        }
+        (FormatKey::Dosage, Value::Record(record)) => crate::measures::dosage(record, tag)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
         // code, international otherwise (chunk 5.5l2).
@@ -999,6 +1047,8 @@ pub fn shown(
             for value in parts.iter().filter_map(|name| part(name)) {
                 out.push(match value {
                     Value::Int(_) | Value::Decimal(_) => present::number(value, tag)?,
+                    // Text as it is written: a barcode's data (chunk 5.5m2).
+                    Value::Text(text) => text.to_string(),
                     value => {
                         let entry = entry_of(value).ok_or(Fault::Shape)?;
                         shown(entry, value, tag, zone, format_spec)?

@@ -686,6 +686,47 @@ pub fn is_mpan(text: &str) -> bool {
             == *check
 }
 
+/// An ISBN-10 as its `Isbn` (ISO 2108; the ISBN Users' Manual, 7th
+/// edition, 5): nine digits and a check character, a digit or `X` for 10,
+/// read in either case, such that the ten weighted 10 down to 1 sum to a
+/// multiple of 11; it is the ISBN-13 `978`, its first nine digits and
+/// GS1's check digit (chunk 5.5m2). `None` for anything else, a wrong
+/// check character included.
+pub fn isbn_from_isbn10(text: &str) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let [body @ .., check] = chars.as_slice() else {
+        return None;
+    };
+    if body.len() != 9 {
+        return None;
+    }
+    let digits: Vec<u32> = body.iter().map(|c| c.to_digit(10)).collect::<Option<_>>()?;
+    let check = match check {
+        'X' | 'x' => 10,
+        c => c.to_digit(10)?,
+    };
+    let sum: u32 = digits
+        .iter()
+        .chain(std::iter::once(&check))
+        .zip((1..=10).rev())
+        .map(|(digit, factor)| digit * factor)
+        .sum();
+    if !sum.is_multiple_of(11) {
+        return None;
+    }
+    let mut isbn: String = std::iter::once("978".to_string())
+        .chain(digits.iter().map(u32::to_string))
+        .collect();
+    let gs1: u32 = isbn
+        .chars()
+        .filter_map(|c| c.to_digit(10))
+        .zip([1, 3].into_iter().cycle())
+        .map(|(digit, times)| digit * times)
+        .sum();
+    isbn.push(char::from_digit((10 - gs1 % 10) % 10, 10)?);
+    Some(isbn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -712,6 +753,29 @@ mod tests {
         assert!(!is_snomed_concept("404684004"));
         assert!(is_mpan("1200012345679"));
         assert!(!is_mpan("1200012345670"));
+    }
+
+    #[test]
+    fn an_isbn_10_reads_as_its_isbn() {
+        // The ISBN Users' Manual's example, its check character `X` in
+        // either case, and a wrong check character.
+        assert_eq!(
+            isbn_from_isbn10("0306406152").as_deref(),
+            Some("9780306406157")
+        );
+        assert_eq!(
+            isbn_from_isbn10("080442957X").as_deref(),
+            Some("9780804429573")
+        );
+        assert_eq!(
+            isbn_from_isbn10("080442957x").as_deref(),
+            Some("9780804429573")
+        );
+        assert!(passes_gs1("9780804429573"));
+        assert_eq!(isbn_from_isbn10("0306406153"), None);
+        assert_eq!(isbn_from_isbn10("0-306-40615-2"), None);
+        assert_eq!(isbn_from_isbn10("030640615"), None);
+        assert_eq!(isbn_from_isbn10("X306406152"), None);
     }
 
     #[test]

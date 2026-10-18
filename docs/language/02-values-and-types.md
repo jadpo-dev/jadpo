@@ -43,7 +43,8 @@ These types exist without being declared, and their names cannot be reused.
 > the built-in in that chunk: chunk 5.5h renamed this page's `Money`
 > objects (`PriceTag`, `OrderLine`) and its `Currency` enum, chunk 5.5l2
 > its `PostalCode` (`ShippingCode`), chunk 5.5m its `Sku`
-> (`StockCode`), chunk 5.5i3 its `Price` (`ItemPrice`), and chunk 5.5h gave a
+> (`StockCode`), chunk 5.5i3 its `Price` (`ItemPrice`), chunk 5.5m2 its
+> `Dimensions` (`BoxSize`), and chunk 5.5h gave a
 > `Money` type its `currency:` and `rounding:` settings, with `min:` and
 > `max:` in minor units (area 19, "Money and payments"). A shape that copies a standard type under
 > another name is the declinable error `type.standard_exists`. Still no
@@ -2133,19 +2134,19 @@ check failed: 1 error, 1 file
 ### `syntax.type_parent_required`
 
 ```jadpo check project=e-parent expect=syntax.type_parent_required
-type Dimensions = {
+type BoxSize = {
     width: Int
 }
 ```
 
 ```text output
-error: `Dimensions` needs a base type
- --> main.jadpo:1:19
+error: `BoxSize` needs a base type
+ --> main.jadpo:1:16
   |
-1 | type Dimensions = {
-  |                   ^ expected a base before `{`
+1 | type BoxSize = {
+  |                ^ expected a base before `{`
   reason: Every type is written `type Name = Base { ... }`; the base says what it is built from, such as `Object`, `Enum`, `Input` or `Text`.
-  next: Add the base before `{`, for example `type Dimensions = Object {` (agent)
+  next: Add the base before `{`, for example `type BoxSize = Object {` (agent)
   rule: syntax.type_parent_required
   help: docs/language/02-values-and-types.html#syntax-type-parent-required
 

@@ -757,6 +757,31 @@ and a cue's rules where JSON is read; the checker proves them on literals
 (`types/body/media.rs`). A shape's `FieldMatch` may be `optional`
 (`Colour`'s alpha), and a stub parameter written `Percentage` or a
 quantity kind takes any type built on it.
+Since chunk 5.5m2 the records and measures are entries in
+`jadpo_std::standard::records` and `standard::health`. Two text forms came
+with them: `TextForm::Joined`, two parts joined by a separator, the first
+an enum's code, a standard type's text or a pattern's (`CodeThenText` is
+its case with a space and an enum, through the same
+`jadpo_value::media::read_joined`), and `TextForm::FlightNumber`, IATA's
+designator, in `jadpo_value::measures`. Three `FormatKey`s show measures
+in the unit a reader expects: `UnitsIn` (a quantity in a listed unit at
+listed places, or in `unit:`'s), `Measures` (an object's or a choice's
+quantity parts, each in its kind's listed unit or `unit:`'s, the unit
+written once where it says) and `Dosage`; `present::units` now splits a
+quantity into its number (`number_in`, exact or rounded to places) and
+its unit (`with_unit`), so a unit can follow several numbers. A type built
+on a quantity with `UnitsIn` (`HeartRate`) is named to `text.format` by
+the checker as a type held as text is, since the runtime holds only the
+quantity, and `StandardType::unit_kind` gives the kind `unit:` names a
+unit of. `standard::order_rules` orders two parts of an object (a
+rating's, a blood pressure's): the checker proves them on literals
+(`types/body/measures.rs`) and the JSON codec as it reads one
+(`jadpo_value::measures::broken_part`). A `Part::Bounded` on a `Duration`
+keeps its bounds in milliseconds as `min_duration` and `max_duration`.
+Four units joined the table with no literal suffix (`mmHg`, `bpm`,
+`mgdL` and the glucose millimole). `CodeForm::Isbn10` is a form read and
+never written (`standard::reads_form`), which `text.parse` turns into the
+13 digits through `standard::isbn_from_isbn10`.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts
