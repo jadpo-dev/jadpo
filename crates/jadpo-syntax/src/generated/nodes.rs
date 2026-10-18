@@ -2056,6 +2056,7 @@ impl Param {
 pub enum MemberItem {
     Member(Member),
     BareMember(BareMember),
+    RuleMember(RuleMember),
     RouteEntry(RouteEntry),
     Decl(Decl),
     Elision(Elision),
@@ -2065,6 +2066,7 @@ impl AstNode for MemberItem {
     fn can_cast(kind: SyntaxKind) -> bool {
         kind == MEMBER
             || kind == BARE_MEMBER
+            || kind == RULE_MEMBER
             || kind == ROUTE_ENTRY
             || Decl::can_cast(kind)
             || kind == ELISION
@@ -2076,6 +2078,9 @@ impl AstNode for MemberItem {
         }
         if kind == BARE_MEMBER {
             return Some(Self::BareMember(BareMember { syntax }));
+        }
+        if kind == RULE_MEMBER {
+            return Some(Self::RuleMember(RuleMember { syntax }));
         }
         if kind == ROUTE_ENTRY {
             return Some(Self::RouteEntry(RouteEntry { syntax }));
@@ -2092,6 +2097,7 @@ impl AstNode for MemberItem {
         match self {
             Self::Member(it) => it.syntax(),
             Self::BareMember(it) => it.syntax(),
+            Self::RuleMember(it) => it.syntax(),
             Self::RouteEntry(it) => it.syntax(),
             Self::Decl(it) => it.syntax(),
             Self::Elision(it) => it.syntax(),
@@ -2111,6 +2117,12 @@ impl From<BareMember> for MemberItem {
     }
 }
 
+impl From<RuleMember> for MemberItem {
+    fn from(node: RuleMember) -> MemberItem {
+        MemberItem::RuleMember(node)
+    }
+}
+
 impl From<RouteEntry> for MemberItem {
     fn from(node: RouteEntry) -> MemberItem {
         MemberItem::RouteEntry(node)
@@ -2126,6 +2138,42 @@ impl From<Decl> for MemberItem {
 impl From<Elision> for MemberItem {
     fn from(node: Elision) -> MemberItem {
         MemberItem::Elision(node)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RuleMember {
+    pub(crate) syntax: SyntaxNode,
+}
+
+impl AstNode for RuleMember {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == RULE_MEMBER
+    }
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
+impl RuleMember {
+    pub fn rule_kw_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, RULE_KW)
+    }
+    pub fn name(&self) -> Option<Name> {
+        support::child(&self.syntax)
+    }
+    pub fn colon_token(&self) -> Option<SyntaxToken> {
+        support::token(&self.syntax, COLON)
+    }
+    pub fn condition(&self) -> Option<Expr> {
+        support::child(&self.syntax)
     }
 }
 

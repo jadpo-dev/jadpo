@@ -1095,13 +1095,37 @@ reference only).
   a message is sensitive personal data (`health`); storing a vector is
   `toolchain.not_built_yet` until 5.5v. What the pages left open is area
   19's "Chosen in chunk 5.5s2".
-- [ ] **5.5t Cross-field rules** `opus · high` (area 2, decided by area 19,
+- [x] **5.5t Cross-field rules** `opus · high` (area 2, decided by area 19,
   question 15): named rules across an object type's fields (`rule
   ends_after_start: ends > starts`), proved or attempted like any rule.
   Design the syntax and errors on area 2's page first. Done when a
   booking whose end is before its start fails construction with the
   rule's name, a proved one needs no arm, and each new error has a
-  checked example.
+  checked example. Split (2026-10-18): this chunk builds the language
+  feature; the standard types' rules are 5.5t2. Built: `rule name:
+  condition` in an `Object`, `Input` or `Output`, a `Bool` over the type's
+  own fields only (literals, variants, operators, `match`, pure standard
+  operations; no constant, function, setting or clock); an object literal
+  that may break one is mapped by the rule's name or `invalid:`, and one
+  the declared ranges, its literals or a comparison around it prove takes
+  no arm; JSON and requests report a broken rule by name at the object's
+  path; OpenAPI lists the rules in the schema's description; `include`
+  and `pick` don't copy rules. A rule on an entity is refused, left for
+  Richard to decide. What the chunk chose is area 2's "Chosen in chunk
+  5.5t".
+- [ ] **5.5t2 Cross-field rules: the standard types** `opus · high` (area
+  19; split from 5.5t), after 5.5t and 5.5r3: the cross-part rules the
+  standard object types check only for literals and decoded JSON become
+  named rules, so a value built in code is proved or attempted like a
+  declared type's: `InstantRange` and `Range<T>` (start not after end,
+  5.5c2), `IsoWeek` (week 53 in a 52-week year, 5.5k), `CalendarEvent`'s
+  parts (5.5k3), `PostalAddress`'s postal code by country (5.5l2), an
+  identity document's number by kind and country (5.5l2), `Timecode` and
+  `SubtitleCue` (5.5p), a rating's and a blood pressure's parts (5.5n),
+  `MapTile` (5.5s), `TokenUsage`'s `cached` within `input` (5.5s2) and
+  `PasswordPolicy`'s lengths (5.5r3). Each rule's name is decided on area
+  19 and listed in the type's OpenAPI description. Done when each type's
+  literal, code-built value and JSON reading break the same named rule.
 - [ ] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
   write the geospatial area page from area 19's scope (the types in
   WGS84, GeoJSON on the wire, `geo.` construction and operations, PostGIS

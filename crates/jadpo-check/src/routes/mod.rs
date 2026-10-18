@@ -766,7 +766,9 @@ impl Reader<'_> {
                     let first = written.split_whitespace().next().unwrap_or("").to_string();
                     self.unknown_word(span, &first, &GROUP_ITEMS, "route group");
                 }
-                MemberItem::Elision(_) => {}
+                // Reported where it is written (area 2, "Rules across
+                // fields").
+                MemberItem::Elision(_) | MemberItem::RuleMember(_) => {}
             }
         }
 
@@ -1191,7 +1193,9 @@ impl Reader<'_> {
                             .next("Move the inner route out to the group, with its full path after the prefix"),
                     );
                 }
-                MemberItem::Elision(_) => {}
+                // Reported where it is written (area 2, "Rules across
+                // fields").
+                MemberItem::Elision(_) | MemberItem::RuleMember(_) => {}
             }
         }
 

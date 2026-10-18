@@ -54,6 +54,15 @@ impl Invalid {
         }
     }
 
+    /// For a rule an object type names across its fields, its name (area
+    /// 2, "Rules across fields").
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Invalid::Broken(broken) if broken.key == RuleKey::Named => Some(&broken.rule),
+            _ => None,
+        }
+    }
+
     /// What is wrong with the value, completing "The value ...".
     pub fn why(&self) -> &str {
         match self {
@@ -69,6 +78,9 @@ pub struct Validator {
     builtin: Option<Builtin>,
     rules: Vec<(Rules, Option<Pattern>)>,
     scale: Option<u32>,
+    /// An object type's rules across its fields, in the order written
+    /// (area 2, "Rules across fields").
+    across: Vec<jadpo_std::across::CrossRule>,
 }
 
 impl Validator {
@@ -91,7 +103,20 @@ impl Validator {
             builtin,
             rules,
             scale,
+            across: Vec::new(),
         }
+    }
+
+    /// The same validator, checking an object's rules across its fields
+    /// too, once its fields are checked.
+    pub fn with_across(mut self, across: Vec<jadpo_std::across::CrossRule>) -> Validator {
+        self.across = across;
+        self
+    }
+
+    /// Whether it checks rules across an object's fields.
+    pub fn has_across(&self) -> bool {
+        !self.across.is_empty()
     }
 
     /// The fixed scale its values are kept at, from `scale:` on its chain.
@@ -101,7 +126,8 @@ impl Validator {
 
     /// Whether it has anything to check beyond the value's kind.
     pub fn is_empty(&self) -> bool {
-        self.rules.iter().all(|(rules, _)| rules.is_empty())
+        self.across.is_empty()
+            && self.rules.iter().all(|(rules, _)| rules.is_empty())
             && !self.builtin.is_some_and(|builtin| {
                 matches!(
                     builtin,
@@ -238,6 +264,23 @@ impl Validator {
                 _ => Ok(()),
             }
             .map_err(Invalid::Broken)?;
+        }
+        // The rules across an object's fields, in the order written: the
+        // first broken one is the one reported (area 2, "Rules across
+        // fields").
+        if let (false, Value::Record(record)) = (self.across.is_empty(), value) {
+            let fields: Vec<Value> = record.fields.iter().map(|(_, v)| v.clone()).collect();
+            if let Some(rule) = self
+                .across
+                .iter()
+                .find(|rule| !crate::across::holds(rule, &fields))
+            {
+                return Err(Invalid::Broken(Broken {
+                    key: RuleKey::Named,
+                    rule: rule.name.clone(),
+                    why: format!("doesn't follow its type's rule `{}`", rule.name),
+                }));
+            }
         }
         Ok(())
     }

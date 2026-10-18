@@ -111,6 +111,7 @@ kinds! {
     Type: "type", Types, Built, 2;
     Field: "field", Types, Built, 2;
     Variant: "variant", Types, Built, 2;
+    Rule: "rule", Types, Built, 2;
     Constraint: "constraint", Types, Reserved, 5;
 
     Entity: "entity", Data, Built, 5;

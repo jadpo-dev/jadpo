@@ -82,6 +82,20 @@ pub(super) fn lower(
             );
             body.block = vec![SiteId(id as u32)];
         }
+    } else if let Some(rule) = ast::RuleMember::cast(syntax.clone()) {
+        // A rule's body gives its condition, as a `return` would (area 2,
+        // "Rules across fields").
+        if let Some(condition) = rule.condition() {
+            let id = lower.alloc();
+            let value = lower.expr(&condition);
+            lower.fill(
+                id,
+                rule.syntax(),
+                TypeRef::Builtin(Prim::Unit),
+                typed::Node::Stmt(TypedStmt::Return { value: Some(value) }),
+            );
+            body.block = vec![SiteId(id as u32)];
+        }
     } else {
         let (params, result, fails, block) = parts(syntax);
         for param in params.iter().flat_map(ast::ParamList::params) {
@@ -584,6 +598,10 @@ impl Lower<'_> {
                     };
                 }
                 let inner = attempt.expr().map(|inner| self.expr(&inner));
+                // An object literal's arms name the rules across its
+                // fields, its only rules (area 2, "Rules across fields").
+                let across = matches!(attempt.expr(), Some(Expr::RecordExpr(record))
+                    if self.facts.builds.contains_key(&node_key(record.syntax())));
                 // The arms follow the call, so their sites do too.
                 let mapped = self.facts.mapped.get(&key).cloned().unwrap_or_default();
                 let mut arms = Vec::new();
@@ -608,8 +626,10 @@ impl Lower<'_> {
                         }
                         (None, _) => Vec::new(),
                     };
+                    let named = if across { rule.clone() } else { None };
                     // An arm naming no rule is reported; it maps nothing.
                     let rule = match rule.as_deref().map(RuleKey::from_word) {
+                        _ if across => None,
                         None => None,
                         Some(Some(key)) => Some(key),
                         Some(None) => continue,
@@ -632,6 +652,7 @@ impl Lower<'_> {
                     if let Some(failure) = failure_key {
                         arms.push(typed::RuleArm {
                             rule,
+                            named,
                             failure,
                             fields,
                             problem,
@@ -979,6 +1000,7 @@ impl Lower<'_> {
                     .iter()
                     .filter_map(|rule| RuleKey::from_word(rule))
                     .collect(),
+                named: Vec::new(),
             },
             Some(Fallible::Unknown) | None => typed::Fallible::Unknown,
         }
@@ -1037,7 +1059,13 @@ impl Lower<'_> {
             ),
         };
         let fields = self.fields_given(record.member_list(), &host, &prefix);
+        // An object literal can break only the rules across its fields,
+        // each by name (area 2, "Rules across fields").
         let fallible = match self.facts.constructions.get(&key) {
+            Some(Fallible::Construction(named)) => typed::Fallible::Construction {
+                rules: Vec::new(),
+                named: named.clone(),
+            },
             Some(verdict) => self.fallible(Some(verdict)),
             None => typed::Fallible::Never,
         };

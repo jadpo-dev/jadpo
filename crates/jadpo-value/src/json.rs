@@ -525,8 +525,14 @@ impl Codecs<'_> {
         };
         match validator.check(&value) {
             Ok(()) => Some(value),
+            // A rule across an object's fields is reported by its name, at
+            // the object's path (area 2, "Rules across fields").
             Err(invalid) => {
-                Self::problem(problems, path, invalid.key().word());
+                Self::problem(
+                    problems,
+                    path,
+                    invalid.name().unwrap_or(invalid.key().word()),
+                );
                 None
             }
         }

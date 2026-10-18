@@ -370,6 +370,16 @@ a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the
 executor fills it with the first problem the codec found, a built-in
 object like `IssuedToken` (`jadpo_std::http::builtin_object_fields`).
+Since chunk 5.5t a rule across an object's fields (area 2) is a `rule`
+node, a child of its type, whose typed body is its condition checked with
+the type's fields as parameters (`types::rule_callables`); `jadpo-plan`
+lowers each into `jadpo_std::across::CrossRule`, plain data on the
+object type's `ValidatorPlan`, and `jadpo_value::across` runs it, so the
+interpreter's builds, the codecs' objects and compiled code check one
+implementation. A broken one is `RuleKey::Named` with the rule's name,
+which `RuleArm::named` maps; the checker's proof reads the condition as a
+positionless `types::across::Cond` with comparisons known around the
+construction (`known::Relation`).
 
 Since chunk 3.12 everything the runtime needs of a plan is that kind of
 plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's

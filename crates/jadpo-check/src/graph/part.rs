@@ -158,7 +158,7 @@ impl Part<'_> {
     fn decl(&mut self, decl: &Decl, index: usize) {
         let item = self.items.iter().find(|item| item.index as usize == index);
         match decl {
-            Decl::TypeDecl(d) => self.type_decl(d),
+            Decl::TypeDecl(d) => self.type_decl(d, index),
             Decl::EntityDecl(d) => self.entity(d),
             Decl::FunctionDecl(_)
             | Decl::ActionDecl(_)
@@ -513,7 +513,7 @@ impl Part<'_> {
         self.out.nodes.push(node);
     }
 
-    fn type_decl(&mut self, decl: &ast::TypeDecl) {
+    fn type_decl(&mut self, decl: &ast::TypeDecl, index: usize) {
         let Some(name) = decl.name().as_ref().and_then(tree::name_text) else {
             return;
         };
@@ -619,6 +619,36 @@ impl Part<'_> {
             }
             Base::Refines(_) => {}
             _ => children.extend(self.written_fields(&name, &key, decl.member_list())),
+        }
+        // Each rule across its fields, with its typed body (area 2, "Rules
+        // across fields").
+        if matches!(base, Base::Object | Base::Input | Base::Output) {
+            for (order, rule) in crate::types::across::rule_members(decl.member_list())
+                .into_iter()
+                .enumerate()
+            {
+                let Some(rule_name) = rule.name().as_ref().and_then(tree::name_text) else {
+                    continue;
+                };
+                let rule_key = crate::graph::rule_key(self.lookup, &name, &rule_name);
+                let mut node = self.node(
+                    rule_key.clone(),
+                    Kind::Rule,
+                    format!("{name}.{rule_name}"),
+                    rule.syntax().clone(),
+                );
+                node.parent = Some(key.clone());
+                node.detail = Detail::Rule {
+                    order: order as u32,
+                    condition: rule
+                        .condition()
+                        .map(|c| crate::types::across::spaced(c.syntax()))
+                        .unwrap_or_default(),
+                };
+                self.out.nodes.push(node);
+                self.body(&rule_key, index as u32, Some(order as u32));
+                children.push(rule.syntax().clone());
+            }
         }
         let uses = self
             .resolver

@@ -488,7 +488,8 @@ impl Reader<'_> {
                     self.unknown_section(path, entry.syntax(), &head(entry.syntax()), &name);
                     continue;
                 }
-                MemberItem::Elision(_) => continue,
+                // A rule here is reported where it is written (area 2).
+                MemberItem::Elision(_) | MemberItem::RuleMember(_) => continue,
             };
             let Some(key) = member.member_key() else {
                 continue;

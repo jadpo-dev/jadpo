@@ -252,8 +252,9 @@ function from_count(n: Count) fails OrderEmpty, OrderTooLarge -> CakeCount {
 
 - **The keys are rules.** Each key names a rule of the type, or of a type it
   builds on, that neither the declared ranges nor a condition proves holds: `min`, `max`,
-  `min_length`, `max_length`, `pattern`, `format`, `version`, or a `Money`
-  type's `currency` (area 19). Each such
+  `min_length`, `max_length`, `pattern`, `format`, `version`, a `Money`
+  type's `currency` (area 19), or, for an object literal, a rule the
+  object's type names ("Rules across fields"). Each such
   rule needs exactly one arm.
 - **`invalid:` is the catch-all.** It covers every rule that can break and
   has no arm of its own, so `{ invalid: OrderTooLarge }` alone covers them
@@ -569,11 +570,12 @@ function view(name: ProductName, price: Pence) -> ProductView {
 Every declared field must be given, and unknown fields are errors. Fields can
 hold other objects and lists, nested as deeply as needed.
 
-An object literal never fails. A field accepts its declared type or anything
+An object literal never fails on a field. A field accepts its declared type or anything
 that widens to it, and when the field adds rules of its own, the declared
 ranges must prove the value follows them (`type.field_unproved`). A value
 that might break them is built first, on its own line, as the field's type
-(below), where its failure is mapped:
+(below), where its failure is mapped. Only a rule the type writes across
+its fields can make a literal fail ("Rules across fields", below):
 
 ```jadpo check project=field-first file=profiles.jadpo hidden
 type Profile = Object {
@@ -660,6 +662,195 @@ type Badge = Object {
 Reading through a nested object gives the inner object's field type:
 `customer.billing_address.postal_code` has type `Address.postal_code`, whether
 it came from the billing or the shipping address.
+
+### Rules across fields
+
+> **Decided on 2026-10-17 (area 19, question 15), designed and built in
+> chunk 5.5t.**
+
+A field's rules say what one value may be. A rule across fields says how
+the values of one object relate: a booking ends after it starts, a
+discount is below the price. An `Object`, `Input` or `Output` names each
+such rule in its block, and the rule is checked whenever a value of the
+type is made.
+
+```jadpo check project=across-fields file=types.jadpo hidden
+type Moment = Instant {}
+
+type BookingBackwards = Failure {
+    kind: FailureKind.invalid_value
+}
+```
+
+```jadpo check project=across-fields
+type Booking = Object {
+    starts: Moment
+    ends: Moment
+    rule ends_after_start: ends > starts
+}
+
+function book(starts: Moment, ends: Moment) fails BookingBackwards -> Booking {
+    var booking: Booking = attempt Booking {  // nothing proves the rule
+        starts: starts
+        ends: ends
+    } {
+        ends_after_start: BookingBackwards
+    }
+    return booking
+}
+
+function book_checked(starts: Moment, ends: Moment) fails BookingBackwards -> Booking {
+    if (ends <= starts) {
+        reject BookingBackwards
+    }
+    return Booking {  // the condition proves `ends_after_start`
+        starts: starts
+        ends: ends
+    }
+}
+
+test "a booking that ends before it starts is refused" {
+    assert book("2026-03-02T10:00:00Z", "2026-03-02T09:00:00Z") fails BookingBackwards
+    assert book_checked("2026-03-02T10:00:00Z", "2026-03-02T09:00:00Z") fails BookingBackwards
+}
+```
+
+- **Written in the type's block.** `rule name: condition`, one per line,
+  usually after the fields. A rule's name is lower_snake_case and its own:
+  no field or other rule of the type has it, and it is never `invalid`,
+  which an `attempt` keeps for every rule (`type.rule_name_taken`). `rule`
+  isn't reserved: a field may still be called `rule`.
+- **A condition over the type's own fields.** It names the fields bare
+  (`ends`) and reads through them (`stay.ends`); it uses literals,
+  variants, operators, `match` and the standard operations that always
+  give a result from their arguments alone. Nothing else: no function or
+  action of the application, constant, setting, clock, random value, key or
+  record (`type.rule_outside_fields`). It is a `Bool`
+  (`type.rule_not_condition`). A field that may be `none` is read with
+  `match`, as anywhere else.
+- **Checked whenever a value is made,** once every field has its value: an
+  object literal, `json.read`, a request's input and the output a route
+  test reads. The rules run in the order they are written, and the first
+  one broken is the one reported.
+- **An object literal can break one.** Building a type with rules is a
+  construction, mapped as `Type(value)` is ("Construction failures by
+  rule"): each rule neither the declared ranges nor a condition proves
+  needs an arm keyed by its name, or `invalid:` covers it. A literal whose
+  values are all literals is worked out while compiling, so a booking
+  written backwards is `type.invalid_literal`.
+- **Proof reads the values given.** A rule is read with each field
+  replaced by the value given for it, so `ends > starts`, built with
+  `starts: begin` and `ends: finish`, is proved after `if (finish <= begin)
+  { reject ... }` leaves, or inside `if (finish > begin)`. A comparison
+  proves itself between any two values written the same way, instants and
+  dates as well as numbers ("Conditions as proof"); numbers are proved by
+  their declared ranges too, and `and`, `or` and `not` combine as they do
+  in a condition. A rule that calls a standard operation or uses `match`
+  is never proved this way, so a literal that may break it is always
+  attempted.
+- **Every failure is `invalid_value`.** The report names the rule
+  (`ends_after_start`), never the values. JSON that breaks one, in a
+  request or `json.read`, is a problem at the object's path, empty for the
+  whole input, whose rule is the rule's name (area 19, "Data formats").
+- **OpenAPI says them in words.** It can't express most rules, so each
+  object's schema description lists its rules as written (area 7).
+- **A rule belongs to the type that writes it.** `include` and `pick` copy
+  fields, never rules: a type built from `Booking` writes the rule again if
+  it holds there too. Only an `Object`, `Input` or `Output` has rules
+  (`type.rule_outside_object`).
+
+Numbers are proved by their ranges as a field's rules are, and a field
+that may be `none` is matched:
+
+```jadpo check project=across-fields-input file=types.jadpo hidden
+type StayDate = CalendarDate {}
+
+type GuestCount = Int {
+    min: 1
+    max: 12
+}
+
+type ChildCount = Int {
+    min: 0
+    max: 6
+}
+```
+
+```jadpo check project=across-fields-input
+type StaySearch = Input {
+    arrives: StayDate
+    leaves: StayDate
+    adults: GuestCount
+    children: ChildCount {
+        optional: true
+    }
+    rule leaves_after_arrival: leaves > arrives
+    rule children_with_adults: match children {
+        some(count) -> count <= adults * 2
+        none -> true
+    }
+}
+
+type Party = Object {
+    adults: GuestCount
+    children: ChildCount
+    rule not_crowded: children <= adults * 6
+}
+
+function party(adults: GuestCount, children: ChildCount) -> Party {
+    return Party {  // at most 6 children, and at least 6 places: always holds
+        adults: adults
+        children: children
+    }
+}
+```
+
+A construction whose every rule is proved can't fail, so it takes no
+`attempt`, and the error points at the condition that proves it, as it
+does for any other construction:
+
+```jadpo check project=e-across-fields-proved expect=failure.attempt_infallible
+type Moment = Instant {}
+
+type BookingBackwards = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type Booking = Object {
+    starts: Moment
+    ends: Moment
+    rule ends_after_start: ends > starts
+}
+
+function book(starts: Moment, ends: Moment) fails BookingBackwards -> Booking {
+    if (ends <= starts) {
+        reject BookingBackwards
+    }
+    var booking: Booking = attempt Booking {
+        starts: starts
+        ends: ends
+    } {
+        ends_after_start: BookingBackwards
+    }
+    return booking
+}
+```
+
+```text output
+error: `Booking { ... }` can't fail, so it takes no `attempt`
+ --> main.jadpo:17:28
+   |
+14 |     if (ends <= starts) {
+   |         -------------- checked here
+17 |     var booking: Booking = attempt Booking {
+   |                            ^^^^^^^ nothing to pass on
+  reason: The declared ranges and the condition `ends <= starts` prove `Booking { ... }` always follows its type's rules, so building it never fails; `attempt` marks only what can.
+  next: Remove `attempt` (agent)
+  rule: failure.attempt_infallible
+  help: docs/language/03-logic.html#failure-attempt-infallible
+
+check failed: 1 error, 1 file
+```
 
 ## Absent values
 
@@ -1308,6 +1499,129 @@ error: `profile.display_name` might not fit `Badge.name`
   next: Build it first on its own line, `var name: Badge.name = attempt Badge.name(profile.display_name) { max_length: SomeFailure }`, then write `name: name` in the object (agent)
   rule: type.field_unproved
   help: docs/language/02-values-and-types.html#type-field-unproved
+
+check failed: 1 error, 1 file
+```
+
+### `type.rule_outside_object`
+
+Only an `Object`, `Input` or `Output` names rules across its fields: a
+refinement's rules are its constraints, and an entity's records are made
+by writes, which have their own conditions (area 6):
+
+```jadpo check project=e-rule-outside-object expect=type.rule_outside_object
+type Nights = Int {
+    min: 1
+    rule short_stay: Nights <= 14
+}
+```
+
+```text output
+error: Only an `Object`, `Input` or `Output` names rules across its fields
+ --> main.jadpo:3:5
+  |
+3 |     rule short_stay: Nights <= 14
+  |     ^^^^^^^^^^^^^^^ in a type built on `Int`
+  reason: `Nights`, built on `Int`, can't hold a rule: a rule relates the fields of one object, so it is written in the block of an `Object`, `Input` or `Output`, and checked whenever a value of it is made.
+  next: Move the rule into the object type whose fields it reads, or remove it (agent)
+  rule: type.rule_outside_object
+  help: docs/language/02-values-and-types.html#type-rule-outside-object
+
+check failed: 1 error, 1 file
+```
+
+### `type.rule_name_taken`
+
+A rule's name is what an `attempt`'s arm and a failure's report call it,
+so no field or other rule of the type shares it, and it is never
+`invalid`:
+
+```jadpo check project=e-rule-name-taken expect=type.rule_name_taken
+type Moment = Instant {}
+
+type Booking = Object {
+    starts: Moment
+    ends: Moment
+    rule ends: ends > starts
+}
+```
+
+```text output
+error: A rule can't be called `ends` here
+ --> main.jadpo:6:10
+  |
+6 |     rule ends: ends > starts
+  |          ^^^^ name taken
+  reason: `Booking` has a field `ends`; a rule's name is its own, so `ends:` in an `attempt` or a report can only mean one thing.
+  next: Give the rule a name of its own that says what it checks (agent)
+  rule: type.rule_name_taken
+  help: docs/language/02-values-and-types.html#type-rule-name-taken
+
+check failed: 1 error, 1 file
+```
+
+### `type.rule_not_condition`
+
+A rule holds or it doesn't, so its condition is a `Bool`:
+
+```jadpo check project=e-rule-not-condition expect=type.rule_not_condition
+type Pence = Int {
+    min: 0
+}
+
+type PriceBand = Object {
+    low: Pence
+    high: Pence
+    rule spread: high - low
+}
+```
+
+```text output
+error: The rule `spread` isn't a condition
+ --> main.jadpo:8:18
+  |
+8 |     rule spread: high - low
+  |                  ^^^^^^^^^^ this is `Int`
+  reason: A rule holds for a value or it doesn't, so its condition is a `Bool`: a comparison such as `high > low`, or several joined with `and`, `or` and `not`.
+  next: Write `spread` as a comparison of `PriceBand`'s fields (agent)
+  rule: type.rule_not_condition
+  help: docs/language/02-values-and-types.html#type-rule-not-condition
+
+check failed: 1 error, 1 file
+```
+
+### `type.rule_outside_fields`
+
+A rule reads only its type's fields, so every value of the type follows
+it wherever it is made, the same in every run: no function of the
+application, constant, setting, clock or record:
+
+```jadpo check project=e-rule-outside-fields expect=type.rule_outside_fields
+type Moment = Instant {}
+
+type Booking = Object {
+    starts: Moment
+    ends: Moment
+    rule in_opening_hours: opens_by(starts)
+}
+
+type Opens = Bool {}
+
+function opens_by(at: Moment) -> Opens {
+    return Opens(true)
+}
+```
+
+```text output
+error: A rule can't read `opens_by(starts)`
+ --> main.jadpo:6:28
+  |
+6 |     rule in_opening_hours: opens_by(starts)
+  |                            ^^^^^^^^^^^^^^^^ not one of the type's fields
+  reason: A rule reads only `Booking`'s own fields, with literals, variants, operators, `match` and the standard operations that give a result from their arguments alone, so every value of `Booking` follows it wherever it is made, the same in every run.
+  next: Write the rule over `Booking`'s fields, or check this where the value is built, before building it (agent)
+  rule: type.rule_outside_fields
+  help: docs/language/02-values-and-types.html#type-rule-outside-fields
 
 check failed: 1 error, 1 file
 ```
@@ -2491,7 +2805,8 @@ Built by the new compiler in chunk 1.4, with the later chunks named in
 each section: construction failures by rule (2.5), conditions as proof
 (2.6), the soundness fixes (2.7) and named collection construction (2.11).
 Walking and searching sets and maps, and `[]` as an empty map, came with
-the standard library in chunk 5.5c (area 19). Not built yet: a map literal
+the standard library in chunk 5.5c (area 19), and rules across fields in
+chunk 5.5t. Not built yet: a map literal
 with entries, which no roadmap chunk builds yet; and the JSON forms of
 sets, maps, large `Int`s and `Decimal`s, which come with routes in chunk
 4.1. The built-in `PluralCount` and the `Message` base came with
@@ -2749,6 +3064,36 @@ Rules:
   This replaces the earlier "an `Output` may only `pick`" rule.
 - `include`, `pick`, `omit` and `optional` are reserved and cannot be field
   names.
+
+### Chosen in chunk 5.5t
+
+Area 19's question 15 decided named rules across an object's fields; the
+chunk that built them chose the rest, as conservatively as it could:
+
+- **The form is the roadmap's,** `rule name: condition` in the type's
+  block. `rule` is read as a word only before a name and `:`, so a field
+  may still be called `rule`.
+- **Only `Object`, `Input` and `Output`.** An entity's records are made by
+  writes, whose conditions area 6 decides, so a rule on an entity, which
+  would need the database to check it and a write to map it, is left for
+  Richard to decide; events, failures, messages, enums and refinements
+  have none.
+- **The condition reads the type's own fields and nothing else:** no
+  constant either, though a constant can't change, so a rule means the same
+  wherever its type is read. `match` is allowed, since it is how a field
+  that may be `none` is read.
+- **The order is the field rules, then each rule as written,** the first
+  broken one reported, so a report never depends on more than one rule.
+- **An object literal is a construction like `Type(value)`,** with the
+  same `attempt` block, arms keyed by the rules' names, `invalid:` and
+  errors; no new failure form.
+- **A comparison between any two values written the same way is proof**
+  of a rule that compares them, not only numbers, since a booking's
+  instants are what the rules compare most.
+- **Decoding reports the rule at the object's path,** with the rule's name
+  as the problem's rule, the way a field's broken rule is reported.
+- **`include` and `pick` don't copy rules:** a rule reads fields its own
+  type has, and a copy may leave one out.
 
 ### Decided changes in examples
 
@@ -3247,6 +3592,7 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime. The mapping's form was revised on 2026-10-14 (below) | 2026-10-12 |
 | Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first (built in chunk 2.5) | 2026-10-12 |
 | Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, and conditions as proof in chunk 2.6, as "Conditions as proof" describes | 2026-10-14 |
+| Rules across fields | An `Object`, `Input` or `Output` names rules across its fields, `rule ends_after_start: ends > starts`: a `Bool` over its own fields only, checked whenever a value is made, the first broken one reported; an object literal that may break one is mapped with `attempt` by the rule's name or `invalid:`, and a rule the declared ranges or a condition prove needs no arm (Richard, area 19's question 15; the chunk's choices are under "Chosen in chunk 5.5t") | 2026-10-17 |
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
 | Collection operations | List literals, `for item in items`, `list.count` and `list.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | Set order | A set has no order code can use: no index and no first item; where order matters, sort explicitly or use a `List`. Everything that shows a set (JSON, reports, iteration once `for` takes sets) uses one guaranteed canonical order, the same in interpreted and compiled code: by value, numbers numerically, text by Unicode code point, enum variants in declaration order, objects and tagged unions field by field in declared order (Richard) | 2026-10-14 |

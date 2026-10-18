@@ -1438,6 +1438,7 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
         DOT3 => elision(p),
         _ if at_decl(p) && !(p.current().is_keyword() && p.nth(1) == COLON) => decl(p),
         _ if at_route_entry(p) => route_entry(p),
+        IDENT if context == Members::Declaration && at_rule_member(p) => rule_member(p),
         IDENT => {
             if member_key_len(p).is_some() {
                 member(p, context);
@@ -1483,6 +1484,41 @@ fn member_item(p: &mut Parser<'_>, context: Members) {
             skip_line_or_token(p);
         }
     }
+}
+
+/// `rule ends_after_start: ...`: `rule` is a word here only, before a name
+/// and `:`, so a field may still be called `rule` (area 2, "Rules across
+/// fields").
+fn at_rule_member(p: &Parser<'_>) -> bool {
+    p.current_text() == "rule"
+        && (p.nth(1) == IDENT || p.nth(1).is_keyword())
+        && p.nth(2) == COLON
+        && !p.nth_on_new_line(1)
+}
+
+fn rule_member(p: &mut Parser<'_>) {
+    let m = p.start();
+    p.bump_remap(RULE_KW);
+    name(p, "this rule");
+    p.bump(COLON);
+    if p.on_new_line() || p.at(R_BRACE) || p.at_eof() {
+        let rule_name = member_key_before_colon(p);
+        let (start, end) = p.nth_range_before();
+        let error = SyntaxError::new(
+            &rule::SYNTAX_EXPECTED_EXPRESSION,
+            format!("`rule {rule_name}:` has no condition"),
+            start,
+            end,
+        )
+        .label("expected a condition after `:`")
+        .reason("A rule is `rule name: condition`, with the condition on the same line.")
+        .next(format!("Write the condition after `rule {rule_name}:`"));
+        p.push_error(error);
+    } else {
+        expr(p);
+    }
+    m.complete(p, RULE_MEMBER);
+    member_end(p);
 }
 
 fn skip_line_or_token(p: &mut Parser<'_>) {
@@ -2627,8 +2663,10 @@ fn postfix_levels(
                 m.complete(p, CALL_EXPR)
             }
             // `attempt Count(n) { max: TooBig }`: the block is the
-            // attempt's mappings.
-            L_BRACE if p.attempted && lhs.kind() == CALL_EXPR => return lhs,
+            // attempt's mappings, as it is after an object literal,
+            // `attempt Booking { ... } { ends_after_start: Backwards }`
+            // (area 2, "Rules across fields").
+            L_BRACE if p.attempted && matches!(lhs.kind(), CALL_EXPR | RECORD_EXPR) => return lhs,
             // `attempt subtotal + line.amount { currency_mismatch: ... }`:
             // only a type builds a value from a block, so a block after a
             // local's value holds the attempt's mappings (area 19, "The

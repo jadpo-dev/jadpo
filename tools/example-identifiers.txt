@@ -23,6 +23,7 @@ add_partner
 add_tagged_memo
 add_todo
 admin_orders
+adults
 after_fifth
 after_five
 afternoon
@@ -146,6 +147,7 @@ book
 book_already_lent
 book_by_id
 book_card
+book_checked
 book_collection
 book_has_loans
 book_id
@@ -159,6 +161,7 @@ book_view
 booked
 booked_at
 booked_flight
+booking_backwards
 booking_time
 bookings
 books
@@ -267,6 +270,7 @@ checked_on
 checkout
 checkout_unavailable
 checkup
+child_count
 chocolate
 choose_handover
 chore
@@ -560,6 +564,7 @@ gross
 grown
 growth
 guest_book
+guest_count
 guest_list
 guest_name
 guests
@@ -886,6 +891,7 @@ nickname
 night_opening
 night_opening_anyway
 night_shift
+nights
 nine
 no_guests
 no_stock
@@ -961,6 +967,7 @@ opening_caption
 opening_sign
 opening_unclear
 openings
+opens_by
 order_after_deposit
 order_amount
 order_back
@@ -1137,6 +1144,7 @@ pressure_shown
 pretend_pure
 preview
 preview_text
+price_band
 price_basket
 price_flour
 price_item
@@ -1479,6 +1487,8 @@ start_subscription
 start_unclear
 starting_quantity
 status_text
+stay_date
+stay_search
 steam
 steam_word
 sterling

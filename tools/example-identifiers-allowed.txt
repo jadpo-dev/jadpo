@@ -447,3 +447,13 @@ trim
 # A JSON Web Key Set's one member (RFC 7517 §5), which a key set read with
 # `json.read` names (chunk 5.5r)
 keys
+# Ordinary English words the rules-across-fields examples name fields and
+# types with, as area 19's decision writes the rule (`ends > starts`): area
+# 2, chunk 5.5t
+arrives
+children
+ends
+leaves
+moment
+opens
+starts

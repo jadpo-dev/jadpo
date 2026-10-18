@@ -549,7 +549,8 @@ impl<'a> Reader<'a> {
                 MemberItem::RouteEntry(entry) => {
                     (entry.syntax().clone(), first_words(entry.syntax()))
                 }
-                MemberItem::Elision(_) => continue,
+                // A rule here is reported where it is written (area 2).
+                MemberItem::Elision(_) | MemberItem::RuleMember(_) => continue,
             };
             let span = node_span(path, &node);
             let near = nearest(&written, known.iter().copied())

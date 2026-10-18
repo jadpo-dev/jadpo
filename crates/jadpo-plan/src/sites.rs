@@ -53,6 +53,11 @@ pub enum Decoded {
         /// Each field given, in the order written.
         fields: Vec<Given>,
         fallible: bool,
+        /// An object type's validator, when it has rules across its fields
+        /// (area 2, "Rules across fields"), and whether one of them can
+        /// break here, so the value is checked once it is built; one the
+        /// checker proved is checked only under proof checks.
+        across: Option<(ValidatorId, bool)>,
     },
     /// A list written where a list or a set goes, or `[]` where a map
     /// goes, which is an empty map (area 19, question 8).
@@ -279,10 +284,18 @@ impl Decoder<'_> {
                         validator: self.types.validator_id(&TypeRef::Field(field.clone())),
                     })
                     .collect();
+                let object = TypeRef::Node(key.clone());
+                let across = (key.kind() == Some(jadpo_graph::Kind::Type)
+                    && !self.types.across(&object).is_empty())
+                .then(|| {
+                    let breaks = matches!(fallible, Fallible::Construction { named, .. } if !named.is_empty());
+                    (self.types.validator_id(&object), breaks)
+                });
                 Decoded::Build {
                     shape,
                     fields: given,
-                    fallible: matches!(fallible, Fallible::Construction { .. }),
+                    fallible: matches!(fallible, Fallible::Construction { rules, .. } if !rules.is_empty()),
+                    across,
                 }
             }
             Node::Expr(Expr::Write { conflicts, .. }) => Decoded::Write {

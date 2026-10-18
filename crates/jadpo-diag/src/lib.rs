@@ -990,6 +990,14 @@ rules! {
         "02-values-and-types.html#type-reserved-field-name", "Field uses a reserved name";
     TYPE_RESERVED_VARIANT_NAME: "type.reserved_variant_name", area 19, Error, Agent,
         "19-standard-library.html#type-reserved-variant-name", "Variant is called `all`, which lists an enum's variants";
+    TYPE_RULE_NAME_TAKEN: "type.rule_name_taken", area 2, Error, Agent,
+        "02-values-and-types.html#type-rule-name-taken", "Rule is named like a field, another rule or `invalid`";
+    TYPE_RULE_NOT_CONDITION: "type.rule_not_condition", area 2, Error, Agent,
+        "02-values-and-types.html#type-rule-not-condition", "Rule's condition isn't a `Bool`";
+    TYPE_RULE_OUTSIDE_FIELDS: "type.rule_outside_fields", area 2, Error, Agent,
+        "02-values-and-types.html#type-rule-outside-fields", "Rule reads something besides its type's fields";
+    TYPE_RULE_OUTSIDE_OBJECT: "type.rule_outside_object", area 2, Error, Agent,
+        "02-values-and-types.html#type-rule-outside-object", "Rule is written outside an object type";
     TYPE_SECRET_EXPOSED: "type.secret_exposed", area 19, Error, Agent,
         "19-standard-library.html#type-secret-exposed", "Secret value is sent, stored, logged or read as text";
     TYPE_SETTING_VALUE: "type.setting_value", area 2, Error, Agent,
