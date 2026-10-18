@@ -48,7 +48,9 @@ invite hand edits, so it is a build output.
   2026-10-16, Richard), kept next to what it describes: `api/main.jadpo_record`
   (was `api/main.api`), `database/identities.jadpo_record` (was
   `identities.json`), each `translations/sources.jadpo_record` (was
-  `sources.json`) and each installed package's `surface.jadpo_record`.
+  `sources.json`), each installed package's `surface.jadpo_record` and the
+  root's `ignored_suggestions.jadpo_record`, the suggestions a team keeps
+  quiet (area 14, "Suggestions", chunk 5.5x).
   Each is in Jadpo's readable format, not JSON, and its first line says what
   generated it and which command updates it, as the API record's does.
 

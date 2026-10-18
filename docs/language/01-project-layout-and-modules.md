@@ -1950,10 +1950,13 @@ build/
 #### The root
 
 - Only these entries: `app.jadpo`, `config.jadpo`, `authentication.jadpo`,
-  `policy.jadpo`, `flags.jadpo`, `jadpo.lock`, `domains/`, `shared/`,
-  `packages/`, `database/`, `api/`, `acceptances/`, `translations/`,
-  `tests/` and `build/` (`packages/` replaced the root `providers/` on
-  2026-10-16, area 11).
+  `policy.jadpo`, `flags.jadpo`, `jadpo.lock`,
+  `ignored_suggestions.jadpo_record`, `domains/`, `shared/`, `packages/`,
+  `database/`, `api/`, `acceptances/`, `translations/`, `tests/` and
+  `build/` (`packages/` replaced the root `providers/` on 2026-10-16, area
+  11; the suggestions a team ignores, written by `jadpo suggest ignore`,
+  joined on 2026-10-17, area 14, "Suggestions"). The hidden `.jadpo/`
+  folder holds local, untracked state and is never read as source.
 - `packages/` holds only installed packages, each in
   `packages/<name>/<version>/`, committed, read-only and checked against its
   digest in `jadpo.lock`; everything the app's authors wrote lives in
