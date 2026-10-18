@@ -493,7 +493,9 @@ suggests, the signal and the snippet. A snippet goes beside its row when
 every one fits in 80 columns, and otherwise every snippet goes on the line
 under its row, cut with `…` only if it is longer than that line. With none it
 says `✓ No suggestions`, and the instruction stays, since the review of the
-rest still applies. `--json` gives each finding's number, place, range,
+rest still applies. The last line, to run `jadpo suggest share`, shows only
+while sharing is on and an HQ address is configured ("Sharing with Jadpo
+HQ" below). `--json` gives each finding's number, place, range,
 suggestion, signal, reason, text, canonical form and both hashes, and the
 instruction's lines. `jadpo suggest --catalogue` lists every signal,
 generated from the entries and the loop table, as text or `--json`.
@@ -627,6 +629,10 @@ text never does.
 - **Afterwards** the pending file is wiped, whether HQ wanted anything or
   not; a send that fails keeps it. The first time a checkout sends hashes,
   `share` says so in one line, with how to turn sharing off.
+- **Until HQ runs** no address is configured by default, so `share` says
+  sharing isn't available yet, sends nothing, keeps the entries and
+  succeeds, and the scan's report leaves out its instruction to share
+  ("The protocol" below).
 
 ```text
 $ jadpo suggest share
@@ -649,7 +655,7 @@ $ jadpo suggest share
     asked  1 snippet
 
 What `jadpo suggest share --approve` sends
-  POST https://hq.jadpo.dev/v1/suggestions/snippets
+  POST https://hq.example.test/v1/suggestions/snippets
   {
     "snippets": [
       {
@@ -688,8 +694,10 @@ instruction to ask is the agent's, written into the decision's `next`.
 The contract the real HQ implements unchanged. HTTPS and JSON, UTF-8, under
 a versioned path.
 
-- **Address.** `JADPO_SUGGEST_HQ` in the environment, by default
-  `https://hq.jadpo.dev`. `http://` is accepted only for a loopback host
+- **Address.** `JADPO_SUGGEST_HQ` in the environment. There is no default
+  yet: the release that launches HQ, with the registry after the first
+  build, sets the real address as the default (lead decision, 2026-10-18).
+  `http://` is accepted only for a loopback host
   (`localhost`, `127.0.0.1`, `[::1]`), which is how the tests reach the
   fake; anything else must be `https://`, with the certificate checked.
 - **Headers.** `Content-Type: application/json`, `Accept:
@@ -831,9 +839,13 @@ Choices the design left open, each the more conservative one.
   writes no token; `--new-token` writes one and sends nothing.
 - **The first share is per checkout**, noted in `.jadpo/suggest_shared`, so
   nothing is written outside the project.
-- **The default address is `https://hq.jadpo.dev`**, under the project's
-  public home. Until HQ runs there, `share` fails with
-  `suggest.share_failed` and keeps the entries.
+- **No default address until HQ runs** (lead decision, 2026-10-18), so a
+  suggest session never ends in a failure while HQ doesn't exist. With
+  `JADPO_SUGGEST_HQ` unset, `share` says `Sharing isn't available yet: Jadpo
+  HQ isn't running. Nothing was sent; your entries are kept.`, succeeds, and
+  keeps the pending entries, and the scan's report leaves out its
+  instruction to share, as it does when sharing is off. The release that
+  launches HQ sets the real address as the default.
 - **HTTPS through OpenSSL**, already linked by the passkey ceremonies, with
   the platform's certificate store and the host name checked; the client is
   a small HTTP/1.1 one of `jadpo`'s own, with `Connection: close`.

@@ -51,6 +51,10 @@ use crate::migrate::blocked;
 use crate::run::{Call, Reply};
 use crate::suggestions::{arguments, count, read_lines, text, write_failed};
 
+/// What `share` says while no HQ address is configured.
+const UNAVAILABLE: &str =
+    "Sharing isn't available yet: Jadpo HQ isn't running. Nothing was sent; your entries are kept.";
+
 /// The flags only `share` takes.
 pub const FLAGS: [&str; 4] = ["--approve", "--decline", "--new-token", "--unattended"];
 
@@ -161,20 +165,12 @@ fn exchange_failed(failure: Failure, kept: &str) -> Reply {
     }
 }
 
-fn address_of(call: &Call) -> Result<Address, Box<Reply>> {
-    let written = call
-        .environment
-        .var(hq::VARIABLE)
-        .filter(|v| !v.is_empty())
-        .unwrap_or(hq::DEFAULT);
+fn address_of(written: &str) -> Result<Address, Box<Reply>> {
     hq::address(written).map_err(|why| {
         Box::new(failed(
             format!("`{}` can't be used", hq::VARIABLE),
             format!("{why} Nothing was sent, and the entries wait."),
-            format!(
-                "Set `{}` to HQ's `https://` address, or unset it for the default",
-                hq::VARIABLE
-            ),
+            format!("Set `{}` to HQ's `https://` address", hq::VARIABLE),
         ))
     })
 }
@@ -347,6 +343,18 @@ fn send_hashes(
     rotate: bool,
     unattended: bool,
 ) -> Reply {
+    // No HQ to send to yet: a calm line, the entries kept.
+    let Some(written) = hq::configured(&call.environment) else {
+        let screen = Screen::new().with(Block::Status {
+            outcome: Outcome::Success,
+            text: UNAVAILABLE.to_string(),
+            rows: Vec::new(),
+        });
+        return Reply::screen(
+            screen,
+            Json::object([("sent", 0usize.into()), ("available", false.into())]),
+        );
+    };
     let entries = pending(root);
     if entries.is_empty() && !rotate {
         let screen = Screen::new().with(Block::Status {
@@ -356,7 +364,7 @@ fn send_hashes(
         });
         return Reply::screen(screen, Json::object([("sent", 0usize.into())]));
     }
-    let address = match address_of(call) {
+    let address = match address_of(written) {
         Ok(address) => address,
         Err(reply) => return *reply,
     };

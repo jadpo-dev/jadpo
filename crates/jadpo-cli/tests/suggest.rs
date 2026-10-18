@@ -102,7 +102,6 @@ What to do
   Before changing code for something it missed, run
   `jadpo suggest found <file>:<line> <Type or operation> \"<why>\"`.
   To keep one quiet, run `jadpo suggest ignore <number> \"<why>\"`.
-  When done, run `jadpo suggest share`.
 
 2 suggestions: 1 file
 "
@@ -135,7 +134,6 @@ fn with_nothing_to_suggest_the_routine_stays() {
   Review the rest of the code against `jadpo suggest --catalogue`.
   Before changing code for something it missed, run
   `jadpo suggest found <file>:<line> <Type or operation> \"<why>\"`.
-  When done, run `jadpo suggest share`.
 
 No suggestions
 "

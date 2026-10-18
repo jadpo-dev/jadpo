@@ -573,9 +573,11 @@ fn scan(call: &Call, cwd: &Path, root: &Path) -> Reply {
             "stale ignores dropped",
         )));
     }
-    // Sharing turned off drops the instruction to share.
+    // Sharing turned off, or no HQ to share with yet, drops the
+    // instruction to share.
     let settings = jadpo_check::suggest::settings::settings(&loaded.db, loaded.project);
-    let sharing = crate::share::turned_off(call, settings, root, None).is_none();
+    let sharing = crate::share::turned_off(call, settings, root, None).is_none()
+        && crate::hq::configured(&call.environment).is_some();
     let instruction = routine(!findings.is_empty(), sharing);
     let mut screen = Screen::new();
     if !findings.is_empty() {

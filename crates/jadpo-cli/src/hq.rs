@@ -15,9 +15,20 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-/// The variable that names HQ, and its default.
+/// The variable that names HQ, and its default: none until the release
+/// that launches HQ, with the registry after the first build, sets the
+/// real address here (lead decision, 2026-10-18).
 pub const VARIABLE: &str = "JADPO_SUGGEST_HQ";
-pub const DEFAULT: &str = "https://hq.jadpo.dev";
+pub const DEFAULT: Option<&str> = None;
+
+/// HQ's address as written in the environment, or the default; `None`
+/// while sharing has nowhere to go.
+pub fn configured(environment: &jadpo_term::Environment) -> Option<&str> {
+    environment
+        .var(VARIABLE)
+        .filter(|written| !written.is_empty())
+        .or(DEFAULT)
+}
 
 const CONNECT: Duration = Duration::from_secs(5);
 const ANSWER: Duration = Duration::from_secs(15);
@@ -336,19 +347,19 @@ mod tests {
 
     #[test]
     fn an_address_is_https_or_on_this_machine() {
-        let hq = address("https://hq.jadpo.dev").expect("the default");
+        let hq = address("https://hq.example.test").expect("an https address");
         assert_eq!(
             hq.url("/v1/suggestions/hashes"),
-            "https://hq.jadpo.dev/v1/suggestions/hashes"
+            "https://hq.example.test/v1/suggestions/hashes"
         );
         let local = address("http://127.0.0.1:4100/").expect("loopback");
         assert_eq!(local.url("/v1/x"), "http://127.0.0.1:4100/v1/x");
         assert!(address("http://[::1]:9/").is_ok());
         assert!(address("http://localhost").is_ok());
-        assert!(address("http://hq.jadpo.dev").is_err());
-        assert!(address("https://user@hq.jadpo.dev").is_err());
-        assert!(address("hq.jadpo.dev").is_err());
-        assert!(address("https://hq.jadpo.dev:x").is_err());
+        assert!(address("http://hq.example.test").is_err());
+        assert!(address("https://user@hq.example.test").is_err());
+        assert!(address("hq.example.test").is_err());
+        assert!(address("https://hq.example.test:x").is_err());
     }
 
     #[test]

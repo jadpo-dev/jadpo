@@ -1267,6 +1267,9 @@ reference only).
   gains it), so a teammate's scan finds what another taught;
   `.jadpo/suggest_signals` stays only as a cache (lead session,
   2026-10-18).
+  No HQ address is set by default until HQ runs (lead decision,
+  2026-10-18): the release that launches HQ, with the registry after the
+  first build, sets the real address and flips the default.
   Done when the whole exchange runs against the fake in tests, nothing is
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored

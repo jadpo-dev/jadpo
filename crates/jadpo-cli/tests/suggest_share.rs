@@ -721,3 +721,34 @@ fn an_unattended_run_cannot_approve_and_share_flags_need_share() {
     );
     assert_eq!(hq.requests().len(), 1);
 }
+
+#[test]
+fn without_an_hq_address_nothing_is_sent_and_nothing_fails() {
+    let hq = FakeHq::start(1);
+    let root = ignored_shop("unavailable", &hq);
+    let output = jadpo_with(&root, &["suggest", "share"], &[]);
+    assert_eq!(output.stderr, "");
+    assert_eq!(output.code, 0);
+    assert_eq!(
+        output.stdout,
+        "Sharing isn't available yet: Jadpo HQ isn't running. Nothing was sent; your entries are kept.\n"
+    );
+    assert!(!read(&root, ".jadpo/suggest_pending").is_empty());
+    assert!(token_of(&root).is_none());
+    assert!(hq.requests().is_empty());
+    // The report asks for a share only once there is an HQ to share with.
+    let report = jadpo_with(&root, &["suggest"], &[]);
+    assert!(
+        !report.stdout.contains("jadpo suggest share"),
+        "{}",
+        report.stdout
+    );
+    let report = jadpo(&root, &hq, &["suggest"]);
+    assert!(
+        report
+            .stdout
+            .contains("When done, run `jadpo suggest share`."),
+        "{}",
+        report.stdout
+    );
+}
