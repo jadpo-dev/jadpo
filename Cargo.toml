@@ -65,6 +65,12 @@ serde_json = "1"
 # Linear-time regular expressions: `pattern:` settings are checked while
 # compiling (area 2, question 9), and the runtime will use the same crate.
 regex = "=1.11.1"
+# Domain names (area 19, "Web and software", chunk 5.5n; jadpo-std, whose
+# validators both the checker and the runtime run): UTS 46's processing of
+# IDNA 2008, Servo's crate that rust-url uses, pure Rust and built for
+# wasm32. Its back end, `idna_adapter` 1.2, runs on the ICU4X release pinned
+# below, so Unicode's data isn't carried twice.
+idna = { version = "=1.1.0", default-features = false, features = ["std", "compiled_data"] }
 # Time zones for `temporal` (area 10; jadpo-value only): pure Rust, builds
 # for wasm32, the IANA database bundled into the binary (jiff-tzdb, 2026e,
 # about 200 KB) rather than read from the platform, and Temporal's rules
