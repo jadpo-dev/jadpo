@@ -210,12 +210,15 @@ pub enum Subject {
     /// The standard `ExchangeRate`, whose currencies `from:` and `to:`
     /// fix (area 19, chunk 5.5h4).
     ExchangeRate,
+    /// The standard `Vector`, whose length `dimensions:` fixes (area 19,
+    /// chunk 5.5s2), a list as its lengths go.
+    Vector,
     /// An object, enum or a type a later area defines: no constraints.
     Other,
 }
 
 /// The constraints area 2 defines, in the order the reader learns them.
-pub const CONSTRAINTS: [&str; 12] = [
+pub const CONSTRAINTS: [&str; 13] = [
     "min",
     "max",
     "min_length",
@@ -228,6 +231,7 @@ pub const CONSTRAINTS: [&str; 12] = [
     "rounding",
     "from",
     "to",
+    "dimensions",
 ];
 
 /// The settings a field of an `Input` may have beside its constraints.
@@ -387,7 +391,8 @@ pub fn constraint(
         "min_length" | "max_length" => {
             if !(text_like
                 || subject == Subject::Prim(Prim::Bytes)
-                || subject == Subject::Collection)
+                || subject == Subject::Collection
+                || subject == Subject::Vector)
             {
                 return Err(Problem::Base("`Text` and `Bytes` types and collections"));
             }
@@ -528,6 +533,30 @@ pub fn constraint(
             } else {
                 rules.rate_to = code;
             }
+        }
+        // How many items a type built on `Vector` has (area 19, chunk
+        // 5.5s2): one number, as many as a vector can hold.
+        "dimensions" => {
+            if subject != Subject::Vector {
+                return Err(Problem::Base("`Vector` types"));
+            }
+            let most = jadpo_std::standard::ai::MOST_DIMENSIONS;
+            let count = match value {
+                Const::Number {
+                    value,
+                    decimal: false,
+                } if value.mantissa >= 1 => {
+                    u64::try_from(value.mantissa).ok().filter(|n| *n <= most)
+                }
+                _ => None,
+            };
+            let Some(count) = count else {
+                return Err(Problem::Value(
+                    format!("a whole number from 1 to {}", group(most)),
+                    None,
+                ));
+            };
+            rules.dimensions = Some(count);
         }
         // How `*` and `/` round a `Money` type's amounts (area 19).
         "rounding" => {
@@ -745,4 +774,18 @@ mod tests {
         );
         assert_eq!(rules.version, Some(UuidVersion::V7));
     }
+}
+
+/// A whole number with its thousands grouped, as an error writes one:
+/// `16,000`.
+fn group(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
 }

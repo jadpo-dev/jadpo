@@ -972,6 +972,7 @@ impl Decls<'_> {
                         }
                         Subject::Collection => "a collection".to_string(),
                         Subject::ExchangeRate => "an `ExchangeRate` type".to_string(),
+                        Subject::Vector => "a `Vector` type".to_string(),
                         Subject::Other => "this type".to_string(),
                     };
                     self.out.push(
@@ -1044,6 +1045,19 @@ impl Decls<'_> {
                 .min_duration
                 .zip(rules.max_duration)
                 .map(|(a, b)| a > b),
+        );
+        // A vector type's one length against its own bounds (chunk 5.5s2).
+        self.contradictions(
+            &seen,
+            "min_length",
+            "dimensions",
+            rules.min_length.zip(rules.dimensions).map(|(a, b)| a > b),
+        );
+        self.contradictions(
+            &seen,
+            "dimensions",
+            "max_length",
+            rules.dimensions.zip(rules.max_length).map(|(a, b)| a > b),
         );
         self.inherited(&seen, &rules, parent);
         self.fixed_currencies(&written, &rules, parent);
@@ -1202,6 +1216,47 @@ impl Decls<'_> {
                     "different from".into(),
                     host.clone(),
                 ));
+                break;
+            }
+            // A vector type's one length, against the lengths and the one
+            // length of the type it builds on (chunk 5.5s2).
+            let dimensions = [
+                (
+                    "dimensions",
+                    own.dimensions.zip(rules.dimensions).map(|(a, b)| a != b),
+                    format!("dimensions: {}", rules.dimensions.unwrap_or_default()),
+                    "different from",
+                ),
+                (
+                    "dimensions",
+                    own.dimensions.zip(rules.max_length).map(|(a, b)| a > b),
+                    format!("max_length: {}", rules.max_length.unwrap_or_default()),
+                    "above",
+                ),
+                (
+                    "dimensions",
+                    own.dimensions.zip(rules.min_length).map(|(a, b)| a < b),
+                    format!("min_length: {}", rules.min_length.unwrap_or_default()),
+                    "below",
+                ),
+                (
+                    "min_length",
+                    own.min_length.zip(rules.dimensions).map(|(a, b)| a > b),
+                    format!("dimensions: {}", rules.dimensions.unwrap_or_default()),
+                    "above",
+                ),
+                (
+                    "max_length",
+                    own.max_length.zip(rules.dimensions).map(|(a, b)| a < b),
+                    format!("dimensions: {}", rules.dimensions.unwrap_or_default()),
+                    "below",
+                ),
+            ];
+            if let Some((key, _, theirs, word)) = dimensions
+                .into_iter()
+                .find(|(_, broken, _, _)| *broken == Some(true))
+            {
+                found = Some((key, theirs, word.into(), host.clone()));
                 break;
             }
         }

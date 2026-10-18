@@ -517,13 +517,13 @@ impl TypeTable {
                 }
                 _ => continue,
             };
-            table.defs.insert(
-                entry.name.to_string(),
-                Def::Scalar {
-                    parent,
-                    rules: Box::default(),
-                },
-            );
+            // A `Vector` keeps from 1 to 16,000 items, each a float
+            // (chunk 5.5s2).
+            let rules =
+                Box::new(jadpo_std::standard::collection_rules(entry.name).unwrap_or_default());
+            table
+                .defs
+                .insert(entry.name.to_string(), Def::Scalar { parent, rules });
         }
         for (name, variants) in std.enums() {
             table.defs.insert(
@@ -1076,6 +1076,11 @@ pub trait TypeView {
             match &current {
                 Ty::List(_) | Ty::Set(_) | Ty::Map(..) => return Subject::Collection,
                 Ty::Prim(prim) => return Subject::Prim(*prim),
+                // The standard `Vector`, whose length `dimensions:` fixes
+                // (chunk 5.5s2).
+                Ty::Named(name) if name == jadpo_std::standard::ai::VECTOR => {
+                    return Subject::Vector;
+                }
                 Ty::Field(host, path) => match self.field(host, path) {
                     Some(field) => current = field.declared.strip_nullable().clone(),
                     None => return Subject::Other,
@@ -1235,6 +1240,8 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
     match part {
         jadpo_std::Part::Of(builtin) => Ty::Prim(builtin),
         jadpo_std::Part::Whole(..) => Ty::Prim(Prim::Int),
+        // A vector's item, a decimal to code (chunk 5.5s2).
+        jadpo_std::Part::Float => Ty::Prim(Prim::Decimal),
         jadpo_std::Part::Bounded { of, .. } => Ty::Prim(of),
         jadpo_std::Part::Line | jadpo_std::Part::Matching(_) | jadpo_std::Part::Paragraph => {
             Ty::Prim(Prim::Text)

@@ -170,6 +170,31 @@ impl Codecs<'_> {
                     None
                 }
             },
+            // A vector's item: the nearest single-precision float to the
+            // number, past which a decimal can't hold it (chunk 5.5s2).
+            Codec::Float => match json {
+                serde_json::Value::Number(number) => {
+                    let written = number.to_string();
+                    match jadpo_std::standard::ai::float(&written)
+                        .and_then(|text| Value::decimal(&text))
+                    {
+                        Some(value) => Some(value),
+                        None => {
+                            let rule = if written.starts_with('-') {
+                                "min"
+                            } else {
+                                "max"
+                            };
+                            Self::problem(problems, path, rule);
+                            None
+                        }
+                    }
+                }
+                _ => {
+                    Self::problem(problems, path, "type");
+                    None
+                }
+            },
             Codec::Object {
                 shape,
                 fields,
@@ -645,6 +670,8 @@ impl Codecs<'_> {
                 Ok(Value::Text(text)) => write_string(&text, out),
                 _ => out.push_str("null"),
             },
+            // A vector's item, as the number it holds (chunk 5.5s2).
+            (Some(Codec::Float), Value::Decimal(decimal)) => out.push_str(&decimal.to_string()),
             (Some(Codec::Page { item }), Value::Record(record)) => {
                 out.push_str("{\"items\":[");
                 let items = record

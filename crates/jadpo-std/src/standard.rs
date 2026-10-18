@@ -17,6 +17,7 @@ use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
 pub mod addresses_data;
+pub mod ai;
 pub mod banks;
 pub mod card_types;
 mod codes;
@@ -156,6 +157,10 @@ pub enum Part {
         min: Option<crate::Num>,
         max: Option<crate::Num>,
     },
+    /// A single-precision float, held as the decimal that is the nearest
+    /// one ([`ai::float`]) and sent as a JSON number: a vector's item
+    /// (chunk 5.5s2).
+    Float,
     /// The part, or `none`: a person's family name.
     Optional(&'static Part),
     /// A list of the part: an address's lines.
@@ -169,6 +174,7 @@ impl Part {
         match self {
             Part::Of(builtin) => Some(builtin),
             Part::Whole(..) => Some(Builtin::Int),
+            Part::Float => Some(Builtin::Decimal),
             Part::Bounded { of, .. } => Some(of),
             Part::Line | Part::Matching(_) | Part::Paragraph => Some(Builtin::Text),
             Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
@@ -216,7 +222,7 @@ impl Part {
                 ..crate::Rules::default()
             },
             Part::Optional(inner) | Part::List(inner) => inner.rules(),
-            Part::Of(_) | Part::Standard(_) => crate::Rules::default(),
+            Part::Of(_) | Part::Standard(_) | Part::Float => crate::Rules::default(),
         }
     }
 
@@ -599,6 +605,16 @@ pub enum FormatKey {
     /// to its north-east one; projected coordinates by name; a tile as its
     /// URL writes it.
     Geometry,
+    /// A vector's numbers in the locale's digits, in brackets, joined by
+    /// `; ` as a line's points are; an embedding as its model, then its
+    /// vector (chunk 5.5s2): `[0.5; -0.25; 1]`.
+    Vector,
+    /// Each part the value has, `none` left out, as its label, a space and
+    /// the part shown as its own type is, a number in the locale's digits,
+    /// joined by `, `, the labels the same in every locale (chunk 5.5s2):
+    /// a token usage's `input 1,200, output 350`. Each pair is a label and
+    /// the part it names.
+    Labelled(&'static [(&'static str, &'static str)]),
 }
 
 /// A unit a measure is shown in (chunk 5.5m2): its kind, its name in the
@@ -654,6 +670,7 @@ pub fn order_rules(ty: &str) -> &'static [OrderRule] {
     match ty {
         records::RATING => records::order_rules(ty),
         geo::BOUNDING_BOX => geo::order_rules(ty),
+        ai::TOKEN_USAGE => ai::order_rules(ty),
         _ => health::order_rules(ty),
     }
 }
@@ -906,6 +923,10 @@ pub enum Storage {
     /// until then a field can't store one, `toolchain.not_built_yet`
     /// (chunk 5.5s).
     Geography,
+    /// A pgvector `vector` column (area 19, "AI: a future area"), which
+    /// the AI area builds (roadmap 5.5v): until then a field can't store a
+    /// vector or an embedding, `toolchain.not_built_yet` (chunk 5.5s2).
+    Vector,
 }
 
 /// The examples the harness checks a type with.
@@ -1217,8 +1238,9 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// systems and `RouteOfAdministration` (chunk 5.5m2, in `records` and
 /// `health`), `PasswordHash`, `PasswordCheck` and `PublicKey` (chunk
 /// 5.5q2, in `security`), the 17 geospatial types (chunk 5.5s, in
-/// `geo`), and `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims`
-/// (chunk 5.5r, in `security`).
+/// `geo`), `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims`
+/// (chunk 5.5r, in `security`), and the AI types with `ChatRole` (chunk
+/// 5.5s2, in `ai`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1311,6 +1333,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     card_types::CARD_EXPIRY_TYPE,
     codes::CARRIER,
     lists::CEFR_LEVEL_ENTRY,
+    ai::CHAT_MESSAGE_ENTRY,
+    ai::CHAT_ROLE_ENTRY,
     web::CIDR,
     geo::CIRCLE_ENTRY,
     records::CLOTHING_SIZE_ENTRY,
@@ -1471,6 +1495,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
     ),
     contact::EMAIL_WITH_NAME,
+    ai::EMBEDDING_ENTRY,
     web::EMOJI_ENTRY,
     quantity(
         crate::QuantityKind::Energy,
@@ -2184,6 +2209,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     lists::TENURE_ENTRY,
     places::TEXT_DIRECTION_ENTRY,
     media::TIMECODE_ENTRY,
+    ai::TOKEN_COUNT_ENTRY,
+    ai::TOKEN_USAGE_ENTRY,
     software::TRACE_ID,
     software::TRACE_PARENT,
     records::TRACKING_NUMBER_ENTRY,
@@ -2259,6 +2286,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         release: FIRST_RELEASE,
     },
     documents::VAT_NUMBER_TYPE,
+    ai::VECTOR_ENTRY,
     records::VEHICLE_REGISTRATION_ENTRY,
     software::VERSION_RANGE,
     media::VIDEO_CODEC_ENTRY,
@@ -2565,6 +2593,12 @@ pub fn declared(name: &str) -> Option<(Builtin, crate::Rules)> {
     }
 }
 
+/// The rules a named collection keeps as a type, where it has any (chunk
+/// 5.5s2): a `Vector`'s lengths, and its items kept as floats.
+pub fn collection_rules(name: &str) -> Option<crate::Rules> {
+    (name == ai::VECTOR).then(ai::vector_rules)
+}
+
 /// Standard types held as text that are each a narrower form of another,
 /// so a value of the first is a value of the second (chunk 5.5n): every
 /// `UrlPath` is a `RelativeUrl`, which `web.resolve` takes, and every
@@ -2698,6 +2732,7 @@ impl StandardType {
             Holds::Text { personal, .. } => personal,
             _ => contact::PERSONAL
                 .iter()
+                .chain(ai::PERSONAL)
                 .chain(banks::PERSONAL)
                 .chain(card_types::PERSONAL)
                 .chain(documents::PERSONAL)
@@ -2741,7 +2776,7 @@ impl StandardType {
     /// none for a type stored in one.
     pub fn columns(&self) -> &'static [(&'static str, &'static str)] {
         match self.storage {
-            Storage::Column(_) | Storage::Geography => &[],
+            Storage::Column(_) | Storage::Geography | Storage::Vector => &[],
             Storage::Columns { parts, .. } => parts,
         }
     }
@@ -2758,7 +2793,7 @@ impl StandardType {
     /// Of its named columns, the one a type built on it can fix.
     pub fn fixed_part(&self) -> Option<&'static str> {
         match self.storage {
-            Storage::Column(_) | Storage::Geography => None,
+            Storage::Column(_) | Storage::Geography | Storage::Vector => None,
             Storage::Columns { fixed, .. } => fixed,
         }
     }
@@ -2826,6 +2861,7 @@ impl StandardType {
                 return parts.first().map_or("jsonb", |(_, ty)| *ty);
             }
             Storage::Geography => return "geography",
+            Storage::Vector => return "vector",
         };
         match storage {
             SqlType::Bool => "boolean",
@@ -2872,7 +2908,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 239, "the 239 standard types built so far");
+        assert_eq!(names.len(), 245, "the 245 standard types built so far");
     }
 
     #[test]
@@ -2982,9 +3018,16 @@ mod tests {
                 "{} is sent as an array or an object exactly when it is a list or a map",
                 entry.name
             );
+            // A vector is stored in pgvector, which the AI area builds
+            // (chunk 5.5s2).
             if matches!(entry.holds, Holds::List(_) | Holds::Map(..)) {
                 assert!(entry.text.is_none(), "{}", entry.name);
-                assert_eq!(entry.column_type(), "jsonb", "{}", entry.name);
+                let column = if entry.holds == Holds::List(Part::Float) {
+                    "vector"
+                } else {
+                    "jsonb"
+                };
+                assert_eq!(entry.column_type(), column, "{}", entry.name);
             }
             if let Holds::Whole { min, max } = entry.holds {
                 assert_eq!(entry.text, Some(TextForm::Whole), "{}", entry.name);
