@@ -19,6 +19,10 @@ use jadpo_std::{QuantityKind, Rounding};
 use crate::value::Decimal;
 use crate::{Fault, Record, Value, present};
 
+mod shapes;
+
+pub use shapes::{bounding_box, centroid, contains, intersects, within};
+
 /// Why a GeoJSON geometry wasn't read: where in it, below the field being
 /// read (`coordinates.0.3.1`), and the rule it broke.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,6 +192,17 @@ fn polygon(json: &serde_json::Value, at: &[String]) -> Result<Value, Unreadable>
         }
         rings.push(wound(points, n == 0));
     }
+    // Valid on the sphere (area 20, "Polygons are valid when built"), or
+    // refused at the first ring that isn't.
+    let positions: Vec<Vec<jadpo_std::sphere::Position>> = rings
+        .iter()
+        .map(|ring| ring.iter().filter_map(position_num).collect())
+        .collect();
+    if let Some((outer, holes)) = positions.split_first()
+        && let Some(broken) = jadpo_std::sphere::rings_broken(outer, holes)
+    {
+        return refused(&step(at, broken), "format");
+    }
     let outer = rings.remove(0);
     Ok(Value::record(
         POLYGON,
@@ -289,6 +304,20 @@ fn axes(point: &Value) -> Option<(Decimal, Decimal)> {
             Some((*latitude, *longitude))
         }
         _ => None,
+    }
+}
+
+/// A point's latitude and longitude as the sphere's geometry reads them.
+fn position_num(point: &Value) -> Option<jadpo_std::sphere::Position> {
+    let (latitude, longitude) = axes(point)?;
+    Some((num(latitude), num(longitude)))
+}
+
+/// A decimal as an exact number.
+fn num(value: Decimal) -> jadpo_std::Num {
+    jadpo_std::Num {
+        mantissa: value.mantissa,
+        scale: value.scale,
     }
 }
 
@@ -803,6 +832,60 @@ mod tests {
             "unknown_field"
         );
         assert_eq!(refusal(GEOMETRY, r#"{"type":"Feature"}"#).rule, "variant");
+    }
+
+    #[test]
+    fn a_polygon_that_isn_t_valid_is_refused_at_its_ring() {
+        // Area 20, "Polygons are valid when built": each rule, read from
+        // GeoJSON, refused as `format` at the ring that breaks it.
+        let square = "[0,0],[10,0],[10,10],[0,10],[0,0]";
+        let cases = [
+            ("[[0,0],[10,10],[0,10],[10,0],[0,0]]", 0),
+            ("[[0,0],[10,0],[5,0],[5,10],[0,0]]", 0),
+            ("[[0,0],[10,0],[10,0],[10,10],[0,0]]", 0),
+            ("[[0,10],[180,-10],[90,0],[0,10]]", 0),
+            ("[[0,0],[90,0],[180,0],[-90,0],[0,0]]", 0),
+        ];
+        for (rings, ring) in cases {
+            let text = format!(r#"{{"type":"Polygon","coordinates":[{rings}]}}"#);
+            assert_eq!(
+                read_text(POLYGON, &text),
+                Err(Unreadable {
+                    at: vec!["coordinates".into(), ring.to_string()],
+                    rule: "format"
+                }),
+                "{text}"
+            );
+        }
+        let holes = [
+            ("[[20,20],[20,21],[21,21],[20,20]]", 1),
+            ("[[5,5],[15,5],[15,6],[5,5]]", 1),
+            ("[[0,0],[2,1],[1,2],[0,0]]", 1),
+            (
+                "[[1,1],[9,1],[9,9],[1,9],[1,1]],[[2,2],[2,3],[3,3],[2,2]]",
+                2,
+            ),
+        ];
+        for (rings, ring) in holes {
+            let text = format!(r#"{{"type":"Polygon","coordinates":[[{square}],{rings}]}}"#);
+            assert_eq!(
+                read_text(POLYGON, &text),
+                Err(Unreadable {
+                    at: vec!["coordinates".into(), ring.to_string()],
+                    rule: "format"
+                }),
+                "{text}"
+            );
+        }
+        // Inside a multi-polygon, at its polygon and its ring.
+        let text = r#"{"type":"MultiPolygon","coordinates":[[[[0,0],[1,0],[1,1],[0,0]]],[[[0,0],[10,10],[0,10],[10,0],[0,0]]]]}"#;
+        assert_eq!(
+            read_text(MULTI_POLYGON, text),
+            Err(Unreadable {
+                at: vec!["coordinates".into(), "1".into(), "0".into()],
+                rule: "format"
+            })
+        );
     }
 
     #[test]

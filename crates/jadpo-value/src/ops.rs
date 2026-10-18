@@ -42,6 +42,9 @@ pub enum Fault {
     /// dates, which has days and no zone (chunk 5.5k4): its days are asked
     /// for from a date.
     DateOnlyRule,
+    /// `geo.centroid` of a shape whose weights cancel, two points opposite
+    /// each other, which leaves no direction (area 20, "Operations").
+    NoCentre,
     /// `ai.distance` by cosine from a vector of zeros, which has no
     /// direction, so no angle to another (area 21, chunk 5.5v1).
     ZeroVector,

@@ -3,10 +3,14 @@
 //! gate also checks under WebAssembly (crates/jadpo-value/examples/
 //! geodesics), through the one implementation both executors call, with
 //! a digest of every answer that both targets must give; then
-//! `same_point` and a line's length, as compiled code calls them.
+//! `same_point` and a line's length, as compiled code calls them. The
+//! predicates and shapes (chunk 5.5u3) against PostGIS's answers, the
+//! same way.
 
 #[path = "../../jadpo-value/examples/geodesics/check.rs"]
 mod check;
+#[path = "../../jadpo-value/examples/geodesics/shapes.rs"]
+mod shapes;
 
 use jadpo_std::RuleKey;
 use jadpo_std::standard::geo::{LINE_STRING, MULTI_LINE_STRING};
@@ -16,6 +20,18 @@ use jadpo_value::{Decimal, Fault, Value, geo, run};
 fn every_measure_matches_geographiclib_s_test_set() {
     let (wrong, count) = check::mismatches();
     assert!(count >= 500, "{count} reference geodesics");
+    assert!(
+        wrong.is_empty(),
+        "{} of {count}:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+}
+
+#[test]
+fn every_predicate_and_shape_agrees_with_postgis() {
+    let (wrong, count, _) = shapes::mismatches();
+    assert!(count >= 150, "{count} cases");
     assert!(
         wrong.is_empty(),
         "{} of {count}:\n{}",

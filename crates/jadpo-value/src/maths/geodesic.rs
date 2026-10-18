@@ -998,7 +998,14 @@ impl Ellipsoid {
 
 /// A point in degrees, as working values.
 fn degrees(e: &Ellipsoid, (latitude, longitude): (Decimal, Decimal)) -> (Real, Real) {
-    (e.unit.decimal(latitude), e.unit.decimal(longitude))
+    let num = |value: Decimal| jadpo_std::Num {
+        mantissa: value.mantissa,
+        scale: value.scale,
+    };
+    (
+        e.unit.decimal(num(latitude)),
+        e.unit.decimal(num(longitude)),
+    )
 }
 
 /// The geodesic distance between two points in metres, at 6 places

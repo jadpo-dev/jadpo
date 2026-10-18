@@ -178,6 +178,8 @@ books
 books_after
 books_titled
 borrower
+bow_start
+bow_tie
 box_count
 box_size
 bread
@@ -302,6 +304,7 @@ class_time
 clear_cart
 clear_landing
 clearance
+clicked
 clinic_public_key
 clinical_note
 clock_reading
@@ -410,6 +413,7 @@ delivered
 delivered_to
 deliveries_in
 deliveries_on
+delivers
 delivers_to
 delivery
 delivery_cost
@@ -455,6 +459,7 @@ double_quantity
 doubled_checked
 doubled_order
 draft_name
+drawn_patch
 drift
 driven
 due_at
@@ -658,6 +663,7 @@ in_review
 in_shop
 in_stock
 in_store
+in_view
 in_yen
 incoming_call
 incomplete_receipt
@@ -728,6 +734,7 @@ kitchen
 kitchen_busy
 kitchen_staff
 lab_certificate
+label_at
 label_jar
 label_line
 label_weight
@@ -941,6 +948,7 @@ not_a_call
 not_a_colour
 not_a_domain
 not_a_flight
+not_a_patch
 not_a_product_code
 not_a_rate
 not_a_rating
@@ -992,6 +1000,7 @@ on_payment_succeeded
 on_shelf
 on_shelves
 on_show
+on_the_edge
 open_bakery
 open_note
 open_outlet
@@ -1120,11 +1129,13 @@ party_label
 party_title
 pass_rate
 passed_on
+passes_through
 password_to_keep
 past_expiry
 pasted_about
 pastry
 patch_area
+patch_from
 patch_layer
 patch_properties
 patch_release
@@ -1475,6 +1486,7 @@ shipping_text
 shop_day
 shop_domain
 shop_link
+shop_pin
 shop_time
 shop_wants
 shopper
@@ -1741,6 +1753,7 @@ verbosity
 video_id
 video_still
 view_count
+view_of
 view_video
 visits
 vouch
@@ -1750,7 +1763,10 @@ voucher
 voucher_made
 voucher_on_file
 walk_time
+walkable
+walking_distance
 walking_pace
+walking_reach
 wallet
 wallet_id
 warnings

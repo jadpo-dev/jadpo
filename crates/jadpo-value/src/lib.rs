@@ -438,7 +438,24 @@ pub fn run(
         (Op::GeoBearing, [from, to]) => geo::bearing(from, to),
         (Op::GeoLength, [line]) => geo::length(line),
         (Op::GeoArea, [shape]) => geo::area(shape),
-        (Op::GeoDistance | Op::GeoBearing | Op::GeoLength | Op::GeoArea, _) => Err(Fault::Shape),
+        (Op::GeoIntersects, [a, b]) => geo::intersects(a, b),
+        (Op::GeoContains, [a, b]) => geo::contains(a, b),
+        (Op::GeoWithin, [a, b, distance]) => geo::within(a, b, distance),
+        (Op::GeoWithin, [a, b]) => geo::within(a, b, &Value::None),
+        (Op::GeoCentroid, [shape]) => geo::centroid(shape),
+        (Op::GeoBoundingBox, [shape]) => geo::bounding_box(shape),
+        (
+            Op::GeoDistance
+            | Op::GeoBearing
+            | Op::GeoLength
+            | Op::GeoArea
+            | Op::GeoIntersects
+            | Op::GeoContains
+            | Op::GeoWithin
+            | Op::GeoCentroid
+            | Op::GeoBoundingBox,
+            _,
+        ) => Err(Fault::Shape),
         (Op::HashSha256, [Value::Bytes(bytes)]) => Ok(bytes_value(&hash::sha256(bytes))),
         (Op::HashSha256, [Value::Text(text)]) => Ok(bytes_value(&hash::sha256(text.as_bytes()))),
         // An API key's or a bearer token's verifier, which is what is
@@ -921,6 +938,20 @@ mod tests {
                         ),
                         ("holes".into(), Value::list(Vec::new())),
                     ],
+                )],
+                Op::GeoIntersects | Op::GeoContains => vec![
+                    geo::point(Decimal::new(1, 0), Decimal::new(2, 0), Value::None),
+                    geo::point(Decimal::new(1, 0), Decimal::new(2, 0), Value::None),
+                ],
+                Op::GeoWithin => vec![
+                    geo::point(Decimal::new(1, 0), Decimal::new(2, 0), Value::None),
+                    geo::point(Decimal::new(1, 0), Decimal::new(2, 0), Value::None),
+                    Value::None,
+                ],
+                Op::GeoCentroid | Op::GeoBoundingBox => vec![geo::point(
+                    Decimal::new(1, 0),
+                    Decimal::new(2, 0),
+                    Value::None,
                 )],
                 Op::UnitsOf => vec![Value::Int(5), mile.clone()],
                 Op::UnitsIn => vec![

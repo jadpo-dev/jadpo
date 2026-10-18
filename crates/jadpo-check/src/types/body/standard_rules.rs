@@ -106,6 +106,57 @@ fn rate_of(record: &ast::RecordExpr) -> Option<(i64, i64)> {
     ))
 }
 
+/// A ring written out: a list of `Point` literals, each latitude and
+/// longitude a number written out, as `rings_valid` reads it (area 20),
+/// each coordinate as it is held, the nearest double (question 2);
+/// `None` for anything else, which only the running program knows.
+fn ring_literal(value: &Expr) -> Option<Vec<(jadpo_std::Num, jadpo_std::Num)>> {
+    let Expr::ListExpr(list) = value else {
+        return None;
+    };
+    list.exprs()
+        .map(|item| {
+            let Expr::RecordExpr(point) = item else {
+                return None;
+            };
+            let head = point.expr().map(|head| tree::written(head.syntax()))?;
+            if head != jadpo_std::standard::geo::POINT {
+                return None;
+            }
+            let coordinate = |name: &str| match Const::from_expr(&value_of(&point, name)?) {
+                Const::Number { value, .. } => {
+                    jadpo_std::standard::geo::nearest_double(&value.to_string())
+                        .and_then(|held| jadpo_std::Num::parse(&held))
+                }
+                _ => None,
+            };
+            Some((coordinate("latitude")?, coordinate("longitude")?))
+        })
+        .collect()
+}
+
+/// What a literal shows of a polygon's ring part: one ring for `outer`
+/// (`depth` 1), each ring for `holes` (2), known only when written out.
+fn rings_shown(value: Option<&Expr>, depth: usize) -> Known<jadpo_std::standard::across::Rings> {
+    let Some(value) = value else {
+        return Known::Unknown;
+    };
+    let read = match depth {
+        1 => ring_literal(value).map(|ring| vec![ring]),
+        _ => match value {
+            Expr::ListExpr(list) => list
+                .exprs()
+                .map(|ring| ring_literal(&ring))
+                .collect::<Option<Vec<_>>>(),
+            _ => None,
+        },
+    };
+    match read {
+        Some(rings) => Known::Given(Some(rings)),
+        None => Known::Unknown,
+    }
+}
+
 /// A literal read as the part it is written for: text as an instant or a
 /// date where the part is one, a frame rate where it is one.
 fn owned(value: &Expr, prim: Option<Prim>, standard: Option<&str>) -> Option<Owned> {
@@ -244,6 +295,13 @@ impl Body<'_> {
                 )
             })
             .collect();
+        let rings = shown
+            .iter()
+            .filter_map(|(name, _)| {
+                let depth = jadpo_std::standard::across::ring_depth(host, name)?;
+                Some((*name, rings_shown(value_of(record, name).as_ref(), depth)))
+            })
+            .collect();
         let parts = Listed {
             parts: shown
                 .iter()
@@ -258,6 +316,7 @@ impl Body<'_> {
                     )
                 })
                 .collect(),
+            rings,
         };
         let given: BTreeMap<String, Expr> = tree::members(record.member_list())
             .into_iter()

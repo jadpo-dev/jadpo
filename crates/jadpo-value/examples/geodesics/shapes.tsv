@@ -1,0 +1,176 @@
+# Area 20's predicates and shapes (chunk 5.5u3), each with PostGIS's answer:
+# PostGIS 3.4.2 on PostgreSQL 16.3, written by tools/geo_cases.py,
+# which says what each operation is held to. Geometries are GeoJSON;
+# `box:` is south,west,north,east, `circle:` a centre and a radius in metres.
+# `page` is set where the page's meaning and PostGIS's answer part: the
+# page's answer and why, which Jadpo gives.
+# operation	case	a	b	distance	answer	page
+contains	square square_middle	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[5,5]}		t	
+contains	square square_corner	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[10,10]}		t	
+contains	square square_outside	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[5,-1]}		f	
+contains	square on_meridian_edge	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[0,3.25]}		t	
+contains	square on_equator_edge	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[7.125,0]}		t	
+contains	square_hole in_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Point","coordinates":[3,3]}		f	
+contains	square_hole beside_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Point","coordinates":[7,1]}		t	
+contains	band band_north	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}	{"type":"Point","coordinates":[0,60.1]}		t	
+contains	band band_south	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}	{"type":"Point","coordinates":[0,50.1]}		f	
+contains	band band_inside	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}	{"type":"Point","coordinates":[3,55]}		t	
+contains	band band_top	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}	{"type":"LineString","coordinates":[[-5,59.9],[5,59.9]]}		t	
+contains	across across_east	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Point","coordinates":[-175,5]}		t	
+contains	across across_west	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Point","coordinates":[175,-5]}		t	
+contains	across antimeridian	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Point","coordinates":[180,0]}		t	
+contains	across across_far	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Point","coordinates":[0,0]}		f	
+contains	across across_line	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"LineString","coordinates":[[175,0],[-175,0]]}		t	
+contains	across across_small	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Polygon","coordinates":[[[178,-2],[-178,-2],[-178,2],[178,2],[178,-2]]]}		t	
+contains	north_cap north_pole	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"Point","coordinates":[0,90]}		t	
+contains	north_cap arctic	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"Point","coordinates":[-45,85]}		t	
+contains	north_cap subarctic	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"Point","coordinates":[-45,75]}		f	
+contains	north_cap polar_line	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"LineString","coordinates":[[0,85],[180,85]]}		t	
+contains	north_cap south_pole	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"Point","coordinates":[0,-90]}		f	
+contains	south_cap south_pole	{"type":"Polygon","coordinates":[[[0,-70],[-120,-70],[120,-70],[0,-70]]]}	{"type":"Point","coordinates":[0,-90]}		t	
+contains	south_cap antarctic	{"type":"Polygon","coordinates":[[[0,-70],[-120,-70],[120,-70],[0,-70]]]}	{"type":"Point","coordinates":[77,-80]}		t	
+contains	south_cap north_pole	{"type":"Polygon","coordinates":[[[0,-70],[-120,-70],[120,-70],[0,-70]]]}	{"type":"Point","coordinates":[0,90]}		f	
+contains	big big_inside	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}	{"type":"Point","coordinates":[0,35]}		t	
+contains	big big_outside	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}	{"type":"Point","coordinates":[0,45]}		t	
+contains	big big_bulge	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}	{"type":"Point","coordinates":[0,41.5]}		t	
+contains	big square	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}		t	
+contains	equator_cross equator_inside	{"type":"Polygon","coordinates":[[[20,-5],[30,-5],[30,5],[20,5],[20,-5]]]}	{"type":"Point","coordinates":[25,0.5]}		t	
+contains	concave_l l_inside	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,2],[2,2],[2,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[5,1]}		t	
+contains	concave_l l_notch	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,2],[2,2],[2,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[5,5]}		f	
+contains	london_patch big_ben	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"Point","coordinates":[-0.1246,51.5007]}		t	
+contains	london_patch paris	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"Point","coordinates":[2.3522,48.8566]}		f	
+contains	london_patch westminster	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"Polygon","coordinates":[[[-0.14,51.495],[-0.115,51.495],[-0.115,51.505],[-0.14,51.505],[-0.14,51.495]]]}		t	
+contains	london_patch van_round	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"LineString","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033],[0,51.4769]]}		f	
+contains	london_patch london_pins	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"MultiPoint","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033]]}		t	
+contains	westminster london_patch	{"type":"Polygon","coordinates":[[[-0.14,51.495],[-0.115,51.495],[-0.115,51.505],[-0.14,51.505],[-0.14,51.495]]]}	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}		f	
+contains	square two_in_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"MultiPoint","coordinates":[[5,5],[1,8]]}		t	
+contains	square_hole one_in_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"MultiPoint","coordinates":[[5,5],[3,3]]}		f	
+contains	square inside_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"LineString","coordinates":[[6,1],[8,9],[9,6]]}		t	
+contains	square_hole through_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"LineString","coordinates":[[1,1],[5,5]]}		f	
+contains	square through_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"LineString","coordinates":[[1,1],[5,5]]}		t	
+contains	square leaving_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"LineString","coordinates":[[5,5],[20,20]]}		f	
+contains	square two_lines	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"MultiLineString","coordinates":[[[6,1],[8,9]],[[1,6],[2,9]]]}		t	
+contains	square_hole two_lines	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"MultiLineString","coordinates":[[[6,1],[8,9]],[[1,6],[2,9]]]}		t	
+contains	square small_in_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,5]]]}		t	
+contains	square_hole small_in_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,5]]]}		t	
+contains	square_hole over_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[1,1],[6,1],[6,6],[1,6],[1,1]]]}		t	f: b covers a's hole, which ST_Covers on geography doesn't look at
+contains	square_hole around_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[1,1],[6,1],[6,6],[1,6],[1,1]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}		f	t: b's hole is a's hole; ST_Covers counts rings along each other as crossing
+contains	square_hole in_hole_patch	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[2.5,2.5],[3.5,2.5],[3.5,3.5],[2.5,2.5]]]}		f	
+contains	square square_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}		f	t: b is a with a hole; ST_Covers counts rings along each other as crossing
+contains	square_hole square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}		f	
+contains	square overlapping	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[8,8],[15,8],[15,15],[8,15],[8,8]]]}		f	
+contains	covering square	{"type":"Polygon","coordinates":[[[-5,-5],[15,-5],[15,15],[-5,15],[-5,-5]]]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}		t	
+contains	square covering	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[-5,-5],[15,-5],[15,15],[-5,15],[-5,-5]]]}		f	
+contains	meridian meridian_part	{"type":"LineString","coordinates":[[5,0],[5,10]]}	{"type":"LineString","coordinates":[[5,2],[5,4]]}		t	
+contains	meridian meridian_past	{"type":"LineString","coordinates":[[5,0],[5,10]]}	{"type":"LineString","coordinates":[[5,2],[5,11]]}		f	
+contains	meridian square_middle	{"type":"LineString","coordinates":[[5,0],[5,10]]}	{"type":"Point","coordinates":[5,5]}		t	
+contains	equator_line equator_part	{"type":"LineString","coordinates":[[0,0],[10,0]]}	{"type":"LineString","coordinates":[[2.5,0],[7.5,0]]}		t	
+contains	bend bend_part	{"type":"LineString","coordinates":[[0,0],[5,0],[5,5]]}	{"type":"LineString","coordinates":[[2,0],[5,0],[5,3]]}		t	
+contains	square_middle square_middle	{"type":"Point","coordinates":[5,5]}	{"type":"Point","coordinates":[5,5]}		t	
+contains	square_middle square_corner	{"type":"Point","coordinates":[5,5]}	{"type":"Point","coordinates":[10,10]}		f	
+contains	two_patches across_east	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}	{"type":"Point","coordinates":[-175,5]}		t	
+contains	two_patches across_small	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}	{"type":"Polygon","coordinates":[[[178,-2],[-178,-2],[-178,2],[178,2],[178,-2]]]}		t	
+contains	two_patches square_middle	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}	{"type":"Point","coordinates":[5,5]}		f	
+contains	patch_and_hole in_hole	{"type":"MultiPolygon","coordinates":[[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]],[[[30,30],[31,30],[31,31],[30,30]]]]}	{"type":"Point","coordinates":[3,3]}		f	
+contains	patch_and_hole beside_hole	{"type":"MultiPolygon","coordinates":[[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]],[[[30,30],[31,30],[31,31],[30,30]]]]}	{"type":"Point","coordinates":[7,1]}		t	
+contains	patch_and_hole small_in_square	{"type":"MultiPolygon","coordinates":[[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]],[[[30,30],[31,30],[31,31],[30,30]]]]}	{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,5]]]}		t	
+contains	two_patches one_in_each	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}	{"type":"MultiPoint","coordinates":[[20.5,20.5],[180,0]]}		f	t: each point is in one of a's parts; ST_Covers wants both in one part
+within	big_ben london_patch	{"type":"Point","coordinates":[-0.1246,51.5007]}	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}		t	
+within	paris london_patch	{"type":"Point","coordinates":[2.3522,48.8566]}	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}		f	
+within	westminster london_patch	{"type":"Polygon","coordinates":[[[-0.14,51.495],[-0.115,51.495],[-0.115,51.505],[-0.14,51.505],[-0.14,51.495]]]}	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}		t	
+within	in_hole square_hole	{"type":"Point","coordinates":[3,3]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}		f	
+within	meridian_part meridian	{"type":"LineString","coordinates":[[5,2],[5,4]]}	{"type":"LineString","coordinates":[[5,0],[5,10]]}		t	
+intersects	square square_middle	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[5,5]}		t	
+intersects	square square_outside	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Point","coordinates":[5,-1]}		f	
+intersects	square leaving_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"LineString","coordinates":[[5,5],[20,20]]}		t	
+intersects	square far_line	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"LineString","coordinates":[[11,11],[20,20]]}		f	
+intersects	square overlapping	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[8,8],[15,8],[15,15],[8,15],[8,8]]]}		t	
+intersects	square disjoint	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[20,20],[30,20],[30,30],[20,20]]]}		f	
+intersects	square covering	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[-5,-5],[15,-5],[15,15],[-5,15],[-5,-5]]]}		t	
+intersects	square_hole in_hole_patch	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[2.5,2.5],[3.5,2.5],[3.5,3.5],[2.5,2.5]]]}		f	
+intersects	square_hole in_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Point","coordinates":[3,3]}		f	
+intersects	square_hole over_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}	{"type":"Polygon","coordinates":[[[1,1],[6,1],[6,6],[1,6],[1,1]]]}		t	
+intersects	diagonal other_diagonal	{"type":"LineString","coordinates":[[0,0],[10,10]]}	{"type":"LineString","coordinates":[[10,0],[0,10]]}		t	
+intersects	diagonal far_line	{"type":"LineString","coordinates":[[0,0],[10,10]]}	{"type":"LineString","coordinates":[[11,11],[20,20]]}		f	
+intersects	across across_line	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"LineString","coordinates":[[175,0],[-175,0]]}		t	
+intersects	across across_small	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Polygon","coordinates":[[[178,-2],[-178,-2],[-178,2],[178,2],[178,-2]]]}		t	
+intersects	across square	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}		f	
+intersects	north_cap polar_line	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"LineString","coordinates":[[0,85],[180,85]]}		t	
+intersects	north_cap north_pole	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}	{"type":"Point","coordinates":[0,90]}		t	
+intersects	south_cap north_cap	{"type":"Polygon","coordinates":[[[0,-70],[-120,-70],[120,-70],[0,-70]]]}	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}		f	
+intersects	band band_top	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}	{"type":"LineString","coordinates":[[-5,59.9],[5,59.9]]}		t	
+intersects	band band_south	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}	{"type":"Point","coordinates":[0,50.1]}		f	
+intersects	london_patch van_round	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"LineString","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033],[0,51.4769]]}		t	
+intersects	london_patch paris	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}	{"type":"Point","coordinates":[2.3522,48.8566]}		f	
+intersects	westminster round_and_spur	{"type":"Polygon","coordinates":[[[-0.14,51.495],[-0.115,51.495],[-0.115,51.505],[-0.14,51.505],[-0.14,51.495]]]}	{"type":"MultiLineString","coordinates":[[[-0.1246,51.5007],[-0.1365,51.5136]],[[-0.1195,51.5033],[0,51.4769]]]}		t	
+intersects	two_patches across_line	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}	{"type":"LineString","coordinates":[[175,0],[-175,0]]}		t	
+intersects	two_patches diagonal	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}	{"type":"LineString","coordinates":[[0,0],[10,10]]}		f	
+intersects	spread square	{"type":"MultiPoint","coordinates":[[0,0],[10,0],[0,10]]}	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}		t	
+intersects	spread disjoint	{"type":"MultiPoint","coordinates":[[0,0],[10,0],[0,10]]}	{"type":"Polygon","coordinates":[[[20,20],[30,20],[30,30],[20,20]]]}		f	
+intersects	big equator_cross	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}	{"type":"Polygon","coordinates":[[[20,-5],[30,-5],[30,5],[20,5],[20,-5]]]}		t	
+intersects	concave_l small_in_square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,2],[2,2],[2,10],[0,10],[0,0]]]}	{"type":"Polygon","coordinates":[[[5,5],[6,5],[6,6],[5,5]]]}		f	
+within_distance	big_ben paris 340000	{"type":"Point","coordinates":[-0.1246,51.5007]}	{"type":"Point","coordinates":[2.3522,48.8566]}	340000	f	
+within_distance	big_ben paris 345000	{"type":"Point","coordinates":[-0.1246,51.5007]}	{"type":"Point","coordinates":[2.3522,48.8566]}	345000	t	
+within_distance	big_ben soho 1500	{"type":"Point","coordinates":[-0.1246,51.5007]}	{"type":"Point","coordinates":[-0.1365,51.5136]}	1500	f	
+within_distance	big_ben soho 1800	{"type":"Point","coordinates":[-0.1246,51.5007]}	{"type":"Point","coordinates":[-0.1365,51.5136]}	1800	t	
+within_distance	north_pole arctic 556000	{"type":"Point","coordinates":[0,90]}	{"type":"Point","coordinates":[-45,85]}	556000	f	
+within_distance	north_pole arctic 560000	{"type":"Point","coordinates":[0,90]}	{"type":"Point","coordinates":[-45,85]}	560000	t	
+within_distance	across_east across_west 1500000	{"type":"Point","coordinates":[-175,5]}	{"type":"Point","coordinates":[175,-5]}	1500000	f	
+within_distance	across_east across_west 1600000	{"type":"Point","coordinates":[-175,5]}	{"type":"Point","coordinates":[175,-5]}	1600000	t	
+circle	big_ben 1000 near_ben	circle:{"type":"Point","coordinates":[-0.1246,51.5007]},1000	{"type":"Point","coordinates":[-0.1246,51.5052]}		t	
+circle	big_ben 1000 far_from_ben	circle:{"type":"Point","coordinates":[-0.1246,51.5007]},1000	{"type":"Point","coordinates":[-0.1246,51.5142]}		f	
+circle	antimeridian 700000 across_east	circle:{"type":"Point","coordinates":[180,0]},700000	{"type":"Point","coordinates":[-175,5]}		f	
+circle	antimeridian 900000 across_east	circle:{"type":"Point","coordinates":[180,0]},900000	{"type":"Point","coordinates":[-175,5]}		t	
+box	51.48 -0.21 51.55 -0.04 london_patch	box:51.48,-0.21,51.55,-0.04	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}		t	
+box	51.48 -0.21 51.55 -0.04 big_ben	box:51.48,-0.21,51.55,-0.04	{"type":"Point","coordinates":[-0.1246,51.5007]}		t	
+box	51.48 -0.21 51.55 -0.04 paris	box:51.48,-0.21,51.55,-0.04	{"type":"Point","coordinates":[2.3522,48.8566]}		f	
+box	51.48 -0.21 51.55 -0.04 van_round	box:51.48,-0.21,51.55,-0.04	{"type":"LineString","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033],[0,51.4769]]}		f	
+box	49 -11 60.3 11 band	box:49,-11,60.3,11	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}		f	
+box	49 -11 60.5 11 band	box:49,-11,60.5,11	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}		t	
+box	-11 169 11 -169 across	box:-11,169,11,-169	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}		t	
+box	-11 -169 11 169 across	box:-11,-169,11,169	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}		f	
+box	-11 169 11 -169 across_line	box:-11,169,11,-169	{"type":"LineString","coordinates":[[175,0],[-175,0]]}		t	
+box	79 -180 90 180 north_cap	box:79,-180,90,180	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}		t	
+box	79 -100 90 100 north_cap	box:79,-100,90,100	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}		f	
+box	84 -1 90 1 polar_line	box:84,-1,90,1	{"type":"LineString","coordinates":[[0,85],[180,85]]}		f	
+box	84 -1 90 180 polar_line	box:84,-1,90,180	{"type":"LineString","coordinates":[[0,85],[180,85]]}		f	
+centroid	big_ben	{"type":"Point","coordinates":[-0.1246,51.5007]}			51.5007 -0.1246	
+centroid	london_pins	{"type":"MultiPoint","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033]]}			51.50586688233588 -0.1268658976570296	
+centroid	spread	{"type":"MultiPoint","coordinates":[[0,0],[10,0],[0,10]]}			3.3408642290091564 3.3465581406027836	
+centroid	two_in_square	{"type":"MultiPoint","coordinates":[[5,5],[1,8]]}			6.5039280651382825 3.0059694425094614	
+centroid	van_round	{"type":"LineString","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033],[0,51.4769]]}			51.49494591469809 -0.07871062423850866	
+centroid	bend	{"type":"LineString","coordinates":[[0,0],[5,0],[5,5]]}			1.2502974424522932 3.7494047608251138	
+centroid	across_line	{"type":"LineString","coordinates":[[175,0],[-175,0]]}			0 180	
+centroid	round_and_spur	{"type":"MultiLineString","coordinates":[[[-0.1246,51.5007],[-0.1365,51.5136]],[[-0.1195,51.5033],[0,51.4769]]]}			51.492818730554404 -0.07095633961095854	
+centroid	two_lines	{"type":"MultiLineString","coordinates":[[[6,1],[8,9]],[[1,6],[2,9]]]}			5.699540833306173 5.474806988880388	
+centroid	london_patch	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}			51.515019338081686 -0.12499999998910921	
+centroid	square	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}			5.006023845036793 5.000139741550778	
+centroid	square_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}			4.695782614012771 4.688928324858301	
+centroid	concave_l	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,2],[2,2],[2,10],[0,10],[0,0]]]}			3.21401671568357 3.2361346008153147	
+centroid	band	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}			55.2004064969625 0.005937560952105663	
+centroid	across	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}			-1.4210854715202004e-14 180	
+centroid	north_cap	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}			90 89.52101116001657	
+centroid	south_cap	{"type":"Polygon","coordinates":[[[0,-70],[-120,-70],[120,-70],[0,-70]]]}			-90 0	
+centroid	big	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}			4.521247268941181 4.697074012136597	
+centroid	two_patches	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}			16.009750393666394 163.70391661731514	
+centroid	patch_and_hole	{"type":"MultiPolygon","coordinates":[[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]],[[[30,30],[31,30],[31,31],[30,30]]]]}			8.478047876565014 7.939415080288032	
+bounding_box	big_ben	{"type":"Point","coordinates":[-0.1246,51.5007]}			51.5007 -0.1246 51.5007 -0.1246	
+bounding_box	london_pins	{"type":"MultiPoint","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033]]}			51.5007 -0.1365 51.5136 -0.1195	
+bounding_box	spread	{"type":"MultiPoint","coordinates":[[0,0],[10,0],[0,10]]}			0.0 0.0 10.0 10.0	
+bounding_box	van_round	{"type":"LineString","coordinates":[[-0.1246,51.5007],[-0.1365,51.5136],[-0.1195,51.5033],[0,51.4769]]}			51.4769 -0.1365 51.5136 0.0	
+bounding_box	bend	{"type":"LineString","coordinates":[[0,0],[5,0],[5,5]]}			0.0 0.0 5.0 5.000000000000003	
+bounding_box	across_line	{"type":"LineString","coordinates":[[175,0],[-175,0]]}			0.0 175.0 0.0 -175.0	
+bounding_box	round_and_spur	{"type":"MultiLineString","coordinates":[[[-0.1246,51.5007],[-0.1365,51.5136]],[[-0.1195,51.5033],[0,51.4769]]]}			51.4769 -0.1365 51.5136 0.0	
+bounding_box	london_patch	{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}			51.49 -0.2 51.5400239069116 -0.05	
+bounding_box	square_hole	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]]}			0.0 0.0 10.037423045910712 10.000000000000005	
+bounding_box	concave_l	{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,2],[2,2],[2,10],[0,10],[0,0]]]}			0.0 0.0 10.001492526984077 10.000000000000005	
+bounding_box	band	{"type":"Polygon","coordinates":[[[-10,50],[10,50],[10,60],[-10,60],[-10,50]]]}			50.0 -10.000000000000005 60.378348124804496 10.000000000000005	
+bounding_box	across	{"type":"Polygon","coordinates":[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]}			-10.151081711048134 170.0 10.151081711048134 -170.0	
+bounding_box	across_small	{"type":"Polygon","coordinates":[[[178,-2],[-178,-2],[-178,2],[178,2],[178,-2]]]}			-2.001218097652768 178.0 2.001218097652768 -178.0	
+bounding_box	north_cap	{"type":"Polygon","coordinates":[[[0,80],[90,80],[180,80],[-90,80],[0,80]]]}			80.0 -180.0 90.0 180.0	
+bounding_box	south_cap	{"type":"Polygon","coordinates":[[[0,-70],[-120,-70],[120,-70],[0,-70]]]}			-90.0 -180.0 -70.0 180.0	
+bounding_box	big	{"type":"Polygon","coordinates":[[[-60,-30],[60,-30],[60,40],[-60,40],[-60,-30]]]}			-49.10660535086908 -60.00000000000002 59.21026697116785 60.00000000000002	
+bounding_box	equator_cross	{"type":"Polygon","coordinates":[[[20,-5],[30,-5],[30,5],[20,5],[20,-5]]]}			-5.019001817489642 19.999999999999986 5.019001817489642 30.00000000000001	
+bounding_box	two_patches	{"type":"MultiPolygon","coordinates":[[[[20,20],[21,20],[21,21],[20,21],[20,20]]],[[[170,-10],[-170,-10],[-170,10],[170,10],[170,-10]]]]}			-10.151081711048134 19.99999999999999 21.000729927854728 -170.0	
+bounding_box	patch_and_hole	{"type":"MultiPolygon","coordinates":[[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[2,2],[2,4],[4,4],[4,2],[2,2]]],[[[30,30],[31,30],[31,31],[30,30]]]]}			0.0 0.0 31.0 31.000000000000004	
+bounding_box	north_pole	{"type":"Point","coordinates":[0,90]}			90.0 -180.0 90.0 180.0	
