@@ -48,6 +48,10 @@ pub enum SqlType {
     /// whose number each database gives it, so a parameter is sent without
     /// one and PostgreSQL infers it from the column (chunk 5.5v1).
     Vector,
+    /// A PostGIS `geography` (area 20, "Storage"): a geometry in WGS84.
+    /// Its type is the extension's, so a parameter is sent without a
+    /// number, as a vector's is, and PostgreSQL infers it (chunk 5.5u4).
+    Geography,
     /// `double precision`: only read, as the distance pgvector works out
     /// for a `nearest` query (area 21, chunk 5.5v1b).
     Float8,
@@ -71,8 +75,11 @@ impl SqlType {
             SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
             SqlType::Json => &SqlType::Json,
             SqlType::Array(inner) => return SqlType::Array(inner),
-            // Arrays of ranges, vectors and doubles are never sent.
-            SqlType::Range(_) | SqlType::Vector | SqlType::Float8 => &SqlType::Text,
+            // Arrays of ranges, vectors, doubles and geographies are never
+            // sent.
+            SqlType::Range(_) | SqlType::Vector | SqlType::Float8 | SqlType::Geography => {
+                &SqlType::Text
+            }
         })
     }
 
@@ -115,6 +122,8 @@ impl SqlType {
             "char" => SqlType::Text,
             // A vector, `vector(1536)` (area 21, chunk 5.5v1).
             "vector" => SqlType::Vector,
+            // A geometry (area 20, chunk 5.5u4).
+            "geography" => SqlType::Geography,
             // An address's lines (area 19, chunk 5.5l).
             "text[]" => SqlType::Text.array(),
             _ => return None,
@@ -179,6 +188,9 @@ pub enum SqlValue {
     /// single-precision float by its bits, so a vector is compared and
     /// ordered exactly, as the other values are.
     Vector(Vec<u32>),
+    /// A PostGIS `geography` (area 20, chunk 5.5u4): a geometry, each
+    /// coordinate the double PostGIS keeps.
+    Geography(crate::geography::Shape),
     /// A `double precision` by its bits (chunk 5.5v1b): a distance
     /// pgvector worked out, held exactly, `NaN` included.
     Float8(u64),
@@ -205,6 +217,7 @@ impl SqlValue {
             SqlValue::Array(element, _) => element.array(),
             SqlValue::Range { element, .. } => element.range(),
             SqlValue::Vector(_) => SqlType::Vector,
+            SqlValue::Geography(_) => SqlType::Geography,
             SqlValue::Float8(_) => SqlType::Float8,
         }
     }
@@ -317,6 +330,10 @@ pub enum Column {
     /// 5.5v1): each item read back as the decimal that is its
     /// single-precision float.
     Vector,
+    /// A geometry, kept in a PostGIS `geography` column (area 20, chunk
+    /// 5.5u4), by the standard type the field holds: one of the six
+    /// geometries, or `Geometry` for any of them.
+    Geography(String),
     /// The distance pgvector worked out for a `nearest` query (area 21,
     /// chunk 5.5v1b), a `float8`, read as `ai.distance` gives it: the
     /// decimal PostgreSQL writes the double as.

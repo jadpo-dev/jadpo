@@ -3,8 +3,8 @@
 //! literal writes them; an application's own `{ lat, lng }` refused as the
 //! standard `Point` unless declined; a geometry has no single text form,
 //! since one would hold an axis order; a bounding box's sides ordered; and
-//! storing a geometry waits on the geospatial area, while the cells, tiles
-//! and projected coordinates store today.
+//! every geometry stored, with a geographic index declared on one (area
+//! 20, chunk 5.5u4).
 
 use crate::support;
 
@@ -142,13 +142,26 @@ fn checked(source: &str) -> Vec<String> {
 }
 
 #[test]
-fn storing_a_geometry_waits_on_the_geospatial_area() {
-    for ty in ["Point", "Polygon", "Geometry", "BoundingBox", "Circle"] {
+fn every_geometry_is_stored() {
+    // Area 20, "Storage" (chunk 5.5u4): a geometry in its `geography`
+    // column, a box and a circle in named columns.
+    for ty in [
+        "Point",
+        "LineString",
+        "Polygon",
+        "MultiPoint",
+        "MultiLineString",
+        "MultiPolygon",
+        "Geometry",
+        "BoundingBox",
+        "Circle",
+        "Point?",
+    ] {
         assert_eq!(
             checked(&format!(
                 "entity Depot {{\n    id: Uuid\n    at: {ty}\n}}\n"
             )),
-            ["toolchain.not_built_yet"],
+            NONE,
             "{ty}"
         );
     }
@@ -157,5 +170,71 @@ fn storing_a_geometry_waits_on_the_geospatial_area() {
             "entity Depot {\n    id: Uuid\n    latitude: Latitude\n    longitude: Longitude\n    cell: H3Cell\n    tile: MapTile\n    grid: EastingNorthing\n}\n"
         ),
         NONE
+    );
+}
+
+#[test]
+fn a_geographic_index_is_on_one_geometry_field() {
+    // Area 20, "Indexes" (chunk 5.5u4): declared with `kind:`.
+    let entity = |indexes: &str| {
+        checked(&format!(
+            "entity Depot {{\n    id: Uuid\n    name: Text\n    at: Point\n    area: Polygon\n\n    indexes: {{\n{indexes}    }}\n}}\n"
+        ))
+    };
+    assert_eq!(
+        entity(
+            "        by_at: {\n            fields: [at]\n            kind: IndexKind.geographic\n        }\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        entity(
+            "        by_at: {\n            fields: [at]\n            kind: IndexKind.geographic\n        }\n        by_at_plain: [at]\n"
+        ),
+        NONE,
+        "a plain index on the same field is another index"
+    );
+    assert_eq!(
+        entity("        by_at: {\n            fields: [at]\n        }\n"),
+        NONE,
+        "a block with no kind is a plain index"
+    );
+    assert_eq!(
+        entity(
+            "        by_name: {\n            fields: [name]\n            kind: IndexKind.geographic\n        }\n"
+        ),
+        ["type.setting_value"],
+        "not a geometry"
+    );
+    assert_eq!(
+        entity(
+            "        by_both: {\n            fields: [at, area]\n            kind: IndexKind.geographic\n        }\n"
+        ),
+        ["type.setting_value"],
+        "two fields"
+    );
+    assert_eq!(
+        entity(
+            "        by_at: {\n            fields: [at]\n            kind: IndexKind.spatial\n        }\n"
+        ),
+        ["type.setting_value"],
+        "no such kind"
+    );
+    assert_eq!(
+        entity("        by_at: {\n            fields: [at]\n            method: gist\n        }\n"),
+        ["type.unknown_setting"],
+        "no such setting"
+    );
+    assert_eq!(
+        entity("        by_at: {\n            kind: IndexKind.geographic\n        }\n"),
+        ["data.field_list_required"],
+        "no fields"
+    );
+    assert_eq!(
+        entity(
+            "        by_at: {\n            fields: [at]\n            kind: IndexKind.geographic\n        }\n        again: {\n            fields: [at]\n            kind: IndexKind.geographic\n        }\n"
+        ),
+        ["data.duplicate_rule"],
+        "the same index twice"
     );
 }

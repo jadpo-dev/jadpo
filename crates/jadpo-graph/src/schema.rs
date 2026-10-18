@@ -186,11 +186,15 @@ pub struct Unique {
     pub rule: String,
 }
 
-/// A check constraint: `column` holds one of `values`, written as text.
+/// A check constraint: `column` holds one of `values`, written as text;
+/// or, for a `geography` column, a geometry in WGS84 (SRID 4326) whose
+/// `GeometryType` is one of `values` (`POINT`, area 20, chunk 5.5u4).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Check {
     pub column: String,
     pub values: Vec<String>,
+    /// Whether `values` are the geometry types a `geography` holds.
+    pub geography: bool,
 }
 
 /// A foreign key: the reference a field typed `X.id` makes.
@@ -408,6 +412,9 @@ impl Table {
             let mut entry = Value::object();
             entry.set("column", &check.column);
             entry.set("values", strings(&check.values));
+            if check.geography {
+                entry.set("geography", true);
+            }
             checks.set(name, entry);
         }
         value.set_some("checks", checks);
@@ -496,6 +503,7 @@ impl Table {
                 Check {
                     column: text_of(entry, "column")?,
                     values: list_of(entry, "values")?,
+                    geography: matches!(entry.get("geography"), Some(Value::Bool(true))),
                 },
             );
         }
@@ -915,6 +923,16 @@ impl Change {
                     "removed"
                 };
                 match check {
+                    Some(check) if check.geography => format!(
+                        "{verb} check that `{}` is {} in WGS84",
+                        check.column,
+                        check
+                            .values
+                            .iter()
+                            .map(|v| format!("`{v}`"))
+                            .collect::<Vec<_>>()
+                            .join(" or ")
+                    ),
                     Some(check) => format!(
                         "{verb} check that `{}` is {}",
                         check.column,

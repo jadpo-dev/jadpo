@@ -6723,7 +6723,8 @@ area page to specify:
 > records. The `geo.` operations, PostGIS storage and the query conditions
 > are [area 20](20-geospatial.md)'s; storing a geometry is
 > `toolchain.not_built_yet` until then. Chunk 5.5u2 built area 20's
-> measures, `geo.distance`, `length`, `bearing` and `area`.
+> measures, `geo.distance`, `length`, `bearing` and `area`; chunk 5.5u4
+> its storage in PostGIS.
 
 ## AI: a future area
 
@@ -10207,7 +10208,9 @@ conservative reading:
 - **Storage:** a geometry, a `BoundingBox` and a `Circle` are stored in a
   PostGIS `geography` column (`Storage::Geography`), which the geospatial
   area builds, so a field of one is `toolchain.not_built_yet`, pointing at
-  it. A `Latitude`, `Longitude` or `Bearing` is one `numeric` column, a
+  it. *Amended by chunk 5.5u4:* a geometry is stored in a `geography`
+  column checked to its type, and a `BoundingBox` and a `Circle` in named
+  columns (area 20, "Storage", question 7). A `Latitude`, `Longitude` or `Bearing` is one `numeric` column, a
   `Crs`, `Geohash` or `H3Cell` one `text` column, and a `MapTile` and an
   `EastingNorthing` a column per part, an easting's and a northing's
   `numeric`.

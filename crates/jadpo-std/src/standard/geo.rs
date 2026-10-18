@@ -3,11 +3,10 @@
 //! and `longitude` by name, never a pair; the geometries made of them, sent
 //! as GeoJSON (RFC 7946), whose `[longitude, latitude]` order exists only
 //! inside `jadpo-value`'s `geo` module; and the cells, tiles and projected
-//! coordinates applications pass between them. Storage in PostGIS and the
-//! `geo.` operations come with the geospatial area (roadmap 5.5u); until
-//! then a geometry's storage is [`Storage::Geography`], which a field
-//! can't use yet. What the page left open is area 19's "Chosen in chunk
-//! 5.5s".
+//! coordinates applications pass between them. A geometry is stored in a
+//! PostGIS `geography` column ([`Storage::Geography`], area 20, chunk
+//! 5.5u4); a `BoundingBox` and a `Circle` in named columns. What the page
+//! left open is area 19's "Chosen in chunk 5.5s".
 
 use super::across::{Check, Order, StandardRule, Verdict, in_order};
 use super::{
@@ -928,7 +927,17 @@ pub const BOUNDING_BOX_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&BOUNDING_BOX_FIELDS),
     text: None,
     json: Json::Fields(&["south", "west", "north", "east"]),
-    storage: Storage::Geography,
+    // Its sides, parallels and meridians, which a `geography` polygon
+    // would turn into great circles (area 20, question 7).
+    storage: Storage::Columns {
+        parts: &[
+            ("south", "numeric"),
+            ("west", "numeric"),
+            ("north", "numeric"),
+            ("east", "numeric"),
+        ],
+        fixed: &[],
+    },
     format: GEOMETRY_FORMAT,
     ordered: false,
     validator: None,
@@ -977,7 +986,12 @@ pub const CIRCLE_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&CIRCLE_FIELDS),
     text: None,
     json: Json::Fields(&["centre", "radius"]),
-    storage: Storage::Geography,
+    // Its centre a point's `geography`, its radius in metres: a circle has
+    // no `geography` form (area 20, question 7).
+    storage: Storage::Columns {
+        parts: &[("centre", "geography"), ("radius", "numeric(38, 6)")],
+        fixed: &[],
+    },
     format: Format {
         key: FormatKey::Parts {
             parts: &["radius", "centre"],
