@@ -193,6 +193,14 @@ impl Validator {
             }
             return Some(Value::list(kept));
         }
+        // A coordinate is kept as the shortest decimal of the nearest
+        // double, whatever decimal it is built from (area 20, question 2).
+        if let Value::Decimal(decimal) = &value
+            && self.rules.iter().any(|(rules, _)| rules.double)
+        {
+            let text = jadpo_std::standard::geo::nearest_double(&decimal.to_string())?;
+            return Value::decimal(&text);
+        }
         match (value, self.scale) {
             (Value::Decimal(d), Some(scale)) if d.scale != scale => {
                 d.rescale(scale, Rounding::HalfEven).map(Value::Decimal)

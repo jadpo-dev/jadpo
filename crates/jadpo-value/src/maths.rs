@@ -17,6 +17,8 @@
 //! `r` they aren't exact at (Lindemann–Weierstrass), and π is.
 
 mod big;
+mod fixed;
+pub(crate) mod geodesic;
 mod series;
 
 use big::{Big, Int};

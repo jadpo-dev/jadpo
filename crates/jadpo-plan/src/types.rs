@@ -936,5 +936,18 @@ fn standard_part(key: &Key) -> Option<(jadpo_std::Builtin, Rules)> {
     while let jadpo_std::Part::Optional(inner) | jadpo_std::Part::List(inner) = part {
         part = *inner;
     }
+    // A point's coordinates are kept as the nearest doubles as the point
+    // is built (area 20, question 2); the values are already in range.
+    if let jadpo_std::Part::Standard(name) = part
+        && jadpo_std::standard::geo::holds_double(name)
+    {
+        return Some((
+            jadpo_std::Builtin::Decimal,
+            Rules {
+                double: true,
+                ..Rules::default()
+            },
+        ));
+    }
     Some((part.builtin()?, part.rules()))
 }

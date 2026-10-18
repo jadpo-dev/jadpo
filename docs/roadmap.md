@@ -1162,13 +1162,23 @@ reference only).
   build on this roadmap. **Needs Richard** to decide the page. Decided
   2026-10-18 (Richard), as recommended, with PostGIS needed only once an
   app has a geometry column or index: [area 20](language/20-geospatial.md).
-- [ ] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
+- [x] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
   and "Precision and determinism"):
   `geo.distance`, `geo.length`, `geo.bearing` and `geo.area` by Karney's
   methods in Jadpo's decimal code, and coordinates held as doubles'
   shortest decimals. Done when each matches a sample of GeographicLib's
   `GeodTest` set to the micrometre, gives the same digits on native and
-  wasm32, and is benchmarked.
+  wasm32, and is benchmarked. Built: GeographicLib's inverse problem and
+  polygon area ported to whole-number fixed point (256 bits, 136 after
+  the point), its series to order 8; every distance within 75
+  femtometres of the test set before rounding, and all 10,000 lines of
+  `GeodTest-short` passing, of which a 500-line sample, written by
+  `tools/geodtest_sample.py`, is checked natively and under wasm32 with
+  one digest of every answer; 30 to 65 µs a distance natively, about
+  2.8 times that under wasm32. `same_point` is settled only by
+  `attempt`; a line's length sums its edges' rounded distances and an
+  area rounds once; a coordinate is rounded to the nearest double as it
+  is built. What the chunk chose is area 20's "Chosen in chunk 5.5u2".
 - [ ] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
   "Operations"), after 5.5u2:
   `geo.intersects`, `contains` and `within` (with `distance:`, a

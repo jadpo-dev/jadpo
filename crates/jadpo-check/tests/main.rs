@@ -30,6 +30,7 @@ mod examples;
 mod failures;
 mod fixes;
 mod formats;
+mod geodesics;
 mod geospatial;
 mod graph;
 mod habits;

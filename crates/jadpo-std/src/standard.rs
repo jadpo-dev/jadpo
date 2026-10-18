@@ -2854,6 +2854,7 @@ pub fn declared(name: &str) -> Option<(Builtin, crate::Rules)> {
             crate::Rules {
                 min,
                 max,
+                double: geo::holds_double(entry.name),
                 ..crate::Rules::default()
             },
         )),

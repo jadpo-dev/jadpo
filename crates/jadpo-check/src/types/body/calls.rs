@@ -940,6 +940,22 @@ impl Body<'_> {
                 self.built_on_argument(&value, ty, accepts, written, &name);
                 continue;
             }
+            // A `geo` operation's geometry: `length`'s line, `area`'s
+            // shape, and `distance`'s and `bearing`'s points, which are
+            // points only (area 20, question 10).
+            if let Some(jadpo_std::Kind::Shapes(accepts)) = kind {
+                let name = params[*slot].0.clone();
+                self.shape_argument(&value, ty, accepts, written, &name);
+                continue;
+            }
+            if let (Some(jadpo_std::Kind::Std(point)), Some(table)) = (kind, table)
+                && point == jadpo_std::standard::geo::POINT
+                && table.namespace == "geo"
+            {
+                let name = params[*slot].0.clone();
+                self.shape_argument(&value, ty, &[point], written, &name);
+                continue;
+            }
             if kind == Some(jadpo_std::Kind::Local) {
                 let name = params[*slot].0.clone();
                 self.local_argument(&value, ty, written, &name);
@@ -1732,6 +1748,55 @@ impl Body<'_> {
             )
             .at(span, format!("this is `{ty}`"))
             .reason(reason)
+            .next(format!("Pass {wanted} here")),
+        );
+    }
+
+    /// An argument to a `geo` operation that takes one of the geometries
+    /// `accepts` names (area 20, "Operations"): `geo.length`'s line is a
+    /// `LineString` or a `MultiLineString`, and `geo.distance`'s ends are
+    /// `Point`s, a distance from a point to a line or a polygon being left
+    /// out (question 10).
+    fn shape_argument(
+        &mut self,
+        value: &Expr,
+        ty: Option<Ty>,
+        accepts: &[&str],
+        written: &str,
+        param: &str,
+    ) {
+        let ty = match ty {
+            Some(ty) => ty,
+            None => self.infer(value),
+        };
+        let fits = |name: &&str| {
+            let standard = self.table.resolve_std(&super::super::TypeRef::Path(
+                vec![(*name).to_string()],
+                Vec::new(),
+            ));
+            self.table.assignable(&ty, &standard)
+        };
+        if ty.has_error() || accepts.iter().any(fits) {
+            return;
+        }
+        let wanted = accepts
+            .iter()
+            .map(|name| format!("a `{name}`"))
+            .collect::<Vec<_>>()
+            .join(" or ");
+        let why = if accepts == [jadpo_std::standard::geo::POINT] {
+            "measures between points only: from a point to a line or a polygon is a further geodesic algorithm, left out until a scenario needs it (area 20, question 10)"
+        } else {
+            "measures only those (area 20, \"Operations\"); a `Geometry` is matched first, to measure the shape it holds"
+        };
+        let span = self.span(value);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_MISMATCH,
+                format!("`{ty}` can't be used where {wanted} is required"),
+            )
+            .at(span, format!("this is `{ty}`"))
+            .reason(format!("`{written}`'s `{param}` takes {wanted}: it {why}."))
             .next(format!("Pass {wanted} here")),
         );
     }
