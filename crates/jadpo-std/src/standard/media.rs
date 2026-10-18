@@ -131,6 +131,7 @@ const fn dimensions(
             ],
         ),
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -186,6 +187,7 @@ pub const ASPECT_RATIO_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Rect`'s parts, in order: its top-left corner and its size.
@@ -229,6 +231,7 @@ pub const RECT_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Insets`' parts, in CSS's order.
@@ -269,6 +272,7 @@ pub const INSETS_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The paper sizes, each its own code: ISO 216's A and B series and the
@@ -317,6 +321,7 @@ pub const PAPER_SIZE_ENTRY: StandardType = StandardType {
         &["A11", "C4", "Executive", "210x297mm", "A 4", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -353,6 +358,7 @@ pub const EXIF_ORIENTATION_ENTRY: StandardType = StandardType {
         &["0", "9", "06", "top_left", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What an image shows, for someone who can't see it (WCAG 2.2's text
@@ -382,6 +388,7 @@ pub const ALT_TEXT_ENTRY: StandardType = StandardType {
         &["", " Logo", "Logo ", "Two\nlines", "Tab\tinside"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -427,6 +434,7 @@ pub const FRAME_RATE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A video codec string the W3C WebCodecs Codec Registry lists, in RFC
@@ -473,6 +481,7 @@ pub const VIDEO_CODEC_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An audio codec, as a media type's `codecs` parameter names it.
@@ -499,6 +508,7 @@ pub const AUDIO_CODEC_ENTRY: StandardType = StandardType {
         &["aac", "mp4a", "Opus", "pcm-s8", "avc1.42001E", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `Timecode`'s parts, in order: SMPTE ST 12-1's address, the rate it
@@ -567,6 +577,7 @@ pub const TIMECODE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `SubtitleCue`'s parts, in order.
@@ -632,6 +643,7 @@ pub const SUBTITLE_CUE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -678,6 +690,7 @@ pub const CONTENT_RATING_SCHEME_ENTRY: StandardType = StandardType {
         &["MPAA", "USK", "BBFC ", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// Whether `rating` is one of the categories of the body coded `scheme`.
@@ -742,6 +755,7 @@ pub const CONTENT_RATING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------

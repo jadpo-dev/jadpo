@@ -229,6 +229,7 @@ const fn secret_entry(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -641,6 +642,7 @@ pub const PASSWORD_HASH_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An Ed25519 public key, as unpadded Base64url (area 19).
@@ -687,6 +689,7 @@ pub const PUBLIC_KEY_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What checking a password says (area 19): `wrong`; `correct`; or
@@ -725,6 +728,7 @@ pub const PASSWORD_CHECK_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A JWT (area 19, chunk 5.5r), as its compact form: what
@@ -779,6 +783,7 @@ pub const JWT_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What a `JwtClaims`' text claims (`iss`, `sub`, `jti` and each of
@@ -847,6 +852,7 @@ pub const JWT_CLAIMS_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What a `Jwk`'s `x` holds: an Ed25519 public key's 32 bytes as 43
@@ -919,6 +925,7 @@ pub const JWK_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An OAuth scope (area 19, RFC 6749 §3.3): one scope-token, printable
@@ -955,6 +962,7 @@ pub const OAUTH_SCOPE_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What an `OidcClaims`' `sub` holds: OpenID Connect Core §2's subject
@@ -1040,6 +1048,7 @@ pub const OIDC_CLAIMS_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// How many bytes a `Hash` and an `Hmac` hold: SHA-256's digest, which
@@ -1122,6 +1131,7 @@ const fn bytes_entry(name: &'static str, validator: Validator, examples: Example
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -1289,6 +1299,7 @@ pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The transports a passkey says it can be reached by, as WebAuthn names
@@ -1402,6 +1413,7 @@ pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]

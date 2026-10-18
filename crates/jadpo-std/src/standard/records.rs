@@ -100,6 +100,7 @@ const fn system(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -171,6 +172,7 @@ pub const BARCODE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `UnitQuantity`'s variants: a count of items (UN/ECE Recommendation 20's
@@ -243,6 +245,7 @@ pub const UNIT_QUANTITY_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -323,6 +326,7 @@ pub const RATING_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `ClothingSizeSystem`'s variants, by the code a label writes: the UK's,
@@ -393,6 +397,7 @@ pub const CLOTHING_SIZE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A shoe size in its system, written as a box writes it, `UK 7.5`, `EU
@@ -423,6 +428,7 @@ pub const SHOE_SIZE_ENTRY: StandardType = StandardType {
         &["UK 7,5", "UK 7.25", "UK 07", "JP 26", "EU42", "US 9.0", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -494,6 +500,7 @@ pub const DIMENSIONS_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A tracking number as Jadpo takes it: 6 to 40 capitals and digits, which
@@ -539,6 +546,7 @@ pub const TRACKING_NUMBER_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A registration mark as its plate shows it: one to four groups of one
@@ -584,6 +592,7 @@ pub const VEHICLE_REGISTRATION_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `FlightNumber`'s parts: the airline's IATA designator, the flight's
@@ -628,6 +637,7 @@ pub const FLIGHT_NUMBER_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -686,6 +696,7 @@ pub const JURISDICTION_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A model provider's name as Hugging Face writes an organisation: up to
@@ -736,4 +747,5 @@ pub const MODEL_ID_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };

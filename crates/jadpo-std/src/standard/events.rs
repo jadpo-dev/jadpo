@@ -618,6 +618,7 @@ pub const CALENDAR_EVENT_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]

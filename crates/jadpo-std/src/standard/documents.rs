@@ -680,6 +680,7 @@ const fn issued(
         shape: None,
         examples: examples(valid, malformed),
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -725,6 +726,7 @@ pub const VAT_NUMBER_TYPE: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A taxpayer identification number and its country.
@@ -797,6 +799,7 @@ pub const IDENTITY_DOCUMENT_KIND_TYPE: StandardType = StandardType {
         &["passports", "visa", "id_card", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An identity document: its kind, its issuing country, its number and
@@ -843,6 +846,7 @@ pub const IDENTITY_DOCUMENT_TYPE: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// One country's valid and invalid numbers for a document type, each a

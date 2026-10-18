@@ -137,6 +137,7 @@ pub const CARD_BRAND_TYPE: StandardType = StandardType {
         &["americanexpress", "Visa Electron", "master_card", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// The month a card runs to, to the end of it: a year from 2000 to 2099
@@ -167,6 +168,7 @@ pub const CARD_EXPIRY_TYPE: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// What may be kept of a card once its number is gone: its brand, where a
@@ -208,6 +210,7 @@ pub const MASKED_CARD_NUMBER_TYPE: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 #[cfg(test)]

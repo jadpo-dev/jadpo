@@ -30,6 +30,7 @@ pub mod policy;
 mod resolve;
 pub mod routes;
 pub mod setting_move;
+pub mod suggest;
 mod std_lib;
 pub mod translations;
 mod tree;

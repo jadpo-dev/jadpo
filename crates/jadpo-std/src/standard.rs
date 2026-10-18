@@ -49,12 +49,14 @@ pub mod recurrence;
 pub mod rich_text;
 mod schedules;
 pub mod security;
+pub mod signals;
 pub mod software;
 pub mod web;
 
 pub use codes::isbn_from_isbn10;
 pub use contact::{LINE_MAX, LINE_PATTERN};
 pub use places::{ClosedList, closed_list, retired, subdivision_name};
+pub use signals::{LOOP_SIGNALS, LoopShape, LoopSignal, NO_SIGNALS, Signals, Validation};
 
 /// What a standard type's values are held as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1023,6 +1025,9 @@ pub struct StandardType {
     /// `type.standard_clash` says since when, and the release's notes list
     /// it under "Names each release adds".
     pub release: &'static str,
+    /// What `jadpo suggest` finds hand-rolled uses of it by (area 14,
+    /// "Suggestions"), beside [`StandardType::shape`].
+    pub signals: Signals,
 }
 
 /// The release the standard types built before Jadpo's first release
@@ -1092,6 +1097,7 @@ const fn checked(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     }
 }
 
@@ -1119,6 +1125,7 @@ const fn time_object(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     }
 }
 
@@ -1161,6 +1168,7 @@ const fn quantity(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::QUANTITY,
     }
 }
 
@@ -1355,6 +1363,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     events::CALENDAR_EVENT_ENTRY,
     // An amount of calendar time, unordered: one month and 30 days don't
@@ -1436,6 +1445,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     quantity(
         crate::QuantityKind::Current,
@@ -1496,6 +1506,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     software::DIGEST,
     records::DIMENSIONS_ENTRY,
@@ -1531,6 +1542,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::DURATION,
     },
     codes::EAN13,
     geo::EASTING_NORTHING_ENTRY,
@@ -1545,7 +1557,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             of: None,
             settings: "",
         },
-    ),
+    )
+    .with_signals(signals::EMAIL),
     contact::EMAIL_WITH_NAME,
     ai::EMBEDDING_ENTRY,
     web::EMOJI_ENTRY,
@@ -1626,6 +1639,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     media::EXIF_ORIENTATION_ENTRY,
     contact::FAMILY_NAME,
@@ -1652,6 +1666,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     records::FLIGHT_NUMBER_ENTRY,
     // An exact rational number as written (chunk 5.5j2): `1/2` and `2/4`
@@ -1694,6 +1709,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     media::FRAME_RATE_ENTRY,
     quantity(
@@ -1762,6 +1778,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::INSTANT,
     },
     // A half-open range of instants, from `start` up to but not including
     // `end` (area 10, "Zones and local times").
@@ -1806,6 +1823,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     prices::INTEREST_RATE_ENTRY,
     prices::INTEREST_RATE_BASIS_ENTRY,
@@ -1926,6 +1944,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     rich_text::LOCALISED_TEXT_ENTRY,
     software::LOG_LEVEL,
@@ -2015,6 +2034,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "currency: Currency.gbp",
         },
         release: FIRST_RELEASE,
+        signals: signals::MONEY,
     },
     // A month of the year (question 22): its own name is its code, as a
     // `Weekday`'s is.
@@ -2036,6 +2056,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     codes::MPAN,
     codes::MPRN,
@@ -2086,6 +2107,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,
@@ -2167,6 +2189,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     records::RATING_ENTRY,
     // One number to another as written (chunk 5.5j2): `16:9` and `32:18`
@@ -2209,6 +2232,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     media::RECT_ENTRY,
     schedules::RECURRENCE_RULE,
@@ -2297,7 +2321,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             of: None,
             settings: "",
         },
-    ),
+    )
+    .with_signals(signals::URL),
     web::URL_PATH,
     identifiers::US_EIN,
     identifiers::US_SSN,
@@ -2344,6 +2369,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: signals::UUID,
     },
     documents::VAT_NUMBER_TYPE,
     ai::VECTOR_ENTRY,
@@ -2391,6 +2417,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     places::WRITING_SCRIPT_ENTRY,
     // A calendar year on its own, ordered.
@@ -2447,6 +2474,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
     StandardType {
         name: "ZonedTime",
@@ -2475,6 +2503,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: NO_SIGNALS,
     },
 ];
 
@@ -2728,6 +2757,12 @@ pub fn reads_by_country(name: &str) -> bool {
 }
 
 impl StandardType {
+    /// The entry with `signals` (area 14, "Suggestions"), for an entry a
+    /// helper builds.
+    pub const fn with_signals(self, signals: Signals) -> StandardType {
+        StandardType { signals, ..self }
+    }
+
     /// Whether `text` is this type's canonical text: its pattern matched
     /// whole, for a type held as text, and its named validator.
     pub fn accepts(&self, text: &str) -> bool {

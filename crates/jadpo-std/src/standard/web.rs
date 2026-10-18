@@ -826,6 +826,7 @@ const fn text_type(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -860,6 +861,7 @@ const fn whole_type(
             settings: "",
         },
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
@@ -1039,6 +1041,7 @@ pub const HTTP_METHOD: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// An HTTP response's status code (RFC 9110 §15): three digits from 100
@@ -1194,6 +1197,7 @@ pub const PROBLEM_DETAILS_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A device's push notification token, from Apple's or Google's service:
@@ -1371,6 +1375,7 @@ pub const UTM_PARAMETERS_ENTRY: StandardType = StandardType {
         settings: "",
     },
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A web origin (RFC 6454, as the HTML standard serialises it): `http` or

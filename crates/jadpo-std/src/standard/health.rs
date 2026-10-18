@@ -155,6 +155,7 @@ pub const DOSE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `RouteOfAdministration`'s variants, each its own code, in order: the
@@ -219,6 +220,7 @@ pub const ROUTE_OF_ADMINISTRATION_ENTRY: StandardType = StandardType {
         &["by mouth", "IV", "Oral use", "po", ""],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// `DosageInstruction`'s parts, in order: the dose, the route it is taken
@@ -286,6 +288,7 @@ pub const DOSAGE_INSTRUCTION_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 // ---------------------------------------------------------------------
@@ -337,6 +340,7 @@ pub const HEART_RATE_ENTRY: StandardType = StandardType {
         &["72", "bpm", "", "seventy-two", "1.2.3 Hz"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A blood pressure in millimetres of mercury, shown whole.
@@ -427,6 +431,7 @@ pub const BLOOD_PRESSURE_ENTRY: StandardType = StandardType {
         ],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };
 
 /// A blood glucose level in millimoles of glucose a litre, to one place,
@@ -479,4 +484,5 @@ pub const BLOOD_GLUCOSE_ENTRY: StandardType = StandardType {
         &["5.5", "mmol/L", "", "high", "5.5.5 gL"],
     ),
     release: FIRST_RELEASE,
+    signals: crate::standard::NO_SIGNALS,
 };

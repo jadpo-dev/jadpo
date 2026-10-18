@@ -68,6 +68,7 @@ mod soundness;
 mod standard_rules;
 mod standard_types;
 mod stores;
+mod suggest;
 mod text;
 mod text_formats;
 mod time;

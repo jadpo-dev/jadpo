@@ -38,6 +38,7 @@ const fn identifier(
         shape: None,
         examples,
         release: FIRST_RELEASE,
+        signals: crate::standard::NO_SIGNALS,
     }
 }
 
