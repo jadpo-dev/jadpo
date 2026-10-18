@@ -1153,39 +1153,63 @@ reference only).
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
   files, a fake for tests, limits, area 15's report), and place its build
   on this roadmap. **Needs Richard** to decide the page.
-- [ ] **5.5w Every boundary through the contract** `opus · high` (area 19,
-  "Every standard type meets one contract"; Richard, 2026-10-17), after
-  the standard type groups: audit every place a value enters or leaves a
-  program (HTTP and OpenAPI, storage and migrations, caches, events and job
-  payloads, CSV, TSV and JSON lines, logs and traces, settings, translation
-  placeholders, email, outbound provider calls, records and the manifest,
-  test fixtures and seeds, files, the interpreter and the runtime on native
-  and wasm32) and make each encode a standard type only through its
-  contract's JSON, storage and text shapes, so no type loses its currency,
-  unit or precision on the way out. Compound types store as named columns
-  (`Money` as amount and currency, the currency kept and checked even when
-  the type fixes it), quantities as one SI-unit column with the unit in
-  the column's comment, ranges as native range types. Every standard
+- [ ] **5.5w Every boundary through the contract: storage** `opus · high`
+  (area 19, "Every standard type meets one contract"; Richard,
+  2026-10-17), after the standard type groups. Split (2026-10-18) after a
+  re-audit of the 2026-10-17 audit's findings: this chunk stores every
+  standard type through its contract and decides every boundary's
+  encoding on its owning page; 5.5w2 takes the JSON-held values and the
+  other built boundaries, 5.5w3 the single encoders. Every standard
   object and choice type (`Price`, `Discount`, `UnitPrice`,
-  `InterestRate`, `ExchangeRate` and the rest, which storing now fails
-  with `toolchain.not_built_yet`) is made storable through the named-column
-  mechanism or its decided storage shape. Done when a test per
-  boundary round-trips one value of every standard type, an entity stores
-  and reads back one of each standard object and choice type, and any
-  boundary with its own encoder is gone. A read-only audit (2026-10-17) found what
-  to fix, beyond what 5.5h fixes for Money (OpenAPI for standard object
-  types, enum spellings from `entry.codes()`, storage as named columns):
-  `json.write`'s map keys use debug text and don't read back
-  (`jadpo-value/src/json.rs` `key_text`); the JSON, schema and enum encoders
-  match on builtins instead of reading the entries; enums are stored by
-  variant name but sent by code; reading is looser than `text.parse` (an
-  `Instant` with an offset, a `CalendarDate` not checked for 30 February);
-  settings take `5m` but not `PT5M`; a `Decimal` quantity's `value` must
-  follow area 2's Decimal-as-string rule; and nothing yet decides the
-  encoding of event, job and batch payloads (with a version rule), CSV
-  cells for types with no single text form, the bytes a personal value's
-  log hash covers, developer reports' value form, and integration fields
-  without `wire:`. Decide each of those on its owning page, then build.
+  `InterestRate`, `ExchangeRate`, `BankAccount`, `CalendarPeriod` and the
+  rest, which storing failed with `toolchain.not_built_yet`) is stored in
+  named columns laid out from its parts (an amount of money in two,
+  another standard object in its own, a choice's variant first), a
+  `ZonedTime` as its instant and zone, ranges in PostgreSQL's range types,
+  a `LocalTime` in `time` and a `LocalDateTime` in `timestamp` without a
+  zone; every standard enum is stored by its code; a quantity's column
+  carries a comment naming its SI unit; a rate type's fixed currencies get
+  a check constraint, as a `Money` type's does. Geometries and vectors
+  stay `toolchain.not_built_yet`: their storage is 5.5u's and 5.5v's,
+  which await Richard. Done when an entity stores and reads back one of
+  each standard object and choice type (but `RichTextBlock`, a choice of
+  lists, which 5.5w2 stores as JSON with the collections), each column is
+  as its entry lays it out, and the boundaries the audit left undecided
+  (event, job and batch payloads, CSV cells, a personal value's log hash,
+  developer reports, integration fields without `wire:`) are decided on
+  areas 12, 15, 17, 11 and 19.
+- [ ] **5.5w2 Every boundary through the contract: JSON and the built
+  boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w. The
+  re-audit's gaps on the boundaries that are built: `json.write` writes a
+  map key that isn't text, a UUID, a number or an enum by `Display`
+  (`jadpo-value/src/json.rs` `key_text`), so a date, an instant, a
+  duration, money, a quantity or a standard object as a key doesn't read
+  back; reading is looser than `text.parse` (JSON, query strings and
+  settings take an `Instant` with an offset, as do a `ZonedTime`'s instant
+  and `text.parse` of an `InstantRange`; an `Int` with `+`; a `Decimal`
+  as `1_000`, `.5` or `--5`); a `Duration` setting takes `5m` but not its
+  canonical `PT5M`; `RichText`, `RichTextBlock` and `LocalisedText` are
+  stored as area 5's `jsonb`, written and read by the route codec, which
+  structured fields don't have yet; and a value that a column can't hold
+  is written into the fault's text (`jadpo-runtime/src/read.rs`), which
+  could put personal data in a log. Done when a test per built boundary
+  (a request and a response, OpenAPI's shape, `json.read` and
+  `json.write` with the value as a map key, storage, settings, a query
+  string, `text.parse` and `text.from`) round-trips one value of every
+  standard type but geometries and vectors. The boundaries not built yet
+  (caches, events, jobs and batches, CSV, TSV and JSON Lines, logs and
+  traces, email, outbound provider calls, files) take their round-trip
+  test with the chunk that builds each, by the encoding 5.5w decided.
+- [ ] **5.5w3 Every boundary through the contract: one encoder**
+  `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
+  and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`
+  and quantity arms) and OpenAPI's `scalar_schema` read each type's entry
+  rather than matching on built-in types; the compile-time SQL literals
+  (`jadpo-sql`'s conditions, backfills in `jadpo-check`'s migrations)
+  share the runtime's storage codec; the per-type harness builds its
+  codecs with the plan's builder rather than a copy of it. Done when no
+  boundary has an encoder of its own: each calls the contract's JSON,
+  storage or text for a standard type.
 - [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
