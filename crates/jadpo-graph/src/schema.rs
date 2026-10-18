@@ -263,6 +263,10 @@ pub struct Index {
 pub struct IndexMethod {
     pub name: String,
     pub operator_class: String,
+    /// A type its one column is cast to, so the index holds the cast
+    /// value: `geometry`, for a `BoundingBox` filter on a point's
+    /// `geography` (area 20, "Indexes", chunk 5.5u5).
+    pub cast: Option<String>,
 }
 
 /// A name the database keeps whole: `table_part1_suffix`, cut to fit
@@ -403,6 +407,9 @@ impl Table {
             if let Some(method) = &index.method {
                 entry.set("method", &method.name);
                 entry.set("operator_class", &method.operator_class);
+                if let Some(cast) = &method.cast {
+                    entry.set("cast", cast);
+                }
             }
             indexes.set(name, entry);
         }
@@ -490,6 +497,7 @@ impl Table {
                         Some(method) => Some(IndexMethod {
                             name: method.to_string(),
                             operator_class: text_of(entry, "operator_class")?,
+                            cast: entry.get("cast").and_then(Value::as_str).map(String::from),
                         }),
                         None => None,
                     },

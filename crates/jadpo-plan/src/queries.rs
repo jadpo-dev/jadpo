@@ -22,8 +22,8 @@
 //!   [`Planner::access`], which adds none yet.
 
 use jadpo_check::data::queries::{
-    self as model, Bound, Condition, Include, IncludeKind, OrderField, QueryModel, Source as From,
-    Value,
+    self as model, Bound, Condition, GeoTest, Include, IncludeKind, OrderField, QueryModel,
+    Source as From, Value,
 };
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
@@ -34,8 +34,9 @@ use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_sql::Bind;
 use jadpo_sql::statement::{self as text, After, Order};
 use jadpo_std::read::{
-    Cardinality, Column, Field, IncludeRead, IncludeShape, MissingPlan, MissingValue, PageRead,
-    Param, ReadPlan, Record, Select, Size, Source, SqlType,
+    Cardinality, Column, EnvelopePart, Field, GeoCheck, GeoOp, GeoOrder, IncludeRead, IncludeShape,
+    MissingPlan, MissingValue, PageRead, Param, ReadPlan, Recheck, Record, Select, Size, Source,
+    SqlType,
 };
 
 use crate::constant::Constant;
@@ -139,6 +140,22 @@ impl Bind for Statement {
         let ty = value.ty();
         Some(self.param(Source::Stored(value), ty))
     }
+
+    /// A side of a `BoundingBox` filter's envelopes, worked out from the
+    /// box when the read runs (area 20, chunk 5.5u5).
+    fn envelope(&mut self, bounds: &Value, part: EnvelopePart) -> Option<String> {
+        let Value::Param { index, path } = bounds else {
+            return None;
+        };
+        Some(self.param(
+            Source::Envelope {
+                index: *index,
+                path: path.clone(),
+                part,
+            },
+            SqlType::Numeric,
+        ))
+    }
 }
 
 /// The columns a statement selects, each a field of its entity once, with
@@ -223,6 +240,49 @@ impl Planner<'_> {
             }
             None => None,
         };
+        // The `geo.` conditions, each worked out again in code on the rows
+        // the statement finds, from the field's own column (area 20, chunk
+        // 5.5u5); and an order by `geo.distance`, by PostGIS's distance in
+        // the statement and the code's after.
+        let mut checks = Vec::new();
+        for (name, test) in model::geo_tests(&query.filter) {
+            let tested = field(entity, name)?;
+            let column = columns.add(&tested.name, self.column(entity, tested)?);
+            let (op, value, distance) = match test {
+                GeoTest::Near { point, distance } => (GeoOp::Within, point, Some(distance)),
+                GeoTest::Within { area: value }
+                | GeoTest::InBox { bounds: value }
+                | GeoTest::InCircle { circle: value } => (GeoOp::Within, value, None),
+                GeoTest::Contains { shape } => (GeoOp::Contains, shape, None),
+                GeoTest::Intersects { shape } => (GeoOp::Intersects, shape, None),
+            };
+            let distance = match distance {
+                Some(distance) => Some(self.length_source(distance)?),
+                None => None,
+            };
+            checks.push(GeoCheck {
+                op,
+                column,
+                value: self.source(value)?,
+                distance,
+            });
+        }
+        let by_distance = match &query.distance {
+            Some(order) => {
+                let point_field = field(entity, &order.field)?;
+                let column = columns.add(&point_field.name, self.column(entity, point_field)?);
+                let id = field(entity, "id")?;
+                let id_at = columns.add(&id.name, self.column(entity, id)?);
+                let from = statement.bind(&order.point, SqlType::Geography)?;
+                let measured = format!(
+                    "ST_Distance({}, {from})",
+                    jadpo_sql::ident(&point_field.born)
+                );
+                Some((measured, column, id_at, self.source(&order.point)?))
+            }
+            None => None,
+        };
+        let rechecked = !checks.is_empty() || by_distance.is_some();
         let mut cursor = Vec::new();
         if page {
             for order in &query.order {
@@ -259,6 +319,9 @@ impl Planner<'_> {
             Some(self.order(entity, &query.order)?)
         };
         let limit = match (&query.limit, page) {
+            // A read whose rows are rechecked asks for as many as it needs,
+            // and more if the recheck leaves it short.
+            (Some(_), _) if rechecked => Some(statement.param(Source::Fetch, SqlType::Int8)),
             (Some(Bound::Literal(n)), true) => Some((n + 1).to_string()),
             (Some(Bound::Value(_)), true) => {
                 Some(statement.param(Source::SizePlusOne, SqlType::Int8))
@@ -273,6 +336,16 @@ impl Planner<'_> {
         // The statement with its policy, and without, which a test's call
         // without a caller runs.
         let write = |conditions: &[String]| {
+            if let (Some((measured, ..)), Some(n)) = (&by_distance, &limit) {
+                return text::by_distance(
+                    &borns(entity, &columns.names),
+                    &entity.table,
+                    measured,
+                    conditions,
+                    n,
+                    "id",
+                );
+            }
             if let (Some((distance, _, _)), Some(n)) = (&nearest, &limit) {
                 return text::nearest(
                     &borns(entity, &columns.names),
@@ -312,10 +385,30 @@ impl Planner<'_> {
             (sql, unpoliced, None)
         };
         let includes = self.includes(entity, &query.includes, &columns)?;
+        let measured_at = u32::try_from(columns.kinds.len()).ok()?;
         let mut kinds = columns.kinds;
         if nearest.is_some() {
             kinds.push(Column::Distance);
         }
+        if by_distance.is_some() {
+            kinds.push(Column::Measured);
+        }
+        let recheck = rechecked.then(|| Recheck {
+            checks,
+            order: by_distance.map(|(_, column, id, point)| GeoOrder {
+                column,
+                point,
+                measured: measured_at,
+                id,
+            }),
+            limit: match (&query.limit, cardinality) {
+                (Some(Bound::Literal(n)), Cardinality::List) => Some(Size::Fixed(*n)),
+                (Some(Bound::Value(value)), Cardinality::List) => {
+                    self.source(value).map(Size::From)
+                }
+                _ => None,
+            },
+        });
         if permitted.is_some() {
             kinds.push(Column::Bool);
         }
@@ -374,6 +467,7 @@ impl Planner<'_> {
                 select,
                 page,
                 missing,
+                recheck,
             },
         })
     }
@@ -571,6 +665,28 @@ impl Planner<'_> {
             Value::Now => Source::Now,
             _ => return None,
         })
+    }
+
+    /// Where `within`'s `distance:` comes from when a row is rechecked: an
+    /// argument, or a literal as the storage codec binds it, in metres.
+    fn length_source(&self, value: &Value) -> Option<Source> {
+        match value {
+            Value::Literal(literal) => {
+                let metres = jadpo_sql::Column {
+                    name: "",
+                    nullable: false,
+                    ty: Some(SqlType::Numeric),
+                    builtin: Some(jadpo_std::Builtin::Quantity(
+                        jadpo_std::QuantityKind::Length,
+                    )),
+                    scale: None,
+                };
+                Some(Source::Stored(jadpo_sql::condition::literal(
+                    literal, &metres,
+                )?))
+            }
+            other => self.source(other),
+        }
     }
 
     /// The condition that starts a page after its cursor: the rows past
@@ -797,6 +913,7 @@ impl Planner<'_> {
             },
             page: None,
             missing: not_found,
+            recheck: None,
         };
         Some(EntityPlan {
             key,

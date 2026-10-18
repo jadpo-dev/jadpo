@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use jadpo_std::read::SqlType;
+use jadpo_std::read::{EnvelopePart, GEO_MARGIN, SqlType};
 use jadpo_std::standard::storage::{self, Stored};
 use jadpo_std::{Builtin, Literal, SqlValue};
 
@@ -137,6 +137,70 @@ pub enum Condition {
         op: Compare,
         bound: Value,
     },
+    /// A `geo.` condition on a geometry field (area 20, "Queries", chunk
+    /// 5.5u5), written as a test an index serves that never leaves out a
+    /// record the code's test keeps; the read works the code's test out
+    /// again on each row it finds (`jadpo_std::read::Recheck`). It stands
+    /// on its own `where:` line or joined by `and`, never under `not` or
+    /// `or`, and a record whose field is `none` never meets it.
+    Geo {
+        field: String,
+        test: GeoTest,
+    },
+}
+
+/// What a `geo.` condition tests its field against (area 20, "Queries").
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum GeoTest {
+    /// `geo.within(F, point, distance: d)`: a `Point` field within `d`, a
+    /// `Length`, of a point.
+    Near { point: Value, distance: Value },
+    /// `geo.within(F, area)`: inside a `Polygon` or a `MultiPolygon`.
+    Within { area: Value },
+    /// `geo.within(F, view)`: a `Point` field inside a `BoundingBox`.
+    InBox { bounds: Value },
+    /// `geo.within(F, circle)`: a `Point` field inside a `Circle`.
+    InCircle { circle: Value },
+    /// `geo.contains(F, shape)`: no point of a geometry outside the field.
+    Contains { shape: Value },
+    /// `geo.intersects(F, shape)`: the field and a geometry share a point.
+    Intersects { shape: Value },
+}
+
+impl GeoTest {
+    /// The value the field is compared with, as the code's test takes it.
+    pub fn value(&self) -> &Value {
+        match self {
+            GeoTest::Near { point: value, .. }
+            | GeoTest::Within { area: value }
+            | GeoTest::InBox { bounds: value }
+            | GeoTest::InCircle { circle: value }
+            | GeoTest::Contains { shape: value }
+            | GeoTest::Intersects { shape: value } => value,
+        }
+    }
+
+    /// Whether only a `BoundingBox` test, which searches the column cast to
+    /// `geometry`, and so its own index (area 20, "Indexes").
+    pub fn is_box(&self) -> bool {
+        matches!(self, GeoTest::InBox { .. })
+    }
+}
+
+/// `value`, a parameter or a field inside one, with one more field:
+/// `view.west`.
+fn inside(value: &Value, field: &str) -> Option<Value> {
+    match value {
+        Value::Param { index, path } => {
+            let mut path = path.clone();
+            path.push(field.to_string());
+            Some(Value::Param {
+                index: *index,
+                path,
+            })
+        }
+        _ => None,
+    }
 }
 
 impl Condition {
@@ -146,7 +210,8 @@ impl Condition {
             Condition::Compare { field, .. }
             | Condition::IsNone { field, .. }
             | Condition::In { field, .. }
-            | Condition::Distance { field, .. } => {
+            | Condition::Distance { field, .. }
+            | Condition::Geo { field, .. } => {
                 out.insert(field.clone());
             }
             Condition::And(all) | Condition::Or(all) => {
@@ -202,6 +267,13 @@ pub trait Bind {
     /// no parameters, `value` written into its text ([`crate::literal`]).
     /// `None` when neither can hold it.
     fn stored(&mut self, value: SqlValue) -> Option<String>;
+
+    /// `$n` for one side of the envelopes a `BoundingBox` filter searches,
+    /// worked out from the box `bounds` when the statement runs (area 20,
+    /// chunk 5.5u5). `None` when the statement can't take it.
+    fn envelope(&mut self, _bounds: &Value, _part: EnvelopePart) -> Option<String> {
+        None
+    }
 }
 
 /// For text that takes no parameters: a partial index's predicate, which
@@ -336,6 +408,16 @@ pub fn condition(
                 op.sql()
             )
         }
+        Condition::Geo { field: name, test } => {
+            // No index serves the negation, and the code's test is worked
+            // out again anyway: the checker keeps `geo.` conditions out
+            // from under `not`.
+            if negated {
+                return None;
+            }
+            let field = entity.column(name)?;
+            geo(bind, &ident(field.name), test)?
+        }
         Condition::Present { value, condition } => {
             let ty = match condition.as_ref() {
                 Condition::Compare { field: name, .. } => entity.column(name)?.param()?,
@@ -345,6 +427,56 @@ pub fn condition(
             let n = bind.bind(value, ty)?;
             let inner = self::condition(bind, entity, condition, negated)?;
             format!("({n} IS NULL OR {inner})")
+        }
+    })
+}
+
+/// A `geo.` test on `column` as a condition an index serves, which never
+/// leaves out a record the code's test keeps (area 20, "Queries", chunk
+/// 5.5u5): a distance searched [`GEO_MARGIN`] further, a shape searched
+/// for anything within [`GEO_MARGIN`] of it (whatever is inside it or on
+/// its edge, and whatever `ST_Covers` would wrongly leave out), and a box
+/// by its envelopes on the column cast to `geometry`.
+fn geo(bind: &mut dyn Bind, column: &str, test: &GeoTest) -> Option<String> {
+    let length = Column {
+        name: column,
+        nullable: false,
+        ty: Some(SqlType::Numeric),
+        builtin: Some(Builtin::Quantity(jadpo_std::QuantityKind::Length)),
+        scale: None,
+    };
+    Some(match test {
+        GeoTest::Near { point, distance } => {
+            let point = bind.bind(point, SqlType::Geography)?;
+            let distance = self::value(bind, distance, &length)?;
+            format!("ST_DWithin({column}, {point}, {distance} + {GEO_MARGIN})")
+        }
+        GeoTest::InCircle { circle } => {
+            let centre = bind.bind(&inside(circle, "centre")?, SqlType::Geography)?;
+            let radius = bind.bind(&inside(circle, "radius")?, SqlType::Numeric)?;
+            format!("ST_DWithin({column}, {centre}, {radius} + {GEO_MARGIN})")
+        }
+        GeoTest::Within { area: shape }
+        | GeoTest::Contains { shape }
+        | GeoTest::Intersects { shape } => {
+            let shape = bind.bind(shape, SqlType::Geography)?;
+            format!("ST_DWithin({column}, {shape}, {GEO_MARGIN})")
+        }
+        GeoTest::InBox { bounds } => {
+            let south = bind.bind(&inside(bounds, "south")?, SqlType::Numeric)?;
+            let north = bind.bind(&inside(bounds, "north")?, SqlType::Numeric)?;
+            let mut envelopes = Vec::new();
+            for (west, east) in [
+                (EnvelopePart::FirstWest, EnvelopePart::FirstEast),
+                (EnvelopePart::SecondWest, EnvelopePart::SecondEast),
+            ] {
+                let west = bind.envelope(bounds, west)?;
+                let east = bind.envelope(bounds, east)?;
+                envelopes.push(format!(
+                    "{column}::geometry && ST_MakeEnvelope({west}, {south}, {east}, {north}, 4326)"
+                ));
+            }
+            format!("({})", envelopes.join(" OR "))
         }
     })
 }
@@ -673,6 +805,64 @@ mod tests {
         );
         assert_eq!(
             condition(&mut Fixed, &Meanings, &near, false),
+            None,
+            "a predicate takes no parameters"
+        );
+    }
+
+    /// A table of one optional point, `spot`.
+    struct Spots;
+
+    impl Columns for Spots {
+        fn column(&self, field: &str) -> Option<Column<'_>> {
+            (field == "spot").then_some(Column {
+                name: "spot",
+                nullable: true,
+                ty: Some(SqlType::Geography),
+                builtin: None,
+                scale: None,
+            })
+        }
+    }
+
+    #[test]
+    fn a_geo_condition_searches_a_margin_wider_and_never_under_not() {
+        let param = |index: u32| Value::Param {
+            index,
+            path: Vec::new(),
+        };
+        let near = Condition::Geo {
+            field: "spot".into(),
+            test: GeoTest::Near {
+                point: param(0),
+                distance: Value::Literal(Literal::Quantity("5km".into())),
+            },
+        };
+        let mut params = Collected::default();
+        assert_eq!(
+            condition(&mut Params::default(), &Spots, &near, false).as_deref(),
+            Some("ST_DWithin(\"spot\", $1, $2 + 0.001)")
+        );
+        assert_eq!(
+            condition(&mut params, &Spots, &near, false),
+            None,
+            "the point is a parameter, which `Collected` doesn't bind"
+        );
+        assert_eq!(
+            condition(&mut Params::default(), &Spots, &near, true),
+            None,
+            "no index serves the negation"
+        );
+        let inside = Condition::Geo {
+            field: "spot".into(),
+            test: GeoTest::Contains { shape: param(0) },
+        };
+        assert_eq!(
+            condition(&mut Params::default(), &Spots, &inside, false).as_deref(),
+            Some("ST_DWithin(\"spot\", $1, 0.001)")
+        );
+        assert_eq!(
+            condition(&mut Fixed, &Spots, &inside, false),
             None,
             "a predicate takes no parameters"
         );

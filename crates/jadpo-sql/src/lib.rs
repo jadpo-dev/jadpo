@@ -28,7 +28,9 @@ pub mod policy;
 pub mod statement;
 pub mod table;
 
-pub use condition::{Bind, Column, Columns, Compare, Condition, Fixed, Value, condition, value};
+pub use condition::{
+    Bind, Column, Columns, Compare, Condition, Fixed, GeoTest, Value, condition, value,
+};
 
 /// An identifier, always quoted: a table called `user` or `order` is a
 /// keyword unquoted.
@@ -89,7 +91,11 @@ mod tests {
                 "help_article_body_meaning_idx",
                 &column,
                 None,
-                Some(("hnsw", "vector_cosine_ops"))
+                Some(table::IndexMethod {
+                    name: "hnsw",
+                    operator_class: "vector_cosine_ops",
+                    cast: None,
+                })
             ),
             "CREATE INDEX \"help_article_body_meaning_idx\" ON \"help_article\" USING hnsw (\"body_meaning\" vector_cosine_ops)"
         );
@@ -102,6 +108,28 @@ mod tests {
                 None
             ),
             "CREATE INDEX \"help_article_title_idx\" ON \"help_article\" (\"body_meaning\")"
+        );
+    }
+
+    #[test]
+    fn a_box_filter_s_index_holds_the_point_cast_to_geometry() {
+        let column = [table::IndexColumn {
+            name: "spot",
+            collate: false,
+        }];
+        assert_eq!(
+            table::create_index(
+                "bakery",
+                "bakery_spot_box_idx",
+                &column,
+                None,
+                Some(table::IndexMethod {
+                    name: "gist",
+                    operator_class: "",
+                    cast: Some("geometry"),
+                })
+            ),
+            "CREATE INDEX \"bakery_spot_box_idx\" ON \"bakery\" USING gist ((\"spot\"::geometry))"
         );
     }
 }

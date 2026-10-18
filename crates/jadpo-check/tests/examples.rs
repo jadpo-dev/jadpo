@@ -355,6 +355,7 @@ fn built() -> BTreeSet<String> {
             "not",
             "present",
             "distance",
+            "geo",
         ]
         .iter()
         .map(|c| format!("query condition {c}")),
@@ -1227,7 +1228,10 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
         {
             used.insert("query section where".to_string());
         }
-        if query.order.iter().any(|o| !o.added) || query.nearest.is_some() {
+        if query.order.iter().any(|o| !o.added)
+            || query.nearest.is_some()
+            || query.distance.is_some()
+        {
             used.insert("query section order".to_string());
         }
         if query.nearest.is_some() {
@@ -1261,6 +1265,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                         "present"
                     }
                     Condition::Distance { .. } => "distance",
+                    Condition::Geo { .. } => "geo",
                 };
                 used.insert(format!("query condition {word}"));
                 match condition {

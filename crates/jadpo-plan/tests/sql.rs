@@ -49,6 +49,14 @@ fn source(source: &Source) -> String {
         Source::SizePlusOne => "page size + 1".to_string(),
         Source::Caller(part) => format!("caller {part:?}"),
         Source::Stored(value) => format!("literal {value:?}"),
+        Source::Fetch => "rows to fetch".to_string(),
+        Source::Envelope { index, path, part } => format!(
+            "{part:?} of {}",
+            self::source(&Source::Arg {
+                index: *index,
+                path: path.clone()
+            })
+        ),
     }
 }
 
@@ -129,6 +137,37 @@ fn read(name: &str, read: &ReadPlan) -> String {
         ));
     }
     select(&mut out, &read.select, 0);
+    if let Some(recheck) = &read.recheck {
+        for check in &recheck.checks {
+            let distance = check
+                .distance
+                .as_ref()
+                .map(|d| format!(", distance {}", source(d)))
+                .unwrap_or_default();
+            out.push_str(&format!(
+                "-- recheck: {:?} column {} with {}{distance}\n",
+                check.op,
+                check.column,
+                source(&check.value)
+            ));
+        }
+        if let Some(order) = &recheck.order {
+            out.push_str(&format!(
+                "-- recheck order: geo.distance of column {} from {}, PostGIS's in column {}, ties by column {}\n",
+                order.column,
+                source(&order.point),
+                order.measured,
+                order.id
+            ));
+        }
+        if let Some(limit) = &recheck.limit {
+            let limit = match limit {
+                Size::Fixed(n) => n.to_string(),
+                Size::From(from) => source(from),
+            };
+            out.push_str(&format!("-- recheck keeps: {limit}\n"));
+        }
+    }
     out
 }
 

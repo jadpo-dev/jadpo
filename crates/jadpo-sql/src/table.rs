@@ -272,30 +272,49 @@ pub struct IndexColumn<'a> {
     pub collate: bool,
 }
 
+/// An index's access method other than a B-tree: its name, its columns'
+/// operator class (empty for the type's own) and a type its column is cast
+/// to, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IndexMethod<'a> {
+    pub name: &'a str,
+    pub operator_class: &'a str,
+    pub cast: Option<&'a str>,
+}
+
 /// Creates the index `name` on `columns` of `table`, holding only the rows
 /// `predicate` (a condition, without parameters) lets through when given,
 /// by `method` (an access method and its columns' operator class, `hnsw`
 /// with `vector_cosine_ops`, area 21; `gist` with none, its type's own,
-/// for a geometry, area 20) when given, else a B-tree.
+/// for a geometry, area 20, on the column cast to `geometry` for a box
+/// filter) when given, else a B-tree.
 pub fn create_index(
     table: &str,
     name: &str,
     columns: &[IndexColumn<'_>],
     predicate: Option<&str>,
-    method: Option<(&str, &str)>,
+    method: Option<IndexMethod<'_>>,
 ) -> String {
     let columns = columns
         .iter()
-        .map(|column| match method {
-            Some((_, "")) => ident(column.name),
-            Some((_, class)) => format!("{} {class}", ident(column.name)),
-            None if column.collate => format!("{} COLLATE \"C\"", ident(column.name)),
-            None => ident(column.name),
+        .map(|column| {
+            let held = match method.and_then(|m| m.cast) {
+                Some(cast) => format!("({}::{cast})", ident(column.name)),
+                None => ident(column.name),
+            };
+            match method {
+                Some(IndexMethod {
+                    operator_class: "", ..
+                }) => held,
+                Some(IndexMethod { operator_class, .. }) => format!("{held} {operator_class}"),
+                None if column.collate => format!("{held} COLLATE \"C\""),
+                None => held,
+            }
         })
         .collect::<Vec<_>>()
         .join(", ");
     let using = method
-        .map(|(method, _)| format!(" USING {method}"))
+        .map(|method| format!(" USING {}", method.name))
         .unwrap_or_default();
     let partial = predicate
         .map(|predicate| format!(" WHERE {predicate}"))
