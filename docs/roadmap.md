@@ -8,7 +8,7 @@ and the [language pages](language/README.md), not here.
 ## The direction (decided 2026-10-13)
 
 - **The language is specified** in [docs/language](language/README.md):
-  nineteen areas, all decided. Those pages are the specification and their
+  twenty areas, decided. Those pages are the specification and their
   examples become the tests.
 - **A new compiler, built around one graph**
   ([compiler-runtime §1.1–1.2](compiler-runtime.md#11-graph-centred-compiler-decided-2026-10-13)).
@@ -1143,11 +1143,47 @@ reference only).
   `ContentRating`, the tax and document numbers and `BoundingBox` came
   along, and `text.parse` breaks the rules by name too. The names and what
   the chunk chose are area 19's "Chosen in chunk 5.5t2".
-- [ ] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
+- [x] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
   write the geospatial area page from area 19's scope (the types in
   WGS84, GeoJSON on the wire, `geo.` construction and operations, PostGIS
   `geography` storage, query conditions and GiST indexes), and place its
-  build on this roadmap. **Needs Richard** to decide the page.
+  build on this roadmap. **Needs Richard** to decide the page. Decided
+  2026-10-18 (Richard), as recommended, with PostGIS needed only once an
+  app has a geometry column or index: [area 20](language/20-geospatial.md).
+- [ ] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
+  and "Precision and determinism"):
+  `geo.distance`, `geo.length`, `geo.bearing` and `geo.area` by Karney's
+  methods in Jadpo's decimal code, and coordinates held as doubles'
+  shortest decimals. Done when each matches a sample of GeographicLib's
+  `GeodTest` set to the micrometre, gives the same digits on native and
+  wasm32, and is benchmarked.
+- [ ] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
+  "Operations"), after 5.5u2:
+  `geo.intersects`, `contains` and `within` (with `distance:`, a
+  `BoundingBox` and a `Circle`), `centroid`, `bounding_box`, and
+  `rings_valid` on the sphere. Done when each agrees with PostGIS on cases
+  away from a boundary and every validity case reads and builds as the
+  page says.
+- [ ] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
+  "Storage"): `geography` columns
+  with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
+  EXTENSION` in migrations and `migration.extension_missing`, GiST indexes
+  derived and declared with `kind: IndexKind.geographic`, geometries in
+  Redis as GeoJSON, and CI on `postgis/postgis:16-3.4`. Done when an
+  entity stores and reads back every geometry, with and without altitude,
+  unchanged.
+- [ ] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
+  "Queries"; area 6), after 5.5u3
+  and 5.5u4: the `geo.` conditions, the box and circle filters and order
+  by distance within a radius, with area 6 amended and golden SQL for
+  each. Done when each of the page's queries runs on PostGIS through its
+  index and agrees with the code's answer on the page's examples.
+- [ ] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
+  after 5.5u4: `Feature` and
+  `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
+  `type.standard_exists`' shapes for `LineString` and `Polygon`. Done when
+  a feature collection round-trips through JSON and a WKT polygon through
+  PostGIS unchanged.
 - [ ] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
   AI area page from area 19's scope (the `ai` capability, typed
   `ai.generate`, streaming, embeddings with pgvector, checked prompt
