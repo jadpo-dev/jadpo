@@ -427,6 +427,12 @@ pub enum Json {
     /// `ZonedTime`'s `instant` and `zone` (area 10), `InstantRange`'s
     /// `start` and `end`.
     Fields(&'static [&'static str]),
+    /// An object of these members, for a type built into the language
+    /// (chunk 5.5w3): `Money`'s `amount` and `currency`, a `ZonedTime`'s
+    /// `instant` and `zone`, a quantity's `value` and `unit`. Each member
+    /// is a [`Member`], so the JSON reader and writer and OpenAPI's schema
+    /// all follow the one list.
+    Parts(&'static [(&'static str, Member)]),
     /// Area 2's form of an enum's variant with data: an object of `tag`,
     /// the variant's name, and the variant's fields, each in its own JSON
     /// shape, `{"tag": "percentage_off", "percentage": "20%"}` (a
@@ -466,7 +472,8 @@ impl Json {
     pub const fn fields(self) -> Option<&'static [&'static str]> {
         match self {
             Json::Fields(names) | Json::Members(names) => Some(names),
-            Json::Text
+            Json::Parts(_)
+            | Json::Text
             | Json::Secret
             | Json::Number
             | Json::Tagged
@@ -476,6 +483,40 @@ impl Json {
         }
     }
 }
+
+/// One member of a type built into the language that the contract sends
+/// as an object ([`Json::Parts`], chunk 5.5w3): what the member holds and
+/// how it is written, which the JSON reader, the writer and OpenAPI read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Member {
+    /// A whole number of a currency's minor units as a JSON number, within
+    /// JavaScript's safe integers either side
+    /// ([`crate::http::SAFE_INTEGER`]), past which it breaks `max`:
+    /// `Money`'s `amount`, as Stripe sends it.
+    MinorUnits,
+    /// The code of the standard enum this names, read ignoring case as the
+    /// enum's own code is (question 22): `Money`'s `currency`, a
+    /// `ZonedTime`'s `zone`. A type built on it may fix it to one code, by
+    /// the setting its entry's storage names for a column of the member's
+    /// name ([`Storage::Columns`]'s `fixed`).
+    Code(&'static str),
+    /// An instant's canonical text, ending in `Z`: a `ZonedTime`'s
+    /// `instant`.
+    Instant,
+    /// A decimal written as text, as area 2 sends every `Decimal`: a
+    /// quantity's `value`, in its kind's base unit when written.
+    Number,
+    /// The code of one of the quantity's kind's units, exactly as written,
+    /// another kind's breaking `unknown_unit`: a quantity's `unit`, its
+    /// kind's base unit when written.
+    Unit,
+}
+
+/// A quantity's members on the wire ([`QUANTITY_FIELDS`]).
+pub const QUANTITY_PARTS: [(&str, Member); 2] = [
+    (QUANTITY_FIELDS[0], Member::Number),
+    (QUANTITY_FIELDS[1], Member::Unit),
+];
 
 /// The locale data a standard type is formatted for people with: what
 /// `text.format(value, locale:)` reads (the contract's "format for
@@ -1181,7 +1222,7 @@ const fn quantity(
         name: kind.name(),
         holds: Holds::Builtin(Builtin::Quantity(kind)),
         text: Some(TextForm::Quantity),
-        json: Json::Fields(&QUANTITY_FIELDS),
+        json: Json::Parts(&QUANTITY_PARTS),
         storage: Storage::Column(SqlType::Numeric),
         format: Format {
             key: FormatKey::Units,
@@ -2041,7 +2082,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         name: "Money",
         holds: Holds::Builtin(Builtin::Money),
         text: Some(TextForm::Money),
-        json: Json::Fields(&crate::MONEY_FIELDS),
+        json: Json::Parts(&[
+            (crate::MONEY_FIELDS[0], Member::MinorUnits),
+            (crate::MONEY_FIELDS[1], Member::Code(crate::CURRENCY)),
+        ]),
         storage: Storage::Columns {
             parts: &[("amount", "bigint"), ("currency", "char(3)")],
             fixed: &[("currency", Fixed::Currency)],
@@ -2559,7 +2603,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         name: "ZonedTime",
         holds: Holds::Builtin(Builtin::ZonedTime),
         text: Some(TextForm::Zoned),
-        json: Json::Fields(&["instant", "zone"]),
+        json: Json::Parts(&[("instant", Member::Instant), ("zone", Member::Code(ZONE))]),
         // An instant and its zone, stored as its JSON (area 5's structured
         // values), as an object is.
         storage: Storage::Columns {
@@ -2692,9 +2736,22 @@ pub fn variant_stored<'v>(ty: &str, stored: &'v str) -> &'v str {
         .map_or(stored, |(name, _)| name)
 }
 
-/// The standard type called `name`.
+/// The standard type called `name`, looked up once in a table by name,
+/// since every boundary asks for a value's entry (chunk 5.5w3).
 pub fn standard_type(name: &str) -> Option<&'static StandardType> {
-    STANDARD_TYPES.iter().find(|entry| entry.name == name)
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    static BY_NAME: OnceLock<HashMap<&'static str, &'static StandardType>> = OnceLock::new();
+    BY_NAME
+        .get_or_init(|| {
+            let mut out = HashMap::with_capacity(STANDARD_TYPES.len());
+            for entry in STANDARD_TYPES {
+                out.entry(entry.name).or_insert(entry);
+            }
+            out
+        })
+        .get(name)
+        .copied()
 }
 
 /// Every release that added a standard type, oldest first, each with the
@@ -2723,11 +2780,25 @@ pub fn version(release: &str) -> Vec<u32> {
         .collect()
 }
 
-/// The standard type a built-in type is, if one: `Email`, `Instant`.
+/// The standard type a built-in type is, if one: `Email`, `Instant`;
+/// `None` for a representation (`Int`, `Text`). Looked up once in a table,
+/// since the JSON reader and writer ask for every value (chunk 5.5w3).
 pub fn of_builtin(builtin: Builtin) -> Option<&'static StandardType> {
-    STANDARD_TYPES
-        .iter()
-        .find(|entry| entry.holds == Holds::Builtin(builtin))
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    static BY_BUILTIN: OnceLock<HashMap<Builtin, &'static StandardType>> = OnceLock::new();
+    BY_BUILTIN
+        .get_or_init(|| {
+            let mut out = HashMap::new();
+            for entry in STANDARD_TYPES {
+                if let Holds::Builtin(builtin) = entry.holds {
+                    out.entry(builtin).or_insert(entry);
+                }
+            }
+            out
+        })
+        .get(&builtin)
+        .copied()
 }
 
 /// The rules a type held as text adds where a program builds one (area
@@ -2859,6 +2930,20 @@ impl StandardType {
     }
 
     /// The enum's variants and their codes, for an enum.
+    /// The kind of quantity it is, for a quantity or a type built on one
+    /// with bounds of its own (a heart rate): what a [`Member::Unit`] is a
+    /// unit of.
+    pub fn quantity(&self) -> Option<crate::QuantityKind> {
+        match self.holds {
+            Holds::Builtin(Builtin::Quantity(kind))
+            | Holds::Bounded {
+                of: Builtin::Quantity(kind),
+                ..
+            } => Some(kind),
+            _ => None,
+        }
+    }
+
     pub fn codes(&self) -> Option<&'static [(&'static str, &'static str)]> {
         match self.holds {
             Holds::Enum(codes) => Some(codes),

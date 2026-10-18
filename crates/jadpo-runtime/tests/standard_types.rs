@@ -597,8 +597,13 @@ fn every_standard_type_meets_the_contract() {
                     serde_json::from_str::<serde_json::Value>(text).unwrap(),
                     "{name}: JSON is the number"
                 ),
-                Json::Fields(fields) => {
-                    // Written in the fields' order.
+                Json::Fields(_) | Json::Parts(_) => {
+                    // Written in the fields' order, or its members' (chunk
+                    // 5.5w3).
+                    let fields: Vec<&str> = match entry.json {
+                        Json::Parts(members) => members.iter().map(|(name, _)| *name).collect(),
+                        _ => entry.json.fields().unwrap_or_default().to_vec(),
+                    };
                     let written: Vec<usize> = fields
                         .iter()
                         .filter_map(|field| json.find(&format!("\"{field}\":")))

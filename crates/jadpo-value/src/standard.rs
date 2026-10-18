@@ -9,11 +9,11 @@
 //! separators (area 19, "Numbers").
 
 use jadpo_std::RuleKey;
-use jadpo_std::standard::{
-    FormatKey, Holds, STANDARD_TYPES, StandardType, TextForm, standard_type,
-};
+use jadpo_std::standard::{FormatKey, Holds, StandardType, TextForm, standard_type};
 
 use crate::{Decimal, Fault, Value, Zoned, present, temporal};
+
+pub mod json;
 
 /// What fails when text isn't the type asked for at all.
 const MALFORMED: Fault = Fault::Broke(RuleKey::Malformed);
@@ -783,7 +783,7 @@ fn int(raw: &str) -> Option<i64> {
 
 /// A `Decimal` as JSON carries it: digits with an optional `-` and
 /// places.
-fn decimal(raw: &str) -> Option<Decimal> {
+pub(crate) fn decimal(raw: &str) -> Option<Decimal> {
     let digits = raw.strip_prefix('-').unwrap_or(raw);
     let (whole, places) = digits.split_once('.').unwrap_or((digits, "0"));
     let plain = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
@@ -821,11 +821,86 @@ pub fn builtin_text(builtin: jadpo_std::Builtin, raw: &str) -> Option<Value> {
             crate::encoding::from_base64(raw).map(|bytes| Value::Bytes(std::rc::Rc::from(bytes)))
         }
         Builtin::Text | Builtin::PresentationText => Some(Value::text(raw)),
-        representation => STANDARD_TYPES
-            .iter()
-            .find(|entry| entry.holds == Holds::Builtin(representation))
-            .and_then(|entry| read(entry, raw).ok()),
+        representation => {
+            jadpo_std::standard::of_builtin(representation).and_then(|entry| read(entry, raw).ok())
+        }
     }
+}
+
+/// A value of a type built on `builtin` read from its text in a place
+/// that holds text, before its rules are checked: a JSON string, a path, a
+/// query string, a header, a setting or a map's key. Text is composed to
+/// NFC first, so text that looks equal is equal and its rules count the
+/// code points it will be kept as (areas 2, 7 and 19); every other type is
+/// read by the one reader `text.parse` reads it with ([`builtin_text`]),
+/// so no boundary is looser than another (chunk 5.5w2). Text that isn't a
+/// number or a `Bool` breaks `type`; any other unreadable text `format`.
+pub fn scalar_text(builtin: jadpo_std::Builtin, raw: &str) -> Result<Value, &'static str> {
+    use jadpo_std::Builtin;
+    match builtin.representation() {
+        Builtin::Text => Ok(Value::text(&crate::text::composed(raw))),
+        // Text for people is sent and read as the text it is (area 10).
+        Builtin::PresentationText => Ok(Value::text(raw)),
+        representation => builtin_text(builtin, raw).ok_or(match representation {
+            Builtin::Int | Builtin::Decimal | Builtin::Bool => "type",
+            _ => "format",
+        }),
+    }
+}
+
+/// An ISO 8601 duration of days, hours, minutes and seconds (`PT5M`,
+/// `P1DT2H`, `PT0.5S`), negative with a leading `-` as one is written
+/// (`-PT5M`), in milliseconds.
+pub(crate) fn iso_duration(text: &str) -> Option<i64> {
+    if let Some(positive) = text.strip_prefix('-') {
+        return iso_duration(positive.strip_prefix('P').map(|_| positive)?)?.checked_neg();
+    }
+    let rest = text.strip_prefix('P')?;
+    let (date_part, time) = match rest.split_once('T') {
+        Some((date_part, time)) => (date_part, time),
+        None => (rest, ""),
+    };
+    let mut total: i64 = 0;
+    if !date_part.is_empty() {
+        let days = date_part.strip_suffix('D')?;
+        if days.is_empty() || !days.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let count: i64 = days.parse().ok()?;
+        total = total.checked_add(count.checked_mul(86_400_000)?)?;
+    }
+    let mut number = String::new();
+    for c in time.chars() {
+        match c {
+            '0'..='9' | '.' => number.push(c),
+            'H' | 'M' | 'S' => {
+                let unit: i64 = match c {
+                    'H' => 3_600_000,
+                    'M' => 60_000,
+                    _ => 1_000,
+                };
+                let millis = match number.split_once('.') {
+                    Some((whole, part)) if c == 'S' => {
+                        let whole: i64 = whole.parse().ok()?;
+                        let mut part = part.to_string();
+                        part.truncate(3);
+                        while part.len() < 3 {
+                            part.push('0');
+                        }
+                        whole
+                            .checked_mul(1_000)?
+                            .checked_add(part.parse::<i64>().ok()?)?
+                    }
+                    Some(_) => return None,
+                    None => number.parse::<i64>().ok()?.checked_mul(unit)?,
+                };
+                total = total.checked_add(millis)?;
+                number.clear();
+            }
+            _ => return None,
+        }
+    }
+    (number.is_empty() && text.len() > 1 && text != "PT").then_some(total)
 }
 
 /// A standard type's value read from its canonical text.
@@ -860,7 +935,7 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
             .filter(|_| jadpo_std::check_calendar_date(raw).is_ok())
             .map(Value::Date),
         TextForm::Zoned => zoned(raw).map(Value::Zoned),
-        TextForm::Duration => crate::json::iso_duration(raw).map(Value::Duration),
+        TextForm::Duration => iso_duration(raw).map(Value::Duration),
         TextForm::Code => code(entry, raw),
         // Its bounds are its construction's, as a `TaxRate`'s are.
         TextForm::Decimal => decimal(raw).map(Value::Decimal),
@@ -1564,5 +1639,27 @@ fn text_of(value: Value) -> Result<String, Fault> {
     match value {
         Value::Text(text) => Ok(text.to_string()),
         _ => Err(Fault::Shape),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn durations_read_and_write_as_iso_8601() {
+        assert_eq!(iso_duration("PT5M"), Some(300_000));
+        assert_eq!(iso_duration("P1DT2H"), Some(93_600_000));
+        assert_eq!(iso_duration("PT1.5S"), Some(1_500));
+        assert_eq!(iso_duration("PT"), None);
+        assert_eq!(iso_duration("5m"), None);
+        assert_eq!(iso_duration("-PT5M"), Some(-300_000));
+        assert_eq!(iso_duration("--PT5M"), None);
+        assert_eq!(iso_duration("P+1D"), None);
+        assert_eq!(iso_duration("P-1D"), None);
+        assert_eq!(jadpo_std::iso_duration(-300_000), "-PT5M");
+        assert_eq!(jadpo_std::iso_duration(300_000), "PT5M");
+        assert_eq!(jadpo_std::iso_duration(1_500), "PT1.5S");
+        assert_eq!(jadpo_std::iso_duration(0), "PT0S");
     }
 }

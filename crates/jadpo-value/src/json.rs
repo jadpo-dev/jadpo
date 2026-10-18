@@ -117,24 +117,32 @@ impl Codecs<'_> {
             Codec::Scalar {
                 builtin, validator, ..
             } => {
-                let value = match json {
-                    serde_json::Value::Object(entries)
-                        if builtin.representation() == Builtin::ZonedTime =>
-                    {
-                        zoned_from_json(entries, path, problems)?
-                    }
-                    serde_json::Value::Object(entries) if *builtin == Builtin::Money => {
-                        money_from_json(entries, path, problems)?
-                    }
-                    serde_json::Value::Object(entries) => match builtin {
-                        Builtin::Quantity(kind) => json_quantity(*kind, entries, path, problems)?,
-                        _ => Err("type"),
+                let value = match (jadpo_std::standard::of_builtin(*builtin), json) {
+                    // A standard type, as its entry says the contract sends
+                    // it: its canonical text, or an object of its members,
+                    // each problem at its member (chunk 5.5w3).
+                    (Some(entry), json) => match crate::standard::json::read(entry, json) {
+                        Ok(value) => Ok(value),
+                        Err(refused) => {
+                            for one in refused {
+                                let at = match one.member {
+                                    Some(member) => path.with(member),
+                                    None => path.clone(),
+                                };
+                                Self::problem(problems, &at, one.rule);
+                            }
+                            return None;
+                        }
                     },
-                    serde_json::Value::String(text) => scalar_from_text(*builtin, text),
-                    serde_json::Value::Bool(flag) if *builtin == Builtin::Bool => {
+                    (None, serde_json::Value::String(text)) => {
+                        crate::standard::scalar_text(*builtin, text)
+                    }
+                    (None, serde_json::Value::Bool(flag))
+                        if builtin.representation() == Builtin::Bool =>
+                    {
                         Ok(Value::Bool(*flag))
                     }
-                    serde_json::Value::Number(number)
+                    (None, serde_json::Value::Number(number))
                         if builtin.representation() == Builtin::Int =>
                     {
                         number.as_i64().map(Value::Int).ok_or("type")
@@ -423,7 +431,7 @@ impl Codecs<'_> {
                     });
                 let value = match whole {
                     Some(entry) => crate::standard::read(entry, text).map_err(|_| "type"),
-                    None => text_scalar(*builtin, text),
+                    None => crate::standard::scalar_text(*builtin, text),
                 };
                 match value {
                     Ok(value) => self.checked(*validator, value, path, problems),
@@ -757,231 +765,13 @@ impl Codecs<'_> {
     }
 }
 
-/// A `ZonedTime` from `{ "instant": ..., "zone": ... }` (area 10), each
-/// problem reported at its own field.
-fn zoned_from_json(
-    entries: &serde_json::Map<String, serde_json::Value>,
-    path: &Path,
-    problems: &mut Vec<Problem>,
-) -> Option<Result<Value, &'static str>> {
-    let before = problems.len();
-    let instant = match entries.get("instant") {
-        Some(serde_json::Value::String(text)) => {
-            let found = crate::standard::instant(text);
-            if found.is_none() {
-                Codecs::problem(problems, &path.with("instant"), "format");
-            }
-            found
-        }
-        Some(_) => {
-            Codecs::problem(problems, &path.with("instant"), "type");
-            None
-        }
-        None => {
-            Codecs::problem(problems, &path.with("instant"), "required");
-            None
-        }
-    };
-    let zone = match entries.get("zone") {
-        Some(serde_json::Value::String(name)) => {
-            let found = jadpo_std::ZONES.iter().position(|(_, iana)| iana == name);
-            if found.is_none() {
-                Codecs::problem(problems, &path.with("zone"), "variant");
-            }
-            found.and_then(|at| u32::try_from(at).ok())
-        }
-        Some(_) => {
-            Codecs::problem(problems, &path.with("zone"), "type");
-            None
-        }
-        None => {
-            Codecs::problem(problems, &path.with("zone"), "required");
-            None
-        }
-    };
-    for name in entries.keys() {
-        if name != "instant" && name != "zone" {
-            Codecs::problem(problems, &path.with(name.clone()), "unknown_field");
-        }
-    }
-    match (instant, zone) {
-        (Some(millis), Some(zone)) if problems.len() == before => {
-            Some(Ok(Value::Zoned(crate::Zoned { millis, zone })))
-        }
-        _ => None,
-    }
-}
-
-/// An amount of money from `{ "amount": 1050, "currency": "GBP" }` (area
-/// 19, "Money and payments"): the amount a whole number of minor units, as
-/// Stripe sends it, and the currency's ISO 4217 code, read ignoring case
-/// (question 22); each problem reported at its own field.
-fn money_from_json(
-    entries: &serde_json::Map<String, serde_json::Value>,
-    path: &Path,
-    problems: &mut Vec<Problem>,
-) -> Option<Result<Value, &'static str>> {
-    let before = problems.len();
-    let [amount_field, currency_field] = jadpo_std::MONEY_FIELDS;
-    let minor = match entries.get(amount_field) {
-        Some(serde_json::Value::Number(number)) => match number.as_i64() {
-            // Past 2^53 - 1 either side, no amount (chunk 5.5h).
-            Some(n) if crate::money::minor(i128::from(n)).is_err() => {
-                Codecs::problem(problems, &path.with(amount_field), "max");
-                None
-            }
-            Some(n) => Some(n),
-            None => {
-                Codecs::problem(problems, &path.with(amount_field), "type");
-                None
-            }
-        },
-        Some(_) => {
-            Codecs::problem(problems, &path.with(amount_field), "type");
-            None
-        }
-        None => {
-            Codecs::problem(problems, &path.with(amount_field), "required");
-            None
-        }
-    };
-    let currency = match entries.get(currency_field) {
-        Some(serde_json::Value::String(code)) => {
-            let found = jadpo_std::money::ordinal_of_code(code);
-            if found.is_none() {
-                Codecs::problem(problems, &path.with(currency_field), "variant");
-            }
-            found
-        }
-        Some(_) => {
-            Codecs::problem(problems, &path.with(currency_field), "type");
-            None
-        }
-        None => {
-            Codecs::problem(problems, &path.with(currency_field), "required");
-            None
-        }
-    };
-    for name in entries.keys() {
-        if name != amount_field && name != currency_field {
-            Codecs::problem(problems, &path.with(name.clone()), "unknown_field");
-        }
-    }
-    match (minor, currency) {
-        (Some(minor), Some(currency)) if problems.len() == before => {
-            Some(Ok(Value::Money(crate::Money { currency, minor })))
-        }
-        _ => None,
-    }
-}
-
-/// A physical quantity from `{ "value": "2.5", "unit": "kg" }` (area 19,
-/// "Physical quantities"): the number as a string, as area 2 sends every
-/// `Decimal`, and the code of one of the kind's units, exactly as written;
-/// each problem reported at its own field: `type` for a number that isn't a
-/// decimal string, `unknown_unit` for a unit of another kind.
-fn json_quantity(
-    kind: jadpo_std::QuantityKind,
-    entries: &serde_json::Map<String, serde_json::Value>,
-    path: &Path,
-    problems: &mut Vec<Problem>,
-) -> Option<Result<Value, &'static str>> {
-    let before = problems.len();
-    let [value_field, unit_field] = jadpo_std::standard::QUANTITY_FIELDS;
-    let number = match entries.get(value_field) {
-        Some(serde_json::Value::String(text)) => {
-            let found = jadpo_std::Num::parse(text).filter(|_| {
-                let digits = text.strip_prefix('-').unwrap_or(text);
-                let (whole, places) = digits.split_once('.').unwrap_or((digits, "0"));
-                let plain =
-                    |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
-                plain(whole) && plain(places)
-            });
-            if found.is_none() {
-                Codecs::problem(problems, &path.with(value_field), "type");
-            }
-            found
-        }
-        Some(_) => {
-            Codecs::problem(problems, &path.with(value_field), "type");
-            None
-        }
-        None => {
-            Codecs::problem(problems, &path.with(value_field), "required");
-            None
-        }
-    };
-    let unit = match entries.get(unit_field) {
-        Some(serde_json::Value::String(code)) => {
-            let found = kind.unit_coded(code);
-            if found.is_none() {
-                Codecs::problem(problems, &path.with(unit_field), "unknown_unit");
-            }
-            found
-        }
-        Some(_) => {
-            Codecs::problem(problems, &path.with(unit_field), "type");
-            None
-        }
-        None => {
-            Codecs::problem(problems, &path.with(unit_field), "required");
-            None
-        }
-    };
-    for name in entries.keys() {
-        if name != value_field && name != unit_field {
-            Codecs::problem(problems, &path.with(name.clone()), "unknown_field");
-        }
-    }
-    match (number, unit) {
-        (Some(number), Some(unit)) if problems.len() == before => Some(
-            jadpo_std::quantity::to_base(number.mantissa, number.scale, unit)
-                .map(|amount| Value::Quantity(crate::Quantity { kind, amount }))
-                .ok_or("max"),
-        ),
-        _ => None,
-    }
-}
-
-/// A scalar read from a JSON string, before its rules are checked: its
-/// text, read by [`text_scalar`]; a type sent as an object (`Money`, a
-/// quantity, a `ZonedTime`) is never a string (`type`).
-fn scalar_from_text(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
-    match builtin.representation() {
-        Builtin::ZonedTime | Builtin::Money | Builtin::Quantity(_) => Err("type"),
-        _ => text_scalar(builtin, text),
-    }
-}
-
-/// A scalar read from its text, before its rules are checked: a JSON
-/// string, a path, a query string, a header, a setting or a map's key.
-/// Text is composed to NFC first, so text that looks equal is equal and
-/// its rules count the code points it will be kept as (areas 2, 7 and
-/// 19); every other type is read by the one reader `text.parse` reads it
-/// with ([`crate::standard::builtin_text`]), so no boundary is looser than
-/// another (chunk 5.5w2). Text that isn't a number or a `Bool` breaks
-/// `type`; any other unreadable text `format`.
-fn text_scalar(builtin: Builtin, text: &str) -> Result<Value, &'static str> {
-    match builtin.representation() {
-        Builtin::Text => Ok(Value::text(&crate::text::composed(text))),
-        // Text for people is sent and read as the text it is (area 10).
-        Builtin::PresentationText => Ok(Value::text(text)),
-        representation => {
-            crate::standard::builtin_text(builtin, text).ok_or(match representation {
-                Builtin::Int | Builtin::Decimal | Builtin::Bool => "type",
-                _ => "format",
-            })
-        }
-    }
-}
-
 /// A map key as JSON's object keys hold it: text as it is, anything else
 /// as its canonical text, as `text.from` writes it and a key is read back
 /// (chunk 5.5w2). The checker refuses a key type with no single text form,
 /// so the last arm is only a value the checker let through by mistake.
 fn key_text(key: &Value) -> String {
     match key {
-        Value::Text(text) | Value::Uuid(text) => text.to_string(),
+        Value::Text(text) => text.to_string(),
         other => match crate::standard::from(other) {
             Ok(Value::Text(text)) => text.to_string(),
             _ => other.to_string(),
@@ -989,6 +779,8 @@ fn key_text(key: &Value) -> String {
     }
 }
 
+/// A scalar written as JSON: a representation as area 2 writes it, and a
+/// standard type as the contract sends it, by its entry (chunk 5.5w3).
 fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
     match value {
         Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
@@ -997,43 +789,13 @@ fn write_scalar(value: &Value, int_as_number: bool, out: &mut String) {
         }
         Value::Int(n) => write_string(&n.to_string(), out),
         Value::Decimal(d) => write_string(&d.to_string(), out),
-        Value::Text(text) | Value::Uuid(text) => write_string(text, out),
-        Value::Instant(millis) => write_string(&jadpo_std::format_instant(*millis), out),
-        Value::Date(day) => write_string(&jadpo_std::format_date(*day), out),
-        Value::Zoned(zoned) => {
-            out.push_str("{\"instant\":");
-            write_string(&jadpo_std::format_instant(zoned.millis), out);
-            out.push_str(",\"zone\":");
-            write_string(zoned.zone_name(), out);
-            out.push('}');
-        }
-        Value::Duration(millis) => write_string(&iso_duration_text(*millis), out),
-        Value::Money(money) => {
-            let _ = write!(
-                out,
-                "{{\"{}\":{},\"{}\":",
-                jadpo_std::MONEY_FIELDS[0],
-                money.minor,
-                jadpo_std::MONEY_FIELDS[1]
-            );
-            write_string(money.code(), out);
-            out.push('}');
-        }
-        // In its kind's base unit, the number as a string (area 19).
-        Value::Quantity(quantity) => {
-            let [value_field, unit_field] = jadpo_std::standard::QUANTITY_FIELDS;
-            let _ = write!(out, "{{\"{value_field}\":");
-            write_string(
-                &jadpo_std::quantity::number_text(quantity.amount, quantity.kind.scale()),
-                out,
-            );
-            let _ = write!(out, ",\"{unit_field}\":");
-            write_string(quantity.kind.base_unit().code, out);
-            out.push('}');
-        }
+        Value::Text(text) => write_string(text, out),
         Value::Bytes(bytes) => write_string(&crate::encoding::to_base64(bytes), out),
         Value::None | Value::Unit => out.push_str("null"),
-        other => write_string(&other.to_string(), out),
+        other => match crate::standard::entry_of(other) {
+            Some(entry) => crate::standard::json::write(entry, other, out),
+            None => write_string(&other.to_string(), out),
+        },
     }
 }
 
@@ -1056,86 +818,9 @@ pub fn write_string(text: &str, out: &mut String) {
     out.push('"');
 }
 
-/// An ISO 8601 duration of days, hours, minutes and seconds (`PT5M`,
-/// `P1DT2H`, `PT0.5S`), negative with a leading `-` as one is written
-/// (`-PT5M`), in milliseconds.
-pub(crate) fn iso_duration(text: &str) -> Option<i64> {
-    if let Some(positive) = text.strip_prefix('-') {
-        return iso_duration(positive.strip_prefix('P').map(|_| positive)?)?.checked_neg();
-    }
-    let rest = text.strip_prefix('P')?;
-    let (date_part, time) = match rest.split_once('T') {
-        Some((date_part, time)) => (date_part, time),
-        None => (rest, ""),
-    };
-    let mut total: i64 = 0;
-    if !date_part.is_empty() {
-        let days = date_part.strip_suffix('D')?;
-        if days.is_empty() || !days.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        let count: i64 = days.parse().ok()?;
-        total = total.checked_add(count.checked_mul(86_400_000)?)?;
-    }
-    let mut number = String::new();
-    for c in time.chars() {
-        match c {
-            '0'..='9' | '.' => number.push(c),
-            'H' | 'M' | 'S' => {
-                let unit: i64 = match c {
-                    'H' => 3_600_000,
-                    'M' => 60_000,
-                    _ => 1_000,
-                };
-                let millis = match number.split_once('.') {
-                    Some((whole, part)) if c == 'S' => {
-                        let whole: i64 = whole.parse().ok()?;
-                        let mut part = part.to_string();
-                        part.truncate(3);
-                        while part.len() < 3 {
-                            part.push('0');
-                        }
-                        whole
-                            .checked_mul(1_000)?
-                            .checked_add(part.parse::<i64>().ok()?)?
-                    }
-                    Some(_) => return None,
-                    None => number.parse::<i64>().ok()?.checked_mul(unit)?,
-                };
-                total = total.checked_add(millis)?;
-                number.clear();
-            }
-            _ => return None,
-        }
-    }
-    (number.is_empty() && text.len() > 1 && text != "PT").then_some(total)
-}
-
-/// Milliseconds as an ISO 8601 duration: `PT5M`, `PT1.5S`, `PT0S`.
-fn iso_duration_text(millis: i64) -> String {
-    jadpo_std::iso_duration(millis)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn durations_read_and_write_as_iso_8601() {
-        assert_eq!(iso_duration("PT5M"), Some(300_000));
-        assert_eq!(iso_duration("P1DT2H"), Some(93_600_000));
-        assert_eq!(iso_duration("PT1.5S"), Some(1_500));
-        assert_eq!(iso_duration("PT"), None);
-        assert_eq!(iso_duration("5m"), None);
-        assert_eq!(iso_duration("-PT5M"), Some(-300_000));
-        assert_eq!(iso_duration("--PT5M"), None);
-        assert_eq!(iso_duration("P+1D"), None);
-        assert_eq!(iso_duration("P-1D"), None);
-        assert_eq!(iso_duration_text(-300_000), "-PT5M");
-        assert_eq!(iso_duration_text(300_000), "PT5M");
-        assert_eq!(iso_duration_text(1_500), "PT1.5S");
-        assert_eq!(iso_duration_text(0), "PT0S");
-    }
 
     #[test]
     fn bytes_are_padded_base64_both_ways() {
