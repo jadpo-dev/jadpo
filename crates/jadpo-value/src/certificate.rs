@@ -91,8 +91,9 @@ pub fn pem(der: &[u8]) -> String {
 /// label, explanatory text, a second block, headers and white space are
 /// refused.
 fn pem_der(raw: &str) -> Option<Vec<u8>> {
-    // The Base64 of the largest DER, its line endings and its two labels.
-    if raw.len() > DER_MAX_BYTES / 3 * 4 + DER_MAX_BYTES / 32 + 128 {
+    // The Base64 of the largest DER, two octets of line ending for every
+    // 64 characters of it, and its two labels.
+    if raw.len() > (DER_MAX_BYTES / 3 + 1) * 4 * (PEM_LINE + 2) / PEM_LINE + 128 {
         return None;
     }
     let eol = if raw.contains('\r') { "\r\n" } else { "\n" };
