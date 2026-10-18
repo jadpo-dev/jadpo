@@ -18,6 +18,8 @@ discount
 amount_off
 apply_discount
 price
+# A `RichTextBlock`'s `quote`, Portable Text's block quote (chunk 5.5o2)
+quote
 
 # HTML's own element names, which `Html`'s allow-list and the sanitiser's
 # nesting rule name (chunk 5.5o)

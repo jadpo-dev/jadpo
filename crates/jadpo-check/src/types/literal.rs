@@ -349,7 +349,7 @@ pub fn diagnostic(
             .reason(
                 "A span links only to an `https:` URL with a host or a `mailto:` address, written so the HTML sanitiser keeps it as it is, since `markup.rich_to_html` writes every link out; a literal is checked while compiling.",
             )
-            .next("Write an `https:` or `mailto:` address, such as `https://example.com/menu`")
+            .next("Write an `https:` or `mailto:` address, such as `https://example.com/`")
         }
         Problem::Broken(host, broken) => Diagnostic::new(
             &rule::TYPE_INVALID_LITERAL,

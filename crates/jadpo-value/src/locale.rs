@@ -473,4 +473,60 @@ mod tests {
         header.push_str("fr-FR");
         assert_eq!(pick(&header, "en_gb", APP), "fr_fr");
     }
+
+    fn entries(pairs: &[(&str, &str)]) -> Value {
+        Value::Map(std::rc::Rc::new(
+            pairs
+                .iter()
+                .map(|(locale, text)| (value(ord(locale)), Value::text(text)))
+                .collect(),
+        ))
+    }
+
+    #[test]
+    fn pick_takes_the_language_s_likely_locale_before_the_rest() {
+        let english = entries(&[("en_au", "Rye loaf, mate"), ("en_us", "Rye bread")]);
+        // `en` is most likely `en-US`, though `en-AU` comes first.
+        assert_eq!(
+            super::pick(&english, ord("en_gb"), None),
+            Ok(Value::text("Rye bread"))
+        );
+        let french = entries(&[("fr_be", "Pain (Belgique)"), ("fr_ch", "Pain (Suisse)")]);
+        // Neither is likely for `fr`: the first in the canonical order.
+        assert_eq!(
+            super::pick(&french, ord("fr_ca"), None),
+            Ok(Value::text("Pain (Belgique)"))
+        );
+        // A language on its own maximises to its likely locale too.
+        let plain = entries(&[("fr_be", "Pain (Belgique)"), ("fr", "Pain")]);
+        assert_eq!(
+            super::pick(&plain, ord("fr_ca"), None),
+            Ok(Value::text("Pain"))
+        );
+    }
+
+    #[test]
+    fn pick_falls_back_to_the_default_then_the_first_entry() {
+        let rye = entries(&[("de_de", "Roggenbrot"), ("en_gb", "Rye loaf")]);
+        assert_eq!(
+            super::pick(&rye, ord("fr_fr"), Some(ord("en_gb"))),
+            Ok(Value::text("Rye loaf"))
+        );
+        assert_eq!(
+            super::pick(&rye, ord("fr_fr"), None),
+            Ok(Value::text("Roggenbrot"))
+        );
+        assert_eq!(
+            super::pick(&rye, ord("fr_fr"), Some(ord("es_es"))),
+            Ok(Value::text("Roggenbrot"))
+        );
+        assert_eq!(
+            super::pick(&entries(&[]), ord("fr_fr"), Some(ord("en_gb"))),
+            Ok(Value::text(""))
+        );
+        assert_eq!(
+            super::pick(&Value::text("Rye"), ord("fr_fr"), None),
+            Err(Fault::Shape)
+        );
+    }
 }

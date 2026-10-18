@@ -172,12 +172,12 @@ pub const RICH_TEXT_BLOCK_ENTRY: StandardType = StandardType {
                 "Fresh soup",
             ),
             (
-                r#"{"tag":"heading","level":1,"spans":[{"text":"Menu","marks":[]}]}"#,
-                "Menu",
+                r#"{"tag":"heading","level":1,"spans":[{"text":"Soups","marks":[]}]}"#,
+                "Soups",
             ),
             (
-                r#"{"tag":"quote","spans":[{"text":"Best in town","marks":[]}]}"#,
-                "Best in town",
+                r#"{"tag":"quote","spans":[{"text":"Fresh every day","marks":[]}]}"#,
+                "Fresh every day",
             ),
             (
                 r#"{"tag":"numbered_item","level":2,"spans":[{"text":"Stir","marks":[]}]}"#,
@@ -214,15 +214,15 @@ pub const RICH_TEXT_SPAN_ENTRY: StandardType = StandardType {
         &[
             (r#"{"text":"Soup","marks":[]}"#, "Soup"),
             (
-                r#"{"text":"today's menu","marks":["strong","emphasis"]}"#,
-                "today's menu",
+                r#"{"text":"today's soup","marks":["strong","emphasis"]}"#,
+                "today's soup",
             ),
             (
-                r#"{"text":"our site","marks":[],"link":"https://example.com/menu?day=mon#soups"}"#,
+                r#"{"text":"our site","marks":[],"link":"https://example.com/soups?day=mon#leek"}"#,
                 "our site",
             ),
             (
-                r#"{"text":"write to us","marks":["underline"],"link":"mailto:hello@example.com"}"#,
+                r#"{"text":"write to us","marks":["underline"],"link":"mailto:soup@example.com"}"#,
                 "write to us",
             ),
         ],
@@ -230,7 +230,7 @@ pub const RICH_TEXT_SPAN_ENTRY: StandardType = StandardType {
             r#"{"text":"","marks":[]}"#,
             r#"{"text":"Soup"}"#,
             r#"{"text":"a","marks":[],"link":"http://example.com/"}"#,
-            r#"{"text":"a","marks":[],"link":"/menu"}"#,
+            r#"{"text":"a","marks":[],"link":"/soups"}"#,
             r#"{"text":"a","marks":[],"link":"//example.com/"}"#,
             r#"{"text":"a","marks":[],"link":"https://exa mple.com/"}"#,
             r#"{"text":"a","marks":[],"link":"https://192.168.0.1/"}"#,
@@ -288,18 +288,18 @@ pub const LOCALISED_TEXT_ENTRY: StandardType = StandardType {
     examples: examples(
         &[
             (
-                r#"{"en-GB":"Rye loaf","fr-FR":"Pain de seigle"}"#,
-                "Rye loaf",
+                r#"{"en-GB":"Leek soup","fr-FR":"Soupe aux poireaux"}"#,
+                "Leek soup",
             ),
-            (r#"{"en-US":"Rye bread"}"#, "Rye bread"),
-            (r#"{"de-DE":"Roggenbrot"}"#, "Roggenbrot"),
+            (r#"{"en-US":"Leek potage"}"#, "Leek potage"),
+            (r#"{"de-DE":"Lauchsuppe"}"#, "Lauchsuppe"),
             (r#"{}"#, ""),
         ],
         &[
-            r#"{"english":"Rye loaf"}"#,
+            r#"{"english":"Leek soup"}"#,
             r#"{"en-GB":42}"#,
-            r#"[{"locale":"en-GB","text":"Rye loaf"}]"#,
-            r#""Rye loaf""#,
+            r#"[{"locale":"en-GB","text":"Leek soup"}]"#,
+            r#""Leek soup""#,
         ],
     ),
     release: FIRST_RELEASE,
