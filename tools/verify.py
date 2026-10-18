@@ -150,6 +150,9 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # their guards; then purge through the runtime's entry point, with
         # cascades, restricted references and batches (area 5).
         ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
+        # Every standard operation's SQL form gives what the runtime gives
+        # on the same inputs (area 19, "SQL forms"; chunk 5.6).
+        ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),
         # Routes over real HTTP: `jadpo dev` on the native host, requests
         # over TCP, the failure envelope, query and header input, rate
         # limits and reloading; and the golden OpenAPI document (area 7).
@@ -163,6 +166,11 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # exchange and the configured origin (area 8, chunk 5.1b).
         ('live PostgreSQL: round trips and signed sessions',
          [('jadpo-cli', 'round_trips'), ('jadpo-cli', 'signed')], []),
+        # Vectors in pgvector: stored and read back unchanged, `ai.distance`
+        # against pgvector's own operators, and a store without the
+        # extension refused (area 21, chunk 5.5v1). The server needs
+        # pgvector: CI's image has it (tools/postgres/Dockerfile).
+        ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

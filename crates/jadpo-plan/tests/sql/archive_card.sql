@@ -1,15 +1,17 @@
 -- action archive_card: update, store main
 UPDATE "card"
-SET "stage" = 'archived',
-    "archived_at" = $1,
-    "changed_at" = $1
-WHERE "id" = $2
-  AND ("published_at" IS NOT NULL AND "published_at" <= $1)
-  AND "stage" = 'live'
+SET "stage" = $1,
+    "archived_at" = $2,
+    "changed_at" = $2
+WHERE "id" = $3
+  AND ("published_at" IS NOT NULL AND "published_at" <= $2)
+  AND "stage" = $4
   AND FALSE
 RETURNING "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
--- $1: clock.now as Timestamp
--- $2: input 0.id as Uuid
+-- $1: literal Text("archived") as Text
+-- $2: clock.now as Timestamp
+-- $3: input 0.id as Uuid
+-- $4: literal Text("live") as Text
 -- returns: uuid, uuid, enum Stage, instant, instant, instant
 -- refused by when: Card.archive: conflict arm 0
 -- no row: asks, refused by when: Card.archive when the record is there

@@ -295,6 +295,7 @@ that instruction, each the most conservative reading:
 |---|---|---|
 | HTTP requests and responses, OpenAPI | The contract's JSON, through the route codec | Area 7, this page |
 | Storage and migrations | The contract's storage: one column, named columns laid out from the type's parts, or a native PostgreSQL type (a range, `time`, `timestamp`); a quantity's column carries a comment naming its SI unit; a fixed currency or rate a check constraint | Area 5, this page |
+| SQL literals: a query's or a lifecycle's condition, a transition's `set:`, a backfill | The value the storage codec makes, which the runtime binds: a parameter wherever the statement takes one, otherwise that value written as SQL text | Areas 5 and 6, this page |
 | Caches and Redis entities | The contract's JSON, as area 5 holds the API's JSON there | Area 5 |
 | Event, job and batch payloads | The contract's JSON of the event's or the job's type, written and read by the route codec, and a batch's captured values the same; read with the type as it is when delivered, so a change an API record would call breaking needs area 18's acceptance, and a payload that no longer reads is parked, never dropped | Area 12 |
 | CSV and TSV cells | A standard type's canonical text (`text.from`), read by `text.parse`; a type with no single text form (`PostalAddress`, `Price`, a choice) is the compile error naming JSON Lines that a list or an object is | This page, "Data formats" |
@@ -317,9 +318,10 @@ that instruction, each the most conservative reading:
 > (`RichText`, `RichTextBlock`, `LocalisedText`) as their contract's JSON
 > ("Chosen in chunk 5.5w2b"); chunk 5.5w3 gave the JSON boundary and
 > OpenAPI one encoder for every standard type, read from its entry
-> ("Chosen in chunk 5.5w3"), and the SQL literals' is 5.5w3b; the
-> boundaries not built yet take these encodings in the chunks that build
-> them.
+> ("Chosen in chunk 5.5w3"), and chunk 5.5w3b made every SQL literal
+> the value the runtime's storage codec binds ("Chosen in chunk 5.5w3b");
+> the boundaries not built yet take these encodings in the chunks that
+> build them.
 
 ### Packages use the standard types
 
@@ -824,6 +826,17 @@ with `+` and `-` (area 6); aggregate queries would be their second user
 - Each SQL form is tested against the runtime on the same inputs, Unicode
   edge cases included, before a backfill may use it.
 
+> Built in chunk 5.6: every form in the tables below, rendered in one
+> place (`jadpo_sql::form`) from its arguments' SQL, and tested against
+> the runtime on live PostgreSQL on over a hundred thousand inputs, the
+> edges of each operation among them, read in a session with unusual
+> settings. A test holds the tables' SQL form column and the renderer to
+> the same operations. Three forms changed to match the runtime exactly:
+> `decimal.round` keeps a value with fewer places as it is,
+> `temporal.period_between` doesn't use `age`, and a whole number is
+> always `bigint`. The backfills that use them are chunk 5.6b. What the
+> page left open is "Chosen in chunk 5.6", under "Review".
+
 In the tables below, `x` is the first argument and `a`, `b` the others.
 
 ## Lists
@@ -834,7 +847,7 @@ is written inline, `item -> expression` (area 3).
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `count(items)` | `Int`, at least 0 (decided) | | `jsonb_array_length(x)` |
+| `count(items)` | `Int`, at least 0 (decided) | | `jsonb_array_length(x)::bigint` |
 | `contains(items, item)` | `Bool`: an item `==` `item` (decided) | | none |
 | `map(items, each)` | `List<U>`, in order (decided) | | none |
 | `filter(items, keep)` | `List<T>`, the items `keep` accepts, in order (decided) | | none |
@@ -1034,7 +1047,7 @@ Each operation is called as `set.<name>`. All return a new set.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `count(items)` | `Int`, at least 0 | | `jsonb_array_length(x)` |
+| `count(items)` | `Int`, at least 0 | | `jsonb_array_length(x)::bigint` |
 | `contains(items, item)` | `Bool` | | none |
 | `with(items, item)` | `Set<T>` with `item`; the same set if already there | | none |
 | `without(items, item)` | `Set<T>` without `item` | | none |
@@ -1431,7 +1444,7 @@ what an operator can't.
 | `decimal.divide(dividend, divisor, rounding:)` | `Decimal` (decided, area 3) | | every mode: as `integer.divide`, on the values scaled to the dividend's places |
 | `decimal.abs(value)` | `Decimal`, at least 0, the same scale | | `abs(x)` |
 | `decimal.min(a, b)`, `decimal.max(a, b)` | as for `integer` | | `LEAST(a, b)`, `GREATEST(a, b)` |
-| `decimal.round(value, scale:, rounding:)` | `Decimal` with at most `scale` places; `scale:` a whole number written out, at least 0 | | `round(x, s)` for `half_up`; a `CASE` on the dropped digits for the others |
+| `decimal.round(value, scale:, rounding:)` | `Decimal` with at most `scale` places; `scale:` a whole number written out, at least 0 | | `x` when it has at most `s` places, where `round` would add zeros; otherwise `round(x, s)` for `half_up`, `trunc(x, s)` for `down` and a `CASE` on the dropped digits for the others |
 | `decimal.sqrt(value, scale:, rounding:)` | `Decimal`; `value` never negative | | none |
 | `decimal.power(value, exponent)` | `Decimal`, exact; `exponent` a whole number, never negative | overflow is a defect | none |
 | `decimal.exp(value, scale:, rounding:)`, `decimal.ln(value, scale:, rounding:)` | `Decimal`; `ln`'s `value` above 0 | `ln`: `out_of_range` | none |
@@ -2904,7 +2917,7 @@ Area 10's 21 `temporal` operations stand. The new time types add three.
 |---|---|---|---|
 | `temporal.occurrences(rule, from:, count:)` | `List<ZonedTime>`, the next `count` occurrences of a `RecurrenceRule` (RFC 5545) at or after `from`, an `Instant`, in the rule's zone; from a `CalendarDate`, `List<CalendarDate>`, the days they fall on, which a rule on dates gives (chunk 5.5k4); `count` 1 to 1000 | | none |
 | `temporal.open_at(hours, at)` | `Bool`: an `OpeningHours` is open at the `Instant`, in its zone, across midnight and its exceptions | | none |
-| `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | `age(b, a)`, reduced to years, months and days |
+| `temporal.period_between(start, end)` | `CalendarPeriod` in whole years, months and days from one `CalendarDate` to another, so adding it to `start` gives `end`; negative parts when `end` is earlier | | the months between the two months, one fewer or more by the day of the month, stepped once toward zero where adding them clamps past the end, and the days left; not `age`, which borrows days from the start's month (chunk 5.6) |
 
 `CalendarPeriod` is an amount of calendar time, `P1Y2M10D` in ISO 8601:
 whole years, months and days, unlike a `Duration`, which is exact time,
@@ -3527,11 +3540,11 @@ take it.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `length(value)` | `Int`, at least 0, in code points | | `char_length(x)` |
+| `length(value)` | `Int`, at least 0, in code points | | `char_length(x)::bigint` |
 | `trim(value)` | `Text` without Unicode white space at either end; never longer | | `btrim(x, chars)`, `chars` the Unicode `White_Space` characters |
 | `lower(value, locale:)`, `upper(value, locale:)` | `Text` in Unicode's default case mapping, or a locale's (`İ` in Turkish) with `locale:` | | none |
 | `contains(value, part)` | `Bool` | | `strpos(x, a) > 0` |
-| `starts_with(value, prefix)`, `ends_with(value, suffix)` | `Bool` | | `starts_with(x, a)`; `right(x, char_length(a)) = a` |
+| `starts_with(value, prefix)`, `ends_with(value, suffix)` | `Bool` | | `starts_with(x, a)`; `right(x, char_length(a)) = a COLLATE "C"` |
 | `replace(value, find, with)` | `Text` with every `find` replaced, left to right; `find` never empty | | `replace(x, a, b)` |
 | `split(value, separator)` | `List<Text>`, at least one item; `separator` never empty; `""` gives `[""]`, and separators side by side give `""` between them | | none |
 | `join(items, separator)` | `Text`, the items with `separator` between them | | none |
@@ -6706,9 +6719,10 @@ specify:
 > Built in chunk 5.5s2, the AI types' baselines: `Vector` with a type's
 > `dimensions:`, `Embedding`, `TokenCount`, `TokenUsage` and
 > `ChatMessage` with its `ChatRole`, each on the contract, built, sent as
-> JSON and shown to people ("Chosen in chunk 5.5s2"). Storing a vector or
-> an embedding is `toolchain.not_built_yet` until this area builds its
-> pgvector column; `ai.embed`, similarity and `ai.generate` come with it.
+> JSON and shown to people ("Chosen in chunk 5.5s2"). Chunk 5.5v1 stores
+> a vector in a pgvector column and adds `distance:` and `ai.distance`
+> (area 21); `ai.embed` and `ai.generate` come with area 21's later
+> chunks.
 
 A help article's embedding is three numbers here, where a real model's
 are 1,536 or more; a list of the wrong length is refused by name:
@@ -7643,7 +7657,7 @@ check failed: 1 error, 1 file
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
 | The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
-| SQL forms | Decided; built with computed backfills (chunk 5.6) |
+| SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b |
 | Geospatial, AI | Decided as future areas, planned in 5.5u ([area 20](20-geospatial.md)) and 5.5v; the geospatial types' baseline built in 5.5s, area 20's measures in 5.5u2, the AI types' in 5.5s2 |
 
 ### Consistency with the rest of the language
@@ -8556,7 +8570,8 @@ under "Errors").
   from the start's month and adds back past the end (29 January to 1
   March 2028 is `age`'s 1 month 3 days, here `P1M1D`), its SQL form
   differs; chunk 5.6, its first user, checks the form against the
-  runtime before relying on it.
+  runtime before relying on it. (Chunk 5.6 wrote one that doesn't use
+  `age`; see "Chosen in chunk 5.6".)
 
 ### Chosen in chunk 5.5k2
 
@@ -9316,7 +9331,7 @@ under "Errors").
   any query the URL has and before its fragment, and an empty map leaves
   the URL as it was. `web.resolve` is RFC 3986 §5.2's strict resolution,
   normalising nothing but dot segments. `web.cidr_contains`' SQL form
-  comes with the SQL forms (chunk 5.6).
+  comes with the SQL forms (built in chunk 5.6).
 - **No shapes:** `type.standard_exists` matches none of the new types:
   an application's object can't have `ProblemDetails`' `type`, and
   `UtmParameters`' part names are too common to be distinctive.
@@ -10262,7 +10277,10 @@ the most conservative reading:
 - **Storage:** a vector or an embedding is stored in a pgvector `vector`
   column (`Storage::Vector`), which the AI area builds, so a field of one
   is `toolchain.not_built_yet`, pointing at it. A count is one `bigint`
-  column; a usage and a message are stored a column per part.
+  column; a usage and a message are stored a column per part. *Amended
+  by chunk 5.5v1:* a vector is stored in `vector(n)`, and an embedding in
+  three columns, its model's two and its vector (area 21, "Chosen in chunk
+  5.5v1").
 - **Shapes:** none of the five has a distinctive shape for
   `type.standard_exists` (question 5); a `{ role, content }` or an
   `{ input, output }` is too common to flag.
@@ -10979,6 +10997,129 @@ What the pages left open, each the most conservative reading:
     passkeys the runtime keeps wrote it as text. Nothing is deployed, so
     nothing needs migrating.
 
+### Chosen in chunk 5.5w3b
+
+What the pages left open, each the most conservative reading:
+
+- **One storage codec, in the shared leaf.** The runtime's encoder of a
+  parameter moved to `jadpo_std::standard::storage::bind`, with the
+  `SqlValue` it makes; the runtime's `to_sql` calls it, and the compiler
+  makes every literal in SQL with it, after decoding the literal for its
+  field exactly as the plan decodes a body's
+  (`jadpo_std::constant::literal`): `"2026-10-25"` where a `CalendarDate`
+  goes is the date, `5` where `scale: 2` goes is `5.00`, `20%` the
+  fraction `0.20`, `2.5km` its metres, `Currency.gbp` the code `GBP`.
+- **A parameter wherever the statement takes one.** A query's, a `get`'s
+  and an include's conditions, a lifecycle's `visible:` and `when:`, a
+  transition's `set:`, a create's `initial:`, a purge, and a membership's
+  roles in policy bind each literal and enum value as a parameter, the
+  value the codec made. PostgreSQL plans an unnamed statement with its
+  parameters' values, so a bound `visible:` still proves a partial
+  index's predicate.
+- **Written as SQL text only where a statement takes no parameters,**
+  each place listed: a partial index's predicate (DDL), a migration's
+  backfill (its `postgres.sql` runs as written), and the identity
+  statements whose parameters are fixed (a passkey's, a session's and a
+  service key's lookup, for the caller's `active:` and its policy). The
+  compiler's own text, a column's comment and the codes a check
+  constraint names, is escaped the same way. The text is PostgreSQL's
+  spelling of the codec's value, cast where the bare spelling could read
+  as another type: text quoted with each `'` doubled, and, when it holds
+  a backslash or an ASCII control character, an escape string (`E'...'`)
+  with each backslash doubled and each control character escaped, so
+  `standard_conforming_strings` can't change its meaning and it stays on
+  one line (a migration's sections are read line by line, which dropped a
+  `\r` and would read a line of text starting `-- store:` as a section of
+  its own); an instant in UTC with `+00`, so the session's `TimeZone`
+  can't change it; a number only when it is digits, a sign and a point.
+- **Text holding NUL is never stored.** PostgreSQL text can't hold the
+  NUL character: a backfill holding it is `migration.decision_invalid`, a
+  predicate holding it isn't written (the index holds every row), and a
+  condition binds it, which the store refuses as it refuses a runtime
+  value holding one.
+- **A backfill takes every literal its field's type has,** an instant, a
+  date, a duration, a quantity and a percentage now too, each checked as
+  any literal of its type is, so a standard type's own check (an email
+  address's) refuses a backfill it used to store.
+- **A literal is never absent.** Comparing an optional field with a
+  literal in a `where:` line, or testing it `in` a list of literals, was
+  refused as `query.optional_value`; it compiles now.
+- **`jadpo sql`** shows a bound literal's parameter as SQL writes its
+  value: `$3: 'live' · text`.
+
+### Chosen in chunk 5.6
+
+What the page left open, each the most conservative reading, and what
+testing every form against the runtime changed:
+
+- **Split.** The SQL forms are this chunk; the computed backfills that
+  use them, with batching and `jadpo migrate apply`, are 5.6b.
+- **One renderer, in the SQL leaf.** `jadpo_sql::form::operation` writes
+  an operation's form from its arguments, each a SQL expression and how
+  it is held (a built-in type's column, JSON, a range of a built-in
+  type), money's two columns, or what a call writes out: a rounding mode,
+  `decimal.round`'s `scale:`, `text.pad_start`'s `fill:`. An operation
+  has no form for arguments the tables don't cover: a rounding mode that
+  isn't written out, `text.from` with `form:` or of a time, `hash.sha256`
+  of a secret value.
+- **Given values, never `NULL`.** Code tests a value that may be `none`
+  before calling an operation on it, so a form never decides what `none`
+  means; `range.intersection`, whose result may be `none`, gives `NULL`
+  for it.
+- **A whole number is always `bigint`.** A field with a narrow range is
+  stored in a `smallint` or an `integer` (area 5), whose `abs` and `/`
+  overflow at -32768 where an `Int`'s don't, so `integer`'s operations
+  widen their arguments first, and `char_length` and
+  `jsonb_array_length` are cast, so arithmetic on what they give
+  overflows exactly where the runtime's does. A value tested against a
+  range is cast to the range's end type for the same reason.
+- **A decimal keeps the places the runtime keeps.** A `numeric` carries
+  its places as a runtime `Decimal` does, so the forms read them with
+  `scale()`. `decimal.round` keeps a value with at most `scale:` places
+  as it is, where `round(x, s)` adds zeros (`1.5` to two places stays
+  `1.5`). `decimal.divide` works the quotient out from the two mantissas
+  with `div` and `mod`, exactly, as the runtime does, never with
+  PostgreSQL's `/`, which rounds to the places it chooses.
+- **A defect stops the statement.** Where the runtime stops with a
+  defect, a whole number past 64 bits or a decimal past 38 digits, the
+  form fails too: `bigint` overflows where an `Int` does, and
+  `decimal.divide`'s mantissa passes through `numeric(38, 0)`, so a
+  backfill stops at the row the runtime would.
+- **`temporal.period_between` without `age`.** The form counts the
+  months between the two months, one fewer when the end's day of the
+  month hasn't reached the start's (one more going back), then steps once
+  toward zero where adding them to the start, years first and then
+  months, each clamped to a month's last day, would pass the end; the
+  days are what is left. The runtime steps until it stops passing; once
+  is always enough, since a clamped day is never past the start's. Year
+  0 is PostgreSQL's 1 BC, whose `extract` gives -1, so the form counts
+  from year 0 as the runtime does. It names its two dates once, in a
+  subquery, and gives the three columns a `CalendarPeriod` is stored in.
+- **Counts and positions clamped to `integer`.** `left`, `right`,
+  `substr` and `lpad` take PostgreSQL's 32-bit `integer`; text is never
+  longer than a gigabyte, so a larger count means what the largest does
+  and is clamped rather than cast, which would fail.
+- **Text in code points, whatever the collation.** `ends_with` compares
+  with `COLLATE "C"`; `strpos`, `starts_with`, `replace` and `btrim`
+  match code points already. `trim`'s characters are Unicode's 25
+  `White_Space` characters, which Rust's `str::trim` removes; a test holds
+  the list to every character Rust calls white space.
+- **No session setting changes a form.** The test reads every form in a
+  session with the time zone `Pacific/Chatham`, dates day first, the SQL
+  standard's intervals and `standard_conforming_strings` off: dates are
+  added without a zone, escapes are written `E'...'`.
+- **Every form is tested, and only these.** The test runs each operation
+  with a form in the runtime and as its form, on the same columns a
+  backfill reads, written through the storage codec, and compares what
+  each gives as the codec binds it or as the runtime reads it back,
+  places and widths included; an input the runtime stops on must fail the
+  statement. It covers every rounding mode on halves either side of zero,
+  the largest and smallest whole numbers in each column width, decimals
+  of 38 digits, every white space character, four-byte characters and
+  combining marks, open and held range ends, every pair of days across a
+  leap February and thousands of pairs from the year 0 to 9999, and
+  IPv4-mapped IPv6 addresses. No form was dropped.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -11030,7 +11171,7 @@ What the pages left open, each the most conservative reading:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b"); one JSON encoder and one OpenAPI schema for every standard type, read from its entry ("Chosen in chunk 5.5w3") | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2"), and the JSON-held values stored as their contract's JSON ("Chosen in chunk 5.5w2b"); one JSON encoder and one OpenAPI schema for every standard type, read from its entry ("Chosen in chunk 5.5w3"); every SQL literal the value the runtime's storage codec binds, a parameter wherever the statement takes one ("Chosen in chunk 5.5w3b") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |

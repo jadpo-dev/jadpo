@@ -70,6 +70,7 @@ pub mod text;
 pub mod units;
 pub mod validate;
 mod value;
+pub mod vector;
 pub mod web;
 
 pub use jadpo_std::{LocalePlan, Op, Rounding};
@@ -104,6 +105,10 @@ pub fn run(
             Ok(locale::value(locale::from_accept_language(header, plan)))
         }
         (Op::LocaleFromAcceptLanguage, _) => Err(Fault::Shape),
+        // The distance between two vectors of one type (area 21, chunk
+        // 5.5v1).
+        (Op::AiDistance, [a, b, metric]) => vector::distance(a, b, metric),
+        (Op::AiDistance, _) => Err(Fault::Shape),
         (Op::LocaleDirection, [Value::Variant(variant)]) if &*variant.ty == jadpo_std::LOCALE => {
             Ok(locale::direction(variant.ordinal))
         }
@@ -993,6 +998,7 @@ mod tests {
                     colour::colour_value([0, 0, 0, 255]),
                     colour::colour_value([255, 255, 255, 255]),
                 ],
+                Op::AiDistance => vec![items.clone(), items.clone(), Value::text("cosine")],
                 Op::MediaFit => {
                     let size = |width: i64, height: i64| {
                         Value::record(

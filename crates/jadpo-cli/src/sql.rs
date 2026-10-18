@@ -429,7 +429,14 @@ fn input_name(source: &WriteSource, write: &WriteSitePlan, body: &Body, text: &s
         WriteSource::Json { of, .. } => {
             format!("{} as JSON", input_name(of, write, body, text))
         }
+        WriteSource::Stored(value) => stored(value),
     }
+}
+
+/// How a literal or an enum value bound as a parameter reads: as SQL text
+/// writes the value the storage codec made (chunk 5.5w3b).
+fn stored(value: &jadpo_std::SqlValue) -> String {
+    jadpo_sql::literal::sql(value).unwrap_or_else(|| "a literal".to_string())
 }
 
 /// How a caller parameter of a statement's policy reads (area 9).
@@ -592,6 +599,7 @@ impl Names<'_> {
                 format!("after: the cursor's {field}, or none")
             }
             Source::SizePlusOne => "the page size + 1, to see if more follow".to_string(),
+            Source::Stored(value) => stored(value),
         }
     }
 }
@@ -640,6 +648,7 @@ fn pg_type(ty: SqlType) -> String {
         SqlType::Time => "time".into(),
         SqlType::LocalTimestamp => "timestamp".into(),
         SqlType::Json => "jsonb".into(),
+        SqlType::Vector => "vector".into(),
         SqlType::Array(inner) => format!("{}[]", pg_type(*inner)),
         SqlType::Range(inner) => match inner {
             SqlType::Date => "daterange".into(),

@@ -61,6 +61,9 @@ pub enum WriteSource {
     /// `codec` names in the plan's JSON table, for a JSON-held standard
     /// value's `jsonb` column (chunk 5.5w2b); `NULL` for no value.
     Json { of: Box<WriteSource>, codec: u32 },
+    /// A literal or an enum value the statement sets or compares with, as
+    /// the storage codec binds it (area 19, chunk 5.5w3b).
+    Stored(crate::SqlValue),
 }
 
 /// One parameter: `$1` is the first.
@@ -194,13 +197,16 @@ pub struct FieldProbe {
 pub const PURGE_BATCH: u32 = 500;
 
 /// Where a purge statement's parameter comes from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PurgeSource {
     /// The run's time less the lifecycle's `after:`: a record hidden since
     /// before it goes.
     Cutoff,
     /// The run's time, for a `visible:` that reads `clock.now`.
     Now,
+    /// A literal or an enum value `visible:` compares with, as the storage
+    /// codec binds it (area 19, chunk 5.5w3b).
+    Stored(crate::SqlValue),
 }
 
 /// One purge parameter: `$1` is the first.

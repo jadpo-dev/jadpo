@@ -83,6 +83,9 @@ impl From<jadpo_value::Fault> for FaultKind {
                 "`geo.centroid` of a shape whose weights cancel, such as two opposite points"
                     .into(),
             ),
+            jadpo_value::Fault::ZeroVector => FaultKind::Defect(
+                "a cosine distance from a vector of zeros, which has no direction".into(),
+            ),
             jadpo_value::Fault::Shape | jadpo_value::Fault::Stopped => {
                 FaultKind::Defect("a value of a kind the checker would have refused".into())
             }

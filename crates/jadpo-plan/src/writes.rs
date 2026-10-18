@@ -87,6 +87,13 @@ impl Bind for Writing {
             _ => None,
         }
     }
+
+    /// A literal or an enum value, bound as the storage codec made it
+    /// (chunk 5.5w3b).
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        let ty = value.ty();
+        Some(self.param(WriteSource::Stored(value), ty))
+    }
 }
 
 impl CallerBind for Writing {
@@ -153,7 +160,8 @@ impl Planner<'_> {
                 // Each field's value, as the new record's grants read it.
                 let mut new: Vec<(String, String)> = Vec::new();
                 for field in &entity_model.fields {
-                    let ty = column_type(field)?.param();
+                    // Every field is stored, or there is no statement.
+                    column_type(field)?;
                     if let Some(lifecycle) = lifecycle.filter(|l| l.owns(&field.name)) {
                         // A field the lifecycle owns starts at its
                         // `initial:` value, or `none`.
@@ -163,7 +171,7 @@ impl Planner<'_> {
                             .find(|(name, _)| *name == field.name)
                             .map_or_else(
                                 || Some(jadpo_sql::NULL.to_string()),
-                                |(_, value)| jadpo_sql::value(&mut writing, value, ty),
+                                |(_, value)| jadpo_sql::value(&mut writing, value, &field.column()),
                             )?;
                         names.push(field.born.clone());
                         new.push((field.name.clone(), value.clone()));
@@ -282,8 +290,7 @@ impl Planner<'_> {
                     // and every field generated on change to the clock.
                     for (name, value) in &transition.set {
                         let field = field(entity_model, name)?;
-                        let ty = column_type(field)?.param();
-                        let value = jadpo_sql::value(&mut writing, value, ty)?;
+                        let value = jadpo_sql::value(&mut writing, value, &field.column())?;
                         assignments.push(text::equal(&field.born, &value));
                         changed.push((name.clone(), value.clone()));
                         if *op == WriteOp::Update

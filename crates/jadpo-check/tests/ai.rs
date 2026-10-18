@@ -190,13 +190,13 @@ fn checked(source: &str) -> Vec<String> {
 }
 
 #[test]
-fn storing_a_vector_waits_on_the_ai_area() {
+fn a_vector_is_stored_in_pgvector() {
     for ty in ["Vector", "Embedding", "ArticleVector"] {
         assert_eq!(
             checked(&format!(
                 "/// A help article's embedding.\ntype ArticleVector = Vector {{\n    dimensions: 3\n}}\n\nentity Article {{\n    id: Uuid\n    meaning: {ty}\n}}\n"
             )),
-            ["toolchain.not_built_yet"],
+            NONE,
             "{ty}"
         );
     }
@@ -205,5 +205,129 @@ fn storing_a_vector_waits_on_the_ai_area() {
             "entity Reply {\n    id: Uuid\n    tokens: TokenCount\n    usage: TokenUsage\n    message: ChatMessage\n}\n"
         ),
         NONE
+    );
+}
+
+/// A project whose `app.jadpo` declares a Redis connection, `drafts`, and
+/// whose entity holds `field`.
+fn on_redis(field: &str) -> Vec<String> {
+    let db = Database::default();
+    let project = support::project(
+        &db,
+        Layout::Project,
+        &[
+            (
+                "app.jadpo",
+                "application {\n    connections: {\n        drafts: {\n            driver: Driver.redis\n            url: config.redis_url\n        }\n    }\n}\n\nconfig {\n    redis_url: RedisUrl\n}\n",
+            ),
+            (
+                "domains/search/types/query_meaning.jadpo",
+                "/// A search's meaning, as the configured model makes it.\ntype QueryMeaning = Vector {\n    dimensions: 3\n}\n",
+            ),
+            (
+                "domains/search/entities/recent_search.jadpo",
+                &format!(
+                    "use search/types {{ QueryMeaning }}\n\n/// A search someone made in the last hour.\nentity RecentSearch {{\n    id: Uuid\n    {field}\n\n    store: drafts\n}}\n"
+                ),
+            ),
+        ],
+    );
+    jadpo_check::check(&db, project)
+        .iter()
+        .map(|d| d.rule.id.to_string())
+        .collect()
+}
+
+#[test]
+fn a_vector_needs_postgresql() {
+    assert_eq!(
+        on_redis("meaning: QueryMeaning"),
+        ["data.vector_store_unsupported"]
+    );
+    assert_eq!(
+        on_redis("meaning: Embedding?\n    other: QueryMeaning"),
+        ["data.vector_store_unsupported"],
+        "said once, of the first"
+    );
+    assert_eq!(
+        on_redis("words: Text\n    other: QueryMeaning?"),
+        ["data.vector_store_unsupported"],
+        "one that may be none"
+    );
+}
+
+#[test]
+fn a_vector_type_says_how_its_vectors_are_compared() {
+    let declared = |block: &str| rules(&format!("/// A size.\ntype Sized = {block}\n"));
+    for distance in ["cosine", "euclidean", "inner_product"] {
+        assert_eq!(
+            declared(&format!(
+                "Vector {{\n    dimensions: 3\n    distance: VectorDistance.{distance}\n}}"
+            )),
+            NONE,
+            "{distance}"
+        );
+    }
+    assert_eq!(
+        declared("Vector {\n    distance: VectorDistance.manhattan\n}"),
+        ["type.setting_value"]
+    );
+    assert_eq!(
+        declared("Vector {\n    distance: cosine\n}"),
+        ["type.setting_value"]
+    );
+    assert_eq!(
+        declared("List<Decimal> {\n    distance: VectorDistance.cosine\n}"),
+        ["type.constraint_base"]
+    );
+    // A type built on one keeps it.
+    assert_eq!(
+        rules(
+            "/// Compared by angle.\ntype ByAngle = Vector {\n    distance: VectorDistance.cosine\n}\n\n/// The same, narrowed.\ntype Narrowed = ByAngle {\n    dimensions: 3\n    distance: VectorDistance.cosine\n}\n"
+        ),
+        NONE
+    );
+    assert_eq!(
+        rules(
+            "/// Compared by angle.\ntype ByAngle = Vector {\n    distance: VectorDistance.cosine\n}\n\n/// Compared another way.\ntype ByLength = ByAngle {\n    distance: VectorDistance.euclidean\n}\n"
+        ),
+        ["type.constraint_contradiction"]
+    );
+}
+
+#[test]
+fn a_distance_is_between_two_vectors_of_one_type() {
+    let measured = |params: &str, call: &str| {
+        rules(&format!(
+            "/// Another model's vector.\ntype OtherVector = Vector {{\n    dimensions: 3\n}}\n\n/// How far apart.\ntype Apart = Decimal {{\n    scale: 9\n}}\n\nfunction apart({params}) -> Apart {{\n    return Apart({call})\n}}\n"
+        ))
+    };
+    assert_eq!(
+        measured("a: ArticleVector, b: ArticleVector", "ai.distance(a, b)"),
+        NONE
+    );
+    assert_eq!(
+        measured("a: Vector, b: Vector", "ai.distance(a, b)"),
+        NONE,
+        "plain vectors, compared by cosine"
+    );
+    assert_eq!(
+        measured("a: ArticleVector, b: OtherVector", "ai.distance(a, b)"),
+        ["type.mismatch"],
+        "another type may be another model's"
+    );
+    assert_eq!(
+        measured("a: ArticleVector, b: Vector", "ai.distance(a, b)"),
+        ["type.mismatch"]
+    );
+    assert_eq!(
+        measured("a: ArticleVector?, b: ArticleVector", "ai.distance(a, b)"),
+        ["type.mismatch"],
+        "a vector that may be none"
+    );
+    assert_eq!(
+        measured("a: ModelNumbers, b: ArticleVector", "ai.distance(a, b)"),
+        ["type.mismatch"],
+        "a list of numbers isn't a vector"
     );
 }

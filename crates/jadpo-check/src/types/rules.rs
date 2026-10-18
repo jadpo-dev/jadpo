@@ -218,7 +218,7 @@ pub enum Subject {
 }
 
 /// The constraints area 2 defines, in the order the reader learns them.
-pub const CONSTRAINTS: [&str; 13] = [
+pub const CONSTRAINTS: [&str; 14] = [
     "min",
     "max",
     "min_length",
@@ -232,6 +232,7 @@ pub const CONSTRAINTS: [&str; 13] = [
     "from",
     "to",
     "dimensions",
+    "distance",
 ];
 
 /// The settings a field of an `Input` may have beside its constraints.
@@ -557,6 +558,30 @@ pub fn constraint(
                 ));
             };
             rules.dimensions = Some(count);
+        }
+        // How a type built on `Vector` compares its vectors (area 21,
+        // decision 14): a `VectorDistance` variant.
+        "distance" => {
+            if subject != Subject::Vector {
+                return Err(Problem::Base("`Vector` types"));
+            }
+            let name = jadpo_std::VectorDistance::NAME;
+            let example = format!("a `{name}` value, such as `{name}.cosine`");
+            match value {
+                Const::Path(path) if path.len() == 2 && path[0] == name => {
+                    match jadpo_std::VectorDistance::from_name(&path[1]) {
+                        Some(distance) => rules.distance = Some(distance),
+                        None => return Err(Problem::Value(example, None)),
+                    }
+                }
+                Const::Path(path)
+                    if path.len() == 1
+                        && jadpo_std::VectorDistance::from_name(&path[0]).is_some() =>
+                {
+                    return Err(Problem::Value(example, Some(format!("{name}.{}", path[0]))));
+                }
+                _ => return Err(Problem::Value(example, None)),
+            }
         }
         // How `*` and `/` round a `Money` type's amounts (area 19).
         "rounding" => {

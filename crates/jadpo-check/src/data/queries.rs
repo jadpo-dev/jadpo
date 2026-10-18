@@ -1306,10 +1306,15 @@ impl<'a> Reader<'a> {
                     ));
                     return None;
                 }
-                return Some((
-                    Value::Literal(constant.literal()?),
-                    expected.strip_nullable().clone(),
-                ));
+                // A literal is never absent: where an optional field's
+                // value goes, it is the field's type without its `?`.
+                let taken = match expected.strip_nullable() {
+                    field @ Ty::Field(..) if self.lookup.is_nullable(field) => {
+                        self.lookup.parent(field).unwrap_or_else(|| field.clone())
+                    }
+                    other => other.clone(),
+                };
+                return Some((Value::Literal(constant.literal()?), taken));
             }
             Expr::ListExpr(list) => {
                 let element = match self.lookup.structure(expected) {

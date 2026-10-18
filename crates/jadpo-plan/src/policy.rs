@@ -16,6 +16,7 @@
 
 use jadpo_check::data::EntityModel;
 use jadpo_check::policy::{Effect, Grant, LineGate};
+use jadpo_check::types::Ty;
 use jadpo_sql::policy::{Membership, Who, any_of, qualified};
 use jadpo_std::http::PrincipalKind;
 use jadpo_std::policy::{CallerPart, Gate};
@@ -102,8 +103,26 @@ impl Planner<'_> {
             (Some(column), Some(value)) => Some((field(model, column)?.born.clone(), value)),
             _ => None,
         };
+        // Each role as its column holds it, bound as the storage codec
+        // makes it, or written where the statement takes no parameters
+        // (chunk 5.5w3b).
         let roles = match roles {
-            Some(roles) => Some((field(model, &membership.role)?.born.clone(), roles)),
+            Some(roles) => {
+                let role = field(model, &membership.role)?;
+                let Ty::Named(ty) = role.ty.strip_nullable() else {
+                    return None;
+                };
+                let column = role.column();
+                let mut bound = Vec::with_capacity(roles.len());
+                for variant in roles {
+                    let value = jadpo_sql::Value::Variant {
+                        ty: ty.clone(),
+                        variant,
+                    };
+                    bound.push(jadpo_sql::value(bind, &value, &column)?);
+                }
+                Some((role.born.clone(), bound))
+            }
             None => None,
         };
         Some(Membership {
@@ -510,6 +529,11 @@ impl After {
 impl jadpo_sql::Bind for After {
     fn bind(&mut self, value: &jadpo_sql::Value, ty: jadpo_std::read::SqlType) -> Option<String> {
         matches!(value, jadpo_sql::Value::Now).then(|| self.param(Source::Now, ty))
+    }
+
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        let ty = value.ty();
+        Some(self.param(Source::Stored(value), ty))
     }
 }
 

@@ -45,6 +45,9 @@ pub enum Fault {
     /// `geo.centroid` of a shape whose weights cancel, two points opposite
     /// each other, which leaves no direction (area 20, "Operations").
     NoCentre,
+    /// `ai.distance` by cosine from a vector of zeros, which has no
+    /// direction, so no angle to another (area 21, chunk 5.5v1).
+    ZeroVector,
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {

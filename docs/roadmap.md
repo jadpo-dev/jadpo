@@ -1203,7 +1203,8 @@ reference only).
   with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
   EXTENSION` in migrations and `migration.extension_missing`, GiST indexes
   derived and declared with `kind: IndexKind.geographic`, geometries in
-  Redis as GeoJSON, and CI on `postgis/postgis:16-3.4`. Done when an
+  Redis as GeoJSON, and CI's image with PostGIS (`tools/postgres`, chunk
+  5.5v1). Done when an
   entity stores and reads back every geometry, with and without altitude,
   unchanged.
 - [ ] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
@@ -1225,20 +1226,43 @@ reference only).
   on this roadmap. Written as area 21 and decided by Richard on
   2026-10-18, all fifteen questions as recommended; built in 5.5v1 to
   5.5v7.
-- [ ] **5.5v1 Vectors in PostgreSQL** `opus · high` (area 21,
-  "Embeddings and search"): a vector type with `dimensions:` stored in a
-  pgvector `vector(n)` column (the 5.5s2 `toolchain.not_built_yet`
-  lifted), `distance:` on the type, `order: [F nearest v]` returning
-  `Nearest<T>`, `ai.distance` in code and as a SQL form in `where:`, a
-  derived HNSW index with the type's operator class (half-precision
-  expression index from 2,001 to 4,000 dimensions), `hnsw.ef_search` and
-  strict iterative scans per query, `CREATE EXTENSION` in the migration
-  with `jadpo migrate apply` and the start-up check refusing a store
-  without pgvector, and CI's and `jadpo dev`'s PostgreSQL on an image
-  with both pgvector and PostGIS (5.5u4 moves it to PostGIS's). Design the errors on area 21 first. Done
-  when a filtered nearest query of five returns the same five records
-  interpreted and on PostgreSQL, its plan uses the index, and each new
-  error has a checked example.
+- [x] **5.5v1 Vectors in PostgreSQL: storage** `opus · high` (area 21,
+  "Embeddings and search"). Split (2026-10-18): this chunk stores vectors
+  and compares them in code; 5.5v1b takes the nearest-neighbour query and
+  its index. A vector type with `dimensions:` stored in a pgvector
+  `vector(n)` column (the 5.5s2 `toolchain.not_built_yet` lifted), an
+  `Embedding` in columns for its model and one for its vector,
+  `distance:` on the type, `ai.distance` in code computed as pgvector
+  computes each metric, `CREATE EXTENSION` in the first migration with a
+  vector column, `jadpo migrate apply`, `jadpo dev`, `jadpo test` and the
+  start-up check refusing a store without pgvector
+  (`migration.extension_missing`, shared with 5.5u4),
+  `data.vector_store_unsupported`, and CI's PostgreSQL on an image with
+  both pgvector and PostGIS. Design the errors on area 21 first. Done when
+  an entity stores and reads back vectors of every metric unchanged on
+  PostgreSQL, `ai.distance` gives pgvector's own distance for each metric
+  on the same inputs, a store without pgvector is refused before anything
+  runs, and each new error has a checked example. Built: storage through
+  the shared storage codec and pgvector's binary format, `ai.distance`
+  agreeing with pgvector to the bit on exact inputs (within a float's
+  rounding elsewhere, since pgvector's compiler orders its sums), a zero
+  vector's cosine a fault, and CI on `tools/postgres/Dockerfile`
+  (PostgreSQL 16.14, pgvector 0.8.7, PostGIS 3.6.4, since every
+  `postgis/postgis` 16 tag is on Debian bullseye). What the chunk chose is
+  area 21's "Chosen in chunk 5.5v1".
+- [ ] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
+  (area 21, "The nearest-neighbour query" and "The index"), after 5.5v1:
+  `order: [F nearest v]` returning `Nearest<T>`, `ai.distance` as a SQL
+  form in `where:`, a derived HNSW index with the type's operator class
+  (half-precision expression index from 2,001 to 4,000 dimensions, exact
+  search with a warning above), `kind: IndexKind.hnsw` with `m:` and
+  `ef_construction:`, `hnsw.ef_search` and strict iterative scans per
+  query (pgvector 0.8.0 or later: the chunk decides how a store with an
+  older pgvector is refused), and `query.nearest_unindexed`,
+  `query.nearest_type` and `query.nearest_page`. Done when a filtered
+  nearest query of five returns the same five records interpreted and on
+  PostgreSQL, its plan uses the index, and each new error has a checked
+  example.
 - [x] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
   files"): the `Prompt` type base, `prompts/` in a domain,
   `<name>.prompt` with `# Instructions` and `# Request`, placeholders
@@ -1356,7 +1380,7 @@ reference only).
   `jadpo-cli/tests/standard_boundaries.rs` holds the JSON boundary and
   OpenAPI to it. What clients see change is area 19's "Chosen in chunk
   5.5w3".
-- [ ] **5.5w3b Every boundary through the contract: SQL literals**
+- [x] **5.5w3b Every boundary through the contract: SQL literals**
   `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
   compile-time SQL literals (`jadpo-sql`'s conditions, backfills in
   `jadpo-check`'s migrations) share the runtime's storage codec, so a
@@ -1364,6 +1388,17 @@ reference only).
   when no boundary has an encoder of its own: each calls the contract's
   JSON, storage or text for a standard type, and 5.5w3's test covers the
   SQL literals too.
+  Built: the storage codec and `SqlValue` moved to the shared leaf
+  (`jadpo_std::standard::storage::bind`), which the runtime's `to_sql`
+  calls and every literal is made with, decoded for its field by
+  `jadpo_std::constant::literal`; statements bind a literal as a
+  parameter (`Source::Stored`, `WriteSource::Stored`,
+  `PurgeSource::Stored`), and a partial index's predicate, a backfill and
+  the fixed identity statements write it with `jadpo_sql::literal`;
+  backfills take every literal a field's type has; the guard test holds
+  the SQL literals too, and `jadpo-cli/tests/sql_literals.rs` holds each
+  standard type's literal to what the runtime binds, live. What it chose
+  is area 19's "Chosen in chunk 5.5w3b".
 - [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
   2026-10-17): first write the command's section on area 14 from this
   design, then build it. A command that hints, never edits, where code
@@ -1452,12 +1487,36 @@ reference only).
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
   snippet's text can be shared once approved.
-- [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
-  2026-10-15): `backfill:` as an expression over each row's own fields,
-  filled in batches, one `UPDATE` each where it has a SQL form and by
-  `jadpo migrate apply` otherwise, then made required; with the SQL form
-  of each standard operation (area 19, "SQL forms"), each tested against
-  the runtime on the same inputs.
+- [x] **5.6 SQL forms** `opus · high` (area 19, "SQL forms", decided
+  2026-10-17), the first half of computed backfills: the SQL form of each
+  standard operation the operation tables give one, rendered in one place
+  (`jadpo-sql`) from its arguments' SQL, and each tested against the
+  runtime on the same inputs against live PostgreSQL, so the database and
+  Jadpo agree exactly, rounding, text in code points, Unicode white space
+  and `none` included. A form that can't match the runtime exactly is
+  rewritten until it does or dropped, and the page's table says so (the
+  caveats earlier chunks flagged: `temporal.period_between` against
+  `age`, `web.cidr_contains`). The page's SQL form column and the
+  renderer agree, by a test. Split on 2026-10-18 because the whole chunk
+  is more than a session: the backfills themselves are 5.6b. Built: all
+  38 operations' forms in `jadpo_sql::form`, agreeing with the runtime on
+  over a hundred thousand inputs (`live PostgreSQL: SQL forms` in the
+  gate); none dropped, three rewritten (`decimal.round` keeps fewer
+  places, `period_between` without `age`, whole numbers widened to
+  `bigint`), area 19's "Chosen in chunk 5.6".
+- [ ] **5.6b Computed backfills** `opus · high` (area 5, "Computed
+  backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
+  each row's own fields, constants and pure functions, typed against the
+  field it fills; filled in batches, one `UPDATE` each where every
+  operation in it has a SQL form (5.6's, and the operators' and
+  conditionals' forms, each tested the same way) and by `jadpo migrate
+  apply` otherwise, then made required. The batch size, locking (each
+  batch its own transaction, never a long table lock), resuming after a
+  crash and progress output chosen and recorded on area 5; a failure
+  midway leaves the column consistent and the migration resumable; `jadpo
+  migrate apply` says when a backfill runs in Jadpo and is slower; an
+  expression that can fail is refused unless area 5 says what a failing
+  row gets.
 - [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard

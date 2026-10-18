@@ -1431,6 +1431,7 @@ dependencies = [
  "jadpo-lsp",
  "jadpo-plan",
  "jadpo-runtime",
+ "jadpo-sql",
  "jadpo-std",
  "jadpo-syntax",
  "jadpo-term",

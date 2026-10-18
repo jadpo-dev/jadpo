@@ -43,6 +43,11 @@ pub enum SqlType {
     /// A range of values of the inner type (area 19, "Ranges"):
     /// `daterange`, `tstzrange`, `int8range` or `numrange` (chunk 5.5w).
     Range(&'static SqlType),
+    /// A pgvector `vector` (area 21, "Storing a vector"): single-precision
+    /// floats, with or without a fixed length. Its type is the extension's,
+    /// whose number each database gives it, so a parameter is sent without
+    /// one and PostgreSQL infers it from the column (chunk 5.5v1).
+    Vector,
 }
 
 impl SqlType {
@@ -63,8 +68,8 @@ impl SqlType {
             SqlType::LocalTimestamp => &SqlType::LocalTimestamp,
             SqlType::Json => &SqlType::Json,
             SqlType::Array(inner) => return SqlType::Array(inner),
-            // Arrays of ranges are never sent.
-            SqlType::Range(_) => &SqlType::Text,
+            // Arrays of ranges and of vectors are never sent.
+            SqlType::Range(_) | SqlType::Vector => &SqlType::Text,
         })
     }
 
@@ -105,6 +110,8 @@ impl SqlType {
             "jsonb" => SqlType::Json,
             // A currency's code (area 19).
             "char" => SqlType::Text,
+            // A vector, `vector(1536)` (area 21, chunk 5.5v1).
+            "vector" => SqlType::Vector,
             // An address's lines (area 19, chunk 5.5l).
             "text[]" => SqlType::Text.array(),
             _ => return None,
@@ -119,6 +126,79 @@ impl SqlType {
             SqlType::Int2 | SqlType::Int4 => SqlType::Int8,
             SqlType::Array(inner) => inner.param().array(),
             other => other,
+        }
+    }
+}
+
+/// A value sent to a store or read back from one. Drivers turn these into
+/// their wire formats; the runtime's read plans turn them into Jadpo
+/// values, and [`crate::standard::storage::bind`] makes one from a value,
+/// for the runtime and for a literal the compiler writes into a statement
+/// (area 19, chunk 5.5w3b). Ordered, so an include's rows group by their
+/// key.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SqlValue {
+    /// `NULL`, with the type a parameter needs.
+    Null(SqlType),
+    Bool(bool),
+    Int2(i16),
+    Int4(i32),
+    Int8(i64),
+    /// An exact decimal in its canonical text (`-12.50`).
+    Numeric(String),
+    Text(String),
+    Bytes(Vec<u8>),
+    Uuid([u8; 16]),
+    /// Microseconds since 1970-01-01T00:00:00Z.
+    Timestamp(i64),
+    /// Days since 1970-01-01.
+    Date(i32),
+    /// Microseconds since midnight.
+    Time(i64),
+    /// Microseconds since 1970-01-01T00:00:00 on no zone: a `timestamp`
+    /// without a zone, a `LocalDateTime` (area 19, chunk 5.5w).
+    LocalTimestamp(i64),
+    /// JSON text.
+    Json(String),
+    /// An array of values of one type, none of them `NULL`: a list a field
+    /// is tested `in`, or an include's keys.
+    Array(SqlType, Vec<SqlValue>),
+    /// A range of values of the element type (area 19, "Ranges", chunk
+    /// 5.5w): from its lower end, held, to its upper end, held when
+    /// `upper_held`; an end that is `None` is open.
+    Range {
+        element: SqlType,
+        lower: Option<Box<SqlValue>>,
+        upper: Option<Box<SqlValue>>,
+        upper_held: bool,
+    },
+    /// A pgvector `vector` (area 21, chunk 5.5v1): each item's
+    /// single-precision float by its bits, so a vector is compared and
+    /// ordered exactly, as the other values are.
+    Vector(Vec<u32>),
+}
+
+impl SqlValue {
+    /// The type the value is sent as.
+    pub fn ty(&self) -> SqlType {
+        match self {
+            SqlValue::Null(ty) => *ty,
+            SqlValue::Bool(_) => SqlType::Bool,
+            SqlValue::Int2(_) => SqlType::Int2,
+            SqlValue::Int4(_) => SqlType::Int4,
+            SqlValue::Int8(_) => SqlType::Int8,
+            SqlValue::Numeric(_) => SqlType::Numeric,
+            SqlValue::Text(_) => SqlType::Text,
+            SqlValue::Bytes(_) => SqlType::Bytes,
+            SqlValue::Uuid(_) => SqlType::Uuid,
+            SqlValue::Timestamp(_) => SqlType::Timestamp,
+            SqlValue::Date(_) => SqlType::Date,
+            SqlValue::Time(_) => SqlType::Time,
+            SqlValue::LocalTimestamp(_) => SqlType::LocalTimestamp,
+            SqlValue::Json(_) => SqlType::Json,
+            SqlValue::Array(element, _) => element.array(),
+            SqlValue::Range { element, .. } => element.range(),
+            SqlValue::Vector(_) => SqlType::Vector,
         }
     }
 }
@@ -168,6 +248,9 @@ pub enum Source {
     /// Who is calling, for the policy compiled into the statement (area
     /// 9).
     Caller(crate::policy::CallerPart),
+    /// A literal or an enum value the statement's condition compares with,
+    /// as the storage codec binds it (area 19, chunk 5.5w3b).
+    Stored(SqlValue),
 }
 
 /// One parameter: `$1` is the first.
@@ -223,6 +306,10 @@ pub enum Column {
     /// `json.read`'s site numbers its type, so a stored value is read
     /// exactly as a request's body is.
     Json(u32),
+    /// A vector, kept in a pgvector `vector` column (area 21, chunk
+    /// 5.5v1): each item read back as the decimal that is its
+    /// single-precision float.
+    Vector,
 }
 
 /// Where a record's field comes from.

@@ -773,6 +773,11 @@ fn migrate_all(
         let done = runtime
             .block_on(jadpo_runtime::migrate(&database, migrations))
             .map_err(|error| Box::new(crate::migrate::migrate_failed(store, error)))?;
+        // The start-up check: the store has every extension its
+        // migrations created, pgvector's among them (area 21).
+        runtime
+            .block_on(jadpo_runtime::has_extensions(&database, migrations))
+            .map_err(|error| Box::new(crate::migrate::migrate_failed(store, error)))?;
         ran += done.len();
     }
     Ok(ran)

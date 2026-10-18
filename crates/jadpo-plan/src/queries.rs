@@ -132,6 +132,13 @@ impl Bind for Statement {
         };
         Some(self.param(source, ty))
     }
+
+    /// A literal or an enum value, bound as the storage codec made it
+    /// (chunk 5.5w3b).
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        let ty = value.ty();
+        Some(self.param(Source::Stored(value), ty))
+    }
 }
 
 /// The columns a statement selects, each a field of its entity once, with
@@ -585,6 +592,10 @@ impl Planner<'_> {
                 ty: field.compound_type(),
                 may_be_none: field.nullable,
             });
+        }
+        // A vector, in a pgvector column (area 21, chunk 5.5v1).
+        if column_type(field) == Some(jadpo_std::SqlType::Vector) {
+            return Some(Column::Vector);
         }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {

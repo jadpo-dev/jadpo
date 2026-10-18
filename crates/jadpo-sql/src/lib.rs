@@ -7,6 +7,11 @@
 //!   query's `where:` lines, a lifecycle's `visible:` and `when:`) and its
 //!   renderer, which the plan's statements and the checker's partial
 //!   indexes both use, through a [`Bind`] that says where a parameter goes.
+//! - [`form`]: the SQL form of each standard operation that has one
+//!   (area 19, "SQL forms"), written from its arguments' SQL, for computed
+//!   backfills.
+//! - [`literal`]: a value written into a statement's text where it takes
+//!   no parameters, as the storage codec made it (chunk 5.5w3b).
 //! - [`statement`]: the reads, writes and purges the plan runs.
 //! - [`table`]: what a migration does to a store's tables.
 //!
@@ -17,6 +22,8 @@
 //! table called `user` or `order` is a name, not a keyword.
 
 pub mod condition;
+pub mod form;
+pub mod literal;
 pub mod policy;
 pub mod statement;
 pub mod table;
@@ -38,9 +45,13 @@ pub fn idents<S: AsRef<str>>(names: &[S]) -> String {
         .join(", ")
 }
 
-/// Text as a literal: `'it''s'`.
+/// Text the compiler holds, not a program's value, as a literal: a
+/// column's comment, a code a check constraint names. Escaped as
+/// [`literal::text_value`] escapes a value (`'it''s'`, `E'a\\b'`); the NUL
+/// character, which none of these holds and PostgreSQL text can't, is left
+/// out.
 pub fn text_literal(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "''"))
+    literal::text_value(&text.replace('\0', "")).unwrap_or_default()
 }
 
 /// The parameter at `position` among a statement's, counted from 0:
@@ -62,6 +73,7 @@ mod tests {
         assert_eq!(ident("a\"b"), "\"a\"\"b\"");
         assert_eq!(idents(&["id", "title"]), "\"id\", \"title\"");
         assert_eq!(text_literal("it's"), "'it''s'");
+        assert_eq!(text_literal("a\\b"), "E'a\\\\b'");
         assert_eq!(placeholder(0), "$1");
     }
 }
