@@ -133,7 +133,9 @@ Built in chunk 1.9: a refinement can only add to the rules of the type it
 builds on, so a `max` below an inherited `min` (or the other way round, for
 lengths and durations too) is `type.constraint_contradiction`, and so is a
 `Decimal` refinement whose `scale` differs from the one it inherits, since
-the scale decides how the value is stored and sent. Since chunk 2.7, a bound
+the scale decides how the value is stored and sent; since chunk 5.5h4, so
+is a currency other than the one it inherits, a `Money` type's `currency:`
+or a rate type's `from:` and `to:` (area 19). Since chunk 2.7, a bound
 looser than the one it inherits (`max_length: 50` on a type with
 `max_length: 40`) is `type.constraint_loosened`. The same settings rules
 hold for the fields of every type with fields, entities and events included;

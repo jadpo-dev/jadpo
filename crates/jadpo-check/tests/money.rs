@@ -427,6 +427,38 @@ fn a_rate_type_fixes_its_currencies() {
 }
 
 #[test]
+fn a_type_built_on_a_fixed_currency_keeps_it() {
+    let found = diagnostics("type Odd = CakePrice {\n    currency: Currency.eur\n}\n");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].rule.id, "type.constraint_contradiction");
+    assert_eq!(
+        found[0].message,
+        "`currency: Currency.eur` is different from `CakePrice`'s `currency: Currency.gbp`"
+    );
+    let edits = &found[0].next.as_ref().expect("a next step").edits;
+    assert_eq!(edits.len(), 1, "removes the setting");
+    assert_eq!(edits[0].replacement, "");
+    assert_eq!(
+        rules("type Same = CakePrice {\n    currency: Currency.gbp\n}\n"),
+        NONE,
+        "repeating it is allowed"
+    );
+    assert_eq!(
+        rules("type Odd = PoundsToEuros {\n    from: Currency.eur\n}\n"),
+        ["type.constraint_contradiction"]
+    );
+    assert_eq!(
+        rules("type Odd = PoundsToEuros {\n    to: Currency.usd\n}\n"),
+        ["type.constraint_contradiction"]
+    );
+    assert_eq!(
+        rules("type ToEuros = FromPounds {\n    to: Currency.eur\n}\n"),
+        NONE,
+        "a currency the parent leaves open may be fixed"
+    );
+}
+
+#[test]
 fn a_typed_rate_converts_with_no_attempt() {
     assert_eq!(
         rules(

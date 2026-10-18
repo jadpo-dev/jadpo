@@ -801,7 +801,8 @@ reference only).
   fails to compile with a checked example, and a fixed-currency rate needs
   no `attempt`. Built, with a type built on an object now built from that
   object, `from` and `to` as construction failures, and JSON, text and
-  OpenAPI checking them; storing one waits with `ExchangeRate`. What the
+  OpenAPI checking them, and a currency a parent type fixes kept by the
+  types built on it; storing one waits with `ExchangeRate`. What the
   pages left open is area 19's "Chosen in chunk 5.5h4".
 - [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
   "The standard types", split from 5.5i), after 5.5l: `CardBrand`,

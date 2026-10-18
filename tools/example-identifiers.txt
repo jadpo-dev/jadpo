@@ -1028,6 +1028,7 @@ parcel_label
 parcel_size
 parcel_to
 parcels
+paris_price
 partner
 partner_added
 partner_claims

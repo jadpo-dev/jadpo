@@ -2005,6 +2005,37 @@ error: `rate` converts from EUR, and `cake` is in GBP
 check failed: 1 error, 1 file
 ```
 
+A type built on one that fixes a currency repeats it or leaves it out, as
+a type built on another only narrows it (area 2): another one, for an
+amount's `currency:` or a rate's `from:` and `to:`, leaves no value that
+follows both, and the fix removes it (chunk 5.5h4):
+
+```jadpo check project=money-currency-kept expect=type.constraint_contradiction
+type CakePrice = Money {
+    currency: Currency.gbp
+    min: 0
+}
+
+/// A cake's price for the shop in Paris.
+type ParisPrice = CakePrice {
+    currency: Currency.eur
+}
+```
+
+```text output
+error: `currency: Currency.eur` is different from `CakePrice`'s `currency: Currency.gbp`
+ --> main.jadpo:8:15
+  |
+8 |     currency: Currency.eur
+  |               ^^^^^^^^^^^^ different from `CakePrice`'s `currency: Currency.gbp`
+  reason: `CakePrice` fixes the currency at GBP, and a type built on another only narrows it, so it repeats that currency or leaves it out; with another one no value could follow both, and the type could never be built.
+  next: Remove `currency:`, so the type keeps `CakePrice`'s GBP (agent)
+  rule: type.constraint_contradiction
+  help: docs/language/02-values-and-types.html#type-constraint-contradiction
+
+check failed: 1 error, 1 file
+```
+
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
 | `money.from_minor(amount, currency)` | `Money` of `amount` minor units | | none |
@@ -7681,10 +7712,15 @@ under "Errors").
   variant written out, `type PoundsToEuros = ExchangeRate { from:
   Currency.gbp, to: Currency.eur }`, either alone (`type FromPounds =
   ExchangeRate { from: Currency.gbp }`). On any other type they are
-  `type.constraint_base`, and `currency:` on a rate type is too. A type
-  built on a rate type that names another currency than its parent is
-  not refused, as a `Money` type's `currency:` over its parent's isn't:
-  no value could follow both, and a check for both is a later chunk's.
+  `type.constraint_base`, and `currency:` on a rate type is too.
+- **A type built on one that fixes a currency keeps it** (decided by the
+  lead session, 2026-10-18): it repeats the currency or leaves it out,
+  for a `Money` type's `currency:` and a rate type's `from:` and `to:`
+  alike, since a type built on another only narrows it (area 2). Another
+  one is area 2's `type.constraint_contradiction`, no new rule, as a
+  `scale:` other than the inherited one is, and its one-step fix removes
+  the setting. A currency the parent leaves open (`to:` on a type built
+  on `FromPounds`) may be fixed.
 - **The rate's type is the first thing the proof reads,** before a rate
   written out or a condition on `rate.from` (5.5h2's machinery, no
   second one): an amount whose type or making fixes the rate type's
