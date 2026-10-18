@@ -17,6 +17,7 @@
 //! table called `user` or `order` is a name, not a keyword.
 
 pub mod condition;
+pub mod literal;
 pub mod policy;
 pub mod statement;
 pub mod table;
@@ -38,9 +39,13 @@ pub fn idents<S: AsRef<str>>(names: &[S]) -> String {
         .join(", ")
 }
 
-/// Text as a literal: `'it''s'`.
+/// Text the compiler holds, not a program's value, as a literal: a
+/// column's comment, a code a check constraint names. Escaped as
+/// [`literal::text_value`] escapes a value (`'it''s'`, `E'a\\b'`); the NUL
+/// character, which none of these holds and PostgreSQL text can't, is left
+/// out.
 pub fn text_literal(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "''"))
+    literal::text_value(&text.replace('\0', "")).unwrap_or_default()
 }
 
 /// The parameter at `position` among a statement's, counted from 0:
@@ -62,6 +67,7 @@ mod tests {
         assert_eq!(ident("a\"b"), "\"a\"\"b\"");
         assert_eq!(idents(&["id", "title"]), "\"id\", \"title\"");
         assert_eq!(text_literal("it's"), "'it''s'");
+        assert_eq!(text_literal("a\\b"), "E'a\\\\b'");
         assert_eq!(placeholder(0), "$1");
     }
 }

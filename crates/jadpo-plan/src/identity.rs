@@ -40,6 +40,12 @@ impl Bind for Lookup {
     fn bind(&mut self, value: &Value, _ty: SqlType) -> Option<String> {
         matches!(value, Value::Now).then(|| "$2".to_string())
     }
+
+    /// Written into the statement, whose parameters are fixed (`$1` and
+    /// `$2`), as the storage codec made it (chunk 5.5w3b).
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        jadpo_sql::literal::sql(&value)
+    }
 }
 
 impl Planner<'_> {

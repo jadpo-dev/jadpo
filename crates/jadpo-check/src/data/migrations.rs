@@ -257,6 +257,11 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
         .into_iter()
         .map(|(_, r)| r.clone())
         .collect();
+    // PostgreSQL text can't hold the NUL character, so a statement can't
+    // either, and no parameter holding one is ever stored (chunk 5.5w3b).
+    if matches!(value, Const::Str(text) if text.contains('\0')) {
+        return Some("PostgreSQL text can't hold the NUL character".into());
+    }
     match (&structure, value) {
         (Ty::Prim(prim), Const::Str(text)) if prim.representation() == Builtin::Text => {
             let length = text.chars().count() as u64;
@@ -268,7 +273,9 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
                     return Some("it is longer than the field's `max_length`".into());
                 }
             }
-            None
+            // A standard type held as text checks its own (an email
+            // address), as any literal of it is checked.
+            literal_problem(lookup, ty, value, *prim)
         }
         (Ty::Prim(Builtin::Uuid), Const::Str(text)) => {
             let shape = text.len() == 36
@@ -317,6 +324,12 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
         (Ty::Prim(Builtin::Money), _) => Some(
             "an amount of money has no literal, so a required one can't be backfilled yet: add it optional and set it in an action".into(),
         ),
+        // Every other built-in type's literal (an instant or a date from
+        // its text, a duration, a quantity, a percentage), checked as any
+        // literal of it is (chunk 5.5w3b).
+        (Ty::Prim(prim), value) if !matches!(value, Const::Path(_) | Const::Other) => {
+            literal_problem(lookup, ty, value, *prim)
+        }
         (Ty::Prim(prim), _) => Some(format!("it isn't a `{}` literal", prim.name())),
         (other, _) => Some(format!(
             "a `{other}` can't be backfilled with a literal yet"
@@ -324,18 +337,32 @@ pub fn backfill_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const) -> Option
     }
 }
 
-/// A backfill value as SQL.
-pub fn backfill_sql(value: &Const) -> Option<String> {
-    Some(match value {
-        Const::Str(text) => jadpo_sql::text_literal(text),
-        Const::Bool(value) => value.to_string(),
-        Const::Number { value, .. } => number_text(*value),
-        // A variant as its column holds it: `Currency`'s by code (area 19).
-        Const::Path(path) if path.len() == 2 => {
-            jadpo_sql::text_literal(jadpo_std::standard::stored_variant(&path[0], &path[1]))
-        }
-        _ => return None,
-    })
+/// Why a literal doesn't fit a field of type `ty`, as the checker says of
+/// any literal, if it doesn't.
+fn literal_problem(lookup: &dyn TypeView, ty: &Ty, value: &Const, prim: Builtin) -> Option<String> {
+    use crate::types::literal::{Problem, check};
+    match check(lookup, ty, value) {
+        Ok(()) => None,
+        Err(Problem::Builtin(why)) => Some(format!("the value {why}")),
+        Err(Problem::Broken(_, broken)) => Some(format!("the value {}", broken.why)),
+        Err(_) => Some(format!("it isn't a `{}` literal", prim.name())),
+    }
+}
+
+/// A backfill value as SQL, for `field`: decoded for its type and made the
+/// value its column is given by the storage codec, exactly as the runtime
+/// would bind it, then written as SQL text, since a migration's
+/// `postgres.sql` takes no parameters (area 19, chunk 5.5w3b). `None` for a
+/// value SQL text can't hold.
+pub fn backfill_sql(field: &super::FieldModel, value: &Const) -> Option<String> {
+    let value = match value {
+        Const::Path(path) if path.len() == 2 => jadpo_sql::Value::Variant {
+            ty: path[0].clone(),
+            variant: path[1].clone(),
+        },
+        other => jadpo_sql::Value::Literal(other.literal()?),
+    };
+    jadpo_sql::value(&mut jadpo_sql::Fixed, &value, &field.column())
 }
 
 fn number_text(value: Num) -> String {
@@ -388,6 +415,15 @@ pub fn example_backfill(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
 
 /// The type of field `entity.field` by born names, from the entities.
 pub fn field_type<'m>(model: &'m DataModel, entity: &str, field: &str) -> Option<&'m Ty> {
+    field_model(model, entity, field).map(|f| &f.ty)
+}
+
+/// Field `entity.field` by born names, from the entities.
+pub fn field_model<'m>(
+    model: &'m DataModel,
+    entity: &str,
+    field: &str,
+) -> Option<&'m super::FieldModel> {
     model
         .entities
         .iter()
@@ -395,7 +431,6 @@ pub fn field_type<'m>(model: &'m DataModel, entity: &str, field: &str) -> Option
         .fields
         .iter()
         .find(|f| f.born == field)
-        .map(|f| &f.ty)
 }
 
 /// What a needed decision is, as SQL, from what `changes.jadpo` says:
@@ -409,11 +444,11 @@ pub fn decided(
     let decision = decisions.iter().find(|d| d.key == need.key())?;
     match (&decision.value, need.kind) {
         (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Refit) => {
-            let ty = field_type(model, &need.entity, &need.field)?;
-            if backfill_problem(lookup, ty, value).is_some() {
+            let field = field_model(model, &need.entity, &need.field)?;
+            if backfill_problem(lookup, &field.ty, value).is_some() {
                 return None;
             }
-            backfill_sql(value).map(Decided::Backfill)
+            backfill_sql(field, value).map(Decided::Backfill)
         }
         (DecisionValue::Change(FieldChange::Retired), NeededKind::Retire) => Some(Decided::Retired),
         _ => None,

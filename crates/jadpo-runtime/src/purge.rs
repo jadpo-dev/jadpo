@@ -86,9 +86,15 @@ pub async fn purge_after(
     let cutoff = now.saturating_sub(after);
     let mut params = Vec::with_capacity(plan.params.len());
     for param in &plan.params {
-        let value = match param.source {
+        let value = match &param.source {
             PurgeSource::Cutoff => Value::Instant(cutoff),
             PurgeSource::Now => Value::Instant(now),
+            // A literal or an enum value `visible:` compares with, as the
+            // storage codec bound it when the plan was made (chunk 5.5w3b).
+            PurgeSource::Stored(value) => {
+                params.push(value.clone());
+                continue;
+            }
         };
         params.push(to_sql(&value, param.ty).map_err(StoreError::Fault)?);
     }

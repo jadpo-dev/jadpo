@@ -553,15 +553,42 @@ fn every_standard_type_crosses_every_built_boundary() {
 
 // --- No boundary has an encoder of its own (chunk 5.5w3) -------------------
 
-/// The source files that encode a value at a boundary: the JSON reader
-/// and writer (requests, responses, `json.read`, `json.write`, query
-/// strings, headers, settings and map keys all read through them) and
-/// OpenAPI's schemas. The plan's codecs name only which codec a type
-/// takes, never how it is written.
-const BOUNDARIES: &[&str] = &[
-    "crates/jadpo-value/src/json.rs",
-    "crates/jadpo-check/src/routes/wire.rs",
+/// The source that encodes a value at a boundary, each a file or one
+/// function in it: the JSON reader and writer (requests, responses,
+/// `json.read`, `json.write`, query strings, headers, settings and map keys
+/// all read through them), OpenAPI's schemas, and the SQL literals (chunk
+/// 5.5w3b): a condition's literal, the text a statement that takes no
+/// parameters writes one as, and a migration's backfill. The plan's codecs
+/// name only which codec a type takes, never how it is written.
+const BOUNDARIES: &[(&str, Option<&str>)] = &[
+    ("crates/jadpo-value/src/json.rs", None),
+    ("crates/jadpo-check/src/routes/wire.rs", None),
+    ("crates/jadpo-sql/src/condition.rs", None),
+    ("crates/jadpo-sql/src/literal.rs", None),
+    ("crates/jadpo-check/src/data/migrations.rs", Some("fn backfill_sql")),
 ];
+
+/// The function `name` of `code`: from its signature to the first line
+/// that closes it.
+fn function_of(code: &str, name: &str) -> String {
+    let start = code
+        .find(name)
+        .unwrap_or_else(|| panic!("no `{name}` in its file"));
+    let rest = &code[start..];
+    let end = rest.find("\n}\n").map_or(rest.len(), |end| end + 3);
+    rest[..end].to_string()
+}
+
+/// Whether `code` names `name` as a whole path or word: `Value::Uuid`, not
+/// `SqlValue::Uuid`.
+fn mentions(code: &str, name: &str) -> bool {
+    code.match_indices(name).any(|(at, _)| {
+        !code[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
 
 /// A file's code, without its comments and its tests: what it runs.
 fn code_of(text: &str) -> String {
@@ -577,10 +604,11 @@ fn code_of(text: &str) -> String {
 
 /// No boundary encodes a standard type of its own (area 19, "Every
 /// boundary through the contract"): none names a standard type a built-in
-/// type holds, the runtime value that holds it, or the parts the contract
-/// sends one as, so each reads the type's entry and calls the contract's
-/// JSON or text. The names are made from the entries, so a type added
-/// later is held to it without a line here.
+/// type holds, the runtime value that holds it, the parts the contract
+/// sends one as, or the shared leaf's per-type decoders and writers, so
+/// each reads the type's entry and calls the contract's JSON, storage or
+/// text. The names are made from the entries, so a type added later is
+/// held to it without a line here.
 #[test]
 fn no_boundary_has_an_encoder_of_its_own() {
     let mut names = std::collections::BTreeSet::new();
@@ -620,13 +648,38 @@ fn no_boundary_has_an_encoder_of_its_own() {
         ]
         .map(String::from),
     );
+    // How each kind of literal is decoded and each standard type stored,
+    // which `jadpo_std::constant` and the storage codec say once (chunk
+    // 5.5w3b).
+    names.extend(
+        [
+            "stored_variant",
+            "number_text",
+            "parse_literal",
+            "instant_millis",
+            "date_number",
+            "Dur::parse",
+            "Literal::Duration",
+            "Literal::Quantity",
+            "Literal::Percentage",
+            "Constant::Instant",
+            "Constant::Date",
+            "Constant::Duration",
+            "Constant::Quantity",
+            "Constant::Percentage",
+        ]
+        .map(String::from),
+    );
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut found = Vec::new();
-    for file in BOUNDARIES {
+    for (file, function) in BOUNDARIES {
         let text = fs::read_to_string(root.join(file)).expect("a boundary's source");
-        let code = code_of(&text);
+        let mut code = code_of(&text);
+        if let Some(function) = function {
+            code = function_of(&code, function);
+        }
         for name in &names {
-            if code.contains(name.as_str()) {
+            if mentions(&code, name) {
                 found.push(format!("{file}: {name}"));
             }
         }

@@ -49,6 +49,13 @@ impl Bind for Purging {
             _ => None,
         }
     }
+
+    /// A literal or an enum value `visible:` compares with, bound as the
+    /// storage codec made it (chunk 5.5w3b).
+    fn stored(&mut self, value: jadpo_std::SqlValue) -> Option<String> {
+        let ty = value.ty();
+        Some(self.param(PurgeSource::Stored(value), ty))
+    }
 }
 
 /// `entity`'s purge, when its lifecycle has one.

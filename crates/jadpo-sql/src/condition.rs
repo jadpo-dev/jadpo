@@ -7,15 +7,21 @@
 //! A condition keeps Jadpo's meaning where a field is `none`: it meets no
 //! comparison but `!=`, and `not` is pushed down to the comparisons, so
 //! SQL's three-valued logic never shows. A literal or an enum value is
-//! written into the text; anything else (a parameter, `clock.now`) is a
+//! decoded for the field it is compared with (`jadpo_std::constant`) and
+//! made the value its column is given by the storage codec
+//! (`jadpo_std::standard::storage::bind`), which the runtime binds every
+//! parameter with (area 19, chunk 5.5w3b); a statement binds it as a
+//! parameter, and a predicate, which takes none, writes it into its text
+//! ([`crate::literal`]). Anything else (a parameter, `clock.now`) is a
 //! parameter the statement binds, through [`Bind`].
 
 use std::collections::BTreeSet;
 
 use jadpo_std::read::SqlType;
-use jadpo_std::{Dur, Literal};
+use jadpo_std::standard::storage::{self, Stored};
+use jadpo_std::{Builtin, Literal, SqlValue};
 
-use crate::{NULL, ident, text_literal};
+use crate::ident;
 
 /// A value a condition reads: never computed.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -151,6 +157,13 @@ pub struct Column<'a> {
     pub nullable: bool,
     /// The column's type; `None` when the field can't be stored.
     pub ty: Option<SqlType>,
+    /// The built-in type the field's type is built on, which a literal is
+    /// decoded for (`"2026-01-15"` where a `CalendarDate` goes is a date);
+    /// `None` for an enum, an object or a container.
+    pub builtin: Option<Builtin>,
+    /// The places its values keep, for a decimal: `5` where `scale: 2`
+    /// goes is `5.00`.
+    pub scale: Option<u32>,
 }
 
 impl Column<'_> {
@@ -171,16 +184,26 @@ pub trait Bind {
     /// `$n` for `value`, sent as `ty`: a parameter or `clock.now`. `None`
     /// when the statement can't take it, as an index's predicate can't.
     fn bind(&mut self, value: &Value, ty: SqlType) -> Option<String>;
+
+    /// `$n` for a literal or an enum value, as the storage codec made it:
+    /// a parameter bound to exactly `value`, or, where the statement takes
+    /// no parameters, `value` written into its text ([`crate::literal`]).
+    /// `None` when neither can hold it.
+    fn stored(&mut self, value: SqlValue) -> Option<String>;
 }
 
 /// For text that takes no parameters: a partial index's predicate, which
-/// must mean the same at every moment.
+/// must mean the same at every moment. A literal is written into it.
 #[derive(Debug)]
 pub struct Fixed;
 
 impl Bind for Fixed {
     fn bind(&mut self, _value: &Value, _ty: SqlType) -> Option<String> {
         None
+    }
+
+    fn stored(&mut self, value: SqlValue) -> Option<String> {
+        crate::literal::sql(&value)
     }
 }
 
@@ -200,8 +223,7 @@ pub fn condition(
         } => {
             let field = entity.column(name)?;
             let column = ident(field.name);
-            let ty = field.param()?;
-            let rendered = self::value(bind, value, ty)?;
+            let rendered = self::value(bind, value, &field)?;
             // Jadpo's meaning when the field is `none`: it meets no
             // comparison but `!=`, and so meets the negation of every
             // other.
@@ -237,7 +259,7 @@ pub fn condition(
                     }
                     let mut rendered = Vec::new();
                     for item in items {
-                        rendered.push(self::value(bind, item, ty)?);
+                        rendered.push(self::value(bind, item, &field)?);
                     }
                     format!(
                         "{column} {}IN ({})",
@@ -284,45 +306,35 @@ pub fn condition(
     })
 }
 
-/// A value as SQL, sent as `ty`: a literal or a variant written into the
-/// text, anything else bound.
-pub fn value(bind: &mut dyn Bind, value: &Value, ty: SqlType) -> Option<String> {
-    Some(match value {
-        Value::Literal(literal) => self::literal(literal, ty)?,
-        // As its column holds it: `Currency`'s by its code (area 19).
-        Value::Variant { ty, variant } => {
-            text_literal(jadpo_std::standard::stored_variant(ty, variant))
-        }
-        Value::List(_) => return None,
-        other => bind.bind(other, ty)?,
-    })
+/// A value as SQL, given to `column`: a literal or an enum value as the
+/// storage codec makes it, then bound or written by `bind`; anything else
+/// bound.
+pub fn value(bind: &mut dyn Bind, value: &Value, column: &Column<'_>) -> Option<String> {
+    let ty = column.param()?;
+    match value {
+        Value::Literal(literal) => bind.stored(self::literal(literal, column)?),
+        Value::Variant { ty: enum_ty, variant } => bind.stored(
+            storage::bind(
+                &Stored::Variant {
+                    ty: enum_ty,
+                    name: variant,
+                },
+                ty,
+            )
+            .ok()?,
+        ),
+        Value::List(_) => None,
+        other => bind.bind(other, ty),
+    }
 }
 
-/// A literal written into a statement for a column of type `ty`; `none`
-/// is `NULL`, and a duration is its milliseconds in a `bigint`.
-pub fn literal(literal: &Literal, ty: SqlType) -> Option<String> {
-    Some(match literal {
-        Literal::Text(text) => text_literal(text),
-        Literal::Number { value, .. } => value.to_string(),
-        Literal::Bool(true) => "TRUE".to_string(),
-        Literal::Bool(false) => "FALSE".to_string(),
-        Literal::None => NULL.to_string(),
-        Literal::Duration(written) if ty == SqlType::Int8 => {
-            Dur::parse(written)?.millis.to_string()
-        }
-        Literal::Duration(_) => return None,
-        // A quantity is held in its kind's base unit (area 19).
-        Literal::Quantity(written) if ty == SqlType::Numeric => {
-            let (unit, amount) = jadpo_std::quantity::parse_literal(written).ok()?;
-            jadpo_std::quantity::number_text(amount, unit.kind.scale())
-        }
-        Literal::Quantity(_) => return None,
-        // A percentage is held as the fraction it is (area 19).
-        Literal::Percentage(written) if ty == SqlType::Numeric => {
-            jadpo_std::percentage::parse_literal(written)?.to_string()
-        }
-        Literal::Percentage(_) => return None,
-    })
+/// A literal given to `column`, as the runtime would bind it: decoded for
+/// the field's type, as the plan decodes a body's literal, and made its
+/// column's value by the storage codec. `None` for a literal the column
+/// can't hold, which the checker rules out.
+pub fn literal(literal: &Literal, column: &Column<'_>) -> Option<SqlValue> {
+    let decoded = jadpo_std::constant::literal(literal, column.builtin, column.scale)?;
+    storage::bind(&decoded.stored()?, column.param()?).ok()
 }
 
 #[cfg(test)]
@@ -338,6 +350,8 @@ mod tests {
                 name: "name",
                 nullable: true,
                 ty: Some(SqlType::Text),
+                builtin: Some(Builtin::Text),
+                scale: None,
             })
         }
     }
@@ -348,6 +362,11 @@ mod tests {
 
     impl Bind for Params {
         fn bind(&mut self, _value: &Value, _ty: SqlType) -> Option<String> {
+            self.0 += 1;
+            Some(format!("${}", self.0))
+        }
+
+        fn stored(&mut self, _value: SqlValue) -> Option<String> {
             self.0 += 1;
             Some(format!("${}", self.0))
         }
@@ -389,6 +408,179 @@ mod tests {
             condition(&mut Fixed, &Notes, &present, false),
             None,
             "a predicate takes no parameters"
+        );
+    }
+
+    /// A table of one field of each kind a literal is written for.
+    struct Kept;
+
+    impl Columns for Kept {
+        fn column(&self, field: &str) -> Option<Column<'_>> {
+            let (name, ty, builtin, scale) = match field {
+                "at" => ("at", SqlType::Timestamp, Some(Builtin::Instant), None),
+                "on" => ("on", SqlType::Date, Some(Builtin::CalendarDate), None),
+                "wait" => ("wait", SqlType::Int8, Some(Builtin::Duration), None),
+                "price" => ("price", SqlType::Numeric, Some(Builtin::Decimal), Some(2)),
+                "share" => ("share", SqlType::Numeric, Some(Builtin::Percentage), None),
+                "shelf" => (
+                    "shelf",
+                    SqlType::Numeric,
+                    Some(Builtin::Quantity(jadpo_std::QuantityKind::Length)),
+                    None,
+                ),
+                "currency" => ("currency", SqlType::Text, None, None),
+                "rank" => ("rank", SqlType::Int2, Some(Builtin::Int), None),
+                "key" => ("key", SqlType::Uuid, Some(Builtin::Uuid), None),
+                _ => return None,
+            };
+            Some(Column {
+                name,
+                nullable: false,
+                ty: Some(ty),
+                builtin,
+                scale,
+            })
+        }
+    }
+
+    fn equal(field: &str, value: Value) -> Condition {
+        Condition::Compare {
+            field: field.into(),
+            op: Compare::Equal,
+            value,
+        }
+    }
+
+    fn number(text: &str) -> Literal {
+        Literal::Number {
+            value: jadpo_std::Num::parse(text).expect("a number"),
+            decimal: text.contains('.'),
+        }
+    }
+
+    /// Binds every literal as the next parameter, keeping its value.
+    #[derive(Default)]
+    struct Collected(Vec<SqlValue>);
+
+    impl Bind for Collected {
+        fn bind(&mut self, _value: &Value, _ty: SqlType) -> Option<String> {
+            None
+        }
+
+        fn stored(&mut self, value: SqlValue) -> Option<String> {
+            self.0.push(value);
+            Some(format!("${}", self.0.len()))
+        }
+    }
+
+    #[test]
+    fn a_literal_is_bound_as_the_storage_codec_makes_it() {
+        let cases: Vec<(&str, Value, SqlValue, &str)> = vec![
+            (
+                "at",
+                Value::Literal(Literal::Text("2026-10-25T09:30:00Z".into())),
+                SqlValue::Timestamp(1_792_920_600_000_000),
+                "'2026-10-25 09:30:00.000000+00'::timestamptz",
+            ),
+            (
+                "on",
+                Value::Literal(Literal::Text("2026-10-25".into())),
+                SqlValue::Date(20_751),
+                "'2026-10-25'::date",
+            ),
+            (
+                "wait",
+                Value::Literal(Literal::Duration("15m".into())),
+                SqlValue::Int8(900_000),
+                "900000",
+            ),
+            (
+                "price",
+                Value::Literal(number("5")),
+                SqlValue::Numeric("5.00".into()),
+                "5.00::numeric",
+            ),
+            (
+                "share",
+                Value::Literal(Literal::Percentage("20%".into())),
+                SqlValue::Numeric("0.20".into()),
+                "0.20::numeric",
+            ),
+            (
+                "shelf",
+                Value::Literal(Literal::Quantity("2.5km".into())),
+                SqlValue::Numeric("2500".into()),
+                "2500::numeric",
+            ),
+            (
+                "currency",
+                Value::Variant {
+                    ty: "Currency".into(),
+                    variant: "gbp".into(),
+                },
+                SqlValue::Text("GBP".into()),
+                "'GBP'",
+            ),
+            (
+                "rank",
+                Value::Literal(number("3")),
+                SqlValue::Int8(3),
+                "3",
+            ),
+            (
+                "key",
+                Value::Literal(Literal::Text("0192F0C4-3B5E-7C1A-9D2E-4F6A8B0C1D2E".into())),
+                SqlValue::Uuid([
+                    0x01, 0x92, 0xf0, 0xc4, 0x3b, 0x5e, 0x7c, 0x1a, 0x9d, 0x2e, 0x4f, 0x6a, 0x8b,
+                    0x0c, 0x1d, 0x2e,
+                ]),
+                "'0192f0c4-3b5e-7c1a-9d2e-4f6a8b0c1d2e'::uuid",
+            ),
+        ];
+        for (field, value, bound, written) in cases {
+            let condition = equal(field, value);
+            let mut params = Collected::default();
+            assert_eq!(
+                self::condition(&mut params, &Kept, &condition, false).as_deref(),
+                Some(format!("\"{field}\" = $1").as_str()),
+                "{field}: a statement binds it"
+            );
+            assert_eq!(params.0, vec![bound], "{field}");
+            assert_eq!(
+                self::condition(&mut Fixed, &Kept, &condition, false),
+                Some(format!("\"{field}\" = {written}")),
+                "{field}: a predicate writes it"
+            );
+        }
+    }
+
+    #[test]
+    fn text_in_a_predicate_cant_end_its_literal() {
+        for (text, written) in [
+            ("x' OR TRUE --", "'x'' OR TRUE --'"),
+            ("x\\' OR TRUE --", "E'x\\\\'' OR TRUE --'"),
+            ("ünï ☕", "'ünï ☕'"),
+        ] {
+            let condition = Condition::Compare {
+                field: "title".into(),
+                op: Compare::Equal,
+                value: Value::Literal(Literal::Text(text.into())),
+            };
+            assert_eq!(
+                self::condition(&mut Fixed, &Notes, &condition, false),
+                Some(format!("\"name\" = {written}")),
+                "{text}"
+            );
+        }
+        let nul = Condition::Compare {
+            field: "title".into(),
+            op: Compare::Equal,
+            value: Value::Literal(Literal::Text("a\0b".into())),
+        };
+        assert_eq!(
+            self::condition(&mut Fixed, &Notes, &nul, false),
+            None,
+            "PostgreSQL text can't hold NUL, so no predicate is written"
         );
     }
 }
