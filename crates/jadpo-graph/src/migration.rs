@@ -955,7 +955,7 @@ mod tests {
         );
         assert_eq!(
             steps[2],
-            jadpo_std::Step::Together(vec![
+            jadpo_std::Step::Mixed(vec![
                 jadpo_std::migration::Part::Sql("LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;".into()),
                 jadpo_std::migration::Part::Fill(jadpo_std::migration::Fill {
                     field: "Todo.rank".into(),

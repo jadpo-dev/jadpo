@@ -1326,7 +1326,7 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
             format!("Filling `{field}` for `{name}` needs the build it was written in"),
         )
         .reason(format!(
-            "`{field}`'s backfill has an operation with no SQL form, so `jadpo migrate apply` works it out in Jadpo with the project's code, and only the latest migration's backfills are checked against that code; `{name}` isn't the latest, so this build can't vouch for the values it would give. Nothing of `{name}` past its last committed step was applied, and `{field}` stays optional."
+            "`{field}`'s backfill has an operation with no SQL form, so `jadpo migrate apply` works it out in Jadpo with the project's code, and only the latest migration's backfills are checked against that code; `{name}` isn't the latest, so the values it would give with this build are unchecked. Nothing of `{name}` past its last committed step was applied, and `{field}` stays optional."
         ))
         .next_for(
             format!("Run `jadpo migrate apply` with the build that wrote `{name}` (its commit), then with this one"),

@@ -716,7 +716,7 @@ impl Decide<'_> {
             write,
             sql_type,
             scale,
-            code: super::backfill::code_digest(self.db, self.project, body),
+            code: super::backfill::fingerprint(self.db, self.project, body),
         })
     }
 }

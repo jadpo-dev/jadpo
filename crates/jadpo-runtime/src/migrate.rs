@@ -471,9 +471,9 @@ async fn one_step<'s>(
     };
     let last = at + 1 == steps.len();
     match step {
-        Step::Once(_) | Step::Together(_) => {
+        Step::Once(_) | Step::Mixed(_) => {
             let parts = match step {
-                Step::Together(parts) => parts.clone(),
+                Step::Mixed(parts) => parts.clone(),
                 Step::Once(sql) => vec![Part::Sql(sql.clone())],
                 Step::Batches(_) => Vec::new(),
             };

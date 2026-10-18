@@ -46,10 +46,10 @@ pub enum Step {
     /// Statements and fills worked out in Jadpo, run in order in one
     /// transaction: a backfill's last step when Jadpo works it out
     /// (chunk 5.6b2).
-    Together(Vec<Part>),
+    Mixed(Vec<Part>),
 }
 
-/// One part of a [`Step::Together`].
+/// One part of a [`Step::Mixed`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Part {
     /// Statements run as one batch.
@@ -148,7 +148,7 @@ impl Migration {
                     out.push(Step::Once(sql.clone()));
                     parts.clear();
                 }
-                _ => out.push(Step::Together(std::mem::take(parts))),
+                _ => out.push(Step::Mixed(std::mem::take(parts))),
             }
         };
         fn statement<'l>(lines: &mut impl Iterator<Item = &'l str>) -> String {
@@ -335,7 +335,7 @@ mod tests {
                     batch: "SELECT \"id\" FROM \"todo\"".into(),
                     write: Some("UPDATE \"todo\" SET x".into()),
                 }),
-                Step::Together(vec![
+                Step::Mixed(vec![
                     Part::Sql("LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;".into()),
                     Part::Fill(Fill {
                         field: "Todo.priority".into(),

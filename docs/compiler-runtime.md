@@ -1966,9 +1966,9 @@ transaction, so a stopped run carries on; `Progress` tells `jadpo migrate
 apply` each batch. Since chunk 5.6b2 a computed backfill with no SQL form
 is decided as `Decided::InJadpo` (`data::backfill::InJadpo`: its body as
 a function of the stored fields it reads, `as_function`, and the digest
-of the code it runs, `code_digest`): its marker says `in Jadpo` and is
+of the code it runs, `fingerprint`): its marker says `in Jadpo` and is
 followed by a count, a locked read and a write, and the last step holds
-a `-- fill` read and write (`Step::Together`). `Plan::with_backfills`
+a `-- fill` read and write (`Step::Mixed`). `Plan::with_backfills`
 plans the latest migration's as callables of their own, and `jadpo
 migrate apply` hands `jadpo_runtime::migrate_with` a `Backfills` that
 runs them in the interpreter, reading and binding through the storage

@@ -10,7 +10,7 @@
 //! apply` then works it out in Jadpo (chunk 5.6b2), running the body as a
 //! function whose parameters are the stored fields it reads
 //! ([`as_function`]), and the SQL names the digest of the code it runs
-//! ([`code_digest`]), so a change to that code changes the migration.
+//! ([`fingerprint`]), so a change to that code changes the migration.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -147,7 +147,7 @@ pub fn as_function(body: &Body) -> (Body, Vec<String>) {
 /// does, so `jadpo check` asks for the migration to be written again
 /// before it runs anywhere, and a database that ran the old code refuses
 /// the new one as changed.
-pub fn code_digest(db: &dyn Db, project: Project, body: &Body) -> String {
+pub fn fingerprint(db: &dyn Db, project: Project, body: &Body) -> String {
     let bodies = bodies(db, project);
     let table = crate::constants::constant_table(db, project);
     let mut text = canonical(body);
