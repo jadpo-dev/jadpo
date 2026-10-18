@@ -749,7 +749,7 @@ reference only).
   as text and JSON are read, and stored a column per part (checked in
   PostgreSQL); what the pages left open is area 19's "Chosen in chunk
   5.5k3".
-- [ ] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
+- [x] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
   high` (areas 10 and 19; decided by the lead session, 2026-10-18, from
   5.5k3's findings): `temporal.resolve` taking a `LocalDateTime` (and a
   `CalendarDate` with a `LocalTime`) with a zone, under area 10's existing
@@ -758,6 +758,9 @@ reference only).
   recurs (birthdays, anniversaries) without a zone. Done when an event's
   start resolves across both clock changes with each `dst:` choice, and a
   yearly all-day event on 29 February follows RFC 5545's skipping rule.
+  Built, with `DTSTART;VALUE=DATE:` rules, `temporal.occurrences` giving
+  days from a date, and all-day events recurring from their first day;
+  what the pages left open is area 19's "Chosen in chunk 5.5k4".
 - [x] **5.5l People and places** `opus · high` (area 19, question 22): 15
   of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
   `Continent`, `Language`, `WritingScript`, `TextDirection`,

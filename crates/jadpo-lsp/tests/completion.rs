@@ -309,9 +309,8 @@ fn a_namespaces_operations_carry_their_signature_failures_and_docs() {
     has(&items, &["between", "add_days", "resolve", "in_zone"]);
     let resolve = text_of(item(&items, "resolve"));
     assert!(
-        resolve.contains(
-            "temporal.resolve(date: T, at: Text?, zone: Zone, dst: Dst?) -> ZonedTime"
-        ),
+        resolve
+            .contains("temporal.resolve(date: T, at: Text?, zone: Zone, dst: Dst?) -> ZonedTime"),
         "{resolve}"
     );
     assert!(resolve.contains("The instant the clock reads"), "{resolve}");
@@ -505,10 +504,7 @@ fn keywords_are_offered_where_a_statement_or_declaration_starts() {
 fn a_call_with_required_arguments_is_inserted_as_a_snippet() {
     let items = complete("lsp-completion-snippet", "    return temporal.res|");
     let resolve = item(&items, "resolve");
-    assert_eq!(
-        inserted(resolve),
-        "resolve(${1:date}, zone: ${2:zone})"
-    );
+    assert_eq!(inserted(resolve), "resolve(${1:date}, zone: ${2:zone})");
     assert_eq!(resolve["insertTextFormat"], 2);
     // An editor that doesn't fill snippets in gets the name alone.
     let items = complete_in(
