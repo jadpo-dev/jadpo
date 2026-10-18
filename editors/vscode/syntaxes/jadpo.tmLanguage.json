@@ -278,6 +278,18 @@
               "name": "keyword.declaration.jadpo"
             }
           }
+        },
+        {
+          "comment": "`rule name: condition`, a rule across an object's fields (area 2).",
+          "match": "^\\s*(rule)\\s+([a-z_][A-Za-z0-9_]*)(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.jadpo"
+            },
+            "2": {
+              "name": "entity.name.function.jadpo"
+            }
+          }
         }
       ]
     },

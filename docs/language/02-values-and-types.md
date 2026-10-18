@@ -752,8 +752,8 @@ test "a booking that ends before it starts is refused" {
   (`ends_after_start`), never the values. JSON that breaks one, in a
   request or `json.read`, is a problem at the object's path, empty for the
   whole input, whose rule is the rule's name (area 19, "Data formats").
-- **The API record says them in words.** OpenAPI can't express most rules,
-  so each object's schema description lists its rules as written (area 7).
+- **OpenAPI says them in words.** It can't express most rules, so each
+  object's schema description lists its rules as written (area 7).
 - **A rule belongs to the type that writes it.** `include` and `pick` copy
   fields, never rules: a type built from `Booking` writes the rule again if
   it holds there too. Only an `Object`, `Input` or `Output` has rules
@@ -834,6 +834,22 @@ function book(starts: Moment, ends: Moment) fails BookingBackwards -> Booking {
     }
     return booking
 }
+```
+
+```text output
+error: `Booking { ... }` can't fail, so it takes no `attempt`
+ --> main.jadpo:17:28
+   |
+14 |     if (ends <= starts) {
+   |         -------------- checked here
+17 |     var booking: Booking = attempt Booking {
+   |                            ^^^^^^^ nothing to pass on
+  reason: The declared ranges and the condition `ends <= starts` prove `Booking { ... }` always follows its type's rules, so building it never fails; `attempt` marks only what can.
+  next: Remove `attempt` (agent)
+  rule: failure.attempt_infallible
+  help: docs/language/03-logic.html#failure-attempt-infallible
+
+check failed: 1 error, 1 file
 ```
 
 ## Absent values
@@ -1500,6 +1516,20 @@ type Nights = Int {
 }
 ```
 
+```text output
+error: Only an `Object`, `Input` or `Output` names rules across its fields
+ --> main.jadpo:3:5
+  |
+3 |     rule short_stay: Nights <= 14
+  |     ^^^^^^^^^^^^^^^ in a type built on `Int`
+  reason: `Nights`, built on `Int`, can't hold a rule: a rule relates the fields of one object, so it is written in the block of an `Object`, `Input` or `Output`, and checked whenever a value of it is made.
+  next: Move the rule into the object type whose fields it reads, or remove it (agent)
+  rule: type.rule_outside_object
+  help: docs/language/02-values-and-types.html#type-rule-outside-object
+
+check failed: 1 error, 1 file
+```
+
 ### `type.rule_name_taken`
 
 A rule's name is what an `attempt`'s arm and a failure's report call it,
@@ -1516,6 +1546,20 @@ type Booking = Object {
 }
 ```
 
+```text output
+error: A rule can't be called `ends` here
+ --> main.jadpo:6:10
+  |
+6 |     rule ends: ends > starts
+  |          ^^^^ name taken
+  reason: `Booking` has a field `ends`; a rule's name is its own, so `ends:` in an `attempt` or a report can only mean one thing.
+  next: Give the rule a name of its own that says what it checks (agent)
+  rule: type.rule_name_taken
+  help: docs/language/02-values-and-types.html#type-rule-name-taken
+
+check failed: 1 error, 1 file
+```
+
 ### `type.rule_not_condition`
 
 A rule holds or it doesn't, so its condition is a `Bool`:
@@ -1530,6 +1574,20 @@ type PriceBand = Object {
     high: Pence
     rule spread: high - low
 }
+```
+
+```text output
+error: The rule `spread` isn't a condition
+ --> main.jadpo:8:18
+  |
+8 |     rule spread: high - low
+  |                  ^^^^^^^^^^ this is `Int`
+  reason: A rule holds for a value or it doesn't, so its condition is a `Bool`: a comparison such as `high > low`, or several joined with `and`, `or` and `not`.
+  next: Write `spread` as a comparison of `PriceBand`'s fields (agent)
+  rule: type.rule_not_condition
+  help: docs/language/02-values-and-types.html#type-rule-not-condition
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.rule_outside_fields`
@@ -1552,6 +1610,20 @@ type Opens = Bool {}
 function opens_by(at: Moment) -> Opens {
     return Opens(true)
 }
+```
+
+```text output
+error: A rule can't read `opens_by(starts)`
+ --> main.jadpo:6:28
+  |
+6 |     rule in_opening_hours: opens_by(starts)
+  |                            ^^^^^^^^^^^^^^^^ not one of the type's fields
+  reason: A rule reads only `Booking`'s own fields, with literals, variants, operators, `match` and the standard operations that give a result from their arguments alone, so every value of `Booking` follows it wherever it is made, the same in every run.
+  next: Write the rule over `Booking`'s fields, or check this where the value is built, before building it (agent)
+  rule: type.rule_outside_fields
+  help: docs/language/02-values-and-types.html#type-rule-outside-fields
+
+check failed: 1 error, 1 file
 ```
 
 ### `type.unknown_field`

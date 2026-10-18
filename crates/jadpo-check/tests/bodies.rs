@@ -241,6 +241,7 @@ fn constructions_say_which_rules_break_and_their_failures() {
         *arms,
         [RuleArm {
             rule: None,
+            named: None,
             failure: key(Kind::Type, "Refused"),
             fields: Vec::new(),
             problem: None,
@@ -256,7 +257,8 @@ fn constructions_say_which_rules_break_and_their_failures() {
             callee: Callee::Construct(TypeRef::Node(key(Kind::Type, "Quantity"))),
             args: vec![Some(SiteId(inner.0 + 1))],
             fallible: Fallible::Construction {
-                rules: vec![jadpo_std::RuleKey::Min]
+                rules: vec![jadpo_std::RuleKey::Min],
+                named: Vec::new(),
             },
         }
     );

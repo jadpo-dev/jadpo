@@ -149,7 +149,7 @@ pub fn has_rules(base: FieldsBase) -> bool {
 
 /// Where a rule is written: the type declaration whose own block holds
 /// it, when that is an `Object`, `Input` or `Output`.
-fn owner(rule: &ast::RuleMember) -> Option<ast::TypeDecl> {
+fn holder(rule: &ast::RuleMember) -> Option<ast::TypeDecl> {
     let list = rule.syntax().parent().and_then(ast::MemberList::cast)?;
     let decl = list.syntax().parent().and_then(ast::TypeDecl::cast)?;
     let base = decl.base().map(|base| tree::written(base.syntax()))?;
@@ -171,7 +171,7 @@ pub fn rule_problems(
     let mut seen: Vec<(ast::TypeDecl, Vec<(String, jadpo_diag::Span)>)> = Vec::new();
     for rule in source.descendants().filter_map(ast::RuleMember::cast) {
         let head = head_span(path, &rule);
-        let Some(decl) = owner(&rule) else {
+        let Some(decl) = holder(&rule) else {
             out.push(outside_object(&rule, head));
             continue;
         };
@@ -226,9 +226,9 @@ pub fn rule_problems(
                 problem = problem.also(at, "first named here");
             }
             out.push(
-                problem.reason(reason).next(
-                    "Give the rule a name that says what it checks, such as `ends_after_start`",
-                ),
+                problem
+                    .reason(reason)
+                    .next("Give the rule a name of its own that says what it checks"),
             );
         }
     }

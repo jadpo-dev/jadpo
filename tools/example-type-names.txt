@@ -38,12 +38,15 @@ Metres
 Miles
 Minutes
 Missing
+Moment
 Name
 Note
 Open
 Opening
+Opens
 Order
 Pair
+Party
 Payment
 Pence
 Percent
