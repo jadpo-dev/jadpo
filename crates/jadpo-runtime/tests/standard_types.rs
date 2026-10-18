@@ -37,78 +37,108 @@ fn enum_codec(entry: &StandardType, codes: &[(&str, &str)]) -> Codec {
     }
 }
 
+/// The codecs, validators and shapes a route table holds, as the plan
+/// makes them, the entry's type's codec first.
+#[derive(Default)]
+struct Tables {
+    codecs: Vec<Codec>,
+    validators: Vec<Validator>,
+    shapes: Vec<Shape>,
+}
+
+impl Tables {
+    /// A codec pushed now, to be filled once the codecs it holds are.
+    fn reserve(&mut self) -> CodecId {
+        self.codecs.push(Codec::List {
+            item: CodecId(0),
+            validator: ValidatorId(0),
+        });
+        CodecId(self.codecs.len() as u32 - 1)
+    }
+
+    fn push(&mut self, codec: Codec) -> CodecId {
+        self.codecs.push(codec);
+        CodecId(self.codecs.len() as u32 - 1)
+    }
+
+    fn validator(&mut self, validator: Validator) -> ValidatorId {
+        self.validators.push(validator);
+        ValidatorId(self.validators.len() as u32 - 1)
+    }
+}
+
 /// The codecs a route table holds for the entry's type, made from the
 /// entry as the plan makes them: a scalar for a built-in type, an enum
 /// whose wire text is the variant's spelling, an object of its fields.
 fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
-    let scalar = |builtin: Builtin, validator: u32| Codec::Scalar {
+    let mut tables = Tables::default();
+    let top = type_codec(entry, &mut tables);
+    assert_eq!(top, CodecId(0), "{}: its own codec first", entry.name);
+    (tables.codecs, tables.validators, tables.shapes)
+}
+
+/// The codec of a standard type, pushed with the codecs, validators and
+/// shapes it needs.
+fn type_codec(entry: &StandardType, tables: &mut Tables) -> CodecId {
+    let scalar = |builtin: Builtin, validator: ValidatorId| Codec::Scalar {
         builtin,
-        validator: ValidatorId(validator),
+        validator,
         int_as_number: false,
     };
     match entry.holds {
-        Holds::Builtin(builtin) => (
-            vec![scalar(builtin, 0)],
-            vec![Validator::new(Some(builtin), Vec::new())],
-            Vec::new(),
-        ),
+        Holds::Builtin(builtin) => {
+            let validator = tables.validator(Validator::new(Some(builtin), Vec::new()));
+            tables.push(scalar(builtin, validator))
+        }
         // Text with its own check (area 19, chunk 5.5i), as the plan's
         // validator chain holds it.
-        Holds::Text { .. } => (
-            vec![scalar(Builtin::Text, 0)],
-            vec![Validator::new(
+        Holds::Text { .. } => {
+            let validator = tables.validator(Validator::new(
                 Some(Builtin::Text),
                 jadpo_std::standard::text_rules(entry.name)
                     .into_iter()
                     .collect(),
-            )],
-            Vec::new(),
-        ),
+            ));
+            tables.push(scalar(Builtin::Text, validator))
+        }
         // A whole number with its range (chunk 5.5n), a JSON number.
-        Holds::Whole { .. } => (
-            vec![Codec::Scalar {
-                builtin: Builtin::Int,
-                validator: ValidatorId(0),
-                int_as_number: true,
-            }],
-            vec![Validator::new(
+        Holds::Whole { .. } => {
+            let validator = tables.validator(Validator::new(
                 Some(Builtin::Int),
                 jadpo_std::standard::declared(entry.name)
                     .map(|(_, rules)| rules)
                     .into_iter()
                     .collect(),
-            )],
-            Vec::new(),
-        ),
-        Holds::Enum(codes) => (vec![enum_codec(entry, codes)], Vec::new(), Vec::new()),
+            ));
+            tables.push(Codec::Scalar {
+                builtin: Builtin::Int,
+                validator,
+                int_as_number: true,
+            })
+        }
+        Holds::Enum(codes) => tables.push(enum_codec(entry, codes)),
         // Its built-in type with its bounds as rules (chunk 5.5i3).
-        Holds::Bounded { of, .. } => (
-            vec![scalar(of, 0)],
-            vec![Validator::new(
+        Holds::Bounded { of, .. } => {
+            let validator = tables.validator(Validator::new(
                 Some(of),
                 jadpo_std::standard::declared(entry.name)
                     .map(|(_, rules)| rules)
                     .into_iter()
                     .collect(),
-            )],
-            Vec::new(),
-        ),
+            ));
+            tables.push(scalar(of, validator))
+        }
         // A choice: an enum whose variants carry their parts, each
         // variant's a shape of its own (chunk 5.5i3).
         Holds::Choice(variants) => {
-            let mut codecs = vec![Codec::Enum {
-                ty: entry.name.to_string(),
-                variants: Vec::new(),
-            }];
-            let mut validators = Vec::new();
-            let mut shapes = Vec::new();
+            let at = tables.reserve();
             let mut listed = Vec::new();
             for (ordinal, (variant, fields)) in variants.iter().enumerate() {
                 let mut plans = Vec::new();
                 let mut tops = Vec::new();
                 for (name, part) in *fields {
-                    let validator = ValidatorId(validators.len() as u32);
-                    tops.push(part_codec(*part, &mut codecs, &mut validators));
+                    let validator = ValidatorId(tables.validators.len() as u32);
+                    tops.push(part_codec(*part, tables));
                     plans.push(FieldPlan {
                         key: format!("field {}.{variant}.{name}", entry.name),
                         name: (*name).to_string(),
@@ -119,8 +149,8 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
                         section: None,
                     });
                 }
-                let shape = ShapeId(shapes.len() as u32);
-                shapes.push(Shape::new(&ShapePlan {
+                let shape = ShapeId(tables.shapes.len() as u32);
+                tables.shapes.push(Shape::new(&ShapePlan {
                     ty: entry.name.to_string(),
                     variant: Some(jadpo_std::types::VariantPlan {
                         name: (*variant).to_string(),
@@ -135,34 +165,26 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
                     fields: Some((shape, tops)),
                 });
             }
-            codecs[0] = Codec::Enum {
+            tables.codecs[at.0 as usize] = Codec::Enum {
                 ty: entry.name.to_string(),
                 variants: listed,
             };
-            (codecs, validators, shapes)
+            at
         }
         // Sent as its canonical text (chunk 5.5k).
-        Holds::Object(_) if entry.json == Json::Text => (
-            vec![Codec::Standard {
-                ty: entry.name.to_string(),
-            }],
-            Vec::new(),
-            Vec::new(),
-        ),
+        Holds::Object(_) if entry.json == Json::Text => tables.push(Codec::Standard {
+            ty: entry.name.to_string(),
+        }),
         Holds::Object(fields) => {
-            let mut codecs = vec![Codec::Object {
-                shape: ShapeId(0),
-                fields: Vec::new(),
-            }];
-            let mut validators = Vec::new();
+            let at = tables.reserve();
             let mut plans = Vec::new();
             let mut tops = Vec::new();
             // Sent as RFC 9457 sends a problem: a part that may be `none`
             // may be left out (chunk 5.5n).
             let members = matches!(entry.json, Json::Members(_));
             for (name, part) in fields {
-                let validator = ValidatorId(validators.len() as u32);
-                tops.push(part_codec(*part, &mut codecs, &mut validators));
+                let validator = ValidatorId(tables.validators.len() as u32);
+                tops.push(part_codec(*part, tables));
                 plans.push(FieldPlan {
                     key: format!("field {}.{name}", entry.name),
                     name: (*name).to_string(),
@@ -173,16 +195,38 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
                     section: None,
                 });
             }
-            codecs[0] = Codec::Object {
-                shape: ShapeId(0),
-                fields: tops,
-            };
-            let shape = Shape::new(&ShapePlan {
+            let shape = ShapeId(tables.shapes.len() as u32);
+            tables.shapes.push(Shape::new(&ShapePlan {
                 ty: entry.name.to_string(),
                 variant: None,
                 fields: plans,
-            });
-            (codecs, validators, vec![shape])
+            }));
+            tables.codecs[at.0 as usize] = Codec::Object {
+                shape,
+                fields: tops,
+            };
+            at
+        }
+        // A named collection: an array of its items, an object of its
+        // entries (chunk 5.5o2).
+        Holds::List(item) => {
+            let at = tables.reserve();
+            let item = part_codec(item, tables);
+            let validator = tables.validator(Validator::new(None, Vec::new()));
+            tables.codecs[at.0 as usize] = Codec::List { item, validator };
+            at
+        }
+        Holds::Map(key, value) => {
+            let at = tables.reserve();
+            let key = part_codec(key, tables);
+            let value = part_codec(value, tables);
+            let validator = tables.validator(Validator::new(None, Vec::new()));
+            tables.codecs[at.0 as usize] = Codec::Map {
+                key,
+                value,
+                validator,
+            };
+            at
         }
         // A range of its examples' item type: an object of two ends, each
         // the item or `null` for an open end.
@@ -196,36 +240,33 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
                     _ => None,
                 })
                 .expect("a range's examples hold a built-in type");
-            let codecs = vec![
-                Codec::Object {
-                    shape: ShapeId(0),
-                    fields: vec![CodecId(1), CodecId(1)],
-                },
-                Codec::Nullable(CodecId(2)),
-                scalar(item, 0),
-            ];
+            let at = tables.reserve();
+            let validator = tables.validator(Validator::new(Some(item), Vec::new()));
+            let scalar = tables.push(scalar(item, validator));
+            let end = tables.push(Codec::Nullable(scalar));
             let plans = jadpo_std::RANGE_FIELDS
                 .iter()
                 .map(|name| FieldPlan {
                     key: format!("field {}.{name}", entry.name),
                     name: (*name).to_string(),
-                    validator: ValidatorId(0),
+                    validator,
                     omittable: false,
                     absent: None,
                     none_left_out: false,
                     section: None,
                 })
                 .collect();
-            let shape = Shape::new(&ShapePlan {
+            let shape = ShapeId(tables.shapes.len() as u32);
+            tables.shapes.push(Shape::new(&ShapePlan {
                 ty: entry.name.to_string(),
                 variant: None,
                 fields: plans,
-            });
-            (
-                codecs,
-                vec![Validator::new(Some(item), Vec::new())],
-                vec![shape],
-            )
+            }));
+            tables.codecs[at.0 as usize] = Codec::Object {
+                shape,
+                fields: vec![end, end],
+            };
+            at
         }
     }
 }
@@ -233,60 +274,50 @@ fn codecs(entry: &StandardType) -> (Vec<Codec>, Vec<Validator>, Vec<Shape>) {
 /// The codec of one part of a standard object, pushed with the codecs and
 /// validators it needs, as the plan makes them: a built-in type with the
 /// rules its part keeps (a line of text's pattern), a standard enum by its
-/// codes, a type held as text with its own check, the part or `null`, or a
-/// list of it.
-fn part_codec(
-    part: jadpo_std::Part,
-    codecs: &mut Vec<Codec>,
-    validators: &mut Vec<Validator>,
-) -> CodecId {
-    let codec = match part {
+/// codes, a type held as text with its own check, another standard type as
+/// its own codec (a document's blocks, chunk 5.5o2), the part or `null`,
+/// or a list of it.
+fn part_codec(part: jadpo_std::Part, tables: &mut Tables) -> CodecId {
+    match part {
         jadpo_std::Part::Optional(inner) => {
-            let inner = part_codec(*inner, codecs, validators);
-            Codec::Nullable(inner)
+            let inner = part_codec(*inner, tables);
+            tables.push(Codec::Nullable(inner))
         }
         jadpo_std::Part::List(inner) => {
-            let item = part_codec(*inner, codecs, validators);
-            let validator = ValidatorId(validators.len() as u32);
-            validators.push(Validator::new(None, Vec::new()));
-            Codec::List { item, validator }
+            let item = part_codec(*inner, tables);
+            let validator = tables.validator(Validator::new(None, Vec::new()));
+            tables.push(Codec::List { item, validator })
         }
         jadpo_std::Part::Standard(other) => {
             let other = jadpo_std::standard_type(other).expect("a standard type");
             match (other.codes(), other.holds) {
-                (Some(codes), _) => enum_codec(other, codes),
+                (Some(codes), _) => tables.push(enum_codec(other, codes)),
                 (None, Holds::Text { .. } | Holds::Whole { .. }) => {
                     let (builtin, rules) =
                         jadpo_std::standard::declared(other.name).expect("its rules");
-                    let validator = ValidatorId(validators.len() as u32);
-                    validators.push(Validator::new(Some(builtin), vec![rules]));
-                    Codec::Scalar {
+                    let validator = tables.validator(Validator::new(Some(builtin), vec![rules]));
+                    tables.push(Codec::Scalar {
                         builtin,
                         validator,
                         int_as_number: builtin == Builtin::Int,
-                    }
+                    })
                 }
-                // Another standard object sent as its canonical text: an
-                // event's local times (chunk 5.5k3).
-                (None, Holds::Object(_)) if other.json == Json::Text => Codec::Standard {
-                    ty: other.name.to_string(),
-                },
-                _ => panic!("{}: a part sent as fields", other.name),
+                // Another standard object sent as its canonical text (an
+                // event's local times, chunk 5.5k3), or as its fields, or a
+                // choice sent tagged (chunk 5.5o2).
+                _ => type_codec(other, tables),
             }
         }
         part => {
             let builtin = part.builtin().expect("a built-in part");
-            let validator = ValidatorId(validators.len() as u32);
-            validators.push(Validator::new(Some(builtin), vec![part.rules()]));
-            Codec::Scalar {
+            let validator = tables.validator(Validator::new(Some(builtin), vec![part.rules()]));
+            tables.push(Codec::Scalar {
                 builtin,
                 validator,
                 int_as_number: false,
-            }
+            })
         }
-    };
-    codecs.push(codec);
-    CodecId(codecs.len() as u32 - 1)
+    }
 }
 
 /// The type name `text.parse` is given for the entry's examples: its own,
@@ -438,6 +469,15 @@ fn every_standard_type_meets_the_contract() {
                 Json::Members(_) => assert_eq!(
                     json, *text,
                     "{name}: {json} leaves out the members that are `none`"
+                ),
+                // JSON's own collections (chunk 5.5o2): an array of the
+                // items, an object of the entries, each key the wire text
+                // its example writes.
+                Json::Array => assert!(parsed.is_array(), "{name}: {json} is an array"),
+                Json::Keyed => assert_eq!(
+                    parsed,
+                    serde_json::from_str::<serde_json::Value>(text).unwrap(),
+                    "{name}: {json} is an object keyed as its example is"
                 ),
             }
             let mut problems = Vec::new();

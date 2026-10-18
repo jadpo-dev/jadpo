@@ -1,9 +1,10 @@
-//! `markup`'s operations (area 19, "Text formats", chunk 5.5o): CommonMark
-//! rendered as `Html`, and the text people read in `Html`, over
-//! `jadpo_std::standard::markup`, whose sanitiser every `Html` value is
-//! built with.
+//! `markup`'s operations (area 19, "Text formats", chunks 5.5o and
+//! 5.5o2): CommonMark rendered as `Html`, a `RichText` written as `Html`,
+//! and the text people read in `Html`, over `jadpo_std::standard::markup`,
+//! whose sanitiser every `Html` value is built with.
 
 use jadpo_std::standard::markup::{plain_text, sanitise};
+use jadpo_std::standard::rich_text::{self, Block, Span};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
 use crate::{Fault, Value};
@@ -46,6 +47,96 @@ pub fn to_plain_text(html: &Value) -> Result<Value, Fault> {
 /// as `text.format` shows it (chunk 5.5o).
 pub fn markdown_text(markdown: &str) -> String {
     plain_text(&render(markdown))
+}
+
+/// A `RichTextSpan` as [`rich_text::render`] reads it.
+fn span(value: &Value) -> Result<Span, Fault> {
+    let Value::Record(record) = value else {
+        return Err(Fault::Shape);
+    };
+    let Some(Value::Text(text)) = record.get("text") else {
+        return Err(Fault::Shape);
+    };
+    let marks = record
+        .get("marks")
+        .and_then(Value::items)
+        .ok_or(Fault::Shape)?
+        .iter()
+        .map(|mark| match mark {
+            Value::Variant(mark) => Ok(mark.ordinal as usize),
+            _ => Err(Fault::Shape),
+        })
+        .collect::<Result<_, _>>()?;
+    let link = match record.get("link") {
+        Some(Value::Text(link)) => Some(link.to_string()),
+        Some(Value::None) | None => None,
+        Some(_) => return Err(Fault::Shape),
+    };
+    Ok(Span {
+        text: text.to_string(),
+        marks,
+        link,
+    })
+}
+
+/// A `RichTextBlock` as [`rich_text::render`] reads it.
+fn block(value: &Value) -> Result<Block, Fault> {
+    let Value::Variant(variant) = value else {
+        return Err(Fault::Shape);
+    };
+    let spans = variant
+        .get("spans")
+        .and_then(Value::items)
+        .ok_or(Fault::Shape)?
+        .iter()
+        .map(span)
+        .collect::<Result<Vec<_>, _>>()?;
+    let level = || match variant.get("level") {
+        Some(Value::Int(level)) => u8::try_from(*level).map_err(|_| Fault::Shape),
+        _ => Err(Fault::Shape),
+    };
+    Ok(match &*variant.name {
+        "paragraph" => Block::Paragraph(spans),
+        "heading" => Block::Heading(level()?, spans),
+        "quote" => Block::Quote(spans),
+        "bullet_item" | "numbered_item" => Block::Item {
+            numbered: &*variant.name == "numbered_item",
+            level: level()?,
+            spans,
+        },
+        _ => return Err(Fault::Shape),
+    })
+}
+
+/// A `RichText` written as HTML, then made safe as every `Html` is, which
+/// changes nothing (chunk 5.5o2).
+pub fn rich_html(rich: &Value) -> Result<String, Fault> {
+    let blocks = rich
+        .items()
+        .ok_or(Fault::Shape)?
+        .iter()
+        .map(block)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(sanitise(&rich_text::render(&blocks)))
+}
+
+/// `markup.rich_to_html(rich)`.
+pub fn rich_to_html(rich: &Value) -> Result<Value, Fault> {
+    Ok(Value::text(&rich_html(rich)?))
+}
+
+/// The text people read in a `RichText`, one of its blocks or one of its
+/// spans, as `text.format` shows it (chunk 5.5o2).
+pub fn rich_plain_text(ty: &str, value: &Value) -> Result<String, Fault> {
+    let html = match ty {
+        rich_text::RICH_TEXT => rich_html(value)?,
+        rich_text::RICH_TEXT_BLOCK => sanitise(&rich_text::render(&[block(value)?])),
+        rich_text::RICH_TEXT_SPAN => {
+            sanitise(&rich_text::render(&[Block::Paragraph(vec![span(value)?])]))
+        }
+        _ => return Err(Fault::Shape),
+    };
+    Ok(plain_text(&html))
 }
 
 #[cfg(test)]

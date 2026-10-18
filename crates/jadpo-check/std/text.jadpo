@@ -66,6 +66,11 @@ public library text {
     /// it in `country`.
     function parse(raw: Text, as: Type, form: CodeForm?, country: Country?) -> T {}
 
+    /// The text in `value` for `locale`: its entry, else the entry of its
+    /// language (the locale CLDR's likely subtags give for the language
+    /// first), else the application's default locale's, else the first.
+    function pick(value: LocalisedText, locale: Locale) -> Text {}
+
     /// `value` with every `find` replaced by `with`, left to right.
     function replace(value: Text, find: Text, with: Text) -> Text {}
 

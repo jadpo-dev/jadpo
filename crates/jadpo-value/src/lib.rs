@@ -282,9 +282,17 @@ pub fn run(
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
         // `markup`'s operations (area 19, "Text formats").
+        (Op::MarkupRichToHtml, [rich]) => markup::rich_to_html(rich),
         (Op::MarkupToHtml, [markdown]) => markup::to_html(markdown),
         (Op::MarkupToPlainText, [html]) => markup::to_plain_text(html),
-        (Op::MarkupToHtml | Op::MarkupToPlainText, _) => Err(Fault::Shape),
+        (Op::MarkupRichToHtml | Op::MarkupToHtml | Op::MarkupToPlainText, _) => Err(Fault::Shape),
+        // A `LocalisedText`'s entry for a locale, falling back as area 10's
+        // chain does, to the application's default locale where it declares
+        // locales (area 19, "Text formats").
+        (Op::TextPick, [entries, Value::Variant(at)]) => {
+            locale::pick(entries, at.ordinal, locales.map(|plan| plan.default))
+        }
+        (Op::TextPick, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -323,6 +331,13 @@ pub fn run(
         // The standard type contract (area 19): one implementation each,
         // over the types' data entries. `text.parse` is given the name of
         // the standard type or representation it reads.
+        // A `LocalisedText` is shown as `text.pick` reads it, falling back
+        // to the application's default locale (chunk 5.5o2).
+        (Op::TextFormat, [entries, Value::Variant(at), .., Value::Text(standard)])
+            if &**standard == jadpo_std::standard::rich_text::LOCALISED_TEXT =>
+        {
+            locale::pick(entries, at.ordinal, locales.map(|plan| plan.default))
+        }
         (
             Op::TextFormat,
             [
@@ -768,6 +783,11 @@ mod tests {
                 }
                 Op::WebResolve => vec![Value::text("https://example.com/a/b"), Value::text("../c")],
                 Op::MarkupToHtml => vec![Value::text("**bold**")],
+                Op::MarkupRichToHtml => vec![Value::List(Vec::new().into())],
+                Op::TextPick => vec![
+                    Value::Map(std::rc::Rc::new(std::collections::BTreeMap::new())),
+                    locale::value(0),
+                ],
                 Op::MarkupToPlainText => vec![Value::text("<p>text</p>")],
                 Op::SemverSatisfies => vec![
                     semver::read_version("1.2.3").expect("a version"),

@@ -913,12 +913,15 @@ impl Body<'_> {
                     self.contract_value(table.op, &value, Some(given.clone()), written)
                 {
                     // `text.format` is told which standard type held as
-                    // text its value is, which the runtime can't see.
+                    // text its value is, or which named collection (chunk
+                    // 5.5o2), which the runtime can't see.
                     if let Some(entry) = entry
                         && matches!(
                             entry.holds,
                             jadpo_std::standard::Holds::Text { .. }
                                 | jadpo_std::standard::Holds::Whole { .. }
+                                | jadpo_std::standard::Holds::List(_)
+                                | jadpo_std::standard::Holds::Map(..)
                         )
                     {
                         self.facts.shown.insert(node_key(call.syntax()), entry.name);
@@ -1072,10 +1075,14 @@ impl Body<'_> {
                 .next(next),
             );
         }
+        // `text.pick` chooses text for a person as formatting writes it
+        // (chunk 5.5o2), so its locale is checked the same way.
         if let Some(table) = table
             && matches!(
                 table.op,
-                jadpo_std::Op::TextFormat | jadpo_std::Op::TemporalFormatRelative
+                jadpo_std::Op::TextFormat
+                    | jadpo_std::Op::TemporalFormatRelative
+                    | jadpo_std::Op::TextPick
             )
         {
             self.locale_argument(call, &args, &slots, table, written);

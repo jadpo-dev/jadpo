@@ -236,6 +236,7 @@ pub enum Op {
     MapValues,
     MapWith,
     MapWithout,
+    MarkupRichToHtml,
     MarkupToHtml,
     MarkupToPlainText,
     MoneyAllocate,
@@ -295,6 +296,7 @@ pub enum Op {
     TextLower,
     TextPadStart,
     TextParse,
+    TextPick,
     TextReplace,
     TextSlice,
     TextSlug,
@@ -1433,9 +1435,20 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::Map,
         "map::without",
     ),
-    // `markup`'s operations (area 19, "Text formats"): neither fails,
-    // since every text is CommonMark and every `Html` was made safe when it
-    // was built. `rich_to_html` comes with `RichText` (chunk 5.5o2).
+    // `markup`'s operations (area 19, "Text formats"): none fails, since
+    // every text is CommonMark, every `RichText` holds only what the
+    // sanitiser keeps (chunk 5.5o2), and every `Html` was made safe when it
+    // was built.
+    markup(
+        Op::MarkupRichToHtml,
+        "rich_to_html",
+        &[param(
+            "rich",
+            Kind::Std(crate::standard::rich_text::RICH_TEXT),
+        )],
+        Kind::Std("Html"),
+        "markup::rich_to_html",
+    ),
     markup(
         Op::MarkupToHtml,
         "to_html",
@@ -2018,6 +2031,22 @@ pub const OPERATIONS: &[Operation] = &[
         conditions: &[],
         rust: "standard::parse",
     },
+    // The entry for a locale, else for its language, else for the
+    // application's default locale (area 10's fallback chain); never fails
+    // (chunk 5.5o2).
+    text(
+        Op::TextPick,
+        "pick",
+        &[
+            param(
+                "value",
+                Kind::Std(crate::standard::rich_text::LOCALISED_TEXT),
+            ),
+            param("locale", LOCALE),
+        ],
+        TEXT,
+        "text::pick",
+    ),
     text(
         Op::TextReplace,
         "replace",

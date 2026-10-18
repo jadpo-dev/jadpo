@@ -971,6 +971,59 @@ public type Html = Text {}
 /// feed or a carriage return; `markup.to_html` renders it as `Html`.
 public type Markdown = Text {}
 
+// Rich and localised text (area 19, "Text formats", chunk 5.5o2).
+
+/// A structured document (area 19): its blocks in order, as Portable Text
+/// holds one, each a paragraph, a heading, a quote or a list item, with
+/// nothing nested; `markup.rich_to_html` writes it as `Html`.
+public type RichText = List<RichTextBlock> {}
+
+/// One block of a `RichText` (area 19): a heading's level is 1 to 6, a
+/// list item's 1 to 9, how deep it sits.
+public type RichTextBlock = Enum {
+    paragraph: {
+        spans: List<RichTextSpan>
+    }
+    heading: {
+        level: Int
+        spans: List<RichTextSpan>
+    }
+    quote: {
+        spans: List<RichTextSpan>
+    }
+    bullet_item: {
+        level: Int
+        spans: List<RichTextSpan>
+    }
+    numbered_item: {
+        level: Int
+        spans: List<RichTextSpan>
+    }
+}
+
+/// A run of text in a block (area 19), never empty, with no control
+/// character but a tab or a line feed (a line break); its marks; and the
+/// address it links to, if any: `https:` with a host, or `mailto:`.
+public type RichTextSpan = Object {
+    text: Text
+    marks: List<RichTextMark>
+    link: Text?
+}
+
+/// A mark on a span of text (area 19), Portable Text's decorators.
+public type RichTextMark = Enum {
+    strong
+    emphasis
+    code
+    underline
+    strike_through
+}
+
+/// Text in several locales (area 19), sent as JSON-LD sends a language
+/// map, `{"en-GB": "Rye loaf", "fr-FR": "Pain de seigle"}`; `text.pick`
+/// reads the entry for a locale.
+public type LocalisedText = Map<Locale, Text> {}
+
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
 

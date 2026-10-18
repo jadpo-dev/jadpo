@@ -1,9 +1,10 @@
-//! `locale.from_accept_language` (area 10, "Locales").
+//! `locale.from_accept_language` (area 10, "Locales"), and `text.pick`
+//! (area 19, "Text formats"), which walks the same fallback chain.
 
 use icu_locale::{LanguageIdentifier, LocaleExpander};
 use jadpo_std::LocalePlan;
 
-use crate::Value;
+use crate::{Fault, Value};
 
 /// The `Locale` variant at `ordinal`.
 pub fn value(ordinal: u32) -> Value {
@@ -180,6 +181,64 @@ pub fn fallback_chain(ordinal: u32, plan: &LocalePlan) -> Vec<u32> {
         first
     });
     chain
+}
+
+/// `text.pick(value, locale:)` (area 19, "Text formats", chunk 5.5o2):
+/// the text of a `LocalisedText`'s entries for the locale at `ordinal`, as
+/// area 10's fallback chain finds wording. Its own entry; else an entry of
+/// the same language, the one CLDR's likely subtags give for the language
+/// first (`fr-FR` for `fr-CA`) and the rest in the canonical order; else
+/// the entry of `default`, the application's default locale, when it
+/// declares locales; else the first entry in the canonical order, so text
+/// that has any entry always shows one. Empty only when it has none.
+pub fn pick(entries: &Value, ordinal: u32, default: Option<u32>) -> Result<Value, Fault> {
+    let Value::Map(entries) = entries else {
+        return Err(Fault::Shape);
+    };
+    let ordinal_of = |key: &Value| match key {
+        Value::Variant(variant) if &*variant.ty == jadpo_std::LOCALE => Some(variant.ordinal),
+        _ => None,
+    };
+    let entry = |at: u32| {
+        entries
+            .iter()
+            .find(|(key, _)| ordinal_of(key) == Some(at))
+            .map(|(_, text)| text.clone())
+    };
+    if let Some(own) = entry(ordinal) {
+        return Ok(own);
+    }
+    let tag_of = |at: u32| jadpo_std::LOCALES.get(at as usize).map(|(_, tag)| *tag);
+    let language_of = |tag: &str| tag.split('-').next().unwrap_or(tag).to_ascii_lowercase();
+    if let Some(own) = tag_of(ordinal) {
+        let language = language_of(own);
+        let expander = LocaleExpander::new_extended();
+        let maximal = |text: &str| {
+            let mut id = LanguageIdentifier::try_from_str(text).ok()?;
+            expander.maximize(&mut id);
+            Some((id.script, id.region))
+        };
+        let likely = maximal(&language);
+        let mut same: Vec<(u32, &Value)> = entries
+            .iter()
+            .filter_map(|(key, text)| Some((ordinal_of(key)?, text)))
+            .filter(|(at, _)| tag_of(*at).is_some_and(|tag| language_of(tag) == language))
+            .collect();
+        // A stable sort puts the likely one first and keeps the rest in
+        // the canonical order.
+        same.sort_by_key(|(at, _)| !(likely.is_some() && tag_of(*at).and_then(maximal) == likely));
+        if let Some((_, text)) = same.first() {
+            return Ok((*text).clone());
+        }
+    }
+    if let Some(text) = default.and_then(entry) {
+        return Ok(text);
+    }
+    Ok(entries
+        .values()
+        .next()
+        .cloned()
+        .unwrap_or_else(|| Value::text("")))
 }
 
 /// The supported locale a tag (lower case, `-` separated) matches.

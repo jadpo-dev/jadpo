@@ -38,6 +38,7 @@ pub mod postal;
 mod postal_codes_data;
 pub mod prices;
 pub mod recurrence;
+pub mod rich_text;
 mod schedules;
 pub mod software;
 pub mod web;
@@ -100,6 +101,18 @@ pub enum Holds {
     /// sent in area 2's tagged form ([`Json::Tagged`]) and stored as that
     /// JSON.
     Choice(&'static [(&'static str, &'static [(&'static str, Part)])]),
+    /// A list of the part (chunk 5.5o2): a `RichText` is its blocks in
+    /// order. A program holds it as a named list type the standard library
+    /// declares (area 2, "Named collection construction"), built from a
+    /// list of its items, sent as a JSON array of them and stored as that
+    /// JSON.
+    List(Part),
+    /// A map from the first part to the second (chunk 5.5o2): a
+    /// `LocalisedText` maps locales to text. A program holds it as a named
+    /// map type the standard library declares, built from a map of its
+    /// entries, sent as a JSON object keyed by each key's wire text and
+    /// stored as that JSON.
+    Map(Part, Part),
 }
 
 /// What one field of a standard object type holds (area 19, chunk 5.5k).
@@ -333,6 +346,15 @@ pub enum Json {
     /// Its value as a JSON number: a whole number held by
     /// [`Holds::Whole`], whose range is within JavaScript's safe integers.
     Number,
+    /// A JSON array of its items, each in its own shape: a list held by
+    /// [`Holds::List`], as Portable Text sends a document's blocks (chunk
+    /// 5.5o2).
+    Array,
+    /// A JSON object of its entries, each key its wire text and each value
+    /// in its own shape: a map held by [`Holds::Map`], as JSON-LD sends a
+    /// language map, `{"en-GB": "Rye loaf", "fr-FR": "Pain de seigle"}`
+    /// (chunk 5.5o2).
+    Keyed,
 }
 
 impl Json {
@@ -340,7 +362,7 @@ impl Json {
     pub const fn fields(self) -> Option<&'static [&'static str]> {
         match self {
             Json::Fields(names) | Json::Members(names) => Some(names),
-            Json::Text | Json::Number | Json::Tagged => None,
+            Json::Text | Json::Number | Json::Tagged | Json::Array | Json::Keyed => None,
         }
     }
 }
@@ -463,8 +485,13 @@ pub enum FormatKey {
     },
     /// The text people read in it, each block on its own line, as
     /// `markup.to_plain_text` gives it: an `Html` value's, or a `Markdown`
-    /// text's once rendered (chunk 5.5o). The locale doesn't change it.
+    /// text's once rendered (chunk 5.5o); a `RichText`'s, one of its
+    /// blocks' or one of its spans' once written as HTML (chunk 5.5o2).
+    /// The locale doesn't change it.
     PlainText,
+    /// The entry `text.pick` gives for the locale it is shown in: a
+    /// `LocalisedText`'s (chunk 5.5o2).
+    Picked,
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -990,7 +1017,9 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), the 20 web
 /// and network types (chunk 5.5n, in `web`), the money group's records
 /// (chunk 5.5i3, in `prices`), the 18 software types (chunk 5.5n2, in
-/// `software`), and `Html` and `Markdown` (chunk 5.5o, in `markup`).
+/// `software`), `Html` and `Markdown` (chunk 5.5o, in `markup`), and
+/// `RichText` with its blocks, spans and marks, and `LocalisedText`
+/// (chunk 5.5o2, in `rich_text`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1575,6 +1604,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    rich_text::LOCALISED_TEXT_ENTRY,
     software::LOG_LEVEL,
     codes::LOT_NUMBER,
     web::MAC_ADDRESS,
@@ -1838,6 +1868,10 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     schedules::RECURRENCE_RULE,
     software::REGULAR_EXPRESSION,
     web::RELATIVE_URL,
+    rich_text::RICH_TEXT_ENTRY,
+    rich_text::RICH_TEXT_BLOCK_ENTRY,
+    rich_text::RICH_TEXT_MARK_ENTRY,
+    rich_text::RICH_TEXT_SPAN_ENTRY,
     software::SEMANTIC_VERSION_ENTRY,
     codes::SERIAL_NUMBER,
     codes::SKU,
@@ -2521,7 +2555,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 174, "the 174 standard types built so far");
+        assert_eq!(names.len(), 179, "the 179 standard types built so far");
     }
 
     #[test]
@@ -2611,6 +2645,22 @@ mod tests {
             if let Holds::Choice(variants) = entry.holds {
                 assert!(entry.text.is_none(), "{}", entry.name);
                 assert!(variants.iter().all(|(_, fields)| !fields.is_empty()));
+            }
+            // A named collection is sent as JSON's own collection, an
+            // array or an object, and has no single text form (chunk
+            // 5.5o2).
+            assert_eq!(
+                (
+                    matches!(entry.holds, Holds::List(_)),
+                    matches!(entry.holds, Holds::Map(..))
+                ),
+                (entry.json == Json::Array, entry.json == Json::Keyed),
+                "{} is sent as an array or an object exactly when it is a list or a map",
+                entry.name
+            );
+            if matches!(entry.holds, Holds::List(_) | Holds::Map(..)) {
+                assert!(entry.text.is_none(), "{}", entry.name);
+                assert_eq!(entry.column_type(), "jsonb", "{}", entry.name);
             }
             if let Holds::Whole { min, max } = entry.holds {
                 assert_eq!(entry.text, Some(TextForm::Whole), "{}", entry.name);

@@ -1,10 +1,16 @@
 // The `markup` namespace (area 19, "Text formats"). Each operation is
 // listed, typed, in `jadpo-std`'s operation table, which names the Rust
 // function in `jadpo-value` that runs it; a test holds these stubs to that
-// table. Neither fails: every text is CommonMark, and every `Html` was made
-// safe when it was built.
+// table. None fails: every text is CommonMark, every `RichText` holds only
+// what the sanitiser keeps, and every `Html` was made safe when it was
+// built.
 
 public library markup {
+    /// `rich` written as HTML, each block its element and each mark its
+    /// element inside its link, then made safe as every `Html` is, which
+    /// changes nothing: a `RichText` holds only what the sanitiser keeps.
+    function rich_to_html(rich: RichText) -> Html {}
+
     /// `markdown` rendered as CommonMark (0.31.2), then made safe as every
     /// `Html` is: raw HTML inside it is kept only where the sanitiser keeps
     /// it, and an image is shown as its description, since `Html` keeps no

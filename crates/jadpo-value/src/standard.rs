@@ -737,9 +737,13 @@ pub fn format_as(
     options: &MoneyOptions,
     unit: &Value,
 ) -> Result<Value, Fault> {
-    if let (Value::Text(name), Value::Text(_) | Value::Int(_)) = (standard, value)
+    if let (Value::Text(name), Value::Text(_) | Value::Int(_) | Value::List(_) | Value::Map(_)) =
+        (standard, value)
         && let Some(entry) = standard_type(name)
-        && matches!(entry.holds, Holds::Text { .. } | Holds::Whole { .. })
+        && matches!(
+            entry.holds,
+            Holds::Text { .. } | Holds::Whole { .. } | Holds::List(_) | Holds::Map(..)
+        )
     {
         let tag = present::tag_of(locale)?;
         return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
@@ -793,6 +797,20 @@ pub fn shown(
             crate::markup::markdown_text(text)
         }
         (FormatKey::PlainText, Value::Text(text)) => jadpo_std::standard::markup::plain_text(text),
+        // A document, a block or a span, once written as HTML (chunk
+        // 5.5o2).
+        (FormatKey::PlainText, value) => crate::markup::rich_plain_text(entry.name, value)?,
+        // The entry `text.pick` gives for the locale, with no application
+        // default to fall back on here (chunk 5.5o2); `text.format` gives
+        // the application's own through `run`.
+        (FormatKey::Picked, value) => {
+            let ordinal = jadpo_std::LOCALES
+                .iter()
+                .position(|(_, listed)| listed.eq_ignore_ascii_case(tag))
+                .and_then(|at| u32::try_from(at).ok())
+                .ok_or(Fault::Shape)?;
+            text_of(crate::locale::pick(value, ordinal, None)?)?
+        }
         (FormatKey::DateTime, value) => {
             text_of(present::format_in(value, zone, tag, format_spec)?)?
         }

@@ -586,13 +586,29 @@ impl Codecs<'_> {
                 }
                 out.push(']');
             }
-            (Some(Codec::Map { value: codec, .. }), Value::Map(entries)) => {
+            (
+                Some(Codec::Map {
+                    key: key_codec,
+                    value: codec,
+                    ..
+                }),
+                Value::Map(entries),
+            ) => {
                 out.push('{');
                 for (at, (key, entry)) in entries.iter().enumerate() {
                     if at > 0 {
                         out.push(',');
                     }
-                    write_string(&key_text(key), out);
+                    // An enum's key is its wire text, as its value would be
+                    // written: a `LocalisedText`'s locale is its tag (chunk
+                    // 5.5o2).
+                    match (self.codec(*key_codec), key) {
+                        (Some(Codec::Enum { variants, .. }), Value::Variant(variant)) => {
+                            let found = variants.iter().find(|v| v.name == *variant.name);
+                            write_string(found.map_or(&*variant.name, |v| &v.wire), out);
+                        }
+                        _ => write_string(&key_text(key), out),
+                    }
                     out.push(':');
                     self.write(*codec, entry, out);
                 }

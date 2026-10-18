@@ -598,10 +598,23 @@ impl<'t> Codecs<'t> {
                     return Made::Range(args.remove(0));
                 }
                 TypeRef::Std(name, args) if args.is_empty() => {
-                    if let Some(entry) = jadpo_std::standard_type(&name)
-                        && matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
-                    {
-                        return Made::StdObject(entry);
+                    if let Some(entry) = jadpo_std::standard_type(&name) {
+                        // A named collection is sent as JSON's own (chunk
+                        // 5.5o2): an array of its items, an object of its
+                        // entries.
+                        let part = |field: &str, part| crate::types::part_type(&name, field, part);
+                        match entry.holds {
+                            jadpo_std::standard::Holds::Object(_) => {
+                                return Made::StdObject(entry);
+                            }
+                            jadpo_std::standard::Holds::List(item) => {
+                                return Made::List(part("item", item));
+                            }
+                            jadpo_std::standard::Holds::Map(key, value) => {
+                                return Made::Map(part("key", key), part("value", value));
+                            }
+                            _ => {}
+                        }
                     }
                     return match routes::wire::issued_name(&name) {
                         Some(issued) => Made::Issued(issued),
