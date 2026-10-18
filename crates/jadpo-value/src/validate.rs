@@ -117,7 +117,7 @@ impl Validator {
     }
 
     /// The value as the type keeps it: a decimal at the type's fixed scale,
-    /// rounded half to even; `None` past 38 digits.
+    /// rounded half to even, and `Html` made safe; `None` past 38 digits.
     pub fn store(&self, value: Value) -> Option<Value> {
         // A ratio becomes a percentage by construction, `Percentage(0.25)`
         // being 25% (area 19).
@@ -126,6 +126,18 @@ impl Validator {
                 Value::Decimal(ratio) => Value::Percentage(ratio),
                 value => value,
             });
+        }
+        // `Html` is made safe as it is built, whatever text it is built
+        // from (area 19, "Text formats"): its own check is then what the
+        // sanitiser keeps, which it always passes.
+        if let Value::Text(text) = &value
+            && self.rules.iter().any(|(rules, _)| {
+                rules
+                    .standard
+                    .is_some_and(jadpo_std::standard::markup::sanitises)
+            })
+        {
+            return Some(Value::text(&jadpo_std::standard::markup::sanitise(text)));
         }
         match (value, self.scale) {
             (Value::Decimal(d), Some(scale)) if d.scale != scale => {

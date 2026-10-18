@@ -371,11 +371,17 @@ impl Rules {
         if let Some(name) = self.standard
             && !crate::standard::standard_type(name).is_some_and(|entry| entry.accepts(text))
         {
-            return broken(
-                RuleKey::Format,
-                name.to_string(),
-                format!("isn't a valid `{name}`"),
-            );
+            // `Html` is made safe as it is built, so only a literal, which
+            // must already be safe, breaks it (chunk 5.5o).
+            let why = if crate::standard::markup::sanitises(name) {
+                format!(
+                    "isn't safe HTML as written: the sanitiser keeps `{}`",
+                    crate::standard::markup::sanitise(text)
+                )
+            } else {
+                format!("isn't a valid `{name}`")
+            };
+            return broken(RuleKey::Format, name.to_string(), why);
         }
         Ok(())
     }

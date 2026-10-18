@@ -26,6 +26,7 @@ pub mod emoji_data;
 pub mod events;
 mod identifiers;
 pub mod lists;
+pub mod markup;
 pub mod modulus;
 pub mod opening_hours;
 pub mod person_names_data;
@@ -305,6 +306,10 @@ pub enum TextForm {
     /// SemVer 2.0.0's text, `1.2.3-alpha.1+build.5`, with no `v` before it
     /// (chunk 5.5n2, [`software::read_version`]).
     SemanticVersion,
+    /// HTML as the sanitiser keeps it (chunk 5.5o, [`markup::sanitise`]):
+    /// written as it is held, and read from any text, made safe rather than
+    /// refused, so reading it never fails.
+    Html,
 }
 
 /// How a standard type is sent and read as JSON.
@@ -456,6 +461,10 @@ pub enum FormatKey {
         parts: &'static [&'static str],
         mask: &'static str,
     },
+    /// The text people read in it, each block on its own line, as
+    /// `markup.to_plain_text` gives it: an `Html` value's, or a `Markdown`
+    /// text's once rendered (chunk 5.5o). The locale doesn't change it.
+    PlainText,
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -589,6 +598,10 @@ pub enum Validator {
     Orcid,
     /// An MPAN core's check digit.
     Mpan,
+    /// HTML already as the sanitiser keeps it ([`markup::is_safe`]): what
+    /// an `Html` literal must be, since its construction from any other
+    /// text makes it safe first (chunk 5.5o).
+    Html,
 }
 
 impl Validator {
@@ -638,6 +651,7 @@ impl Validator {
             Validator::SnomedConcept => codes::is_snomed_concept(text),
             Validator::Orcid => codes::is_orcid(text),
             Validator::Mpan => codes::is_mpan(text),
+            Validator::Html => markup::is_safe(text),
         }
     }
 }
@@ -975,8 +989,8 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
 /// `places`), `CalendarEvent` (chunk 5.5k3, in `events`), the 20 web
 /// and network types (chunk 5.5n, in `web`), the money group's records
-/// (chunk 5.5i3, in `prices`), and the 18 software types (chunk 5.5n2, in
-/// `software`).
+/// (chunk 5.5i3, in `prices`), the 18 software types (chunk 5.5n2, in
+/// `software`), and `Html` and `Markdown` (chunk 5.5o, in `markup`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1358,6 +1372,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     contact::GIVEN_NAME,
     web::HOSTNAME,
     codes::HS_CODE,
+    markup::HTML_ENTRY,
     web::HTTP_HEADER_NAME,
     web::HTTP_METHOD,
     web::HTTP_STATUS,
@@ -1563,6 +1578,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     software::LOG_LEVEL,
     codes::LOT_NUMBER,
     web::MAC_ADDRESS,
+    markup::MARKDOWN_ENTRY,
     card_types::MASKED_CARD_NUMBER_TYPE,
     quantity(
         crate::QuantityKind::Mass,
@@ -2505,14 +2521,18 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 172, "the 172 standard types built so far");
+        assert_eq!(names.len(), 174, "the 174 standard types built so far");
     }
 
     #[test]
     fn every_entry_is_whole() {
         for entry in STANDARD_TYPES {
+            // Any text is `Html` once it is made safe (chunk 5.5o), so it
+            // alone has no malformed examples.
             assert!(
-                !entry.examples.valid.is_empty() && !entry.examples.malformed.is_empty(),
+                !entry.examples.valid.is_empty()
+                    && (entry.examples.malformed.is_empty()
+                        == (entry.text == Some(TextForm::Html))),
                 "{} has examples",
                 entry.name
             );
@@ -2549,7 +2569,18 @@ mod tests {
             );
             if let Holds::Text { pattern, .. } = entry.holds {
                 assert!(crate::compile_pattern(pattern).is_ok(), "{}", entry.name);
-                assert_eq!(entry.text, Some(TextForm::Checked), "{}", entry.name);
+                // Checked, or made safe as `Html` is (chunk 5.5o).
+                assert!(
+                    matches!(entry.text, Some(TextForm::Checked | TextForm::Html)),
+                    "{}",
+                    entry.name
+                );
+                assert_eq!(
+                    entry.text == Some(TextForm::Html),
+                    markup::sanitises(entry.name),
+                    "{}",
+                    entry.name
+                );
                 assert_eq!(entry.storage, Storage::Column(SqlType::Text));
                 for (text, _) in entry.examples.valid {
                     assert!(entry.accepts(text), "{}: `{text}`", entry.name);

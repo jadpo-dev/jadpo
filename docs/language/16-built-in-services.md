@@ -712,7 +712,9 @@ how to format it: an `Instant` or `Money` with `text.format` (area 19),
 a `Bool` as a condition for `if`, a list walked with
 `for`, an object's fields one by one, an enum without wording by adding
 it. Values are escaped; HTML goes in unescaped only as the safe-HTML type,
-which the standard library defines (input to chunk 5.4).
+which the standard library defines (input to chunk 5.4): area 19's
+`Html`, made safe by its construction (amended 2026-10-18 by area 19,
+built in chunk 5.5o).
 
 Sending is emitting: the mail goes after the action commits, retried like
 any delivery (area 12), so a rolled-back sign-up never sends a welcome. Every
@@ -1305,7 +1307,7 @@ the feature they belong to.
 | Default rate limits on generated authentication routes | 8 | Question 6 |
 | Per-tenant flag targeting depends on tenancy; slot and history grants | 9 | Questions 3, 7 and 9 |
 | Translations format for mail (area 10 question 9, revised 2026-10-16: domain language files read as `translations.<domain>.<message>`); OpenTelemetry variables | 10 | Questions 10 and 11 |
-| The safe-HTML type that templates write out unescaped; the money formatter | Standard library (chunk 5.4) | Question 11 |
+| The safe-HTML type that templates write out unescaped (`Html`, built in 5.5o); the money formatter | Standard library (chunk 5.4) | Question 11 |
 | Mail delivery and retries as an event; trace context through the outbox | 12 | Questions 10 and 11 |
 | `flags:` in tests and the both-values check; `email.sent`; an in-memory file store in tests | 13 | Questions 4, 7 and 11 |
 | `jadpo flags` commands and source removal; the `syntax.expected_declaration` message | 14 | Question 2; Status |

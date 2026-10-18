@@ -959,6 +959,18 @@ public type Ulid = Text {}
 /// `^1.2.3`, `>=1.0.0 <2.0.0`, `1.2.x || >=2.5.0-beta.1`.
 public type VersionRange = Text {}
 
+// The text formats (area 19, "Text formats", chunk 5.5o).
+
+/// HTML that is always safe to write into a page or an email (area 19):
+/// building one from text keeps only the allowed elements and attributes,
+/// with no scripts, no event handlers and links only to `https:` and
+/// `mailto:`, so it never fails; a literal must already be what it keeps.
+public type Html = Text {}
+
+/// CommonMark text (area 19), with no control character but a tab, a line
+/// feed or a carriage return; `markup.to_html` renders it as `Html`.
+public type Markdown = Text {}
+
 /// A UUID (area 2), written in lowercase hexadecimal with hyphens.
 public type Uuid = Uuid {}
 

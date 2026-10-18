@@ -303,6 +303,11 @@ impl Body<'_> {
         let base = match self.contract_of(target) {
             Contract::Standard(entry) => match entry.holds {
                 Holds::Builtin(builtin) => Some(Ty::Prim(builtin)),
+                // Any text is `Html` once it is made safe (chunk 5.5o), so
+                // reading one is reading text.
+                Holds::Text { .. } if jadpo_std::standard::markup::sanitises(entry.name) => {
+                    Some(Ty::Prim(Prim::Text))
+                }
                 // Its own check, or its range, is what `malformed` already
                 // covers.
                 Holds::Text { .. } | Holds::Whole { .. } => Some(Ty::Named(entry.name.to_string())),

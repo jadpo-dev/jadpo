@@ -42,6 +42,7 @@ pub mod list;
 pub mod locale;
 mod mailbox;
 pub mod map;
+pub mod markup;
 mod maths;
 pub mod money;
 pub mod ops;
@@ -280,6 +281,10 @@ pub fn run(
         // `semver`'s operation (area 19, "Web and software").
         (Op::SemverSatisfies, [version, range]) => semver::satisfies(version, range),
         (Op::SemverSatisfies, _) => Err(Fault::Shape),
+        // `markup`'s operations (area 19, "Text formats").
+        (Op::MarkupToHtml, [markdown]) => markup::to_html(markdown),
+        (Op::MarkupToPlainText, [html]) => markup::to_plain_text(html),
+        (Op::MarkupToHtml | Op::MarkupToPlainText, _) => Err(Fault::Shape),
         (Op::RangeContains, [span, value]) => range::contains(span, value).map(Value::Bool),
         (Op::RangeOverlaps, [a, b]) => range::overlaps(a, b).map(Value::Bool),
         (Op::RangeIntersection, [a, b]) => range::intersection(a, b),
@@ -762,6 +767,8 @@ mod tests {
                     vec![Value::text("192.0.2.0/24"), Value::text("192.0.2.7")]
                 }
                 Op::WebResolve => vec![Value::text("https://example.com/a/b"), Value::text("../c")],
+                Op::MarkupToHtml => vec![Value::text("**bold**")],
+                Op::MarkupToPlainText => vec![Value::text("<p>text</p>")],
                 Op::SemverSatisfies => vec![
                     semver::read_version("1.2.3").expect("a version"),
                     Value::text("^1.0.0"),
