@@ -849,10 +849,29 @@ reference only).
   only, consistent with `Country`'s `form:` (decided by the lead session,
   2026-10-18). Done when every type passes the harness and an ISBN-10
   reads as its `Isbn`, a bad check digit `malformed`.
-- [ ] **5.5n Web and software** `opus · high` (area 19, "Web and
-  software"): 38 types, `web`'s 3 operations and `semver.satisfies`. Done
-  when every type passes the harness and the four operations' examples
-  pass.
+- [x] **5.5n Web and network** `opus · high` (area 19, "Web and
+  software"): the 20 new web and network types (`UrlPath`, `RelativeUrl`,
+  `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod`,
+  `HttpStatus`, `HttpHeaderName`, `UserAgent`, `ProblemDetails`,
+  `JsonPointer`, `Cookie`, `UtmParameters`, `Cidr`, `NetworkPort`,
+  `MacAddress`, `Imei`, `Emoji`, `PushToken`) and `web`'s 3 operations.
+  Done when every type passes the harness and the three operations'
+  examples pass, interpreted and in the runtime. Split on 2026-10-18; the
+  software group is 5.5n2. Built, with UTS 46 by Servo's `idna` 1.1.0 on
+  the pinned ICU4X, Emoji 18.0's list, `HttpStatus` and `NetworkPort` held
+  as whole numbers, and `ProblemDetails` sent as RFC 9457 sends it
+  (`type_` in code); `HttpMethod` keeps the five route methods (decided
+  by the lead session, 2026-10-18). What the pages left open is area
+  19's "Chosen in chunk 5.5n".
+- [ ] **5.5n2 Software** `opus · high` (area 19, "Web and software",
+  split from 5.5n): the 18 software types (`SemanticVersion`,
+  `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`,
+  `SpanId`, `TraceParent`, `LogLevel`, `FilePath`, `FileName`,
+  `RegularExpression` on area 2's linear-time engine, `ContainerImage`,
+  `Digest`, `Ulid`, `IdempotencyKey`, `Doi`) and `semver.satisfies`. Done
+  when every type passes the harness and `satisfies`' examples pass,
+  SemVer 2.0.0's pre-release rules included, interpreted and in the
+  runtime.
 - [ ] **5.5o Text formats** `opus · high` (area 19, "Text formats"):
   `Markdown`, `Html` (whose construction is the sanitiser, a security
   boundary), `RichText` and `LocalisedText`, `markup`'s 3 operations and

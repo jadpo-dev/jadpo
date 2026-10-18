@@ -144,6 +144,8 @@ pub fn canonical(entry: &StandardType, value: &Value) -> Result<String, Fault> {
             }
         }
         (TextForm::Event, Value::Record(record)) => crate::event::event_text(record)?,
+        (TextForm::Whole, Value::Int(n)) => n.to_string(),
+        (TextForm::UtmQuery, Value::Record(record)) => crate::web::utm_text(record)?,
         (TextForm::Code, Value::Variant(variant)) => entry
             .codes()
             .and_then(|codes| codes.get(variant.ordinal as usize))
@@ -484,6 +486,15 @@ pub fn read(entry: &StandardType, raw: &str) -> Result<Value, Fault> {
         TextForm::CardExpiry => read_card_expiry(entry, raw),
         TextForm::VatNumber => read_vat_number(entry, raw),
         TextForm::Event => crate::event::read_event(raw),
+        // Digits within its range (chunk 5.5n): `0200` and `600` aren't an
+        // HTTP status at all.
+        TextForm::Whole => match entry.holds {
+            Holds::Whole { min, max } if jadpo_std::standard::web::whole_in(raw, min, max) => {
+                raw.parse().ok().map(Value::Int)
+            }
+            _ => None,
+        },
+        TextForm::UtmQuery => crate::web::read_utm(raw),
         // Its ends' type is the range type's argument, which `parse` reads.
         TextForm::Range => return Err(Fault::Shape),
         // The time group's forms, which `calendar` reads above.
@@ -722,9 +733,9 @@ pub fn format_as(
     options: &MoneyOptions,
     unit: &Value,
 ) -> Result<Value, Fault> {
-    if let (Value::Text(name), Value::Text(_)) = (standard, value)
+    if let (Value::Text(name), Value::Text(_) | Value::Int(_)) = (standard, value)
         && let Some(entry) = standard_type(name)
-        && matches!(entry.holds, Holds::Text { .. })
+        && matches!(entry.holds, Holds::Text { .. } | Holds::Whole { .. })
     {
         let tag = present::tag_of(locale)?;
         return Ok(Value::text(&shown(entry, value, tag, zone, format_spec)?));
@@ -842,6 +853,7 @@ pub fn shown(
             }
         }
         (FormatKey::PersonName, value) => present::contact::person_name(value, tag)?,
+        (FormatKey::ProblemDetails, Value::Record(record)) => crate::web::problem_text(record)?,
         (FormatKey::PostalAddress, value) => present::contact::postal_address(value, tag)?,
         // National for a reader whose region shares the number's calling
         // code, international otherwise (chunk 5.5l2).

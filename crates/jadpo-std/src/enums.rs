@@ -280,6 +280,8 @@ impl SuccessStatus {
 std_enum! {
     /// The methods a route is written with, as a route test names them
     /// (areas 7 and 13); the runtime answers `HEAD` and `OPTIONS` itself.
+    /// Since chunk 5.5n it is the standard type `HttpMethod` too, its
+    /// codes RFC 9110's tokens (`jadpo_std::standard::web::HTTP_METHODS`).
     HttpMethod: "HttpMethod" {
         Get: "get",
         Post: "post",

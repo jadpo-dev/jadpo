@@ -35,8 +35,9 @@ pub struct Rules {
     /// The standard type held as text whose own check the text passes
     /// (area 19, "Groups with the baseline only"): its pattern and its
     /// named validator, an IBAN's mod-97, broken as `format`, as an
-    /// `Email`'s check is. Only the standard library sets it; no block
-    /// can write it.
+    /// `Email`'s check is; or the standard type held as a whole number
+    /// whose range `min` and `max` are (chunk 5.5n), which names it only.
+    /// Only the standard library sets it; no block can write it.
     pub standard: Option<&'static str>,
 }
 

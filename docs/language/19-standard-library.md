@@ -103,7 +103,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 125 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, and `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-two are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 145 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, and `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-three are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -128,7 +128,7 @@ exception to the rule.
 | Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
 | Health (9) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, **`Allergen`** (enum) | |
 | Media and visual (15) | `Colour`, `ImageDimensions`, `AspectRatio`, `Rect`, `Insets`, `PaperSize` (enum), `ExifOrientation` (enum), `AltText`, `FrameRate`, `VideoResolution`, `VideoCodec`, `AudioCodec`, `Timecode`, `SubtitleCue`, `ContentRating` | `colour`, `media` |
-| Web and network (23) | **`Url`**, `UrlPath`, `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod` (enum), `HttpStatus`, `HttpHeaderName`, **`FileType`**, `UserAgent`, `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, **`IpAddress`**, `Cidr`, `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken` | `web` |
+| Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | `SemanticVersion`, `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`, `SpanId`, `TraceParent`, `LogLevel` (enum), `FilePath`, `FileName`, `RegularExpression`, `ContainerImage`, `Digest`, **`Uuid`**, `Ulid`, `IdempotencyKey`, `Doi` | `semver` |
 | Text formats (4) | `Markdown`, `Html`, `RichText`, `LocalisedText` | `markup`, `text` |
 | Security (20) | `Password`, `PasswordHash`, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, `PublicKey`, `PrivateKey`, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
@@ -389,7 +389,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Concentration`, `ContainerNumber`, `Continent`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `HsCode`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Incoterm`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LotNumber`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NhsNumber`, `OpeningHours`, `Orcid`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `SerialNumber`, `Sku`, `SnomedConcept`, `SoundLevel`, `Speed`, `Sscc`, `TaxId`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `UnNumber`, `UpcA`, `Uprn`, `Url`, `UsEin`, `UsSsn`, `Username`, `UtcOffset`, `Uuid`, `VatNumber`, `Vin`, `Voltage`, `Volume`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `Angle`, `Area`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Concentration`, `ContainerNumber`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `DataSize`, `DateRange`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `FamilyName`, `FileType`, `Fraction`, `Frequency`, `GivenName`, `Hostname`, `HsCode`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `Imei`, `Incoterm`, `Instant`, `InstantRange`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LotNumber`, `MacAddress`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PassportNumber`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `ProblemDetails`, `PushToken`, `Quarter`, `Range`, `Ratio`, `RecurrenceRule`, `RelativeUrl`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `Speed`, `Sscc`, `TaxId`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `UnLocode`, `UnNumber`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -3625,10 +3625,147 @@ arguments.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `web.with_query(url, query)` | `Url` with each entry of `query` (a `Map<Text, Text>`) added, percent-encoded, in key order | | none |
+| `web.with_query(url, entries)` | `Url` with each of `entries` (a `Map<Text, Text>`) added to its query, percent-encoded, in key order | | none |
 | `web.resolve(base, relative)` | `Url`: a `RelativeUrl` or `UrlPath` resolved against `base` by RFC 3986 | | none |
 | `web.cidr_contains(range, address)` | `Bool`: the `IpAddress` is inside the `Cidr` | | `x >>= a` |
 | `semver.satisfies(version, range)` | `Bool`: a `SemanticVersion` is inside a `VersionRange` | | none |
+
+Each web type follows its standard, and is read only in its canonical
+text, as every type is: a `RelativeUrl` and a `UrlPath` are RFC 3986's
+relative reference and absolute path, a `DomainName` UTS 46's ASCII form
+(`xn--mnchen-3ya.de`), an `HttpStatus` RFC 9110's three digits, a
+`ProblemDetails` RFC 9457's object, a `JsonPointer` RFC 6901's, a
+`Cookie` RFC 6265's `Set-Cookie` value, a `Cidr` RFC 4632's range with
+its host bits zero, a `MacAddress` IEEE 802's `AC-DE-48-00-00-80`, an
+`Imei` 3GPP's 15 digits with their Luhn check digit and an `Emoji` one of
+Unicode's fully-qualified emoji. Every `UrlPath` is a `RelativeUrl` and
+every `DomainName` a `Hostname`, so each passes where the other is
+taken; never the other way.
+
+A shop builds its search links, follows the links on its pages, lets its
+office's network in, reads the domain a seller types, retries a call the
+server failed, and reports a sold-out item as RFC 9457 has it:
+
+```jadpo check project=web-and-network
+type ShopLink = Url {}
+
+type SearchTerm = Text {
+    min_length: 1
+    max_length: 100
+}
+
+type CallerAddress = IpAddress {}
+
+type FormText = Text {}
+
+type YesNo = Bool {}
+
+type NotADomain = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A search page's link for a term, on its first page.
+function search_link(catalogue_page: ShopLink, tea_term: SearchTerm) -> ShopLink {
+    var none_yet: Map<Text, Text> = []
+    var tea_query: Map<Text, Text> = map.with(map.with(none_yet, "q", tea_term), "page", "1")
+    return ShopLink(web.with_query(catalogue_page, tea_query))
+}
+
+/// Where a link on `page` leads.
+function link_target(page: ShopLink, page_link: RelativeUrl) -> ShopLink {
+    return ShopLink(web.resolve(page, page_link))
+}
+
+/// The basket's address from any page: a path is a relative URL too.
+function basket_from(page: ShopLink, basket: UrlPath) -> ShopLink {
+    return ShopLink(web.resolve(page, basket))
+}
+
+/// Whether a caller is on the office's network.
+function from_office(office_network: Cidr, caller: CallerAddress) -> YesNo {
+    return YesNo(web.cidr_contains(office_network, caller))
+}
+
+/// The domain a seller typed for their shop.
+function shop_domain(raw: FormText) fails NotADomain -> DomainName {
+    var typed_domain: DomainName = attempt text.parse(raw, as: DomainName) {
+        malformed: NotADomain
+    }
+    return typed_domain
+}
+
+/// Whether a failed call is worth trying again: the server's fault, not
+/// the request's.
+function worth_retrying(status: HttpStatus) -> YesNo {
+    return YesNo(status >= 500)
+}
+
+/// The problem a sold-out item is reported with.
+function sold_out(item_page: ShopLink) -> ProblemDetails {
+    return ProblemDetails {
+        type_: "https://tea.example/problems/sold-out"
+        status: 409
+        title: "Sold out"
+        detail: "Nothing is left of this item."
+        instance: item_page
+    }
+}
+
+/// A problem as a person reads it.
+function problem_shown(problem: ProblemDetails, customer_locale: Locale) -> PresentationText {
+    return text.format(problem, locale: customer_locale)
+}
+
+/// A problem as it is sent.
+function problem_sent(problem: ProblemDetails) -> FormText {
+    return FormText(json.write(problem))
+}
+```
+
+```jadpo check project=web-and-network file=main.test.jadpo
+test "links follow RFC 3986" {
+    var search_page: ShopLink = "https://tea.example/search"
+    var searched: ShopLink = "https://tea.example/search?page=1&q=tea%20%26%20cake"
+    assert search_link(search_page, "tea & cake") == searched
+    var sencha: ShopLink = "https://tea.example/teas/green/sencha"
+    assert link_target(sencha, "../black/assam") == "https://tea.example/teas/black/assam"
+    assert link_target(sencha, "#reviews") == "https://tea.example/teas/green/sencha#reviews"
+    assert basket_from(sencha, "/basket") == "https://tea.example/basket"
+}
+
+test "an address is inside a range of its own family only" {
+    assert from_office("192.0.2.0/24", "192.0.2.77")
+    assert not from_office("192.0.2.0/24", "198.51.100.1")
+    assert from_office("2001:db8::/32", "2001:db8:1::5")
+    assert not from_office("::/0", "192.0.2.77")
+}
+
+test "a domain name is read in its ASCII form only" {
+    var typed_domain: DomainName = attempt shop_domain("xn--mnchen-3ya.de")
+    assert typed_domain == "xn--mnchen-3ya.de"
+    assert shop_domain("München.de") fails NotADomain
+    assert shop_domain("example.com.") fails NotADomain
+}
+
+test "a status's class is a comparison, and a problem is sent as RFC 9457 has it" {
+    assert worth_retrying(503)
+    assert not worth_retrying(404)
+    var problem: ProblemDetails = sold_out("https://tea.example/items/assam")
+    assert problem_shown(problem, Locale.en_gb) == "Sold out\nNothing is left of this item."
+    var sent: FormText = "{\"type\":\"https://tea.example/problems/sold-out\",\"status\":409,\"title\":\"Sold out\",\"detail\":\"Nothing is left of this item.\",\"instance\":\"https://tea.example/items/assam\"}"
+    assert problem_sent(problem) == sent
+}
+```
+
+> Built in chunk 5.5n for the 20 web and network types (`UrlPath`,
+> `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`,
+> `HttpMethod`, `HttpStatus`, `HttpHeaderName`, `UserAgent`,
+> `ProblemDetails`, `JsonPointer`, `Cookie`, `UtmParameters`, `Cidr`,
+> `NetworkPort`, `MacAddress`, `Imei`, `Emoji`, `PushToken`) and `web`'s
+> three operations; `web.cidr_contains`'s SQL form comes with the SQL
+> forms (chunk 5.6). The 18 software types and `semver.satisfies` are
+> chunk 5.5n2. What the page left open is "Chosen in chunk 5.5n", under
+> "Review".
 
 ## Groups with the baseline only
 
@@ -4978,7 +5115,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, each other group of types in 5.5i3 to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, each other group of types in 5.5i3 to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; the `Percentage` rows in 5.5j2 with `{rate, number, percent}` |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` in 5.5o |
@@ -5087,8 +5224,8 @@ under "Errors").
   doesn't take `type.temporal_option_unused`. Numbers took no format for
   people until chunk 5.5d ("Chosen in chunk 5.5d").
 - **`FileType`'s variants** are the media types the pages name: `png`,
-  `jpeg`, `webp`, `pdf`, `csv`, `tsv` and `json`; more come with chunk
-  5.5n.
+  `jpeg`, `webp`, `pdf`, `csv`, `tsv` and `json`; chunk 5.5n needed no
+  more ("Chosen in chunk 5.5n").
 - **Storage.** `InstantRange` is stored as its JSON, as an object and a
   `ZonedTime` are, until objects get named columns with `Money` (chunk
   5.5h).
@@ -6445,6 +6582,131 @@ under "Errors").
   `Isbn` is `BookNumber`, example 03's `Allergen` `Allergy`, and examples
   04's and 12's `Allergen` enums `Hazard`, as question 3 listed.
 
+### Chosen in chunk 5.5n
+
+- **Split.** The 20 web and network types and `web`'s three operations
+  are built here; the 18 software types and `semver.satisfies` are chunk
+  5.5n2.
+- **Held as text,** as the payment numbers are (chunk 5.5i): `UrlPath`,
+  `RelativeUrl`, `Slug`, `DomainName`, `Hostname`, `WebOrigin`,
+  `HttpHeaderName`, `UserAgent`, `JsonPointer`, `Cookie`, `Cidr`,
+  `MacAddress`, `Imei`, `Emoji` and `PushToken`, each a pattern and, where
+  a pattern can't say it, a named validator; only the canonical text is
+  read, none is ordered, `text.from` is `type.mismatch` (each is text
+  already) and `text.parse` fails only `malformed`. `Hostname`,
+  `WebOrigin` and `Cidr` are text rather than the catalogue's enum and
+  objects: no operation reads their parts yet, and one text is one value.
+- **A narrower form passes for the wider.** Every `UrlPath` is a
+  `RelativeUrl` and every `DomainName` a `Hostname`, so each stub is
+  built on the other (`public type UrlPath = RelativeUrl {}`) and a value
+  of the first passes where the second is taken, as `web.resolve`'s
+  `relative` takes a path; never the other way.
+- **Held as a whole number:** `HttpStatus` from 100 to 599 (RFC 9110
+  §15's three digits, its registry open) and `NetworkPort` from 1 to
+  65535 (IANA reserves 0, so it is refused). Each is a type built on `Int`
+  with its range, so `<` orders it (`status >= 500` is a class), JSON
+  sends a number, an `integer` column stores it and `text.format` shows
+  its digits, never grouped (`8080`, not `8,080`). `text.parse` reads only
+  digits with no sign and no leading zero within the range, anything else
+  `malformed`; a type with a narrower range (`type HighPort = NetworkPort
+  { min: 1024 }`) breaks `min` or `max` by name.
+- **`HttpMethod` keeps the five variants routes are written with**
+  (`get`, `post`, `put`, `patch`, `delete`): it is the enum areas 7, 11
+  and 13 already use, now a standard type whose codes are RFC 9110's
+  tokens (`GET`), read ignoring case at a boundary as every standard
+  enum's are, and stored by variant name, as `Weekday` is, until chunk
+  5.5w decides. RFC 9110's `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` are
+  not variants: the runtime answers `HEAD` and `OPTIONS` itself and no
+  route is written with them, so adding them would change those areas;
+  the lead session decided to keep the five ("Decisions"), since adding
+  the others later breaks nothing. A proxy that must name the others holds
+  the method as text.
+- **`RelativeUrl`** is RFC 3986's relative reference (§4.2), never empty:
+  a path of its three kinds, a query and a fragment, or an authority
+  after `//` with a host that is a `DomainName` or an IP address in its
+  canonical text (IPv6 in brackets) and a port from 1 to 65535. User
+  information before the host is refused (§3.2.1 deprecates it), and a
+  percent-encoding is upper case (§2.1). It is ASCII: an IRI (RFC 3987) is
+  percent-encoded first, as `encoding.to_url_component` does. A `UrlPath`
+  is `path-absolute`, with no query or fragment.
+- **`DomainName`** is what UTS 46's strict processing gives (Servo's
+  `idna` 1.1.0 on the pinned ICU4X, IDNA 2008 with STD3's rules,
+  `CheckHyphens` and the DNS lengths): lower case, letters, digits and
+  hyphens, each label beyond ASCII as its A-label, no dot at the end, and
+  a last label that isn't all digits. It refuses names IDNA 2008 does:
+  `--` in the third and fourth places (other than an A-label's `xn--`),
+  as some CDNs' host names have, and `_`, as DNS records' names
+  (`_dmarc`) have. One label, `localhost`, is a domain name. It is shown
+  as its A-label: showing the Unicode form safely needs UTS 39's
+  confusable rules, a later decision.
+- **`WebOrigin`** is `http` or `https` only: the HTML standard's other
+  tuple origins (`ws`, `wss`, `ftp`) aren't what an `Origin` header
+  carries from a page. The default port is left out, as the standard
+  serialises it.
+- **`HttpHeaderName`** is a token in lower case, as HTTP/2 and HTTP/3
+  send field names, so `==` ignores case by construction.
+- **`UserAgent`** is RFC 9110's grammar in ASCII, one space between
+  products and comments.
+- **`ProblemDetails`** is RFC 9457's five members, each of which may be
+  `none`, as the RFC allows. `type` is a reserved word, so code writes
+  `type_` and the wire `type`: question 22's trailing `_` for a closed
+  list's code, extended to a standard object's part
+  (`jadpo_std::standard::wire_name`). Its `type` and `instance` are
+  absolute `Url`s (the RFC allows relative references; resolve one with
+  `web.resolve` first), its title a line and its detail a paragraph. A
+  member the RFC doesn't define is refused as any object's unknown field
+  is: an application with extension members declares its own type. It is
+  sent with the members that are `none` left out and read with those left
+  out as `none` (`Json::Members`), and stored as its JSON, since a column
+  per member couldn't tell an empty problem from no problem. It has no
+  single text form; `text.format` shows its title and detail on their
+  own lines, else its status, else its type or `about:blank`.
+- **`JsonPointer`** is RFC 6901's string form, not its URI fragment form;
+  the empty pointer, the whole document, is one.
+- **`Cookie`** is a server's `Set-Cookie` value in RFC 6265's strict
+  syntax (§4.1.1), with RFC 6265bis's `SameSite` and name prefixes: its
+  attributes after `; `, in the RFC's order and spelling, each at most
+  once. An attribute the RFCs don't define (`Partitioned`, `Priority`) is
+  refused. `Max-Age` is never 0, as the strict syntax has it, so a cookie
+  is removed by an `Expires` in the past, whose weekday must be its
+  date's. `SameSite=None` needs `Secure`, and the `__Secure-` and
+  `__Host-` prefixes their rules, compared ignoring case.
+- **`UtmParameters`** is an object of `source`, `medium` and `campaign`,
+  each a line, and `term` and `content`, which may be `none`, as Google
+  Analytics' campaign builder has them (GA4's `utm_id` and the rest aren't
+  parts). Its canonical text is the query that carries them,
+  `utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale`, in
+  that order, each value percent-encoded as `encoding.to_url_component`
+  encodes it; its JSON is its parts, and it is stored a column per part.
+- **`Cidr`** writes its address as `IpAddress` canonically would (RFC
+  5952 for IPv6) with every host bit zero; `web.cidr_contains` never
+  matches across families, as PostgreSQL's `>>=` doesn't, so an
+  IPv4-mapped IPv6 address isn't inside an IPv4 range.
+- **`MacAddress`** is IEEE 802's own form, upper-case pairs joined by
+  `-` (the catalogue sketched colons), for EUI-48 only. **`Imei`** is 15
+  digits with 3GPP TS 23.003's Luhn check digit; an IMEISV isn't one.
+- **`Emoji`** is one of Emoji 18.0's 3,963 fully-qualified emoji (Unicode
+  18.0.0's final `emoji-test.txt`, under the Unicode License v3,
+  generated once into `jadpo_std::standard::emoji_data`): an unqualified
+  or minimally-qualified form and a skin tone on its own are refused.
+- **`PushToken`** is opaque text of the characters Apple's and Google's
+  tokens use, up to 4096; it has no platform part, which would add an
+  enum to the language, and a Web Push subscription is not a token.
+- **Personal data:** a user agent, a cookie, a MAC address, an IMEI and a
+  push token are `online`; the rest aren't personal data.
+- **`web`'s operations** never fail, since each takes values their
+  construction checked. `web.with_query`'s map is `entries` (`query` is a
+  reserved word); its entries are added in key order by code point, after
+  any query the URL has and before its fragment, and an empty map leaves
+  the URL as it was. `web.resolve` is RFC 3986 §5.2's strict resolution,
+  normalising nothing but dot segments. `web.cidr_contains`' SQL form
+  comes with the SQL forms (chunk 5.6).
+- **No shapes:** `type.standard_exists` matches none of the new types:
+  an application's object can't have `ProblemDetails`' `type`, and
+  `UtmParameters`' part names are too common to be distinctive.
+- **`FileType`** gains no variants: chunk 5.5a left more to this chunk,
+  and none of the web types needs one.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -6489,6 +6751,7 @@ under "Errors").
 | Reserved namespaces (question 30) | Every standard namespace is reserved (`list`, `set`, `map`, `range`, `text`, `markup`, `money`, `units`, `hash`, `encoding`, `crypto`, `random`, `json`, `csv`, `tsv`, `json_lines`, `colour`, `media`, `web`, `semver`, then `geo` and `ai`); fields and named arguments keep every word; clashing names renamed in the chunk that adds each namespace (`text` in 5.5f, `range` in 5.5c) (Richard, as recommended) | 2026-10-17 |
 | A `Mass` to the microgram | A `Mass` is held in kilograms to 9 places, `numeric(38, 9)`, so the table's `mcg` is exact (`1mcg` is 0.000000001 kg), as a medicine's dose needs; it was first built to 6, which held `1mcg` as nothing. No other kind has a suffix finer than its scale. A correction made by the lead session, not a question for Richard | 2026-10-18 |
 | `IdentityDocumentKind` | A standard enum of `passport`, `identity_card`, `driving_licence` and `residence_permit`, an `IdentityDocument`'s kind, added in chunk 5.5i2 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 
 ### Open questions
@@ -6938,8 +7201,11 @@ first; each group of types then arrives with its baseline and its extras.
   `UnitQuantity`, `Dimensions`, `TrackingNumber`, `FlightNumber`, the
   health measures and the rest of the 45, and the ISBN-10 conversion as
   `text.parse(raw, as: Isbn, form: CodeForm.isbn10)`.
-- **5.5n Web and software** `opus · high`: 38 types, `web`'s 3 operations
-  and `semver.satisfies`.
+- **5.5n Web and network** `opus · high`: the 20 web and network types
+  and `web`'s 3 operations. Built; split on 2026-10-18, the 18 software
+  types and `semver.satisfies` are 5.5n2.
+- **5.5n2 Software** `opus · high`: the 18 software types and
+  `semver.satisfies`.
 - **5.5o Text formats** `opus · high`: `Markdown`, `Html` (whose
   construction is the sanitiser, a security boundary per #88), `RichText`
   and `LocalisedText`, `markup`'s 3 operations and `text.pick`.

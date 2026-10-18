@@ -488,13 +488,20 @@ impl TypeTable {
         let mut table = TypeTable::default();
         // The standard types held as text (area 19, "Groups with the
         // baseline only"): each a type built on `Text` the standard
-        // library declares, with its own check as its rule.
+        // library declares, with its own check as its rule, or on the
+        // standard type it is a narrower form of (a `UrlPath` is a
+        // `RelativeUrl`); and those held as a whole number, each built on
+        // `Int` with its range (chunk 5.5n).
         for entry in jadpo_std::STANDARD_TYPES {
-            if let Some(rules) = jadpo_std::standard::text_rules(entry.name) {
+            if let Some((builtin, rules)) = jadpo_std::standard::declared(entry.name) {
+                let parent = match jadpo_std::standard::within(entry.name) {
+                    Some(wide) => Ty::Named(wide.to_string()),
+                    None => Ty::Prim(builtin),
+                };
                 table.defs.insert(
                     entry.name.to_string(),
                     Def::Scalar {
-                        parent: Ty::Prim(Prim::Text),
+                        parent,
                         rules: Box::new(rules),
                     },
                 );
@@ -1167,8 +1174,7 @@ fn part_ty(part: jadpo_std::Part) -> Ty {
         }
         jadpo_std::Part::Standard(other)
             if jadpo_std::standard_type(other).is_some_and(|entry| {
-                entry.codes().is_some()
-                    || matches!(entry.holds, jadpo_std::standard::Holds::Text { .. })
+                entry.codes().is_some() || jadpo_std::standard::declared(entry.name).is_some()
             }) =>
         {
             Ty::Named(other.to_string())

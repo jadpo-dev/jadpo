@@ -63,3 +63,4 @@ mod translation_jadpo;
 mod translation_sources;
 mod translations;
 mod types;
+mod web_network;

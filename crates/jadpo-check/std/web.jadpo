@@ -1,0 +1,22 @@
+// The `web` namespace (area 19, "Web and software"). Each operation is
+// listed, typed, in `jadpo-std`'s operation table, which names the Rust
+// function in `jadpo-value` that runs it; a test holds these stubs to that
+// table. None fails: each takes values whose construction checked them, so
+// what it gives is a valid `Url` or a plain answer.
+
+public library web {
+    /// Whether `address` is inside `range`. An IPv4 address is never
+    /// inside an IPv6 range, nor the other way round.
+    function cidr_contains(range: Cidr, address: IpAddress) -> Bool {}
+
+    /// `relative` resolved against `base` by RFC 3986 (section 5.2): its
+    /// `.` and `..` segments followed, a path starting `/` taken from the
+    /// host, a query or a fragment alone kept with the base's path. A
+    /// `UrlPath` is a `RelativeUrl`, so it resolves too.
+    function resolve(base: Url, relative: RelativeUrl) -> Url {}
+
+    /// `url` with each of `entries` added to its query as `key=value`, in
+    /// key order, each percent-encoded as `encoding.to_url_component`
+    /// encodes it, after any query `url` has and before its fragment.
+    function with_query(url: Url, entries: Map<Text, Text>) -> Url {}
+}

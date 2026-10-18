@@ -118,10 +118,17 @@ fn every_stub_agrees_with_its_data_entry() {
                 assert_eq!(declared, expected, "{}'s fields", entry.name);
             }
             // A type built on `Text` the standard library declares, its
-            // check in its entry (area 19, chunk 5.5i).
+            // check in its entry (area 19, chunk 5.5i), or on the standard
+            // type it is a narrower form of (chunk 5.5n).
             Holds::Text { .. } => {
-                assert_eq!(base, "Text", "{} is text", entry.name);
+                let wide = jadpo_std::standard::within(entry.name).unwrap_or("Text");
+                assert_eq!(base, wide, "{} is text", entry.name);
                 assert!(members.is_empty(), "{}'s check is its entry's", entry.name);
+            }
+            // A type built on `Int`, its range in its entry (chunk 5.5n).
+            Holds::Whole { .. } => {
+                assert_eq!(base, "Int", "{} is a whole number", entry.name);
+                assert!(members.is_empty(), "{}'s range is its entry's", entry.name);
             }
             Holds::Range => {
                 assert_eq!(base, "Object", "{}", entry.name);
@@ -339,6 +346,10 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 );
                 schema
             }
+            Holds::Whole { .. } => {
+                let (builtin, rules) = jadpo_std::standard::declared(name).expect("a range");
+                scalar_schema(builtin, &rules)
+            }
             Holds::Object(_) => standard_object_schema(entry),
             Holds::Enum(codes) => {
                 let spelling = Spelling::of(name);
@@ -356,7 +367,8 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
             .map(str::to_string);
         match entry.json {
             Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
-            Json::Fields(fields) => {
+            Json::Number => assert_eq!(kind.as_deref(), Some("integer"), "{name}"),
+            Json::Fields(fields) | Json::Members(fields) => {
                 assert_eq!(kind.as_deref(), Some("object"), "{name}");
                 let properties = schema.get("properties").expect("properties");
                 for field in fields {
@@ -365,6 +377,7 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 // A part that may be `none` is `null` too (chunk 5.5l).
                 if let Holds::Object(parts) = entry.holds {
                     for (field, part) in parts {
+                        let field = jadpo_std::standard::wire_name(name, field);
                         let schema = properties.get(field).expect("a property");
                         assert_eq!(
                             schema.get("anyOf").is_some(),
