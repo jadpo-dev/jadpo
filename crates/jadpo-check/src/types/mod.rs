@@ -17,6 +17,7 @@ pub(crate) mod literal;
 mod loading;
 mod recursion;
 pub(crate) mod rules;
+pub(crate) mod secrets;
 mod shape;
 mod signatures;
 mod stores;

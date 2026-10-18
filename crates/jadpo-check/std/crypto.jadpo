@@ -10,7 +10,8 @@
 // is listed, typed, in `jadpo-std`'s operation table, which names the
 // Rust function in `jadpo-value` that runs it; a test holds these stubs to
 // that table. `T` is a value built on `Bytes`, or a `Text`, whose UTF-8 is
-// used.
+// used. A password is a `Password` and a token a `Jwt`, secret values that
+// these operations alone read (chunk 5.5r2).
 
 public library crypto {
     /// `sealed` opened with the current key or, after a rotation, the
@@ -26,7 +27,7 @@ public library crypto {
 
     /// The password's Argon2id hash at the release's parameters (19 MiB,
     /// 2 passes, 1 lane), as a PHC string, with a fresh random salt.
-    function hash_password(password: Text) -> PasswordHash {}
+    function hash_password(password: Password) -> PasswordHash {}
 
     /// HMAC-SHA-256 of `value` under the current key.
     function hmac(value: T, key: SigningKey) -> Bytes {}
@@ -57,7 +58,7 @@ public library crypto {
     /// `correct`, `wrong`, or `correct_outdated` when the hash was made
     /// with older parameters and a fresh one should be stored; compared in
     /// constant time.
-    function verify_password(password: Text, hash: PasswordHash) -> PasswordCheck {}
+    function verify_password(password: Password, hash: PasswordHash) -> PasswordCheck {}
 
     /// Whether `signature` is `value`'s Ed25519 signature under `key`,
     /// which is not secret and may be read.

@@ -336,6 +336,23 @@ checker refuses outside actions and tests as `type.clock_context`), in
 `JWT_ALGORITHM` both sides read, and its conditions are `RuleKey`s that
 only an `attempt` settles (`RuleKey::only_when_run`). A new `FormatKey`,
 `FirstPart`, shows an object by the first of its named parts it has.
+Since chunk 5.5r2 the secret values (`Password`, `ApiKey`, `BearerToken`,
+`TotpSecret`, `SecretText`, and `Jwt`) are entries held as text whose
+text form, JSON, format and storage say read and never written
+(`TextForm::Secret`, `Json::Secret`, `FormatKey::Redacted`,
+`Storage::Never`; `security::secret_value` names them). The runtime holds
+one as `Value::Secret` (`jadpo_value::secret`): `Validator::store` makes
+it from text whose chain names a secret, so construction, a request's
+JSON, `json.read` and settings all give one, the plan keeps a literal as
+`Constant::Secret`, and `text.parse` reads one through its text form.
+`Display` and `Debug` write it redacted, so every report and test screen
+does; `==` (`ops::equal`, and `PartialEq`) compares it in constant time;
+the operations made for one read it through `Secret::expose`.
+`jadpo_check::types::secrets` decides where one may go: the declaration
+check, the data model, `json.write`, every standard operation's arguments,
+the operators and construction report `type.secret_exposed`. Credentials
+the runtime makes draw on `Ctx::secret_random_bytes`, never on a
+recording's tape.
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the

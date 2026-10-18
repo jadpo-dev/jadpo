@@ -419,13 +419,13 @@ fn a_setting_that_did_not_read_is_not_also_unknown() {
 
 // --- secrets --------------------------------------------------------------------------
 
-const SECRET: &str = "type ApiKey = Text {\n    min_length: 8\n}\n\nconfig {\n    api_key: ApiKey {\n        secret: true\n    }\n}\n\n";
+const SECRET: &str = "type PartnerKey = Text {\n    min_length: 8\n}\n\nconfig {\n    api_key: PartnerKey {\n        secret: true\n    }\n}\n\n";
 
 #[test]
 fn a_secret_cannot_be_returned() {
     assert_eq!(
         rules(&format!(
-            "{SECRET}function expose_secret() -> ApiKey {{\n    return config.api_key\n}}\n"
+            "{SECRET}function expose_secret() -> PartnerKey {{\n    return config.api_key\n}}\n"
         )),
         ["configuration.secret_flow"]
     );
@@ -434,7 +434,7 @@ fn a_secret_cannot_be_returned() {
 #[test]
 fn a_secret_cannot_be_compared() {
     let found = found(&format!(
-        "{SECRET}type Same = Bool {{}}\n\nfunction guess(key: ApiKey) -> Same {{\n    return Same(key == config.api_key)\n}}\n"
+        "{SECRET}type Same = Bool {{}}\n\nfunction guess(key: PartnerKey) -> Same {{\n    return Same(key == config.api_key)\n}}\n"
     ));
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("configuration.secret_flow"));
@@ -444,13 +444,13 @@ fn a_secret_cannot_be_compared() {
 fn a_secret_cannot_be_stored_or_put_in_a_failure_or_built_into_another_value() {
     for body in [
         // Stored.
-        "entity Vault {\n    id: Uuid\n    note: ApiKey\n}\n\naction keep() -> Unit {\n    var vault: Vault = Vault.create {\n        set: {\n            note: config.api_key\n        }\n    }\n}\n",
+        "entity Vault {\n    id: Uuid\n    note: PartnerKey\n}\n\naction keep() -> Unit {\n    var vault: Vault = Vault.create {\n        set: {\n            note: config.api_key\n        }\n    }\n}\n",
         // In a failure.
-        "type Leaked = Failure {\n    kind: FailureKind.rejected\n    client: {\n        key: ApiKey\n    }\n}\n\naction leak() fails Leaked -> Unit {\n    reject Leaked {\n        key: config.api_key\n    }\n}\n",
+        "type Leaked = Failure {\n    kind: FailureKind.rejected\n    client: {\n        key: PartnerKey\n    }\n}\n\naction leak() fails Leaked -> Unit {\n    reject Leaked {\n        key: config.api_key\n    }\n}\n",
         // Into another value.
-        "type Shown = Output {\n    key: ApiKey\n}\n\nfunction show() -> Shown {\n    return Shown {\n        key: config.api_key\n    }\n}\n",
+        "type Shown = Output {\n    key: PartnerKey\n}\n\nfunction show() -> Shown {\n    return Shown {\n        key: config.api_key\n    }\n}\n",
         // Through a variable, and a call.
-        "function echo(key: ApiKey) -> ApiKey {\n    return key\n}\n\nfunction through() -> ApiKey {\n    var key: ApiKey = config.api_key\n    return echo(key)\n}\n",
+        "function echo(key: PartnerKey) -> PartnerKey {\n    return key\n}\n\nfunction through() -> PartnerKey {\n    var key: PartnerKey = config.api_key\n    return echo(key)\n}\n",
     ] {
         let found = rules(&format!("{SECRET}{body}"));
         assert!(

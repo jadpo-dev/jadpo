@@ -828,6 +828,17 @@ impl Reader<'_> {
             );
             return Some(field);
         }
+        // A secret value is never stored as itself (area 19, chunk 5.5r2).
+        if let Some(secret) = crate::types::secrets::held_secret(self.lookup, &ty, &mut Vec::new())
+        {
+            self.out.push(crate::types::secrets::stored(
+                entity,
+                name,
+                secret,
+                node_span(path, value.syntax()),
+            ));
+            return Some(field);
+        }
         field.allows = columns::allows(
             self.lookup,
             &Ty::Field(entity.to_string(), vec![name.to_string()]),

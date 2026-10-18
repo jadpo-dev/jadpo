@@ -237,6 +237,40 @@ fn every_standard_type_meets_the_contract_in_the_checker() {
                 "{declared}function f(value: {value}, shown: Locale) -> PresentationText {{\n    return text.format(value, locale: shown{options})\n}}\n"
             ))
         };
+        // A secret value is read from text and never written, shown or
+        // ordered (chunk 5.5r2).
+        if entry.text == Some(jadpo_std::standard::TextForm::Secret) {
+            assert_eq!(format(""), ["type.secret_exposed"], "{name}: never shown");
+            assert_eq!(
+                check(&format!(
+                    "{declared}function f(value: {value}) -> Wire {{\n    return Wire(text.from(value))\n}}\n"
+                )),
+                ["type.secret_exposed"],
+                "{name}: never written"
+            );
+            assert_eq!(
+                check(&format!(
+                    "{declared}function f(raw: Wire) fails Unreadable -> {value} {{\n    var read: {value} = attempt text.parse(raw, as: {value}) {{\n        malformed: Unreadable\n    }}\n    return read\n}}\n"
+                )),
+                Vec::<String>::new(),
+                "{name}: read from text"
+            );
+            assert_eq!(
+                check(&format!(
+                    "{declared}function f(a: {value}, b: {value}) -> Answer {{\n    return Answer(a < b)\n}}\n"
+                )),
+                ["type.secret_exposed"],
+                "{name}: never ordered"
+            );
+            assert_eq!(
+                check(&format!(
+                    "{declared}function f(a: {value}, b: {value}) -> Answer {{\n    return Answer(a == b)\n}}\n"
+                )),
+                Vec::<String>::new(),
+                "{name}: compared"
+            );
+            continue;
+        }
         assert_eq!(
             format(&options),
             Vec::<String>::new(),
@@ -508,6 +542,17 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
             .map(str::to_string);
         match entry.json {
             Json::Text => assert_eq!(kind.as_deref(), Some("string"), "{name}"),
+            // Sent only to the server, never back (chunk 5.5r2).
+            Json::Secret => {
+                assert_eq!(kind.as_deref(), Some("string"), "{name}");
+                assert!(
+                    matches!(
+                        schema.get("writeOnly"),
+                        Some(jadpo_graph::json::Value::Bool(true))
+                    ),
+                    "{name}"
+                );
+            }
             Json::Tagged => unreachable!("{name}: only a choice is sent tagged"),
             Json::GeoJson => unreachable!("{name}: a geometry's schema is above"),
             Json::Array => {

@@ -237,6 +237,10 @@ pub enum TextForm {
     /// it: an email address, a URL, an IP address; for a type held as
     /// text, when its pattern matches too ([`StandardType::accepts`]).
     Checked,
+    /// A secret value's text (chunk 5.5r2), read as [`TextForm::Checked`]
+    /// reads text but never written: `text.from` and `text.format` don't
+    /// take one, so `text.parse` is the one way its text is read.
+    Secret,
     /// A UUID in lowercase hexadecimal with hyphens, read in either case.
     Uuid,
     /// RFC 3339 in UTC to the millisecond, `2026-10-25T09:30:00Z`.
@@ -405,6 +409,11 @@ pub enum Json {
     /// language map, `{"en-GB": "Rye loaf", "fr-FR": "Pain de seigle"}`
     /// (chunk 5.5o2).
     Keyed,
+    /// A secret value's text as a JSON string, read as [`Json::Text`] is
+    /// but never written (chunk 5.5r2): the checker keeps one out of every
+    /// `Output` and `json.write`, and a value that reached a writer anyway
+    /// is written redacted, never as its text.
+    Secret,
     /// A GeoJSON geometry object (RFC 7946, chunk 5.5s), `{"type":
     /// "Point", "coordinates": [-0.1276, 51.5072]}`: the one place a
     /// position's `[longitude, latitude]` order exists, read and written by
@@ -419,6 +428,7 @@ impl Json {
         match self {
             Json::Fields(names) | Json::Members(names) => Some(names),
             Json::Text
+            | Json::Secret
             | Json::Number
             | Json::Tagged
             | Json::Array
@@ -435,6 +445,9 @@ impl Json {
 pub enum FormatKey {
     /// Its canonical text: the locale doesn't change how it is shown.
     Canonical,
+    /// Never shown (chunk 5.5r2): a secret value, which `text.format`
+    /// doesn't take, and which a report shows as `<redacted Password>`.
+    Redacted,
     /// CLDR's date and time patterns, in the format `format:` names (area
     /// 10, "Showing dates and times to people"); a `LocalTime` or a
     /// `LocalDateTime` shows only the parts it has.
@@ -805,6 +818,16 @@ pub enum Validator {
     PublicKey,
     /// A JWS in compact form, its parts unpadded Base64url ([`security`]).
     Jwt,
+    /// A password as a person types it ([`security`]).
+    Password,
+    /// An API key ([`security`]).
+    ApiKey,
+    /// An RFC 6750 bearer token ([`security`]).
+    BearerToken,
+    /// A TOTP shared secret as RFC 4648 Base32 ([`security`]).
+    TotpSecret,
+    /// Any secret text ([`security`]).
+    SecretText,
     /// HTML already as the sanitiser keeps it ([`markup::is_safe`]): what
     /// an `Html` literal must be, since its construction from any other
     /// text makes it safe first (chunk 5.5o).
@@ -863,6 +886,11 @@ impl Validator {
             Validator::PasswordHash => security::is_password_hash(text),
             Validator::PublicKey => security::is_public_key(text),
             Validator::Jwt => security::is_jwt(text),
+            Validator::Password => security::is_password(text),
+            Validator::ApiKey => security::is_api_key(text),
+            Validator::BearerToken => security::is_bearer_token(text),
+            Validator::TotpSecret => security::is_totp_secret(text),
+            Validator::SecretText => security::is_secret_text(text),
         }
     }
 }
@@ -906,6 +934,10 @@ pub enum Storage {
     /// until then a field can't store one, `toolchain.not_built_yet`
     /// (chunk 5.5s).
     Geography,
+    /// Never stored as itself (chunk 5.5r2): a secret value, whose field
+    /// in an entity the checker refuses, or reports as not built yet where
+    /// it will be stored encrypted.
+    Never,
 }
 
 /// The examples the harness checks a type with.
@@ -1217,8 +1249,10 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// systems and `RouteOfAdministration` (chunk 5.5m2, in `records` and
 /// `health`), `PasswordHash`, `PasswordCheck` and `PublicKey` (chunk
 /// 5.5q2, in `security`), the 17 geospatial types (chunk 5.5s, in
-/// `geo`), and `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims`
-/// (chunk 5.5r, in `security`).
+/// `geo`), `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims`
+/// (chunk 5.5r, in `security`), and the secret values `Password`,
+/// `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` (chunk 5.5r2,
+/// in `security`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     lists::ALLERGEN_ENTRY,
@@ -1231,6 +1265,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("3.141592654 rad", "3.141592654 rad"),
         ],
     ),
+    security::API_KEY_ENTRY,
     quantity(
         crate::QuantityKind::Area,
         &[
@@ -1244,6 +1279,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     banks::BANK_ACCOUNT_ENTRY,
     records::BARCODE_ENTRY,
     prices::BASIS_POINTS_ENTRY,
+    security::BEARER_TOKEN_ENTRY,
     geo::BEARING_ENTRY,
     identifiers::BIC,
     quantity(
@@ -1972,6 +2008,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     software::PACKAGE_URL,
     media::PAPER_SIZE_ENTRY,
     documents::PASSPORT_NUMBER_TYPE,
+    security::PASSWORD_ENTRY,
     security::PASSWORD_CHECK_ENTRY,
     security::PASSWORD_HASH_ENTRY,
     identifiers::PAYMENT_CARD_NUMBER,
@@ -2136,6 +2173,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     rich_text::RICH_TEXT_MARK_ENTRY,
     rich_text::RICH_TEXT_SPAN_ENTRY,
     health::ROUTE_OF_ADMINISTRATION_ENTRY,
+    security::SECRET_TEXT_ENTRY,
     software::SEMANTIC_VERSION_ENTRY,
     codes::SERIAL_NUMBER,
     records::SHOE_SIZE_ENTRY,
@@ -2184,6 +2222,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     lists::TENURE_ENTRY,
     places::TEXT_DIRECTION_ENTRY,
     media::TIMECODE_ENTRY,
+    security::TOTP_SECRET_ENTRY,
     software::TRACE_ID,
     software::TRACE_PARENT,
     records::TRACKING_NUMBER_ENTRY,
@@ -2741,7 +2780,7 @@ impl StandardType {
     /// none for a type stored in one.
     pub fn columns(&self) -> &'static [(&'static str, &'static str)] {
         match self.storage {
-            Storage::Column(_) | Storage::Geography => &[],
+            Storage::Column(_) | Storage::Geography | Storage::Never => &[],
             Storage::Columns { parts, .. } => parts,
         }
     }
@@ -2758,7 +2797,7 @@ impl StandardType {
     /// Of its named columns, the one a type built on it can fix.
     pub fn fixed_part(&self) -> Option<&'static str> {
         match self.storage {
-            Storage::Column(_) | Storage::Geography => None,
+            Storage::Column(_) | Storage::Geography | Storage::Never => None,
             Storage::Columns { fixed, .. } => fixed,
         }
     }
@@ -2826,6 +2865,7 @@ impl StandardType {
                 return parts.first().map_or("jsonb", |(_, ty)| *ty);
             }
             Storage::Geography => return "geography",
+            Storage::Never => return "never",
         };
         match storage {
             SqlType::Bool => "boolean",
@@ -2872,7 +2912,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 239, "the 239 standard types built so far");
+        assert_eq!(names.len(), 244, "the 244 standard types built so far");
     }
 
     #[test]
@@ -2920,9 +2960,13 @@ mod tests {
             );
             if let Holds::Text { pattern, .. } = entry.holds {
                 assert!(crate::compile_pattern(pattern).is_ok(), "{}", entry.name);
-                // Checked, or made safe as `Html` is (chunk 5.5o).
+                // Checked, made safe as `Html` is (chunk 5.5o), or a
+                // secret value, read and never written (chunk 5.5r2).
                 assert!(
-                    matches!(entry.text, Some(TextForm::Checked | TextForm::Html)),
+                    matches!(
+                        entry.text,
+                        Some(TextForm::Checked | TextForm::Html | TextForm::Secret)
+                    ),
                     "{}",
                     entry.name
                 );
@@ -2932,7 +2976,32 @@ mod tests {
                     "{}",
                     entry.name
                 );
-                assert_eq!(entry.storage, Storage::Column(SqlType::Text));
+                // A secret value is read and never written, shown or
+                // stored, every one of them alike.
+                let secret = security::secret_value(entry.name).is_some();
+                assert_eq!(
+                    entry.text == Some(TextForm::Secret),
+                    secret,
+                    "{}",
+                    entry.name
+                );
+                assert_eq!(entry.json == Json::Secret, secret, "{}", entry.name);
+                assert_eq!(
+                    entry.format.key == FormatKey::Redacted,
+                    secret,
+                    "{}",
+                    entry.name
+                );
+                assert_eq!(
+                    entry.storage,
+                    if secret {
+                        Storage::Never
+                    } else {
+                        Storage::Column(SqlType::Text)
+                    },
+                    "{}",
+                    entry.name
+                );
                 for (text, _) in entry.examples.valid {
                     assert!(entry.accepts(text), "{}: `{text}`", entry.name);
                 }

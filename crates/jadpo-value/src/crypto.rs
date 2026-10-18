@@ -377,6 +377,16 @@ fn text_of(value: &Value) -> Result<&str, Fault> {
     }
 }
 
+/// The text of a secret value an operation is made to take: a `Password`
+/// to hash or check, a `Jwt` to verify (chunk 5.5r2).
+fn secret_of(value: &Value) -> Result<&str, Fault> {
+    match value {
+        Value::Secret(secret) => Ok(secret.expose()),
+        Value::Text(text) => Ok(text),
+        _ => Err(Fault::Shape),
+    }
+}
+
 fn bytes_value(bytes: &[u8]) -> Value {
     Value::Bytes(std::rc::Rc::from(bytes))
 }
@@ -423,10 +433,10 @@ pub fn run(
             Ok(bytes_value(&decrypt(sealed, keys()?, text_of(context)?)?))
         }
         (Op::CryptoHashPassword, [password]) => {
-            Ok(Value::text(&hash_password(text_of(password)?, source)?))
+            Ok(Value::text(&hash_password(secret_of(password)?, source)?))
         }
         (Op::CryptoVerifyPassword, [password, hash]) => {
-            Ok(verify_password(text_of(password)?, text_of(hash)?).value())
+            Ok(verify_password(secret_of(password)?, text_of(hash)?).value())
         }
         (Op::CryptoHmac, [value, _]) => Ok(bytes_value(&hmac(bytes_of(value)?, keys()?)?)),
         (Op::CryptoVerifyHmac, [value, Value::Bytes(mac), _]) => {
@@ -444,7 +454,7 @@ pub fn run(
                 _ => Err(Fault::Shape),
             };
             crate::jwt::verify_jwt(
-                text_of(token)?,
+                secret_of(token)?,
                 keys,
                 option(issuer)?.as_deref(),
                 option(audience)?.as_deref(),

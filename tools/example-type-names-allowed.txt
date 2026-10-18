@@ -22,3 +22,6 @@ Price
 # The standard library stubs' word for a quantity of any kind (area 19,
 # chunk 5.5j), which area 2's and area 4's examples declare as an `Int`
 Quantity
+# A standard type (area 19, chunk 5.5r2), which area 13's frozen v0
+# example of `configuration.fixture_secret_required` declares as `Text`
+ApiKey

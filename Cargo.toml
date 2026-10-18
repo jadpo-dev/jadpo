@@ -157,6 +157,11 @@ chacha20poly1305 = { version = "=0.11.0", default-features = false, features = [
 argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "password-hash", "zeroize"] }
 hmac = { version = "=0.13.0", default-features = false }
 ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["fast", "zeroize"] }
+# Constant-time comparison for the secret values (area 19, chunk 5.5r2;
+# jadpo-value only): dalek's `subtle`, already in the lock through every
+# crate above, whose comparisons pass through an optimisation barrier so
+# the compiler can't turn them back into an early exit.
+subtle = { version = "=2.6.1", default-features = false }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of
