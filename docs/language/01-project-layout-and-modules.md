@@ -138,9 +138,10 @@ function cap_total(total: Pence) -> Pence {
 A decline covers its one rule on its one declaration, and its reason is
 required (`decline.no_reason`). An agent or a person may decline;
 each declinable error's `next:` offers the line. Declinable today:
-[`library.similar_exists`](#library-similar-exists) and area 3's
-[`constant.similar_exists`](03-logic.md#constant-similar-exists); the
-other judgement calls question 11 lists join as their rules are built.
+[`library.similar_exists`](#library-similar-exists), area 3's
+[`constant.similar_exists`](03-logic.md#constant-similar-exists) and area
+21's [`query.nearest_exact`](21-ai.md#query-nearest-exact) (chunk 5.5v1c);
+the other judgement calls question 11 lists join as their rules are built.
 Naming any other rule is [`decline.not_declinable`](#decline-not-declinable),
 and a decline whose rule no longer fires there is
 [`decline.unused`](#decline-unused), so declines don't outlive their

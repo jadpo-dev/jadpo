@@ -3406,10 +3406,11 @@ impl Reader<'_> {
                 )
                 .at(field_span, format!("{} dimensions", grouped(dimensions)))
                 .reason(format!(
-                    "pgvector's HNSW index takes a vector of up to {} dimensions, at half precision, and `{vector}` has {}; with no index, each call measures its distance to every `{}` with a vector and sorts them, which slows as the table grows.",
+                    "pgvector's HNSW index takes a vector of up to {} dimensions, at half precision, and `{vector}` has {}; with no index, each call measures the distance to every `{}` whose `{}` is set and sorts them all, which slows as the table grows.",
                     grouped(MOST_HALF_INDEXED_DIMENSIONS),
                     grouped(dimensions),
-                    entity.name
+                    entity.name,
+                    field.name
                 ))
                 .next(format!(
                     "Give `{vector}` at most {} `dimensions:`, asking the model for fewer with `embedding_dimensions:`",
