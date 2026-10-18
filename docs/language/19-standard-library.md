@@ -309,10 +309,14 @@ that instruction, each the most conservative reading:
 | Developer reports | A value as code makes one (`money.from_minor(1050, Currency.gbp)`), which keeps its currency, unit and places and is never read back | Area 17 |
 | The interpreter and compiled code, native and wasm32 | One runtime crate, so one codec for each shape | compiler-runtime §2 |
 
-> Built in chunk 5.5w: storage. The JSON-held values (`RichText`,
-> `RichTextBlock`, `LocalisedText`) and the other built boundaries are
-> chunk 5.5w2, the single encoders 5.5w3; the boundaries not built yet
-> take these encodings in the chunks that build them.
+> Built in chunk 5.5w: storage. Chunk 5.5w2 held the other built
+> boundaries to the contract (requests and responses, OpenAPI, `json.read`
+> and `json.write`, settings, query strings, `text.parse` and
+> `text.from`), each with a test made from every standard type's entry
+> ("Chosen in chunk 5.5w2"); the JSON-held values' storage (`RichText`,
+> `RichTextBlock`, `LocalisedText`) is 5.5w2b, the single encoders 5.5w3;
+> the boundaries not built yet take these encodings in the chunks that
+> build them.
 
 ### Packages use the standard types
 
@@ -5097,6 +5101,12 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
   builds.
 - **No dynamic JSON value.** No scenario needs a JSON value of no type;
   a payload whose shape isn't known is kept as `Text` and passed on.
+- **A map's key is its canonical text** (chunk 5.5w2): `json.write`
+  writes a key that isn't text as `text.from` writes it, a date as
+  `2026-10-25`, an amount of money as `GBP 10.50`, and `json.read` reads
+  it back as `text.parse` does. A map keyed by a type with no single text
+  form (an object, a choice, a collection, an enum with data) is
+  `type.mismatch` either way.
 
 An order a supplier's system sends as JSON, read as the bakery's type and
 written back (chunk 5.5g). Reading checks every rule of the type, fills
@@ -10756,6 +10766,66 @@ chunks before:
   that is a built-in type held as a standard type (`OidcClaims`' `email`)
   now reads it as that type, which `json.read` refused before.
 
+### Chosen in chunk 5.5w2
+
+What the pages left open, each the most conservative reading:
+
+- **Fault and error text never carries a value** (lead session,
+  2026-10-18): a value a column can't hold, a stored code that isn't one
+  of its enum's, a decimal or a time the PostgreSQL wire can't carry, and
+  PostgreSQL's own message for a value it can't take (its class 22, whose
+  message may quote the value) are named by what the value is and the
+  rule, as a `DecodeProblem` names the field and the rule. The field isn't
+  named there, since a statement's parameter doesn't know it.
+- **One reader per text form.** A built-in type's text is read by one
+  reader (`jadpo_value::standard::builtin_text`), which `text.parse`, a
+  JSON string, a path, a query string, a header, a setting and a map's key
+  all use: an `Instant` ends in `Z`, also as a `ZonedTime`'s instant in
+  JSON and an `InstantRange`'s ends; an `Int` is digits with a `-` when
+  negative; a `Decimal` has places after a point with digits on both
+  sides; a duration's days are digits. Text is composed to NFC first, as
+  before.
+- **No request input carries an offset.** Areas 7 and 10 give every
+  instant on the wire with `Z` (`"2026-01-15T12:00:00Z"`) and decide no
+  offset for request input; an offset is source's spelling of an
+  `Instant` literal only, so a request, a setting and `json.read` refuse
+  one, breaking `format`.
+- **A place that holds text reads the canonical text** of every standard
+  type with one: a map's key is a `Money`, a quantity, a `ZonedTime`, a
+  `Range` or a standard object sent as its fields, written as `text.from`
+  writes it; a whole number with a text form of its own (`HttpStatus`,
+  `BasisPoints`) is read as `text.parse` reads it, so `-0` isn't one.
+- **No object in a URL.** A query string and a path's placeholder hold no
+  object (area 7), and the contract's JSON sends an amount of money, a
+  quantity and a `ZonedTime` as one, so each is
+  `route.query_field_unsupported` or `route.placeholder_type` there, as an
+  object is; no reader could take them before. A standard object with a
+  canonical text stays out of a query string too, as area 7 lists only
+  scalars and enums.
+- **A setting stays area 10's list.** "Settings" above names
+  `text.parse`'s canonical text as their encoding, not more types: a
+  setting holds what area 10 lists, and a `Duration` setting reads `5m`
+  and `PT5M` alike.
+- **A standard named collection crosses a boundary as its entry says:**
+  `type.map_key_boundary` no longer refuses a `LocalisedText`, whose keys
+  are locales' tags (chunk 5.5o2), in an `Input` or an `Output`.
+- **OpenAPI describes `Range<T>`** as an object of `start` and `end`,
+  each its item or `null`, with its rule across them in its description;
+  it was an empty schema.
+- **What clients see change.** A request, a query string, a header, a
+  path, a setting or `json.read` now refuses what it used to accept: an
+  `Instant` with an offset (`2026-10-25T10:30:00+01:00`), also as a
+  `ZonedTime`'s `instant`; an `Int` sent as a string with `+` (`"+5"`); a
+  `Decimal` written `1_000`, `.5` or `--5` (which read as `5`); a duration
+  of days with a sign (`P+1D`); a whole-number standard type written
+  `-0`. A program whose route takes an amount of money, a quantity or a
+  `ZonedTime` in a query string or a path no longer compiles; no request
+  could reach such a route before. `json.write` writes a map's key that
+  isn't text as its canonical text, so a date key is `"2026-10-25"` where
+  it was `"\"2026-10-25\""`, and a map keyed by a type with no single text
+  form no longer compiles. Nothing is deployed, so nothing needs
+  migrating.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10807,7 +10877,7 @@ chunks before:
 | The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
-| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w") | 2026-10-18 |
+| Every boundary through the contract | No standard type loses its currency, unit or precision on the way into or out of a program: every boundary encodes a standard type only through its contract's JSON, storage and text shapes (Richard); the encodings the pages left open, event, job and batch payloads, CSV cells, a personal value's log hash, developer reports and integration fields without `wire:`, decided under "Every boundary through the contract" by the lead session, as was storing every object and choice in named columns ("Chosen in chunk 5.5w"); built for the boundaries that are built, with fault text that never carries a value, one reader per text form and map keys as canonical text ("Chosen in chunk 5.5w2") | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 | A `PasswordHash` never leaves the server | It is stored as its PHC string, but refused in an `Output` (so a response), a request's `Input`, a failure's fields and `json.write` and `json.read`, as `type.password_hash_exposed` or `type.mismatch`; no page needs one read for imports, so `Input` refuses it too (lead session, chunk 5.5q2) | 2026-10-18 |
 | `crypto.public_key` | `crypto.public_key(key: config.<name>)` gives the `PublicKey` of a `PrivateKey` setting, Ed25519's public half, so an app can publish its key and a test can sign and verify; the key is still read only through `key:` (lead session, chunk 5.5q2) | 2026-10-18 |

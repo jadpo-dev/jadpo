@@ -538,6 +538,37 @@ impl Value {
             _ => None,
         }
     }
+
+    /// What kind of value it is, never what it holds: how a fault or an
+    /// error names a value it refuses, since the value may be personal or
+    /// secret and the text may reach a log (area 4, question 4; chunk
+    /// 5.5w2).
+    pub fn described(&self) -> String {
+        let kind = match self {
+            Value::Unit => "`Unit`",
+            Value::None => "`none`",
+            Value::Bool(_) => "a `Bool`",
+            Value::Int(_) => "an `Int`",
+            Value::Decimal(_) => "a `Decimal`",
+            Value::Text(_) => "text",
+            Value::Bytes(_) => "bytes",
+            Value::Uuid(_) => "a `Uuid`",
+            Value::Instant(_) => "an `Instant`",
+            Value::Date(_) => "a `CalendarDate`",
+            Value::Zoned(_) => "a `ZonedTime`",
+            Value::Duration(_) => "a `Duration`",
+            Value::Money(_) => "an amount of money",
+            Value::Quantity(_) => "a quantity",
+            Value::Percentage(_) => "a `Percentage`",
+            Value::List(_) => "a list",
+            Value::Set(_) => "a set",
+            Value::Map(_) => "a map",
+            Value::Record(record) => return format!("a `{}`", record.ty),
+            Value::Variant(variant) => return format!("a `{}`", variant.ty),
+            Value::Secret(_) => "a secret value",
+        };
+        kind.to_string()
+    }
 }
 
 impl fmt::Display for Value {

@@ -1091,7 +1091,7 @@ impl Reader<'_> {
         let type_span = self.span(&written);
         let structure = self.lookup.structure(&ty);
         let named = matches!(ty, Ty::Named(_) | Ty::Field(..));
-        let scalar = matches!(structure, Ty::Prim(_));
+        let scalar = matches!(&structure, Ty::Prim(prim) if !sent_as_object(*prim));
         if !named || !scalar || self.lookup.is_nullable(&ty) {
             let why = if self.lookup.is_nullable(&ty) {
                 "a placeholder is always there, so it is never optional"
@@ -1461,10 +1461,13 @@ impl Reader<'_> {
     }
 
     /// Whether a value of `ty` can be written in a query string: a scalar,
-    /// an enum without data, or a list of them.
+    /// an enum without data, or a list of them. A scalar the contract's
+    /// JSON sends as an object, an amount of money, a quantity or a
+    /// `ZonedTime`, is an object here too (chunk 5.5w2).
     fn query_value(&self, ty: &Ty) -> bool {
         let one = |ty: &Ty| match self.lookup.structure(ty) {
-            Ty::Prim(_) | Ty::Error => true,
+            Ty::Prim(prim) => !sent_as_object(prim),
+            Ty::Error => true,
             Ty::Named(name) => self
                 .lookup
                 .variants(&name)
@@ -2239,4 +2242,14 @@ impl Reader<'_> {
             ty,
         ))
     }
+}
+
+/// Whether the contract's JSON sends a value of `prim` as an object: an
+/// amount of money, a quantity and a `ZonedTime` (area 19), which a URL's
+/// segment or a query string can't hold, as it can't hold any object.
+fn sent_as_object(prim: Prim) -> bool {
+    matches!(
+        prim.representation(),
+        Prim::Money | Prim::ZonedTime | Prim::Quantity(_)
+    )
 }
