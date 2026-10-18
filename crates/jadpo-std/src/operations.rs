@@ -1112,6 +1112,17 @@ pub const OPERATIONS: &[Operation] = &[
         &[],
         "crypto::public_key",
     ),
+    // A certificate from its DER (chunk 5.5r4), on `Certificate`'s reader
+    // (chunk 5.5r5): a key set's `x5c`, a file's bytes. It needs no key
+    // and reads nothing, so it runs through [`crate::Op`]'s plain `run`.
+    crypto(
+        Op::CryptoReadCertificate,
+        "read_certificate",
+        &[param("der", BYTES_VALUE)],
+        Kind::Std(crate::standard::certificates::CERTIFICATE),
+        &[ON_MALFORMED],
+        "certificate::read_certificate",
+    ),
     crypto(
         Op::CryptoSign,
         "sign",
@@ -1148,17 +1159,6 @@ pub const OPERATIONS: &[Operation] = &[
         Kind::Std(crate::standard::security::JWT_CLAIMS),
         ON_JWT,
         "crypto::verify_jwt",
-    ),
-    // A certificate from its DER (chunk 5.5r4), on `Certificate`'s reader
-    // (chunk 5.5r5): a key set's `x5c`, a file's bytes. It needs no key
-    // and reads nothing, so it runs through [`crate::Op`]'s plain `run`.
-    crypto(
-        Op::CryptoReadCertificate,
-        "read_certificate",
-        &[param("der", BYTES_VALUE)],
-        Kind::Std(crate::standard::certificates::CERTIFICATE),
-        &[ON_MALFORMED],
-        "certificate::read_certificate",
     ),
     crypto(
         Op::CryptoVerifyPassword,
