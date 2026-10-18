@@ -44,6 +44,14 @@ fn maximized(mut locale: Locale) -> Locale {
     locale
 }
 
+/// The region a reader in the locale tagged `tag` is in, its likely one
+/// where the tag names none, as an address's reader's is: what a phone
+/// number is shown nationally for (chunk 5.5l2).
+pub fn reader_region(tag: &str) -> Result<Option<String>, Fault> {
+    let reader = maximized(locale_of(tag)?);
+    Ok(reader.id.region.map(|region| region.as_str().to_string()))
+}
+
 /// The script a name is written in, as a locale's script subtag: that of
 /// its first letter with one, the family name looked at first.
 fn name_script(parts: &[&str]) -> Option<icu_locale::subtags::Script> {

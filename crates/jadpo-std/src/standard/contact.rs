@@ -230,7 +230,9 @@ pub const PERSON_NAME: StandardType = StandardType {
 /// A postal address in any country: its street lines, its locality, its
 /// region and its postal code where the country uses them, and the
 /// country. The lines are text as the person wrote them, as the catalogue
-/// sketched them, stored as a `text[]`; the other parts are one line each.
+/// sketched them, stored as a `text[]`; the locality and region are one
+/// line each, and the postal code a `PostalCode` that fits the country
+/// (`part_rules`, chunk 5.5l2).
 /// It has no single text form; its examples are its JSON.
 pub const POSTAL_ADDRESS: StandardType = StandardType {
     name: "PostalAddress",
@@ -238,7 +240,7 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
         ("lines", Part::List(&Part::Of(Builtin::Text))),
         ("locality", Part::Optional(&Part::Line)),
         ("region", Part::Optional(&Part::Line)),
-        ("postal_code", Part::Optional(&Part::Line)),
+        ("postal_code", Part::Optional(&Part::Standard("PostalCode"))),
         ("country", Part::Standard(super::places::COUNTRY)),
     ]),
     text: None,
@@ -275,6 +277,8 @@ pub const POSTAL_ADDRESS: StandardType = StandardType {
             r#"{"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"SW1A 1AA"}"#,
             r#"{"lines":["Buckingham Palace"],"locality":" London","region":null,"postal_code":null,"country":"GB"}"#,
             r#"{"lines":[],"locality":null,"region":null,"postal_code":null,"country":"UK"}"#,
+            r#"{"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"75004","country":"GB"}"#,
+            r#"{"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"sw1a 1aa","country":"GB"}"#,
             r#""Buckingham Palace, London""#,
         ],
     ),

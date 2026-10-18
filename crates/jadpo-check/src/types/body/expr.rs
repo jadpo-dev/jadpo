@@ -1060,6 +1060,7 @@ impl Body<'_> {
                     head_span,
                     &[],
                 );
+                self.part_rules_hold(&name, record);
                 self.object_built(record);
                 Ty::Opaque(name, Vec::new())
             }
@@ -1437,6 +1438,70 @@ impl Body<'_> {
                 .table
                 .representation(item)
                 .is_some_and(|prim| jadpo_std::RANGE_ITEMS.contains(&prim))
+    }
+
+    /// A standard object's rules across its parts (area 19, chunk 5.5l2),
+    /// proved where its literal writes both parts: an address's postal
+    /// code written as text and its country as a variant. One built from
+    /// values waits on cross-field rules (chunk 5.5t).
+    fn part_rules_hold(&mut self, name: &str, record: &ast::RecordExpr) {
+        let Some(jadpo_std::standard::Holds::Object(parts)) =
+            jadpo_std::standard_type(name).map(|entry| entry.holds)
+        else {
+            return;
+        };
+        let members = tree::members(record.member_list());
+        let value_of = |part: &str| {
+            members
+                .iter()
+                .find(|(field, _)| tree::name_text(field).as_deref() == Some(part))
+                .and_then(|(_, member)| member.value())
+        };
+        for rule in jadpo_std::standard::part_rules(name) {
+            let (Some(written), Some(by)) = (value_of(rule.part), value_of(rule.by)) else {
+                continue;
+            };
+            let Const::Str(given) = Const::from_expr(&written) else {
+                continue;
+            };
+            let Some(jadpo_std::Part::Standard(list)) = parts
+                .iter()
+                .find(|(field, _)| *field == rule.by)
+                .map(|(_, part)| part.required().0)
+            else {
+                continue;
+            };
+            let Some((head, rest)) = dotted(&by) else {
+                continue;
+            };
+            let ([variant], true) = (rest.as_slice(), text(&head) == list) else {
+                continue;
+            };
+            let variant = text(variant);
+            let Some(code) = jadpo_std::standard_type(list)
+                .and_then(jadpo_std::StandardType::codes)
+                .and_then(|codes| codes.iter().find(|(listed, _)| *listed == variant))
+                .map(|(_, code)| *code)
+            else {
+                continue;
+            };
+            if (rule.fits)(&given, code) {
+                continue;
+            }
+            let shown = tree::written(written.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_INVALID_LITERAL,
+                    format!("`{shown}` isn't {}", rule.says),
+                )
+                .at(self.span(&written), format!("not a postal code of `{list}.{variant}`"))
+                .reason(format!(
+                    "A `{name}`'s `{}` fits its `{}`: `{code}`'s are in the form its postal service writes them, and a literal is checked while compiling.",
+                    rule.part, rule.by
+                ))
+                .next(format!("Write a postal code of `{list}.{variant}` in its canonical text, or the address's own country")),
+            );
+        }
     }
 
     fn object_built(&mut self, record: &ast::RecordExpr) {

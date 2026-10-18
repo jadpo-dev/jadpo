@@ -655,6 +655,17 @@ the PostgreSQL driver now reads. `jadpo_value::present::contact` writes a
 person's name by CLDR's person-name patterns and an address by
 libaddressinput's formats, and `present::names` the CLDR names of places,
 languages and scripts through ICU4X's display names.
+Since chunk 5.5l2 `jadpo_std::standard::phones` validates, reads and
+formats phone numbers from libphonenumber's metadata (`phones_data`,
+generated once, its patterns compiled on first use), and
+`standard::postal` checks and reads postal codes by each country's
+pattern (`postal_codes_data`). `text.parse` takes `country:` (a `Country`
+value; `country_option` in `types/body/contract.rs` refuses it for other
+types), which `jadpo-value`'s `parse_in` hands to those modules. A rule
+across a standard object's parts (`standard::part_rules`, a postal code
+fitting its address's country) is proved for a literal in
+`types/body/expr.rs` and checked by the JSON codec as an object is read
+(`jadpo_value::standard::broken_part`).
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

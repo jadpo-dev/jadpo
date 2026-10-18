@@ -1089,6 +1089,7 @@ impl Body<'_> {
                     _ => None,
                 });
             self.form_option(table, &args, &slots, entry, target);
+            self.country_option(table, &args, &slots, entry, target);
         }
         // `text.format`'s `unit:` is a unit of its value's kind (area 19).
         if let Some((_, Some(entry))) = &contract

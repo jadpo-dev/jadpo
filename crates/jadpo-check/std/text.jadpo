@@ -12,7 +12,8 @@
 // `as:` in `parse` is a type written out, a standard type or a type built
 // on one or on `Text`, `Int`, `Decimal` or `Bool`, and the result is that
 // type: text that isn't one at all fails `malformed`, and the type's own
-// rules fail by their names, as a construction's do.
+// rules fail by their names, as a construction's do. `country:` means
+// something only for `PhoneNumber` and `PostalCode`.
 //
 // The rest take any value built on `Text` and give plain `Text`, counted,
 // cut and padded in code points. A count or a position is never negative,
@@ -61,8 +62,9 @@ public library text {
 
     /// The value of type `as` that `raw`, its canonical text, holds, or
     /// its code in another code system a closed list has, `form:
-    /// CodeForm.numeric`.
-    function parse(raw: Text, as: Type, form: CodeForm?) -> T {}
+    /// CodeForm.numeric`; a phone number or a postal code as people write
+    /// it in `country`.
+    function parse(raw: Text, as: Type, form: CodeForm?, country: Country?) -> T {}
 
     /// `value` with every `find` replaced by `with`, left to right.
     function replace(value: Text, find: Text, with: Text) -> Text {}

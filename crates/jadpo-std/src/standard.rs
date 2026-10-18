@@ -21,8 +21,12 @@ mod contact;
 mod identifiers;
 pub mod opening_hours;
 pub mod person_names_data;
+pub mod phones;
+mod phones_data;
 pub mod places;
 mod places_data;
+pub mod postal;
+mod postal_codes_data;
 pub mod recurrence;
 mod schedules;
 
@@ -303,6 +307,10 @@ pub enum FormatKey {
     /// any other, one line per line, with the country's CLDR name last when
     /// the reader's locale is another country's.
     PostalAddress,
+    /// libphonenumber's formats for a number's calling code: national,
+    /// `07400 123456`, for a reader in a region with that code, and
+    /// international, `+44 7400 123456`, for any other (chunk 5.5l2).
+    PhoneNumber,
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -377,6 +385,13 @@ pub enum Validator {
     RecurrenceRule,
     /// OpenStreetMap's opening hours with a zone ([`opening_hours`]).
     OpeningHours,
+    /// A phone number libphonenumber's metadata says is valid for its
+    /// region ([`phones`]).
+    PhoneNumber,
+    /// A calling code ITU-T assigned ([`phones`]).
+    CallingCode,
+    /// A UN/LOCODE whose country is a current one ([`places`]).
+    UnLocode,
 }
 
 impl Validator {
@@ -398,6 +413,9 @@ impl Validator {
             }
             Validator::RecurrenceRule => recurrence::Rule::read(text).is_some(),
             Validator::OpeningHours => opening_hours::OpeningHours::read(text).is_some(),
+            Validator::PhoneNumber => phones::is_valid(text),
+            Validator::CallingCode => text.strip_prefix('+').is_some_and(phones::is_assigned),
+            Validator::UnLocode => places::is_un_locode(text),
         }
     }
 }
@@ -730,8 +748,10 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// `Ratio` and `Fraction` (chunk 5.5j2), the 17 payment
 /// and identity numbers held as text (chunk 5.5i, in `identifiers`),
 /// `RecurrenceRule` and `OpeningHours`, held as text (chunk 5.5k2, in
-/// `schedules`), and 15 of people and places (chunk 5.5l, in `places` and
-/// `people`).
+/// `schedules`), 15 of people and places (chunk 5.5l, in `places` and
+/// `contact`), and `PhoneNumber`, `CallingCode`, `PostalCode` and
+/// `UnLocode`, held as text (chunk 5.5l2, in `phones`, `postal` and
+/// `places`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     quantity(
@@ -803,6 +823,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    phones::CALLING_CODE,
     identifiers::CARD_BIN,
     quantity(
         crate::QuantityKind::Concentration,
@@ -1402,7 +1423,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     contact::PERSON_NAME,
     contact::PHONE_EXTENSION,
+    phones::PHONE_NUMBER,
     contact::POSTAL_ADDRESS,
+    postal::POSTAL_CODE,
     quantity(
         crate::QuantityKind::Power,
         &[
@@ -1551,6 +1574,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
     identifiers::UK_SORT_CODE,
     identifiers::UK_UTR,
+    places::UN_LOCODE,
     contact::UPRN,
     checked(
         "Url",
@@ -1860,6 +1884,43 @@ pub fn text_rules(name: &str) -> Option<crate::Rules> {
     })
 }
 
+/// Whether `text.parse` reads standard type `name` as people write it in
+/// a country, given `country:` (chunk 5.5l2).
+pub fn reads_by_country(name: &str) -> bool {
+    matches!(name, "PhoneNumber" | "PostalCode")
+}
+
+/// A rule across two parts of a standard object (chunk 5.5l2): the text
+/// in part `part` fits the code of the closed list in part `by`, as a
+/// postal code fits its address's country. A literal that writes both is
+/// proved while compiling and a value read from JSON is checked as it is
+/// read, breaking `format` at `part`; one built in code from values waits
+/// on cross-field rules (chunk 5.5t).
+#[derive(Clone, Copy, Debug)]
+pub struct PartRule {
+    pub part: &'static str,
+    pub by: &'static str,
+    /// Whether the part's text fits the other part's code.
+    pub fits: fn(&str, &str) -> bool,
+    /// What a refusal says the part must be: "a postal code of the
+    /// address's country".
+    pub says: &'static str,
+}
+
+/// The rules across the parts of standard object type `ty`.
+pub fn part_rules(ty: &str) -> &'static [PartRule] {
+    const POSTAL_ADDRESS: &[PartRule] = &[PartRule {
+        part: "postal_code",
+        by: "country",
+        fits: postal::fits,
+        says: "a postal code of the address's country",
+    }];
+    match ty {
+        "PostalAddress" => POSTAL_ADDRESS,
+        _ => &[],
+    }
+}
+
 impl StandardType {
     /// Whether `text` is this type's canonical text: its pattern matched
     /// whole, for a type held as text, and its named validator.
@@ -2025,7 +2086,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 83, "the 83 standard types built so far");
+        assert_eq!(names.len(), 87, "the 87 standard types built so far");
     }
 
     #[test]

@@ -290,6 +290,55 @@ pub const WRITING_SCRIPT_ENTRY: StandardType = closed(
     ),
 );
 
+/// Whether `code` is a current ISO 3166-1 alpha-2 code: `Country`'s, its
+/// withdrawn codes left out.
+pub fn is_current_country(code: &str) -> bool {
+    COUNTRIES.iter().any(|(variant, listed)| {
+        *listed == code && !COUNTRIES_RETIRED.iter().any(|(name, _)| name == variant)
+    })
+}
+
+/// Whether `text` is a UN/LOCODE whose first two letters are a current
+/// country's code (chunk 5.5l2). The code list itself isn't shipped: its
+/// terms of use are unclear ("Chosen in chunk 5.5l2").
+pub fn is_un_locode(text: &str) -> bool {
+    text.get(..2).is_some_and(is_current_country)
+}
+
+/// A place in trade and transport (UN/LOCODE, UNECE Recommendation 16):
+/// a country's ISO 3166-1 code and three letters or digits 2 to 9, held
+/// with no space, `GBLON`, and printed with one, `GB LON`.
+pub const UN_LOCODE: StandardType = StandardType {
+    name: "UnLocode",
+    holds: Holds::Text {
+        pattern: "[A-Z]{2}[A-Z2-9]{3}",
+        personal: None,
+    },
+    text: Some(TextForm::Checked),
+    json: Json::Text,
+    storage: Storage::Column(SqlType::Text),
+    format: Format {
+        key: FormatKey::Grouped(super::Grouping {
+            sizes: &[2, 3],
+            separator: " ",
+        }),
+        options: NO_OPTIONS,
+    },
+    ordered: false,
+    validator: Some(super::Validator::UnLocode),
+    shape: None,
+    // London, New York and Hamburg, from the UN/LOCODE list.
+    examples: examples(
+        &[
+            ("GBLON", "GB LON"),
+            ("USNYC", "US NYC"),
+            ("DEHAM", "DE HAM"),
+        ],
+        &["GB LON", "gblon", "UKLON", "YUBEG", "GBLO1", "GBLO", ""],
+    ),
+    release: FIRST_RELEASE,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;

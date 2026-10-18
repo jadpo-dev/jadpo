@@ -358,6 +358,7 @@ describe_order
 describe_status
 destination_company_id
 devices
+dialled_as
 disable_user
 disabled_at
 discount
@@ -472,6 +473,7 @@ found_company
 founder
 fragile
 free_delivery_from
+from_abroad
 from_address
 from_count
 from_flag
@@ -728,6 +730,7 @@ missing_success
 misuse_test_boundary
 mix_dough
 mixed_currencies
+mobile
 monday_classes
 morning
 moved_in
@@ -919,6 +922,7 @@ percent_of
 phone_linked
 phone_token_id
 phone_tokens
+phone_unreadable
 photo
 photo_bytes
 photo_key
@@ -941,6 +945,7 @@ pong
 portion_count
 portions
 postcode
+postcode_unreadable
 postcodes
 poster_line
 postpone_all
@@ -1099,6 +1104,7 @@ rival
 room_depth
 room_floor
 rotated
+royal_code
 rush
 rye
 sack_count
@@ -1166,6 +1172,7 @@ ship_to
 shipment
 shipped
 shipping_address
+shipping_code
 shipping_text
 shop_day
 shop_time
@@ -1212,6 +1219,7 @@ square_centimetres
 square_side
 staff
 staff_id
+staff_locale
 staff_member
 staff_membership
 staff_role
@@ -1346,8 +1354,12 @@ trays_to_bake
 turned_down
 twenty_in_threes
 two_open_todos
+typed_in
 typed_name
+typed_phone
+typed_postcode
 typed_shelf
+typed_text
 uk_bands
 uk_rate
 unknown_country
@@ -1358,6 +1370,7 @@ unpacked
 update_profile
 update_statistics
 updated_at
+us_code
 use_count
 user_id
 user_name

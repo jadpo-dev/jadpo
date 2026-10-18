@@ -761,13 +761,18 @@ reference only).
   and addresses by libaddressinput's formats, an object stored in a column
   per part (checked in PostgreSQL); what the pages left open is area 19's
   "Chosen in chunk 5.5l".
-- [ ] **5.5l2 Phone numbers and postal codes** `opus · high` (area 19,
+- [x] **5.5l2 Phone numbers and postal codes** `opus · high` (area 19,
   "Groups with the baseline only", split from 5.5l): `PhoneNumber` with
   libphonenumber's E.164 metadata, `CallingCode` against the assigned
   codes, `PostalCode` per country (and `PostalAddress`'s postal code
   checked by its country), and `UnLocode` against its list. Done when
   each passes the harness with valid and invalid examples per country
-  rule.
+  rule. Built, with libphonenumber v9.0.41's metadata (valid, not only
+  possible), libaddressinput's patterns and `country:` on `text.parse`;
+  `UnLocode` is checked by pattern and country only, since the
+  UN/LOCODE list's terms are unclear and **needs Richard** to say whether
+  it ships. What the pages left open is area 19's "Chosen in chunk
+  5.5l2".
 - [ ] **5.5i2 Payment records and identity documents** `opus · high` (area
   19, "The standard types", split from 5.5i), after 5.5j and 5.5l: the 15
   that are records or choices of other types. `Price`, `UnitPrice`,
