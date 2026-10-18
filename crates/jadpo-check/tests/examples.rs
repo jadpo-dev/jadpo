@@ -442,6 +442,7 @@ const BODY: &[&str] = &[
     "literal negative number",
     "literal decimal",
     "literal duration",
+    "literal quantity",
     "literal text",
     "literal bool",
     "literal none",

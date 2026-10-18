@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-17. This page is the only list of outstanding work: the
+**Updated:** 2026-10-18. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -686,7 +686,7 @@ reference only).
   tax and identity numbers, each a pattern or check digit (mod-97, Luhn,
   mod-11) on the contract. Done when every type passes the contract's
   harness with valid and invalid examples per rule.
-- [ ] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
+- [x] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
   question 17): the 17 physical quantities with `DataSize` and `Bitrate`,
   each with its unit enum; SI storage at each kind's scale in one
   `numeric` column; the wire's `{ "value": ..., "unit": ... }`; suffixed
@@ -696,7 +696,9 @@ reference only).
   runtime and stored in PostgreSQL, `1km == 1000metre`, `2metre + 45cm +
   3inch` gives the right metres and is shown in centimetres in two
   locales, and a bare number or a mixed kind is a compile error with a
-  checked example. Split on 2026-10-18; the rest is 5.5j2.
+  checked example. Split on 2026-10-18; the rest is 5.5j2. Built, with
+  `type.unit_unknown` and quantities compared and ordered in queries;
+  what the pages left open is area 19's "Chosen in chunk 5.5j".
 - [ ] **5.5j2 Percentages, ratios and fractions** `opus · high` (area 19,
   "The standard operator table", questions 16 and 17; split from 5.5j):
   `Percentage`, `Ratio` and `Fraction` on the contract; the `%` literal,

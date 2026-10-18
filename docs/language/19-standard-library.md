@@ -11,6 +11,8 @@ rules:
   - type.standard_clash
   - type.standard_exists
   - type.temporal_format_part_missing
+  - type.unit_required
+  - type.unit_unknown
 ---
 
 # Standard library
