@@ -32,13 +32,15 @@ collection:
 # operation started, which only actions read (area 10). `config.<name>` is a
 # setting of the project's own `config { }`, and `translations.<domain>.<message>`
 # a message or enum a domain's `translations/` folder words, so neither's
-# members are listed here (area 10).
+# members are listed here (area 10). `prompts.render` renders a value of any
+# prompt the project declares (area 21).
 [generated]
 clock: now advance
 config:
 translations:
 sessions:
 oauth:
+prompts: render
 
 # Names too generic for a domain or a library (area 1).
 [generic]

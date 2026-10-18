@@ -32,6 +32,7 @@ mod matching;
 mod numbers;
 mod ops;
 mod outcome;
+mod prompt;
 mod quantities;
 mod ranges;
 mod request;

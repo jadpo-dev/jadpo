@@ -68,6 +68,7 @@ Data
 
 Look things up
   routes        List every route
+  ai            Show what a prompt sends      show
 
 Change safely
   api           Rewrite the API records       update
@@ -131,6 +132,7 @@ Data
 
 Look things up
   routes        List every route
+  ai            Show what a prompt sends      show
 
 Change safely
   api           Rewrite the API records       update
@@ -294,6 +296,7 @@ fn help_json_is_the_whole_command_reference() {
             "migrate",
             "sql",
             "routes",
+            "ai",
             "api",
             "declines",
             "fix",
@@ -306,7 +309,7 @@ fn help_json_is_the_whole_command_reference() {
             "version"
         ]
     );
-    let completions = &data["commands"][13];
+    let completions = &data["commands"][14];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -682,6 +685,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
+            "ai\tShow what a prompt sends",
             "api\tRewrite the API records",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",

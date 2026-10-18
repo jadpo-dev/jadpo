@@ -65,6 +65,7 @@ archived_at
 arrivals
 arrived_at
 article
+article_excerpt
 article_id
 article_meaning
 article_slug
@@ -420,6 +421,7 @@ delivery_view
 delivery_window
 deposit
 describe_order
+describe_photo
 describe_status
 destination_company_id
 devices
@@ -507,6 +509,7 @@ eve
 evening
 event_start
 every_name
+excerpt
 expected_delivery
 export_my_data
 export_products

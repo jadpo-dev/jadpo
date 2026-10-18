@@ -362,6 +362,9 @@ fn fields_base(base: FieldsBase) -> &'static str {
         FieldsBase::Event => "an event, which is emitted, not written",
         FieldsBase::EmailMessage => "an email, which is sent, not written",
         FieldsBase::Message => "a message, translated text that is shown, not written",
+        FieldsBase::Prompt => {
+            "a prompt, which is rendered for a model with `prompts.render`, not written"
+        }
         FieldsBase::Entity => {
             "an entity, whose records reach a client only through an `Output` that picks what it sends"
         }

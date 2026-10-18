@@ -189,6 +189,9 @@ enum Task<'p> {
         count: usize,
         at: SiteId,
     },
+    /// `prompts.render(prompt)` (area 21): the prompt's value on the
+    /// stack.
+    RenderPrompt(SiteId),
     IfCheck {
         arms: &'p [IfArm],
         otherwise: &'p [SiteId],
@@ -633,6 +636,22 @@ impl<'p> Machine<'p> {
         Stop::Fault(ctx.fault(kind, at.0))
     }
 
+    /// A prompt's value as the messages a model is sent, each field it
+    /// writes given as its type's JSON (area 21).
+    fn render_prompt(&self, prompt: &Value, at: SiteId) -> Option<Value> {
+        let Some(Decoded::Prompt { entry, fields }) = self.decoded(at) else {
+            return None;
+        };
+        let plan = self.program.plan();
+        let entry = plan.prompts().entries.get(*entry as usize)?;
+        let codecs = self.program.json_codecs();
+        jadpo_value::prompt::render(entry, prompt, &mut |place, value| {
+            let number = fields.get(place)?;
+            let codec = plan.json().codec_of(*number)?;
+            Some(codecs.write_value(codec, value))
+        })
+    }
+
     fn defect(&self, ctx: &mut Ctx<'_>, what: &str, at: SiteId) -> Stop {
         self.fault(ctx, FaultKind::Defect(what.to_string()), at)
     }
@@ -732,6 +751,16 @@ impl<'p> Machine<'p> {
                 match jadpo_value::present::translate(entry, locale, rest, locales) {
                     Ok(text) => self.values.push(text),
                     Err(fault) => return Err(self.value_fault(ctx, fault, at)),
+                }
+            }
+            Task::RenderPrompt(at) => {
+                let prompt = self.pop();
+                let rendered = self.render_prompt(&prompt, at);
+                match rendered {
+                    Some(messages) => self.values.push(messages),
+                    None => {
+                        return Err(self.defect(ctx, "a prompt the plan can't render", at));
+                    }
                 }
             }
             Task::IfCheck {
@@ -1870,6 +1899,14 @@ impl<'p> Machine<'p> {
                     at: id,
                 });
                 self.tasks.extend(work.into_iter().rev());
+            }
+            // A prompt rendered as the messages a model is sent (area 21).
+            Callee::Prompt(_) => {
+                let [Some(arg)] = args else {
+                    return Err(self.defect(ctx, "a prompt rendered from nothing", id));
+                };
+                self.tasks.push(Task::RenderPrompt(id));
+                self.tasks.push(Task::Expr(*arg));
             }
             // A test's clock moved on (area 13).
             Callee::AdvanceClock => {

@@ -101,7 +101,9 @@ pub fn domain_scope(
     };
     let scoped = match kind {
         ItemKind::Function | ItemKind::Constant => !in_library,
-        ItemKind::Type(Base::Failure | Base::EmailMessage | Base::Event | Base::Message) => false,
+        ItemKind::Type(
+            Base::Failure | Base::EmailMessage | Base::Event | Base::Message | Base::Prompt,
+        ) => false,
         ItemKind::Type(_) => true,
         _ => false,
     };

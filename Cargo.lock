@@ -1412,6 +1412,7 @@ dependencies = [
  "jadpo-std",
  "jadpo-syntax",
  "salsa",
+ "sha2",
 ]
 
 [[package]]
@@ -1569,6 +1570,7 @@ dependencies = [
  "html5ever",
  "idna",
  "regex",
+ "serde_json",
  "spdx",
 ]
 

@@ -56,6 +56,7 @@ pub mod money;
 pub mod ops;
 pub mod order;
 pub mod present;
+pub mod prompt;
 pub mod random;
 pub mod range;
 mod rounding;
