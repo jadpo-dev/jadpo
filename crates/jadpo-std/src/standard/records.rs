@@ -148,10 +148,10 @@ pub const BARCODE_ENTRY: StandardType = StandardType {
         &[
             (r#"{"tag":"ean13","data":"4006381333931"}"#, "4006381333931"),
             (r#"{"tag":"upc_a","data":"036000291452"}"#, "036000291452"),
-            (r#"{"tag":"code128","data":"PARCEL-0042"}"#, "PARCEL-0042"),
+            (r#"{"tag":"code128","data":"CTN-0042"}"#, "CTN-0042"),
             (
-                r#"{"tag":"qr_code","data":"https://example.com/menu"}"#,
-                "https://example.com/menu",
+                r#"{"tag":"qr_code","data":"https://example.com/a1"}"#,
+                "https://example.com/a1",
             ),
         ],
         &[
@@ -163,7 +163,7 @@ pub const BARCODE_ENTRY: StandardType = StandardType {
             r#"{"tag":"code128","data":""}"#,
             // A symbology it doesn't name, no data, data as a number, no
             // tag.
-            r#"{"tag":"code39","data":"PARCEL"}"#,
+            r#"{"tag":"code39","data":"CTN"}"#,
             r#"{"tag":"ean13"}"#,
             r#"{"tag":"ean13","data":4006381333931}"#,
             r#""4006381333931""#,

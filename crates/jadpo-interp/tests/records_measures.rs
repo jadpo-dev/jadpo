@@ -440,7 +440,7 @@ fn records_are_read_by_their_standards() {
         ),
         (
             "barcode",
-            r#"{"tag":"qr_code","data":"https://example.com/menu"}"#,
+            r#"{"tag":"qr_code","data":"https://example.com/a1"}"#,
             r#"{"tag":"ean13","data":"4006381333932"}"#,
         ),
         (

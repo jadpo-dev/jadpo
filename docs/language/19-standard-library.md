@@ -5195,20 +5195,20 @@ function catalogued_book(raw: ScannedText) fails NotABook -> Isbn {
 
 /// The flight a booking names, as the airline writes it.
 function booked_flight(raw: ScannedText) fails NotAFlight -> FlightNumber {
-    var flight: FlightNumber = attempt text.parse(raw, as: FlightNumber) {
+    var ba_flight: FlightNumber = attempt text.parse(raw, as: FlightNumber) {
         malformed: NotAFlight
     }
-    return flight
+    return ba_flight
 }
 
 /// A parcel's size as its label prints it.
-function parcel_size(parcel: Dimensions, packer: Locale) -> PresentationText {
-    return text.format(parcel, locale: packer)
+function parcel_size(shipped_box: Dimensions, packer: Locale) -> PresentationText {
+    return text.format(shipped_box, locale: packer)
 }
 
 /// The same in inches, for a carrier that measures in them.
-function parcel_in_inches(parcel: Dimensions, packer: Locale) -> PresentationText {
-    return text.format(parcel, locale: packer, unit: LengthUnit.inch)
+function parcel_in_inches(shipped_box: Dimensions, packer: Locale) -> PresentationText {
+    return text.format(shipped_box, locale: packer, unit: LengthUnit.inch)
 }
 ```
 
@@ -5223,27 +5223,27 @@ test "an ISBN-10 is read as its 13 digits" {
 }
 
 test "a flight is written one way" {
-    var flight: FlightNumber = attempt booked_flight("BA123")
-    assert flight.airline == IataAirline("BA")
-    assert flight.number == 123
-    assert flight.suffix == none
+    var ba_flight: FlightNumber = attempt booked_flight("BA123")
+    assert ba_flight.airline == IataAirline("BA")
+    assert ba_flight.number == 123
+    assert ba_flight.suffix == none
     assert booked_flight("BA0123") fails NotAFlight
     assert booked_flight("BA 123") fails NotAFlight
 }
 
 test "a parcel is labelled in the carrier's units" {
-    var parcel: Dimensions = Dimensions {
+    var shipped_box: Dimensions = Dimensions {
         length: 12inch
         width: 9inch
         height: 4inch
     }
-    assert parcel_size(parcel, Locale.en_gb) == "30.48 × 22.86 × 10.16 cm"
-    assert parcel_in_inches(parcel, Locale.en_us) == "12 × 9 × 4 in"
-    var tracked: TrackingNumber = TrackingNumber {
+    assert parcel_size(shipped_box, Locale.en_gb) == "30.48 × 22.86 × 10.16 cm"
+    assert parcel_in_inches(shipped_box, Locale.en_us) == "12 × 9 × 4 in"
+    var ups_label: TrackingNumber = TrackingNumber {
         carrier: "UPSN"
         number: "1Z999AA10123456784"
     }
-    assert text.from(tracked) == "UPSN 1Z999AA10123456784"
+    assert text.from(ups_label) == "UPSN 1Z999AA10123456784"
 }
 
 test "the other records are read and shown by their standards" {
@@ -5252,11 +5252,11 @@ test "the other records are read and shown by their standards" {
         size: "10"
     }
     assert text.from(size) == "UK 10"
-    var mark: VehicleRegistration = VehicleRegistration {
+    var munich_plate: VehicleRegistration = VehicleRegistration {
         country: Country.de
         plate: "M-AB 1234"
     }
-    assert text.from(mark) == "DE M-AB 1234"
+    assert text.from(munich_plate) == "DE M-AB 1234"
     var stars: Rating = Rating {
         value: 4.5
         best: 5.0
@@ -5311,33 +5311,37 @@ function monitored_pulse(raw: MonitorText) fails BadPulse -> HeartRate {
 
 /// A glucose level as a UK meter gives it, in millimoles a litre to one
 /// place.
-function metered_glucose(millimoles: MeterReading) fails BadGlucose -> BloodGlucose {
-    var glucose: BloodGlucose = attempt BloodGlucose(
-        units.of(millimoles, ConcentrationUnit.millimole_of_glucose_per_litre)
+function metered_glucose(meter_value: MeterReading) fails BadGlucose -> BloodGlucose {
+    var metered_level: BloodGlucose = attempt BloodGlucose(
+        units.of(meter_value, ConcentrationUnit.millimole_of_glucose_per_litre)
     ) {
         min: BadGlucose
     }
-    return glucose
+    return metered_level
 }
 
 /// A reading as the chart shows it.
-function pressure_shown(pressure: BloodPressure, viewer: Locale) -> PresentationText {
-    return text.format(pressure, locale: viewer)
+function pressure_shown(chart_reading: BloodPressure, viewer: Locale) -> PresentationText {
+    return text.format(chart_reading, locale: viewer)
 }
 
 /// A glucose level in millimoles a litre, as a UK meter reads it.
-function glucose_shown(glucose: BloodGlucose, viewer: Locale) -> PresentationText {
-    return text.format(glucose, locale: viewer)
+function glucose_shown(glucose_level: BloodGlucose, viewer: Locale) -> PresentationText {
+    return text.format(glucose_level, locale: viewer)
 }
 
 /// The same in milligrams a decilitre, as a US laboratory reports it.
-function glucose_for_us_lab(glucose: BloodGlucose, viewer: Locale) -> PresentationText {
-    return text.format(glucose, locale: viewer, unit: ConcentrationUnit.milligram_per_decilitre)
+function glucose_for_us_lab(glucose_level: BloodGlucose, viewer: Locale) -> PresentationText {
+    return text.format(
+        glucose_level,
+        locale: viewer,
+        unit: ConcentrationUnit.milligram_per_decilitre
+    )
 }
 
 /// How to take a medicine, as the label prints it.
-function label_line(instruction: DosageInstruction, viewer: Locale) -> PresentationText {
-    return text.format(instruction, locale: viewer)
+function label_line(leaflet_dose: DosageInstruction, viewer: Locale) -> PresentationText {
+    return text.format(leaflet_dose, locale: viewer)
 }
 ```
 

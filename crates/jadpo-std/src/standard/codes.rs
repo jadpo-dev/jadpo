@@ -709,7 +709,7 @@ pub fn isbn_from_isbn10(text: &str) -> Option<String> {
         .iter()
         .chain(std::iter::once(&check))
         .zip((1..=10).rev())
-        .map(|(digit, weight)| digit * weight)
+        .map(|(digit, factor)| digit * factor)
         .sum();
     if sum % 11 != 0 {
         return None;
