@@ -926,8 +926,8 @@ reference only).
   matches WCAG 2's reference ratios. Built, with CSS Color 4's conversions
   and CSS Color 5's `color-mix()` in Jadpo's own fixed point, `contrast`
   rounded down to 2 places, `media.fit` as `object-fit: scale-down`, and
-  `ContentRatingScheme` (BBFC, MPA, PEGI, ESRB) beside the 15 for the lead
-  session to accept. What the pages left open is area 19's "Chosen in
+  `ContentRatingScheme` (BBFC, MPA, PEGI, ESRB) beside the 15, accepted by
+  the lead session (2026-10-18). What the pages left open is area 19's "Chosen in
   chunk 5.5p".
 - [ ] **5.5q Randomness and cryptography** `opus · high` (area 19,
   "Randomness" and "Hashing and cryptography", questions 9 and 19): the
