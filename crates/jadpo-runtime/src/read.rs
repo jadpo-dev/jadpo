@@ -520,15 +520,25 @@ pub fn field_value(row: &[SqlValue], columns: &[Column], at: u32) -> Result<Valu
     if parts.iter().all(|part| matches!(part, SqlValue::Null(_))) {
         return Ok(Value::None);
     }
-    let values = parts
-        .iter()
-        .map(|part| match part {
+    fn part_value(part: &SqlValue, ty: &str) -> Result<Value, String> {
+        match part {
+            SqlValue::Null(_) => Ok(Value::None),
             SqlValue::Int2(n) => Ok(Value::Int(i64::from(*n))),
             SqlValue::Int4(n) => Ok(Value::Int(i64::from(*n))),
             SqlValue::Int8(n) => Ok(Value::Int(*n)),
             SqlValue::Text(text) => Ok(Value::text(text)),
+            // An address's lines (chunk 5.5l).
+            SqlValue::Array(_, items) => items
+                .iter()
+                .map(|item| part_value(item, ty))
+                .collect::<Result<Vec<Value>, String>>()
+                .map(Value::list),
             other => Err(format!("a `{:?}` column of a `{ty}`", other.ty())),
-        })
+        }
+    }
+    let values = parts
+        .iter()
+        .map(|part| part_value(part, ty))
         .collect::<Result<Vec<Value>, String>>()?;
     jadpo_value::standard::from_parts(entry, &values)
         .map_err(|_| format!("columns that don't make a `{ty}`"))

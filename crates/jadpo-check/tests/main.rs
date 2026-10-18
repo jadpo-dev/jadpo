@@ -39,6 +39,7 @@ mod named_collections;
 mod not_values;
 mod numbers;
 mod one_error;
+mod people_places;
 mod policy;
 mod project;
 mod quantities;

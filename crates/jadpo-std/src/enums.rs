@@ -436,6 +436,20 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// Another code system a closed list is written in (area 19, question
+    /// 22): `text.parse`'s and `text.from`'s `form:`, beside the list's own
+    /// code.
+    CodeForm: "CodeForm" {
+        /// Three letters: ISO 3166-1 alpha-3 for a country (`GBR`), ISO
+        /// 639-2/T for a language (`eng`).
+        Alpha3: "alpha3",
+        /// Digits: ISO 3166-1 numeric for a country (`826`), UN M49 for a
+        /// continent (`150`), ISO 15924's number for a script (`215`).
+        Numeric: "numeric",
+    }
+}
+
 impl HttpMethod {
     /// As a route entry and HTTP write it: `GET`.
     pub fn word(self) -> &'static str {
@@ -464,12 +478,14 @@ impl HttpMethod {
 
 /// Every enum declared here, by name, with its variants in order: the
 /// ones Rust interprets, then `Zone`, `Locale`, `FileType` and `Currency`
-/// from their tables, then each quantity's unit enum from its units.
+/// from their tables, every other standard enum from its data entry (the
+/// closed lists of chunk 5.5l), then each quantity's unit enum from its
+/// units.
 pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
     let names = |list: &'static [(&'static str, &'static str)]| {
         list.iter().map(|(variant, _)| *variant).collect()
     };
-    let mut all = vec![
+    let mut all: Vec<(&'static str, Vec<&'static str>)> = vec![
         (Rounding::NAME, Rounding::NAMES.to_vec()),
         (TextFormat::NAME, TextFormat::NAMES.to_vec()),
         (UuidVersion::NAME, UuidVersion::NAMES.to_vec()),
@@ -514,7 +530,15 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (LOCALE, names(crate::zones::LOCALES)),
         (crate::FILE_TYPE, names(crate::FILE_TYPES)),
         (crate::CURRENCY, names(crate::CURRENCIES)),
+        (CodeForm::NAME, CodeForm::NAMES.to_vec()),
     ];
+    for entry in crate::STANDARD_TYPES {
+        if let Some(codes) = entry.codes()
+            && !all.iter().any(|(name, _)| *name == entry.name)
+        {
+            all.push((entry.name, names(codes)));
+        }
+    }
     // Each quantity's units (area 19, "Physical quantities"): `LengthUnit`.
     all.extend(crate::QuantityKind::ALL.into_iter().map(|kind| {
         (
@@ -565,8 +589,14 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
             .position(|(v, _)| *v == variant),
         crate::FILE_TYPE => crate::FILE_TYPES.iter().position(|(v, _)| *v == variant),
         crate::CURRENCY => crate::CURRENCIES.iter().position(|(v, _)| *v == variant),
+        CodeForm::NAME => position(CodeForm::NAMES),
         other => crate::QuantityKind::of_unit_enum(other)
-            .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant)),
+            .and_then(|kind| kind.units().iter().position(|unit| unit.name == variant))
+            .or_else(|| {
+                crate::standard_type(other)
+                    .and_then(crate::StandardType::codes)
+                    .and_then(|codes| codes.iter().position(|(v, _)| *v == variant))
+            }),
     };
     found.and_then(|at| u32::try_from(at).ok())
 }

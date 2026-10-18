@@ -2254,14 +2254,14 @@ type Name = Text {
     max_length: 80
 }
 
-entity Country {
+entity Territory {
     id: Uuid
     name: Name
 }
 
 entity Publisher {
     id: Uuid
-    country_id: Country.id {
+    territory_id: Territory.id {
         on_delete: OnDelete.restricted
     }
 }
@@ -2280,12 +2280,12 @@ entity Book {
     }
 }
 
-type CountryView = Output {
-    pick: [Country.name]
+type TerritoryView = Output {
+    pick: [Territory.name]
 }
 
 type PublisherView = Output {
-    country: CountryView
+    territory: TerritoryView
 }
 
 type AuthorView = Output {
@@ -2308,7 +2308,7 @@ query books() -> List<BookView> {
                 publisher: {
                     via: Author.publisher_id
                     include: {
-                        country: Publisher.country_id
+                        territory: Publisher.territory_id
                     }
                 }
             }

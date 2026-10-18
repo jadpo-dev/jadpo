@@ -35,6 +35,7 @@ use writeable::{TryWriteable, Writeable};
 
 use crate::{Fault, Value, Zoned, temporal};
 
+pub(crate) mod contact;
 mod message;
 pub mod money;
 pub(crate) mod names;

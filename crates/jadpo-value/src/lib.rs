@@ -39,6 +39,7 @@ pub mod integer;
 pub mod json;
 pub mod list;
 pub mod locale;
+mod mailbox;
 pub mod map;
 mod maths;
 pub mod money;
@@ -324,8 +325,10 @@ pub fn run(
             &standard::MoneyOptions::of(precision, display, sign)?,
             unit,
         ),
-        (Op::TextFrom, [value]) => standard::from(value),
-        (Op::TextParse, [Value::Text(raw), Value::Text(ty)]) => standard::parse(raw, ty),
+        (Op::TextFrom, [value, form]) => standard::from_in(value, form),
+        (Op::TextParse, [Value::Text(raw), Value::Text(ty), form]) => {
+            standard::parse_in(raw, ty, form)
+        }
         (Op::TextFormat | Op::TextFrom | Op::TextParse, _) => Err(Fault::Shape),
         // The encodings (area 19, "Encodings"): decoding fails `malformed`.
         (Op::EncodingToBase64, [Value::Bytes(bytes)]) => {
@@ -758,8 +761,12 @@ mod tests {
                         ],
                     ),
                 ],
-                Op::TextFrom => vec![Value::Instant(0)],
-                Op::TextParse => vec![Value::text("2026-10-25"), Value::text("CalendarDate")],
+                Op::TextFrom => vec![Value::Instant(0), Value::None],
+                Op::TextParse => vec![
+                    Value::text("2026-10-25"),
+                    Value::text("CalendarDate"),
+                    Value::None,
+                ],
                 Op::TemporalFormatRelative => {
                     vec![
                         Value::Instant(0),

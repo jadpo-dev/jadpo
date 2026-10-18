@@ -48,6 +48,27 @@ public type CalendarPeriod = Object {
 /// 19): `424242`.
 public type CardBin = Text {}
 
+/// A continent (area 19), as UN M49 groups the world: written as its own
+/// name, `europe`, and as M49's number with `form: CodeForm.numeric`.
+public type Continent = Enum {
+    africa
+    americas
+    antarctica
+    asia
+    europe
+    oceania
+}
+
+/// A country (area 19, ISO 3166-1), written as its alpha-2 code, `GB`;
+/// `form: CodeForm.alpha3` writes `GBR` and `CodeForm.numeric` `826`. A
+/// code that is a reserved word takes a trailing `_`: `Country.in_` is
+/// India. A withdrawn code, `YU`, is only read.
+public type Country = Enum {}
+
+/// A country's subdivision (area 19, ISO 3166-2), written as its code,
+/// `GB-ENG`, its variant `CountrySubdivision.gb_eng`.
+public type CountrySubdivision = Enum {}
+
 /// A mass in a volume, held in kilograms per cubic metre to 9 places
 /// (area 19), written `5mgL` or `1gL`; a `Mass` over a `Volume`.
 public type Concentration = Concentration {}
@@ -76,6 +97,13 @@ public type Duration = Duration {}
 /// An email address (area 2), checked as one.
 public type Email = Email {}
 
+/// A mailbox (area 19, RFC 5322): an address with the name shown with it,
+/// written `Ada Lovelace <ada@example.com>`. Personal data.
+public type EmailWithName = Object {
+    name: Text?
+    address: Email
+}
+
 /// Energy, held in joules to 3 places (area 19), written `2kWh` or
 /// `250kcal`.
 public type Energy = Energy {}
@@ -92,6 +120,14 @@ public type ExchangeRate = Object {
 
 /// A file's IANA media type (area 16), written `image/png`.
 public type FileType = Enum {}
+
+/// A family name (area 19), one line as the person writes it. Personal
+/// data.
+public type FamilyName = Text {}
+
+/// A given name (area 19), one line as the person writes it. Personal
+/// data.
+public type GivenName = Text {}
 
 /// A frequency, held in hertz to 3 places (area 19), written `50Hz` or
 /// `2.4GHz`.
@@ -132,6 +168,10 @@ public type IsoWeek = Object {
     year: Int
     week: Int
 }
+
+/// A language (area 19, ISO 639-1), written as its code, `en`; `form:
+/// CodeForm.alpha3` writes ISO 639-2's `eng`. `Language.or_` is Odia.
+public type Language = Enum {}
 
 /// A Legal Entity Identifier (area 19, ISO 17442), its mod-97 check
 /// digits passing: `506700GE1G29325QX363`.
@@ -179,6 +219,10 @@ public type Month = Enum {
     december
 }
 
+/// A person's nationality (area 19), named by the country, as ISO 3166-1
+/// codes it: `GB`. Personal data.
+public type Nationality = Enum {}
+
 /// An NHS number (area 19), ten digits with a mod-11 check digit:
 /// `9434765919`, shown to people as `943 476 5919`. Personal data.
 public type NhsNumber = Text {}
@@ -197,6 +241,30 @@ public type PaymentCardNumber = Text {}
 /// The reference a payer sees on a UK bank payment (area 19): up to 18
 /// of Bacs's characters, `INV-2026/0042`.
 public type PaymentReference = Text {}
+
+/// A person's name (area 19): their given name and, where they have one,
+/// their family name. It has no single text form; `text.format` writes it
+/// in the order the reader's locale gives. Personal data.
+public type PersonName = Object {
+    given: GivenName
+    family: FamilyName?
+}
+
+/// An internal extension dialled after a phone number (area 19): up to 20
+/// digits. Personal data.
+public type PhoneExtension = Text {}
+
+/// A postal address in any country (area 19): its street lines, its
+/// locality, region and postal code where its country uses them, and the
+/// country. It has no single text form; `text.format` writes it in its
+/// country's order for the reader. Personal data.
+public type PostalAddress = Object {
+    lines: List<Text>
+    locality: Text?
+    region: Text?
+    postal_code: Text?
+    country: Country
+}
 
 /// Power, held in watts to 3 places (area 19), written `3kW`.
 public type Power = Power {}
@@ -228,6 +296,13 @@ public type Range = Object {
 /// `DTSTART;TZID=Europe/London:20261026T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO`.
 /// `temporal.occurrences` gives the next ones.
 public type RecurrenceRule = Text {}
+
+/// Which way text runs (area 19), written as HTML's `dir` writes it, `ltr`
+/// and `rtl`: what `locale.direction` gives.
+public type TextDirection = Enum {
+    left_to_right
+    right_to_left
+}
 
 /// A sound level, held in decibels to 2 places (area 19), written
 /// `60dB`. It is logarithmic, so it compares but never adds.
@@ -266,6 +341,10 @@ public type UkSortCode = Text {}
 /// A UK Unique Taxpayer Reference (area 19), ten digits. Personal data.
 public type UkUtr = Text {}
 
+/// A Unique Property Reference Number (area 19, GeoPlace): up to 12
+/// digits, held as text so no zero is lost: `100023336956`. Personal data.
+public type Uprn = Text {}
+
 /// An `http://` or `https://` URL with a host (area 2).
 public type Url = Url {}
 
@@ -277,6 +356,10 @@ public type UsEin = Text {}
 /// have issued: `123456789`. Shown to people as its last four only,
 /// `•••-••-6789`. Personal data.
 public type UsSsn = Text {}
+
+/// A login handle (area 19): lower-case letters, digits, `_`, `.` and
+/// `-`, 1 to 64 of them. Personal data.
+public type Username = Text {}
 
 /// An offset from UTC in minutes (area 19), written `+05:30`, from 18
 /// hours behind to 18 hours ahead.
@@ -304,6 +387,10 @@ public type Weekday = Enum {
     saturday
     sunday
 }
+
+/// A writing system (area 19, ISO 15924), written as its code, `Latn`;
+/// `form: CodeForm.numeric` writes its number, `215`.
+public type WritingScript = Enum {}
 
 /// A calendar year (area 19), written `2026`, from 0 to 9999.
 public type Year = Object {

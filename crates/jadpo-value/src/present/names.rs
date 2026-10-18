@@ -1,14 +1,17 @@
 //! The names CLDR gives standard values for people (area 19, "Every
 //! standard type meets one contract"): a duration in its units, a weekday,
-//! a locale and a zone, each in the reader's locale, as `text.format`
-//! writes them for the format keys that read them.
+//! a locale and a zone, a country, a language and a script, each in the
+//! reader's locale, as `text.format` writes them for the format keys that
+//! read them.
 
 use icu_datetime::NoCalendarFormatter;
 use icu_datetime::fieldsets::zone::Location;
 use icu_experimental::dimension::units::categorized_formatter::CategorizedFormatter;
 use icu_experimental::dimension::units::options::{UnitsFormatterOptions, Width};
 use icu_experimental::displaynames::DisplayNamesOptions;
-use icu_experimental::displaynames::multi::LocaleDisplayNamesFormatter;
+use icu_experimental::displaynames::multi::{
+    LanguageDisplayNames, LocaleDisplayNamesFormatter, RegionDisplayNames, ScriptDisplayNames,
+};
 use icu_experimental::measure::category::Duration as Unit;
 use icu_list::ListFormatter;
 use icu_list::options::{ListFormatterOptions, ListLength};
@@ -261,9 +264,61 @@ pub fn zone(iana: &str, tag: &str) -> Result<String, Fault> {
     Ok(formatter.format(&zone).write_to_string().into_owned())
 }
 
+/// A territory's name (`FormatKey::RegionName`, `ContinentName`): "United
+/// Kingdom" for `GB`, "Europe" for UN M49's `150`, in the reader's locale;
+/// `None` where CLDR has none.
+pub fn region(code: &str, tag: &str) -> Result<Option<String>, Fault> {
+    let reader = locale_of(tag)?;
+    let Ok(region) = code.parse::<icu_locale::subtags::Region>() else {
+        return Ok(None);
+    };
+    let names = RegionDisplayNames::try_new((&reader).into(), DisplayNamesOptions::default())
+        .map_err(|_| Fault::Shape)?;
+    Ok(names.of(region).map(str::to_string))
+}
+
+/// A language's name (`FormatKey::LanguageName`): "Japanese" for `ja`, in
+/// the reader's locale; `None` where CLDR has none.
+pub fn language(code: &str, tag: &str) -> Result<Option<String>, Fault> {
+    let reader = locale_of(tag)?;
+    let Ok(language) = code.parse::<icu_locale::subtags::Language>() else {
+        return Ok(None);
+    };
+    let names = LanguageDisplayNames::try_new((&reader).into(), DisplayNamesOptions::default())
+        .map_err(|_| Fault::Shape)?;
+    Ok(names.of(language).map(str::to_string))
+}
+
+/// A script's name (`FormatKey::ScriptName`): "Latin" for `Latn`, in the
+/// reader's locale; `None` where CLDR has none.
+pub fn script(code: &str, tag: &str) -> Result<Option<String>, Fault> {
+    let reader = locale_of(tag)?;
+    let Ok(script) = code.parse::<icu_locale::subtags::Script>() else {
+        return Ok(None);
+    };
+    let names = ScriptDisplayNames::try_new((&reader).into(), DisplayNamesOptions::default())
+        .map_err(|_| Fault::Shape)?;
+    Ok(names.of(script).map(str::to_string))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn places_and_languages_are_named_by_cldr() {
+        assert_eq!(
+            region("GB", "en-GB"),
+            Ok(Some("United Kingdom".to_string()))
+        );
+        assert_eq!(region("GB", "fr-FR"), Ok(Some("Royaume-Uni".to_string())));
+        assert_eq!(region("150", "en-GB"), Ok(Some("Europe".to_string())));
+        assert_eq!(region("YU", "en-GB"), Ok(None));
+        assert_eq!(language("ja", "en-GB"), Ok(Some("Japanese".to_string())));
+        assert_eq!(language("or", "en-GB"), Ok(Some("Odia".to_string())));
+        assert_eq!(script("Latn", "en-GB"), Ok(Some("Latin".to_string())));
+        assert_eq!(script("Latn", "de-DE"), Ok(Some("Lateinisch".to_string())));
+    }
 
     #[test]
     fn the_time_group_s_names_come_from_cldr() {

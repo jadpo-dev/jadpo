@@ -17,9 +17,11 @@ pub const MONEY_FIELDS: [&str; 2] = ["amount", "currency"];
 /// this release), sorted by code: the variant's name and the code. Codes
 /// with no minor unit (`N.A.` in the list: the precious metals, the SDR,
 /// the bond-market units, `XSU`, `XUA`, `XTS` and `XXX`) hold no amount
-/// in minor units and are left out; a code ISO has withdrawn (`HRK`,
-/// `BGN`, `SLL`, `ANG`, `ZWL`, `CUC`) stays readable as a retired variant
-/// once closed lists keep them (chunk 5.5l).
+/// in minor units and are left out. The codes ISO has withdrawn since
+/// 2021 (`ANG`, `BGN`, `CUC`, `HRK`, `SLL`, `ZWL`, all in hundredths) are
+/// among them, retired ([`CURRENCIES_RETIRED`], chunk 5.5l): stored data
+/// and old messages still read, and new code that writes one is
+/// `type.variant_retired`.
 pub const CURRENCIES: &[(&str, &str)] = &[
     ("aed", "AED"),
     ("afn", "AFN"),
@@ -27,6 +29,7 @@ pub const CURRENCIES: &[(&str, &str)] = &[
     // the trailing `_` a code that is a reserved word takes.
     ("all_", "ALL"),
     ("amd", "AMD"),
+    ("ang", "ANG"),
     ("aoa", "AOA"),
     ("ars", "ARS"),
     ("aud", "AUD"),
@@ -35,6 +38,7 @@ pub const CURRENCIES: &[(&str, &str)] = &[
     ("bam", "BAM"),
     ("bbd", "BBD"),
     ("bdt", "BDT"),
+    ("bgn", "BGN"),
     ("bhd", "BHD"),
     ("bif", "BIF"),
     ("bmd", "BMD"),
@@ -58,6 +62,7 @@ pub const CURRENCIES: &[(&str, &str)] = &[
     ("cop", "COP"),
     ("cou", "COU"),
     ("crc", "CRC"),
+    ("cuc", "CUC"),
     ("cup", "CUP"),
     ("cve", "CVE"),
     ("czk", "CZK"),
@@ -81,6 +86,7 @@ pub const CURRENCIES: &[(&str, &str)] = &[
     ("gyd", "GYD"),
     ("hkd", "HKD"),
     ("hnl", "HNL"),
+    ("hrk", "HRK"),
     ("htg", "HTG"),
     ("huf", "HUF"),
     ("idr", "IDR"),
@@ -149,6 +155,7 @@ pub const CURRENCIES: &[(&str, &str)] = &[
     ("sgd", "SGD"),
     ("shp", "SHP"),
     ("sle", "SLE"),
+    ("sll", "SLL"),
     ("sos", "SOS"),
     ("srd", "SRD"),
     ("ssp", "SSP"),
@@ -187,6 +194,18 @@ pub const CURRENCIES: &[(&str, &str)] = &[
     ("zar", "ZAR"),
     ("zmw", "ZMW"),
     ("zwg", "ZWG"),
+    ("zwl", "ZWL"),
+];
+
+/// `Currency`'s retired variants (question 22): ISO 4217's list three
+/// since 2021, which CLDR still names.
+pub const CURRENCIES_RETIRED: &[(&str, &str)] = &[
+    ("ang", ""),
+    ("bgn", ""),
+    ("cuc", ""),
+    ("hrk", ""),
+    ("sll", ""),
+    ("zwl", ""),
 ];
 
 /// The codes whose exponent isn't 2, with theirs: ISO 4217's minor units
@@ -295,7 +314,10 @@ mod tests {
         assert_eq!(variant(gbp), Some("gbp"));
         assert_eq!(exponent(gbp), Some(2));
         assert_eq!(ordinal_of_variant("jpy").and_then(exponent), Some(0));
-        assert_eq!(ordinal_of_code("HRK"), None, "withdrawn in 2023");
+        assert!(
+            ordinal_of_code("HRK").is_some(),
+            "withdrawn in 2023, still read"
+        );
         assert_eq!(ordinal_of_code("XAU"), None, "no minor unit");
     }
 }

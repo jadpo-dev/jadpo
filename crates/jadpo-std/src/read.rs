@@ -78,6 +78,8 @@ impl SqlType {
             "jsonb" => SqlType::Json,
             // A currency's code (area 19).
             "char" => SqlType::Text,
+            // An address's lines (area 19, chunk 5.5l).
+            "text[]" => SqlType::Text.array(),
             _ => return None,
         })
     }

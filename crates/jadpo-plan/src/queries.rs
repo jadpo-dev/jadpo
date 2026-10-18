@@ -545,6 +545,14 @@ impl Planner<'_> {
 
     /// What a field's column becomes.
     pub(crate) fn column(&self, entity: &EntityModel, field: &FieldModel) -> Option<Column> {
+        // A standard object stored in a column per part (area 19, chunk
+        // 5.5l), read from its several columns as `Money` is.
+        if let Some(entry) = field
+            .compound_entry()
+            .filter(|entry| matches!(entry.holds, jadpo_std::standard::Holds::Object(_)))
+        {
+            return Some(Column::Compound(entry.name.to_string()));
+        }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {
             return Some(match prim {

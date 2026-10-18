@@ -16,10 +16,18 @@
 use crate::read::SqlType;
 use crate::{Builtin, LOCALE, ZONE};
 
+pub mod addresses_data;
+mod contact;
 mod identifiers;
 pub mod opening_hours;
+pub mod person_names_data;
+pub mod places;
+mod places_data;
 pub mod recurrence;
 mod schedules;
+
+pub use contact::{LINE_MAX, LINE_PATTERN};
+pub use places::{ClosedList, closed_list, retired, subdivision_name};
 
 /// What a standard type's values are held as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,6 +72,13 @@ pub enum Part {
     /// A value of another standard type, by its name: `LocalDateTime`'s
     /// `time`, a `LocalTime`.
     Standard(&'static str),
+    /// One line of text for people ([`LINE_PATTERN`]): an address's
+    /// lines, the name in a mailbox (chunk 5.5l).
+    Line,
+    /// The part, or `none`: a person's family name.
+    Optional(&'static Part),
+    /// A list of the part: an address's lines.
+    List(&'static Part),
 }
 
 impl Part {
@@ -73,7 +88,38 @@ impl Part {
         match self {
             Part::Of(builtin) => Some(builtin),
             Part::Whole(..) => Some(Builtin::Int),
-            Part::Standard(_) => None,
+            Part::Line => Some(Builtin::Text),
+            Part::Standard(_) | Part::Optional(_) | Part::List(_) => None,
+        }
+    }
+
+    /// The rules a value of the part keeps, where it is a whole number with
+    /// a range or a line of text; none for any other.
+    pub fn rules(self) -> crate::Rules {
+        let whole = |n: i64| crate::Num {
+            mantissa: i128::from(n),
+            scale: 0,
+        };
+        match self {
+            Part::Whole(min, max) => crate::Rules {
+                min: Some(whole(min)),
+                max: Some(whole(max)),
+                ..crate::Rules::default()
+            },
+            Part::Line => crate::Rules {
+                pattern: Some(LINE_PATTERN.to_string()),
+                ..crate::Rules::default()
+            },
+            Part::Optional(inner) | Part::List(inner) => inner.rules(),
+            Part::Of(_) | Part::Standard(_) => crate::Rules::default(),
+        }
+    }
+
+    /// The part itself, for one that may be `none`, with whether it may.
+    pub const fn required(self) -> (Part, bool) {
+        match self {
+            Part::Optional(inner) => (*inner, true),
+            other => (other, false),
         }
     }
 }
@@ -142,6 +188,12 @@ pub enum TextForm {
     /// 2026-10-18T09:00:00Z`: one pound is 1.17 euros (chosen in chunk
     /// 5.5h2); the codes are read ignoring case.
     ExchangeRate,
+    /// A mailbox (RFC 5322, with RFC 6532's UTF-8): the name, a space and
+    /// the address in angle brackets, `Ada Lovelace <ada@example.com>`, the
+    /// name quoted only when it holds a character an atom can't, `"Lovelace,
+    /// Ada" <ada@example.com>`; with no name, the address alone (chosen in
+    /// chunk 5.5l).
+    Mailbox,
     /// A physical quantity (chosen in chunk 5.5j): its number in its
     /// kind's base unit with no trailing zeros, a space, and the base
     /// unit's code, `2.5 kg`, `1000 metre`; read back with any of the
@@ -216,6 +268,27 @@ pub enum FormatKey {
     /// Its last four characters after `mask`, as PCI DSS lets a card
     /// number be shown: `•••• 4242`.
     LastFour { mask: &'static str },
+    /// CLDR's territory names, for a country by its code: "United
+    /// Kingdom"; a withdrawn code by its list's English name.
+    RegionName,
+    /// CLDR's names for UN M49's regions: "Europe".
+    ContinentName,
+    /// CLDR's language names: "Japanese".
+    LanguageName,
+    /// CLDR's script names: "Latin".
+    ScriptName,
+    /// CLDR's English subdivision names, "England", in every locale, since
+    /// CLDR names few in other languages; the code where it has none.
+    SubdivisionName,
+    /// CLDR's person-name patterns (UTS #35, "Person Names"), medium and
+    /// formal, in the order the name's script and the reader's locale give:
+    /// "Ada Lovelace", "Kovács János", "山田太郎".
+    PersonName,
+    /// libaddressinput's format for the address's country, in its own
+    /// script for a reader of one of its languages and in Latin script for
+    /// any other, one line per line, with the country's CLDR name last when
+    /// the reader's locale is another country's.
+    PostalAddress,
 }
 
 /// How a printed form groups its canonical text: groups of `sizes` in
@@ -620,9 +693,10 @@ pub const LOCAL_TIME_FIELDS: [(&str, Part); 3] = [
 /// and 16 built, run through the contract in chunk 5.5a, `Range<T>`
 /// (chunk 5.5c2), `Money` and `Currency` (chunk 5.5h), ten of the time
 /// group (chunk 5.5k), `ExchangeRate` (chunk 5.5h2), the 17 payment
-/// and identity numbers held as text (chunk 5.5i, in `identifiers`), and
+/// and identity numbers held as text (chunk 5.5i, in `identifiers`),
 /// `RecurrenceRule` and `OpeningHours`, held as text (chunk 5.5k2, in
-/// `schedules`).
+/// `schedules`), and 15 of people and places (chunk 5.5l, in `places` and
+/// `people`).
 pub const STANDARD_TYPES: &[StandardType] = &[
     identifiers::ABA_ROUTING_NUMBER,
     quantity(
@@ -703,6 +777,9 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("35 gL", "35 g/L"),
         ],
     ),
+    places::CONTINENT_ENTRY,
+    places::COUNTRY_ENTRY,
+    places::COUNTRY_SUBDIVISION_ENTRY,
     // The active ISO 4217 codes (area 19, "Money and payments", question
     // 22), written as their codes and shown by CLDR's display names.
     StandardType {
@@ -719,9 +796,13 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         validator: None,
         shape: None,
         examples: Examples {
-            valid: &[("GBP", "British Pound"), ("JPY", "Japanese Yen")],
+            valid: &[
+                ("GBP", "British Pound"),
+                ("HRK", "Croatian Kuna"),
+                ("JPY", "Japanese Yen"),
+            ],
             format: None,
-            malformed: &["pound", "XYZ", "HRK", "GB"],
+            malformed: &["pound", "XYZ", "XAU", "GB"],
             of: None,
             settings: "",
         },
@@ -823,6 +904,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    contact::EMAIL_WITH_NAME,
     quantity(
         crate::QuantityKind::Energy,
         &[
@@ -895,6 +977,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    contact::FAMILY_NAME,
     StandardType {
         name: FILE_TYPE,
         holds: Holds::Enum(FILE_TYPES),
@@ -925,6 +1008,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("2400000000 Hz", "2,400,000,000 Hz"),
         ],
     ),
+    contact::GIVEN_NAME,
     identifiers::IBAN,
     quantity(
         crate::QuantityKind::Illuminance,
@@ -1031,6 +1115,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             settings: "",
         },
     ),
+    places::LANGUAGE_ENTRY,
     identifiers::LEI,
     quantity(
         crate::QuantityKind::Length,
@@ -1208,10 +1293,14 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    places::NATIONALITY_ENTRY,
     identifiers::NHS_NUMBER,
     schedules::OPENING_HOURS,
     identifiers::PAYMENT_CARD_NUMBER,
     identifiers::PAYMENT_REFERENCE,
+    contact::PERSON_NAME,
+    contact::PHONE_EXTENSION,
+    contact::POSTAL_ADDRESS,
     quantity(
         crate::QuantityKind::Power,
         &[
@@ -1315,11 +1404,13 @@ pub const STANDARD_TYPES: &[StandardType] = &[
             ("5 kelvin", "5 K"),
         ],
     ),
+    places::TEXT_DIRECTION_ENTRY,
     identifiers::UK_ACCOUNT_NUMBER,
     identifiers::UK_COMPANY_NUMBER,
     identifiers::UK_NATIONAL_INSURANCE_NUMBER,
     identifiers::UK_SORT_CODE,
     identifiers::UK_UTR,
+    contact::UPRN,
     checked(
         "Url",
         Builtin::Url,
@@ -1334,6 +1425,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     ),
     identifiers::US_EIN,
     identifiers::US_SSN,
+    contact::USERNAME,
     // An offset from UTC, as a zone has at a moment; unordered.
     time_object(
         "UtcOffset",
@@ -1413,6 +1505,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         },
         release: FIRST_RELEASE,
     },
+    places::WRITING_SCRIPT_ENTRY,
     // A calendar year on its own, ordered.
     time_object(
         "Year",
@@ -1552,9 +1645,13 @@ pub const OPEN_END: &str = "..";
 
 /// The enums whose columns hold each variant's code rather than its name,
 /// so the database reads as the wire does: `Currency` holds `GBP` (chosen
-/// in chunk 5.5h). Whether every standard enum should is chunk 5.5w's.
+/// in chunk 5.5h), and every closed list holds its code, `Country` `GB`
+/// and `IN` rather than `in_` (chunk 5.5l). Whether every standard enum
+/// should is chunk 5.5w's.
 pub fn stored_by_code(ty: &str) -> Option<&'static [(&'static str, &'static str)]> {
-    (ty == crate::CURRENCY).then_some(crate::CURRENCIES)
+    closed_list(ty)
+        .and(standard_type(ty))
+        .and_then(StandardType::codes)
 }
 
 /// What variant `variant` of enum `ty` is stored as in its column: its
@@ -1645,6 +1742,34 @@ impl StandardType {
         }
     }
 
+    /// The codes of every variant in `form`, in the variants' order, for a
+    /// closed list with data for it.
+    pub fn form_codes(&self, form: crate::CodeForm) -> Option<&'static [&'static str]> {
+        closed_list(self.name)?
+            .forms
+            .iter()
+            .find(|(listed, _)| *listed == form)
+            .map(|(_, codes)| *codes)
+    }
+
+    /// Whether its variant `variant` is retired: its code was withdrawn,
+    /// and it is only read (question 22).
+    pub fn is_retired(&self, variant: &str) -> bool {
+        retired(self.name, variant).is_some()
+    }
+
+    /// The `PersonalData.` category its values are (area 15), for a type
+    /// that is personal data whatever field holds it.
+    pub fn personal(&self) -> Option<&'static str> {
+        match self.holds {
+            Holds::Text { personal, .. } => personal,
+            _ => contact::PERSONAL
+                .iter()
+                .find(|(name, _)| *name == self.name)
+                .map(|(_, category)| *category),
+        }
+    }
+
     /// The format option called `name`, if the type takes it.
     pub fn format_option(&self, name: &str) -> Option<&'static FormatOption> {
         self.format
@@ -1659,6 +1784,15 @@ impl StandardType {
         match self.storage {
             Storage::Column(_) => &[],
             Storage::Columns { parts, .. } => parts,
+        }
+    }
+
+    /// Whether the part its named column `at` holds may be `none`: an
+    /// object's part written `Part::Optional` (chunk 5.5l).
+    pub fn part_may_be_none(&self, at: usize) -> bool {
+        match self.holds {
+            Holds::Object(fields) => fields.get(at).is_some_and(|(_, part)| part.required().1),
+            _ => false,
         }
     }
 
@@ -1749,7 +1883,7 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(names, sorted);
-        assert_eq!(names.len(), 65, "the 65 standard types built so far");
+        assert_eq!(names.len(), 80, "the 80 standard types built so far");
     }
 
     #[test]
@@ -1767,32 +1901,34 @@ mod tests {
                     entry.name
                 );
             }
-            if let Holds::Text { pattern, personal } = entry.holds {
+            // Area 15's categories.
+            let categories = [
+                "identifying",
+                "contact",
+                "financial",
+                "online",
+                "demographic",
+                "government_id",
+                "location",
+                "health",
+                "biometric",
+                "genetic",
+                "beliefs",
+                "ethnicity",
+                "sex_life",
+                "criminal",
+            ];
+            assert!(
+                entry
+                    .personal()
+                    .is_none_or(|category| categories.contains(&category)),
+                "{}",
+                entry.name
+            );
+            if let Holds::Text { pattern, .. } = entry.holds {
                 assert!(crate::compile_pattern(pattern).is_ok(), "{}", entry.name);
                 assert_eq!(entry.text, Some(TextForm::Checked), "{}", entry.name);
                 assert_eq!(entry.storage, Storage::Column(SqlType::Text));
-                // Area 15's categories.
-                let categories = [
-                    "identifying",
-                    "contact",
-                    "financial",
-                    "online",
-                    "demographic",
-                    "government_id",
-                    "location",
-                    "health",
-                    "biometric",
-                    "genetic",
-                    "beliefs",
-                    "ethnicity",
-                    "sex_life",
-                    "criminal",
-                ];
-                assert!(
-                    personal.is_none_or(|category| categories.contains(&category)),
-                    "{}",
-                    entry.name
-                );
                 for (text, _) in entry.examples.valid {
                     assert!(entry.accepts(text), "{}: `{text}`", entry.name);
                 }

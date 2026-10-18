@@ -617,6 +617,28 @@ write `Quantity` and `QuantityUnit` (`Kind::Quantity`,
 column (`Column::Quantity`), sent as `{ "value": "2.5", "unit": "kg" }`,
 and shown by `present::units` over ICU4X's CLDR unit names where it has
 them.
+Since chunk 5.5l a closed list (question 22) is a standard enum with a
+`ClosedList` in `jadpo_std::standard::places`: its authority, its other
+code systems (`CodeForm`, each a list of codes in the variants' order,
+which `text.parse` and `text.from` take as `form:`, checked in
+`types/body/contract.rs`) and its retired variants, which the checker
+refuses where code writes one (`type.variant_retired`) and `Enum.all`
+leaves out. `jadpo_std::enums()` and `variant_ordinal` read every standard
+enum from its entry, so a list is its table alone; the tables are
+generated once into `places_data`, `person_names_data` and
+`addresses_data`, which the example-name ban skips as authority data
+(`// @generated`). `Enum.all` lowers to a list of the variants it lists.
+A standard object's `Part` may be a line of text (`Part::Line`, its
+pattern its rules), `Optional` or a `List`; the checker reads such a part
+as a nullable field or a list, the plan as the field itself (`TypeRef::Field`,
+whose chain is the part's rules), and an object with `Storage::Columns` is
+stored a column per part, through the same `Column::Compound`,
+`WriteSource::Part`, `to_parts` and `from_parts` as `Money`, a part that
+may be `none` a column that may be `NULL` and a list a `text[]`, which
+the PostgreSQL driver now reads. `jadpo_value::present::contact` writes a
+person's name by CLDR's person-name patterns and an address by
+libaddressinput's formats, and `present::names` the CLDR names of places,
+languages and scripts through ICU4X's display names.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from

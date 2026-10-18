@@ -102,6 +102,8 @@ pub(crate) fn column_type(oid: u32) -> Option<SqlType> {
         oid::DATE => SqlType::Date,
         oid::TIME => SqlType::Time,
         oid::JSONB | oid::JSON => SqlType::Json,
+        // An address's lines (area 19, chunk 5.5l).
+        oid::TEXT_ARRAY => SqlType::Text.array(),
         _ => return None,
     })
 }
@@ -219,8 +221,46 @@ pub(crate) fn decode(oid: u32, raw: &[u8]) -> Result<SqlValue, String> {
             ),
             _ => return Err("the server sent jsonb in a format the runtime doesn't read".into()),
         },
+        oid::TEXT_ARRAY => SqlValue::Array(SqlType::Text, text_array_from_wire(raw)?),
         _ => return Err(format!("the runtime doesn't read type OID {oid}")),
     })
+}
+
+/// A one-dimensional `text[]` from its binary format, as
+/// [`array_to_wire`] writes one; an element that is `NULL` is refused, as
+/// the runtime writes none.
+fn text_array_from_wire(raw: &[u8]) -> Result<Vec<SqlValue>, String> {
+    let mut at = 0usize;
+    let next = |at: &mut usize| -> Result<i32, String> {
+        let bytes = raw.get(*at..*at + 4).ok_or_else(|| length("text[]", raw))?;
+        *at += 4;
+        Ok(i32::from_be_bytes(fixed(bytes, "text[]")?))
+    };
+    let dimensions = next(&mut at)?;
+    let _nulls = next(&mut at)?;
+    let _element = next(&mut at)?;
+    let count = match dimensions {
+        0 => 0,
+        1 => {
+            let count = next(&mut at)?;
+            let _lower = next(&mut at)?;
+            usize::try_from(count).map_err(|_| length("text[]", raw))?
+        }
+        _ => return Err("the runtime reads arrays of one dimension".into()),
+    };
+    let mut items = Vec::with_capacity(count);
+    for _ in 0..count {
+        let size = usize::try_from(next(&mut at)?)
+            .map_err(|_| "the runtime holds no NULL in a list".to_string())?;
+        let bytes = raw
+            .get(at..at + size)
+            .ok_or_else(|| length("text[]", raw))?;
+        at += size;
+        items.push(SqlValue::Text(String::from_utf8(bytes.to_vec()).map_err(
+            |_| "the server sent text that isn't UTF-8".to_string(),
+        )?));
+    }
+    Ok(items)
 }
 
 fn fixed<const N: usize>(raw: &[u8], name: &str) -> Result<[u8; N], String> {
@@ -452,6 +492,27 @@ mod tests {
         encode(&SqlValue::Array(SqlType::Uuid, Vec::new()), &mut out).unwrap();
         assert_eq!(out, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 134]);
         assert_eq!(param_oid(array.ty()), oid::INT8_ARRAY);
+    }
+
+    #[test]
+    fn a_text_array_reads_back_as_it_is_written() {
+        let lines = vec![
+            SqlValue::Text("10 Downing Street".into()),
+            SqlValue::Text("Westminster".into()),
+        ];
+        let mut out = Vec::new();
+        encode(&SqlValue::Array(SqlType::Text, lines.clone()), &mut out).unwrap();
+        assert_eq!(
+            decode(oid::TEXT_ARRAY, &out),
+            Ok(SqlValue::Array(SqlType::Text, lines))
+        );
+        let mut empty = Vec::new();
+        encode(&SqlValue::Array(SqlType::Text, Vec::new()), &mut empty).unwrap();
+        assert_eq!(
+            decode(oid::TEXT_ARRAY, &empty),
+            Ok(SqlValue::Array(SqlType::Text, Vec::new()))
+        );
+        assert_eq!(column_type(oid::TEXT_ARRAY), Some(SqlType::Text.array()));
     }
 
     #[test]
