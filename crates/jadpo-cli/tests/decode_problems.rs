@@ -141,7 +141,7 @@ type LineQuantity = Int {
 "#,
     ),
     (
-        "domains/supply/types/sku.jadpo",
+        "domains/supply/types/stock_code.jadpo",
         r#"/// A product code.
 type StockCode = Text {
     max_length: 20

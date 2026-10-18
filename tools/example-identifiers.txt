@@ -24,6 +24,7 @@ add_todo
 admin_orders
 afternoon
 afterwards
+agreed_term
 alice
 alice_with_todos
 all_memos
@@ -280,6 +281,7 @@ consignment
 contact_address
 contact_email
 contact_text
+container_label
 contoso
 copy_name
 cost_bun
@@ -776,6 +778,7 @@ northing
 northing_after
 northwind
 not_a_call
+not_a_product_code
 not_an_address
 not_an_iban
 not_an_nhs_number
@@ -1133,6 +1136,8 @@ scale_address
 scale_recipe
 scaled
 scaled_recipe
+scanned_product
+scanned_text
 scone
 search_from
 search_phrase
@@ -1187,6 +1192,7 @@ ship_parcel
 ship_to
 shipment
 shipped
+shipped_in
 shipping_address
 shipping_code
 shipping_text
@@ -1320,6 +1326,7 @@ tier_count
 tier_name
 tier_scale
 tiers_above
+till_scan
 till_total
 time_lived
 times_lent
@@ -1359,6 +1366,7 @@ total_weight
 touch
 town
 tracking
+trade_term
 tray
 tray_capacity
 tray_count
@@ -1381,6 +1389,7 @@ uk_bands
 uk_rate
 unknown_country
 unknown_failure
+unknown_trade_term
 unlink_phone
 unlinked
 unpacked

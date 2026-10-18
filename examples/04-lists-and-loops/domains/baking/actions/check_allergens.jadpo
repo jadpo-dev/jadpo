@@ -45,10 +45,10 @@ function safe_for(recipe: Recipe, avoid: List<Hazard>) -> SafeToEat {
 /// The badges `recipe` earns; this bakery bakes no meat, so every
 /// recipe is vegetarian.
 function badges(recipe: Recipe) -> Set<Badge> {
-    var animal_free: Bool = not list.contains(
+    var animal_free: Bool = not list.contains(recipe.allergens, Hazard.milk) and not list.contains(
         recipe.allergens,
-        Hazard.milk
-    ) and not list.contains(recipe.allergens, Hazard.egg)
+        Hazard.egg
+    )
     var nut_free: Bool = not list.contains(recipe.allergens, Hazard.nuts)
     if (animal_free and nut_free) {
         return [Badge.vegan, Badge.vegetarian, Badge.nut_free]
