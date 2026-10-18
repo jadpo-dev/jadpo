@@ -10440,9 +10440,12 @@ conservative reading:
   JSON is that text, as every type with a canonical text is sent, not its
   DER in Base64; it is stored as that JSON (`jsonb`) and read back through
   the same reader, so a stored part is never trusted.
-- **Reading DER bytes isn't built.** The DER inside a PEM is read; reading
-  a certificate from bytes (a file's contents, a key set's `x5c`) needs an
-  operation the page doesn't name, so none was added.
+- **Reading DER bytes is chunk 5.5r4's.** The DER inside a PEM is read
+  here; a certificate from bytes (a file's contents, a key set's `x5c`) is
+  read by `crypto.read_certificate(der)`, giving a `Certificate` and
+  failing `malformed`, on this chunk's reader, built with 5.5r4's JWTs
+  from identity providers, whose `x5c` needs it (decided by the lead
+  session, 2026-10-18).
 - **DER and nothing else**, at most 64 KiB: each length definite and in its
   fewest octets, no tag number of 31 or more, each INTEGER in its fewest
   octets, a BOOLEAN all ones or all zeros, a BIT STRING's unused bits
@@ -11028,8 +11031,8 @@ first; each group of types then arrives with its baseline and its extras.
   5.5r5.
 - **5.5r5 Certificates** `opus · high`: `Certificate`, X.509 from PEM or
   DER on an audited crate, its subject, issuer, validity and fingerprint
-  read-only. Built, read from its PEM; reading DER bytes waits for an
-  operation the page names.
+  read-only. Built, read from its PEM; reading DER bytes is 5.5r4's
+  `crypto.read_certificate(der)`.
 - **5.5s Geospatial types' baselines** `opus · high`: the 17
   geospatial types, with construction, text and JSON from the contract;
   their storage and operations come with the geospatial area. Split on

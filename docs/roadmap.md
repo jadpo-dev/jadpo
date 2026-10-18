@@ -1021,8 +1021,11 @@ reference only).
   Auth0's tokens verify; and typed custom claims, `verify_jwt(token,
   keys:, as: MyClaims)` decoding the claims beyond the registered seven
   into an application's `Object` through `json.read(as:)`'s decoding and
-  typed failures, `JwtClaims` still giving the registered ones. HS256
-  still waits for keys held as data. Done when an RS256 and an ES256
+  typed failures, `JwtClaims` still giving the registered ones; and
+  `crypto.read_certificate(der)` giving a `Certificate`, failing
+  `malformed`, on 5.5r5's reader, which a key set's `x5c` needs (decided
+  by the lead session, 2026-10-18). HS256 still waits for keys held as
+  data. Done when an RS256 and an ES256
   token verify against the RFCs' vectors, the attack suite refuses each
   attack under both, and a token's custom claims decode as a declared
   type or fail `mismatch`.
@@ -1053,8 +1056,8 @@ reference only).
   DER, a positive serial of at most 20 octets), its subject and issuer
   in RFC 4514's text, its serial in hexadecimal, its validity as two
   instants, its fingerprint a `Hash` and its DER; sent and stored as the
-  PEM, and an object literal of one refused. Reading DER bytes waits for
-  an operation the page names. What the page left open is area 19's
+  PEM, and an object literal of one refused. Reading DER bytes is 5.5r4's
+  `crypto.read_certificate(der)`. What the page left open is area 19's
   "Chosen in chunk 5.5r5".
 - [x] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
   Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
