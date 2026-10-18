@@ -861,8 +861,8 @@ mod tests {
 
     #[test]
     fn an_hmac_uses_the_signing_key_s_text_and_accepts_the_previous_key() {
-        let key = "whsec_0123456789abcdef0123456789abcdef";
-        let old = "whsec_fedcba9876543210fedcba9876543210";
+        let key = "test-signing-key-0123456789abcdef0123456789abcdef";
+        let old = "test-signing-key-fedcba9876543210fedcba9876543210";
         let keys = KeyRing::from_signing_text(key, None);
         let mac = hmac(b"{\"paid\":true}", &keys).expect("a MAC");
         // What any HMAC-SHA-256 gives with the text's bytes as the key, as
