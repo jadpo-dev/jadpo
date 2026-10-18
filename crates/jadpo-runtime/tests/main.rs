@@ -14,3 +14,4 @@ mod schedules;
 mod sets_maps;
 mod standard_types;
 mod text;
+mod web_network;

@@ -2013,7 +2013,7 @@ pub const OPERATIONS: &[Operation] = &[
     web(
         Op::WebWithQuery,
         "with_query",
-        &[param("url", URL), param("query", Kind::Map)],
+        &[param("url", URL), param("entries", Kind::Map)],
         URL,
         "web::with_query",
     ),

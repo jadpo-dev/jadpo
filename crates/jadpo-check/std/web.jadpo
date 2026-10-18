@@ -15,9 +15,8 @@ public library web {
     /// `UrlPath` is a `RelativeUrl`, so it resolves too.
     function resolve(base: Url, relative: RelativeUrl) -> Url {}
 
-    /// `url` with each entry of `query` added to its query as
-    /// `key=value`, in key order, each percent-encoded as
-    /// `encoding.to_url_component` encodes it, after any query `url` has
-    /// and before its fragment.
-    function with_query(url: Url, query: Map<Text, Text>) -> Url {}
+    /// `url` with each of `entries` added to its query as `key=value`, in
+    /// key order, each percent-encoded as `encoding.to_url_component`
+    /// encodes it, after any query `url` has and before its fragment.
+    function with_query(url: Url, entries: Map<Text, Text>) -> Url {}
 }
