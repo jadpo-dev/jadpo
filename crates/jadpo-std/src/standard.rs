@@ -1010,10 +1010,9 @@ pub enum Storage {
         parts: &'static [(&'static str, &'static str)],
         fixed: &'static [(&'static str, Fixed)],
     },
-    /// A PostGIS `geography` column in WGS84 (area 19, "Geospatial: a
-    /// future area"), which the geospatial area builds (roadmap 5.5u):
-    /// until then a field can't store one, `toolchain.not_built_yet`
-    /// (chunk 5.5s).
+    /// A PostGIS `geography` column in WGS84 (area 20, "Storage"; chunk
+    /// 5.5u4), checked to hold the type's own geometry: one of the six
+    /// geometries, or any of them for a `Geometry`.
     Geography,
     /// A pgvector `vector` column (area 19, "AI: a future area"), which
     /// the AI area builds (roadmap 5.5v): until then a field can't store a
@@ -3140,6 +3139,7 @@ impl StandardType {
             SqlType::Time => "time",
             SqlType::LocalTimestamp => "timestamp",
             SqlType::Vector => "vector",
+            SqlType::Geography => "geography",
             SqlType::Float8 => "double precision",
             SqlType::Json | SqlType::Array(_) | SqlType::Range(_) => "jsonb",
         }

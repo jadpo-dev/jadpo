@@ -18,6 +18,7 @@ mod declines;
 mod decode_problems;
 mod fix;
 mod fmt;
+mod geography;
 mod http;
 mod lifecycle;
 mod locales;

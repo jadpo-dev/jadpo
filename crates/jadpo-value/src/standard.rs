@@ -417,9 +417,14 @@ fn part_values(value: &Value, part: jadpo_std::Part) -> Option<Vec<Value>> {
             }
         }
         (_, Value::Variant(_)) => to_parts(value),
-        // Another standard object: its own columns, or its one column.
+        // Another standard object: its own columns, or its one column: a
+        // geometry's `geography` (a circle's centre, area 20, chunk 5.5u4)
+        // as the geometry itself.
         (_, Value::Record(record)) => match standard_type(&record.ty) {
             Some(other) if !other.columns().is_empty() => to_parts(value),
+            Some(other) if other.storage == jadpo_std::standard::Storage::Geography => {
+                Some(vec![value.clone()])
+            }
             Some(_) => Some(vec![from(value).ok()?]),
             None => None,
         },

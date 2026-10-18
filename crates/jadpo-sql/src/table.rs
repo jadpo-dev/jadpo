@@ -293,6 +293,31 @@ pub fn add_check(table: &str, name: &str, column: &str, values: &[String]) -> St
     )
 }
 
+/// Adds the check constraint `name` that the `geography` column `column`
+/// of `table` holds a geometry in WGS84 whose `GeometryType` is one of
+/// `types` (`POINT`): an untyped column, so a point may have an altitude
+/// or not, value by value, held to its type and system here (area 20,
+/// "Storage"; chunk 5.5u4).
+pub fn add_geography_check(table: &str, name: &str, column: &str, types: &[String]) -> String {
+    let column = ident(column);
+    let kind = match types {
+        [one] => format!("GeometryType({column}) = {}", text_literal(one)),
+        many => format!(
+            "GeometryType({column}) IN ({})",
+            many.iter()
+                .map(|v| text_literal(v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    format!(
+        "ALTER TABLE {} ADD CONSTRAINT {} CHECK (ST_SRID({column}) = {} AND {kind})",
+        ident(table),
+        ident(name),
+        jadpo_std::geography::SRID
+    )
+}
+
 /// Adds the foreign key `name` from `columns` of `table` to `target`'s
 /// `id`, doing `on_delete` (`RESTRICT`, `CASCADE`, `SET NULL`) when the
 /// record it names is deleted.
@@ -323,7 +348,8 @@ pub struct IndexColumn<'a> {
 /// Creates the index `name` on `columns` of `table`, holding only the rows
 /// `predicate` (a condition, without parameters) lets through when given,
 /// by `method` (an access method and its columns' operator class, `hnsw`
-/// with `vector_cosine_ops`, area 21) when given, else a B-tree.
+/// with `vector_cosine_ops`, area 21; `gist` with none, its type's own,
+/// for a geometry, area 20) when given, else a B-tree.
 pub fn create_index(
     table: &str,
     name: &str,
@@ -334,6 +360,7 @@ pub fn create_index(
     let columns = columns
         .iter()
         .map(|column| match method {
+            Some((_, "")) => ident(column.name),
             Some((_, class)) => format!("{} {class}", ident(column.name)),
             None if column.collate => format!("{} COLLATE \"C\"", ident(column.name)),
             None => ident(column.name),

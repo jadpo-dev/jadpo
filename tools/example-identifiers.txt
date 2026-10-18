@@ -1138,6 +1138,7 @@ pastry
 patch_area
 patch_from
 patch_layer
+patch_name
 patch_properties
 patch_release
 patch_todo
@@ -1573,6 +1574,7 @@ stock
 stock_badge
 stock_badges
 stock_code
+stored_bakery
 stored_card
 stored_hash
 stored_password

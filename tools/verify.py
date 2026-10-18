@@ -171,6 +171,11 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # extension refused (area 21, chunk 5.5v1). The server needs
         # pgvector: CI's image has it (tools/postgres/Dockerfile).
         ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
+        # Geometries in PostGIS: every geometry stored and read back
+        # unchanged, each column's check, and a store without PostGIS, or a
+        # role that can't create it, refused (area 20, chunk 5.5u4). The
+        # server needs PostGIS: CI's image has it (tools/postgres/Dockerfile).
+        ('live PostgreSQL: geography', [('jadpo-cli', 'geography')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [

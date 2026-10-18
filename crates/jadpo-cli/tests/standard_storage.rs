@@ -9,7 +9,9 @@
 //! with a comment naming its unit, a fixed currency and a fixed rate held
 //! by check constraints, a standard enum stored by its code. The JSON-held
 //! values (`RichText`, `RichTextBlock`, `LocalisedText`) are stored as
-//! their contract's JSON in one `jsonb` column (chunk 5.5w2b).
+//! their contract's JSON in one `jsonb` column (chunk 5.5w2b). Each
+//! geometry is stored in a PostGIS `geography` column (chunk 5.5u4), so
+//! the server needs PostGIS.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips the
@@ -89,10 +91,12 @@ struct Case {
 
 /// Whether the entry's type is stored in named columns or natively, as
 /// this chunk stores it: every standard object and choice but a choice of
-/// lists, a `ZonedTime`, and the ranges.
+/// lists, a `ZonedTime`, and the ranges; and each geometry, in its
+/// PostGIS `geography` (area 20, chunk 5.5u4).
 fn stored_in_columns(entry: &StandardType) -> bool {
-    matches!(entry.storage, Storage::Columns { .. })
-        && !matches!(entry.holds, Holds::Builtin(jadpo_std::Builtin::Money))
+    (matches!(entry.storage, Storage::Columns { .. })
+        && !matches!(entry.holds, Holds::Builtin(jadpo_std::Builtin::Money)))
+        || entry.storage == Storage::Geography
 }
 
 /// Whether the entry's type is stored as its contract's JSON in one
@@ -112,6 +116,33 @@ fn reading(entry: &StandardType, ty: &str) -> String {
             "attempt json.read(raw, as: {ty}) {{\n            malformed: BadExample\n            mismatch: BadExample\n        }}"
         ),
     }
+}
+
+/// Whether a GeoJSON geometry's positions mix with and without an
+/// altitude, which PostGIS's `geography` can't hold, so storing one is a
+/// fault (area 20, "Chosen in chunk 5.5u4").
+fn mixes_altitudes(text: &str) -> bool {
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+        return false;
+    };
+    fn lengths(json: &serde_json::Value, out: &mut Vec<usize>) {
+        if let Some(items) = json.as_array() {
+            if items.iter().all(serde_json::Value::is_number) {
+                out.push(items.len());
+            } else {
+                for item in items {
+                    lengths(item, out);
+                }
+            }
+        } else if let Some(members) = json.as_object() {
+            for item in members.values() {
+                lengths(item, out);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    lengths(&json, &mut found);
+    found.contains(&2) && found.contains(&3)
 }
 
 fn cases() -> Vec<Case> {
@@ -134,6 +165,7 @@ fn cases() -> Vec<Case> {
                 .valid
                 .iter()
                 .map(|(text, _)| (*text).to_string())
+                .filter(|text| !mixes_altitudes(text))
                 .collect(),
         });
     }

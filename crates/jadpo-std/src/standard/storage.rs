@@ -138,6 +138,27 @@ pub fn choice_fields(
     out
 }
 
+/// The geometry type an entry's named column `at` holds in a `geography`,
+/// where it holds one: a `Circle`'s centre is a `Point` (area 20, chunk
+/// 5.5u4).
+pub fn geometry_at(entry: &StandardType, at: usize) -> Option<&'static str> {
+    let Holds::Object(fields) = entry.holds else {
+        return None;
+    };
+    let mut start = 0;
+    for (_, part) in fields {
+        let (inner, _) = part.required();
+        if start == at
+            && let Part::Standard(name) = inner
+            && standard_type(name)?.storage == super::Storage::Geography
+        {
+            return Some(name);
+        }
+        start += width(*part);
+    }
+    None
+}
+
 /// How many columns `part` takes.
 pub fn width(part: Part) -> usize {
     part_columns(part).map_or(1, |columns| columns.len())
@@ -277,6 +298,9 @@ pub enum Stored<'a> {
     List(Vec<Stored<'a>>),
     /// A set's items.
     Set(Vec<Stored<'a>>),
+    /// A geometry, as PostGIS's `geography` holds it (area 20, chunk
+    /// 5.5u4).
+    Shape(crate::geography::Shape),
 }
 
 impl Stored<'_> {
@@ -299,6 +323,7 @@ impl Stored<'_> {
             Stored::Variant { ty, .. } => return format!("a `{ty}`"),
             Stored::List(_) => "a list",
             Stored::Set(_) => "a set",
+            Stored::Shape(_) => "a geometry",
         };
         kind.to_string()
     }
@@ -409,6 +434,18 @@ pub fn bind(value: &Stored<'_>, ty: crate::SqlType) -> Result<crate::SqlValue, S
                 })
                 .collect::<Result<Vec<u32>, _>>()?,
         ),
+        // A geometry, all its positions with an altitude or none of them,
+        // since a `geography` holds one or the other (area 20, chunk
+        // 5.5u4).
+        (Stored::Shape(shape), SqlType::Geography) => {
+            if shape.has_altitude().is_none() {
+                return Err(
+                    "a geometry whose points mix with and without an altitude, which PostGIS can't hold"
+                        .into(),
+                );
+            }
+            SqlValue::Geography(shape.clone())
+        }
         (Stored::List(items) | Stored::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items

@@ -365,7 +365,10 @@ entity Todo {
 ```
 
 Built in chunk 3.1: an index is a list of fields; a `kind:` option is not
-built yet. Since chunk 3.2 the queries' indexes are derived: for each
+built yet. Since chunk 5.5u4 an entry may be a block of `fields:` and
+`kind:`, and `kind: IndexKind.geographic` makes a GiST index on one
+geometry field ([area 20](20-geospatial.md), "Indexes"); the other kinds
+come with their areas. Since chunk 3.2 the queries' indexes are derived: for each
 query, and each list it includes, the fields it always tests with `==` or
 `in`, then its order's fields, unless an index or unique key the table
 already has serves them; a reference's own index goes once a query's index
@@ -593,6 +596,11 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 > stay structured `jsonb`, holding their contract's JSON, which the route
 > codec writes and reads back (chunk 5.5w2b); a query doesn't compare
 > one yet.
+>
+> Amended 2026-10-18 by area 20 (chunk 5.5u4, "Storage"): a geometry
+> (`Point` and the other five, or `Geometry`) is one PostGIS `geography`
+> column, untyped and held to its geometry type and to WGS84 by a check
+> constraint; the first migration with one creates the extension.
 
 ## Migrations
 

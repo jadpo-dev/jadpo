@@ -1278,6 +1278,16 @@ fn run<T>(
     Ok(runtime.block_on(work(&database)))
 }
 
+/// What an extension a migration creates is for, as an error about it
+/// says first.
+fn extension_purpose(extension: &str) -> String {
+    match extension {
+        "vector" => "`vector` is pgvector, which stores and searches the project's vectors; there is no fallback, since a search held anywhere else would behave differently from the one that was tested.".to_string(),
+        "postgis" => "`postgis` is PostGIS, which keeps the project's geometries in `geography` columns; there is no fallback, since a geometry kept any other way would be measured and compared differently.".to_string(),
+        other => format!("`{other}` is a PostgreSQL extension the project's columns need."),
+    }
+}
+
 pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) -> Diagnostic {
     use jadpo_runtime::{MigrateError, StoreError};
     match error {
@@ -1299,22 +1309,20 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
         )
         .reason("Migrations apply in the order of their names; one added before a migration that already ran would run after it, on a schema it wasn't written for.")
         .next_for(format!("Make `{missing}`'s change in a new migration after `{name}`"), Decider::Human),
-        // pgvector's `vector` first (area 21, "Without pgvector"); PostGIS
-        // later (area 20).
+        // pgvector's `vector` (area 21, "Without pgvector") and PostGIS's
+        // `postgis` (area 20, "A store with no PostGIS").
         MigrateError::ExtensionMissing { extension } => Diagnostic::new(
             &rule::MIGRATION_EXTENSION_MISSING,
             format!("`{store}` has no `{extension}` extension"),
         )
         .reason(format!(
             "{} The project's migrations create it, and its database server neither has it nor offers it, so nothing was applied.",
-            match extension.as_str() {
-                "vector" => "`vector` is pgvector, which stores and searches the project's vectors; there is no fallback, since a search held anywhere else would behave differently from the one that was tested.".to_string(),
-                other => format!("`{other}` is a PostgreSQL extension the project's columns need."),
-            }
+            extension_purpose(&extension)
         ))
         .next_for(
             match extension.as_str() {
                 "vector" => "Install pgvector on the database server, or use a server that has it (the major hosted services do), then run the command again".to_string(),
+                "postgis" => "Install PostGIS on the database server, or use a server that has it (the major hosted services do), then run the command again".to_string(),
                 other => format!("Install `{other}` on the database server, or use a server that has it, then run the command again"),
             },
             Decider::Human,
@@ -1346,6 +1354,25 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
         ))
         .next_for(
             "Fix what stopped it, then run `jadpo migrate apply` again",
+            Decider::Human,
+        ),
+        // The server offers it, and the role can't create it (area 20,
+        // chunk 5.5u4).
+        MigrateError::ExtensionNotCreatable { extension } => Diagnostic::new(
+            &rule::MIGRATION_EXTENSION_MISSING,
+            format!("`{store}` has no `{extension}` extension, and its role can't create it"),
+        )
+        .reason(format!(
+            "{} The project's migrations create it, and its database server offers it, but the role applying migrations isn't allowed to create it, so nothing was applied.{}",
+            extension_purpose(&extension),
+            if extension == "postgis" {
+                " PostGIS isn't a trusted extension: a superuser, or the provider's own admin role, creates it."
+            } else {
+                ""
+            }
+        ))
+        .next_for(
+            format!("Have a role allowed to create it run `CREATE EXTENSION {extension}` once in this database, then run the command again"),
             Decider::Human,
         ),
         MigrateError::Stopped { name } => Diagnostic::new(

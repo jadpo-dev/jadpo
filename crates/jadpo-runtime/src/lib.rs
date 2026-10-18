@@ -87,6 +87,7 @@ pub use host::{
     SqlValue, StoreError, Transaction,
 };
 pub use jadpo_std::Isolation;
+pub use jadpo_std::geography;
 pub use limits::MAX_DEPTH;
 pub use migrate::{
     Backfills, MIGRATIONS_TABLE, MigrateError, Migration, Progress, STEPS_TABLE, Standing,

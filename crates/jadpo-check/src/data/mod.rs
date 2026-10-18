@@ -28,7 +28,7 @@ use jadpo_db::{Db, File, ItemKind, Project, item_tree, symbols};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::Kind;
 use jadpo_graph::schema::{self as physical, MAX_NAME, Schema};
-use jadpo_std::{Driver, Generated, OnDelete};
+use jadpo_std::{Driver, Generated, IndexKind, OnDelete};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr, MemberItem};
 
 use crate::case::to_snake;
@@ -234,6 +234,9 @@ pub struct FieldModel {
     pub builtin: Option<jadpo_std::Builtin>,
     /// The places its type's values keep, for a decimal.
     pub scale: Option<u32>,
+    /// The geometry its `geography` column holds (area 20, chunk 5.5u4):
+    /// one of the six geometries, or `Geometry` for any of them.
+    pub geometry: Option<&'static str>,
 }
 
 impl FieldModel {
@@ -290,6 +293,19 @@ impl FieldModel {
     }
 }
 
+/// The geometry a field of type `ty` holds in its one `geography` column
+/// (area 20, chunk 5.5u4): one of the six geometries, or `Geometry`; none
+/// for any other type, a `Circle`'s centre included, which is one of its
+/// named columns.
+fn geometry_of(lookup: &dyn TypeView, ty: &Ty) -> Option<&'static str> {
+    match lookup.structure(ty) {
+        Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name)
+            .filter(|entry| entry.storage == jadpo_std::standard::Storage::Geography)
+            .map(|entry| entry.name),
+        _ => None,
+    }
+}
+
 /// Whether a field keeps a vector: a vector type's column, or an
 /// `Embedding`'s vector column (area 21, chunk 5.5v1).
 pub fn holds_vector(field: &FieldModel) -> bool {
@@ -313,6 +329,9 @@ pub struct ListRule {
     pub name: String,
     /// The fields it names that exist, in order.
     pub fields: Vec<String>,
+    /// An index's `kind:`, where it has one: `IndexKind.geographic`, a
+    /// GiST index on a geometry (area 20, "Indexes"; chunk 5.5u4).
+    pub kind: Option<IndexKind>,
 }
 
 /// Where an entity's parts are written: what a problem points at.
@@ -866,6 +885,7 @@ impl Reader<'_> {
             json: None,
             builtin: None,
             scale: None,
+            geometry: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -980,24 +1000,10 @@ impl Reader<'_> {
             return Some(field);
         }
         match column_type(self.lookup, &ty) {
-            // A geometry is stored in a PostGIS `geography` column, which
-            // the geospatial area builds (area 19, chunk 5.5s).
-            Ok(sql) if sql == "geography" => {
-                let shown = ty.strip_nullable().to_string();
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("Storing a `{shown}` field isn't built yet"),
-                    )
-                    .at(node_span(path, value.syntax()), "a geometry, stored as `geography`")
-                    .reason(format!(
-                        "Area 19 stores a geometry in a PostGIS `geography` column in WGS84, with its query conditions and indexes, and that storage comes with the geospatial area (roadmap 5.5u); until then this compiler can't read or write `{entity}.{name}`."
-                    ))
-                    .next(format!(
-                        "Keep what `{entity}.{name}` holds out of storage for now, or store its latitude and longitude as `Latitude` and `Longitude` fields of their own"
-                    ))
-                    .help_at("19-standard-library.html#geospatial-a-future-area"),
-                );
+            // A geometry is stored in a PostGIS `geography` column, checked
+            // to hold its type's geometry in WGS84 (area 20, chunk 5.5u4).
+            Ok(sql) if sql == "geography" && geometry_of(self.lookup, &ty).is_some() => {
+                field.geometry = geometry_of(self.lookup, &ty);
                 field.sql_type = Some(sql);
             }
             // A vector is stored in a pgvector `vector` column, fixed to its
@@ -1271,22 +1277,78 @@ impl Reader<'_> {
                 continue;
             };
             let span = node_span(path, name.syntax());
-            let options = rule_member.block().is_some()
-                || matches!(rule_member.value(), Some(Expr::RecordExpr(_)));
-            let entries = match rule_member.value() {
-                Some(Expr::ListExpr(entries)) => entries,
-                _ if options && !unique => {
-                    self.out.push(
-                        Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            "An index with options isn't built yet",
-                        )
-                        .at(span, "options")
-                        .reason("Special index kinds take a `kind:` option where the store supports it (area 5), and this compiler builds plain indexes only: a list of fields.")
-                        .next(format!("Write `{rule_name}: [field, ...]`")),
-                    );
+            // An index with options: `{ fields: [spot], kind:
+            // IndexKind.geographic }` (area 5, "Indexes"; area 20; chunk
+            // 5.5u4).
+            let mut kind: Option<(IndexKind, Span)> = None;
+            let mut listed = None;
+            if !unique && let Some(options) = rule_member.block() {
+                let mut broken = false;
+                for (key, option) in tree::members(Some(options)) {
+                    let Some(word) = tree::name_text(&key) else {
+                        continue;
+                    };
+                    let key_span = node_span(path, key.syntax());
+                    let value_span = option
+                        .value()
+                        .map_or(key_span.clone(), |v| node_span(path, v.syntax()));
+                    match word.as_str() {
+                        "fields" => listed = Some(option.value()),
+                        "kind" => {
+                            match option
+                                .value()
+                                .as_ref()
+                                .map(path_names)
+                                .unwrap_or_default()
+                                .as_slice()
+                            {
+                                [host, variant]
+                                    if host == IndexKind::NAME
+                                        && IndexKind::from_name(variant).is_some() =>
+                                {
+                                    kind = IndexKind::from_name(variant).map(|k| (k, value_span));
+                                }
+                                _ => {
+                                    broken = true;
+                                    self.out.push(
+                                        Diagnostic::new(
+                                            &rule::TYPE_SETTING_VALUE,
+                                            "`kind` takes `IndexKind.geographic`",
+                                        )
+                                        .at(value_span, "not an index kind")
+                                        .reason("An index's `kind:` names a special kind of index the store builds: `IndexKind.geographic`, a GiST index on a geometry field (area 20, \"Indexes\"). An index without `kind:` is an ordinary one.")
+                                        .next("Write `kind: IndexKind.geographic`, or leave `kind:` out"),
+                                    );
+                                }
+                            }
+                        }
+                        other => {
+                            broken = true;
+                            self.out.push(
+                                Diagnostic::new(
+                                    &rule::TYPE_UNKNOWN_SETTING,
+                                    format!("An index has no setting `{other}`"),
+                                )
+                                .at(key_span, "not an index setting")
+                                .reason("An index with options is a block of `fields:`, the list of the entity's fields it covers, and `kind:`, the kind of index (area 5, \"Indexes\").")
+                                .next(format!("Remove `{other}`")),
+                            );
+                        }
+                    }
+                }
+                if broken {
                     continue;
                 }
+            }
+            let options = rule_member.block().is_some()
+                || matches!(rule_member.value(), Some(Expr::RecordExpr(_)));
+            let value = match listed {
+                Some(value) => value,
+                None if options && !unique => None,
+                None => rule_member.value(),
+            };
+            let entries = match value {
+                Some(Expr::ListExpr(entries)) => entries,
                 other => {
                     let at = other.map_or(rule_member.syntax().clone(), |v| v.syntax().clone());
                     self.out.push(
@@ -1298,7 +1360,7 @@ impl Reader<'_> {
                         .reason(if unique {
                             format!("Each unique rule is a list of the entity's fields in brackets: `{rule_name}: [field, other]`.")
                         } else {
-                            format!("Each index is a list of the entity's fields in brackets, even with one: `{rule_name}: [field]`.")
+                            format!("Each index is a list of the entity's fields in brackets, even with one: `{rule_name}: [field]`, or a block whose `fields:` is that list, beside its `kind:`.")
                         })
                         .next(format!("Write `{rule_name}: [field, ...]`")),
                     );
@@ -1406,6 +1468,31 @@ impl Reader<'_> {
                 );
                 continue;
             }
+            // A geographic index is a GiST index on one geometry field
+            // (area 20, "Indexes").
+            if let Some((IndexKind::Geographic, at)) = &kind {
+                let geometry = match fields.as_slice() {
+                    [only] => entity
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *only)
+                        .and_then(|f| f.geometry),
+                    _ => None,
+                };
+                if geometry.is_none() {
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TYPE_SETTING_VALUE,
+                            format!("The geographic index `{rule_name}` isn't on one geometry field"),
+                        )
+                        .at(at.clone(), "geographic")
+                        .reason("A geographic index is a GiST index on one field holding a geometry (`Point`, `LineString`, `Polygon`, their multi-part forms, or `Geometry`), which `geo.` conditions search (area 20, \"Indexes\").")
+                        .next(format!("List one geometry field in `{rule_name}`, or leave `kind:` out")),
+                    );
+                    continue;
+                }
+            }
+            let kind = kind.map(|(kind, _)| kind);
             let same = |a: &[String], b: &[String]| {
                 if unique {
                     let a: BTreeSet<&String> = a.iter().collect();
@@ -1415,7 +1502,10 @@ impl Reader<'_> {
                     a == b
                 }
             };
-            if let Some(at) = out.iter().position(|r| same(&r.fields, &fields)) {
+            if let Some(at) = out
+                .iter()
+                .position(|r| same(&r.fields, &fields) && r.kind == kind)
+            {
                 let earlier = &out[at];
                 self.out.push(
                     Diagnostic::new(
@@ -1436,6 +1526,7 @@ impl Reader<'_> {
             out.push(ListRule {
                 name: rule_name,
                 fields,
+                kind,
             });
             spans.push(span);
         }
@@ -2178,6 +2269,29 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                     physical::Check {
                         column: name.clone(),
                         values,
+                        geography: false,
+                    },
+                );
+            }
+            // A `geography` column holds its type's geometry in WGS84
+            // (area 20, "Storage"; chunk 5.5u4): a geometry field's own, a
+            // circle's centre.
+            let geometry = match entry {
+                Some(entry) => jadpo_std::standard::storage::geometry_at(entry, at),
+                None => field.geometry,
+            };
+            if sql_type == "geography"
+                && let Some(geometry) = geometry
+            {
+                out.checks.insert(
+                    physical::object_name(&[table, name], "check"),
+                    physical::Check {
+                        column: name.clone(),
+                        values: jadpo_std::geography::geometry_types(geometry)
+                            .into_iter()
+                            .map(String::from)
+                            .collect(),
+                        geography: true,
                     },
                 );
             }
@@ -2267,7 +2381,14 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,
                 collate: Vec::new(),
-                method: None,
+                // A geographic index is GiST, with `geography`'s own
+                // operator class (area 20, "Indexes"; chunk 5.5u4).
+                method: index.kind.map(|kind| match kind {
+                    IndexKind::Geographic => physical::IndexMethod {
+                        name: "gist".into(),
+                        operator_class: String::new(),
+                    },
+                }),
             },
         );
     }
