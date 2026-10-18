@@ -1451,12 +1451,31 @@ reference only).
   sent when sharing is off, no snippet text is sent without approval, a
   hash below the threshold never has its text requested, and an ignored
   snippet's text can be shared once approved.
-- [ ] **5.6 Computed backfills** `opus · high` (area 5, "Computed backfills",
-  2026-10-15): `backfill:` as an expression over each row's own fields,
-  filled in batches, one `UPDATE` each where it has a SQL form and by
-  `jadpo migrate apply` otherwise, then made required; with the SQL form
-  of each standard operation (area 19, "SQL forms"), each tested against
-  the runtime on the same inputs.
+- [ ] **5.6 SQL forms** `opus · high` (area 19, "SQL forms", decided
+  2026-10-17), the first half of computed backfills: the SQL form of each
+  standard operation the operation tables give one, rendered in one place
+  (`jadpo-sql`) from its arguments' SQL, and each tested against the
+  runtime on the same inputs against live PostgreSQL, so the database and
+  Jadpo agree exactly, rounding, text in code points, Unicode white space
+  and `none` included. A form that can't match the runtime exactly is
+  rewritten until it does or dropped, and the page's table says so (the
+  caveats earlier chunks flagged: `temporal.period_between` against
+  `age`, `web.cidr_contains`). The page's SQL form column and the
+  renderer agree, by a test. Split on 2026-10-18 because the whole chunk
+  is more than a session: the backfills themselves are 5.6b.
+- [ ] **5.6b Computed backfills** `opus · high` (area 5, "Computed
+  backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
+  each row's own fields, constants and pure functions, typed against the
+  field it fills; filled in batches, one `UPDATE` each where every
+  operation in it has a SQL form (5.6's, and the operators' and
+  conditionals' forms, each tested the same way) and by `jadpo migrate
+  apply` otherwise, then made required. The batch size, locking (each
+  batch its own transaction, never a long table lock), resuming after a
+  crash and progress output chosen and recorded on area 5; a failure
+  midway leaves the column consistent and the migration resumable; `jadpo
+  migrate apply` says when a backfill runs in Jadpo and is slower; an
+  expression that can fail is refused unless area 5 says what a failing
+  row gets.
 - [ ] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
   questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
   queries, grouped by a field or a time bucket, using the standard

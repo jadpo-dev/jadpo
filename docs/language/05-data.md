@@ -728,7 +728,7 @@ migration {
 - Freeform SQL in migrations stays out: a backfill is checked Jadpo, so a
   migration can't write a value its field's rules forbid.
 
-Built in chunk 5.6.
+Not built yet: the SQL forms come with chunk 5.6, the backfills with 5.6b.
 
 A migration's `postgres.sql` holds a section per store, each opened by a
 `-- store: <name>` line, and names every table, column, constraint and index
