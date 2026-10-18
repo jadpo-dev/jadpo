@@ -33,6 +33,7 @@
 
 pub mod across;
 pub mod calendar;
+pub mod certificate;
 pub mod colour;
 pub mod crypto;
 pub mod decimal;

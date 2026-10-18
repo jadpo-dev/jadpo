@@ -106,7 +106,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 246 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2, the security records `Hash`, `Hmac`, `EncryptedValue`, `OneTimeCode`, `PasswordPolicy` and `WebAuthnCredential` in 5.5r3); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, all of them built (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the secret values `Password`, `ApiKey`, `BearerToken`, `TotpSecret` and `SecretText` in 5.5r2, the five AI types in 5.5s2, the security records `Hash`, `Hmac`, `EncryptedValue`, `OneTimeCode`, `PasswordPolicy` and `WebAuthnCredential` in 5.5r3, `Certificate` in 5.5r5); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -134,7 +134,7 @@ exception to the rule.
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
-| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`** | `crypto` |
+| Security (20) | **`Password`**, **`PasswordHash`**, **`PasswordPolicy`**, **`Hash`**, **`Hmac`**, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, **`Certificate`**, **`TotpSecret`**, **`OneTimeCode`**, **`ApiKey`**, **`SecretText`**, **`BearerToken`**, **`OAuthScope`**, **`OidcClaims`**, **`WebAuthnCredential`**, **`EncryptedValue`** | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
 | AI (3, and `ChatRole`) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | AI area |
@@ -403,7 +403,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `EncryptedValue`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `Hash`, `HeartRate`, `Hmac`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OneTimeCode`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PasswordPolicy`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebAuthnCredential`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `ApiKey`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `BearerToken`, `Bearing`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `BoundingBox`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Certificate`, `ChatMessage`, `ChatRole`, `Cidr`, `Circle`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Crs`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `EastingNorthing`, `Email`, `EmailWithName`, `Embedding`, `Emoji`, `EncryptedValue`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `Geohash`, `Geometry`, `GitRef`, `GivenName`, `H3Cell`, `Hash`, `HeartRate`, `Hmac`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Jwk`, `Jwt`, `JwtClaims`, `Language`, `Latitude`, `LawfulBasis`, `Lei`, `Length`, `LineString`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `Longitude`, `LotNumber`, `MacAddress`, `MapTile`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `MultiLineString`, `MultiPoint`, `MultiPolygon`, `Nationality`, `NetworkPort`, `NhsNumber`, `OAuthScope`, `OidcClaims`, `OneTimeCode`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `Password`, `PasswordCheck`, `PasswordHash`, `PasswordPolicy`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `Point`, `Polygon`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SecretText`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TokenCount`, `TokenUsage`, `TotpSecret`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `Vector`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebAuthnCredential`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -4571,8 +4571,123 @@ it, and when it was made and last used; never a biometric.
 > each built from its operation with no arm; every `Bytes` compared in
 > constant time; `OneTimeCode` a secret value; `PasswordPolicy` and
 > `WebAuthnCredential` standard objects, the passkey's parts mapped to
-> what `webauthn-rs` keeps. `Certificate` is chunk 5.5r5. What the page
-> left open is under "Chosen in chunk 5.5r3".
+> what `webauthn-rs` keeps. `Certificate` followed in chunk 5.5r5. What
+> the page left open is under "Chosen in chunk 5.5r3".
+
+A `Certificate` is an X.509 certificate (RFC 5280), read from its PEM
+(RFC 7468): its subject and its issuer as RFC 4514 writes a distinguished
+name, its serial number, the first and last instants it is valid at, both
+included, the SHA-256 of its DER as a `Hash`, and the DER itself. Each part
+is read from what its issuer signed, so code reads them and never sets
+them, and nothing here checks its chain or its signature. It is sent,
+stored and read back as its PEM, and shown to people by its subject. A
+certificate isn't secret; a key's PEM is never one, and reading one fails
+`malformed`.
+
+A clinic receives lab results from a partner, which sends the certificate
+it signs them with. The clinic pins that certificate by its fingerprint
+and checks it is in date:
+
+```jadpo check project=certificates
+type PartnerPem = Text {
+    max_length: 100000
+}
+
+type CertificateRefused = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type CheckedAt = Instant {}
+
+type CertificateHolds = Bool {}
+
+/// The certificate a partner sent, read from its PEM.
+function partner_certificate(sent_pem: PartnerPem) fails CertificateRefused -> Certificate {
+    return attempt text.parse(sent_pem, as: Certificate) {
+        malformed: CertificateRefused
+    }
+}
+
+/// Whether a certificate is the one pinned for the partner: its SHA-256
+/// fingerprint, compared in constant time.
+function is_pinned(presented: Certificate, pinned_fingerprint: Hash) -> CertificateHolds {
+    return CertificateHolds(presented.fingerprint == pinned_fingerprint)
+}
+
+/// Whether a certificate is in date: its first and last instants are both
+/// included.
+function in_date(presented: Certificate, checked_at: CheckedAt) -> CertificateHolds {
+    return CertificateHolds(
+        presented.not_before <= checked_at and checked_at <= presented.not_after
+    )
+}
+```
+
+```jadpo check project=certificates file=main.test.jadpo
+test "a partner's certificate is read, pinned and dated" {
+    var lab_certificate: Certificate = attempt partner_certificate(
+        "-----BEGIN CERTIFICATE-----\nMIIBljCCAUigAwIBAgIIHy49TFtqeYgwBQYDK2VwMEgxCzAJBgNVBAYTAkdCMRww\nGgYDVQQKDBNKYWRwbyBUZXN0LCBTaWduaW5nMRswGQYDVQQDDBJqYWRwby10ZXN0\nLmV4YW1wbGUwHhcNMjYxMDAxMDAwMDAwWhcNMzYxMDAxMDAwMDAwWjBIMQswCQYD\nVQQGEwJHQjEcMBoGA1UECgwTSmFkcG8gVGVzdCwgU2lnbmluZzEbMBkGA1UEAwwS\namFkcG8tdGVzdC5leGFtcGxlMCowBQYDK2VwAyEAAJyTOxfkgCmTOYhl/AXEMRpT\n07QqDzpBZIRCSESxhYejUDBOMB0GA1UdDgQWBBTH4Arltue6aEupl+oqXRoIZos6\nLTAfBgNVHSMEGDAWgBTH4Arltue6aEupl+oqXRoIZos6LTAMBgNVHRMBAf8EAjAA\nMAUGAytlcANBAHkV9ilHQ5TVpSZyPobRcjo9bERYbugOAsKXD4ZJjCRPqpyK+aDc\n+FxV2FFnXI2UQxnYsieWNSclooiCSIuDmwA=\n-----END CERTIFICATE-----\n"
+    )
+    assert lab_certificate.subject == "CN=jadpo-test.example,O=Jadpo Test\\, Signing,C=GB"
+    assert lab_certificate.issuer == lab_certificate.subject
+    assert lab_certificate.serial_number == "1f2e3d4c5b6a7988"
+    var pinned: Hash = lab_certificate.fingerprint
+    assert text.from(pinned) == "18Ma3EAjFJeXynaXWJODAHbnCHr90gDsttEzYJqXWg0="
+    assert is_pinned(lab_certificate, pinned)
+    assert in_date(lab_certificate, "2026-10-18T09:00:00Z")
+    assert in_date(lab_certificate, "2036-10-01T00:00:00Z")
+    assert not in_date(lab_certificate, "2036-10-01T00:00:01Z")
+    assert partner_certificate(
+        "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=\n-----END PUBLIC KEY-----\n"
+    ) fails CertificateRefused
+}
+```
+
+Building a certificate from parts chosen in code is refused, since
+nothing would have signed them:
+
+```jadpo check project=e-certificate-made-up expect=type.constructor_input
+type CertificateDer = Bytes {}
+
+type IssuedAt = Instant {}
+
+/// A certificate made up in code, its parts chosen rather than signed.
+function made_up(
+    chosen_der: CertificateDer,
+    chosen_digest: Hash,
+    issued_at: IssuedAt
+) -> Certificate {
+    return Certificate {
+        subject: "CN=bank.example"
+        issuer: "CN=Trusted Root"
+        serial_number: "01"
+        not_before: issued_at
+        not_after: issued_at
+        fingerprint: chosen_digest
+        der: chosen_der
+    }
+}
+```
+
+```text output
+error: `Certificate` isn't built from its parts
+ --> main.jadpo:11:12
+   |
+11 |     return Certificate {
+   |            ^^^^^^^^^^^ parts set in code
+  reason: A `Certificate`'s subject, issuer, serial number, validity and fingerprint are read from the DER its issuer signed, so code reads them and never sets them.
+  next: Read the `Certificate` from its PEM with `text.parse(..., as: Certificate)`, or from JSON with `json.read` (agent)
+  rule: type.constructor_input
+  help: docs/language/02-values-and-types.html#type-constructor-input
+
+check failed: 1 error, 1 file
+```
+
+> Built in chunk 5.5r5: `Certificate` on the contract as a standard object
+> whose canonical text and JSON are its PEM (`TextForm::Pem`), read by
+> `jadpo-value`'s `certificate` module on `x509-parser`, strictly, and
+> stored as that JSON; an object literal of one is `type.constructor_input`.
+> What the page left open is under "Chosen in chunk 5.5r5".
 
 ## Randomness
 
@@ -10296,6 +10411,74 @@ most conservative reading:
   bytes as Base64 and the count as area 2 sends an `Int`, stored as that
   JSON, and shown by its name.
 
+### Chosen in chunk 5.5r5
+
+Choices the page left open when `Certificate` was built, each the most
+conservative reading:
+
+- **The crate.** Rusticata's `x509-parser` 0.16.0, MIT or Apache-2.0, pure
+  Rust and built for wasm32, already in the lock through `webauthn-rs`, so
+  no crate was added (RustCrypto's `x509-cert` isn't in the lock). It is
+  used without its `verify` feature, so no `ring`: a certificate is read,
+  and nothing checks its signature, its chain, its extensions or whether
+  it was revoked.
+- **A standard object read only from its DER.** Its parts are `subject`,
+  `issuer`, `serial_number`, `not_before`, `not_after`, `fingerprint` (a
+  `Hash`) and `der`, the DER itself, so a program can pass it on. Every one
+  is read from the DER, so an object literal of one is
+  `type.constructor_input`, which says to read it with `text.parse` or
+  `json.read`; values never change (area 2), so nothing sets a part later.
+  There is no common-name part, since the page names none: an application
+  reads the subject.
+- **Its text and its JSON are its PEM** (RFC 7468's strict form): one
+  `CERTIFICATE` block, its DER in standard Base64 lines of 64 characters,
+  the last 1 to 64, each line ending in a line feed. It is read with line
+  feeds, or with a carriage return and a line feed throughout, the last
+  line's ending optional, and nothing else: no text before or after the
+  block, no headers, no white space, no second block and no other label,
+  `TRUSTED CERTIFICATE` and every key's included, each `malformed`. Its
+  JSON is that text, as every type with a canonical text is sent, not its
+  DER in Base64; it is stored as that JSON (`jsonb`) and read back through
+  the same reader, so a stored part is never trusted.
+- **Reading DER bytes is chunk 5.5r4's.** The DER inside a PEM is read
+  here; a certificate from bytes (a file's contents, a key set's `x5c`) is
+  read by `crypto.read_certificate(der)`, giving a `Certificate` and
+  failing `malformed`, on this chunk's reader, built with 5.5r4's JWTs
+  from identity providers, whose `x5c` needs it (decided by the lead
+  session, 2026-10-18).
+- **DER and nothing else**, at most 64 KiB: each length definite and in its
+  fewest octets, no tag number of 31 or more, each INTEGER in its fewest
+  octets, a BOOLEAN all ones or all zeros, a BIT STRING's unused bits
+  zero, each arc of an OBJECT IDENTIFIER in its fewest octets, no universal
+  type but a SEQUENCE or a SET constructed, each time in RFC 5280's form
+  (`YYMMDDHHMMSSZ`, `YYYYMMDDHHMMSSZ`), and nothing after the certificate.
+  The algorithm outside what was signed must be the one inside (RFC 5280
+  §4.1.1.2), each compared as its DER.
+- **The serial number** is positive and at most 20 octets, its sign octet
+  included (RFC 5280 §4.1.2.2), so a negative or a zero one is
+  `malformed`; it is written in lowercase hexadecimal, two digits an
+  octet, without the sign octet and with no separators,
+  `8210cfb0d240e3594463e0bb63828b00` for ISRG Root X1.
+- **Names as RFC 4514 writes them:** the relative names last first,
+  joined by `,`, the attributes of one by `+`; the nine types RFC 4514 §3
+  names by their short names (`CN`, `L`, `ST`, `O`, `OU`, `C`, `STREET`,
+  `DC`, `UID`) and any other by its dotted OID; a value of a known string
+  kind (UTF8String, PrintableString, IA5String, NumericString,
+  VisibleString, BMPString, UniversalString) as its text, escaped as §2.4
+  says and with every control character as `\` and its hexadecimal, so a
+  name shows on one line; a TeletexString, any other kind and any type
+  without a short name as `#` and the hexadecimal of its DER. A string that
+  isn't its kind's (UTF-8 that isn't) makes the certificate `malformed`.
+- **Validity** is two instants, both included (RFC 5280 §4.1.2.5).
+  `99991231235959Z`, which RFC 5280 writes for no well-defined expiry, is
+  past the latest instant Jadpo holds, so a time in the last hours of 9999
+  reads as that instant. A certificate whose last instant is before its
+  first is read, and is valid at no instant.
+- **Shown by its subject**, else by its serial number, since RFC 5280 lets
+  a certificate whose names are all in its extensions have an empty
+  subject; `FormatKey::FirstPart` now passes over empty text. It is not
+  ordered, and `==` compares every part, the bytes in constant time.
+
 ### Decisions
 
 | Topic | Decision | Date |
@@ -10848,7 +11031,8 @@ first; each group of types then arrives with its baseline and its extras.
   5.5r5.
 - **5.5r5 Certificates** `opus · high`: `Certificate`, X.509 from PEM or
   DER on an audited crate, its subject, issuer, validity and fingerprint
-  read-only.
+  read-only. Built, read from its PEM; reading DER bytes is 5.5r4's
+  `crypto.read_certificate(der)`.
 - **5.5s Geospatial types' baselines** `opus · high`: the 17
   geospatial types, with construction, text and JSON from the contract;
   their storage and operations come with the geospatial area. Split on

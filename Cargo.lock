@@ -1491,6 +1491,7 @@ dependencies = [
  "sha2",
  "subtle",
  "writeable",
+ "x509-parser",
 ]
 
 [[package]]

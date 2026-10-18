@@ -365,6 +365,14 @@ bytes (`security::made_by`, read in the rule verdict), so
 canonical order compare every `Bytes` in constant time. `OneTimeCode`
 joined the secret values, and a `Bytes` part of a standard object is
 bounded by its length (`Part::Bounded` on `Bytes`).
+Since chunk 5.5r5 `Certificate` is a standard object read only from what
+it parses (`standard::certificates::read_only`): its canonical text and
+JSON are its PEM (`TextForm::Pem`), which `jadpo_value::certificate` reads
+strictly, the DER checked as DER by its own walk and then read by
+`x509-parser` (pure Rust, so it builds for wasm32), the parts made from
+the DER and written back from its `der` part. The checker refuses an
+object literal of one (`type.constructor_input`), so no executor ever
+holds parts its DER doesn't say.
 Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
 a failure declaring `problem: DecodeProblem` carries that field's place
 (`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the
