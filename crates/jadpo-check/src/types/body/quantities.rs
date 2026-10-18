@@ -92,6 +92,26 @@ impl Body<'_> {
         given: &Ty,
         written: &str,
     ) -> Option<QuantityKind> {
+        // A list written out of literals has no item type of its own: its
+        // first item's kind is the list's, and the rest are checked as it.
+        if let Expr::ListExpr(list) = value
+            && given.has_error()
+        {
+            let mut items = list.exprs();
+            let first = items.next()?;
+            let kind = match self.facts.types.get(&super::node_key(first.syntax())) {
+                Some(Ty::Prim(Prim::Quantity(kind))) => *kind,
+                _ => return None,
+            };
+            for item in items {
+                self.check(&item, &Ty::Prim(Prim::Quantity(kind)));
+            }
+            let typed = Ty::List(Box::new(Ty::Prim(Prim::Quantity(kind))));
+            self.facts
+                .types
+                .insert(super::node_key(value.syntax()), typed.clone());
+            return self.quantities_argument(value, &typed, written);
+        }
         if given.has_error() {
             return None;
         }

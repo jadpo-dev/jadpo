@@ -383,6 +383,17 @@ fn a_numbers_units_are_offered_for_the_type_it_goes_into() {
         "    var count: Int = 2|\n    return wait",
     );
     assert!(items.is_empty(), "{:?}", labels(&items));
+    // A quantity's own suffixes, narrowed to its kind (area 19): metres
+    // are `metre`, since `m` is minutes, and inches `inch`.
+    let items = complete(
+        "lsp-completion-units-length",
+        "    var shelf: Length = 2|\n    return wait",
+    );
+    assert_eq!(
+        labels(&items),
+        set(&["mm", "cm", "metre", "km", "inch", "ft", "yd", "mi", "nmi"])
+    );
+    assert!(text_of(item(&items, "metre")).contains("Length in metres"));
 }
 
 #[test]

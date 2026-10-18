@@ -144,6 +144,7 @@ fn the_number_operations_give_the_page_s_values() {
                 Value::None,
                 Value::None,
                 Value::None,
+                Value::None,
             ],
         )
     };

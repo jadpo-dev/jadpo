@@ -447,7 +447,22 @@ impl Body<'_> {
     pub(super) fn rules_of(&self, target: &Ty) -> Vec<(&'static str, String)> {
         let mut rules = combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r));
         rules.checked = checked_text(self.table.base_prim(target));
-        rules.written()
+        let mut written = rules.written();
+        // A quantity's bounds are held in its base unit, and written as
+        // code writes a quantity: `min: 0.1metre` (area 19).
+        if let Some(Prim::Quantity(kind)) = self.table.base_prim(target) {
+            for (key, text) in &mut written {
+                let bound = match *key {
+                    "min" => rules.min,
+                    "max" => rules.max,
+                    _ => None,
+                };
+                if let Some(at) = bound.and_then(|bound| bound.at_scale(kind.scale())) {
+                    *text = format!("{key}: {}", jadpo_std::quantity::written(kind, at.mantissa));
+                }
+            }
+        }
+        written
     }
 
     /// The dividend and divisor of a call to a standard-library division,

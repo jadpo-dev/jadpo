@@ -5,7 +5,8 @@
 //! numbers. Where ICU4X compiles CLDR's unit names (lengths, areas,
 //! volumes and masses), the locale's short pattern places it, `2.5 m`,
 //! `247,62 cm`; for the other kinds, which ICU4X has no names for yet, it
-//! is the number, a space and the unit's symbol, as SI writes it: `21 °C`.
+//! is the number, a space and the unit's symbol, as SI writes it: `21 °C`,
+//! and `90°` for the degree of angle, which takes no space.
 
 use icu_decimal::DecimalFormatter;
 use icu_experimental::dimension::provider::units::categorized_display_names::{
@@ -48,6 +49,11 @@ pub fn format(amount: i128, unit: &Unit, tag: &str) -> Result<String, Fault> {
             .interpolate((number,))
             .write_to_string()
             .into_owned());
+    }
+    // SI writes a space between a number and its unit, but none before
+    // the degree of angle.
+    if unit.symbol == "°" {
+        return Ok(format!("{number}°"));
     }
     Ok(format!("{number} {}", unit.symbol))
 }
@@ -132,38 +138,19 @@ mod tests {
     fn quantities_are_written_as_the_locale_writes_them() {
         use QuantityKind as K;
         let total = "2.5262metre";
-        println!("{}", shown(K::Length, total, "centimetre", "en-GB"));
-        println!("{}", shown(K::Length, total, "centimetre", "de-DE"));
-        println!("{}", shown(K::Length, total, "centimetre", "fr-FR"));
-        println!("{}", shown(K::Length, total, "metre", "en-GB"));
-        println!("{}", shown(K::Length, "1000metre", "metre", "en-GB"));
-        println!("{}", shown(K::Length, "1metre", "metre", "en-GB"));
-        println!("{}", shown(K::Length, "3inch", "inch", "en-GB"));
-        println!("{}", shown(K::Length, "3inch", "foot", "en-US"));
-        println!("{}", shown(K::Length, "5km", "mile", "en-US"));
-        println!("{}", shown(K::Area, "12sqm", "square_metre", "en-GB"));
-        println!("{}", shown(K::Area, "2ha", "acre", "en-GB"));
-        println!("{}", shown(K::Volume, "2litre", "cubic_metre", "en-GB"));
-        println!("{}", shown(K::Volume, "500ml", "litre", "en-GB"));
-        println!("{}", shown(K::Volume, "500ml", "millilitre", "en-GB"));
-        println!("{}", shown(K::Volume, "1usgal", "us_gallon", "en-US"));
-        println!("{}", shown(K::Volume, "1ukgal", "uk_gallon", "en-GB"));
-        println!("{}", shown(K::Volume, "1floz", "fluid_ounce", "en-US"));
-        println!("{}", shown(K::Mass, "2.5kg", "kilogram", "en-GB"));
-        println!("{}", shown(K::Mass, "250g", "gram", "de-DE"));
-        println!("{}", shown(K::Mass, "1lb", "pound", "en-US"));
-        println!("{}", shown(K::Mass, "1oz", "ounce", "en-US"));
-        println!("{}", shown(K::Mass, "1t", "tonne", "en-GB"));
-        println!("{}", shown(K::Mass, "1mcg", "microgram", "en-GB"));
-        println!("{}", shown(K::Temperature, "21degC", "celsius", "en-GB"));
-        println!("{}", shown(K::Pressure, "1013.25hPa", "pascal", "de-DE"));
-        println!("{}", shown(K::Length, "-1.5metre", "metre", "en-GB"));
-        println!("{}", shown(K::Length, "0.0254metre", "metre", "en-GB"));
-        println!("{}", shown(K::Area, "0.5sqm", "square_metre", "en-GB"));
-        println!("{}", shown(K::Area, "10000sqm", "square_metre", "en-GB"));
-        println!("{}", shown(K::Volume, "0.5litre", "cubic_metre", "en-GB"));
-        println!("{}", shown(K::Volume, "1litre", "cubic_metre", "en-GB"));
-        println!("{}", shown(K::Mass, "0.25kg", "kilogram", "en-GB"));
-        println!("{}", shown(K::Mass, "1000kg", "kilogram", "en-GB"));
+        assert_eq!(shown(K::Length, total, "centimetre", "en-GB"), "252.62 cm");
+        assert_eq!(shown(K::Length, total, "centimetre", "de-DE"), "252,62 cm");
+        assert_eq!(shown(K::Length, total, "metre", "en-GB"), "2.5262 m");
+        assert_eq!(shown(K::Length, "1000metre", "metre", "en-GB"), "1,000 m");
+        assert_eq!(shown(K::Length, "3inch", "inch", "en-GB"), "3 in");
+        assert_eq!(shown(K::Length, "5km", "mile", "en-US"), "3.10685596 mi");
+        assert_eq!(shown(K::Volume, "500ml", "litre", "en-GB"), "0.5 l");
+        assert_eq!(shown(K::Volume, "1floz", "fluid_ounce", "en-US"), "1 fl oz");
+        assert_eq!(shown(K::Mass, "250g", "gram", "de-DE"), "250 g");
+        assert_eq!(shown(K::Mass, "1lb", "pound", "en-US"), "1 lb");
+        assert_eq!(shown(K::Temperature, "21degC", "celsius", "en-GB"), "21 °C");
+        assert_eq!(shown(K::Temperature, "70degF", "fahrenheit", "en-US"), "70 °F");
+        assert_eq!(shown(K::Pressure, "1013.25hPa", "pascal", "de-DE"), "101.325 Pa");
+        assert_eq!(shown(K::Angle, "90deg", "degree", "en-GB"), "90°");
     }
 }

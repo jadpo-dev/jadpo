@@ -1089,14 +1089,18 @@ pub fn from_base(amount: i128, unit: &Unit, places: u32, rounding: Rounding) -> 
 }
 
 /// A value held in the base unit as people see it in `unit`: exact where
-/// the conversion ends (2.4762 m is 247.62 cm), and otherwise rounded half
-/// to even to the places the kind's scale gives in that unit, less one, so
-/// a value made in the unit reads back as written: `1lb` is held as
-/// 0.453592 kg, which is 0.99999918 lb, shown as 1. The mantissa and its
-/// places, with no trailing zeros.
+/// the conversion ends within the places the kind's scale gives in that
+/// unit (2.4762 m is 247.62 cm), and otherwise rounded half to even to one
+/// place fewer, so a value made in the unit reads back as written: `1lb`
+/// is held as 0.453592 kg, which is 0.99999918 lb, shown as 1. The
+/// mantissa and its places, with no trailing zeros.
 pub fn shown_in(amount: i128, unit: &Unit) -> Option<(i128, u32)> {
     let scale = unit.kind.scale();
-    let exact = (0..=scale + 20).find_map(|places| {
+    let places = u32::try_from(
+        (i64::from(scale) + i64::from(magnitude(unit.num, unit.den))).max(0),
+    )
+    .ok()?;
+    let exact = (0..=places).find_map(|places| {
         let down = from_base(amount, unit, places, Rounding::Down)?;
         let up = from_base(amount, unit, places, Rounding::Up)?;
         (down == up).then_some((down, places))
@@ -1104,10 +1108,7 @@ pub fn shown_in(amount: i128, unit: &Unit) -> Option<(i128, u32)> {
     let (mut mantissa, mut places) = match exact {
         Some(found) => found,
         None => {
-            let places = u32::try_from(
-                (i64::from(scale) + i64::from(magnitude(unit.num, unit.den)) - 1).max(0),
-            )
-            .ok()?;
+            let places = places.saturating_sub(1);
             (from_base(amount, unit, places, Rounding::HalfEven)?, places)
         }
     };
