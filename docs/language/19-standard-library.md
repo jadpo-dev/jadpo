@@ -105,7 +105,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 230 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 235 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2, the 17 geospatial types in 5.5s, `Jwt`, `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims` in 5.5r, the five AI types in 5.5s2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"), and `ChatRole`, who wrote a `ChatMessage`, in chunk 5.5s2, for the same reason. "(enum)" marks a closed list held as a built-in enum: thirty-one are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2, `ChatRole` in 5.5s2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -127,7 +127,7 @@ exception to the rule.
 | Commerce and logistics (20, and `ClothingSizeSystem` and `ShoeSizeSystem`) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, **`Barcode`**, **`UnitQuantity`**, **`Rating`**, **`ClothingSize`** with **`ClothingSizeSystem`** (enum), **`ShoeSize`** with **`ShoeSizeSystem`** (enum), **`Dimensions`**, **`HsCode`**, **`Incoterm`** (enum), **`TrackingNumber`**, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, **`VehicleRegistration`** | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
 | Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
-| Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
+| Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, **`Vector`**, **`Embedding`** | `range`, `units`; AI area |
 | Health (9, and `RouteOfAdministration`) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, **`Dose`**, **`DosageInstruction`** with **`RouteOfAdministration`** (enum), **`HeartRate`**, **`BloodPressure`**, **`BloodGlucose`**, **`Allergen`** (enum) | |
 | Media and visual (15, and `ContentRatingScheme`) | **`Colour`**, **`ImageDimensions`**, **`AspectRatio`**, **`Rect`**, **`Insets`**, **`PaperSize`** (enum), **`ExifOrientation`** (enum), **`AltText`**, **`FrameRate`**, **`VideoResolution`**, **`VideoCodec`**, **`AudioCodec`**, **`Timecode`**, **`SubtitleCue`**, **`ContentRating`** with **`ContentRatingScheme`** (enum) | `colour`, `media` |
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
@@ -136,7 +136,7 @@ exception to the rule.
 | Security (20) | `Password`, **`PasswordHash`**, `PasswordPolicy`, `Hash`, `Hmac`, **`Jwt`**, **`JwtClaims`**, **`Jwk`**, **`PublicKey`**, **`PrivateKey`**, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, **`OAuthScope`**, **`OidcClaims`**, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
 | Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
 | Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
-| AI (3) | `TokenCount`, `TokenUsage`, `ChatMessage` | AI area |
+| AI (3, and `ChatRole`) | **`TokenCount`**, **`TokenUsage`**, **`ChatMessage`** with **`ChatRole`** (enum) | AI area |
 
 **Its three rules**, decided with it:
 
@@ -6203,6 +6203,47 @@ specify:
 | Limits and data | Token and cost limits per call and per period; every field sent to a model listed in area 15's personal-data report |
 | Left out | Training models: it needs GPUs, datasets and long jobs, none of which an application request does; a package or an outside service trains, and the app calls the result |
 
+> Built in chunk 5.5s2, the AI types' baselines: `Vector` with a type's
+> `dimensions:`, `Embedding`, `TokenCount`, `TokenUsage` and
+> `ChatMessage` with its `ChatRole`, each on the contract, built, sent as
+> JSON and shown to people ("Chosen in chunk 5.5s2"). Storing a vector or
+> an embedding is `toolchain.not_built_yet` until this area builds its
+> pgvector column; `ai.embed`, similarity and `ai.generate` come with it.
+
+A help article's embedding is three numbers here, where a real model's
+are 1,536 or more; a list of the wrong length is refused by name:
+
+```jadpo check project=embeddings
+type ModelAnswer = Text {}
+
+type EmbeddingUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A help article's embedding, as the support site's model makes it.
+type ArticleVector = Vector {
+    dimensions: 3
+}
+
+/// A help article's embedding from the model's answer: JSON that isn't one
+/// at all, or a vector of another length.
+function article_vector(answer: ModelAnswer) fails EmbeddingUnreadable -> ArticleVector {
+    return attempt json.read(answer, as: ArticleVector) {
+        malformed: EmbeddingUnreadable
+        mismatch: EmbeddingUnreadable
+    }
+}
+```
+
+```jadpo check project=embeddings file=main.test.jadpo
+test "an embedding has its model's length" {
+    var read: ArticleVector = attempt article_vector("[0.5,-0.25,1]")
+    assert read == ArticleVector([0.5, -0.25, 1.0])
+    assert article_vector("[0.5,-0.25]") fails EmbeddingUnreadable
+    assert article_vector("[0.5,-0.25,1e39]") fails EmbeddingUnreadable
+}
+```
+
 ## Scenario applications
 
 Nine applications Jadpo is meant for, what each does, and the operations
@@ -7057,7 +7098,7 @@ check failed: 1 error, 1 file
 | `integer.divide`, `decimal.divide` | Decided (area 3) and built |
 | `integer` and `decimal`'s other operations, `Rounding.down` | `abs`, `min`, `max`, `from_decimal` and `round` built in 5.5d, with `text.format` for numbers; the maths, from `sqrt` to `pi`, in 5.5e |
 | `temporal`, `locale` | Decided (area 10) and built; `occurrences`, `open_at` and `period_between` decided here; `period_between` built in 5.5k, `occurrences` and `open_at` in 5.5k2; `resolve` of a `LocalDateTime` and `occurrences` of days in 5.5k4 |
-| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, each other group of types in the chunks after them to 5.5s |
+| The standard types and their contract | Decided 2026-10-17; the contract built in 5.5a over the 13 built types, `Range<T>` in 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, 15 of people and places in 5.5l and the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 web and network types in 5.5n, the money group's records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types with `semver.satisfies` in 5.5n2, `Html` and `Markdown` with `markup.to_html` and `to_plain_text` in 5.5o, `Colour` and the media types with `colour`'s five operations and `media.fit` in 5.5p, `RichText` and `LocalisedText` with `markup.rich_to_html` and `text.pick` in 5.5o2, `PasswordHash`, `PasswordCheck` and `PublicKey` with `crypto` in 5.5q2, the 17 geospatial types in 5.5s, the AI types with a vector type's `dimensions:` in 5.5s2, each other group of types in the chunks after them to 5.5s |
 | `money.`, the operator table's `Money` rows | Built in 5.5h; `convert` and `ExchangeRate` in 5.5h2 with `{price, number, currency}`; a rate type's `from:` and `to:` in 5.5h4; the `Percentage` rows in 5.5j2 with `{rate, number, percent}`; `apply_discount` in 5.5i3 |
 | `text.parse`, `text.format`, `text.from`; `type.standard_exists` on app code; `temporal.format` moved | Built in 5.5a |
 | The other 17 `text` operations; `locale:` on case and `list.sort_by`; NFC at the boundary; `text` reserved | Built in 5.5f; `text.pick` with `LocalisedText` built in 5.5o2 |
@@ -9590,6 +9631,95 @@ conservative reading:
   often as where a person is; an application marks a person's position
   with area 15's `location`.
 
+### Chosen in chunk 5.5s2
+
+Choices the page left open when the AI types' baselines were built, each
+the most conservative reading:
+
+- **`ChatRole`** is a standard enum of a message's four roles, `system`,
+  `user`, `assistant` and `tool`, written as its variant's name, as every
+  provider's API writes a `role`, and shown `System`, `User`, `Assistant`
+  and `Tool` in every locale; the catalogue's `Enum { ... }` needed a
+  name, as `IdentityDocumentKind` did.
+- **A vector's items are single-precision floats,** as pgvector's
+  `vector` column stores them and as models make embeddings, so storing
+  one later loses nothing. Each item is held as the decimal that is the
+  nearest float to the number it was built or read from, rounded half to
+  even as IEEE 754 rounds, in its shortest form: building one from
+  `0.123456789` keeps `0.12345679`, as `scale:` keeps a decimal at its
+  places, and a vector never breaks `format`. A JSON number is read as
+  the double JSON gives, then the nearest float, so a float a client
+  wrote out as a double (`-0.006929283495992422`) is that float again
+  (`-0.0069292835`), and a vector written and read back is the vector it
+  was. A decimal holds 38 places, so an item below `1e-30` is held as 0,
+  far below a float's precision beside an embedding's other items, and
+  one of `1e38` or more is refused, `max` (or `min` below 0) at its place
+  in the array. JSON has no NaN or infinity, so neither can be read.
+- **A vector is a list,** `List<Decimal>` to code, so `list.sum` and the
+  other list operations take it, of 1 to 16,000 items, pgvector's most
+  for a `vector` column; it is built from a list, `Vector([0.5, -0.25])`,
+  sent as a JSON array of numbers, never area 2's decimals as text, since
+  every provider sends one so, and shown in the locale's digits in
+  brackets joined by `; `, as a line's points are, `[0.5; -0.25; 1]`.
+  `==` compares its items in order; it isn't ordered.
+- **`dimensions:` fixes a vector type's length,** `type ArticleVector =
+  Vector { dimensions: 1536 }`, a whole number from 1 to 16,000, on a
+  type built on `Vector` only (elsewhere `type.constraint_base`). A
+  vector of another length breaks `dimensions`, a new rule key named for
+  its setting as `from` and `to` are, checked first, so where it decides
+  the length it settles `min_length` and `max_length` too. It is proved
+  for a list written out with that many items or a value of a type with
+  the same `dimensions:`; JSON, `json.read` and OpenAPI (`minItems` and
+  `maxItems`) check it, and the API record writes it. A plain `Vector`
+  has any length, so an `Embedding` can hold any model's; `min_length`
+  and `max_length` narrow a vector type as a list's. A type built on one
+  repeats its `dimensions:` or leaves it out, and one outside its lengths
+  or another is `type.constraint_contradiction`, as a different `scale:`
+  is.
+- **No text form** for a vector, an embedding, a usage or a message:
+  `text.from` and `text.parse` on one are `type.mismatch`, as on a
+  `PostalAddress`. A vector's JSON array is its one form, which is also
+  pgvector's text.
+- **`Embedding`** is its `model`, a `ModelId`, and its `vector`, a plain
+  `Vector`, sent as named fields, its model as `ModelId`'s text, and
+  shown as its model then its vector.
+- **`TokenCount`** is a whole number from 0 to JavaScript's largest safe
+  integer, as `UnitQuantity`'s count is, so a period's totals fit too;
+  sent as a JSON number, stored in a `bigint` and shown in the locale's
+  digits with no unit, since "1 tokens" needs a plural CLDR doesn't name.
+  It is ordered.
+- **`TokenUsage`** is the catalogue's `input`, `output` and `cached`,
+  the last `none` where a provider doesn't say. `cached` is the input
+  tokens the provider's cache served, counted within `input`, as OpenAI
+  and Gemini count them, so it is at or below `input`, proved on a literal
+  and checked as JSON is read; a provider package that counts them apart
+  (Anthropic) adds them in. Its total is `input + output`, worked out
+  where it is needed, never kept, so it can't disagree; a `total` member
+  is refused as any unknown field is. It is sent as named fields,
+  `cached` as `null` when `none`, stored a `bigint` column each, and
+  shown by labels, the same in every locale, as projected coordinates
+  are: `input 1,200, output 350, cached 800`.
+- **`ChatMessage`** is its `role` and its `content`, any text, the shape
+  OpenAI's, Anthropic's and Gemini's APIs share, `{"role": "user",
+  "content": "..."}`; a message's name, a tool call's id and content parts
+  (images, tool calls and results as blocks) come with the AI area, and a
+  member for any of them is refused for now. It is stored a `text` column
+  each and shown `User: Which soups are vegan?`.
+- **A message is personal data, `identifying`,** whatever field holds it
+  (area 15): what a person writes to a model, or is written back, can name
+  them and say anything about them, and no category describes free text
+  better. A field marked with a category of its own (a clinic's
+  conversations, `health`) says more. Vectors, embeddings and counts
+  aren't personal data on their own; an application marks an embedding
+  of a person's text as that text's category.
+- **Storage:** a vector or an embedding is stored in a pgvector `vector`
+  column (`Storage::Vector`), which the AI area builds, so a field of one
+  is `toolchain.not_built_yet`, pointing at it. A count is one `bigint`
+  column; a usage and a message are stored a column per part.
+- **Shapes:** none of the five has a distinctive shape for
+  `type.standard_exists` (question 5); a `{ role, content }` or an
+  `{ input, output }` is too common to flag.
+
 ### Chosen in chunk 5.5r
 
 Choices the page left open when `verify_jwt` and the token types were
@@ -10222,7 +10352,7 @@ first; each group of types then arrives with its baseline and its extras.
 - **5.5s2 AI types' baselines** `opus · high`: `Vector`, `Embedding`,
   `TokenCount`, `TokenUsage` and `ChatMessage`, with construction, text
   and JSON from the contract; their storage and operations come with the
-  AI area.
+  AI area. Built.
 - **`type.standard_exists`**: on app code in 5.5a, after 5.4b's declines
   (area 1's question 11), the check in 5.5a and each type's match
   signature with its group; on packages' public types with the publishing

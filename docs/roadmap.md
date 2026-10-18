@@ -1047,12 +1047,18 @@ reference only).
   written by the right-hand rule; `Latitude` and `Longitude` are decimals
   held as written; storing a geometry is `toolchain.not_built_yet` until
   5.5u. What the pages left open is area 19's "Chosen in chunk 5.5s".
-- [ ] **5.5s2 AI types' baselines** `opus · high` (area 19, "The
+- [x] **5.5s2 AI types' baselines** `opus · high` (area 19, "The
   standard types"; split from 5.5s), after 5.5s: `Vector`, `Embedding`,
   `TokenCount`, `TokenUsage` and `ChatMessage`, with construction, text
   and JSON from the contract; storage and operations come with the AI
   area (5.5v). Done when every type passes the harness's construction,
-  text and JSON cases.
+  text and JSON cases. Built: a vector's items are single-precision
+  floats, held as decimals and sent as JSON numbers; a vector type fixes
+  its length with `dimensions:`; `ChatRole` names a message's role;
+  `TokenUsage`'s cached tokens are within its input, its total not kept;
+  a message is personal data; storing a vector is
+  `toolchain.not_built_yet` until 5.5v. What the pages left open is area
+  19's "Chosen in chunk 5.5s2".
 - [ ] **5.5t Cross-field rules** `opus · high` (area 2, decided by area 19,
   question 15): named rules across an object type's fields (`rule
   ends_after_start: ends > starts`), proved or attempted like any rule.

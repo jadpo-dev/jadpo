@@ -125,6 +125,7 @@ function catalogue_name(name: ShortProductName) -> ProductName {
 | `min_length`, `max_length` | `Text`, `Bytes`, `List<T>`, `Set<T>`, `Map<K, V>` | whole number | Inclusive bounds; text counts Unicode characters, collections count items |
 | `pattern` | `Text` | string | A regular expression the text must match |
 | `format` | `Text` | `email` | The text must be an email address |
+| `dimensions` | a type built on `Vector` | whole number, 1 to 16,000 | Exactly that many items (area 19, chunk 5.5s2) |
 
 Each constraint is written `name: value`, one per line. There are no other
 constraints and no custom validation functions.
@@ -135,7 +136,9 @@ lengths and durations too) is `type.constraint_contradiction`, and so is a
 `Decimal` refinement whose `scale` differs from the one it inherits, since
 the scale decides how the value is stored and sent; since chunk 5.5h4, so
 is a currency other than the one it inherits, a `Money` type's `currency:`
-or a rate type's `from:` and `to:` (area 19). Since chunk 2.7, a bound
+or a rate type's `from:` and `to:` (area 19), and since chunk 5.5s2 a
+vector type's `dimensions:` other than the one it inherits or outside
+its lengths. Since chunk 2.7, a bound
 looser than the one it inherits (`max_length: 50` on a type with
 `max_length: 40`) is `type.constraint_loosened`. The same settings rules
 hold for the fields of every type with fields, entities and events included;
