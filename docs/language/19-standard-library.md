@@ -104,7 +104,7 @@ a package or a later area.
 
 ### The standard types
 
-Decided 2026-10-17 (Richard): 247 types, 192 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: twenty-seven are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p), and question 22 decided the others.
+Decided 2026-10-17 (Richard): 247 types, 208 of them built already (bold; `Range<T>` in chunk 5.5c2, `Money` and `Currency` in 5.5h, `ExchangeRate` in 5.5h2, 17 payment and identity numbers in 5.5i, the 17 quantities with `DataSize` and `Bitrate` in 5.5j, `Percentage`, `Ratio` and `Fraction` in 5.5j2, ten time types in 5.5k, `RecurrenceRule` and `OpeningHours` in 5.5k2, 15 of people and places in 5.5l, the other four in 5.5l2, `CalendarEvent` in 5.5k3, the cards and identity documents in 5.5i2, 29 codes and closed lists of commerce, health, travel and the rest in 5.5m, the 20 of web and network in 5.5n, the money group's six records in 5.5i3, `BankAccount` in 5.5i4, the 18 software types in 5.5n2, `Html` and `Markdown` in 5.5o, the 15 media and visual types in 5.5p, `RichText` and `LocalisedText` in 5.5o2, the 16 records and measures of commerce, health, travel and the rest in 5.5m2, `PasswordHash`, `PublicKey` and `PrivateKey` in 5.5q2); `CalendarPeriod` and `UkCompanyNumber` were added the same day, after review, `IdentityDocumentKind`, an `IdentityDocument`'s kind, in chunk 5.5i2 (accepted by the lead session, "Decisions"), and `InterestRateBasis`, an `InterestRate`'s basis, in chunk 5.5i3, for the same reason (accepted by the lead session, "Decisions"), and `ContentRatingScheme`, the body a `ContentRating` is by, in chunk 5.5p, for the same reason (accepted by the lead session, "Decisions"), and `RichTextBlock`, `RichTextSpan` and `RichTextMark`, a `RichText`'s parts, in chunk 5.5o2, for the same reason (accepted by the lead session, "Decisions"), and `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration`, the systems a size is in and the routes a dose is taken by, in chunk 5.5m2, for the same reason (accepted by the lead session, "Decisions"). "(enum)" marks a closed list held as a built-in enum: thirty are built (`Currency` in chunk 5.5h, `Month` in 5.5k, the seven of people and places in 5.5l, `CardBrand` and `IdentityDocumentKind` in 5.5i2, eight in 5.5m, `HttpMethod` in 5.5n, `LogLevel` in 5.5n2, `PaperSize`, `ExifOrientation` and `ContentRatingScheme` in 5.5p, `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` in 5.5m2), and question 22 decided the others.
 Units fold into their quantity type, roles into the general type,
 duplicates are merged, and formats and application entities are out. The
 [vocabulary types catalogue](research/vocabulary-types-catalogue.md) is
@@ -123,18 +123,18 @@ exception to the rule.
 | Geospatial (17) | `Point` (optional altitude), `Latitude`, `Longitude`, `LineString`, `Polygon`, `MultiPoint`, `MultiLineString`, `MultiPolygon`, `Geometry`, `BoundingBox`, `Circle`, `Bearing`, `Crs`, `EastingNorthing`, `MapTile`, `H3Cell`, `Geohash` | `geo` (future area) |
 | Money, payments, banking (24) | **`Money`**, **`Currency`** (enum), **`ExchangeRate`**, **`Price`**, **`UnitPrice`**, **`TaxRate`**, **`Discount`**, **`BasisPoints`**, **`InterestRate`**, **`PaymentCardNumber`**, **`MaskedCardNumber`**, **`CardBrand`** (enum), **`CardBin`**, **`CardExpiry`**, **`PaymentReference`**, **`InvoiceNumber`**, **`Iban`**, **`Bic`**, **`UkSortCode`**, **`UkAccountNumber`**, **`BankAccount`**, **`AbaRoutingNumber`**, **`Lei`**, **`Isin`** | `money` |
 | Tax and identity numbers (11, and `IdentityDocumentKind`) | **`VatNumber`**, **`TaxId`**, **`UkUtr`**, **`UkCompanyNumber`**, **`UkNationalInsuranceNumber`**, **`UsSsn`**, **`UsEin`**, **`PassportNumber`**, **`DrivingLicenceNumber`**, **`IdentityDocument`** with **`IdentityDocumentKind`** (enum), **`NhsNumber`** | |
-| Commerce and logistics (20) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`, `ShoeSize`, `Dimensions`, **`HsCode`**, **`Incoterm`** (enum), `TrackingNumber`, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, `VehicleRegistration` | `units`, `media` |
+| Commerce and logistics (20, and `ClothingSizeSystem` and `ShoeSizeSystem`) | **`Sku`**, **`Ean13`**, **`UpcA`**, **`Isbn`**, **`Sscc`**, **`Barcode`**, **`UnitQuantity`**, **`Rating`**, **`ClothingSize`** with **`ClothingSizeSystem`** (enum), **`ShoeSize`** with **`ShoeSizeSystem`** (enum), **`Dimensions`**, **`HsCode`**, **`Incoterm`** (enum), **`TrackingNumber`**, **`Carrier`**, **`ContainerNumber`**, **`LotNumber`**, **`SerialNumber`**, **`Vin`**, **`VehicleRegistration`** | `units`, `media` |
 | Time and calendar (19) | **`Instant`**, **`CalendarDate`**, **`ZonedTime`**, **`Duration`**, **`Weekday`** (enum), **`LocalTime`**, **`LocalDateTime`**, **`Month`** (enum), **`YearMonth`**, **`Year`**, **`Quarter`**, **`IsoWeek`**, **`UtcOffset`**, **`DateRange`**, **`InstantRange`**, **`CalendarPeriod`**, **`RecurrenceRule`**, **`OpeningHours`**, **`CalendarEvent`** | `temporal`, `range` |
 | Physical quantities (17) | **`Length`**, **`Area`**, **`Volume`**, **`Angle`**, **`Mass`**, **`Pressure`**, **`Energy`**, **`Power`**, **`Temperature`**, **`TemperatureDifference`**, **`Speed`**, **`Frequency`**, **`Voltage`**, **`Current`**, **`Illuminance`**, **`SoundLevel`**, **`Concentration`** | `units` |
 | Maths and data (8) | **`Percentage`**, **`Ratio`**, **`Fraction`**, **`Range<T>`**, **`DataSize`**, **`Bitrate`**, `Vector`, `Embedding` | `range`, `units`; AI area |
-| Health (9) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, `Dose`, `DosageInstruction`, `HeartRate`, `BloodPressure`, `BloodGlucose`, **`Allergen`** (enum) | |
+| Health (9, and `RouteOfAdministration`) | **`BloodType`** (enum), **`Icd10Code`**, **`SnomedConcept`**, **`Dose`**, **`DosageInstruction`** with **`RouteOfAdministration`** (enum), **`HeartRate`**, **`BloodPressure`**, **`BloodGlucose`**, **`Allergen`** (enum) | |
 | Media and visual (15, and `ContentRatingScheme`) | **`Colour`**, **`ImageDimensions`**, **`AspectRatio`**, **`Rect`**, **`Insets`**, **`PaperSize`** (enum), **`ExifOrientation`** (enum), **`AltText`**, **`FrameRate`**, **`VideoResolution`**, **`VideoCodec`**, **`AudioCodec`**, **`Timecode`**, **`SubtitleCue`**, **`ContentRating`** with **`ContentRatingScheme`** (enum) | `colour`, `media` |
 | Web and network (23) | **`Url`**, **`UrlPath`**, **`RelativeUrl`**, **`Slug`**, **`DomainName`**, **`Hostname`**, **`WebOrigin`**, **`HttpMethod`** (enum), **`HttpStatus`**, **`HttpHeaderName`**, **`FileType`**, **`UserAgent`**, **`ProblemDetails`**, **`JsonPointer`**, **`Cookie`**, **`UtmParameters`**, **`IpAddress`**, **`Cidr`**, **`NetworkPort`**, **`MacAddress`**, **`Imei`**, **`Emoji`**, **`PushToken`** | `web` |
 | Software (19) | **`SemanticVersion`**, **`VersionRange`**, **`GitRef`**, **`PackageUrl`**, **`Cve`**, **`SpdxLicence`**, **`TraceId`**, **`SpanId`**, **`TraceParent`**, **`LogLevel`** (enum), **`FilePath`**, **`FileName`**, **`RegularExpression`**, **`ContainerImage`**, **`Digest`**, **`Uuid`**, **`Ulid`**, **`IdempotencyKey`**, **`Doi`** | `semver` |
 | Text formats (4) | **`Markdown`**, **`Html`**, **`RichText`**, **`LocalisedText`** | `markup`, `text` |
 | Security (20) | `Password`, **`PasswordHash`**, `PasswordPolicy`, `Hash`, `Hmac`, `Jwt`, `JwtClaims`, `Jwk`, **`PublicKey`**, **`PrivateKey`**, `Certificate`, `TotpSecret`, `OneTimeCode`, `ApiKey`, `SecretText`, `BearerToken`, `OAuthScope`, `OidcClaims`, `WebAuthnCredential`, `EncryptedValue` | `crypto` |
-| Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, `FlightNumber`, **`CabinClass`** (enum), **`BookingReference`** | |
-| Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), `Jurisdiction`, `ModelId` | |
+| Travel (6) | **`IataAirport`**, **`IcaoAirport`**, **`IataAirline`**, **`FlightNumber`**, **`CabinClass`** (enum), **`BookingReference`** | |
+| Other with a published standard (10) | **`UnNumber`**, **`Orcid`**, **`CefrLevel`** (enum), **`Mpan`**, **`Mprn`**, **`EpcRating`** (enum), **`Tenure`** (enum), **`LawfulBasis`** (enum), **`Jurisdiction`**, **`ModelId`** | |
 | AI (3) | `TokenCount`, `TokenUsage`, `ChatMessage` | AI area |
 
 **Its three rules**, decided with it:
@@ -397,7 +397,7 @@ entries by a test:
 
 | Release | Standard types it adds |
 |---|---|
-| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `BasisPoints`, `Bic`, `Bitrate`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Discount`, `Doi`, `DomainName`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `SemanticVersion`, `SerialNumber`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
+| 0.1.0 | `AbaRoutingNumber`, `Allergen`, `AltText`, `Angle`, `Area`, `AspectRatio`, `AudioCodec`, `BankAccount`, `Barcode`, `BasisPoints`, `Bic`, `Bitrate`, `BloodGlucose`, `BloodPressure`, `BloodType`, `BookingReference`, `CabinClass`, `CalendarDate`, `CalendarEvent`, `CalendarPeriod`, `CallingCode`, `CardBin`, `CardBrand`, `CardExpiry`, `Carrier`, `CefrLevel`, `Cidr`, `ClothingSize`, `ClothingSizeSystem`, `Colour`, `Concentration`, `ContainerImage`, `ContainerNumber`, `ContentRating`, `ContentRatingScheme`, `Continent`, `Cookie`, `Country`, `CountrySubdivision`, `Currency`, `Current`, `Cve`, `DataSize`, `DateRange`, `Digest`, `Dimensions`, `Discount`, `Doi`, `DomainName`, `DosageInstruction`, `Dose`, `DrivingLicenceNumber`, `Duration`, `Ean13`, `Email`, `EmailWithName`, `Emoji`, `Energy`, `EpcRating`, `ExchangeRate`, `ExifOrientation`, `FamilyName`, `FileName`, `FilePath`, `FileType`, `FlightNumber`, `Fraction`, `FrameRate`, `Frequency`, `GitRef`, `GivenName`, `HeartRate`, `Hostname`, `HsCode`, `Html`, `HttpHeaderName`, `HttpMethod`, `HttpStatus`, `IataAirline`, `IataAirport`, `Iban`, `IcaoAirport`, `Icd10Code`, `IdempotencyKey`, `IdentityDocument`, `IdentityDocumentKind`, `Illuminance`, `ImageDimensions`, `Imei`, `Incoterm`, `Insets`, `Instant`, `InstantRange`, `InterestRate`, `InterestRateBasis`, `InvoiceNumber`, `IpAddress`, `Isbn`, `Isin`, `IsoWeek`, `JsonPointer`, `Jurisdiction`, `Language`, `LawfulBasis`, `Lei`, `Length`, `LocalDateTime`, `LocalTime`, `Locale`, `LocalisedText`, `LogLevel`, `LotNumber`, `MacAddress`, `Markdown`, `MaskedCardNumber`, `Mass`, `ModelId`, `Money`, `Month`, `Mpan`, `Mprn`, `Nationality`, `NetworkPort`, `NhsNumber`, `OpeningHours`, `Orcid`, `PackageUrl`, `PaperSize`, `PassportNumber`, `PasswordCheck`, `PasswordHash`, `PaymentCardNumber`, `PaymentReference`, `Percentage`, `PersonName`, `PhoneExtension`, `PhoneNumber`, `PostalAddress`, `PostalCode`, `Power`, `Pressure`, `Price`, `ProblemDetails`, `PublicKey`, `PushToken`, `Quarter`, `Range`, `Rating`, `Ratio`, `Rect`, `RecurrenceRule`, `RegularExpression`, `RelativeUrl`, `RichText`, `RichTextBlock`, `RichTextMark`, `RichTextSpan`, `RouteOfAdministration`, `SemanticVersion`, `SerialNumber`, `ShoeSize`, `ShoeSizeSystem`, `Sku`, `Slug`, `SnomedConcept`, `SoundLevel`, `SpanId`, `SpdxLicence`, `Speed`, `Sscc`, `SubtitleCue`, `TaxId`, `TaxRate`, `Temperature`, `TemperatureDifference`, `Tenure`, `TextDirection`, `Timecode`, `TraceId`, `TraceParent`, `TrackingNumber`, `UkAccountNumber`, `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UkSortCode`, `UkUtr`, `Ulid`, `UnLocode`, `UnNumber`, `UnitPrice`, `UnitQuantity`, `UpcA`, `Uprn`, `Url`, `UrlPath`, `UsEin`, `UsSsn`, `UserAgent`, `Username`, `UtcOffset`, `UtmParameters`, `Uuid`, `VatNumber`, `VehicleRegistration`, `VersionRange`, `VideoCodec`, `VideoResolution`, `Vin`, `Voltage`, `Volume`, `WebOrigin`, `Weekday`, `WritingScript`, `Year`, `YearMonth`, `Zone`, `ZonedTime` |
 
 > Built in chunk 5.5a2: each data entry's `release`, `type.standard_clash`
 > on any declaration named like a standard type (its example is under
@@ -5434,8 +5434,283 @@ test "a closed list reads its codes in either case" {
 > IATA's and ICAO's codes and ICD-10's release aren't shipped, since none
 > may be redistributed freely, so those are checked by pattern only. The
 > 16 records and measures (`Barcode`, `Dimensions`, `FlightNumber` ...)
-> are chunk 5.5m2. What the page left open is "Chosen in chunk 5.5m",
-> under "Review".
+> were built in chunk 5.5m2, below. What the page left open is "Chosen in
+> chunk 5.5m", under "Review".
+
+A courier labels each parcel with its size and its carrier's tracking
+number, a travel desk reads the flight a booking names, and a library
+reads the ten-digit ISBNs its old catalogue lists as the books' 13-digit
+ones:
+
+```jadpo check project=records
+type ScannedText = Text {}
+
+type NotABook = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type NotAFlight = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A book the old catalogue lists by its ISBN-10, read as its `Isbn`.
+function catalogued_book(raw: ScannedText) fails NotABook -> Isbn {
+    var book: Isbn = attempt text.parse(raw, as: Isbn, form: CodeForm.isbn10) {
+        malformed: NotABook
+    }
+    return book
+}
+
+/// The flight a booking names, as the airline writes it.
+function booked_flight(raw: ScannedText) fails NotAFlight -> FlightNumber {
+    var ba_flight: FlightNumber = attempt text.parse(raw, as: FlightNumber) {
+        malformed: NotAFlight
+    }
+    return ba_flight
+}
+
+/// A parcel's size as its label prints it.
+function parcel_size(shipped_box: Dimensions, packer: Locale) -> PresentationText {
+    return text.format(shipped_box, locale: packer)
+}
+
+/// The same in inches, for a carrier that measures in them.
+function parcel_in_inches(shipped_box: Dimensions, packer: Locale) -> PresentationText {
+    return text.format(shipped_box, locale: packer, unit: LengthUnit.inch)
+}
+```
+
+```jadpo check project=records file=main.test.jadpo
+test "an ISBN-10 is read as its 13 digits" {
+    var book: Isbn = attempt catalogued_book("0306406152")
+    assert book == Isbn("9780306406157")
+    var with_x: Isbn = attempt catalogued_book("080442957X")
+    assert with_x == Isbn("9780804429573")
+    assert catalogued_book("0306406153") fails NotABook
+    assert catalogued_book("0-306-40615-2") fails NotABook
+}
+
+test "a flight is written one way" {
+    var ba_flight: FlightNumber = attempt booked_flight("BA123")
+    assert ba_flight.airline == IataAirline("BA")
+    assert ba_flight.number == 123
+    assert ba_flight.suffix == none
+    assert booked_flight("BA0123") fails NotAFlight
+    assert booked_flight("BA 123") fails NotAFlight
+}
+
+test "a parcel is labelled in the carrier's units" {
+    var shipped_box: Dimensions = Dimensions {
+        length: 12inch
+        width: 9inch
+        height: 4inch
+    }
+    assert parcel_size(shipped_box, Locale.en_gb) == "30.48 × 22.86 × 10.16 cm"
+    assert parcel_in_inches(shipped_box, Locale.en_us) == "12 × 9 × 4 in"
+    var ups_label: TrackingNumber = TrackingNumber {
+        carrier: "UPSN"
+        number: "1Z999AA10123456784"
+    }
+    assert text.from(ups_label) == "UPSN 1Z999AA10123456784"
+}
+
+test "the other records are read and shown by their standards" {
+    var size: ClothingSize = ClothingSize {
+        system: ClothingSizeSystem.uk
+        size: "10"
+    }
+    assert text.from(size) == "UK 10"
+    var munich_plate: VehicleRegistration = VehicleRegistration {
+        country: Country.de
+        plate: "M-AB 1234"
+    }
+    assert text.from(munich_plate) == "DE M-AB 1234"
+    var stars: Rating = Rating {
+        value: 4.5
+        best: 5.0
+        worst: 1.0
+    }
+    assert text.format(stars, locale: Locale.en_gb) == "4.5/5.0"
+    var flour: UnitQuantity = UnitQuantity.mass {
+        amount: 2.5kg
+    }
+    assert text.format(flour, locale: Locale.en_gb) == "2.5 kg"
+    var scanned: Barcode = Barcode.ean13 {
+        data: "4006381333931"
+    }
+    assert text.format(scanned, locale: Locale.en_gb) == "4006381333931"
+    var applies_in: Jurisdiction = Jurisdiction.subdivision {
+        subdivision: CountrySubdivision.gb_eng
+    }
+    assert text.format(applies_in, locale: Locale.en_gb) == "England"
+}
+```
+
+A clinic shows each reading as a clinician reads it, whatever unit a
+monitor sent it in, and keeps a prescription's instruction as its parts,
+never as free text to read back:
+
+```jadpo check project=health-measures
+type MonitorText = Text {}
+
+type MeterReading = Decimal {
+    scale: 1
+}
+
+type BadPulse = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type BadGlucose = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A pulse as a monitor sends it, `72 bpm`: no unit, the wrong kind and a
+/// pulse past 300 beats a minute each fail.
+function monitored_pulse(raw: MonitorText) fails BadPulse -> HeartRate {
+    var pulse: HeartRate = attempt text.parse(raw, as: HeartRate) {
+        malformed: BadPulse
+        unknown_unit: BadPulse
+        min: BadPulse
+        max: BadPulse
+    }
+    return pulse
+}
+
+/// A glucose level as a UK meter gives it, in millimoles a litre to one
+/// place.
+function metered_glucose(meter_value: MeterReading) fails BadGlucose -> BloodGlucose {
+    var metered_level: BloodGlucose = attempt BloodGlucose(
+        units.of(meter_value, ConcentrationUnit.millimole_of_glucose_per_litre)
+    ) {
+        min: BadGlucose
+    }
+    return metered_level
+}
+
+/// A reading as the chart shows it.
+function pressure_shown(chart_reading: BloodPressure, viewer: Locale) -> PresentationText {
+    return text.format(chart_reading, locale: viewer)
+}
+
+/// A glucose level in millimoles a litre, as a UK meter reads it.
+function glucose_shown(glucose_level: BloodGlucose, viewer: Locale) -> PresentationText {
+    return text.format(glucose_level, locale: viewer)
+}
+
+/// The same in milligrams a decilitre, as a US laboratory reports it.
+function glucose_for_us_lab(glucose_level: BloodGlucose, viewer: Locale) -> PresentationText {
+    return text.format(
+        glucose_level,
+        locale: viewer,
+        unit: ConcentrationUnit.milligram_per_decilitre
+    )
+}
+
+/// How to take a medicine, as the label prints it.
+function label_line(leaflet_dose: DosageInstruction, viewer: Locale) -> PresentationText {
+    return text.format(leaflet_dose, locale: viewer)
+}
+```
+
+```jadpo check project=health-measures file=main.test.jadpo
+test "a pulse is read in either unit and shown in beats a minute" {
+    var pulse: HeartRate = attempt monitored_pulse("72 bpm")
+    var in_hertz: HeartRate = attempt monitored_pulse("1.2 Hz")
+    assert pulse == in_hertz
+    assert pulse == HeartRate(72bpm)
+    assert text.format(pulse, locale: Locale.en_gb) == "72 bpm"
+    assert text.from(pulse) == "1.2 Hz"
+    assert monitored_pulse("72") fails BadPulse
+    assert monitored_pulse("72 mmHg") fails BadPulse
+    assert monitored_pulse("400 bpm") fails BadPulse
+}
+
+test "a reading is shown as a clinician reads it" {
+    var at_rest: BloodPressure = BloodPressure {
+        systolic: 120mmHg
+        diastolic: 80mmHg
+    }
+    assert pressure_shown(at_rest, Locale.en_gb) == "120/80 mmHg"
+    var in_kilopascals: BloodPressure = BloodPressure {
+        systolic: 16kPa
+        diastolic: 10.7kPa
+    }
+    assert pressure_shown(in_kilopascals, Locale.en_gb) == "120/80 mmHg"
+    var fasting: BloodGlucose = attempt metered_glucose(5.5)
+    assert glucose_shown(fasting, Locale.en_gb) == "5.5 mmol/L"
+    assert glucose_for_us_lab(fasting, Locale.en_us) == "99 mg/dL"
+    assert metered_glucose(-1.0) fails BadGlucose
+}
+
+test "an instruction is kept as its parts" {
+    var twice_daily: DosageInstruction = DosageInstruction {
+        dose: Dose.mass {
+            amount: 500mg
+        }
+        route: RouteOfAdministration.oral
+        times: 2
+        per: 24h
+        as_needed: false
+    }
+    assert label_line(twice_daily, Locale.en_gb) == "500 mg, Oral use, 2 times per 1 day"
+    var when_needed: DosageInstruction = DosageInstruction {
+        dose: Dose.volume {
+            amount: 10ml
+        }
+        route: RouteOfAdministration.oral
+        times: 1
+        per: 6h
+        as_needed: true
+    }
+    assert label_line(
+        when_needed,
+        Locale.en_gb
+    ) == "10 ml, Oral use, 1 time per 6 hours, when needed"
+}
+```
+
+A reading written out with its pressures the wrong way round is refused
+while compiling: the pressure between beats is below the pressure as the
+heart beats.
+
+```jadpo check project=pressure-order expect=type.invalid_literal
+/// A reading typed into the chart.
+function typed_reading() -> BloodPressure {
+    return BloodPressure {
+        systolic: 80mmHg
+        diastolic: 120mmHg
+    }
+}
+```
+
+```text output
+error: This `BloodPressure`'s `diastolic` breaks a rule across its parts
+ --> main.jadpo:5:20
+  |
+5 |         diastolic: 120mmHg
+  |                    ^^^^^^^ not below the systolic
+  reason: A `BloodPressure`'s `diastolic`, the pressure between beats, is below its `systolic`, the pressure as the heart beats (LOINC 85354-9).
+  next: Write a `diastolic` below the `systolic`, or swap the two (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
+
+> Built in chunk 5.5m2 for the 16 records and measures: `Barcode`, a
+> choice by symbology; `UnitQuantity`, a count or an amount of a
+> quantity; `Rating`, its value, best and worst; `ClothingSize` and
+> `ShoeSize`, each a size in its system (`ClothingSizeSystem`,
+> `ShoeSizeSystem`); `Dimensions`, three `Length`s; `TrackingNumber` on
+> `Carrier`; `VehicleRegistration` by its country; `FlightNumber` on
+> `IataAirline`; `Jurisdiction`, a country or a subdivision; `ModelId`;
+> `Dose`, by mass or volume; `DosageInstruction`, structured as FHIR's
+> `Dosage`, with `RouteOfAdministration`; and `HeartRate`, `BloodPressure`
+> and `BloodGlucose` on `Frequency`, `Pressure` and `Concentration`, with
+> the clinical units they are read and shown in. `text.parse` reads an
+> ISBN-10 as its `Isbn` with `form: CodeForm.isbn10`. What the page left
+> open is "Chosen in chunk 5.5m2", under "Review".
 
 ## Logic and bits
 
@@ -7745,8 +8020,7 @@ under "Errors").
   allergy is an application's own field, which it marks.
 - **ISBN-10:** the contract's conversion is `text.parse(raw, as: Isbn,
   form: CodeForm.isbn10)`, reading only, as `Country`'s `form:` is
-  (decided by the lead session, 2026-10-18); it comes with chunk 5.5m2,
-  and until then `text.parse` reads the 13 digits only.
+  (decided by the lead session, 2026-10-18), built in chunk 5.5m2.
 - **Test values are published ones** where a standard publishes them
   (GS1's, the ISBN Users' Manual's, NHTSA's, ISO 6346's, ORCID's, SNOMED
   CT's), and made up to the rules where it doesn't; each entry says which.
@@ -8388,6 +8662,113 @@ under "Errors").
 - **Clashes renamed:** the interpreter's JSON test's `Colour` enum is
   `Finish`.
 
+### Chosen in chunk 5.5m2
+
+- **Three supporting enums,** accepted by the lead session ("Decisions"),
+  beside the 247, since a part must be a standard type to be read, sent and stored by
+  its code (as `ContentRatingScheme` was): `ClothingSizeSystem` and
+  `ShoeSizeSystem`, the systems a size is in, and `RouteOfAdministration`,
+  the routes a dose is taken by.
+- **Four units** (accepted by the lead session, "Decisions"):
+  `PressureUnit.millimetre_of_mercury` (`mmHg`, 133.322387415 Pa, as CLDR
+  converts it) and `FrequencyUnit.beat_per_minute` (`bpm`, 1/60 Hz), each
+  a literal's suffix too, `120mmHg`, `72bpm` (question 17, as the lead
+  session added them); and, with no suffix since theirs would hold a `/`,
+  `ConcentrationUnit.milligram_per_decilitre` (`mgdL`, 0.01 g/L) and
+  `ConcentrationUnit.millimole_of_glucose_per_litre`, glucose's alone,
+  whose code is its name: 0.1801557 g/L, by glucose's molar mass of
+  180.1557 g/mol, as CLDR converts its `milligram-ofglucose-per-deciliter`.
+  Each is read by its code; text and the wire still write a quantity in
+  its base unit.
+- **The measures are on quantities,** each held in its kind's base unit:
+  `HeartRate` a `Frequency` from 0 to 300 beats a minute, shown in whole
+  beats a minute (a frequency is held to the millihertz, so 73 bpm is held
+  as 1.217 Hz and shown as 73 again); `BloodPressure` a `systolic` and a
+  `diastolic` `Pressure`, neither below 0, the diastolic below the
+  systolic, shown `120/80 mmHg` in whole millimetres of mercury;
+  `BloodGlucose` a `Concentration` never below 0, shown in millimoles of
+  glucose a litre to one place, or whole milligrams a decilitre with
+  `unit:`. `text.format` takes `unit:` for each, and a value made in
+  another unit (`16kPa`) is shown in the clinician's. They are a person's
+  `health` data (area 15).
+- **`Dose`** is a choice of an amount by `mass` or by `volume`, at least a
+  microgram or a microlitre, the smallest step each kind holds, shown in
+  milligrams or millilitres exactly, so a microgram dose is never shown in
+  a unit a reader can take for a milligram. A count of tablets or units of
+  insulin is an application's own.
+- **`DosageInstruction`** is FHIR `Dosage`'s commonest form as parts, never
+  free text to read: a `dose`, a `route`, `times` (at least once) `per` a
+  `Duration` above nothing, and `as_needed`. It is shown in English, as a
+  route's name is, `500 mg, Oral use, 2 times per 1 day`; an application
+  that shows it in another language words it in its own messages. A dose
+  and an instruction describe a medicine, so neither is personal data; a
+  patient's prescription is an application's record, which it marks.
+- **`RouteOfAdministration`** is the 14 routes of EDQM's Standard Terms a
+  leaflet most often names, each its own name as its code, shown as EDQM
+  words it ("Oral use"). EDQM's numeric codes aren't used.
+- **The size systems** are the UK's, continental Europe's and the US's,
+  the three the catalogue names, written `UK`, `EU` and `US`; Mondopoint
+  (ISO 9407) and the other national systems come with a release. A size is
+  the label in its system, not a measurement: a clothing size a number up
+  to three digits, the US's `00`, or `XXS` to `5XL`; a shoe size a whole or
+  half size. Whose scale it is on (women's, men's or children's) is the
+  product's, as Google's and schema.org's product data hold it. Each is
+  written as the label writes it, `UK 10`, `EU 42`, and stored a column
+  each.
+- **`Barcode`** is a choice by symbology: `ean13` and `upc_a`, whose data
+  is the 5.5m type with its GS1 check digit; `code128`, 1 to 80 printable
+  ASCII characters; and `qr_code`, 1 to 2,953 characters of ISO 8859-1 in
+  byte mode, as many as a version 40 symbol holds. It is sent tagged and
+  shown as its data. Other symbologies come with a release.
+- **`UnitQuantity`** is a choice of a count, `each` (UN/ECE Recommendation
+  20's `EA`), or an amount by `mass`, `volume`, `length` or `area`, the
+  kinds `UnitPrice` prices by, none below 0, shown in its kind's base
+  unit as `UnitPrice` is. Rec 20's list of trade units isn't adopted.
+- **`Rating`** is schema.org's `value`, `best` and `worst`, the value on
+  the scale and the best above the worst, held as written (4.5 of 5 and 9
+  of 10 differ) and shown `4.5/5`.
+- **Rules across parts,** a rating's and a blood pressure's, are proved for
+  a literal that writes both parts as numbers or as quantities of one kind,
+  and checked as JSON is read; one built in code from values waits on
+  cross-field rules (chunk 5.5t).
+- **`Dimensions`** is a `length`, `width` and `height`, none below 0, sent
+  as named fields, stored as `jsonb` and shown in centimetres, or the unit
+  `unit:` names, written once, `30 × 20 × 10 cm`. A parcel's weight, which
+  the catalogue folded in, is an application's `Mass` beside it.
+- **`TrackingNumber`** is a `Carrier` and 6 to 40 capitals and digits,
+  which covers the large carriers' published forms; a carrier's own form
+  and check digit aren't checked. **`VehicleRegistration`** is a
+  `Country` and a mark of up to four groups of capitals, letters of a
+  script with no case, or digits, joined by a space or a hyphen and kept as
+  written, since a separator is part of some marks (a German district's
+  code). Each is written as its code, a space and the rest, and stored a
+  column each. Neither is personal data, as a `Vin` isn't.
+- **`FlightNumber`** is IATA's SSIM designator: an `IataAirline`, a number
+  from 1 to 9999 and an optional capital suffix, written with no space or
+  leading zero, `BA123`, and stored a column each. A flight on a date
+  (`FlightDesignator`, folded here) is an application's record of a
+  `FlightNumber` and a `CalendarDate`.
+- **`Jurisdiction`** is a choice of a `country` or a `subdivision`, sent
+  tagged and shown by its CLDR name; like every choice it has no single
+  text form.
+- **`ModelId`** is a `provider` and a `name`, written as Hugging Face writes
+  a repository, `meta-llama/Llama-3.1-8B-Instruct`, kept as written, the
+  name taking the `:` and `@` of a version tag; stored a column each.
+- **Text forms:** `TextForm::Joined` writes two parts with a separator, the
+  first an enum's code, a standard type's text or a pattern's;
+  `TextForm::FlightNumber` writes IATA's designator.
+- **ISBN-10:** `CodeForm.isbn10` reads nine digits and a check character,
+  a digit or `X` in either case, with no hyphens, as the ISBN-13 `978` and
+  the first nine with GS1's check digit; a wrong check character is
+  `malformed`. `text.from` never writes one: asking is
+  `type.temporal_option_unused`, as for a form a list hasn't.
+- **Test values** are published ones where a standard publishes them (the
+  ISBN Users' Manual's, GS1's, UPS's sample tracking number) and made up
+  to the rules where it doesn't.
+- **Clashes renamed:** area 2's `syntax.type_parent_required` example's
+  `Dimensions` is `BoxSize`, and the interpreter's percentages test's
+  `Dose` is `MedicineMass`.
+
 ### Chosen in chunk 5.5q
 
 - **`random` is a stub, `random.jadpo`,** declared and typed like the
@@ -8553,6 +8934,9 @@ conservative reading:
 | `InterestRateBasis` | A standard enum of `aer`, `apr` and `flat`, an `InterestRate`'s basis, added in chunk 5.5i3 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `ContentRatingScheme` | A standard enum of `bbfc`, `mpa`, `pegi` and `esrb`, the body a `ContentRating` is by, added in chunk 5.5p beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
 | `RichTextBlock`, `RichTextSpan` and `RichTextMark` | A `RichText`'s parts, a choice of block, an object of a span's text, marks and link, and an enum of marks, added in chunk 5.5o2 beside the 247 since a part must be a standard type to be read, sent and stored. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| `ClothingSizeSystem`, `ShoeSizeSystem` and `RouteOfAdministration` | The systems a `ClothingSize` and a `ShoeSize` are in (`UK`, `EU`, `US`) and the 14 routes of EDQM's Standard Terms a `DosageInstruction` is taken by, added in chunk 5.5m2 beside the 247 since a part must be a standard type to be read, sent and stored by its code. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| The clinical units | `PressureUnit.millimetre_of_mercury`, `FrequencyUnit.beat_per_minute`, `ConcentrationUnit.milligram_per_decilitre` and the glucose-only `ConcentrationUnit.millimole_of_glucose_per_litre` (glucose's molar mass fixed at CLDR's 180.1557 g/mol), as UK meters report glucose, added in chunk 5.5m2. Accepted by the lead session, not a question for Richard | 2026-10-18 |
+| `mmHg` and `bpm` suffixes | Question 17's table gains `mmHg` for a `Pressure` and `bpm` for a `Frequency`, purely additive and clashing with no suffix or keyword; a milligram a decilitre keeps no suffix, since a suffix can't hold `/`. Decided by the lead session, not a question for Richard | 2026-10-18 |
 | `HttpMethod`'s variants | The five a route is written with (`get`, `post`, `put`, `patch`, `delete`), its codes RFC 9110's tokens; `HEAD`, `OPTIONS`, `CONNECT` and `TRACE` aren't variants, since the runtime answers `HEAD` and `OPTIONS` itself and adding them later breaks nothing (decided by the lead session, as chunk 5.5n recommended) | 2026-10-18 |
 | Data formats moved here | The `csv`, `tsv`, `json_lines` and `json` file operations, decided with batches (area 12 and the packages design, 2026-10-16), are tabled on this page, one shape per namespace with the in-memory `json` forms; the decisions are unchanged (Richard) | 2026-10-17 |
 
@@ -8774,10 +9158,10 @@ Richard's points first, then the first draft's remaining questions. Richard deci
     | `Angle` | `deg`, `rad` | `d` is days; longest wins |
     | `Temperature` | `degC`, `degF`, `kelvin` | `K` reads as thousands ("5K") |
     | `Speed` | `mps`, `kmh`, `mph`, `knot` | `ms` is milliseconds |
-    | `Pressure` | `Pa`, `hPa`, `kPa`, `bar`, `mbar`, `psi` | `h` is hours; longest wins |
+    | `Pressure` | `Pa`, `hPa`, `kPa`, `bar`, `mbar`, `psi`, `mmHg` | `h` is hours; longest wins (`mmHg` before `mm`) |
     | `Energy` | `J`, `kJ`, `Wh`, `kWh`, `kcal` | `cal` refused: food labels mean `kcal` |
     | `Power` | `mW`, `W`, `kW`, `MW` | `mW` and `MW` differ only by case |
-    | `Frequency` | `Hz`, `kHz`, `MHz`, `GHz` | |
+    | `Frequency` | `Hz`, `kHz`, `MHz`, `GHz`, `bpm` | `bps` is bits a second |
     | `Voltage`, `Current` | `mV`, `V`, `kV`; `mA`, `A` | |
     | `Illuminance`, `SoundLevel` | `lx`; `dB` | `d` is days; longest wins |
     | `Concentration` | `mgL`, `gL` | |
@@ -8786,6 +9170,10 @@ Richard's points first, then the first draft's remaining questions. Richard deci
 
     `TemperatureDifference` has no suffix of its own; it comes from
     subtracting two temperatures, or from `units.of`. *Decided 2026-10-17 (Richard):* as recommended.
+    `mmHg` and `bpm` were added by the lead session on 2026-10-18 with
+    chunk 5.5m2's clinical units, clashing with no suffix or keyword; a
+    milligram a decilitre and a millimole of glucose a litre have none,
+    since a suffix can't hold their `/`.
 18. **Maths on `Decimal` rather than a `Float`?** *Recommendation:* yes,
     the eight operations, correctly rounded to a named scale, the same on
     every target; area 2's "no `Float` until needed" stands, since this

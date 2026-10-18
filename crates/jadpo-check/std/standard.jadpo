@@ -1254,3 +1254,189 @@ public type Zone = Enum {}
 /// An instant seen in a zone (area 10), written
 /// `2026-10-25T09:30:00+00:00[Europe/London]`.
 public type ZonedTime = ZonedTime {}
+
+// The records and measures of commerce, health, travel and the rest
+// (chunk 5.5m2).
+
+/// What a barcode encodes, by its symbology (area 19): a GS1 retail code,
+/// Code 128's printable ASCII or a QR code's ISO 8859-1 text. Shown as its
+/// data.
+public type Barcode = Enum {
+    ean13: {
+        data: Ean13
+    }
+    upc_a: {
+        data: UpcA
+    }
+    code128: {
+        data: Text
+    }
+    qr_code: {
+        data: Text
+    }
+}
+
+/// How much of something an order line or a stock count holds (area 19):
+/// a count of items, or an amount by mass, volume, length or area, never
+/// below 0. Shown `3`, `2.5 kg`.
+public type UnitQuantity = Enum {
+    each: {
+        count: Int
+    }
+    mass: {
+        amount: Mass
+    }
+    volume: {
+        amount: Volume
+    }
+    length: {
+        amount: Length
+    }
+    area: {
+        amount: Area
+    }
+}
+
+/// A rating on its own scale (area 19, schema.org): its value, from its
+/// `worst` to its `best`, the best above the worst. Shown `4.5/5`.
+public type Rating = Object {
+    value: Decimal
+    best: Decimal
+    worst: Decimal
+}
+
+/// A clothing size in its system (area 19), written as a label writes it:
+/// `UK 10`, `US M`.
+public type ClothingSize = Object {
+    system: ClothingSizeSystem
+    size: Text
+}
+
+/// The system a clothing size is in (area 19), written as its code: `UK`,
+/// `EU`, `US`.
+public type ClothingSizeSystem = Enum {
+    uk
+    eu
+    us
+}
+
+/// A shoe size in its system (area 19), written as a box writes it: `UK
+/// 7.5`, `EU 42`.
+public type ShoeSize = Object {
+    system: ShoeSizeSystem
+    size: Text
+}
+
+/// The system a shoe size is in (area 19), written as its code: `UK`,
+/// `EU`, `US`.
+public type ShoeSizeSystem = Enum {
+    uk
+    eu
+    us
+}
+
+/// A box's length, width and height (area 19), none below 0. Shown in
+/// centimetres, or the unit `unit:` names: `30 × 20 × 10 cm`.
+public type Dimensions = Object {
+    length: Length
+    width: Length
+    height: Length
+}
+
+/// A parcel's tracking number with its carrier (area 19), written `UPSN
+/// 1Z999AA10123456784`.
+public type TrackingNumber = Object {
+    carrier: Carrier
+    number: Text
+}
+
+/// A vehicle's registration mark with its country (area 19), written `GB
+/// AB12 CDE`, the mark kept as its plate shows it.
+public type VehicleRegistration = Object {
+    country: Country
+    plate: Text
+}
+
+/// A flight's designator (area 19, IATA's SSIM), written `BA123`: its
+/// airline, its number from 1 to 9999 and any suffix.
+public type FlightNumber = Object {
+    airline: IataAirline
+    number: Int
+    suffix: Text?
+}
+
+/// Where a law applies (area 19, ISO 3166): a country or one of its
+/// subdivisions. Shown by its name: `England`.
+public type Jurisdiction = Enum {
+    country: {
+        country: Country
+    }
+    subdivision: {
+        subdivision: CountrySubdivision
+    }
+}
+
+/// An AI model by its provider and name (area 19), written
+/// `meta-llama/Llama-3.1-8B-Instruct`.
+public type ModelId = Object {
+    provider: Text
+    name: Text
+}
+
+/// An amount of a medicine (area 19), by mass or by volume, above nothing.
+/// Shown in milligrams or millilitres: `500 mg`, `5 ml`.
+public type Dose = Enum {
+    mass: {
+        amount: Mass
+    }
+    volume: {
+        amount: Volume
+    }
+}
+
+/// How a medicine is taken (area 19, EDQM's Standard Terms), written as
+/// its own name, `oral`, and shown as EDQM words it, "Oral use".
+public type RouteOfAdministration = Enum {
+    auricular
+    buccal
+    cutaneous
+    inhalation
+    intramuscular
+    intravenous
+    nasal
+    ocular
+    oral
+    rectal
+    subcutaneous
+    sublingual
+    transdermal
+    vaginal
+}
+
+/// How to take a medicine (area 19, FHIR's `Dosage`): a dose, a route, at
+/// least once in a period above nothing, and whether only when needed.
+/// Shown `500 mg, Oral use, 2 times per 1 day`.
+public type DosageInstruction = Object {
+    dose: Dose
+    route: RouteOfAdministration
+    times: Int
+    per: Duration
+    as_needed: Bool
+}
+
+/// A heart rate (area 19, LOINC 8867-4), a `Frequency` from 0 to 300
+/// beats a minute, written `72bpm` and shown `72 bpm`. Health data.
+public type HeartRate = Frequency {}
+
+/// A blood pressure (area 19, LOINC 85354-9): its systolic and diastolic
+/// `Pressure`s, the diastolic below the systolic. Shown `120/80 mmHg`.
+/// Health data.
+public type BloodPressure = Object {
+    systolic: Pressure
+    diastolic: Pressure
+}
+
+/// A blood glucose level (area 19), a `Concentration` never below 0:
+/// `units.of(5.5, ConcentrationUnit.millimole_of_glucose_per_litre)`, shown
+/// `5.5 mmol/L`. Health data.
+public type BloodGlucose = Concentration {}
