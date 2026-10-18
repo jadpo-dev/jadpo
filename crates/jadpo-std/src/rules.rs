@@ -48,6 +48,12 @@ pub struct Rules {
     /// whose range `min` and `max` are (chunk 5.5n), which names it only.
     /// Only the standard library sets it; no block can write it.
     pub standard: Option<&'static str>,
+    /// A coordinate, a `Latitude` or a `Longitude` (area 20, question 2):
+    /// kept as the shortest decimal of the nearest IEEE double, rounded as
+    /// it is built, as a `Vector`'s items are kept as single-precision
+    /// floats, so PostGIS and GeoJSON hold it exactly. A holding, never a
+    /// rule a value breaks; only the standard library sets it.
+    pub double: bool,
 }
 
 /// Which rule a value breaks, by the key an `attempt`'s arm names it with

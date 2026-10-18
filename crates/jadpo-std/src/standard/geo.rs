@@ -94,7 +94,9 @@ const LONGITUDE_PART: Part = Part::Standard(LONGITUDE);
 /// A geometry's positions, each a `Point`.
 const POINTS: Part = Part::List(&Part::Standard(POINT));
 
-/// Degrees north of the equator in WGS84, from -90 to 90, held as written.
+/// Degrees north of the equator in WGS84, from -90 to 90, held as the
+/// shortest decimal of the nearest IEEE double ([`nearest_double`], area
+/// 20, question 2).
 pub const LATITUDE_ENTRY: StandardType = StandardType {
     name: LATITUDE,
     holds: Holds::Bounded {
@@ -130,7 +132,8 @@ pub const LATITUDE_ENTRY: StandardType = StandardType {
 };
 
 /// Degrees east of the prime meridian in WGS84, from -180 to 180, held as
-/// written: -180 and 180 are both the antimeridian, as RFC 7946 takes them.
+/// the shortest decimal of the nearest IEEE double ([`nearest_double`]):
+/// -180 and 180 are both the antimeridian, as RFC 7946 takes them.
 pub const LONGITUDE_ENTRY: StandardType = StandardType {
     name: LONGITUDE,
     holds: Holds::Bounded {
@@ -325,6 +328,73 @@ pub fn is_h3_cell(text: &str) -> bool {
     }
     let first = (1..=resolution).map(digit).find(|digit| *digit != 0);
     !(PENTAGONS.contains(&base) && first == Some(1))
+}
+
+/// Whether a value of standard type `name` is a coordinate, kept as the
+/// shortest decimal of the nearest IEEE double as it is built (area 20,
+/// question 2): a `Latitude` or a `Longitude`.
+pub fn holds_double(name: &str) -> bool {
+    name == LATITUDE || name == LONGITUDE
+}
+
+/// A coordinate as it is kept, from a decimal written as area 2 writes a
+/// `Decimal` (`-0.1276`): the IEEE double nearest it, rounded half to even
+/// as IEEE 754 rounds, written as the shortest decimal that is that double
+/// (Rust's own parsing and printing, the same on every target, no maths
+/// library involved), with no exponent and `0` for either zero. Every
+/// coordinate of up to 15 significant digits is unchanged; one with more
+/// is rounded, `51.50720000001234567` to `51.50720000001235`, as PostGIS
+/// would store it. A double whose shortest decimal has more than 38
+/// places, below 10⁻²³ of a degree, is rounded half to even to 38 places,
+/// all a decimal holds (chosen in chunk 5.5u2). `None` for text that
+/// isn't a finite number.
+pub fn nearest_double(text: &str) -> Option<String> {
+    let nearest: f64 = text.parse().ok()?;
+    if !nearest.is_finite() {
+        return None;
+    }
+    if nearest == 0.0 {
+        return Some("0".to_string());
+    }
+    let written = format!("{nearest}");
+    let places = written
+        .split_once('.')
+        .map_or(0, |(_, places)| places.len());
+    if places <= 38 {
+        return Some(written);
+    }
+    // More places than a decimal holds: half to even at the 38th, done on
+    // the digits, the double's shortest decimal being exact text.
+    let (whole, fraction) = written.split_once('.')?;
+    let (kept, rest) = fraction.split_at(38);
+    let mut digits: Vec<u8> = kept.bytes().map(|b| b - b'0').collect();
+    let first = rest.bytes().next().map_or(0, |b| b - b'0');
+    let beyond = rest.bytes().skip(1).any(|b| b != b'0');
+    let odd = digits.last().is_some_and(|d| d % 2 == 1);
+    if first > 5 || (first == 5 && (beyond || odd)) {
+        for digit in digits.iter_mut().rev() {
+            if *digit == 9 {
+                *digit = 0;
+            } else {
+                *digit += 1;
+                break;
+            }
+        }
+    }
+    let fraction: String = digits.iter().map(|d| char::from(b'0' + d)).collect();
+    let fraction = fraction.trim_end_matches('0');
+    Some(if fraction.is_empty() {
+        let whole = whole.trim_start_matches('-');
+        if whole.chars().all(|c| c == '0') {
+            "0".to_string()
+        } else {
+            written
+                .split_once('.')
+                .map_or(written.clone(), |(w, _)| w.to_string())
+        }
+    } else {
+        format!("{whole}.{fraction}")
+    })
 }
 
 /// `MapTile`'s parts: a zoom, and a column and row each below 2 to the
@@ -921,6 +991,27 @@ pub fn geojson_type(name: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_coordinate_is_the_nearest_double() {
+        let kept = |text: &str| nearest_double(text);
+        assert_eq!(kept("51.5072").as_deref(), Some("51.5072"));
+        assert_eq!(kept("-0.1276").as_deref(), Some("-0.1276"));
+        assert_eq!(kept("180").as_deref(), Some("180"));
+        assert_eq!(kept("-0").as_deref(), Some("0"));
+        // More digits than a double holds: PostGIS's own answer (area 20).
+        assert_eq!(
+            kept("51.50720000001234567").as_deref(),
+            Some("51.50720000001235")
+        );
+        assert_eq!(kept("0.0000001").as_deref(), Some("0.0000001"));
+        // A double of more than 38 places, rounded to 38.
+        assert_eq!(
+            kept("0.000000000000000000000000012345678901234567").as_deref(),
+            Some("0.00000000000000000000000001234567890123")
+        );
+        assert_eq!(kept("1e400"), None);
+    }
 
     #[test]
     fn h3_cells_are_checked_bit_by_bit() {

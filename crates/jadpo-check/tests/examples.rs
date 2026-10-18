@@ -618,6 +618,7 @@ fn rules(rules: &Rules, used: &mut BTreeSet<String>) {
         dimensions,
         // Set only by the standard library, never written in a block.
         standard: _,
+        double: _,
     } = rules;
     let set = [
         ("min", min.is_some() || min_duration.is_some()),

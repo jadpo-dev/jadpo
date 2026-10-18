@@ -223,3 +223,64 @@ fn a_patch_s_ground_leaves_its_park_out() {
         "24617556722.938907sqm"
     );
 }
+
+const SPOTS: &str = "type Far = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type Reading = Decimal {
+    scale: 18
+}
+
+/// A spot from a latitude and a longitude.
+function spot(north: Latitude, east: Longitude) -> Point {
+    return Point {
+        latitude: north
+        longitude: east
+        altitude: none
+    }
+}
+
+/// A spot typed in with more digits than a double holds.
+function typed() -> Point {
+    return Point {
+        latitude: 51.50720000001234567
+        longitude: -0.1276
+        altitude: none
+    }
+}
+
+/// A latitude from a sensor's reading.
+function latitude(reading: Reading) fails Far -> Latitude {
+    return attempt Latitude(reading) {
+        invalid: Far
+    }
+}
+";
+
+#[test]
+fn coordinates_are_kept_as_the_nearest_doubles() {
+    // Area 20, question 2: PostGIS stores 51.50720000001234567 as
+    // 51.50720000001235, so every coordinate is held that way as it is
+    // built, and one of up to 15 digits is unchanged.
+    let program = support::main(SPOTS);
+    let typed = value(&program, "typed", vec![]).to_string();
+    assert_eq!(
+        typed,
+        "Point { latitude: 51.50720000001235, longitude: -0.1276, altitude: none }"
+    );
+    let built = value(
+        &program,
+        "spot",
+        vec![decimal("51.50720000001234567"), decimal("-0.1276")],
+    );
+    assert_eq!(built.to_string(), typed);
+    assert_eq!(
+        value(&program, "latitude", vec![decimal("51.507200000012345670")]),
+        decimal("51.50720000001235")
+    );
+    assert_eq!(
+        value(&program, "latitude", vec![decimal("51.507200000000000000")]),
+        decimal("51.5072")
+    );
+}
