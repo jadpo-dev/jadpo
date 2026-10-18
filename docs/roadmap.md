@@ -811,7 +811,7 @@ reference only).
   19, "Groups with the baseline only"): 45 types, mostly codes with a
   pattern or check digit (`Ean13`, `Isbn`, `Vin`, `IataAirport`). Done
   when every type passes the harness.
-- [ ] **5.5n Web and network** `opus · high` (area 19, "Web and
+- [x] **5.5n Web and network** `opus · high` (area 19, "Web and
   software"): the 20 new web and network types (`UrlPath`, `RelativeUrl`,
   `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod`,
   `HttpStatus`, `HttpHeaderName`, `UserAgent`, `ProblemDetails`,
@@ -819,7 +819,12 @@ reference only).
   `MacAddress`, `Imei`, `Emoji`, `PushToken`) and `web`'s 3 operations.
   Done when every type passes the harness and the three operations'
   examples pass, interpreted and in the runtime. Split on 2026-10-18; the
-  software group is 5.5n2.
+  software group is 5.5n2. Built, with UTS 46 by Servo's `idna` 1.1.0 on
+  the pinned ICU4X, Emoji 18.0's list, `HttpStatus` and `NetworkPort` held
+  as whole numbers, and `ProblemDetails` sent as RFC 9457 sends it
+  (`type_` in code); `HttpMethod` keeps the five route methods, and
+  whether RFC 9110's other four join **needs Richard**. What the pages
+  left open is area 19's "Chosen in chunk 5.5n".
 - [ ] **5.5n2 Software** `opus · high` (area 19, "Web and software",
   split from 5.5n): the 18 software types (`SemanticVersion`,
   `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`,

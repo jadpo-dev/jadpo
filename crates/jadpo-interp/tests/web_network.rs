@@ -65,7 +65,7 @@ function worth_retrying(status: HttpStatus) -> IsTrue {
 /// The problem a sold-out item is reported with.
 function sold_out(item_page: ShopLink) -> ProblemDetails {
     return ProblemDetails {
-        type_: \"https://shop.example.com/problems/sold-out\"
+        type_: \"https://tea.example/problems/sold-out\"
         status: 409
         title: \"Sold out\"
         detail: \"Nothing is left of this item.\"
@@ -96,9 +96,9 @@ fn links_follow_rfc_3986() {
         value(
             &program,
             "search_link",
-            vec![text("https://shop.example.com/search"), text("tea & cake")]
+            vec![text("https://tea.example/search"), text("tea & cake")]
         ),
-        text("https://shop.example.com/search?page=1&q=tea%20%26%20cake"),
+        text("https://tea.example/search?page=1&q=tea%20%26%20cake"),
         "in key order, percent-encoded"
     );
     assert_eq!(
@@ -106,27 +106,27 @@ fn links_follow_rfc_3986() {
             &program,
             "followed",
             vec![
-                text("https://shop.example.com/teas/green/sencha"),
+                text("https://tea.example/teas/green/sencha"),
                 text("../black/assam")
             ]
         ),
-        text("https://shop.example.com/teas/black/assam")
+        text("https://tea.example/teas/black/assam")
     );
     assert_eq!(
         value(
             &program,
             "followed",
-            vec![text("https://shop.example.com/teas?page=2"), text("#reviews")]
+            vec![text("https://tea.example/teas?page=2"), text("#reviews")]
         ),
-        text("https://shop.example.com/teas?page=2#reviews")
+        text("https://tea.example/teas?page=2#reviews")
     );
     assert_eq!(
         value(
             &program,
             "basket_from",
-            vec![text("https://shop.example.com/teas/green"), text("/basket")]
+            vec![text("https://tea.example/teas/green"), text("/basket")]
         ),
-        text("https://shop.example.com/basket")
+        text("https://tea.example/basket")
     );
 }
 
@@ -177,7 +177,7 @@ fn a_problem_is_shown_and_sent_as_rfc_9457_says() {
     let problem = value(
         &program,
         "sold_out",
-        vec![text("https://shop.example.com/items/assam-tea")],
+        vec![text("https://tea.example/items/assam")],
     );
     assert_eq!(
         value(
@@ -190,7 +190,7 @@ fn a_problem_is_shown_and_sent_as_rfc_9457_says() {
     assert_eq!(
         value(&program, "problem_sent", vec![problem]),
         text(
-            "{\"type\":\"https://shop.example.com/problems/sold-out\",\"status\":409,\"title\":\"Sold out\",\"detail\":\"Nothing is left of this item.\",\"instance\":\"https://shop.example.com/items/assam-tea\"}"
+            "{\"type\":\"https://tea.example/problems/sold-out\",\"status\":409,\"title\":\"Sold out\",\"detail\":\"Nothing is left of this item.\",\"instance\":\"https://tea.example/items/assam\"}"
         )
     );
 }

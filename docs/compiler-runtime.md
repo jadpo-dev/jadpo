@@ -666,6 +666,24 @@ across a standard object's parts (`standard::part_rules`, a postal code
 fitting its address's country) is proved for a literal in
 `types/body/expr.rs` and checked by the JSON codec as an object is read
 (`jadpo_value::standard::broken_part`).
+Since chunk 5.5n a standard type may be held as a whole number
+(`Holds::Whole`, `HttpStatus` and `NetworkPort`): the checker's type table
+declares it as a type built on `Int` with its range as its rules, which
+name it as their `standard`, as a type held as text's do
+(`jadpo_std::standard::declared` gives either), so the plan's chain, the
+wire and OpenAPI read it as an `Int` with that range, sent as a JSON number
+(`Json::Number`) and stored in an `integer` column; `text.format` is told
+its name as a type held as text's is. A type held as text may be a
+narrower form of another (`standard::WITHIN`: a `UrlPath` is a
+`RelativeUrl`), built on it in the type table. A standard object's part
+named with a reserved word's trailing `_` is sent without it
+(`standard::wire_name`, `ProblemDetails`' `type_`), and one sent as RFC
+9457 sends a problem (`Json::Members`) leaves out its parts that are
+`none`, which read as `none` when left out, through the plan's `absent`.
+`jadpo_std::standard::web` holds the web types' validators (UTS 46 by the
+`idna` crate, the only dependency `jadpo-std` gained besides `regex`;
+RFC 3986's grammar and resolution; RFC 6265's cookies; Emoji 18.0's list
+in `emoji_data`), and `jadpo_value::web` runs `web`'s operations over it.
 Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
 text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
 `jadpo_std::standard::events`, which also holds the rules across its parts

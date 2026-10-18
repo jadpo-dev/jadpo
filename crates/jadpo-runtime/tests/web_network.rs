@@ -43,12 +43,12 @@ fn references_resolve_by_rfc_3986() {
         assert_eq!(resolved(base, relative), Value::text(expected), "{relative}");
     }
     assert_eq!(
-        resolved("https://shop.example.com/teas/green/sencha", "../black/assam"),
-        Value::text("https://shop.example.com/teas/black/assam")
+        resolved("https://tea.example/teas/green/sencha", "../black/assam"),
+        Value::text("https://tea.example/teas/black/assam")
     );
     assert_eq!(
-        resolved("https://shop.example.com/teas/green", "/basket"),
-        Value::text("https://shop.example.com/basket")
+        resolved("https://tea.example/teas/green", "/basket"),
+        Value::text("https://tea.example/basket")
     );
 }
 
@@ -64,11 +64,11 @@ fn a_query_is_added_in_key_order() {
         call(
             Op::WebWithQuery,
             &[
-                Value::text("https://shop.example.com/search#results"),
+                Value::text("https://tea.example/search#results"),
                 Value::Map(Rc::new(entries)),
             ]
         ),
-        Value::text("https://shop.example.com/search?page=1&q=tea%20%26%20cake#results")
+        Value::text("https://tea.example/search?page=1&q=tea%20%26%20cake#results")
     );
 }
 
