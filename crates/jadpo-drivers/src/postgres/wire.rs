@@ -230,15 +230,14 @@ pub(crate) fn vector_from_wire(raw: &[u8]) -> Result<SqlValue, String> {
     if header(2)? != [0, 0] || items.len() != count * 4 {
         return Err(length("vector", raw));
     }
-    items
-        .chunks_exact(4)
-        .map(|item| {
-            <[u8; 4]>::try_from(item)
-                .map(u32::from_be_bytes)
-                .map_err(|_| length("vector", raw))
-        })
-        .collect::<Result<Vec<u32>, String>>()
-        .map(SqlValue::Vector)
+    Ok(SqlValue::Vector(
+        items
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|item| u32::from_be_bytes(*item))
+            .collect(),
+    ))
 }
 
 /// A range in its binary format: its flags, then each end that isn't open,

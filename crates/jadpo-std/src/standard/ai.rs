@@ -427,7 +427,7 @@ pub fn distance(a: &[f32], b: &[f32], metric: crate::VectorDistance) -> Option<f
             for (x, y) in a.iter().zip(b) {
                 sum += x * y;
             }
-            f64::from(sum) * -1.0
+            -f64::from(sum)
         }
         crate::VectorDistance::Cosine => {
             let (mut dot, mut norm_a, mut norm_b) = (0.0f32, 0.0f32, 0.0f32);
@@ -448,53 +448,22 @@ pub fn distance(a: &[f32], b: &[f32], metric: crate::VectorDistance) -> Option<f
 
 /// A double-precision distance as the decimal it is: the shortest decimal
 /// that reads back as the same double, as PostgreSQL writes a `float8`,
-/// rounded half to even to a decimal's 38 places where it has more (only
-/// a distance below `1e-21` does).
+/// or, for one with more than a decimal's 38 places (only a distance below
+/// `1e-21`), the double rounded to 38 places.
 pub fn distance_text(found: f64) -> String {
-    let written = format!("{}", if found == 0.0 { 0.0 } else { found });
-    let Some((whole, places)) = written.split_once('.') else {
+    let found = if found == 0.0 { 0.0 } else { found };
+    let written = format!("{found}");
+    let places = written
+        .split_once('.')
+        .map_or(0, |(_, places)| places.len());
+    if places <= 38 {
         return written;
-    };
-    if places.len() <= 38 {
-        return written;
     }
-    // Rounded at the 38th place, half to even.
-    let negative = whole.starts_with('-');
-    let digits: Vec<u8> = places.bytes().map(|b| b - b'0').collect();
-    let mut kept: Vec<u8> = digits[..38].to_vec();
-    let rest = &digits[38..];
-    let half =
-        rest[0] > 5 || (rest[0] == 5 && (rest[1..].iter().any(|d| *d > 0) || kept[37] % 2 == 1));
-    let mut whole_part: u128 = whole.trim_start_matches('-').parse().unwrap_or(0);
-    if half {
-        let mut at = kept.len();
-        loop {
-            if at == 0 {
-                whole_part += 1;
-                break;
-            }
-            at -= 1;
-            if kept[at] == 9 {
-                kept[at] = 0;
-            } else {
-                kept[at] += 1;
-                break;
-            }
-        }
-    }
-    while kept.last() == Some(&0) {
-        kept.pop();
-    }
-    let sign = if negative && (whole_part > 0 || !kept.is_empty()) {
-        "-"
-    } else {
-        ""
-    };
-    if kept.is_empty() {
-        format!("{sign}{whole_part}")
-    } else {
-        let places: String = kept.iter().map(|d| char::from(b'0' + d)).collect();
-        format!("{sign}{whole_part}.{places}")
+    let rounded = format!("{found:.38}");
+    let trimmed = rounded.trim_end_matches('0').trim_end_matches('.');
+    match trimmed {
+        "-0" | "" => "0".to_string(),
+        other => other.to_string(),
     }
 }
 

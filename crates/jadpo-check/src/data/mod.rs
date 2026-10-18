@@ -775,7 +775,7 @@ impl Reader<'_> {
                     )
                     .at(field_spans[at].clone(), "a vector, in Redis")
                     .reason(format!(
-                        "A vector is stored and searched by pgvector, an extension of PostgreSQL, and `{name}` is a Redis connection. There is no fallback, since a search held anywhere else would behave differently from the one that was tested."
+                        "A vector is kept in a column of pgvector, an extension of PostgreSQL, and `{name}` is a Redis connection. There is no fallback, since a search held anywhere else would behave differently from the one that was tested."
                     ))
                     .next(if self.connections.kind(MAIN) == Some(ConnectionKind::Postgres) {
                         format!("Remove `store: {name}` to keep `{entity}` in `main`, a PostgreSQL store")

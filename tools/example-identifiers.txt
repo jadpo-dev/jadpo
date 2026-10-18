@@ -892,6 +892,7 @@ morning
 morning_rate
 morning_slot
 moved_in
+much_the_same
 munich_plate
 my_bakeries
 my_orders
@@ -996,6 +997,7 @@ open_note
 open_outlet
 open_outlets
 open_project_with_board
+open_question
 open_todos
 opened_referral
 opening_caption
