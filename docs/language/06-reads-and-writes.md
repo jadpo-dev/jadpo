@@ -1554,7 +1554,7 @@ action disable_user(user_id: User.id) fails UserNotFound, UserDisabled -> User {
 
 The statement is `UPDATE "user" SET "stage" = $1, "disabled_at" = $2
 WHERE "id" = $3 AND "stage" = $4`, the stages bound as their column holds
-them (`'disabled'`, `'active'`; area 19, "Chosen in chunk 5.5w3b"); when
+them (`'disabled'`, `'active'`; area 19, "Every boundary through the contract"); when
 it changes no row, a second
 statement asks whether the user is there and visible, which tells
 `UserDisabled` from `UserNotFound`. `jadpo sql disable_user` shows both.
@@ -4780,6 +4780,6 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden (Richard) | 2026-10-16 |
 | Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |
 | Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |
-| Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement. Built in chunk 5.6c, as "Chosen in chunk 5.6c" sets out (area 19, questions 21 and 28) | 2026-10-18 |
-| Standard operations in `where:` (Phase 5 review) | Allowed where the operation has an exact SQL form, with a derived expression index, once conditions share one lowering (chunk 6.3b); refused as `query.condition_unsupported` until then (Richard, as recommended). Built in chunk 6.3b, as "Chosen in chunk 6.3b" sets out | 2026-10-19 |
+| Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement. Built in chunk 5.6c, as "Counts, sums and groups" sets out (area 19, questions 21 and 28) | 2026-10-18 |
+| Standard operations in `where:` (Phase 5 review) | Allowed where the operation has an exact SQL form, with a derived expression index, once conditions share one lowering (chunk 6.3b); refused as `query.condition_unsupported` until then (Richard, as recommended). Built in chunk 6.3b, as "Operations in conditions" sets out | 2026-10-19 |
 | A query giving a map layer (Phase 5 review) | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields (Richard, as recommended after chunk 5.5u7). Built in chunk 5.5u8 | 2026-10-19 |
