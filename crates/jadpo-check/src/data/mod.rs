@@ -1106,6 +1106,10 @@ impl Reader<'_> {
                     }
                     None => field.json = Some(shown),
                 }
+                // The snapshot records the column as `jsonb` and nothing it
+                // allows: its rules hold inside the JSON, which no
+                // migration's SQL reads (chunk 5.9b).
+                field.allows = physical::Allows::default();
                 field.sql_type = Some(sql);
             }
             Ok(sql) => {

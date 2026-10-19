@@ -36,6 +36,7 @@ pub(crate) fn json_table(
     jadpo_std::http::JsonTable {
         codecs: codecs.into_codecs(),
         types: ids,
+        events: Vec::new(),
     }
 }
 
