@@ -443,6 +443,10 @@ fn project(name: &str) -> PathBuf {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    // The event record, `domains/home/events/events.jadpo_record` (chunk
+    // 6.1c).
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
     root
 }
 

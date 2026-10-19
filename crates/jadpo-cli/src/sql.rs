@@ -447,7 +447,9 @@ fn caller(part: jadpo_std::policy::CallerPart) -> String {
         CallerPart::Service => "the signed-in service's id, or none",
         CallerPart::Signed => "whether anyone is signed in",
         CallerPart::System => "whether a schedule or a subscriber runs it",
-        CallerPart::SystemTenant => "the tenant a subscriber's event came from, or none",
+        CallerPart::SystemTenant => {
+            "the tenant a subscriber's event or a batch's saved id names, or none"
+        }
     }
     .to_string()
 }

@@ -136,6 +136,10 @@ pub(crate) struct BatchSite {
     pub each: Option<(Key, jadpo_std::batch::BatchCall)>,
     pub finished: Option<(Key, jadpo_std::batch::BatchCall)>,
     pub captured: Vec<u32>,
+    /// The type of each value in `captured`, then `key:`'s, which decide
+    /// the run's tenant (chunk 6.4c).
+    pub saved_types: Vec<TypeRef>,
+    pub key_type: Option<TypeRef>,
     pub from_args: usize,
     pub key: Option<u32>,
 }
@@ -245,6 +249,7 @@ impl Decoder<'_> {
         let node = |site: Option<SiteId>| site.map(|site| (site, body.site(site)));
         let mut sites: Vec<u32> = Vec::new();
         let mut captured: Vec<u32> = Vec::new();
+        let mut saved_types: Vec<TypeRef> = Vec::new();
         let mut shape = String::new();
         let mut query = None;
         if let Some((_, from)) = node(args.first().copied().flatten())
@@ -259,8 +264,9 @@ impl Decoder<'_> {
             for arg in given.iter().flatten() {
                 let ty = body.site(*arg).ty.clone();
                 shape.push_str(&format!("{ty:?},"));
-                if let Decoded::Json(number) = self.json_type(ty) {
+                if let Decoded::Json(number) = self.json_type(ty.clone()) {
                     captured.push(number);
+                    saved_types.push(ty);
                     sites.push(arg.0);
                 }
             }
@@ -272,6 +278,7 @@ impl Decoder<'_> {
                       this: &mut Decoder<'_>,
                       sites: &mut Vec<u32>,
                       captured: &mut Vec<u32>,
+                      saved_types: &mut Vec<TypeRef>,
                       shape: &mut String|
          -> Option<(Key, BatchCall)> {
             let (_, inline) = node(at)?;
@@ -303,11 +310,12 @@ impl Decoder<'_> {
                 }
                 let ty = body.site(*arg).ty.clone();
                 shape.push_str(&format!("{ty:?},"));
-                let Decoded::Json(number) = this.json_type(ty) else {
+                let Decoded::Json(number) = this.json_type(ty.clone()) else {
                     return None;
                 };
                 out.push(BatchArg::Captured(captured.len() as u32));
                 captured.push(number);
+                saved_types.push(ty);
                 sites.push(arg.0);
             }
             shape.push(')');
@@ -325,6 +333,7 @@ impl Decoder<'_> {
             self,
             &mut sites,
             &mut captured,
+            &mut saved_types,
             &mut shape,
         );
         let finished = called(
@@ -333,8 +342,10 @@ impl Decoder<'_> {
             self,
             &mut sites,
             &mut captured,
+            &mut saved_types,
             &mut shape,
         );
+        let key_type = node(args.get(3).copied().flatten()).map(|(_, site)| site.ty.clone());
         let key = match node(args.get(3).copied().flatten()) {
             Some((at, site)) => {
                 shape.push_str(&format!(" key {:?}", site.ty));
@@ -364,6 +375,8 @@ impl Decoder<'_> {
             each,
             finished,
             captured,
+            saved_types,
+            key_type,
             from_args,
             key,
         });

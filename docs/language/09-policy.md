@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -166,6 +166,29 @@ entity Article {
     }
 }
 ```
+
+## Background work
+
+Schedules and subscribers act as the system caller (area 12, question 8),
+which gets exactly what `Access.system` grants. The system is nobody
+signed in and holds no membership, so a user field, a role and
+`Access.authenticated` never let it in; a grant list, a field's own list
+or an `actions:` line lets it in only by naming `Access.system`. An
+entity grants background work explicitly: a schedule, a subscriber or a
+batch that reaches a statement only `Access.public` grants is a compile
+error, as `policy.effect_ungranted` refuses a route, so the runtime, where
+such a statement tests no caller and runs for the system as for everyone,
+never has to tell the two apart.
+
+On a tenant's records, a grant naming `Access.system` lets a subscriber in
+within the tenant its event came from, and a schedule's run, which no
+tenant's event starts, in every tenant. The system never moves a record to
+another tenant, which needs a membership there, and founds no tenant's
+first membership. A listed action's line naming `Access.system` lets the
+system in beside whoever else it names; a line naming only `Access.system`
+still lets in no request. No request is ever the system: only the
+runtime's runner makes the system caller, and every request, and every
+call a test makes with a caller or without one, runs as someone else.
 
 ## Tenancy
 
@@ -3125,6 +3148,202 @@ action finish_review(note_id: Note.id) fails NoteNotFound -> Note {
 }
 ```
 
+A subscriber's action stores what its event carries, and the event carries what every `emit` of it put there (built in chunk 6.1c). Here one of the two actions that share a note puts its appraisal, which only the reviewer may read, in the event, and the bulletin the subscriber posts is read by anyone signed in:
+
+```jadpo check project=e-event-stored-unproved expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    circulated: Bool
+    summary: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [reviewer_id]
+    }
+}
+
+entity Bulletin {
+    id: Uuid
+    blurb: NoteText
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated]
+    }
+}
+
+type NoteCirculated = Event {
+    note_id: Note.id
+    blurb: NoteText
+}
+
+action circulate_summary(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            circulated: true
+        }
+    }
+    emit NoteCirculated {
+        note_id: note.id
+        blurb: note.summary
+    }
+}
+
+action circulate_appraisal(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            circulated: true
+        }
+    }
+    emit NoteCirculated {
+        note_id: note.id
+        blurb: note.appraisal
+    }
+}
+
+action post_bulletin(blurb: NoteText) -> Unit {
+    var bulletin: Bulletin = Bulletin.create {
+        set: {
+            blurb: blurb
+        }
+    }
+    assert bulletin.blurb == blurb
+}
+
+subscriber post_circulated {
+    on: NoteCirculated
+    run: post_bulletin(event.blurb)
+}
+```
+
+```text output
+error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which stores it in `Bulletin.blurb`, though not everyone who may read `blurb` may read it
+ --> main.jadpo:91:24
+   |
+91 |     run: post_bulletin(event.blurb)
+   |                        ^^^^^^^^^^^ an `emit` filled this from `Note.appraisal`
+  reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`, and everyone who may read `Bulletin.blurb`, anyone signed in among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
+  next: Pass the event's ids and have `post_bulletin` read what it stores, or give `blurb`'s `read:` only those who may read `appraisal` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
+```
+
+With only the summary, which anyone signed in may read, in the event, the bulletin may hold it. A value an event carries has left its record, which may change before the delivery, so it is proved as one from any record of its entity, or from a record of the event's tenant when the event's tenant field came from that record, since the subscriber is limited to that tenant (area 12, "Chosen in chunk 6.1c"):
+
+```jadpo check project=event-stored-allowed
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    circulated: Bool
+    summary: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [reviewer_id]
+    }
+}
+
+entity Bulletin {
+    id: Uuid
+    blurb: NoteText
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated]
+    }
+}
+
+type NoteCirculated = Event {
+    note_id: Note.id
+    blurb: NoteText
+}
+
+action circulate_summary(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            circulated: true
+        }
+    }
+    emit NoteCirculated {
+        note_id: note.id
+        blurb: note.summary
+    }
+}
+
+action post_bulletin(blurb: NoteText) -> Unit {
+    var bulletin: Bulletin = Bulletin.create {
+        set: {
+            blurb: blurb
+        }
+    }
+    assert bulletin.blurb == blurb
+}
+
+subscriber post_circulated {
+    on: NoteCirculated
+    run: post_bulletin(event.blurb)
+}
+```
+
 ### `policy.role_field_create_forbidden`
 
 A note's `create:` names only `owner_id`, so a note is only ever created by its owner, and `owner_id` is set from the caller rather than the request:
@@ -3303,38 +3522,6 @@ Not yet:
   the records referring to it by their reference, which has its index, so
   it needs no index or migration of its own.
 
-### Chosen in chunk 6.1a
-
-The system caller, which schedules and subscribers act as (area 12,
-question 8), as conservatively as the pages allow:
-
-- **Exactly what `Access.system` grants.** The system is nobody signed in
-  and holds no membership, so a user field, a role and
-  `Access.authenticated` never let it in; a grant list, a field's own
-  list or an `actions:` line lets it in only by naming `Access.system`.
-  A statement anyone at all may run (`Access.public`) tests no caller,
-  so it runs for the system as for everyone. *Flagged:* the pages say
-  an entity grants background work explicitly; that a schedule or a
-  subscriber reaching what only `Access.public` grants is refused, as
-  `policy.effect_ungranted` refuses a route, is recommended for the
-  checker when schedules and subscribers are read (chunks 6.1b and 6.2),
-  which leaves nothing for the runtime to tell apart.
-- **Tenancy.** On a tenant's records a grant naming `Access.system` lets
-  it in within the tenant it is limited to, the one a subscriber's event
-  came from, and in every tenant when it is limited to none, as a
-  schedule's run is. *Flagged:* the pages limit subscribers and say
-  nothing of schedules; every tenant is the reading under which area
-  12's schedule over a due field works in an application with tenants.
-  Recommended as built.
-- **What it can't do.** It never moves a record to another tenant, which
-  needs a membership there, and founds no tenant's first membership.
-- **A listed action's gate.** A line naming `Access.system` lets the
-  system in beside whoever else it names; a line naming only
-  `Access.system` still lets in no request (chunk 4.8).
-- **No request is ever the system.** Only the runtime's runner makes
-  the system caller; every request, and every call a test makes with a
-  caller or without one, runs as someone else.
-
 ### Consistency with the rest of the language
 
 - **Fewer concepts.** The decided model removes role enums that store
@@ -3512,5 +3699,5 @@ question 8), as conservatively as the pages allow:
 | What fails decides what is stored (chosen in chunk 5.1d) | An action is all-or-nothing, so whatever a `reject` in its body tests decides every value it stores, before the `reject` or after it; a failure an entity operation or another action raises isn't followed, as for outputs. A `return` or `reject` inside a loop decides every turn after the one it may leave, from the top of the loop's body, for outputs and stores alike | 2026-10-16 |
 | Events and stores (chosen in chunk 5.1d) | `emit` stores nothing a caller reads: an event's subscribers are server work, as `Access.system` reading a field is, so a restricted value may go in an event's payload. What a subscriber stores from a payload is a store like any other, checked when subscribers run (chunk 6.1) against what every `emit` of the event put in it | 2026-10-16 |
 | User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |
-| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Chosen in chunk 6.1a") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
+| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
 | Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |

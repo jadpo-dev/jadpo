@@ -25,6 +25,7 @@ that raised it.
 | Name | Holds | Where | Committed | Written by | Read by |
 |---|---|---|---|---|---|
 | API record | Each API's routes, fields and failure codes | `api/<api>.jadpo_record` | Yes | `jadpo api update` | `check`, reviewers, client teams |
+| Event record | Each domain's events, the fields they carry and the types those name (area 12) | `domains/<domain>/events/events.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Migrations | Each step of the database, with a snapshot of the whole schema | `database/migrations/` | Yes | `jadpo migrate new` | `migrate apply`, `check` |
 | Identity registry | What each renamed thing was born as | `database/identities.jadpo_record` | Yes | `jadpo rename`, `jadpo domain …`, `jadpo fmt --layout` | the compiler, `migrate`, `incident` |
 | Translation sources | For each locale and message, a hash of the default wording it was translated from, and each acceptance (area 10) | `translations/sources.jadpo_record` in each translations folder | Yes | `jadpo translations update`, `import`, `accept` | `check`, `translations missing`, `approval` |
@@ -77,7 +78,8 @@ record api 1
 > `record <kind> <format>`, then its entries. The API record is
 > `api/<api>.jadpo_record`, a view rebuilt from the routes, with no
 > `version:` line; the OpenAPI document's version is the first 12 hex
-> digits of the record's SHA-256. The identity registry is
+> digits of the SHA-256 of the record the routes give today, which is the
+> committed record whenever `jadpo check` passes. The identity registry is
 > `database/identities.jadpo_record`, the translation sources, the
 > suggestion records and `jadpo.lock` are ledgers of one-line entries.
 > `jadpo check` fails on a view that disagrees with the source
@@ -101,7 +103,7 @@ record api 1
 >
 > `jadpo records update` brings every record up to date at once, which is
 > also how a project moves `api/<api>.api` and `database/identities.json`
-> to their new names. What the chunk chose is under "Chosen in chunk 7.0".
+> to their new names ("Checking a record" below).
 - Area 1's fixed root gains `api/`, `acceptances/`, `packages/` and
   `jadpo.lock`. `packages/` holds installed packages, committed so that
   every upgrade is an ordinary diff; each is checked against its digest in
@@ -117,6 +119,78 @@ record api 1
 > command to run. Each folder is a `migration_snapshot` node in the
 > manifest. The identity registry is still read only once `jadpo rename`
 > writes it (area 14), so every born name is the name now.
+
+### Checking a record
+
+A **view** (the API record, a package surface) is rebuilt from the source
+and compared byte for byte; a **ledger** (the identity registry, the
+translation sources, the suggestion records, the lock) is a list of
+one-line entries.
+
+- **A hand edit is told by its shape.** Until the base commit's build
+  comes with `jadpo approval`, a view that differs from what its writer
+  gives today is `record.edited` when Jadpo could not have written it (a
+  comment, a fact outside the kind's closed list, a tab, a trailing space,
+  a layout Jadpo doesn't write, a header that isn't the one it writes) and
+  `record.out_of_date` otherwise. Both name the same command, which writes
+  it again, so a careful edit of one fact reads as out of date.
+- **A ledger is checked against its own rewrite.** Each line must read,
+  each key appear once, and the file equal what Jadpo writes from its
+  lines: sorted, header in the newest format. Lines a `union` merge left
+  out of order are `record.edited`, put right by `jadpo records update`;
+  two lines for one key (one thing renamed two ways, one package locked
+  twice) are `record.edited` that names both lines and is left for a
+  person. Checking that each line added since the base is one its command
+  could write needs the base build too.
+- **`jadpo records update`** brings every record up to date at once: each
+  view written from the source, each ledger rewritten, and a record under
+  its old name moved. It is the command `next:` names for a ledger, whose
+  own commands (`jadpo rename`, `jadpo translations update`, `jadpo
+  suggest ignore`) take arguments.
+- **Old names are moved, not read forever.** `api/<api>.api` and
+  `database/identities.json` are `record.out_of_date` ("the record's old
+  name"); `jadpo api update` and `jadpo records update` write the new file
+  and remove the old. Until then the old registry's lines are still read,
+  so no key changes before the move.
+- **Older formats are read and rewritten.** `ignored_suggestions` and
+  `taught_suggestions` are at format 2, with the shared header; their
+  format 1, with its own header line, is still read and is rewritten by
+  `jadpo records update`.
+- **Records don't stop a program running.** `record.out_of_date` and
+  `record.edited` are promises `jadpo check` and CI hold to, so `jadpo
+  test` and `jadpo dev` run past them; `record.format_newer` stops them,
+  since this Jadpo can't read what the project holds.
+- **`jadpo records`** groups records under the command that writes them,
+  each row its state as a symbol and a word (`✓ up to date`, `✗ out of
+  date`, `✗ edited by hand`, `✗ missing`, `✗ old name`, `✗ newer
+  format`, `– not checked` while the source has errors), and fails while
+  one needs its command, as `jadpo check` does.
+- **One mechanism for every kind.** A kind is a word, a format number, a
+  shape (view or ledger), its header's command and its closed lists of
+  headings and facts; a view's writer gives entries and the differ
+  compares entries by heading. Event shapes (chunk 6.1b) are a view kind
+  beside the API record, package surfaces another, and the lock's writer
+  uses the ledger.
+
+What some entries hold:
+
+- **The API record.** An `api <name>` entry carries one `authentication
+  <method>` line per method, sorted, and `idempotency required`, and is
+  left out when it has neither. A route's `generated` and `caller` facts
+  come before `input`. Enum variants are sorted like fields, `variant
+  <name>`; a variant's fields sit one indent deeper. Types sort by born
+  name without their domain, then name now; a failure's entry is its
+  `status`, its `message` as a Jadpo string, then its client fields.
+- **The lock.** A `git` source records the repository, the tag and the
+  tag's commit: `package AcmeCouriers.v1 version 1.4.0 git
+  github.com/acme/acme-couriers tag v1.4.0 commit <40 hex> digest
+  sha256:<64 hex>`. `registry` is `version <v> registry digest <d>`,
+  `path` is `version <v> path <folder> digest <d>`, and a `link` is a
+  live folder, so it is `package AcmePricing.v2 link ../acme-pricing`
+  with no version or digest. Versions are `1.4.0` with an optional
+  pre-release; a commit is 40 or 64 lower-case hex digits; lines sort by
+  name, then major version as a number. Nothing writes the lock until
+  packages (chunk 7.1).
 
 ## The manifest
 
@@ -241,15 +315,16 @@ subscriber send_reminder -> notify_owner
 > variants follow it, `field billing.Address.street`. Every other key is
 > the kind and the born name, a library's functions included (`function
 > rounding.half_even`: the library keeps its name in `shared/`). The
-> registry is read from `database/identities.json`, one JSON object of
-> `"kind name-now": "born name"` lines; one that can't be read is reported
-> as a file that couldn't be read. `layout.promotion_required`'s edits
-> for a type moving to `shared/types/` add its line, `"type Address":
-> "billing.Address"`, so `jadpo fmt --layout` writes it and the key stays
-> `type billing.Address`. Since chunk 7.0 the registry is
-> `database/identities.jadpo_record`, that line `type billing.Address ->
-> Address`. The manifest's `format` is 2; manifests are
-> never stored, so nothing reads format 1.
+> registry is `database/identities.jadpo_record` (chunk 7.0).
+> `layout.promotion_required`'s edits for a type moving to
+> `shared/types/` add its line, `type billing.Address -> Address`, so
+> `jadpo fmt --layout` writes it and the key stays `type
+> billing.Address`; that is why the registry's header names `jadpo fmt
+> --layout` beside `jadpo rename` and `jadpo domain`. A field's,
+> variant's or rule's line gives only its own new name (`field
+> Todo.priority -> importance`), read back through its owner's line;
+> every other line gives the whole name now. The manifest's `format` is
+> 2; manifests are never stored, so nothing reads format 1.
 
 ## Comparing two builds
 
@@ -644,90 +719,12 @@ check failed: 1 error, 1 file
 | Views of it | The library and failure catalogues are built (chunk 1.7), and one OpenAPI document per API in `build/openapi/` (chunk 4.1); the other reports and the monitoring rules come with their areas. |
 | Migrations | Built (chunk 3.1): `jadpo migrate new` writes each folder, and `jadpo check` fails while the entities and the latest snapshot disagree. Each folder is a `migration_snapshot` node in the manifest. |
 | Stable identity | Built (chunk 1.7): a key is the kind and the born name, and a test's key is the file it sits beside and its sentence (chunk 1.9). The registry is read once `jadpo rename` writes it (area 14). |
-| API record | Built (chunk 4.1): `jadpo api update` writes the record for each API with routes, and `jadpo check` fails while one disagrees with the routes, naming what changed; since chunk 7.0 it is `api/<api>.jadpo_record` in the record format and the error is `record.out_of_date`. Breaking-change classification and acceptances come after the first build. |
+| API record | Built (chunk 4.1): `jadpo api update` writes the record for each API with routes, and `jadpo check` fails while one disagrees with the routes, naming what changed; it is `api/<api>.jadpo_record` in the record format and the error is `record.out_of_date` (chunk 7.0). Breaking-change classification and acceptances come after the first build. |
 | `.jadpo_record` files | Built (chunk 7.0): every record in the record format (the translation sources first, in chunk 5.4d), the API record as `api/<api>.jadpo_record` without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Telling a careful hand edit of a view from a stale one needs the base build, which comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records, and `.gitattributes` from `jadpo new`, are not built. |
+| Event records | Built (chunk 6.1c): one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what area 12's "Chosen in chunk 6.1c" records. Acceptances come with the API record's. |
 | Lock and package surfaces | The lock's format is built (chunk 7.0: a ledger read and checked like the others); what writes it, and the surfaces, come with packages (chunk 7.1); the `git` and `link` sources later. |
 | Build stamp | Decided, not built: comes with compiled deployables (Phase 8). |
 | Approval, acceptances, package upgrade plans, `jadpo incident` | Decided, not built: after the first build (roadmap, areas 17 and 18). |
-
-### Chosen in chunk 7.0
-
-What the record format and this page left open, chosen conservatively:
-
-- **A hand edit is told by its shape.** Without the base commit's build
-  (which comes with `jadpo approval`), a view that differs from what its
-  writer gives today is `record.edited` when Jadpo could not have written
-  it (a comment, a fact outside the kind's closed list, a tab, a trailing
-  space, a layout Jadpo doesn't write, a header that isn't the one it
-  writes) and `record.out_of_date` otherwise. Both name the same command,
-  which writes it again. A careful edit of one fact reads as out of date
-  until the base build can tell the two apart.
-- **A ledger is checked against its own rewrite.** Each line must read,
-  each key appear once, and the file equal what Jadpo writes from its
-  lines: sorted, header in the newest format. Lines a `union` merge left
-  out of order are `record.edited`, put right by `jadpo records update`;
-  two lines for one key (one thing renamed two ways, one package locked
-  twice) are `record.edited` that names both lines and is left for a
-  person. Checking that each line added since the base is one its command
-  could write needs the base build too.
-- **`jadpo records update`** (named in the record format's design) brings
-  every record up to date at once: each view written from the source,
-  each ledger rewritten, and a record under its old name moved. It is the
-  command `next:` names for a ledger, whose own commands (`jadpo rename`,
-  `jadpo translations update`, `jadpo suggest ignore`) take arguments.
-- **Old names are moved, not read forever.** `api/<api>.api` and
-  `database/identities.json` are `record.out_of_date` ("the record's old
-  name"); `jadpo api update` and `jadpo records update` write the new file
-  and remove the old. Until then the old registry's lines are still read,
-  so no key changes before the move.
-- **The registry's header** names `jadpo fmt --layout` beside `jadpo
-  rename` and `jadpo domain`, since a promotion to `shared/` writes it
-  today. A field's, variant's or rule's line gives only its own new name
-  (`field Todo.priority -> importance`), read back through its owner's
-  line; every other line gives the whole name now (`type billing.Address
-  -> Address`).
-- **The suggestion records joined the format.** `ignored_suggestions` and
-  `taught_suggestions` take the shared header template at format 2;
-  format 1, written by chunks 5.5x and 5.5y, is still read and is
-  rewritten by `jadpo records update`.
-- **The lock's lines.** As this page's table says, a `git` source records
-  the repository, the tag and the tag's commit: `package
-  AcmeCouriers.v1 version 1.4.0 git github.com/acme/acme-couriers tag
-  v1.4.0 commit <40 hex> digest sha256:<64 hex>` (the design's example
-  had no tag). `registry` is `version <v> registry digest <d>`, `path` is
-  `version <v> path <folder> digest <d>`, and a `link` is a live folder,
-  so it is `package AcmePricing.v2 link ../acme-pricing` with no version
-  or digest. Versions are `1.4.0` with an optional pre-release; a commit
-  is 40 or 64 lower-case hex digits; lines sort by name, then major
-  version as a number. Nothing writes the lock until chunk 7.1.
-- **The API record's entries.** An `api <name>` entry carries one
-  `authentication <method>` line per method, sorted, and `idempotency
-  required`, and is left out when it has neither. A route keeps chunk 4.1's
-  `generated` and `caller` facts, before `input`. Enum variants are
-  sorted like fields, `variant <name>`; a variant's fields sit one indent
-  deeper. Types sort by born name without their domain, then name now; a
-  failure's entry is its `status`, its `message` as a Jadpo string, then
-  its client fields.
-- **The OpenAPI version** is the hash of the record the routes give
-  today, which is the committed record whenever `jadpo check` passes.
-- **Records don't stop a program running.** `record.out_of_date` and
-  `record.edited` are promises `jadpo check` and CI hold to, so `jadpo
-  test` and `jadpo dev` run past them, as they ran past
-  `api.record_out_of_date`; `record.format_newer` stops them, since this
-  Jadpo can't read what the project holds.
-- **`jadpo records`** groups records under the command that writes them,
-  each row its state as a symbol and a word (`✓ up to date`, `✗ out of
-  date`, `✗ edited by hand`, `✗ missing`, `✗ old name`, `✗ newer
-  format`, `– not checked` while the source has errors), and fails while
-  one needs its command, as `jadpo check` does.
-- **One mechanism for later kinds.** A kind is a word, a format number, a
-  shape (view or ledger), its header's command and its closed lists of
-  headings and facts; a view's writer gives entries and the differ
-  compares entries by heading. 6.1b's event shapes are a view kind beside
-  the API record, 7.1's surfaces another and its lock writer uses the
-  ledger above.
-- **Not built:** the editor grammar and `jadpo lsp` serving records, and
-  the `.gitattributes` lines, which `jadpo new` writes once it exists.
 
 ### Consistency with the rest of the language
 

@@ -94,7 +94,8 @@ pub struct Caller {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct System {
     /// The tenant it is limited to: the one a subscriber's event came
-    /// from. `None` for a schedule's run, which isn't.
+    /// from, or a batch's saved tenant id names. `None` for a schedule's
+    /// run, which isn't.
     pub tenant: Option<[u8; 16]>,
 }
 

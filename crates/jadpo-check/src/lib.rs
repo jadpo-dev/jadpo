@@ -9,6 +9,7 @@
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
 
+pub mod batches;
 mod case;
 pub mod client_address;
 pub mod completion;
@@ -148,6 +149,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(
+                batches::batch_grant_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 policy::reach::reach_problems(db, project, file)
                     .iter()
                     .cloned(),
@@ -160,6 +166,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(
                 policy::flow::flow_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                policy::flow::subscriber_store_problems(db, project, file)
                     .iter()
                     .cloned(),
             );

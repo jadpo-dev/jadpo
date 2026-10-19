@@ -363,7 +363,7 @@ pub const TAX_RATE_ENTRY: StandardType = StandardType {
 };
 
 /// A price per an amount of a quantity: a choice by the quantity's kind,
-/// sent tagged, stored as that JSON, and shown as the price over the
+/// sent tagged, stored in a column per part, and shown as the price over the
 /// amount, `£2.50/1 kg`.
 pub const UNIT_PRICE_ENTRY: StandardType = StandardType {
     name: UNIT_PRICE,

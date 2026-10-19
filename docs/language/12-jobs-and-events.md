@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Event records come in chunk 6.1c, and the commands that watch schedules in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. The commands that watch schedules come in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -56,7 +56,8 @@ schedule overdue_reminders {
   counted in UTC from when the application starts.
 - Only one run of a schedule happens at a time. Ticks missed while the
   application was down, or while a run was still going, become one run, not a
-  backlog.
+  backlog. Each schedule's state and lease live in the store
+  `schedules: { store: }` names (area 5), or the only store when there is one.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
   started, so the action does not need the time passed in.
 - A failed run is logged and shown to the operator; the next tick is the
@@ -509,7 +510,7 @@ compare them.
   through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
   numbered every event type in the plan's JSON table, by its identity
   key, for the outbox to write and read its payload through (area 5,
-  "Chosen in chunk 5.9b").
+  "Structured values").
 
 ## Several changing calls in one action
 
@@ -649,8 +650,9 @@ follow chunk 7.4 and are not yet a roadmap chunk.
 ## Where events travel
 
 Events stay inside the Jadpo runtime (Richard, 2026-10-13). They are stored
-in the main store's outbox in the same transaction as the action, and the
-runtime delivers them: on a long-running server from its own workers, on
+in the outbox of the store the action writes, in the same transaction as
+the action, and the runtime delivers them: on a long-running server from
+its own workers, on
 Cloudflare Workers right after the commit (`waitUntil`) with the
 once-a-minute schedule tick sweeping anything left. One place holds every
 log and trace, a request is never slowed by delivery, and no site needs a
@@ -1706,13 +1708,15 @@ delivery after the response, handled records, retries, trace context,
 name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Built in
 chunk 6.2: schedules, their state and leases, the native minute tick,
 every run and skipped tick recorded, and the tick's sweeps, with the
-errors that name `schedule.`; "Chosen in chunk 6.2" below. Event
-records and what a subscriber stores from an event come in chunk 6.1c,
-and the built-in purge schedule and schedule tests in chunk 6.2c;
+errors that name `schedule.`; "Chosen in chunk 6.2" below. Built in
+chunk 6.1c: each domain's event record and what a subscriber stores
+from its event; "Chosen in chunk 6.1c" below. The built-in purge
+schedule and schedule tests come in chunk 6.2c;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
-below), but for the file helpers, which come in chunk 6.4b, and on
+below), with tenants and their grants in chunk 6.4c ("Chosen in chunk
+6.4c" below), but for the file helpers, which come in chunk 6.4b, and on
 Workers each run's continuation in a fresh invocation, which chunk 8.2
 checks. Several changing calls in one action, polls and `receiving`
 were decided on 2026-10-16 and come with Phase 7; their errors are built
@@ -1839,6 +1843,55 @@ conservative reading:
   retry and dismiss (area 14), the circuit breaker, publishing outward,
   and events from outside (Phase 7) are not built; event records and
   what a subscriber stores from an event are chunk 6.1c's.
+
+### Chosen in chunk 6.1c
+
+What "Event records" (decided 2026-10-19) and area 9's "Events and
+stores" leave to the build, each the most conservative reading:
+
+- **Where an event record is kept.** One per domain that declares an
+  event, beside its events: `domains/<domain>/events/events.jadpo_record`,
+  a view in the record format (`record events 1`) whose header says it is
+  generated from "the events of domain `<domain>`". Every event is
+  recorded, not only `public` ones: what is waiting in the outbox when a
+  build ships is read with the new shape. There is no command of its own;
+  `jadpo records update` writes it, and `jadpo records` lists it under
+  that command.
+- **What it holds.** An `event <Name>` entry for each event, `public`
+  when another domain may subscribe to it, then its fields as its payload
+  carries them, in the API record's wire form (`words: Text { max_length:
+  200 }`), then an `object`, `enum`, `input` or `output` entry for each
+  type a field names, written as the API record writes them. Events,
+  fields and types sort by born name. Descriptions are left out, as the
+  API record leaves them out.
+- **How it is checked.** As the API record is (area 18, "Chosen in chunk
+  7.0"): a missing record, one whose events changed (`record.out_of_date`,
+  naming each entry added, changed or removed) and the record of a domain
+  left with no events are put right by `jadpo records update`; a hand
+  edit Jadpo could not have written is `record.edited`. While an event
+  file has errors the record isn't compared. Classifying a change as
+  breaking, and accepting one, wait for area 18's acceptances with the
+  API record's.
+- **What a subscriber stores from its event.** Each action's `emit`s, and
+  those of the actions it calls, are part of what it passes to its
+  callers, so what an event carries is the union of what every `emit` of
+  it put there, with what a request sent left out, and along chains of
+  events what a subscriber's action emits from the event it was given.
+  What the subscriber's action stores from what it is passed is checked
+  where the subscriber passes it, as a call is (area 9, "What a write
+  stores"), and refused with `policy.output_field_unproved` at the
+  argument. What decided an `emit`, and any `reject` in its action, go
+  with every field of the event.
+- **A value from an event has left its record.** The record may change or
+  move between the `emit` and the delivery, so a value an event carries is
+  proved as one from any record of its entity: of the field's readers,
+  only what holds of anyone signed in, or of a role held across the whole
+  application, carries over. The one relation kept is the tenant: when the
+  event's tenant field came from the very record a value did, that record
+  was the tenant's, and the subscriber is limited to that tenant, so the
+  value may be stored wherever that tenant's roles read it. A subscriber
+  that needs more passes the event's ids and reads the current state, as
+  "Declaring an event" advises.
 
 ### Chosen in chunk 6.2
 
@@ -2060,6 +2113,170 @@ reading; the file helpers wait for chunk 6.4b:
   names no variable: area 19's and example 4's `batches` variables were
   renamed. An inline function is now also a named argument's value
   (`each: row -> ...`), as area 3 decided.
+
+### Chosen in chunk 6.4c
+
+What the decisions of 2026-10-19 on a batch's tenant and its grants
+leave to the build, each the most conservative reading:
+
+- **A run's tenant.** In an application with a `tenant:`, each page's
+  read, its items and `finished:` act as the system limited to the
+  tenant the run's saved values holding a tenant's id name: a `from:`
+  argument, a value `each:` or `finished:` captures, or `key:`, whose
+  own type is the tenant's `id` (`Household.id`, or one that may be
+  `none`), as chunk 6.1b reads an event's own field. A tenant's id held
+  inside a saved record doesn't count. The run reads them from what it
+  saved, so it has the same tenant each time it resumes. A run that
+  saves no such value, or one that is `none`, reaches no tenant's
+  records, only those every tenant shares. An application without a
+  `tenant:` runs batches as before, reaching every record the system
+  is granted.
+- **Several saved tenant ids.** Read as several tenants: values that all
+  name the same tenant (`key: household_id` beside an `each:` capturing
+  `household_id`) limit the run to it, and values naming different
+  tenants reach no tenant's records. *Flagged:* the decision says "none
+  or several"; counting the values instead, so any two reach no tenant,
+  would make the usual `key:` beside a capture of the same id reach
+  nothing at all. Recommended as built.
+- **Batches and `Access.public`.** As for a schedule or a subscriber:
+  what `from:`'s query reads, or the action `each:` or `finished:` calls
+  reaches, itself or through what it calls, where a grant list, a
+  field's own list or the action's line under `actions:` names
+  `Access.public` and not `Access.system`, is
+  `policy.system_grant_missing`, at that query's or action's call. Each
+  call is checked, so one batch may be refused at more than one.
+
+A batch's query that only `Access.public` may read:
+
+```jadpo check project=e-batch-system-grant-query expect=policy.system_grant_missing
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `items` runs as the system, which only `Access.public` lets read `Item`
+ --> main.jadpo:46:31
+   |
+46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
+   |                               ^^^^^^^^^^^ runs as `Access.system`
+  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `read:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Item`'s `read:`, or reach `Item` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
+
+A batch's action changing what only `Access.public` may change:
+
+```jadpo check project=e-batch-system-grant-action expect=policy.system_grant_missing
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public, Access.system]
+        update: [Access.public]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `mark_seen` runs as the system, which only `Access.public` lets update `Item`
+ --> main.jadpo:46:58
+   |
+46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
+   |                                                          ^^^^^^^^^^^^^^^ runs as `Access.system`
+  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Item`'s `update:`, or reach `Item` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
 
 ### Consistency with the rest of the language
 

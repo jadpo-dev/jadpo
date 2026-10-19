@@ -387,6 +387,15 @@ Since chunk 5.5u5 a geometry field a `geo.` condition tests gets a GiST
 index, and a `Point` field a box filter tests one on the point cast to
 `geometry` ([area 20](20-geospatial.md), "Indexes").
 
+A derived index records why it exists, the first query alphabetically
+that needs it, but the migration diff compares only what defines it: its
+table, columns or expression, kind, partial condition, operator class,
+code-point columns and settings. A query that sorts first needs no
+migration, and `jadpo check` and `jadpo migrate new` find nothing to do;
+the next migration written for another change records the new reason in
+its snapshot, with no step for the index. Snapshots keep their format, so
+every existing one reads.
+
 ## Caches
 
 A cache keeps a copy of data in a Redis store so busy pages read it quickly.
@@ -577,7 +586,8 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 | `Duration` | `bigint`, in milliseconds |
 | `Enum` without data | `text` holding the variant name; a standard enum holds its code, `GBP`, `Europe/London` |
 | `Money` (area 19) | two columns, always: `<field>_amount bigint` of minor units and `<field>_currency char(3)`, with a check constraint holding the currency to the one a type fixes |
-| `Enum` with data, `Object`, `List`, `Set`, `Map`, `ZonedTime` (its instant and zone, area 10) | `jsonb` |
+| `ZonedTime` (area 10) | two columns: `<field>_instant timestamptz(3)` and `<field>_zone text` holding its zone's code |
+| `Enum` with data, `Object`, `List`, `Set`, `Map` | `jsonb` |
 
 > Amended 2026-10-17 by area 19 (question 16, chunk 5.5h): a standard type
 > whose data entry lists named columns is stored in those, as `Money` is,
@@ -607,12 +617,47 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 > column, untyped and held to its geometry type and to WGS84 by a check
 > constraint; the first migration with one creates the extension.
 
-Built in chunk 5.9b: an application's enum with data, object, list, set
-and map is stored as its type's contract JSON in one `jsonb` column, as
-the standard collections are, written by the route codec and read back
-with every rule of its type and the field's own, so a row edited outside
-Jadpo to break one is a fault when it is read. What the page left open is
-"Chosen in chunk 5.9b", under "Review".
+**A stored value is checked when it is read,** by its field's validator,
+the one a write and a backfill check it by: the field's own rules, then
+its type's along its chain, a built-in type's own check (`Email`, `Url`)
+and a standard object's rules across its parts. Nothing checks it twice,
+and a value a write would keep is never refused on read. Every read that
+makes a stored value checks it: a query's records, `get`, a parent's, a
+child's and children's includes, a nearest query's records, a map layer's
+properties and geometry, a `geo.` condition's recheck, the record a
+`create` or an `update` gives back, every stored field it holds, and each
+field a backfill worked out in Jadpo reads. An aggregate makes a stored
+value only for a group by a field and for `min` and `max`, which are
+checked; a count, a sum, an average and a time bucket are worked out, and
+a sum past a field's `max:` is no defect. A field kept as JSON is read by
+its codec with its type's and the field's rules ("Structured values",
+below), not again; a field a migration retires has no declaration left,
+and a backfill reads it as its built-in type alone.
+
+A row written around Jadpo that breaks a rule is a defect naming the
+field and the rule as written, never the value (`` a stored `Tool.stars`
+that breaks `max: 5` ``), so the fault behind a 500 or a stopped backfill
+names what to fix and leaks nothing; `none` breaks no rule. A backfill
+stops as it does on any defect, naming the record's key (`it read a
+stored …`). `scale:` can't break on read: a decimal with `scale:` is kept
+in a `numeric(p, s)` column, which rounds anything written into it to its
+places, so ranges, lengths and patterns are the rules such a row breaks.
+No `CHECK` constraint holds them in the database yet. The check runs in
+the runtime's one read path (`jadpo_runtime::stored_value`), which both
+executors call; the plan gives each selected column its field's validator
+(`Select::held`, `Returned::held`). Built in chunk 5.9d.
+
+### Structured values
+
+An application's enum with data, object, list, set and map is kept in one
+`jsonb` column as exactly what `json.write` writes for its type, its
+contract JSON, as the standard collections are, and read back as a
+request's body is, with every rule of its type and the field's own: one
+codec, the route's, with the plan numbering the field's type in its JSON
+table. A set and a map's keys are written in their canonical order, and a
+variant without data as its name, as on the wire. PostgreSQL keeps
+`jsonb` in its own key order and spacing, so the text isn't byte for byte
+what was written, but it reads back `==`. Built in chunk 5.9b.
 
 ```jadpo check project=structured-fields
 type Tag = Text {
@@ -653,17 +698,89 @@ A parcel going by courier keeps `{"tag": "courier", "company": "Swift",
 "weight": 920}` in `delivery`, one to be picked up `"pickup"`, and its
 `weights` `{"box": 120, "loaf": 800}`, keys in their canonical order.
 
-Built in chunk 5.9c: each migration's snapshot records what a JSON
-column's type reads, its shape and every rule inside it, so changing the
-stored type, or the field's own rules, is drift like any other. A change
-that only widens what is read (a longer `max_length`, a variant added, a
-part made optional) is a migration with nothing to run. One that may read
-less (a tighter rule, a variant gone, a field added to or removed from an
-object, whose JSON is read member for member) checks every stored value
-in batches, before anything else in the migration, and `jadpo migrate
-apply` refuses it while any doesn't read, naming how many and the first
-rule broken, never a value. A `backfill:` rewrites those values instead,
-and needs writing only then:
+- **What a stored value holds:** what that JSON holds, values built on the
+  built-in and standard types, enums, and `Object`s made of them, in
+  lists, sets and maps, a type that holds itself included. An `Input`, an
+  `Output`, an event, a failure, an email, a message or a prompt inside
+  one, a map keyed by a type with no single text form, a format and a
+  plural count are `data.field_without_json` (under "Errors"). A secret
+  value, an API token or a service key, an entity and text for people
+  are refused inside a stored value as in a column of their own
+  (`type.secret_exposed`, `type.auth_credential_stored`,
+  `data.entity_in_field`, `type.presentation_text_persistence`). A
+  `PasswordHash` is kept, as a field of its own is; every `Input` and
+  `Output` that would carry one off the server is refused already (area
+  19).
+- **What doesn't read is a fault.** A row edited outside Jadpo whose JSON
+  breaks a rule, isn't its type or is past the limits below is a fault
+  when it is read, named by the rule and where in the value it broke
+  (`max` on `weight`), never the value.
+- **`none` is the column's `NULL`,** never JSON's `null`, which in the
+  column is a row written outside Jadpo and a fault. Inside the value, a
+  part that is `none` is JSON's `null`, as the wire writes it.
+- **No query compares or sorts one,** as for the standard collections. A
+  condition on such a field is `toolchain.not_built_yet` and an order by
+  one `query.order_field`; the field is read whole wherever its record
+  is. No `unique:` or index covers one (`toolchain.not_built_yet`), since
+  PostgreSQL compares `jsonb` by its own rules rather than Jadpo's `==`;
+  for the same reason a lifecycle tests one only with `== none` or `!=
+  none`, and a transition or `initial:` sets one only to `none`
+  (`data.lifecycle_condition`, `data.lifecycle_value`). Any other value is
+  written by an action, through the codec, and an update by `id` sets one
+  only from a value it is given, since the database doesn't work one out
+  in one step (`toolchain.not_built_yet`, as for money).
+- **An id inside is a value, not a reference.** A `User.id` inside a
+  stored value has no foreign key and no `on_delete:`, as an event's
+  payload has none (area 12); a link the database must keep is a field of
+  its own, or a link entity (question 1).
+- **Policy is the field's.** A field's `policy:` covers its whole stored
+  value, as any field's does; a field of an `Object` takes no `policy:`
+  (`type.unknown_setting`), and a part is read only by reading its field,
+  so area 9's proofs hold it as they hold the field.
+- **Limits.** A stored value is at most 1 MiB of JSON, the most a
+  request's body may be (area 7), nested at most 128 arrays and objects
+  deep, the most a request's body is read to, so whatever is kept could
+  have arrived in a request and always reads back. Writing a larger or a
+  deeper one is a fault naming the limit, as is reading one written
+  outside Jadpo; PostgreSQL's own limit on `jsonb` is far above both.
+- **Encodings.** The column holds the contract's JSON, so a standard type
+  inside it is pinned by that type's golden file and the release's
+  encoding (area 19, "Changing a standard type's encoding"). Like an
+  entity's columns, a JSON column records no encoding of its own: a
+  release that changed what a standard type's JSON holds would come with
+  the migration that rewrites stored values.
+- **Event payloads go through the same table.** Every event type is
+  numbered in the plan's JSON table, by the identity key the outbox's
+  `event` column records (`JsonTable::events`), so the outbox (chunk
+  6.1b) writes and reads a payload through the one codec, with the type's
+  rules applied on read (area 12, "A payload is the contract's JSON"). No
+  job takes arguments yet (a schedule's `run:` takes none); a batch's saved
+  values are numbered in the same table by their types (area 12, "Chosen
+  in chunk 6.4").
+
+**Migrating them.** Each migration's snapshot records what a JSON column's
+type reads (its `allows` holds `json`): the value's shape (a value built
+on a built-in or standard type, with the bounds, lengths, patterns and
+places along its chain and any other rule as text; a part that may be
+`none`; a list, a set or a map with its lengths) and each of the
+application's objects and enums it names, by name, with an object's
+fields and rules across its fields and an enum's variants and their
+fields. The field's own settings count, as they do for any column, so
+changing the stored type, or the field's own rules, is drift like any
+other.
+
+A change runs nothing only when the new type can be shown to read every
+value the old one wrote: the same built-in or standard type and places,
+every other rule the same, no bound or length tighter or new, no pattern
+new, a part made optional but never required, a list never made a set,
+rules across fields only removed, variants only added, each with the
+fields it had. An object's JSON is read member for member, every field
+required and no other allowed, so a field added, even one that may be
+`none`, or a field removed may read less. A type renamed reads as its
+shape. Any other change may read less: the migration checks every stored
+value in batches, before anything else in the migration, and `jadpo
+migrate apply` refuses it while any doesn't read. A `backfill:` rewrites
+those values instead, and needs writing only then:
 
 ```jadpo check project=structured-migration file=app.jadpo hidden
 application {}
@@ -716,11 +833,62 @@ migration {
 Without the decision, the migration's SQL reads each batch of labels
 (`-- check Parcel.label: in Jadpo, 1000 rows a batch, …`); with it, it
 rewrites those the new `Tag` doesn't read (`-- rewrite Parcel.label: …`)
-and leaves the rest as they are. A required structured field added to a
-table with rows takes a `backfill:` as any other field does, a literal
-or one worked out from the row, worked out in Jadpo and written through
-the codec. What the page left open is "Chosen in chunk 5.9c", under
-"Review".
+and leaves the rest as they are.
+
+- **The check** comes before anything else in the store's section, so a
+  refusal applies nothing of the migration (the migrations before it
+  stay). It reads the rows with a value, `NULL` being `none`, 1000 a
+  batch in key order, each batch its own read-committed transaction
+  under `jadpo_migrations`' lock, locking no row and changing nothing,
+  and reads each value with the codec of the field's type now, as a
+  query reads it. It records nothing as it goes: a run stopped during it
+  starts it again, and a refusal clears the migration's progress, so the
+  next run reads every value again. The refusal is
+  `migration.apply_failed`, naming how many values don't read and the
+  first rule broken and where (`` `max_length` on `line` ``), never a
+  value.
+- **The decision may be left out.** No decision is required
+  (`NeededKind::Unreadable`): `jadpo migrate new` finishes the migration
+  and writes a `changes.jadpo` holding only a comment saying how to give
+  one. Writing `backfill:` there and running `jadpo migrate new` again
+  replaces that field's check with a rewrite.
+- **The rewrite** runs in batches as a backfill worked out in Jadpo does
+  ("Computed backfills", below), recorded in the resume marker: each
+  batch reads the rows with a value, locked `FOR NO KEY UPDATE`, reads
+  each with the new type, works the backfill out for those that don't
+  read and writes them back through the codec, leaving the rest as they
+  are. The backfill may be written out or worked out from the row, as any
+  backfill in Jadpo may; a narrowed column's refit outside JSON still
+  takes only a value written out. A backfill still reads no field held as
+  JSON, its own included, whose old type is gone.
+- **Values written meanwhile.** A server still on the old build may write
+  a value the new type doesn't read after the check or the rewrite has
+  passed its row; as with a narrowed column's refit, no lock holds writes
+  to the whole table out for that long, and such a value is a fault when
+  read, as any stored value that doesn't read is.
+- **A required structured field added to a table with rows** takes a
+  `backfill:` as any other field does. Its value, written out (a
+  construction such as `Label { … }`, or a variant) or worked out from the
+  row, has no SQL form, so it is always worked out in Jadpo and written by
+  the codec of the field's type, as a write keeps it, then made required
+  in the same last steps as any backfill.
+- **Only the latest migration** is read with the project's code, as for
+  backfills: an earlier migration's check or rewrite with rows to read
+  stops `jadpo migrate apply` (`Checking Parcel.label for <migration>
+  needs the build it was written in`).
+- **A snapshot written before chunk 5.9c** recorded nothing of what a
+  JSON column read, so the next migration checks its stored values rather
+  than recording the type with nothing to do, since nothing shows that
+  the values stored then read now; on an empty table the check reads
+  nothing.
+- **Output.** `jadpo migrate new` lists "check stored values in batches in
+  Jadpo" or "rewrite values no longer read in batches in Jadpo"; the live
+  line says `Checking Parcel.label in Jadpo  2000 of 5000 rows`; the
+  result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
+  rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
+
+Built in chunk 5.9c, tested against live PostgreSQL
+(`crates/jadpo-cli/tests/json_migrations.rs`).
 
 ## Migrations
 
@@ -877,57 +1045,171 @@ migration {
 - `Todo.legacy_flag` means each row's stored value, as on the right of an
   update's `set:` (area 6). The expression may use the entity's fields as
   they stand before this migration, including one this migration retires,
-  constants and pure functions (`priorities` is a library, area 1); never a
-  query, another entity or `clock.now`. A constant is a `constant`
-  declaration (area 3, decided 2026-10-16, built in chunk 5.3e),
-  read through its library (`priorities.default_priority`). It is typed against the field it
-  fills, like any value. A field this migration retires is read as the
-  built-in type its column holds, since its declared type goes with it, so
+  constants and pure functions (`priorities` is a library, area 1). A
+  constant is a `constant` declaration (area 3, decided 2026-10-16, built
+  in chunk 5.3e), read through its library (`priorities.default_priority`).
+- **What it may not read.** Another entity's field; a field the same
+  migration adds, which no stored record has a value for yet; and a
+  setting, directly or through a function it calls, a `crypto`
+  operation's `key:` included, since `jadpo migrate apply` is given none
+  and each deployment sets its own. Each is
+  `migration.backfill_outside_row` (examples under "Errors"). The clock,
+  the random generator, queries and actions are refused as in any
+  function.
+- **A retired field** is read as the built-in type its column holds
+  (`boolean`, `text`, `uuid`, a whole number, `numeric`, `timestamptz`,
+  `date`), since its declared type goes with it, so
   `LegacyFlag(Todo.legacy_flag)` gives the function the named type it
-  takes (chosen in chunk 5.6b).
-- The migration adds the column as optional and fills existing rows in
+  takes. A retired enum or structured field isn't offered.
+- **Its type** is the field's declared type, as for any value set on the
+  field (area 6); a field with rules of its own takes a construction,
+  which is refused unless it is proven safe. Nothing in a backfill may
+  fail, since a row whose value failed would have none: a call or
+  construction nothing handles, or an `attempt` passing a failure on, is
+  `migration.backfill_can_fail`. A defect (an overflow, say) still stops
+  the batch: it rolls back, the column stays consistent, the run stops at
+  that row, and `jadpo migrate apply` names the record's key and the
+  fault, never the row's values.
+- **A literal or an enum's variant** (`Priority.normal`) is filled by one
+  statement in the migration's transaction. Any other value is computed:
+  the migration adds the column as optional and fills existing rows in
   batches, each in its own transaction, so a large table is never locked
-  for the whole backfill. A last short transaction fills rows that servers
-  still on the old build wrote meanwhile, and makes the column required.
+  for the whole backfill. A last short step fills rows that servers still
+  on the old build wrote meanwhile, and makes the column required.
 - When every operation in the expression has a SQL form, each batch is one
   `UPDATE`; otherwise `jadpo migrate apply` reads each batch, works the
-  values out in the runtime and writes them back. The generated SQL says
-  which.
+  values out in Jadpo and writes them back. The generated SQL says which.
+- **A field that allows less** (a variant removed, a shorter `max_length`)
+  is refitted only with a value written out; a computed one is not built
+  yet.
+- **Only the latest migration's backfills are checked,** since `jadpo
+  check` reads only its decisions; what an earlier one calls ran with the
+  code it was written against.
 - Freeform SQL in migrations stays out: a backfill is checked Jadpo, so a
   migration can't write a value its field's rules forbid.
 
-Built in chunk 5.6b: the migration's SQL adds `priority` as optional,
-then a line saying how the backfill runs (`-- backfill Todo.priority: by
-UPDATE, 1000 rows a batch, each batch its own transaction`), a statement
-counting the rows left and one batch, whose `UPDATE` sets `"priority" =
-(CASE WHEN "todo"."legacy_flag" THEN 'high' ELSE 'normal' END)`: the
-function written in place, its `if` as `CASE`. Its last step locks the
-table against writes, fills the rows still without a value and makes the
-column required. `jadpo migrate apply` runs each batch in its own
-transaction and says how many rows each backfill filled; a run stopped
-anywhere leaves the column consistent and the next carries on from the
-last batch that committed. What the page left open is "Chosen in chunk
-5.6b", under "Review".
+**By `UPDATE`.** For the example above, the migration's SQL adds
+`priority` as optional, then a line saying how the backfill runs (`--
+backfill Todo.priority: by UPDATE, 1000 rows a batch, each batch its own
+transaction`), a statement counting the rows left and one batch, whose
+`UPDATE` sets `"priority" = (CASE WHEN "todo"."legacy_flag" THEN 'high'
+ELSE 'normal' END)`. Functions are written in place, up to 16 calls deep,
+their parameters replaced by their arguments' SQL and their `var`s by
+their values; an `if` chain whose branches return, and a `match` on a
+plain variant, `true` and `false`, a literal, `none` or `some`, become
+`CASE`, the last arm its `else`. A `var mut`, a loop or a statement that
+only runs for its effect has no SQL form. Each standard operation's form
+is area 19's ("SQL forms": a whole number is always `bigint`, a decimal
+keeps its places, a defect fails the statement); they and the operators'
+and conditionals' forms are tested against the runtime on live
+PostgreSQL.
 
-Built in chunk 5.6b2: a backfill with an operation that has no SQL form
-(`text.upper`, a `var mut`) is worked out in Jadpo. Its line in the
+A construction keeps its value as the runtime keeps it. Building a type
+with a fixed `scale` keeps exactly that many places, rounded half to even
+(`decimal.round`'s form, then a cast to `numeric(38, scale)`, which stops
+the statement past 38 digits where the runtime faults):
+`Amount(Whole(cost))` with `Whole` at `scale: 0` keeps 2.50 as 2 and 3.50
+as 4, as `jadpo test` does, and a decimal is stored at its field's places,
+rounded half to even, as the runtime stores one. No other rule changes a
+value built on `Bool`, `Int`, `Decimal`, `Text`, `Bytes`, `Uuid`, a date,
+an instant or a duration: ranges, lengths and patterns only refuse, a
+backfill's constructions are proved not to, and text isn't normalised as
+it is built. A standard type that changes a value as it is built (`Html`
+made safe, a coordinate kept as its double, a secret) has no SQL form, so
+a backfill building one runs in Jadpo.
+
+**In Jadpo.** A backfill with an operation that has no SQL form
+(`text.upper`, a `var mut`) is worked out by `jadpo migrate apply` in the
+interpreter, with values identical to the runtime's. Its line in the
 migration's SQL says so (`-- backfill Todo.priority: in Jadpo, 1000 rows
-a batch, …`) and names the digest of the code it runs; each batch reads
-its rows still without a value, locked as an `UPDATE` would lock them,
-and `jadpo migrate apply` works their values out in the interpreter and
-writes them back through the storage codec in one statement, in 5.6b's
-batches, transactions and resume marker. The last step reads and fills
-the rows written meanwhile the same way, with the table locked against
-writes. `jadpo migrate apply` says the backfill ran in Jadpo and is
-slower (`2500 rows filled in 3 batches in Jadpo (slower than SQL)`).
-What the page left open is "Chosen in chunk 5.6b2", under "Review".
+a batch, …`) and names a digest of the code it runs: the backfill's body,
+every function it reaches (where each is written left out), the constants
+they read, every type they name along their chains with its fields and
+variants (rules and scales included), and the toolchain's version, whose
+runtime works the values out. A change to any of them makes `jadpo check`
+ask for the migration to be written again, as a change to a backfill by
+`UPDATE` does, and a database that ran the old code refuses the new one
+as changed, so a resumed backfill can't fill some rows one way and the
+rest another. The code it runs is the project's as `jadpo migrate apply`
+finds it, which must check without errors once a row needs it.
 
-The SQL forms a batch's `UPDATE` uses are built (chunk 5.6): each
-standard operation's, tested against the runtime on live PostgreSQL, and
-what that chunk chose for them (a whole number always `bigint`, a
-decimal's places kept, a defect failing the statement) is area 19's
-"Chosen in chunk 5.6". The operators' and conditionals' forms are chunk
-5.6b's, tested the same way.
+Each batch reads up to 1000 rows still without a value past where the
+last ended, in key order, `FOR NO KEY UPDATE`, so a request on the old
+build can't change a field the value is worked out from before the batch
+commits, and writes the values back in one `UPDATE … FROM unnest($1,
+$2)` filling only rows still without one. The step that locks the table
+reads and fills the rows written meanwhile the same way. It reads values
+held in one column (the built-in types, an enum without data, and a
+standard type held in one, such as a percentage or a quantity, read and
+bound as a query and a write do, `jadpo_std::read::Column::of_builtin`),
+and fills those or a structured value held as JSON, through the codec; a
+backfill in Jadpo that fills a value held in several columns, or reads a
+field held so or as JSON, is refused as not built yet.
+
+Only the latest migration's backfills are worked out with the project's
+code. An earlier migration's backfill in Jadpo that has rows to fill
+stops `jadpo migrate apply` (`Filling Todo.priority for <migration> needs
+the build it was written in`), keeping every step that committed, so it
+is applied with the build that wrote it and then this one. On an empty
+table nothing needs working out, so a new database takes every migration
+at once. `jadpo dev` applies migrations with the same interpreter; `jadpo
+test` builds its database on empty tables, so nothing needs it there.
+
+**Batches, locks and resuming.** Every step of such a migration takes
+`jadpo_migrations`' lock first, as every migration does. A batch is up to
+1000 rows, its own transaction at read committed, in key order from where
+the last ended (`"id" > $1 ORDER BY "id" LIMIT 1000`), filling only the
+rows still without a value, so a batch run twice fills nothing twice; it
+takes only its rows' locks. A batch that meets a concurrent change (a
+deadlock with a request writing the same rows) is tried again, up to
+three times, then the run stops.
+
+Every backfill fills before any column is required. A store's section
+that fills a backfill in batches runs every backfill's batches first, in
+the order their columns are added. One step then locks each table against
+writes, never reads (`SHARE ROW EXCLUSIVE`), fills the rows written
+meanwhile for each column, and adds a check per column that it has a
+value. A backfill written out as one value beside them fills the existing
+rows in the section's first step, and again in that step the rows written
+meanwhile, and is required with the rest; alone, it is one statement in
+the migration's transaction.
+
+The last steps lock out writes and make no read wait on a scan. The check
+is added `NOT VALID`, reading no row, so every row written from then on
+is held to it. The next step, a transaction of its own, proves it
+(`VALIDATE CONSTRAINT`), reading every row under `SHARE UPDATE
+EXCLUSIVE`, which lets reads and writes go on. The last makes each column
+required, which PostgreSQL 12 and later do without reading a row once a
+proved check says every row has a value, drops the check and records the
+migration. Adding the check, requiring the column and dropping the check
+each take `ACCESS EXCLUSIVE` for a moment, which waits for reads already
+running and holds new ones back meanwhile; no form of `SET NOT NULL`
+avoids that. `postgres.sql` opens each such step with a `-- step:` line
+saying what it does, and names the check `<table>_<column>_filled`.
+
+The resume marker is a row in `jadpo_migration_steps` (the migration's
+name and digest, its next step and the key the last batch ended at),
+written in the transaction of the step it records, so a run stopped
+anywhere, killed included, leaves the column consistent and carries on
+from the step after the last one committed. The table is the runtime's
+own, made the first time such a migration runs; a migration's row goes in
+the transaction that records it as applied; one whose digest changed
+since is refused as changed.
+
+**Progress.** On a terminal, the live line says how far each backfill has
+got (`Filling Todo.priority  2000 of 5000 rows`, or `Filling
+Todo.priority in Jadpo  2000 of 5000 rows`); in plain output and CI
+nothing is printed while it runs, rather than a line per batch. The
+result lists each backfill under its migration with the rows it filled,
+its batches and how (`2500 rows filled in 3 batches by UPDATE`, or `2500
+rows filled in 3 batches in Jadpo (slower than SQL)`), and whether it
+carried on from an earlier run; `--json` gives them as `backfills`, each
+with its `how` (`"in Jadpo"`). `jadpo migrate new` lists "fill existing
+rows in batches in Jadpo" for one worked out in Jadpo.
+
+Built: backfills by `UPDATE` in chunk 5.6b and in Jadpo in chunk 5.6b2,
+tested against live PostgreSQL (`crates/jadpo-cli/tests/backfills.rs`,
+`crates/jadpo-cli/tests/sql_forms.rs`).
 
 A migration's `postgres.sql` holds a section per store, each opened by a
 `-- store: <name>` line, and names every table, column, constraint and index
@@ -941,8 +1223,10 @@ runtime's system tables, prefixed `jadpo_` (below).
 
 Tables the runtime needs are generated, prefixed `jadpo_`, and part of the
 migration snapshots like any entity, so drift in them fails `jadpo check`
-too. The ones that must commit with an action's own writes go in every
-store that holds an entity, since any of them can be written:
+too. The ones that must commit with an action's own writes go in each
+store an action writes, so an action's outbox and delivery records sit
+beside the writes they commit with; the compiler gives them to every store
+that holds an entity, since any of them can be written:
 
 | Table | Holds | Behaviour |
 |---|---|---|
@@ -950,6 +1234,10 @@ store that holds an entity, since any of them can be written:
 | `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, built in chunk 6.1b |
 | `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | Area 12, built in chunk 6.1b |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
+
+A subscriber's record that it handled a delivery goes in the store the
+subscriber writes, committing with its writes, and refers to no table in
+another store (area 12, "Delivery: at least once, safe to repeat").
 
 Browser sessions and API tokens (`jadpo_sessions`: each one's user, the
 verifiers of its token and a browser session's CSRF token, and when it
@@ -963,12 +1251,14 @@ credential ID, the user handle its device keeps and the
 `WebAuthnCredential` it is; and `jadpo_passkey_challenges`: each ceremony
 under way, by its challenge's verifier, with what it is bound to and when
 it expires; area 8, chunk 5.5z) go beside the sessions they start.
-Schedule state and the stores system features name explicitly
-(`schedules: { store: main }`) join them with their chunks; since chunk
-6.2 `jadpo_schedules` (each schedule's next due time, lease and last
-tick) and `jadpo_schedule_runs` (each run and skipped tick) are in the
-store `schedules: { store: }` names, or the only database, when a
-schedule is declared (area 12). The runtime
+Schedule state, each schedule's lease included, goes in the store
+`schedules: { store: }` names in `app.jadpo`, or the only store when there
+is one (area 12): `jadpo_schedules` (each schedule's next due time, lease
+and last tick) and `jadpo_schedule_runs` (each run and skipped tick),
+created when a schedule is declared. Other features that only keep state
+name their store the same way (`flags: { store: main }`), and with
+several stores a missing one is a compile error naming the feature. The
+runtime
 state decided on 2026-10-16 (multi-step call records and batch runs beside
 the outbox, OAuth grants, poll state, and webhook and queue
 de-duplication) follows the same rules and is always in a database, never
@@ -976,9 +1266,15 @@ a cache (area 16). The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
 A system table that keeps a value beyond a request, the outbox's payload
-and a passkey, records the encoding it was written in, `encoding`, so a
-later release reads it by the form it has (area 19, "Changing a standard
-type's encoding"; chunk 5.9).
+and a passkey's credential, records the encoding it was written in, an
+`encoding` `smallint`, so a later release reads it by the form it has
+(area 19, "Changing a standard type's encoding"). The runtime always
+writes one, but the column may be `NULL`, for a row kept before encodings
+were recorded: a migration adds it to a table that may hold rows already,
+with no default, so the same column is the same everywhere. A passkey
+with none is read in the form passkeys were first kept in (chunk 5.5z).
+A project whose migrations predate the column takes one migration adding
+it when `jadpo check` asks (`migration.out_of_date`).
 
 ## Seeds
 
@@ -2324,7 +2620,7 @@ check failed: 1 error, 4 files
 
 Nor does it read a setting through a function it calls, a `crypto`
 operation's `key:` included, since each deployment sets its own and
-`jadpo migrate apply` is given none (chosen in chunk 5.8b):
+`jadpo migrate apply` is given none:
 
 ```jadpo check project=e-backfill-setting file=app.jadpo hidden
 application {}
@@ -2392,7 +2688,7 @@ check failed: 1 error, 6 files
 ```
 
 Nor a field the same migration adds, which no record already stored has
-a value for while the backfill runs (chosen in chunk 5.8b):
+a value for while the backfill runs:
 
 ```jadpo check project=e-backfill-added-field file=app.jadpo hidden
 application {}
@@ -2492,6 +2788,11 @@ Jadpo by `jadpo migrate apply`, in the same batches, transactions and
 resume marker, with values identical to the runtime's, tested against
 live PostgreSQL in the same file.
 
+Built in chunk 5.9b: **structured values stored as JSON**, through the
+route codec and read back with their rules ("Structured values"). Built in
+chunk 5.9d: **every stored value is checked on read** by its field's
+validator, in the runtime's one read path.
+
 Built in chunk 5.9c: **structured values stored as JSON are migrated.**
 The snapshot records what each JSON column's type reads; a change that
 only widens it runs nothing, and one that may read less checks every
@@ -2520,383 +2821,6 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate` takes it with `--url`, and the application's refusal to
   start against a database that doesn't match comes with the compiled
   deployables (Phase 8).
-
-### Chosen in chunk 5.6b
-
-What the page left open about computed backfills, each the most
-conservative reading:
-
-- **Split.** Backfills whose every operation has a SQL form are this
-  chunk; those worked out in Jadpo by `jadpo migrate apply` are 5.6b2.
-- **What is computed.** A `backfill:` that is a literal or an enum's
-  variant (`Priority.normal`) keeps chunk 3.1's one statement in the
-  migration's transaction; any other value is computed.
-- **Batches of 1000 rows**, each its own transaction at read committed,
-  in key order from where the last ended (`"id" > $1 ORDER BY "id" LIMIT
-  1000`), filling only the rows still without a value, so a batch run
-  twice fills nothing twice.
-- **Locking.** Every step of such a migration takes `jadpo_migrations`'
-  lock first, as every migration does; a batch takes only its rows'
-  locks; only the last step locks the table, against writes and never
-  reads (`SHARE ROW EXCLUSIVE`), to fill the rows servers still on the
-  old build wrote meanwhile and make the column required. A batch that
-  meets a concurrent change (a deadlock with a request writing the same
-  rows) is tried again, up to three times, then the run stops.
-- **The resume marker** is a row in `jadpo_migration_steps` (the
-  migration's name and digest, its next step and the key the last batch
-  ended at), written in the transaction of the step it records, so a run
-  stopped anywhere, killed included, carries on from the step after the
-  last one committed. The table is the runtime's own, made the first time
-  such a migration runs; a migration's row goes in the transaction that
-  records it as applied; one whose digest changed since is refused as
-  changed.
-- **Failing rows.** The page doesn't say what a row whose value fails
-  gets, so a backfill that can fail is refused
-  (`migration.backfill_can_fail`): a call or construction nothing handles,
-  or an `attempt` passing a failure on. A defect still stops the
-  statement, as chunk 5.6 chose: the batch rolls back, the column stays
-  consistent, and the run stops at that row.
-- **Progress.** On a terminal, the live line says how far each backfill
-  has got (`Filling Todo.priority  2000 of 5000 rows`); in plain output
-  and CI nothing is printed while it runs, rather than a line per batch.
-  The result lists each backfill under its migration with the rows it
-  filled, its batches and how (`2500 rows filled in 3 batches by
-  UPDATE`), and whether it carried on from an earlier run; `--json` gives
-  them as `backfills`.
-- **What it may read.** Its row's stored fields, constants and pure
-  functions; another entity's field and a setting are
-  `migration.backfill_outside_row`, and the clock, the random generator,
-  queries and actions are refused as in any function. A field this
-  migration retires is read as the built-in type its column holds
-  (`boolean`, `text`, `uuid`, a whole number, `numeric`, `timestamptz`,
-  `date`), since its declared type goes with it; a retired enum or
-  structured field isn't offered.
-- **Its type** is the field's declared type, as a value set on the field
-  is (area 6); a field with rules of its own takes a construction, which
-  is refused unless it is proven safe. A decimal is stored at its field's
-  places, rounded half to even, as the runtime stores one.
-- **A field that allows less** is still refitted only with a value
-  written out; a computed one is not built yet.
-- **Only the latest migration's backfills are checked,** since `jadpo
-  check` reads only its decisions; what an earlier one calls ran with
-  the code it was written against.
-- **Functions are written in place,** up to 16 calls deep, their
-  parameters replaced by their arguments' SQL and their `var`s by their
-  values; an `if` chain whose branches return, and a `match` on a plain
-  variant, `true` and `false`, a literal, `none` or `some`, become `CASE`,
-  the last arm its `else`. A `var mut`, a loop or a statement that only
-  runs for its effect has no form.
-
-### Chosen in chunk 5.6b2
-
-What the page left open about backfills worked out in Jadpo, each the
-most conservative reading:
-
-- **Which backfills.** Only the latest migration's, since only its
-  decisions are checked against the project's code. An earlier
-  migration's backfill in Jadpo that has rows to fill stops `jadpo
-  migrate apply` (`Filling Todo.priority for <migration> needs the build
-  it was written in`), keeping every step that committed, so it is
-  applied with the build that wrote it and then this one. On an empty
-  table nothing needs working out, so a new database takes every
-  migration at once.
-- **The code it runs** is the project's as `jadpo migrate apply` finds
-  it, which must check without errors once a row needs it. The SQL's
-  marker names a digest of the backfill's body, every function it
-  reaches (where each is written left out) and the constants they read,
-  so a change to that code makes `jadpo check` ask for the migration to
-  be written again, as a change to a backfill by `UPDATE` does, and a
-  database that ran the old code refuses the new one as changed.
-- **A batch** reads up to 1000 rows still without a value past where the
-  last ended, in key order, `FOR NO KEY UPDATE`, so a request on the old
-  build can't change a field the value was worked out from before the
-  batch commits; it writes the values back in one `UPDATE … FROM
-  unnest($1, $2)` filling only rows still without one. The last step
-  reads every row still without a value after locking the table against
-  writes, in the transaction that makes the column required.
-- **What it reads and writes:** fields held in one column (the built-in
-  types, and an enum without data). A backfill in Jadpo that reads or
-  fills a value held in several columns or as JSON is refused as not
-  built yet.
-- **A defect** (an overflow, say) stops the batch: it rolls back, and
-  `jadpo migrate apply` names the record's key and the fault, never the
-  row's values.
-- **Output.** The live line says `Filling Todo.priority in Jadpo  2000 of
-  5000 rows`; the result says `2500 rows filled in 3 batches in Jadpo
-  (slower than SQL)`, and `--json` gives `"how": "in Jadpo"`. `jadpo
-  migrate new` lists "fill existing rows in batches in Jadpo".
-- **`jadpo dev`** applies migrations with the same interpreter; `jadpo
-  test` builds its database on empty tables, so nothing needs it.
-
-### Chosen in chunk 5.8b
-
-What the Phase 5 review found computed backfills doing that the page
-doesn't allow, and how each now works, as conservatively as it could:
-
-- **A construction keeps its value as the runtime keeps it.** By
-  `UPDATE`, building a type with a fixed `scale` keeps exactly that many
-  places, rounded half to even (`decimal.round`'s form, then a cast to
-  `numeric(38, scale)`, which stops the statement past 38 digits where
-  the runtime faults): `Amount(Whole(cost))` with `Whole` at `scale: 0`
-  keeps 2.50 as 2 and 3.50 as 4, as `jadpo test` does. No other rule
-  changes a value built on `Bool`, `Int`, `Decimal`, `Text`, `Bytes`,
-  `Uuid`, a date, an instant or a duration: ranges, lengths and patterns
-  only refuse, and a backfill's constructions are proved not to, and text
-  isn't normalised as it is built. A standard type that changes a value
-  as it is built (`Html` made safe, a coordinate kept as its double, a
-  secret) has no SQL form, so a backfill building one runs in Jadpo.
-- **The digest of a backfill worked out in Jadpo** also covers every type
-  its body and the functions it reaches name, along their chains and with
-  their fields and variants (rules and scales included), and the
-  toolchain's version, whose runtime works the values out; changing any
-  of them changes the migration, so a resumed backfill can't fill some
-  rows one way and the rest another.
-- **What it may read.** No setting through a function it calls, a
-  `crypto` operation's `key:` included, since `jadpo migrate apply` is
-  given none and each deployment sets its own; no field the same
-  migration adds, which no stored record has a value for yet. Both are
-  `migration.backfill_outside_row` (examples under Errors).
-- **Every backfill fills before any column is required.** A store's
-  section that fills a backfill in batches runs every backfill's batches
-  first, in the order their columns are added; one step then locks each
-  table against writes, fills the rows written meanwhile for each of
-  them, and adds a check per column that it has a value. A backfill
-  written out as one value beside them fills the existing rows in the
-  section's first step, and again in that step the rows written
-  meanwhile, and is required with the rest; alone, it keeps chunk 3.1's
-  one transaction.
-- **The last steps lock out writes and make no read wait on a scan.**
-  The check is added `NOT VALID`, reading no row, so every row written
-  from then on is held to it. The next step, a transaction of its own,
-  proves it (`VALIDATE CONSTRAINT`), reading every row under `SHARE
-  UPDATE EXCLUSIVE`, which lets reads and writes go on. The last makes
-  each column required, which PostgreSQL 12 and later do without reading
-  a row once a proved check says every row has a value, drops the check
-  and records the migration. Adding the check, requiring the column and
-  dropping the check each take `ACCESS EXCLUSIVE` for a moment, which
-  waits for reads already running and holds new ones back meanwhile; no
-  form of `SET NOT NULL` avoids that. `postgres.sql` opens each such step
-  with a `-- step:` line saying what it does, and names the check
-  `<table>_<column>_filled`.
-- **Columns read and filled in Jadpo** are read through the one table a
-  query's read uses (`jadpo_std::read::Column::of_builtin`), and literals
-  bound for a form's column through the storage table's, so a backfill in
-  Jadpo also reads and fills a percentage or a quantity.
-
-### Chosen in chunk 5.9
-
-What area 19's encodings needed of the system tables, as conservatively
-as it could:
-
-- **`encoding`, a `smallint`,** on `jadpo_outbox` and `jadpo_passkeys`:
-  the encoding the row's `payload` or `credential` was written in. It
-  may be `NULL`, a row kept before encodings were recorded: a migration
-  adds the column to a table that may hold rows already, and adds no
-  default, so the same column is the same everywhere. A passkey with none
-  is read as chunk 5.5z kept it; the outbox has no rows before 6.1b
-  writes it, always with an encoding.
-- **Each application with a store migrates once.** The five examples
-  with migrations gained `record_outbox_encoding`, adding the outbox's
-  column, as any project upgrading does when `jadpo check` asks for it
-  (`migration.out_of_date`).
-
-### Chosen in chunk 5.9b
-
-What the pages left open about storing an application's structured
-values, each the most conservative reading:
-
-- **One codec, the route's.** An enum with data, an object, a list, a set
-  or a map is kept in one `jsonb` column as exactly what `json.write`
-  writes for its type, and read back as a request's body is, with its
-  type's rules and the field's own: chunk 5.5w2b's path for the standard
-  collections, now for any type, the plan numbering the field's type in
-  its JSON table. A set and a map's keys are written in their canonical
-  order, and a variant without data as its name, as on the wire.
-  PostgreSQL keeps `jsonb` in its own key order and spacing, so the text
-  isn't byte for byte what was written, but it reads back `==`.
-- **What a stored value holds:** what that JSON holds, values built on the
-  built-in and standard types, enums, and `Object`s made of them, in
-  lists, sets and maps, a type that holds itself included. An `Input`, an
-  `Output`, an event, a failure, an email, a message or a prompt inside
-  one, a map keyed by a type with no single text form, a format and a
-  plural count are `data.field_without_json` (under "Errors"). A secret
-  value, an API token or a service key, an entity and text for people
-  are refused inside a stored value as in a column of their own
-  (`type.secret_exposed`, `type.auth_credential_stored`,
-  `data.entity_in_field`, `type.presentation_text_persistence`). A
-  `PasswordHash` is kept, as a field of its own is; every `Input` and
-  `Output` that would carry one off the server is refused already (area
-  19).
-- **Read with its rules; what doesn't read is a fault.** A row edited
-  outside Jadpo whose JSON breaks a rule, isn't its type or is past the
-  limits below is a fault when it is read, named by the rule and where in
-  the value it broke (`max` on `weight`), never the value, as chunk
-  5.5w2b's are.
-- **`none` is the column's `NULL`,** never JSON's `null`, which in the
-  column is a row written outside Jadpo and a fault. Inside the value, a
-  part that is `none` is JSON's `null`, as the wire writes it.
-- **No query compares or sorts one.** A condition on such a field is
-  `toolchain.not_built_yet` and an order by one `query.order_field`, as
-  chunk 5.5w2b chose for the standard collections; the field is read
-  whole wherever its record is. No `unique:` or index covers one
-  (`toolchain.not_built_yet`), since PostgreSQL compares `jsonb` by its
-  own rules rather than Jadpo's `==`; for the same reason a lifecycle
-  tests one only with `== none` or `!= none`, and a transition or
-  `initial:` sets one only to `none` (`data.lifecycle_condition`,
-  `data.lifecycle_value`). Any other value is written by an action,
-  through the codec, and an update by `id` sets one only from a value it
-  is given, since the database doesn't work one out in one step
-  (`toolchain.not_built_yet`, as for money).
-- **An id inside is a value, not a reference.** A `User.id` inside a
-  stored value has no foreign key and no `on_delete:`, as an event's
-  payload has none (area 12); a link the database must keep is a field of
-  its own, or a link entity (question 1).
-- **Policy is the field's.** A field's `policy:` covers its whole stored
-  value, as any field's does; a field of an `Object` takes no `policy:`
-  (`type.unknown_setting`), and a part is read only by reading its field,
-  so area 9's proofs hold it as they hold the field.
-- **Limits.** A stored value is at most 1 MiB of JSON, the most a
-  request's body may be (area 7), nested at most 128 arrays and objects
-  deep, the most a request's body is read to, so whatever is kept could
-  have arrived in a request and always reads back. Writing a larger or a
-  deeper one is a fault naming the limit, as is reading one written
-  outside Jadpo; PostgreSQL's own limit on `jsonb` is far above both.
-- **Encodings follow from 5.9.** The column holds the contract's JSON, so
-  a standard type inside it is pinned by that type's golden file and the
-  release's encoding (area 19, "Changing a standard type's encoding").
-  As chunk 5.9 chose for an entity's columns, a JSON column records no
-  encoding of its own: a release that changed what a standard type's JSON
-  holds would give the migration that rewrites stored values.
-- **Migrating them** was left for chunk 5.9c, which built it ("Chosen in
-  chunk 5.9c").
-- **Event payloads through the same table.** Every event type is
-  numbered in the plan's JSON table, by the identity key the outbox's
-  `event` column records (`JsonTable::events`), so chunk 6.1b writes and
-  reads a payload through the one codec, with the type's rules applied on
-  read (area 12, "A payload is the contract's JSON"). No job takes
-  arguments yet (a schedule's `run:` takes none); a batch's saved values,
-  since chunk 6.4, are numbered in the same table by their types (area
-  12, "Chosen in chunk 6.4").
-
-### Chosen in chunk 5.9c
-
-What the page left open about migrating structured values stored as
-JSON, each the most conservative reading:
-
-- **What the snapshot records.** A JSON column's `allows` holds `json`:
-  the value's shape (a value built on a built-in or standard type, with
-  the bounds, lengths, patterns and places along its chain and any other
-  rule as text; a part that may be `none`; a list, a set or a map with
-  its lengths) and each object and enum of the application's it names,
-  by name, an object's fields and rules across its fields, an enum's
-  variants and their fields. The field's own settings count, as they do
-  for any column.
-- **Only widening runs nothing.** A type reads every value another wrote
-  only when that can be shown: the same built-in or standard type and
-  places, every other rule the same, no bound or length tighter or new,
-  no pattern new, a part made optional but never required, a list never
-  made a set, rules across fields only removed, variants only added,
-  each with the fields it had. An object's JSON is read member for
-  member, every field required and no other allowed, so a field added,
-  even one that may be `none`, or a field removed may read less. A type
-  renamed reads as its shape. Anything else may read less.
-- **A snapshot from before chunk 5.9c** recorded nothing of what a JSON
-  column read, so the next migration checks its stored values rather
-  than recording the type with nothing to do as chunk 3.10 did, since
-  nothing shows that the values stored then read now; on an empty table
-  the check reads nothing.
-- **The check** comes before anything else in the store's section, so a
-  refusal applies nothing of the migration (the migrations before it
-  stay). It reads the rows with a value, `NULL` being `none`, 1000 a
-  batch in key order, each batch its own read-committed transaction
-  under `jadpo_migrations`' lock, locking no row and changing nothing,
-  and reads each value with the codec of the field's type now, as a
-  query reads it. It records nothing as it goes: a run stopped during it
-  starts it again, and a refusal clears the migration's progress, so the
-  next run reads every value again. The refusal is
-  `migration.apply_failed`, naming how many values don't read and the
-  first rule broken and where (`` `max_length` on `line` ``), never a
-  value.
-- **The decision may be left out.** No decision is required
-  (`NeededKind::Unreadable`): `jadpo migrate new` finishes the migration
-  and writes a `changes.jadpo` holding only a comment saying how to give
-  one. Writing `backfill:` there and running `jadpo migrate new` again
-  replaces that field's check with a rewrite.
-- **The rewrite** runs in batches as a backfill worked out in Jadpo does
-  (chunk 5.6b2), recorded in the resume marker: each batch reads the
-  rows with a value, locked `FOR NO KEY UPDATE`, reads each with the new
-  type, works the backfill out for those that don't read and writes them
-  back through the codec, leaving the rest as they are. The backfill may
-  be written out or worked out from the row, as any backfill in Jadpo
-  may; a narrowed column's refit outside JSON still takes only a value
-  written out. A backfill still reads no field held as JSON, its own
-  included, whose old type is gone.
-- **Values written meanwhile.** A server still on the old build may write
-  a value the new type doesn't read after the check or the rewrite has
-  passed its row; as with a narrowed column's refit since chunk 3.10, no
-  lock holds writes to the whole table out for that long, and such a
-  value is a fault when read, as chunk 5.9b chose for any stored value
-  that doesn't read.
-- **A required structured field with a `backfill:`.** Its value, written
-  out (a construction such as `Label { … }`, or a variant) or worked out
-  from the row, has no SQL form, so it is always worked out in Jadpo and
-  written by the codec of the field's type, as a write keeps it, then
-  made required in 5.8b's last steps.
-- **Only the latest migration** is read with the project's code, as chunk
-  5.6b2 chose for backfills: an earlier migration's check or rewrite with
-  rows to read stops `jadpo migrate apply` (`Checking Parcel.label for
-  <migration> needs the build it was written in`).
-- **Output.** `jadpo migrate new` lists "check stored values in batches in
-  Jadpo" or "rewrite values no longer read in batches in Jadpo"; the live
-  line says `Checking Parcel.label in Jadpo  2000 of 5000 rows`; the
-  result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
-  rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
-
-### Chosen in chunk 5.9d
-
-What the decision "A field's rules on read" left open, and a derived
-index's reason, each the most conservative reading:
-
-- **One check, the write's.** A stored value is checked on read by its
-  field's validator, the one a write and a backfill check it by: the
-  field's own rules, then its type's along its chain, a built-in type's
-  own check (`Email`, `Url`) and a standard object's rules across its
-  parts. Nothing is checked twice by a second copy of the rules, and a
-  value a write would keep is never refused on read.
-- **Every read that makes a stored value.** A query's records, `get`, a
-  parent's, a child's and children's includes, a nearest query's records,
-  a map layer's properties and geometry, a `geo.` condition's recheck, the
-  record a `create` or an `update` gives back, every stored field it
-  holds, and each field a backfill worked out in Jadpo reads. An
-  aggregate makes a stored value only for a group by a field and for
-  `min` and `max`, which are checked; a count, a sum, an average and a
-  time bucket are worked out, and a sum past a field's `max:` is no
-  defect. A field kept as JSON is read by its codec with its type's and
-  the field's rules (chunk 5.9b), not again; a field a migration retires
-  has no declaration left, and a backfill reads it as its built-in type
-  alone.
-- **The defect.** `` a stored `Tool.stars` that breaks `max: 5` ``: the
-  field and the rule as written, never the value, so the fault behind a
-  500 or a stopped backfill names what to fix and leaks nothing; `none`
-  breaks no rule. A backfill stops as it does on any defect, naming the
-  record's key (`it read a stored …`).
-- **Where it runs.** In the runtime's one read path
-  (`jadpo_runtime::stored_value`), which both executors call; the plan
-  gives each selected column its field's validator (`Select::held`,
-  `Returned::held`).
-- **`scale:` can't break on read.** A decimal with `scale:` is kept in a
-  `numeric(p, s)` column, which rounds anything written into it to its
-  places, so the check holds already; ranges, lengths and patterns are the
-  rules a row written around Jadpo breaks. No `CHECK` constraint is added
-  in this chunk.
-- **An index's reason isn't what defines it.** A derived index records
-  why it exists, the first query alphabetically that needs it, but the
-  migration diff compares only its table, columns or expression, kind,
-  partial condition, operator class, code-point columns and settings. A
-  query that sorts first needs no migration, and `jadpo check` and
-  `jadpo migrate new` find nothing to do; the next migration written for
-  another change records the new reason in its snapshot, with no step for
-  the index. Snapshots keep the same format, so every existing one reads.
 
 ### Carried to later areas
 
@@ -3055,6 +2979,6 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
 | Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place, or a `Duration` setting (chunk 5.1; `jadpo_runtime::purge_after` is given its value); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
-| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b", what working one out in Jadpo left open is "Chosen in chunk 5.6b2", and the Phase 5 review's fixes (constructions rounded as the runtime rounds, the digest's types, what it may read, every backfill filled before any column is required, a last step that proves a check before `SET NOT NULL`) are "Chosen in chunk 5.8b" | 2026-10-15 |
+| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows, progress and working one out in Jadpo are under "Computed backfills", and the Phase 5 review's fixes (constructions rounded as the runtime rounds, the digest's types, what it may read, every backfill filled before any column is required, a last step that proves a check before `SET NOT NULL`) are there too | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
-| A field's rules on read (after chunk 5.8c) | A stored value is checked against every rule its field's type has when it is read, not only a standard type's rules across its parts: a row written around Jadpo that breaks one is a defect naming the rule and never the value, as 5.8c and 5.9b do; `CHECK` constraints may follow (Richard, as recommended). Built in chunk 5.9d; its choices are "Chosen in chunk 5.9d" | 2026-10-19 |
+| A field's rules on read (after chunk 5.8c) | A stored value is checked against every rule its field's type has when it is read, not only a standard type's rules across its parts: a row written around Jadpo that breaks one is a defect naming the rule and never the value, as 5.8c and 5.9b do; `CHECK` constraints may follow (Richard, as recommended). Built in chunk 5.9d, as "Storage types" says | 2026-10-19 |

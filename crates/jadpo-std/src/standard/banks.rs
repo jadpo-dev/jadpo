@@ -56,7 +56,7 @@ pub const BANK_ACCOUNT_VARIANTS: &[(&str, &[(&str, Part)])] = &[
 /// account number do on their own (chunk 5.5i).
 pub const PERSONAL: &[(&str, &str)] = &[(BANK_ACCOUNT, "financial")];
 
-/// A bank account: a choice, sent tagged and stored as that JSON, shown as
+/// A bank account: a choice, sent tagged and stored in a column per part, shown as
 /// its number's or IBAN's last four.
 pub const BANK_ACCOUNT_ENTRY: StandardType = StandardType {
     name: BANK_ACCOUNT,

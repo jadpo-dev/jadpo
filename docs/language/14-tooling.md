@@ -48,7 +48,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8) |
 | `jadpo ai show <prompt>` | Prints what a prompt sends a model: its type, file and version, the instructions as the system message, the conversation's turns and the request as the user message, each placeholder as the file writes it (area 21) | Built (chunk 5.5v2), with `--json`; takes the prompt's name or its type's; a misspelt action or prompt is `cli.ai_arguments` with the nearest name, and a prompt with errors shows them instead; `record` and `usage` say `toolchain.not_built_yet` until the `ai` capability |
-| `jadpo sql <query>`, `jadpo sql <action>` | Prints a query's generated SQL for PostgreSQL and SQLite, or the statements an action's writes send; `--explain` runs it on a disposable database and shows the plan | Built for PostgreSQL (chunk 3.2): each statement the query sends, one for each include too, with the parameters that fill it, and `--json`. Since chunk 3.4, given an action, each `create`, `update`, `delete` and transition it writes, in order, with its parameters as the action writes them, what each refusal raises (the constraint and the failure its `conflict:` arm names, the not-found failure, or a fault) and, for a transition whose `when:` can refuse a record, the statement that asks when no row changed. Tab completes the project's queries and actions, and without one it fails listing them. SQLite comes with a SQLite store; `--explain` is decided, not built: the flag says `toolchain.not_built_yet` |
+| `jadpo sql <query>`, `jadpo sql <action>` | Prints a query's generated SQL for PostgreSQL and SQLite, or the statements an action's writes send; `--explain` runs it on a disposable database and shows the plan | Built for PostgreSQL (chunk 3.2): each statement the query sends, one for each include too, with the parameters that fill it, and `--json`. Given an action (chunk 3.4), each `create`, `update`, `delete` and transition it writes, in order, with its parameters as the action writes them, what each refusal raises (the constraint and the failure its `conflict:` arm names, the not-found failure, or a fault) and, for a transition whose `when:` can refuse a record, the statement that asks when no row changed. Tab completes the project's queries and actions, and without one it fails listing them. SQLite comes with a SQLite store; `--explain` is decided, not built: the flag says `toolchain.not_built_yet` |
 | `jadpo impact <name>` | Lists what a change to `name` reaches | Decided in area 1, not built |
 | `jadpo rename <old> <new>` | Renames a declaration or field everywhere, keeping stored data | Decided (question 5), not built; refuses a new name already in use (2026-10-16) |
 | `jadpo domain rename/split/merge` | Moves a domain's files and updates every call | Decided in area 1, not built |
@@ -59,7 +59,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo translations missing [<locale>]` / `unused` / `update` / `accept <locale>` | Lists, under the language file each is in, wording a locale lacks (and what an in-progress locale falls back on), translations made from wording that has since changed and wording not yet accepted, and the messages no code calls; records each translation's source in `translations/sources.jadpo_record`; accepts a locale's changed wording | Built (chunk 5.4d), each with `--json`: `missing` and `unused` succeed whatever they list; `update` and `accept` stop on syntax errors, write one status line for each record and say `still stale` of a translation nobody redid; a misspelt action or locale is `cli.translations_arguments` with the nearest name (area 10, "Tooling") |
 | `jadpo translations builtin` | Lists Jadpo's own messages the app can show, by feature, with their fields, the wording Jadpo ships and the locales that still need it | Built (chunk 5.4e), with `--json`: succeeds whatever it lists; only the messages of features the app has on; `missing`, `update` and `accept` take the root `translations/` folder's wording of them in with the rest (area 10, "Jadpo's and packages' text") |
 | `jadpo translations export [<locale>]` / `import <file>` | Exchanges messages, their descriptions and their wording with translation services as XLIFF 2.0 or JSON | Built (chunk 5.4f), each with `--json`: `export` writes `build/translations/<locale>.xlf` (`--format json`, `--out <folder>`) for each translated locale, or the default locale's source file; `import` checks what comes back as `jadpo check` would, writes the language files and the record or nothing, and refuses with the language files' own rules at the unit of the file, `translation.exchange_unit_unknown` or `translation.exchange_file_invalid` (area 10, "Tooling") |
-| `jadpo api update` | Rewrites the committed public API record (`api/main.jadpo_record`) from the source | Built (chunk 4.1): one record per API with routes; a record whose API has no routes is removed. Since chunk 7.0 it is `api/<api>.jadpo_record` in the record format (area 18), with no `version:` (the OpenAPI version is a hash of it), and `jadpo check` fails while it disagrees (`record.out_of_date`) or was edited by hand (`record.edited`); a record under its old name, `api/<api>.api`, is removed |
+| `jadpo api update` | Rewrites the committed public API record (`api/main.jadpo_record`) from the source | Built (chunk 4.1): one record per API with routes; a record whose API has no routes is removed. It is `api/<api>.jadpo_record` in the record format (chunk 7.0) (area 18), with no `version:` (the OpenAPI version is a hash of it), and `jadpo check` fails while it disagrees (`record.out_of_date`) or was edited by hand (`record.edited`); a record under its old name, `api/<api>.api`, is removed |
 | `jadpo records` | Lists every committed record (`.jadpo_record` files and `jadpo.lock`), what writes each, and flags any out of date with the command that updates it | Built (chunk 7.0): grouped by the command that writes them, each with its state, failing while one needs its command; `jadpo records update` brings every record up to date at once and moves records from their old names (area 18) |
 | `jadpo declines list` / `clear` | Lists every decline with its rule, place and reason; `clear` removes the matching decline lines so each finding comes back; `--rule <id>`, a path and `--json` | Built (chunk 5.4b): `list` is one list in file order, a reason too long for its row on the lines under it; `clear` writes each file without its matching lines, stops on syntax errors, and points at `jadpo check`; an unknown action, rule or a path outside the project is `cli.declines_arguments` (area 1, "Declining a judgement call") |
 | `jadpo fix` | Applies the fix the author picks for a finding, through the same code as the editor's quick fix; first for a release that adds a standard type an app already names (swap to it, or rename) | Built (chunk 5.5a2), with `--json`: alone it lists each `type.standard_clash` and `type.standard_exists` finding with the fixes it takes; `jadpo fix <name> swap` and `jadpo fix <name> rename <NewName>` list what changed file by file; a fix whose result would add an error changes nothing and shows it; a name with nothing to fix, a fix it doesn't take or a taken name is `cli.fix_arguments`. The rename is not `jadpo rename`: it writes no identity line (area 19, "A release that adds a standard type") |
@@ -189,8 +189,8 @@ with the generated files.
 > rechecks only what it changes; hover with a declaration written as Jadpo,
 > its `///` description, the failures a callable can produce, a failure's
 > code, kind and status, and who calls or uses it; and go to definition.
-> Since chunk 3.5 go to definition works from every use of a name, in a
-> body, a signature or a `use` line (area 1, Imports).
+> Go to definition works from every use of a name, in a body, a signature
+> or a `use` line (area 1, Imports; chunk 3.5).
 
 Decided in area 1 and not built: promotion comes with quick fixes; rename goes through the same code as `jadpo rename`, so an
 entity field renamed in the editor keeps its stored data (question 5).
@@ -443,7 +443,14 @@ units of two- and three-place currencies; `price`, `pence`, `cents`,
 and `email`, `url`, `uuid` as names on `Text`), and the loops of
 `list.sum`, `list.min_by` and `list.max_by`. `list.group_by`'s loop builds
 a map through a chain of calls that the graph shows only as calls, so it
-has no loop signal yet.
+has no loop signal yet. A type's validation texts are data of their own,
+not its examples, so only the types that list them fire.
+
+A snippet gives one finding. Where signals for two types fire on one
+snippet, the type whose words more of its names hold wins, then the first
+in the entries' order; where a snippet holds a smaller one that fires the
+same way, only the smaller is reported. A type with `decline
+type.standard_exists` gives no `shape` finding.
 
 ### Snippets and their canonical form
 
@@ -463,7 +470,7 @@ member that holds the signal. Each snippet has two forms.
   BLAKE3 hash of it (16 hex digits) is its index, and the canonical form
   itself confirms a match.
 - **Its text**: the source as `jadpo fmt` writes it, comments removed, and
-  a plain hash of that text, which is what `jadpo suggest share` sends
+  a hash of that text (16 hex digits of BLAKE3 too), which is what `jadpo suggest share` sends
   (roadmap 5.5y): it never depends on the canonicaliser's version, and only
   lines written the same way in many projects reach HQ's threshold.
 
@@ -544,7 +551,11 @@ in `taught_suggestions.jadpo_record` at the project root, committed and
 shared by the team like the ignores (area 1's root list has it; area 18's
 record format), so the next scan, in this checkout or a teammate's, finds
 the same pattern anywhere as a `taught` finding (chunk 5.5y; decided
-2026-10-18, lead session):
+2026-10-18, lead session). The snippet at a line is the value of the first
+statement that starts there (a `return`'s, a variable's, an
+assignment's), or the statement itself when it has none, or else the
+field or parameter declared there; a line with none of them is
+`cli.suggest_arguments`.
 
 ```text
 // Written by `jadpo suggest found`; `jadpo suggest` finds each pattern anywhere. Never edit it by hand.
@@ -573,7 +584,12 @@ Every entry to share goes to `.jadpo/suggest_pending` with its kind,
 `found`, `accepted` or `ignored`, so HQ can tell a signal that was right
 from one that fired wrongly. `jadpo suggest share` sends them ("Sharing with
 Jadpo HQ" below). Everything in `.jadpo/` is local, and the first command
-that writes there adds `.jadpo/` to `.gitignore`.
+that writes there adds `.jadpo/` to `.gitignore`. `.jadpo/suggest_last`,
+`.jadpo/suggest_pending` and `.jadpo/suggest_signals` hold one JSON object
+per line, since they hold source text; only the committed records are in
+Jadpo's readable format. Those are written at format 2, with the shared
+header (area 18, "Checking a record"); the format-1 files shown above are
+still read, and `jadpo records update` rewrites them.
 
 | File | Committed | Holds |
 |---|---|---|
@@ -602,38 +618,53 @@ text never does.
   nothing, no repository, person or machine. It is committed, so a team
   counts as one project and HQ counts distinct projects without knowing
   which they are. `jadpo new` writes it when it is built; until then, and
-  whenever it is missing, `share` writes it before sending. `share
-  --new-token` replaces it; a fork shares its parent's token until it
-  does. Any other value is `type.suggestions_value_invalid`, so a name
-  can't be used as a token.
+  whenever it is missing, `share` writes it before sending, made from the
+  operating system's generator; with nothing pending it writes none.
+  `share --new-token` replaces it and sends nothing; a fork shares its
+  parent's token until it does. Only 32 lower-case hex digits read as a
+  token: any other value is `type.suggestions_value_invalid`, so a
+  repository's name can't be used as one.
 - **Turning it off.** `suggestions { share: false }` turns sharing off for
   the project, and `JADPO_SUGGEST_SHARE=off` in the environment for a
-  whole machine or organisation (any value but `on` or empty turns it off).
-  Either way every form of `share` stops at once, sends nothing, writes
-  nothing and says where sharing was turned off, and the scan's report
-  drops its instruction to share. Neither can turn it back on over the
+  whole machine or organisation (any value but `on` or empty turns it off,
+  so a misspelling never sends). `share: false` counts in whichever file
+  the `suggestions { }` is. Either way every form of `share`, `--approve`
+  and `--new-token` included, stops at once, sends nothing, writes nothing,
+  keeps the pending entries and says where sharing was turned off, and the
+  scan's report drops its instruction to share; the scan, `ignore` and
+  `found` still record entries. Neither can turn it back on over the
   other. A `suggestions { }` block with a problem stops `share` too.
 - **The exchange.** `share` sends every pending entry's text hash with its
   kind (`found`, `accepted` or `ignored`), its signal and its suggestion,
   and the token, at once and with no prompt: the agent runs it itself at the
-  end of a suggest session, as the report's instruction says. HQ replies
-  with the hashes whose text it wants, those seen from enough distinct
-  projects. The command shows exactly what `share --approve` would send and
-  stops. A person approves, directly or through the agent asking them in
-  its conversation, and only then does `share --approve` send the
-  snippets, each with its kind, signal and suggestion and, for an ignored
-  one, its reason; HQ recomputes their hashes. `share --decline` drops
-  them and sends nothing.
-- **Unattended runs** (`--unattended`, or `CI` set in the environment) send
-  only hashes and skip the request; HQ asks the next project that sends
-  that hash.
+  end of a suggest session, as the report's instruction says. The signal
+  and suggestion go because HQ reassesses a signal by its ignore rate and
+  most entries never send their text; nothing else goes, not even Jadpo's
+  version. HQ replies with the hashes whose text it wants, those seen from
+  enough distinct projects. The command writes the request's address and
+  body to `.jadpo/suggest_wanted`, shows exactly what `share --approve`
+  would send, and stops. A person approves, directly or through the agent
+  asking them in its conversation, and only then does `share --approve`
+  send those bytes to that address, whatever `JADPO_SUGGEST_HQ` says by
+  then: the snippets, each with its kind, signal and suggestion and, for
+  an ignored one, its reason (a `found` entry's reason stays local); HQ
+  recomputes their hashes. `share --decline` drops them and sends
+  nothing, and the next `share` replaces what waits, unsent.
+- **Unattended runs** (`--unattended`, or `CI` set to anything) send only
+  hashes and skip the request; HQ asks the next project that sends that
+  hash, and the next `share` drops a request left waiting. An unattended
+  run can't `--approve` (`cli.suggest_arguments`), and `share`'s flags
+  given without `share` are refused rather than ignored.
 - **Afterwards** the pending file is wiped, whether HQ wanted anything or
-  not; a send that fails keeps it. The first time a checkout sends hashes,
-  `share` says so in one line, with how to turn sharing off.
-- **Until HQ runs** no address is configured by default, so `share` says
-  sharing isn't available yet, sends nothing, keeps the entries and
-  succeeds, and the scan's report leaves out its instruction to share
-  ("The protocol" below).
+  not; a send that fails keeps it. The first time a checkout sends hashes
+  (noted in `.jadpo/suggest_shared`, so nothing is written outside the
+  project), `share` says so in one line, with how to turn sharing off.
+- **Until HQ runs** no address is configured by default, so a suggest
+  session never ends in a failure while HQ doesn't exist. `share` says
+  `Sharing isn't available yet: Jadpo HQ isn't running. Nothing was sent;
+  your entries are kept.`, sends nothing, keeps the entries and succeeds,
+  and the scan's report leaves out its instruction to share, as it does
+  when sharing is off ("The protocol" below).
 
 ```text
 $ jadpo suggest share
@@ -700,9 +731,13 @@ a versioned path.
   build, sets the real address as the default (lead decision, 2026-10-18).
   `http://` is accepted only for a loopback host
   (`localhost`, `127.0.0.1`, `[::1]`), which is how the tests reach the
-  fake; anything else must be `https://`, with the certificate checked.
+  fake; anything else must be `https://`, through OpenSSL (already linked
+  by the passkey ceremonies) with the platform's certificate store and the
+  host name checked.
 - **Headers.** `Content-Type: application/json`, `Accept:
-  application/json` and `User-Agent: jadpo`, without a version. The token
+  application/json`, `User-Agent: jadpo`, without a version, and
+  `Connection: close`: the client is a small HTTP/1.1 one of `jadpo`'s
+  own. The token
   in the body is the only identifier the client sends. The client logs
   nothing about a request: no repository name, user, machine or address.
 - **`POST /v1/suggestions/hashes`** sends at most 500 entries; `share`
@@ -721,7 +756,9 @@ a versioned path.
   after `jadpo fmt`, comments removed); `kind` is `found`, `accepted` or
   `ignored`; `signal` is a signal's word (`taught` for a `found` entry);
   `suggestion` a standard type or operation. HQ answers `200` with the
-  entries whose text it wants, each a hash and kind it was sent, at most 20:
+  entries whose text it wants, each a hash and kind it was sent, so an
+  ignored entry's reason can be asked for without the accepted ones'
+  texts; at most 20, so an approval stays readable:
 
   ```json
   { "wanted": [ { "hash": "8c1d0e5a4f3b2a19", "kind": "ignored" } ] }
@@ -752,8 +789,9 @@ a versioned path.
   `504` for HQ's own trouble.
 - **Timeouts and retries.** 5 seconds to connect and 15 for each answer.
   A failed connection, a timeout, `429` and `500`, `502`, `503` and `504`
-  are tried again up to three times, after half a second, 1 and 2 seconds, or after
-  `Retry-After` when HQ gives one; a `Retry-After` over 60 seconds ends
+  are tried again up to three times, after half a second, 1 and 2 seconds
+  (at most three and a half seconds of waiting), or after `Retry-After`
+  when HQ gives one; a `Retry-After` over 60 seconds ends
   the attempt. Anything else is not retried. When the last try fails,
   `share` fails with `suggest.share_failed`, sends nothing more and keeps
   the pending entries for the next run.
@@ -774,84 +812,6 @@ it, tested against the accepted snippets so it keeps catching what it got
 right. Where a pattern points at something the language lacks, it
 proposes a language feature for a person to decide on, and never builds
 one.
-
-### Chosen in chunk 5.5x
-
-- **Snippet at a line.** For `found`, the value of the first statement
-  that starts on the line (a `return`'s, a variable's, an assignment's), or
-  the statement itself when it has none, or else the field or parameter
-  declared there; a line with none of them is `cli.suggest_arguments`.
-- **One finding per snippet.** Where signals for two types fire on one
-  snippet, the type whose words more of its names hold wins, then the first
-  in the entries' order; where a snippet holds a smaller one that fires the
-  same way, only the smaller is reported.
-- **A declined shape stays quiet.** A type with `decline
-  type.standard_exists` gives no `shape` finding.
-- **Local files are JSON lines.** `.jadpo/suggest_last`,
-  `.jadpo/suggest_pending` and `.jadpo/suggest_signals` hold one JSON
-  object per line, since they hold source text; only the committed record
-  is in Jadpo's readable format.
-- **Taught signals are local for now.** They live in
-  `.jadpo/suggest_signals`, untracked, as the pending file does. *Decided
-  2026-10-18 (lead session):* taught patterns are shared by the team, like
-  ignores: roadmap 5.5y moves them to a committed
-  `taught_suggestions.jadpo_record` at the project root (area 1's root list
-  gains it), so a teammate's scan finds what another taught, and
-  `.jadpo/suggest_signals` stays only as a cache. Built in chunk 5.5y.
-- **Hashes.** 16 hex digits of BLAKE3 for both the canonical form and the
-  text.
-- **Validation texts are their own data.** Each type lists the texts a
-  pattern must accept and refuse, rather than reusing its examples, so only
-  the types that opt in fire.
-
-### Chosen in chunk 5.5y
-
-Choices the design left open, each the more conservative one.
-
-- **Signal and suggestion travel with each hash.** HQ reassesses a signal
-  by its ignore rate across projects, and most entries never send their
-  text, so each hash carries the signal's word and the standard type or
-  operation, Jadpo's own vocabulary; nothing else. No Jadpo version is sent,
-  in the body or the `User-Agent`.
-- **HQ asks for a hash and a kind**, not a hash alone, so an ignored entry's
-  reason can be asked for without the accepted ones' texts; at most 20 per
-  answer, so an approval stays readable.
-- **Snippets carry no token.** HQ needs a token only to count projects;
-  snippets are kept apart from it. A `found` entry's reason stays local,
-  as the design sends a reason only for an ignored snippet.
-- **What is approved is what is sent.** `share` writes the request's
-  address and body to `.jadpo/suggest_wanted` and shows them; `--approve`
-  sends those bytes to that address, whatever `JADPO_SUGGEST_HQ` says by
-  then. The next `share` replaces what waits, unsent. `--decline` drops it.
-- **Unattended** is `--unattended`, or `CI` set to anything; an agent with
-  nobody to ask leaves the request, and the next `share` drops it. An
-  unattended run can't `--approve` (`cli.suggest_arguments`), and `share`'s
-  flags given without `share` are refused rather than ignored.
-- **Turned off is anything but `on`.** `JADPO_SUGGEST_SHARE` with any other
-  non-empty value turns sharing off, so a misspelling never sends. `share:
-  false` is honoured in whichever file the `suggestions { }` is, and turning
-  sharing off stops every form of `share`, `--approve` and `--new-token`
-  included, writes nothing, and keeps the pending entries (they are local);
-  the scan, `ignore` and `found` still record them.
-- **The token is checked.** Only 32 lower-case hex digits read as a token
-  (`type.suggestions_value_invalid`), so a repository's name can't be used
-  as one, and a `suggestions { }` with any problem stops `share`. It is made
-  from the operating system's generator. With nothing pending, `share`
-  writes no token; `--new-token` writes one and sends nothing.
-- **The first share is per checkout**, noted in `.jadpo/suggest_shared`, so
-  nothing is written outside the project.
-- **No default address until HQ runs** (lead decision, 2026-10-18), so a
-  suggest session never ends in a failure while HQ doesn't exist. With
-  `JADPO_SUGGEST_HQ` unset, `share` says `Sharing isn't available yet: Jadpo
-  HQ isn't running. Nothing was sent; your entries are kept.`, succeeds, and
-  keeps the pending entries, and the scan's report leaves out its
-  instruction to share, as it does when sharing is off. The release that
-  launches HQ sets the real address as the default.
-- **HTTPS through OpenSSL**, already linked by the passkey ceremonies, with
-  the platform's certificate store and the host name checked; the client is
-  a small HTTP/1.1 one of `jadpo`'s own, with `Connection: close`.
-- **The backoff is half a second, then 1 and 2 seconds**, so retrying adds
-  at most three and a half seconds of waiting to the tries themselves.
 
 ## Review and sign-off
 
@@ -1180,7 +1140,7 @@ is decided but not built yet.
 | JSON output | Built (chunk 1.1 on): every command takes `--json` and prints one envelope (`schemaVersion` 2 since chunk 2.8) with project-relative paths and `data.root`, line and column beside byte offsets, and camelCase keys; `jadpo test --json` is described in area 13 and under `testReport` in `jadpo help --json`. |
 | `build/` | Built (chunk 1.7): `jadpo check` writes `build/manifest.json` and the catalogues in `build/catalogue/`; `jadpo test` keeps its last run in `build/test/`. |
 | Language server | Built (chunk 1.7): diagnostics, hover and go to definition, from a `use` line too since chunk 3.5; completion since chunk 5.5a3. |
-| Agent tools | The catalogues and the similar-helper check are built (chunk 1.7), a declinable error since chunk 5.4b; `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
+| Agent tools | The catalogues and the similar-helper check are built (chunk 1.7), the check a declinable error (chunk 5.4b); `migrate` is built (chunk 3.1); `impact`, `domain`, `rename` and `seed` are decided, not built. |
 | Suggestions | Built (chunk 5.5x): `jadpo suggest` with its six signal kinds and taught signals, the catalogue, accepted findings, `ignore` and `found`; `share`, `suggestions { }` and the committed taught record built in chunk 5.5y, against a fake of Jadpo HQ (HQ itself comes after the first build). |
 | Build-only errors | Not applicable yet: there is no `jadpo build` until Phase 8. |
 
