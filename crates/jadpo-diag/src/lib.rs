@@ -658,6 +658,8 @@ rules! {
         "12-jobs-and-events.html#schedule-store-required", "Schedule has no database named to keep its state and lease in";
     SCHEDULES_LEASE_HELD: "schedules.lease_held", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedule is already running";
+    SCHEDULES_NO_TICK: "schedules.no_tick", area 14, Error, Human,
+        "14-tooling.html#command-errors", "No tick picked up the run asked for";
     SCHEDULES_RUN_FAILED: "schedules.run_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,

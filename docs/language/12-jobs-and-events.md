@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and to the limits of background work. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1878,6 +1878,12 @@ with them. Built in chunk 6.2b: watching schedules, `jadpo schedules`
 with `run`, `pause`, `resume` and `history`, `jadpo why <schedule>`, each
 run and alert in `jadpo dev`'s output, the alerts with no setup and the
 metrics, read from the run records; "Chosen in chunk 6.2b" below.
+Built in chunk 6.2d: `jadpo schedules run` against a deployment, which
+asks the application's own tick to run the schedule and waits for its
+record, running it in the command's process only against `jadpo dev`;
+"Chosen in chunk 6.2d" below.
+Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and
+to the limits of background work; "Chosen in chunk 6.6a" below.
 Sending the metrics and the alerts' log events to a monitoring tool waits
 for telemetry (area 16), and the console's timeline for area 17.
 
@@ -1950,6 +1956,7 @@ conservative reading:
   the runner looks for it, and a delivery already handled is marked
   succeeded without running again. An action that writes no store keeps
   none, since running it again changes nothing in a database.
+  *Amended in chunk 6.6a:* one that emits keeps one beside its events.
 - **A subscriber's tenant.** The tenant its event came from is the
   event's one field holding the tenant's id (`household_id:
   Household.id`). An event of an application with a tenant that holds no
@@ -2142,7 +2149,10 @@ most conservative reading:
   is when it started; the grid isn't moved. *Flagged:* the other reading
   marks it due so the next tick runs it, which keeps app code on the
   app's own instances but answers only once a tick comes; recommended
-  as built, so an operator sees the outcome.
+  as built, so an operator sees the outcome. *Superseded* on 2026-10-19
+  (Richard): only against `jadpo dev` does it run in the command's
+  process; against a deployment the tick runs it ("Chosen in chunk 6.2d"
+  below).
 - **`pause` and `resume`** set the state row's `paused`, making the row
   as the first tick would when none has yet; a run under way carries on.
   Pausing a paused schedule, or resuming one that isn't, changes
@@ -2217,6 +2227,68 @@ the most conservative reading; schedule tests' choices are in area 13's
   `items` and `batches`, how many each batch deleted (area 5: "each run
   reports how many records each batch deleted, which the schedule logs").
   Metrics of items per run still wait for batches' runs to count theirs.
+
+### Chosen in chunk 6.2d
+
+What Richard's decision on `jadpo schedules run` (2026-10-19, "Decisions"
+below) leaves to the build, each the most conservative reading:
+
+- **Which is `jadpo dev`.** The database the schedules' state is in
+  (found as in 6.2b) is `jadpo dev`'s when it is the address a running
+  `jadpo dev` noted for that store in `build/dev/stores.json`, the
+  databases it started for the session. There the command runs the
+  schedule in its own process as 6.2b built it. Any other database,
+  including one `jadpo dev --url` was given, which it doesn't note, is a
+  deployment's.
+- **The request.** Against a deployment the command reads nothing of the
+  application's settings and builds none of its code: it writes a new
+  run's id to the state row's `run_requested` column (made as the first
+  tick would when none has), and waits for the record with that id. A
+  request while a run holds the lease is refused with
+  `schedules.lease_held`, as on `jadpo dev`, and nothing is written. A
+  request while another stands joins it: both wait for the same run, so
+  several requests before a tick make one run.
+- **How the tick picks it up.** `schedules::tick` reads `run_requested`
+  with each state row. A schedule's due run goes first; a request is run
+  on the same tick only when that left the lease free (the due tick
+  skipped as paused, or none due) and no live lease holds it, so a tick
+  runs a schedule once at most and a request otherwise waits for the
+  next. It takes the lease in one conditional statement that also
+  clears the request, so of two instances one runs it, paused or not, as
+  6.2b's `run` is. The run is 6.2b's run by hand: its record's id is the
+  one requested, its reason `by_hand`, its due time the tick's, and the
+  grid isn't moved; what it emits is delivered after it on the runner,
+  and `jadpo dev` prints it with `· by hand`.
+- **The wait and its time limit.** The command reads the record every
+  200 ms, timing the wait on its own clock so the two machines' clocks
+  never have to agree. A tick has to take the request within twice the
+  period the application ticks at (the ticks-stopped alert's limit: 2
+  minutes for a minute's tick), or longer while another run holds the
+  lease, up to the lease's 16 minutes and that again; otherwise the
+  command withdraws the request, unless a tick took it meanwhile, and
+  fails with `schedules.no_tick`: "No tick picked up `<name>`'s run in
+  2 min", its reason that the app's own server runs it on its next tick,
+  that none came, and that the request was taken back and nothing ran,
+  and its next step to check the app is running and run it again. Once
+  taken, it waits for the run to end; a run still going past the lease's
+  length was lost with its worker (`schedules.run_failed`). A command
+  interrupted while it waits leaves the request, which the next tick
+  runs. *Flagged:* leaving the request on a timeout would run it
+  whenever the application next starts, perhaps much later; withdrawing
+  is recommended as built.
+- **What it shows.** The run's outcome on 6.2b's screens, from its
+  record: ``✓ The app's tick ran `<name>` in 12 ms, emitting 1 event``, or
+  the failed run's block with `schedules.run_failed`; `--json` carries
+  `"requested": true`. While it waits, the live line says so.
+- **`history` and `why`.** `history` lists records only, so a requested
+  run appears once a tick has started it, as a run by hand (due `–`,
+  `· by hand`), as on `jadpo dev`. `jadpo why` answers as before and,
+  while a request waits, adds `request  a run by hand, waiting for the
+  app's next tick`; `jadpo schedules --json` gives each schedule's
+  `runRequested`.
+- **The column.** `run_requested uuid` on `jadpo_schedules`, in the
+  migration snapshot with the state table; examples 10 and 25 gain a
+  migration adding it.
 
 ### Chosen in chunk 6.4
 
@@ -2880,6 +2952,65 @@ error: Placeholder `shelf_run` holds a `BatchRun`, which no request carries
 
 check failed: 1 error, 2 files
 ```
+
+### Chosen in chunk 6.6a
+
+What the Phase 6 soundness review found the build left open about
+delivering once and the limits of background work, each the most
+conservative reading:
+
+- **A handled record wherever the action's transaction is.** A
+  subscriber's handled record is written after its action's outbox
+  rows, in the store its transaction is in by then: the store it writes,
+  or, writing none, the one `events: { store: }` names, where its events
+  are. So an action that only emits keeps one, and a repeated delivery
+  finds it and emits nothing twice. One that neither writes nor emits on
+  a run still keeps none: running it again changes nothing.
+- **Each piece at the host's time.** The sweep finds what is due at the
+  tick's time, then runs each delivery, and what it sets off, under the
+  host's clock as that piece starts. A delivery's claim, its lease and
+  its next attempt count from the host's time at the claim, so work
+  that takes time never claims with a lease already past. A host with no
+  clock, a test's, uses the tick's time or the context's.
+- **A batch run keeps its chain's depth.** A run's row keeps how deep in
+  a chain of events the action that started it was
+  (`jadpo_batch_runs.depth`), and its items run at that depth, so what
+  they emit is one deeper than the event that started the run, and a
+  loop through a batch stops at 16 as any loop does. A run kept before
+  the column existed counts from 0. The two examples with batches gained
+  a migration adding the column.
+- **1,000 events per item.** Each item's action, and `finished:`'s, has
+  the allowance of one action's events to itself, however many the
+  items before it in the page emitted; the page's transaction may keep
+  more than 1,000.
+- **Over budget or past `within:` at the claim.** A delivery claimed
+  again over its `retry:` attempts, or later than `within:` after its
+  event was emitted, fails without running. Claiming one a worker held
+  past its lease marks its last failure `lease_expired`, as a schedule's
+  run lost with its worker ends. The claim that gives up isn't counted
+  as an attempt, and the record keeps the last attempt's failure, or
+  `deadline_exceeded` for one never tried in time. A handled record
+  found first still makes it `succeeded`, and a store that can't be
+  reached while looking for one is retried within the same budget.
+- **The run limit.** A delivery whose action the 15-minute limit of a
+  run stops is an attempt that ran out of time (`deadline_exceeded`),
+  settled at once against its budget: tried again after a wait while
+  the budget lasts and failed after, nothing it did kept. It no longer
+  keeps its claim until its lease passes.
+- **`within:` races the body, never the commit.** As a route holds its
+  action's commit until its deadline can no longer interrupt it (area
+  7), `settle:` races only a subscriber's body against `within:`: the
+  transaction is held open until the body has its value, then committed
+  outside the race, so a delivery whose work committed is never given
+  back as though it hadn't run. A concurrent change found at that
+  commit runs the body again, up to three times, as the boundary does.
+- **Batch runs kept 30 days.** On each tick, in every store that keeps
+  batch runs, a run that ended (finished, failed or cancelled) 30 days
+  or more ago is deleted with its problems and its cancel, as are
+  cancels as old of runs no store keeps (asked of a `BatchRun` a field
+  held after its run was deleted): a thousand rows at a time, at most
+  ten times a tick, as the tick's other deletes. A run still going is
+  never deleted, however old.
 
 ### Consistency with the rest of the language
 

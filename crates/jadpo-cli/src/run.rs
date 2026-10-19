@@ -327,6 +327,8 @@ pub fn spinner(args: &[String], env: &Environment) -> jadpo_term::Spinner {
         (Some("check"), _) => "Checking",
         // A backfill's batches say how far they have got (chunk 5.6b).
         (Some("migrate"), Some("apply")) => "Applying migrations",
+        // Against a deployment it waits for the app's tick (chunk 6.2d).
+        (Some("schedules"), Some("run")) => "Running the schedule",
         _ => "",
     };
     if quiet || doing.is_empty() {

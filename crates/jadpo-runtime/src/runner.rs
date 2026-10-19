@@ -133,12 +133,14 @@ pub enum Settled {
 /// It stops waiting at the first piece that hasn't settled, since the
 /// answer is 202 from then on: a delivery left to retry after a backoff,
 /// which can't be waited for; one this runner couldn't claim; a batch run,
-/// which is long work no route waits on; or the piece running when
-/// `within` finished, which is dropped unfinished, nothing it did kept,
-/// its claim given back as it was ([`crate::outbox::RELEASE`]). Whatever
-/// is left goes on `ctx`'s deferred work, for after the response,
-/// exactly as it would without `settle:`; a delivery waiting to retry is
-/// the sweep's.
+/// which is long work no route waits on; or the piece whose action's body
+/// was running when `within` finished, which is dropped unfinished,
+/// nothing it did kept, its claim given back as it was
+/// ([`crate::outbox::RELEASE`]). Only a body is raced, never its commit
+/// (chunk 6.6a), so work that committed is never given back.
+/// Whatever is left goes on `ctx`'s deferred work, for after the
+/// response, exactly as it would without `settle:`; a delivery waiting to
+/// retry is the sweep's.
 pub async fn settle_within(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -167,21 +169,17 @@ pub async fn settle_within(
                 queue.push_front(Piece::Batch(start));
                 false
             }
-            Piece::Job(job) => {
-                let runner = ctx.runner();
-                match race(as_system(executor, ctx, job.clone()), &mut *within).await {
-                    // A job keeps no record: once it has run, it has settled.
-                    First::Left(_) => true,
-                    First::Right(()) => {
-                        ctx.abandon();
-                        ctx.restore_runner(runner);
-                        queue.push_front(Piece::Job(job));
-                        false
-                    }
+            Piece::Job(job) => match held(executor, ctx, job.clone(), &mut *within).await {
+                // A job keeps no record: once it has run, it has settled.
+                Some(_) => true,
+                None => {
+                    queue.push_front(Piece::Job(job));
+                    false
                 }
-            }
+            },
             Piece::Delivery(delivery) => {
-                match attempt_delivery(executor, ctx, delivery.clone(), Some(&mut *within)).await {
+                let cut = Some(Cut::Within(&mut *within));
+                match attempt_delivery(executor, ctx, delivery.clone(), cut).await {
                     Some((_, state)) if state == SUCCEEDED || state == FAILED => true,
                     Some((_, CUT_SHORT)) => {
                         queue.push_front(Piece::Delivery(delivery));
@@ -222,6 +220,49 @@ pub(crate) async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: J
     let outcome = executor.run(ctx, job.callable, job.args).await;
     ctx.restore_runner(saved);
     outcome
+}
+
+/// Runs `job` in `ctx` as [`as_system`] does with only its action's body
+/// raced against `stop`, never its commit (chunk 6.6a), as a route runs
+/// its action against its deadline ([`Ctx::hold`]): the transaction is
+/// held open until the body has its value, then committed outside the
+/// race, so work that committed is never taken for work that didn't. A
+/// concurrent change found at that commit runs the body again, as the
+/// boundary would, up to [`crate::RERUN_ATTEMPTS`] times. `None` when
+/// `stop` finished first: what the body had begun is dropped, nothing it
+/// did kept, and whoever ran `ctx` runs it again.
+async fn held(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    job: Job,
+    stop: &mut crate::LocalFuture<'_, ()>,
+) -> Option<Outcome> {
+    let runner = ctx.runner();
+    let mut attempt = 1;
+    loop {
+        ctx.hold();
+        let outcome = match race(as_system(executor, ctx, job.clone()), &mut *stop).await {
+            First::Left(outcome) => outcome,
+            First::Right(()) => {
+                ctx.abandon();
+                ctx.restore_runner(runner);
+                return None;
+            }
+        };
+        let Some(open) = ctx.take_held() else {
+            return Some(outcome);
+        };
+        match crate::commit_held(ctx, open, None).await {
+            Ok(()) => return Some(outcome),
+            Err(StoreError::ConcurrentChange) if attempt < crate::RERUN_ATTEMPTS => attempt += 1,
+            Err(_) => {
+                return Some(Outcome::Failed(Box::new(crate::Failure {
+                    frames: ctx.frames(),
+                    ..crate::unavailable()
+                })));
+            }
+        }
+    }
 }
 
 /// Runs `work` as a deployable does after the response is sent: each job
@@ -272,8 +313,9 @@ fn unsplit(queue: VecDeque<Piece>) -> Vec<Deferred> {
         .collect()
 }
 
-/// Runs `work` as [`run_deferred`] does, at `now` when it is given and
-/// at the host's time otherwise.
+/// Runs `work` as [`run_deferred`] does: each piece at the host's time
+/// as it starts, never one worked out before (chunk 6.6a), or at `now`
+/// on a host with no clock.
 async fn drive(
     executor: &dyn Executor,
     host: &dyn Host,
@@ -284,7 +326,7 @@ async fn drive(
     split(work, &mut queue);
     let mut outcomes = Vec::new();
     while let Some(piece) = queue.pop_front() {
-        let Some(now) = now.or_else(|| host.now_ms()) else {
+        let Some(now) = host.now_ms().or(now) else {
             if let Piece::Job(_) = piece {
                 outcomes.push(Outcome::Fault(Box::new(crate::Fault {
                     kind: FaultKind::Defect("the host has no clock".into()),
@@ -301,9 +343,9 @@ async fn drive(
         // Work that never waits gives the thread back as it checks this,
         // so the requests the worker answers carry on beside it.
         ctx.set_deadline(Some(RUN_LIMIT_MS));
-        let limit = host.sleep(RUN_LIMIT_MS);
+        let mut limit = host.sleep(RUN_LIMIT_MS);
         let outcome = match piece {
-            Piece::Job(job) => match race(as_system(executor, &mut ctx, job), limit).await {
+            Piece::Job(job) => match race(as_system(executor, &mut ctx, job), &mut limit).await {
                 First::Left(outcome) if !ctx.out_of_time() => Some(outcome),
                 First::Left(_) | First::Right(()) => {
                     ctx.abandon();
@@ -312,18 +354,13 @@ async fn drive(
                     ))
                 }
             },
-            // A delivery that runs out of time keeps its claim until its
-            // lease passes, and the sweep tries it again.
+            // A delivery whose action runs out of time is an attempt that
+            // did, settled against its budget (chunk 6.6a).
             Piece::Delivery(delivery) => {
-                match race(deliver(executor, &mut ctx, delivery), limit).await {
-                    First::Left(outcome) => outcome,
-                    First::Right(()) => {
-                        ctx.abandon();
-                        Some(Outcome::Fault(
-                            ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
-                        ))
-                    }
-                }
+                let cut = Some(Cut::Limit(&mut limit));
+                attempt_delivery(executor, &mut ctx, delivery, cut)
+                    .await
+                    .map(|(outcome, _)| outcome)
             }
             // A batch run makes a context per batch and keeps within one
             // run's time by handing itself on (chunk 6.4).
@@ -364,23 +401,36 @@ pub async fn deliver(
 }
 
 /// The state [`attempt_delivery`] gives a delivery whose subscriber's run
-/// `within` cut short: given back `pending`, due at once.
+/// a route's `within:` cut short: given back `pending`, due at once.
 const CUT_SHORT: &str = "cut short";
 
+/// What may stop a subscriber's action before it ends, besides itself.
+/// Only the action's body is raced against it, never its commit nor the
+/// delivery's own statements ([`held`]), so a claim, and work that
+/// committed, are never left in doubt.
+enum Cut<'a, 'w> {
+    /// A route's `within:` (chunk 6.3): the delivery is given back as it
+    /// was, its attempt not counted, for deferred work to run again.
+    Within(&'a mut crate::LocalFuture<'w, ()>),
+    /// The 15-minute limit of one run: an attempt that ran out of time,
+    /// settled at once against its budget (chunk 6.6a).
+    Limit(&'a mut crate::LocalFuture<'w, ()>),
+}
+
 /// [`deliver`], with the state its record was left in: `succeeded`,
-/// `failed`, or `pending` to be tried again after a wait; or, when
-/// `within` (a route's `within:`, chunk 6.3) finishes while the
-/// subscriber's action runs, [`CUT_SHORT`]. Only the action is raced
-/// against it, never the delivery's own statements, so a claim is never
-/// left in doubt.
+/// `failed`, or `pending` to be tried again after a wait; or, when a
+/// route's `within:` finishes while the subscriber's action runs,
+/// [`CUT_SHORT`]. A delivery claimed over its `retry:` budget or past
+/// `within:` from its event fails without running (chunk 6.6a).
 async fn attempt_delivery(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     delivery: Delivery,
-    within: Option<&mut crate::LocalFuture<'_, ()>>,
+    cut: Option<Cut<'_, '_>>,
 ) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
-        self, After, CHAIN_LIMIT, FAILED, LEASE_MS, PENDING, SUCCEEDED, failure_json, micros,
+        self, After, CHAIN_LIMIT, FAILED, LEASE_EXPIRED, LEASE_MS, PENDING, SUCCEEDED,
+        failure_json, micros,
     };
     if ctx.in_action() {
         return Some((
@@ -394,7 +444,9 @@ async fn attempt_delivery(
     let events = executor.events()?;
     let host = ctx.host();
     let database = host.database(&delivery.store)?;
-    let now = ctx.now();
+    // Its lease, and its next attempt, count from when it is claimed: the
+    // host's time now, or the context's on a host with no clock.
+    let now = host.now_ms().unwrap_or_else(|| ctx.now());
     let id = SqlValue::Uuid(delivery.id);
     let claimed = database
         .query_once(
@@ -403,6 +455,7 @@ async fn attempt_delivery(
                 id.clone(),
                 micros(now),
                 micros(now.saturating_add(LEASE_MS)),
+                failure_json(LEASE_EXPIRED, None),
             ],
         )
         .await
@@ -411,10 +464,11 @@ async fn attempt_delivery(
         Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(u32::MAX),
         _ => return None,
     };
+    let counted = SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX));
     let settle = |status: &'static str, next: Option<i64>, failure: Option<SqlValue>| {
         let params = [
-            SqlValue::Uuid(delivery.id),
-            SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX)),
+            id.clone(),
+            counted.clone(),
             SqlValue::Text(status.to_string()),
             next.map_or(SqlValue::Null(SqlType::Timestamp), micros),
             failure.unwrap_or(SqlValue::Null(SqlType::Json)),
@@ -446,6 +500,26 @@ async fn attempt_delivery(
         failure.kind = Some("rejected".to_string());
         return Some((Outcome::Failed(Box::new(failure)), FAILED));
     }
+    // Its budget: how many attempts, and until when from its event.
+    let within = delivery
+        .emitted_at
+        .saturating_add(i64::try_from(subscriber.within_ms).unwrap_or(i64::MAX));
+    // An attempt that ended in a failure worth retrying is tried again
+    // after a wait, while its budget lasts, and fails after.
+    let retried = |code: &str, kind: Option<&str>| {
+        let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
+        let failure = Some(failure_json(code, kind));
+        let again = attempt < subscriber.attempts && next <= within;
+        async move {
+            if again {
+                settle(PENDING, Some(next), failure).await;
+                PENDING
+            } else {
+                settle(FAILED, None, failure).await;
+                FAILED
+            }
+        }
+    };
     // A repeated delivery its subscriber handled already does nothing.
     if let Some(store) = &subscriber.store {
         let handled = match host.database(store) {
@@ -462,16 +536,28 @@ async fn attempt_delivery(
             }
             Ok(_) => {}
             Err(_) => {
-                let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
-                settle(
-                    PENDING,
-                    Some(next),
-                    Some(failure_json("unavailable", Some("unavailable"))),
-                )
-                .await;
-                return Some((Outcome::Failed(Box::new(crate::unavailable())), PENDING));
+                let state = retried("unavailable", Some("unavailable")).await;
+                return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
             }
         }
+    }
+    // Claimed again over its budget, or past `within:`, as a lost worker
+    // or a dropped run leaves it: it fails without running.
+    if attempt > subscriber.attempts || now > within {
+        let _ = database
+            .query_once(
+                outbox::GIVE_UP,
+                &[
+                    id.clone(),
+                    counted.clone(),
+                    failure_json(FaultKind::DeadlineExceeded.classification(), None),
+                ],
+            )
+            .await;
+        return Some((
+            Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
+            FAILED,
+        ));
     }
     let Some(args) = outbox::arguments(subscriber, &delivery.value) else {
         settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
@@ -501,59 +587,38 @@ async fn attempt_delivery(
         store,
         id: delivery.id,
     });
-    let runner = ctx.runner();
-    let outcome = match within {
-        None => as_system(executor, ctx, job).await,
-        Some(within) => match race(as_system(executor, ctx, job), within).await {
-            First::Left(outcome) => outcome,
-            // A route stopped waiting (chunk 6.3): what the subscriber's
-            // action had begun is dropped, nothing it did kept, and the
-            // delivery is given back as it was, for deferred work to run.
-            First::Right(()) => {
-                ctx.abandon();
-                ctx.restore_runner(runner);
-                ctx.handled = None;
-                ctx.set_trace(trace);
-                ctx.chain = chain;
-                let _ = database
-                    .query_once(
-                        outbox::RELEASE,
-                        &[
-                            id.clone(),
-                            SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX)),
-                            micros(now),
-                        ],
-                    )
-                    .await;
-                return Some((
-                    Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
-                    CUT_SHORT,
-                ));
-            }
-        },
+    let gives_back = matches!(cut, Some(Cut::Within(_)));
+    let ran = match cut {
+        None => Some(as_system(executor, ctx, job).await),
+        Some(Cut::Within(stop) | Cut::Limit(stop)) => held(executor, ctx, job, stop).await,
     };
     ctx.handled = None;
     ctx.set_trace(trace);
     ctx.chain = chain;
+    let outcome = match ran {
+        Some(outcome) => outcome,
+        // A route stopped waiting (chunk 6.3): what the subscriber's
+        // action had begun is dropped, nothing it did kept, and the
+        // delivery is given back as it was, for deferred work to run.
+        None if gives_back => {
+            let _ = database
+                .query_once(outbox::RELEASE, &[id.clone(), counted.clone(), micros(now)])
+                .await;
+            return Some((
+                Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
+                CUT_SHORT,
+            ));
+        }
+        // The run's time ran out: nothing it did kept, and the attempt is
+        // settled as one that timed out.
+        None => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
+    };
     let state = match outbox::after(&outcome) {
         After::Succeeded => {
             settle(SUCCEEDED, None, None).await;
             SUCCEEDED
         }
-        After::Retry { code, kind } => {
-            let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
-            let within = delivery
-                .emitted_at
-                .saturating_add(i64::try_from(subscriber.within_ms).unwrap_or(i64::MAX));
-            let failure = Some(failure_json(&code, kind.as_deref()));
-            if attempt < subscriber.attempts && next <= within {
-                settle(PENDING, Some(next), failure).await;
-                PENDING
-            } else {
-                settle(FAILED, None, failure).await;
-                FAILED
-            }
-        }
+        After::Retry { code, kind } => retried(&code, kind.as_deref()).await,
         After::Fail { code, kind } => {
             settle(FAILED, None, Some(failure_json(&code, kind.as_deref()))).await;
             FAILED
@@ -574,10 +639,11 @@ fn jitter(host: &dyn Host) -> Option<[u8; 8]> {
 /// next attempt, or `running` past its lease, which a crash between the
 /// commit and the delivery, a host that dropped deferred work, or a
 /// worker that died holding a lease left; at most [`SWEEP_BATCH`] of
-/// them, oldest first, each as [`run_deferred`] runs one, and the work
-/// they set off. A payload that no longer reads as its type is parked
-/// with its problem, never dropped. The once-a-minute tick that calls it
-/// is chunk 6.2's. The outcome of each delivery that ran.
+/// them, oldest first, each as [`run_deferred`] runs one, at the host's
+/// time as it starts rather than `now` (chunk 6.6a), and the work they
+/// set off. A payload that no longer reads as its type is parked with its
+/// problem, never dropped. The once-a-minute tick that calls it is chunk
+/// 6.2's. The outcome of each delivery that ran.
 ///
 /// [`SWEEP_BATCH`]: crate::outbox::SWEEP_BATCH
 pub async fn sweep(
@@ -678,7 +744,9 @@ pub fn after_response(executor: Rc<dyn Executor>, host: Rc<dyn Host>, work: Vec<
 /// [`Batch`] each item's action joins the batch's transaction and is
 /// undone alone when it fails, as an action whose failure its caller
 /// handles is (area 6), so one bad item never undoes the rest (area 12,
-/// "Batches"). How many items ran.
+/// "Batches"); and, an action of its own, it has its own allowance of
+/// events, never what the items before it in the batch left (chunk
+/// 6.6a). How many items ran.
 pub async fn items(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -690,6 +758,9 @@ pub async fn items(
     for (at, args) in items.into_iter().enumerate() {
         ran += 1;
         let outcome = if ctx.in_action() {
+            if let Some(boundary) = &mut ctx.boundary {
+                boundary.allowance = boundary.outbox.len();
+            }
             match crate::boundary::Undo::take(ctx).await {
                 Ok(undo) => {
                     let outcome = executor.run(ctx, callable, args).await;
@@ -1200,6 +1271,8 @@ mod tests {
         SetsOff,
         /// A function giving its argument back.
         Echoes,
+        /// Writes, emits this many events, and faults when one is refused.
+        Emits(usize),
     }
 
     struct Program {
@@ -1280,12 +1353,24 @@ mod tests {
                 if now != Clock::TEST.now() {
                     let _ = transaction.execute(&format!("at {now}"), &[]).await;
                 }
-                let _ = ctx.emit(Event {
-                    key: format!("type Wrote {name}"),
-                    value: Value::Unit,
-                    payload: "null".into(),
-                    subscribers: vec!["subscriber s".into()],
-                });
+                let emits = match self.does {
+                    Does::Emits(count) => count,
+                    _ => 1,
+                };
+                for _ in 0..emits {
+                    let kept = ctx.emit(Event {
+                        key: format!("type Wrote {name}"),
+                        value: Value::Unit,
+                        payload: "null".into(),
+                        subscribers: vec!["subscriber s".into()],
+                    });
+                    if kept.is_err() && matches!(self.does, Does::Emits(_)) {
+                        return Outcome::Fault(ctx.fault(
+                            FaultKind::Defect("past the events one action emits".into()),
+                            Frame::ENTRY,
+                        ));
+                    }
+                }
                 match self.does {
                     Does::Fails => {
                         let mut failure = Failure::new("type Gone", "Gone", "gone");
@@ -1645,6 +1730,48 @@ mod tests {
         .expect("nothing waits");
         assert_eq!(again, Err(StoreError::ConcurrentChange));
         assert!(ctx.take_deferred().is_empty());
+    }
+
+    /// The 1,000 events one action may emit are each item's action's own,
+    /// not shared by the page its batch is (chunk 6.6a): two items of 600
+    /// each both stand, while one item past 1,000 is still refused.
+    #[test]
+    fn each_items_action_has_its_own_allowance_of_events() {
+        let program = Program::new(&[Does::Emits(600), Does::Emits(1_001)]);
+        let host = Fake::default();
+        let mut ctx = Ctx::new(&program.places, &host, Env::default());
+        let mut seen = Vec::new();
+        block_on(async {
+            let mut batch = Batch::open(
+                &mut ctx,
+                "main",
+                Isolation::ReadCommitted,
+                System::default(),
+            )
+            .await
+            .expect("opens");
+            for (callable, name) in [(0, "a"), (0, "b"), (1, "c"), (0, "d")] {
+                batch
+                    .items(
+                        &program,
+                        callable,
+                        vec![vec![Value::text(name)]],
+                        &mut |_, outcome| {
+                            seen.push((name, matches!(outcome, Outcome::Value(_))));
+                            ControlFlow::Continue(())
+                        },
+                    )
+                    .await;
+            }
+            batch.commit().await.expect("commits");
+        })
+        .expect("nothing waits");
+        assert_eq!(
+            seen,
+            [("a", true), ("b", true), ("c", false), ("d", true)],
+            "only the item past 1,000 of its own is refused"
+        );
+        assert_eq!(deferred_events(ctx.take_deferred()).len(), 1_800);
     }
 
     /// Per item, outside a batch: each item runs in order until told to

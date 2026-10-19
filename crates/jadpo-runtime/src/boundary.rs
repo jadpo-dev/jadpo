@@ -211,8 +211,9 @@ async fn sealed(ctx: &mut Ctx<'_>, outbox: Option<&str>, outcome: Outcome) -> Ou
 /// transaction (area 12, chunk 6.1b): each event it emitted in the
 /// outbox, with a delivery record for each subscriber, in the store its
 /// transaction is in, or, having begun none, the store `outbox` names;
-/// and for a subscriber's delivery, its handled record in the store its
-/// action wrote.
+/// and then, for a subscriber's delivery, its handled record in the store
+/// its transaction is in once those are written, so an action that only
+/// emits keeps one beside its events (chunk 6.6a).
 pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), StoreError> {
     // Kept for a rerun after a concurrent change; the runner clears it.
     let handled = ctx.handled.clone();
@@ -220,9 +221,9 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
         return Ok(());
     };
     let events = std::mem::take(&mut boundary.outbox);
-    let open = boundary.store.clone();
     if !events.is_empty() {
-        let Some(store) = open.clone().or_else(|| outbox.map(str::to_string)) else {
+        let open = boundary.store.clone();
+        let Some(store) = open.or_else(|| outbox.map(str::to_string)) else {
             return Err(StoreError::Fault(
                 "an action emitted events with no store to keep them in".into(),
             ));
@@ -268,6 +269,12 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             boundary.kept = written;
         }
     }
+    // The store the transaction is in now, the outbox's when only it
+    // began one.
+    let open = ctx
+        .boundary
+        .as_ref()
+        .and_then(|boundary| boundary.store.clone());
     if let Some(handled) = handled
         && open.as_deref() == Some(handled.store.as_str())
     {

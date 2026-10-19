@@ -45,6 +45,11 @@ pub(crate) struct Boundary {
     pub store: Option<String>,
     /// What the action emitted, for after it commits.
     pub outbox: Vec<Event>,
+    /// Where in `outbox` the running action's own events begin, which
+    /// its allowance of [`crate::outbox::MAX_EVENTS`] counts from: 0, but
+    /// for each item of a batch, an action of its own whose events join
+    /// its page's (chunk 6.6a).
+    pub allowance: usize,
     /// Its events' deliveries, once written to the outbox in its
     /// transaction as it commits (chunk 6.1b), for the runner after it
     /// commits.
@@ -862,7 +867,7 @@ impl<'p> Ctx<'p> {
         let Some(boundary) = &mut self.boundary else {
             return Err(EmitRefused::OutsideAction);
         };
-        if boundary.outbox.len() >= crate::outbox::MAX_EVENTS {
+        if boundary.outbox.len().saturating_sub(boundary.allowance) >= crate::outbox::MAX_EVENTS {
             return Err(EmitRefused::TooMany);
         }
         if event.payload.len() > crate::outbox::MAX_EVENT_BYTES {
@@ -907,6 +912,19 @@ impl<'p> Ctx<'p> {
             boundary.concurrent_change = true;
         }
     }
+}
+
+/// A new identity made at `now` from `host`'s randomness, outside any
+/// context: the run an operator asks a schedule's tick for (chunk 6.2d).
+/// None when the host can't give random bytes.
+pub(crate) fn random_id(host: &dyn Host, now: i64) -> Option<[u8; 16]> {
+    let mut random = [0u8; 16];
+    if !host.random(&mut random) {
+        return None;
+    }
+    let [a @ .., _, _, _, _, _, _, _, _] = random;
+    let [_, _, _, _, _, _, _, _, b @ ..] = random;
+    Some(uuid_v7(now, u64::from_be_bytes(a), u64::from_be_bytes(b)))
 }
 
 /// A version 7 UUID made at `millis` (milliseconds since the epoch), its
