@@ -203,8 +203,8 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
                 .iter()
                 .map(|text| format!("/{text}"))
                 .collect();
-            let mut entry = Entry::new(format!("{} {shown}", step.method().word()))
-                .with("generated passkey");
+            let mut entry =
+                Entry::new(format!("{} {shown}", step.method().word())).with("generated passkey");
             if step.authentication().needs_caller() {
                 entry.push("caller user");
             } else {
@@ -224,7 +224,10 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
             }
             entry.push(format!("status {}", step.status().code()));
             let mut sections = Vec::new();
-            if step.output().is_some_and(|output| output.contains(PASSKEY_VIEW)) {
+            if step
+                .output()
+                .is_some_and(|output| output.contains(PASSKEY_VIEW))
+            {
                 sections.push((
                     PASSKEY_VIEW.to_string(),
                     Entry::new(format!("output {PASSKEY_VIEW}"))
@@ -253,7 +256,11 @@ fn born_order(wire: &Wire<'_>, key: &Key) -> (String, String) {
 
 /// A field's line: its name, the type a client sends or reads, and how it
 /// is sent (`header "X-Request-Tag"`, `default 20`, `optional`).
-fn field_line(wire: &Wire<'_>, field: &jadpo_graph::Node, refs: &mut BTreeSet<Key>) -> Option<String> {
+fn field_line(
+    wire: &Wire<'_>,
+    field: &jadpo_graph::Node,
+    refs: &mut BTreeSet<Key>,
+) -> Option<String> {
     let Detail::Field {
         ty,
         optional,
@@ -270,7 +277,10 @@ fn field_line(wire: &Wire<'_>, field: &jadpo_graph::Node, refs: &mut BTreeSet<Ke
         line.push_str(&format!(" header {}", format::quote(header)));
     }
     if let Some(default) = default {
-        line.push_str(&format!(" default {}", default.render(&|key| wire.name(key))));
+        line.push_str(&format!(
+            " default {}",
+            default.render(&|key| wire.name(key))
+        ));
     } else if *optional {
         line.push_str(" optional");
     }
@@ -278,7 +288,10 @@ fn field_line(wire: &Wire<'_>, field: &jadpo_graph::Node, refs: &mut BTreeSet<Ke
 }
 
 /// The fields of `fields`, sorted by born name.
-fn sorted_fields<'g>(wire: &Wire<'g>, mut fields: Vec<&'g jadpo_graph::Node>) -> Vec<&'g jadpo_graph::Node> {
+fn sorted_fields<'g>(
+    wire: &Wire<'g>,
+    mut fields: Vec<&'g jadpo_graph::Node>,
+) -> Vec<&'g jadpo_graph::Node> {
     fields.sort_by_cached_key(|field| born_order(wire, &field.key));
     fields
 }
@@ -428,7 +441,10 @@ fn write(
                     for field in sorted_fields(wire, fields) {
                         if let Detail::Field { ty, .. } = &field.detail {
                             let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                            entry.push_nested(format!("{field_name}: {}", wire.render(ty, &mut refs)));
+                            entry.push_nested(format!(
+                                "{field_name}: {}",
+                                wire.render(ty, &mut refs)
+                            ));
                         }
                     }
                 }
@@ -463,7 +479,6 @@ fn write(
     out.extend(failure_entries.into_iter().map(|(_, entry)| entry));
     out
 }
-
 
 #[cfg(test)]
 mod tests {

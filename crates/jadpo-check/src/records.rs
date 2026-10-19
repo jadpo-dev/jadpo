@@ -144,7 +144,10 @@ pub fn standings(db: &dyn Db, project: Project) -> Vec<Standing> {
         }
     }
     if let Some(text) = written.get(jadpo_db::LEGACY_IDENTITIES) {
-        out.push(legacy_identities(text, written.contains_key(jadpo_db::IDENTITIES)));
+        out.push(legacy_identities(
+            text,
+            written.contains_key(jadpo_db::IDENTITIES),
+        ));
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     out
@@ -223,11 +226,18 @@ fn views(
                 Some(unreadable(&path, error, &format::API)),
             )),
             Some(Ok(written)) => {
-                let (state, problem) = compare(&path, written, text, &format::API, &api::from(api_name), |changes| {
-                    format!(
-                        "The record is a promise to API `{api_name}`'s clients, and the routes now say otherwise: {changes}."
-                    )
-                });
+                let (state, problem) = compare(
+                    &path,
+                    written,
+                    text,
+                    &format::API,
+                    &api::from(api_name),
+                    |changes| {
+                        format!(
+                            "The record is a promise to API `{api_name}`'s clients, and the routes now say otherwise: {changes}."
+                        )
+                    },
+                );
                 out.push(standing(state, problem));
                 if let Some(old) = legacy.get(&path) {
                     out.push(Standing {
@@ -313,14 +323,19 @@ fn compare(
         return header_problem(path, &written, kind, &problem);
     }
     if let Err((line, why)) = format::canonical(&written, kind, from) {
-        return (State::Edited, Some(edited(path, &written, kind, line, &why, true)));
+        return (
+            State::Edited,
+            Some(edited(path, &written, kind, line, &why, true)),
+        );
     }
     let before = format::read(&written, kind).unwrap_or_default();
     let after = format::read(expected, kind).unwrap_or_default();
-    let said: Vec<String> = format::changes(&before, &after)
-        .into_iter()
+    let found = format::changes(&before, &after);
+    let said: Vec<String> = found
+        .iter()
         .map(|(change, heading)| format!("{} `{heading}`", change.word()))
         .collect();
+    let (at, label) = first_change(&written, &before, &after, &found);
     let changes = if said.is_empty() {
         "its text differs".to_string()
     } else {
@@ -329,15 +344,64 @@ fn compare(
     (
         State::OutOfDate,
         Some(
-            Diagnostic::new(&rule::RECORD_OUT_OF_DATE, format!("`{path}` is out of date"))
-                .at(file(path), "disagrees with the source")
-                .reason(reason(&changes))
-                .next(format!(
-                    "Run `{}`, and commit the record with the code",
-                    kind.command
-                )),
+            Diagnostic::new(
+                &rule::RECORD_OUT_OF_DATE,
+                format!("`{path}` is out of date"),
+            )
+            .at(line_span(path, &written, at), label)
+            .reason(reason(&changes))
+            .next(format!(
+                "Run `{}`, and commit the record with the code",
+                kind.command
+            )),
         ),
     )
+}
+
+/// Where a stale view first differs, and what to say there: the heading
+/// of the first entry changed or removed, else the entry an added one
+/// goes before (or the last entry, when it goes at the end).
+fn first_change(
+    written: &str,
+    before: &[format::Entry],
+    after: &[format::Entry],
+    found: &[(Change, String)],
+) -> (usize, String) {
+    let line_of = |heading: &str| {
+        written
+            .lines()
+            .position(|line| line == heading)
+            .unwrap_or(0)
+    };
+    let gone: Vec<(usize, Change)> = found
+        .iter()
+        .filter(|(change, _)| *change != Change::Added)
+        .map(|(change, heading)| (line_of(heading), *change))
+        .collect();
+    if let Some((at, change)) = gone.into_iter().min() {
+        let label = match change {
+            Change::Removed => "the source no longer has this",
+            _ => "the source says otherwise",
+        };
+        return (at, label.to_string());
+    }
+    let Some((_, added)) = found.first() else {
+        return (0, "the source says otherwise".to_string());
+    };
+    let next = after
+        .iter()
+        .skip_while(|entry| entry.heading != *added)
+        .find(|entry| before.iter().any(|old| old.heading == entry.heading));
+    match next {
+        Some(entry) => (
+            line_of(&entry.heading),
+            format!("`{added}` goes before this"),
+        ),
+        None => (
+            before.last().map_or(0, |entry| line_of(&entry.heading)),
+            format!("`{added}` goes after this"),
+        ),
+    }
 }
 
 /// The standing of a record whose header isn't the one this Jadpo writes.
@@ -394,7 +458,14 @@ fn header_problem(
 
 /// `record.edited` at `line` (from 0): the file isn't one Jadpo writes.
 /// `rewritable` when its command writes it again from what it holds.
-fn edited(path: &str, text: &str, kind: &Kind, line: usize, why: &str, rewritable: bool) -> Diagnostic {
+fn edited(
+    path: &str,
+    text: &str,
+    kind: &Kind,
+    line: usize,
+    why: &str,
+    rewritable: bool,
+) -> Diagnostic {
     let command = match kind.shape {
         Shape::View => kind.command,
         Shape::Ledger => "jadpo records update",
@@ -411,7 +482,7 @@ fn edited(path: &str, text: &str, kind: &Kind, line: usize, why: &str, rewritabl
         &rule::RECORD_EDITED,
         format!("`{path}` was edited by hand: {why}"),
     )
-    .at(line_span(path, text, line), format!("line {}", line + 1))
+    .at(line_span(path, text, line), "not what Jadpo writes")
     .reason(format!(
         "Jadpo writes this record with {}, and a record is never edited by hand, so its diff always means what the source or a command changed.",
         kind.update
@@ -520,7 +591,9 @@ fn ledger(path: &str, kind: &'static Kind, from: &str, text: &Result<String, Str
 fn rewrite(kind: &Kind, text: &str) -> Option<Result<String, (usize, String)>> {
     use crate::suggest::{record as ignored, taught};
     Some(match kind.word {
-        "identities" => jadpo_db::parse_identities(text).map(|lines| jadpo_db::write_identities(&lines)),
+        "identities" => {
+            jadpo_db::parse_identities(text).map(|lines| jadpo_db::write_identities(&lines))
+        }
         "lock" => jadpo_db::parse_lock(text).map(|packages| jadpo_db::write_lock(&packages)),
         "ignored_suggestions" => ignored::parse(text).map(|entries| ignored::render(&entries)),
         "taught_suggestions" => taught::parse(text).map(|entries| taught::render(&entries)),
@@ -543,14 +616,22 @@ fn legacy_identities(text: &Result<String, String>, has_new: bool) -> Standing {
         && let Ok(text) = text
         && let Ok(lines) = jadpo_db::parse_legacy_identities(text)
     {
-        fixes.push((now.to_string(), Fix::Write(jadpo_db::write_identities(&lines))));
+        fixes.push((
+            now.to_string(),
+            Fix::Write(jadpo_db::write_identities(&lines)),
+        ));
     }
     fixes.push((old.to_string(), Fix::Remove));
     Standing {
         path: old.to_string(),
         kind: format::IDENTITIES.word,
         state: State::OldName,
-        problem: Some(old_name(old, now, "The identity registry's renames", &format::IDENTITIES)),
+        problem: Some(old_name(
+            old,
+            now,
+            "The identity registry's renames",
+            &format::IDENTITIES,
+        )),
         fixes,
     }
 }

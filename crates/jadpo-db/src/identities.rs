@@ -68,10 +68,7 @@ pub fn parse_identities(text: &str) -> Result<BTreeMap<String, String>, (usize, 
         let named = |name: &str| {
             !name.is_empty()
                 && name.split('.').all(|part| {
-                    !part.is_empty()
-                        && part
-                            .chars()
-                            .all(|c| c.is_alphanumeric() || c == '_')
+                    !part.is_empty() && part.chars().all(|c| c.is_alphanumeric() || c == '_')
                 })
         };
         let lower = kind.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
@@ -105,11 +102,17 @@ pub fn parse_identities(text: &str) -> Result<BTreeMap<String, String>, (usize, 
             if own >= parts.len() {
                 return Err((*at, format!("`{now}` has more parts than `{born}`")));
             }
-            format!("{}.{now}", resolve(&owners, &parts[..parts.len() - own].join(".")))
+            format!(
+                "{}.{now}",
+                resolve(&owners, &parts[..parts.len() - own].join("."))
+            )
         } else {
             (*now).to_string()
         };
-        if out.insert(format!("{kind} {full}"), (*born).to_string()).is_some() {
+        if out
+            .insert(format!("{kind} {full}"), (*born).to_string())
+            .is_some()
+        {
             return Err((*at, format!("two lines name `{kind} {full}`")));
         }
     }
@@ -335,18 +338,21 @@ mod tests {
             ("field billing.Address.road", "billing.Address.street"),
         ]);
         let text = write_identities(&kept);
-        assert!(text.contains("field Todo.priority -> importance\n"), "{text}");
-        assert!(text.contains("field billing.Address.street -> road\n"), "{text}");
+        assert!(
+            text.contains("field Todo.priority -> importance\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("field billing.Address.street -> road\n"),
+            "{text}"
+        );
         assert_eq!(parse_identities(&text), Ok(kept));
     }
 
     #[test]
     fn two_renames_of_one_thing_are_refused() {
         let text = format!("{HEADER}\nentity Todo -> Task\nentity Todo -> Job\n");
-        assert_eq!(
-            parse_identities(&text).map_err(|(at, _)| at),
-            Err(4)
-        );
+        assert_eq!(parse_identities(&text).map_err(|(at, _)| at), Err(4));
         assert!(parse_identities(&format!("{HEADER}\nentity Todo Task\n")).is_err());
         assert!(parse_identities("{}\n").is_err());
     }

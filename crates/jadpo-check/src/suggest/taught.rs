@@ -132,7 +132,10 @@ mod tests {
             taught("(+ delivery subtotal)", "Money", "Later reason wins"),
         ];
         let text = render(&entries);
-        assert!(text.starts_with(&jadpo_db::record::header(&jadpo_db::record::TAUGHT_SUGGESTIONS, FROM)));
+        assert!(text.starts_with(&jadpo_db::record::header(
+            &jadpo_db::record::TAUGHT_SUGGESTIONS,
+            FROM
+        )));
         let back = parse(&text).expect("reads");
         assert_eq!(back.len(), 2);
         assert!(back.iter().any(|t| t.reason == "Later reason wins"));

@@ -105,10 +105,7 @@ fn list(call: &Call) -> Reply {
                     ("kind", Json::from(standing.kind)),
                     ("written_by", Json::from(heading.as_str())),
                     ("state", Json::from(standing.state.id())),
-                    (
-                        "command",
-                        standing.command().map_or(Json::Null, Json::from),
-                    ),
+                    ("command", standing.command().map_or(Json::Null, Json::from)),
                 ]));
                 Row::new(standing.path.as_str(), standing.state.words()).state(state)
             })
@@ -158,8 +155,16 @@ fn list(call: &Call) -> Reply {
                 format!("brings {} up to date", one.path),
             ),
             (1, many) => (
-                commands.iter().next().copied().unwrap_or_default().to_string(),
-                format!("brings {} up to date", plural(many.len(), "record", "records")),
+                commands
+                    .iter()
+                    .next()
+                    .copied()
+                    .unwrap_or_default()
+                    .to_string(),
+                format!(
+                    "brings {} up to date",
+                    plural(many.len(), "record", "records")
+                ),
             ),
             _ => (
                 "jadpo records update".to_string(),

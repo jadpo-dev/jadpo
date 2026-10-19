@@ -21,12 +21,12 @@ mod texts;
 pub use identities::{
     IDENTITIES, LEGACY_IDENTITIES, parse_identities, parse_legacy_identities, write_identities,
 };
-pub use lock::{LOCK, Locked, Source, parse_lock, write_lock};
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
     Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, shown_root,
 };
+pub use lock::{LOCK, Locked, Source, parse_lock, write_lock};
 pub use places::{
     Folder, Location, Ownership, Place, RootFile, Stray, locate, name_words, to_snake,
 };

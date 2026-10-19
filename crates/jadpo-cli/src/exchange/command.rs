@@ -681,7 +681,10 @@ pub fn import(loaded: &mut Loaded, call: &Call, cwd: &Path) -> Reply {
             .into_iter()
             .filter(|d| {
                 let sources = d.primary.as_ref().is_some_and(|label| {
-                    label.span.path.ends_with("translations/sources.jadpo_record")
+                    label
+                        .span
+                        .path
+                        .ends_with("translations/sources.jadpo_record")
                 });
                 d.rule.id == "translation.sources_invalid"
                     || (sources && matches!(d.rule.id, "record.edited" | "record.format_newer"))

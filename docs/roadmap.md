@@ -1810,17 +1810,18 @@ chunks below, taken before Phase 6.
 
 ## Phase 6 — Events and schedules (area 12)
 
-- [ ] **7.0 Generated records** `opus · high` (area 18, decided
-  2026-10-16): the API record and identity registry renamed to
-  `.jadpo_record` in the decided record format, with the header line, the
-  hand-edit check and `jadpo records`; the format 7.1's package surfaces
-  and 5.4c's translation sources also use, as
-  [the design](language/research/jadpo-record-format.md) sets out (decided
-  2026-10-16): the API record loses its `version:` counter, the OpenAPI
-  version coming from a hash of the record, and `jadpo.lock` takes the
-  format.
-  Moved before Phase 6 by the Phase 5 review, so 6.1b records event
-  shapes in this format rather than one it replaces.
+- [x] **7.0 Generated records** `opus · high` (area 18, decided
+  2026-10-16), moved before Phase 6 by the Phase 5 review. Built: the
+  [record format](language/research/jadpo-record-format.md) for every
+  record (a kind, its header and closed lists, an outline writer and
+  reader, and an entry differ 6.1b's event shapes reuse); the API record
+  as `api/<api>.jadpo_record` with no `version:`, the OpenAPI version a
+  hash of it; the identity registry as `database/identities.jadpo_record`;
+  the suggestion records on the shared header; `jadpo.lock` as a ledger;
+  `record.out_of_date`, `record.edited` and `record.format_newer` in
+  `jadpo check`; `jadpo records` and `jadpo records update`, which moves
+  records from their old names; every example's record regenerated.
+  Choices in area 18's "Chosen in chunk 7.0".
 - [ ] **6.1a System caller and delivery engine** `opus · xhigh`: from the
   Phase 4 and Phase 5 reviews, a system caller (`Grant::System`, a
   `CallerPart` for it), so `Access.system` grants schedules and

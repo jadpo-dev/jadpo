@@ -103,7 +103,12 @@ fn rules(output: &Output) -> Vec<String> {
 fn api_update_writes_the_record_in_the_record_format() {
     let (_dir, root) = project("records-api");
     let missing = jadpo(&root, &["check", "--json"]);
-    assert_eq!(rules(&missing), ["record.out_of_date"], "{}", missing.stdout);
+    assert_eq!(
+        rules(&missing),
+        ["record.out_of_date"],
+        "{}",
+        missing.stdout
+    );
     let updated = jadpo(&root, &["api", "update"]);
     assert_eq!(updated.code, 0, "{}", updated.stdout);
     assert_eq!(read(&root, "api/main.jadpo_record"), RECORD);
@@ -123,7 +128,10 @@ fn the_openapi_version_is_a_hash_of_the_record() {
     assert_eq!(document["info"]["version"], serde_json::json!(version));
     // A change to the record is a new version.
     let changed = RECORD.replace("status 200", "status 201");
-    assert_ne!(jadpo_check::routes::record::openapi_version(&changed), version);
+    assert_ne!(
+        jadpo_check::routes::record::openapi_version(&changed),
+        version
+    );
 }
 
 #[test]
@@ -150,7 +158,11 @@ records up to date: 2 records
     );
     // A route changed: the record is out of date, and the one command
     // that brings it up to date is next.
-    write(&root, "api/main.jadpo_record", &RECORD.replace("status 200", "status 201"));
+    write(
+        &root,
+        "api/main.jadpo_record",
+        &RECORD.replace("status 200", "status 201"),
+    );
     let rich = jadpo_in(
         Environment::empty()
             .with_terminals(true, true, true)
@@ -194,7 +206,10 @@ fn a_hand_edit_is_an_error_naming_the_command() {
     write(
         &root,
         "api/main.jadpo_record",
-        &RECORD.replace("    status 200\n", "    status 200 // clients rely on this\n"),
+        &RECORD.replace(
+            "    status 200\n",
+            "    status 200 // clients rely on this\n",
+        ),
     );
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 1);
@@ -214,7 +229,9 @@ fn a_hand_edit_is_an_error_naming_the_command() {
     );
     let listed = jadpo(&root, &["records"]);
     assert!(
-        listed.stdout.contains("api/main.jadpo_record  edited by hand"),
+        listed
+            .stdout
+            .contains("api/main.jadpo_record  edited by hand"),
         "{}",
         listed.stdout
     );
@@ -229,7 +246,12 @@ fn a_record_from_a_newer_jadpo_is_refused_not_overwritten() {
     write(&root, "api/main.jadpo_record", RECORD);
     write(&root, "database/identities.jadpo_record", newer);
     let checked = jadpo(&root, &["check", "--json"]);
-    assert_eq!(rules(&checked), ["record.format_newer"], "{}", checked.stdout);
+    assert_eq!(
+        rules(&checked),
+        ["record.format_newer"],
+        "{}",
+        checked.stdout
+    );
     let update = jadpo(&root, &["records", "update"]);
     assert_eq!(update.code, 1, "{}", update.stdout);
     assert_eq!(read(&root, "database/identities.jadpo_record"), newer);
@@ -256,7 +278,13 @@ fn records_update_moves_records_from_their_old_names() {
         checked.stdout
     );
     let listed = jadpo(&root, &["records"]);
-    assert!(listed.stdout.contains("  api/main.api              old name\n"), "{}", listed.stdout);
+    assert!(
+        listed
+            .stdout
+            .contains("  api/main.api              old name\n"),
+        "{}",
+        listed.stdout
+    );
     let updated = jadpo(&root, &["records", "update"]);
     assert_eq!(updated.code, 0, "{}", updated.stdout);
     assert_eq!(
@@ -292,7 +320,9 @@ fn a_ledger_a_merge_left_out_of_order_is_sorted_by_records_update() {
     write(
         &root,
         "database/identities.jadpo_record",
-        &format!("{IDENTITIES_HEADER}\ntype memos.Memo -> Memo\ntype memos.MemoView -> MemoView\ntype memos.AddMemo -> AddMemo\n"),
+        &format!(
+            "{IDENTITIES_HEADER}\ntype memos.Memo -> Memo\ntype memos.MemoView -> MemoView\ntype memos.AddMemo -> AddMemo\n"
+        ),
     );
     let checked = jadpo(&root, &["check"]);
     assert!(
@@ -312,7 +342,9 @@ fn a_ledger_a_merge_left_out_of_order_is_sorted_by_records_update() {
     assert_eq!(jadpo(&root, &["records", "update"]).code, 0);
     assert_eq!(
         read(&root, "database/identities.jadpo_record"),
-        format!("{IDENTITIES_HEADER}\ntype memos.AddMemo -> AddMemo\ntype memos.Memo -> Memo\ntype memos.MemoView -> MemoView\n")
+        format!(
+            "{IDENTITIES_HEADER}\ntype memos.AddMemo -> AddMemo\ntype memos.Memo -> Memo\ntype memos.MemoView -> MemoView\n"
+        )
     );
     // Two lines for one thing are left for a person.
     write(
@@ -322,7 +354,9 @@ fn a_ledger_a_merge_left_out_of_order_is_sorted_by_records_update() {
     );
     let checked = jadpo(&root, &["check"]);
     assert!(
-        checked.stdout.contains("`type memos.Memo` is on lines 4 and 5"),
+        checked
+            .stdout
+            .contains("`type memos.Memo` is on lines 4 and 5"),
         "{}",
         checked.stdout
     );
@@ -342,11 +376,17 @@ fn the_lock_is_a_record_checked_like_the_rest() {
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let listed = jadpo(&root, &["records"]);
     assert!(
-        listed.stdout.contains("jadpo package add, update or remove\n  jadpo.lock"),
+        listed
+            .stdout
+            .contains("jadpo package add, update or remove\n  jadpo.lock"),
         "{}",
         listed.stdout
     );
-    write(&root, "jadpo.lock", &lock.replace("version 2.1.0", "version 2.1"));
+    write(
+        &root,
+        "jadpo.lock",
+        &lock.replace("version 2.1.0", "version 2.1"),
+    );
     let checked = jadpo(&root, &["check", "--json"]);
     assert_eq!(rules(&checked), ["record.edited"], "{}", checked.stdout);
 }

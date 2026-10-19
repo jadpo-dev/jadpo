@@ -124,7 +124,10 @@ pub fn parse_lock(text: &str) -> Result<Vec<Locked>, (usize, String)> {
             continue;
         }
         let locked = parse_line(line).map_err(|why| (at, why))?;
-        if let Some((first, _)) = out.iter().find(|(_, other)| other.package == locked.package) {
+        if let Some((first, _)) = out
+            .iter()
+            .find(|(_, other)| other.package == locked.package)
+        {
             return Err((
                 at,
                 format!(
@@ -148,7 +151,9 @@ fn parse_line(line: &str) -> Result<Locked, String> {
         _ => return Err(shape.into()),
     };
     if split_package(package).is_none() {
-        return Err(format!("`{package}` isn't a package and major version, such as `Postcodes.v2`"));
+        return Err(format!(
+            "`{package}` isn't a package and major version, such as `Postcodes.v2`"
+        ));
     }
     let source = match rest {
         ["link", path] if !path.is_empty() => Source::Link {
@@ -161,7 +166,9 @@ fn parse_line(line: &str) -> Result<Locked, String> {
             let digest = |digest: &str| -> Result<String, String> {
                 is_digest(digest)
                     .then(|| digest.to_string())
-                    .ok_or_else(|| format!("`{digest}` isn't a digest: `sha256:` and 64 lower-case hex digits"))
+                    .ok_or_else(|| {
+                        format!("`{digest}` isn't a digest: `sha256:` and 64 lower-case hex digits")
+                    })
             };
             let version = version.to_string();
             match rest {
@@ -173,7 +180,9 @@ fn parse_line(line: &str) -> Result<Locked, String> {
                     if !repository.is_empty() && !tag.is_empty() =>
                 {
                     if !is_commit(commit) {
-                        return Err(format!("`{commit}` isn't a commit: 40 or 64 lower-case hex digits"));
+                        return Err(format!(
+                            "`{commit}` isn't a commit: 40 or 64 lower-case hex digits"
+                        ));
                     }
                     Source::Git {
                         version,
@@ -222,7 +231,9 @@ fn is_version(text: &str) -> bool {
     let numbers: Vec<&str> = core.split('.').collect();
     numbers.len() == 3
         && numbers.iter().all(|n| {
-            !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && (*n == "0" || !n.starts_with('0'))
+            !n.is_empty()
+                && n.bytes().all(|b| b.is_ascii_digit())
+                && (*n == "0" || !n.starts_with('0'))
         })
         && pre.is_none_or(|pre| {
             !pre.is_empty()
@@ -295,7 +306,10 @@ mod tests {
             )
         );
         // By name, then major version as a number.
-        assert!(lines[4].starts_with("package AcmePricing.v2 version 2.0.0-beta.1 path ../pricing digest"));
+        assert!(
+            lines[4]
+                .starts_with("package AcmePricing.v2 version 2.0.0-beta.1 path ../pricing digest")
+        );
         assert_eq!(lines[5], "package AcmePricing.v10 link ../acme-pricing");
         assert!(lines[6].starts_with("package Postcodes.v2 version 2.1.0 registry digest sha256:"));
         let mut sorted = packages();

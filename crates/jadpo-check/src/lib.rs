@@ -213,7 +213,8 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 /// promise that `jadpo check` and CI hold to (area 18), not a reason the
 /// program can't run.
 pub fn blocks_running(diagnostic: &Diagnostic) -> bool {
-    diagnostic.rule.id != rule::RECORD_OUT_OF_DATE.id && diagnostic.rule.id != rule::RECORD_EDITED.id
+    diagnostic.rule.id != rule::RECORD_OUT_OF_DATE.id
+        && diagnostic.rule.id != rule::RECORD_EDITED.id
 }
 
 /// The zero-based line `offset` is on.

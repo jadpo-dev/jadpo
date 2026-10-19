@@ -59,10 +59,7 @@ fn update(call: &Call) -> Reply {
     // in them stops it, as in `jadpo check`.
     let problems: Vec<Diagnostic> = jadpo_check::check(db, project)
         .into_iter()
-        .filter(|d| {
-            (d.rule.area == 7 || d.rule.id.starts_with("syntax."))
-                && d.rule.area != 18
-        })
+        .filter(|d| (d.rule.area == 7 || d.rule.id.starts_with("syntax.")) && d.rule.area != 18)
         .collect();
     if !problems.is_empty() || !jadpo_check::routes::routes_clean(db, project) {
         let problems = if problems.is_empty() {

@@ -176,7 +176,10 @@ fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, (String, S
         return Ok(BTreeMap::new());
     };
     let failed = |error: String| (LEGACY_IDENTITIES.to_string(), error);
-    let text = record.text.as_ref().map_err(|error| failed(error.clone()))?;
+    let text = record
+        .text
+        .as_ref()
+        .map_err(|error| failed(error.clone()))?;
     parse_legacy_identities(text)
         .map_err(|error| failed(format!("it isn't a JSON object of names: {error}")))
 }

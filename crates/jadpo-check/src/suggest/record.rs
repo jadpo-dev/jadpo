@@ -154,7 +154,10 @@ mod tests {
             },
         ];
         let text = render(&entries);
-        assert!(text.starts_with(&jadpo_db::record::header(&jadpo_db::record::IGNORED_SUGGESTIONS, FROM)));
+        assert!(text.starts_with(&jadpo_db::record::header(
+            &jadpo_db::record::IGNORED_SUGGESTIONS,
+            FROM
+        )));
         let back = parse(&text).expect("reads");
         assert_eq!(back.len(), 2);
         assert_eq!(back[0].suggestion, "Duration");
