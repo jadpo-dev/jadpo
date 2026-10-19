@@ -723,7 +723,7 @@ impl JsonCodecs<'_> {
 fn kept_within_limits(json: &str) -> Result<(), String> {
     if json.len() > JSON_KEPT_LIMIT {
         return Err(format!(
-            "a value kept as JSON larger than {JSON_KEPT_LIMIT} bytes"
+            "a value kept as JSON of more than {JSON_KEPT_LIMIT} bytes"
         ));
     }
     let (mut depth, mut deepest, mut quoted, mut escaped) = (0usize, 0usize, false, false);

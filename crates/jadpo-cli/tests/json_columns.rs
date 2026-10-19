@@ -503,7 +503,7 @@ fn a_row_edited_outside_jadpo_to_break_a_rule_is_a_fault_when_read() {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            "larger than",
+            "more than",
             "k79999",
         ),
     ];

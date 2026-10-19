@@ -632,7 +632,7 @@ type Label = Object {
 
 /// How a parcel leaves.
 type Delivery = Enum {
-    collect
+    pickup
     courier: {
         company: Tag
         weight: Grams
@@ -645,12 +645,12 @@ entity Parcel {
     tags: List<Tag>
     weights: Map<Tag, Grams>
     delivery: Delivery
-    spare: Label?  // `NULL` when it is `none`
+    second_label: Label?  // `NULL` when it is `none`
 }
 ```
 
 A parcel going by courier keeps `{"tag": "courier", "company": "Swift",
-"weight": 920}` in `delivery`, one to be collected `"collect"`, and its
+"weight": 920}` in `delivery`, one to be picked up `"pickup"`, and its
 `weights` `{"box": 120, "loaf": 800}`, keys in their canonical order.
 
 ## Migrations
@@ -1046,25 +1046,25 @@ type ParcelSent = Event {
     label: Tag
 }
 
-/// What a parcel's history holds.
-type History = Object {
+/// What a parcel's shipments hold.
+type Shipments = Object {
     sent: List<ParcelSent>
 }
 
 entity Parcel {
     id: Uuid
-    history: History
+    shipments: Shipments
 }
 ```
 
 ```text output
-error: `Parcel.history` can't be stored as JSON
- --> main.jadpo:17:14
+error: `Parcel.shipments` can't be stored as JSON
+ --> main.jadpo:17:16
    |
-17 |     history: History
-   |              ^^^^^^^ `ParcelSent` has no stored form
-  reason: A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps; `Parcel.history` holds `ParcelSent`, an event, which is emitted, not written.
-  next: Store what `Parcel.history` needs in an `Object` of the application's, or in fields of its own (agent)
+17 |     shipments: Shipments
+   |                ^^^^^^^^^ `ParcelSent` has no stored form
+  reason: A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps; `Parcel.shipments` holds `ParcelSent`, an event, which is emitted, not written.
+  next: Store what `Parcel.shipments` needs in an `Object` of the application's, or in fields of its own (agent)
   rule: data.field_without_json
   help: docs/language/05-data.html#data-field-without-json
 
