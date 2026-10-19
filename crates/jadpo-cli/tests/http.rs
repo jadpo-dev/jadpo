@@ -35,14 +35,6 @@ use jadpo_cli::dev::{DevArgs, serve_to};
 use jadpo_cli::{Output, run};
 use jadpo_term::{ColorChoice, Environment};
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 pub(super) fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -471,7 +463,7 @@ fn send_raw(port: u16, request: &[u8]) -> Reply {
 
 #[test]
 fn a_created_record_reads_back_and_failures_come_in_the_envelope() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -550,7 +542,7 @@ fn a_created_record_reads_back_and_failures_come_in_the_envelope() {
 
 #[test]
 fn a_get_reads_its_input_from_the_query_string_and_its_headers() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -598,7 +590,7 @@ fn a_get_reads_its_input_from_the_query_string_and_its_headers() {
 
 #[test]
 fn an_address_is_limited_to_its_allowance() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -624,7 +616,7 @@ fn an_address_is_limited_to_its_allowance() {
 
 #[test]
 fn a_save_swaps_in_the_new_version_and_errors_keep_the_last_good_one() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -700,7 +692,7 @@ fn the_openapi_document_matches_its_golden_copy() {
 
 #[test]
 fn health_is_the_runtimes_and_a_body_past_the_limit_is_refused() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -724,7 +716,7 @@ fn health_is_the_runtimes_and_a_body_past_the_limit_is_refused() {
 
 #[test]
 fn a_retried_write_is_answered_from_its_idempotency_key() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -814,7 +806,7 @@ fn query(url: &str, sql: &str, params: Vec<jadpo_runtime::SqlValue>) -> Vec<jadp
 
 #[test]
 fn a_write_past_its_deadline_commits_nothing_and_answers_504() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let dir = tempdir::Dir::new("deadline");
@@ -1259,7 +1251,7 @@ fn session_cookies(reply: &Reply) -> (String, String, Vec<String>) {
 
 #[test]
 fn a_browser_session_signs_in_writes_with_its_csrf_token_and_signs_out() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = sign_in_project();
@@ -1385,7 +1377,7 @@ fn a_browser_session_signs_in_writes_with_its_csrf_token_and_signs_out() {
 
 #[test]
 fn a_signed_in_callers_idempotency_keys_are_their_own() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = sign_in_project();
@@ -2044,7 +2036,7 @@ fn issued_as(text: &str, prefix: &str) -> bool {
 
 #[test]
 fn an_api_token_signs_its_app_in_until_it_is_ended() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = tokens_project();
@@ -2168,7 +2160,7 @@ fn an_api_token_signs_its_app_in_until_it_is_ended() {
 
 #[test]
 fn a_service_key_signs_a_service_in_where_services_may_call() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = tokens_project();
@@ -2279,7 +2271,7 @@ fn listed(reply: &Reply) -> Vec<serde_json::Value> {
 
 #[test]
 fn a_get_route_lists_a_signed_in_users_tokens_and_a_partners_keys() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = tokens_project();
@@ -2385,7 +2377,7 @@ fn a_get_route_lists_a_signed_in_users_tokens_and_a_partners_keys() {
 
 #[test]
 fn another_members_tokens_and_another_partners_keys_are_listed_empty() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = tokens_project();
@@ -2511,7 +2503,7 @@ fn openapi_shows_both_bearer_methods_and_who_each_route_refuses() {
 
 #[test]
 fn a_body_is_read_only_as_json_and_a_route_refuses_what_it_doesnt_read() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -2567,7 +2559,7 @@ fn a_body_is_read_only_as_json_and_a_route_refuses_what_it_doesnt_read() {
 
 #[test]
 fn a_header_that_isnt_ascii_is_refused_rather_than_dropped() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = project();
@@ -2687,7 +2679,7 @@ routes Busywork {
 
 #[test]
 fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let dir = tempdir::Dir::new("spin");
@@ -2741,7 +2733,7 @@ fn work_that_never_waits_stops_at_its_deadline_and_keeps_nothing() {
 
 #[test]
 fn work_that_never_waits_leaves_its_worker_to_other_requests() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let dir = tempdir::Dir::new("spin-shared");
@@ -2805,7 +2797,7 @@ fn work_that_never_waits_leaves_its_worker_to_other_requests() {
 
 #[test]
 fn a_credential_on_a_route_anyone_may_call_is_counted_before_it_runs() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = sign_in_project();
@@ -2836,7 +2828,7 @@ fn a_credential_on_a_route_anyone_may_call_is_counted_before_it_runs() {
 
 #[test]
 fn a_handled_failure_keeps_the_session_it_tried_to_end() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = sign_in_project();
@@ -3235,7 +3227,7 @@ fn openapi(root: &Path) -> serde_json::Value {
 
 #[test]
 fn openapi_describes_values_as_they_are_sent() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = wire_project();
@@ -3295,7 +3287,7 @@ fn openapi_describes_values_as_they_are_sent() {
 
 #[test]
 fn openapi_lists_each_routes_responses_from_what_it_runs() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = wire_project();
@@ -3360,7 +3352,7 @@ fn openapi_lists_each_routes_responses_from_what_it_runs() {
 
 #[test]
 fn a_route_test_leaves_an_omitted_field_out() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let (_dir, root) = wire_project();

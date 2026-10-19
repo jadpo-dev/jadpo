@@ -31,14 +31,6 @@ use jadpo_interp::{Prepared, Program};
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use jadpo_runtime::{Database, Event, Host, LocalFuture};
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 /// The native host, with a wall clock the test sets.
 struct Clocked {
     inner: NativeHost,
@@ -461,7 +453,7 @@ fn refused(response: &Response, status: u16, wanted: &str) {
 
 #[test]
 fn a_person_registers_a_passkey_and_signs_in_with_it() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("register");
@@ -544,7 +536,7 @@ fn a_person_registers_a_passkey_and_signs_in_with_it() {
 
 #[test]
 fn a_replayed_answer_is_refused() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("replay");
@@ -567,7 +559,7 @@ fn a_replayed_answer_is_refused() {
 
 #[test]
 fn an_answer_made_for_another_site_is_refused() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("origin");
@@ -588,7 +580,7 @@ fn an_answer_made_for_another_site_is_refused() {
 
 #[test]
 fn an_expired_challenge_or_one_from_another_browser_is_refused() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("expired");
@@ -628,7 +620,7 @@ fn an_expired_challenge_or_one_from_another_browser_is_refused() {
 
 #[test]
 fn a_removed_passkey_cant_sign_in() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("removed");
@@ -649,7 +641,7 @@ fn a_removed_passkey_cant_sign_in() {
 
 #[test]
 fn a_counter_that_goes_backwards_is_refused() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("counter");
@@ -678,7 +670,7 @@ fn a_counter_that_goes_backwards_is_refused() {
 
 #[test]
 fn a_person_keeps_several_passkeys_and_manages_only_their_own() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("several");
@@ -748,7 +740,7 @@ fn a_person_keeps_several_passkeys_and_manages_only_their_own() {
 
 #[test]
 fn a_registration_is_bound_to_the_session_that_asked() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("bound");
@@ -780,7 +772,7 @@ fn a_registration_is_bound_to_the_session_that_asked() {
 
 #[test]
 fn a_disabled_person_signs_in_with_no_passkey_and_writes_need_the_origin() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("disabled");

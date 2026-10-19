@@ -23,14 +23,6 @@ use jadpo_runtime::LocalFuture;
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 /// Counts round trips across every connection it opens.
 #[derive(Clone, Default)]
 struct Counting {
@@ -359,7 +351,7 @@ fn json(response: &Response) -> serde_json::Value {
 
 #[test]
 fn a_signed_in_write_and_a_hidden_record_take_the_fewest_round_trips() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let dir = std::env::temp_dir().join(format!("jadpo-round-trips-{}", std::process::id()));

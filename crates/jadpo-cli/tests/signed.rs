@@ -34,14 +34,6 @@ use jadpo_runtime::http::{Request, Response, Worker, serve_request};
 use jadpo_runtime::{Database, Event, Host, LocalFuture};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 // --- counting round trips ----------------------------------------------------------
 
 /// Counts round trips across every connection it opens.
@@ -700,7 +692,7 @@ fn sign_up(live: &Live, handle: &str) -> (Browser, String) {
 
 #[test]
 fn a_signed_session_signs_in_without_a_read_until_the_delay_bites() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("sessions");
@@ -768,7 +760,7 @@ fn a_signed_session_signs_in_without_a_read_until_the_delay_bites() {
 
 #[test]
 fn an_api_token_renews_in_a_header_and_signs_in_without_a_read() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("tokens");
@@ -817,7 +809,7 @@ fn an_api_token_renews_in_a_header_and_signs_in_without_a_read() {
 
 #[test]
 fn a_rotated_key_still_verifies_and_new_parts_sign_with_the_current_one() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let mut live = Live::new("rotation");
@@ -854,7 +846,7 @@ fn a_rotated_key_still_verifies_and_new_parts_sign_with_the_current_one() {
 
 #[test]
 fn a_cookie_write_must_come_from_the_configured_origin() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("origin");
@@ -876,7 +868,7 @@ fn a_cookie_write_must_come_from_the_configured_origin() {
 
 #[test]
 fn the_exchange_trades_a_service_key_for_a_short_lived_token() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let live = Live::new("exchange");

@@ -37,14 +37,6 @@ use jadpo_value::{Decimal, Quantity, Value, geo};
 
 use crate::support;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -548,7 +540,7 @@ const OVER_HOLE: &str = r#"{"type":"Polygon","coordinates":[[[1,1],[6,1],[6,6],[
 
 #[test]
 fn the_page_s_queries_give_the_code_s_answer_through_their_indexes() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("page");
@@ -840,7 +832,7 @@ const CASES: &str = include_str!("../../jadpo-value/examples/geodesics/shapes.ts
 
 #[test]
 fn every_predicate_case_gives_the_code_s_answer_as_a_query() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("cases");

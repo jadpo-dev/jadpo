@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -102,9 +103,105 @@ class TestBinary:
     manifest_dir: str
 
 
-def steps(profile: str, require_examples: bool = False) -> list[Step]:
+# The steps that run test files with live PostgreSQL tests, each file (a
+# module of its crate's integration binary) with the run's server: (name,
+# [(package, module)], args). A file that calls `jadpo_test::live()` and
+# isn't listed here gets a step of its own (live_test_files), so leaving
+# one out can't make its live tests skip.
+POSTGRES = [
+    # The driver, the test database's template and copies.
+    ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
+    # `jadpo migrate apply` and `status`; computed backfills, in batches,
+    # resumed, and worked out in Jadpo where SQL can't (area 5).
+    ('live PostgreSQL: jadpo migrate and backfills',
+     [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills')], []),
+    # Every standard type stored and read back, its column laid out as its
+    # entry says, and each literal in SQL the value the runtime binds
+    # (area 19, chunks 5.5w and 5.5w3b).
+    ('live PostgreSQL: standard types stored and SQL literals',
+     [('jadpo-cli', 'standard_storage'), ('jadpo-cli', 'sql_literals')], []),
+    # Passkeys registered and signed in with through the generated routes,
+    # and each refusal (area 8, chunk 5.5z); configuration through the
+    # commands, a database opened from a setting among them (area 10).
+    ('live PostgreSQL: passkeys and configuration',
+     [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'config')], []),
+    # Queries, `get` and `create` run through `jadpo test`, and
+    # aggregate queries against what code works out (area 6).
+    ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),
+    # Writes, their conflicts and counters through `jadpo test`, and a
+    # concurrent change forced from a second connection, rerunning the
+    # whole action (area 6).
+    ('live PostgreSQL: writes and concurrent changes', [('jadpo-cli', 'writes')], []),
+    # Lifecycles through `jadpo test`: hidden records, transitions and
+    # their guards; then purge through the runtime's entry point, with
+    # cascades, restricted references and batches (area 5).
+    ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
+    # Every standard operation's SQL form gives what the runtime gives
+    # on the same inputs (area 19, "SQL forms"; chunk 5.6).
+    ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),
+    # Routes over real HTTP: `jadpo dev` on the native host, requests
+    # over TCP, the failure envelope, query and header input, rate
+    # limits and reloading; and the golden OpenAPI document (area 7).
+    ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http')], []),
+    # Policy through `jadpo test`: tenancy, roles, owner fields, listed
+    # actions and credentials; concealment through the runtime (area 9).
+    ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
+    # The runtime's request path counted in round trips (chunk 4.10),
+    # and signed sessions: no read to sign in while a signed part
+    # lasts, the delay's bound on revocation, key rotation, the key
+    # exchange and the configured origin (area 8, chunk 5.1b).
+    ('live PostgreSQL: round trips and signed sessions',
+     [('jadpo-cli', 'round_trips'), ('jadpo-cli', 'signed')], []),
+    # Vectors in pgvector: stored and read back unchanged, `ai.distance`
+    # against pgvector's own operators, and a store without the
+    # extension refused (area 21, chunk 5.5v1). The server needs
+    # pgvector: CI's image has it (tools/postgres/Dockerfile).
+    ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
+    # Geometries in PostGIS: every geometry stored and read back
+    # unchanged, each column's check, and a store without PostGIS, or a
+    # role that can't create it, refused (area 20, chunk 5.5u4); each
+    # `geo.` condition and the order by distance giving the code's
+    # answer through its index (chunk 5.5u5). The server needs
+    # PostGIS: CI's image has it (tools/postgres/Dockerfile).
+    ('live PostgreSQL: geography',
+     [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries')], []),
+]
+
+
+# A test file with a live part calls the one helper that says whether it
+# runs (crates/jadpo-test/src/live.rs).
+LIVE_CALL = re.compile(r'(?<![\w])live\(\)')
+# A module of an integration binary's main.rs, with the file `#[path]` names.
+TEST_MODULE = re.compile(r'^[ \t]*(?:#\[path\s*=\s*"([^"]+)"\]\s*)?mod\s+(\w+)\s*;', re.MULTILINE)
+
+
+def live_test_files(root: Path = ROOT) -> list[tuple[str, str]]:
+    """(package, module) of every test file whose tests call
+    `jadpo_test::live()`: each crate's tests are modules of one integration
+    binary (crates/*/tests/main.rs)."""
+    found = []
+    for main in sorted(root.glob('crates/*/tests/main.rs')):
+        for path, module in TEST_MODULE.findall(main.read_text()):
+            file = main.parent / (path or f'{module}.rs')
+            if not file.exists():
+                file = main.parent / module / 'mod.rs'
+            if file.exists() and LIVE_CALL.search(file.read_text()):
+                found.append((main.parent.parent.name, module))
+    return found
+
+
+def postgres_steps(table: list | None = None, root: Path = ROOT) -> list[tuple[str, list[tuple[str, str]], list[str]]]:
+    """The table's steps, then one for each live test file it leaves out."""
+    table = POSTGRES if table is None else table
+    listed = {test for _, tests, _ in table for test in tests}
+    return list(table) + [(f'live PostgreSQL: {module} (not listed in POSTGRES)', [(package, module)], [])
+                          for package, module in live_test_files(root) if (package, module) not in listed]
+
+
+def steps(profile: str, require_examples: bool = False, table: list | None = None) -> list[Step]:
     python = sys.executable
     full = profile == 'full'
+    postgres = postgres_steps(table)
     # Under --profile quick nothing starts PostgreSQL: the pages' and the
     # examples' projects with migrations are checked and formatted, and
     # their `jadpo test` runs are reported as skipped.
@@ -132,54 +229,6 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # reserves and no other (editors/vscode; needs no Node).
         Step('editor grammar in step with the lexer', 'lint',
              [python, 'tools/editor_grammar.py', '--check']),
-    ]
-    # Each named step runs test files (modules) of a crate's integration
-    # binary: (name, [(package, module)], args).
-    postgres = [
-        # The driver, the test database's template and copies.
-        ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
-        # `jadpo migrate apply` and `status`.
-        ('live PostgreSQL: jadpo migrate', [('jadpo-cli', 'migrate')], []),
-        # Queries, `get` and `create` run through `jadpo test`, and
-        # aggregate queries against what code works out (area 6).
-        ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),
-        # Writes, their conflicts and counters through `jadpo test`, and a
-        # concurrent change forced from a second connection, rerunning the
-        # whole action (area 6).
-        ('live PostgreSQL: writes and concurrent changes', [('jadpo-cli', 'writes')], []),
-        # Lifecycles through `jadpo test`: hidden records, transitions and
-        # their guards; then purge through the runtime's entry point, with
-        # cascades, restricted references and batches (area 5).
-        ('live PostgreSQL: lifecycles and purge', [('jadpo-cli', 'lifecycle')], []),
-        # Every standard operation's SQL form gives what the runtime gives
-        # on the same inputs (area 19, "SQL forms"; chunk 5.6).
-        ('live PostgreSQL: SQL forms', [('jadpo-cli', 'sql_forms')], ['--nocapture']),
-        # Routes over real HTTP: `jadpo dev` on the native host, requests
-        # over TCP, the failure envelope, query and header input, rate
-        # limits and reloading; and the golden OpenAPI document (area 7).
-        ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http')], []),
-        # Policy through `jadpo test`: tenancy, roles, owner fields, listed
-        # actions and credentials; concealment through the runtime (area 9).
-        ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
-        # The runtime's request path counted in round trips (chunk 4.10),
-        # and signed sessions: no read to sign in while a signed part
-        # lasts, the delay's bound on revocation, key rotation, the key
-        # exchange and the configured origin (area 8, chunk 5.1b).
-        ('live PostgreSQL: round trips and signed sessions',
-         [('jadpo-cli', 'round_trips'), ('jadpo-cli', 'signed')], []),
-        # Vectors in pgvector: stored and read back unchanged, `ai.distance`
-        # against pgvector's own operators, and a store without the
-        # extension refused (area 21, chunk 5.5v1). The server needs
-        # pgvector: CI's image has it (tools/postgres/Dockerfile).
-        ('live PostgreSQL: vectors', [('jadpo-cli', 'vectors')], []),
-        # Geometries in PostGIS: every geometry stored and read back
-        # unchanged, each column's check, and a store without PostGIS, or a
-        # role that can't create it, refused (area 20, chunk 5.5u4); each
-        # `geo.` condition and the order by distance giving the code's
-        # answer through its index (chunk 5.5u5). The server needs
-        # PostGIS: CI's image has it (tools/postgres/Dockerfile).
-        ('live PostgreSQL: geography',
-         [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries')], []),
     ]
     latency_test = 'a_save_shows_the_tests_it_reaches_within_the_target'
     own_steps = [
@@ -211,10 +260,13 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
         # documentation, error and fuzz tests, the generated AST's drift
         # test, and the rest. The steps above and the live PostgreSQL steps
         # run their own test files, which it skips; under --profile quick
-        # the PostgreSQL files run here, their live tests skipped. The watch
-        # tests run here but for the timing test, which runs last, alone.
+        # the PostgreSQL files run here, their live tests skipped. In the
+        # full profile every live file has a step of its own, so a live test
+        # that reaches this one fails (JADPO_REQUIRE_LIVE). The watch tests
+        # run here but for the timing test, which runs last, alone.
         Step('compiler tests', 'tests', tests='everything',
-             args=['--skip', f'watch::{latency_test}'], env={'JADPO_SKIP_POSTGRES': '1'}),
+             args=['--skip', f'watch::{latency_test}'],
+             env={'JADPO_SKIP_POSTGRES': '1', **({'JADPO_REQUIRE_LIVE': '1'} if full else {})}),
         # Phase 2 (docs/compiler-runtime.md §2.7): a save in a generated
         # 230-file project shows the tests it reaches, through the real
         # watch loop, within the 1-second target plus a CI allowance; the
@@ -227,8 +279,11 @@ def steps(profile: str, require_examples: bool = False) -> list[Step]:
     # a tag of its own, and templates are built under a name of their own
     # and renamed.
     if full:
-        checks += [Step(name, 'tests', tests=modules(tests), args=args, show='--nocapture' in args,
-                        postgres=True)
+        # Each prints its `skipped:` lines (a server too old for a test, on
+        # a developer's machine), which libtest otherwise keeps to itself.
+        checks += [Step(name, 'tests', tests=modules(tests),
+                        args=args if '--nocapture' in args else [*args, '--show-output'],
+                        show=True if '--nocapture' in args else 'skipped:', postgres=True)
                    for name, tests, args in postgres]
         # rust-toolchain.toml lists the target, so rustup installs it with
         # the pinned toolchain. The drivers build with every driver they
@@ -397,6 +452,8 @@ def test_jobs(step: Step, binaries: list[TestBinary]):
 
 
 NOTHING_RAN = re.compile(r'^running 0 tests$', re.MULTILINE)
+# A test or project that didn't run says so on a line of its own.
+SKIPPED = re.compile(r'^skipped:.*$', re.MULTILINE)
 
 
 class Report:
@@ -430,9 +487,11 @@ def run_step(step: Step, binaries: list[TestBinary], pool: ThreadPoolExecutor | 
             return
         step.env = {**step.env, 'JADPO_TEST_DATABASE_URL': url}
     start = time.monotonic()
+    seen = ''
     if step.tests is None:
         env = {**step.env, **({'JADPO_BIN': jadpo} if step.jadpo and jadpo else {})}
         step.ok, step.output = run(step.command, env)
+        seen = step.output
     else:
         try:
             jobs = list(test_jobs(step, binaries))
@@ -451,12 +510,78 @@ def run_step(step: Step, binaries: list[TestBinary], pool: ThreadPoolExecutor | 
                            for label, ok, output in results]
             failed = [(label, output) for label, ok, output in results if not ok]
             step.ok = not failed
+            seen = '\n'.join(output for _, _, output in results)
             if failed:
                 step.output = '\n'.join(f'--- {label}\n{output}' for label, output in failed)
             elif step.show:
                 step.output = '\n'.join(output for _, _, output in results)
+    # Under CI every test runs: its server has every extension and version
+    # the tests need, so a skip there is a failure.
+    skips = SKIPPED.findall(seen)
+    if os.environ.get('CI') and step.ok and skips:
+        step.ok = False
+        step.output = 'a skip under CI, where every test must run:\n' + '\n'.join(skips)
     step.seconds = time.monotonic() - start
     report.finished(step)
+
+
+def self_test() -> list[str]:
+    """What the gate promises about live PostgreSQL tests (chunk 5.8), checked
+    before it runs: the problems found, if any."""
+    problems = []
+    with tempfile.TemporaryDirectory() as tmp:
+        tests = Path(tmp) / 'crates/jadpo-x/tests'
+        tests.mkdir(parents=True)
+        (tests / 'main.rs').write_text('mod support;\nmod plain;\n#[path = "test.rs"]\nmod test_command;\nmod stored;\n')
+        (tests / 'plain.rs').write_text('fn deliver() {}\n')
+        (tests / 'test.rs').write_text('if !jadpo_test::live() {\n    return;\n}\n')
+        (tests / 'stored.rs').write_text('use jadpo_test::live;\nif !live() { return; }\n')
+        found = live_test_files(Path(tmp))
+        if found != [('jadpo-x', 'test_command'), ('jadpo-x', 'stored')]:
+            problems.append(f'live test files found in a sample tree: {found}')
+        # A live file the table leaves out gets a server all the same.
+        named = [name for name, _, _ in postgres_steps([], Path(tmp))]
+        if len(named) != 2:
+            problems.append(f'steps for a sample tree\'s live files with an empty table: {named}')
+    live = modules(live_test_files())
+    if not live:
+        problems.append('no test file calls jadpo_test::live()')
+    for table in (POSTGRES, []):
+        chosen = steps('full', table=table)
+        served = {test for step in chosen if step.postgres and isinstance(step.tests, list)
+                  for test in step.tests}
+        missing = [f'{package} {filter}' for package, filter in live if (package, filter) not in served]
+        if missing:
+            problems.append(f'live test files with no server in the full profile: {", ".join(missing)}')
+        compiler = next(step for step in chosen if step.tests == 'everything')
+        if compiler.env.get('JADPO_REQUIRE_LIVE') != '1':
+            problems.append('the full profile\'s compiler tests let a live test skip')
+        unshown = [step.name for step in chosen if step.postgres and isinstance(step.tests, list)
+                   and step.show not in (True, 'skipped:')]
+        if unshown:
+            problems.append(f'live steps that hide their skipped: lines: {", ".join(unshown)}')
+    # A `skipped:` line fails a step under CI, and only there.
+    class Quiet(Report):
+        def finished(self, step: Step) -> None:
+            pass
+    ci = os.environ.pop('CI', None)
+    try:
+        for under_ci in (False, True):
+            if under_ci:
+                os.environ['CI'] = 'true'
+            step = Step('a skip', 'tests', [sys.executable, '-c', 'print("skipped: a sample")'])
+            run_step(step, [], None, Quiet(), None, None)
+            if step.ok == under_ci:
+                problems.append(f'a step that prints a skipped: line {"passed" if step.ok else "failed"}'
+                                f' {"under" if under_ci else "outside"} CI')
+    finally:
+        os.environ.pop('CI', None)
+        if ci is not None:
+            os.environ['CI'] = ci
+    quick = next(step for step in steps('quick') if step.tests == 'everything')
+    if quick.env.get('JADPO_REQUIRE_LIVE') or quick.env.get('JADPO_SKIP_POSTGRES') != '1':
+        problems.append('the quick profile\'s compiler tests don\'t skip live tests')
+    return problems
 
 
 def main() -> int:
@@ -472,6 +597,10 @@ def main() -> int:
         help='fail on a built feature no teaching example uses, as the phase\'s examples chunk does '
              '(default: note it)')
     args = parser.parse_args()
+    problems = self_test()
+    if problems:
+        print('FAILED the gate\'s own check:\n' + indent('\n'.join(problems)))
+        return 1
     groups = set(args.group or GROUPS)
     chosen = [step for step in steps(args.profile, args.require_examples) if step.group in groups]
     report = Report()
