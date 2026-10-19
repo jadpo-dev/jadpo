@@ -1,5 +1,5 @@
 //! Rules across fields on every way a value is made (area 2, "Rules across
-//! fields"; area 19, "Chosen in chunk 5.5t2"), the slice the Phase 5
+//! fields"; area 19, "Rules across a type's parts"), the slice the Phase 5
 //! soundness review couldn't cover (chunk 5.8c): every standard object
 //! type's named rules broken in JSON, by `json.read`, each named at the
 //! value's path; the text forms `text.parse` reads, each naming its rule;

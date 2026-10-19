@@ -13,6 +13,7 @@ mod report;
 mod screen;
 mod sources;
 mod spinner;
+mod table;
 
 pub use detect::{ColorChoice, Depth, Environment, MAX_WIDTH, Mode, Stream, Style, Symbols, Theme};
 pub use diagnostic::DiagnosticView;
@@ -22,3 +23,4 @@ pub use report::{Diagram, DiagramLine, Field, Frame, Item, Mark, Report, Text};
 pub use screen::{Block, Change, ChangeGroup, ChangeMark, Fact, Outcome, Row, RowState, Screen};
 pub use sources::{Position, Sources, line_text, shown_path};
 pub use spinner::{SPINNER_DELAY, Spinner};
+pub use table::{Cell, Table};

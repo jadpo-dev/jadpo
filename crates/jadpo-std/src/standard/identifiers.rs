@@ -80,11 +80,12 @@ pub const ABA_ROUTING_NUMBER: StandardType = identifier(
 );
 
 /// A bank identifier code (ISO 9362, SWIFT): a bank, a country, a place
-/// and an optional branch, 8 or 11 characters.
+/// and an optional branch, 8 or 11 characters, its country a current
+/// ISO 3166-1 code, as `Country` holds them.
 pub const BIC: StandardType = identifier(
     "Bic",
     "[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?",
-    None,
+    Some(Validator::Bic),
     CANONICAL,
     None,
     // Deutsche Bank's head office and its branch 500, and NatWest's, as
@@ -95,7 +96,14 @@ pub const BIC: StandardType = identifier(
             ("DEUTDEFF500", "DEUTDEFF500"),
             ("NWBKGB2L", "NWBKGB2L"),
         ],
-        &["DEUTDEF", "deutdeff", "DEUTDEFF50", "DEU1DEFF", ""],
+        &[
+            "DEUTDEF",
+            "deutdeff",
+            "DEUTDEFF50",
+            "DEU1DEFF",
+            "DEUTZZFF",
+            "",
+        ],
     ),
 );
 
@@ -569,6 +577,14 @@ pub fn is_iban(text: &str) -> bool {
     fits && mod_97(rest.chars().chain(text.chars().take(4))) == Some(1)
 }
 
+/// A BIC's country, its fifth and sixth letters: a current ISO 3166-1
+/// code, as `Country` holds them (ISO 9362), or Kosovo's user-assigned
+/// `XK`, which SWIFT issues BICs under as it does IBANs.
+pub fn is_bic(text: &str) -> bool {
+    text.get(4..6)
+        .is_some_and(|code| code == "XK" || super::places::is_current_country(code))
+}
+
 /// A Legal Entity Identifier: mod-97 1 as it is (ISO 7064 mod 97-10).
 pub fn is_lei(text: &str) -> bool {
     mod_97(text.chars()) == Some(1)
@@ -666,6 +682,16 @@ mod tests {
         assert!(is_nhs_number("4010232137"));
         assert!(!is_nhs_number("123456789"));
         assert!(!is_uk_national_insurance_number("TN123456A"));
+    }
+
+    #[test]
+    fn a_bic_names_a_current_country() {
+        let bic = |text| BIC.accepts(text);
+        assert!(bic("DEUTDEFF"));
+        assert!(bic("NWBKGB2L500"));
+        assert!(!bic("DEUTZZFF"), "ZZ isn't an ISO 3166-1 code");
+        assert!(!bic("DEUTYUFF"), "Yugoslavia's YU is withdrawn");
+        assert!(bic("RBKOXKPR"), "SWIFT issues Kosovo's BICs under XK");
     }
 
     #[test]

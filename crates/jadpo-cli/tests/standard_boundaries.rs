@@ -75,7 +75,7 @@ impl Case {
     }
 
     /// Whether it is built on `Text`, so `text.from` has nothing to give
-    /// (area 19, "Chosen in chunk 5.5a").
+    /// (area 19, "Text").
     fn is_text(&self) -> bool {
         match self.entry.holds {
             Holds::Text { .. } => true,
@@ -690,6 +690,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-runtime/src/purge.rs",
         "compares a purge's cutoff with `now`",
+    ),
+    (
+        "crates/jadpo-runtime/src/schedules/watch.rs",
+        "writes a schedule's own times (due, started, a lease's end) in an alert's log event, never an app's value (chunk 6.2b)",
+    ),
+    (
+        "crates/jadpo-cli/src/schedules.rs",
+        "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
     ),
     (
         "crates/jadpo-runtime/src/policy.rs",

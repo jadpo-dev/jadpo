@@ -14,7 +14,7 @@
 //!
 //! The policy is the page's: no scripts, no event handlers, links only to
 //! `https:` and `mailto:`. What it doesn't name is the most conservative
-//! choice (area 19, "Chosen in chunk 5.5o"): basic formatting, headings,
+//! choice (area 19, "Text formats"): basic formatting, headings,
 //! lists, quotes, code and links; no images, tables, forms, frames, media,
 //! styles or classes; no relative or protocol-relative links; and every
 //! link `rel="noopener noreferrer nofollow"`.

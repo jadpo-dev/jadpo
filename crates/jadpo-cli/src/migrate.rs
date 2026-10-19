@@ -946,7 +946,7 @@ fn target(
 
 /// The address the connection `store` reads from its setting, when a
 /// variable gives one.
-fn configured_url(
+pub(crate) fn configured_url(
     call: &Call,
     loaded: &Loaded,
     store: String,

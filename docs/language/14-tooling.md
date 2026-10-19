@@ -44,7 +44,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo test --interactive` | Keyboard view of every test: search, navigate, run a file, one test or all, rerun failures, toggle watch | Decided in area 13, not built: the flag says `toolchain.not_built_yet` (chunk 2.8) |
 | `jadpo test --keep-failed` / `--seed <n>` | Keeps a failed test's database and trace; reruns with a given order seed | `--seed` built (chunk 2.2); `--keep-failed` built with the test database (chunk 3.1): it keeps the database and names it in the report; the trace comes with area 17 |
 | `jadpo build` | Writes the runnable app into `build/target/`, and each API's `<api>.failures.<locale>.json` beside its OpenAPI document (area 10) | Decided, not built: comes with compiled deployables (Phase 8) |
-| `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The settings `config.jadpo` declares are read from the environment over `.env.local` and checked first (chunk 5.1): a missing or invalid value stops the app starting and is shown by setting and variable, never by value, and a save of `.env.local` is checked like a save of source, keeping the last good version serving. Each database opens at the address its connection's `url:` setting holds, or the one `--url` names, or else a disposable PostgreSQL for the session (for a store whose address no variable gives), with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line. Decided 2026-10-16 (area 11), not built: provider calls faked by default, `--fake` and `--sandbox` changing which calls reach the sandbox for one session only, and the services the app's connections declare started with it |
+| `jadpo dev` | Rebuilds and restarts the app on every change; `--no-run` only rebuilds | Built (chunk 4.1): runs the app in the interpreter on the native host at `http://localhost:3000` (`--port` to change it), one line per request with its request id; each save that checks cleanly serves the next request, and while a save has errors the last good version keeps serving. The settings `config.jadpo` declares are read from the environment over `.env.local` and checked first (chunk 5.1): a missing or invalid value stops the app starting and is shown by setting and variable, never by value, and a save of `.env.local` is checked like a save of source, keeping the last good version serving. Each database opens at the address its connection's `url:` setting holds, or the one `--url` names, or else a disposable PostgreSQL for the session (for a store whose address no variable gives), with pending migrations applied as they appear. `--no-run` only checks on every save and writes `build/`; `--json` writes one envelope per line. Since chunk 6.2b, a line for each schedule run and skipped tick (a paused schedule's once), with its trace's id, outcome, what it emitted or its failure and its time, and a line for each alert when it starts; the address of each database it started is in `build/dev/stores.json` while it runs, for `jadpo schedules` and `jadpo why`. Decided 2026-10-16 (area 11), not built: provider calls faked by default, `--fake` and `--sandbox` changing which calls reach the sandbox for one session only, and the services the app's connections declare started with it |
 | `jadpo inspect` | Prints the project map: every declaration, call and failure | Decided, not built: until then `build/manifest.json` and the catalogues hold the map |
 | `jadpo routes` | Lists every route with its full method and path, file, API, authentication and the query or action it runs | Built (chunk 4.1); authentication shows `required`, `none` or `fresh` since chunk 4.3 (area 8) |
 | `jadpo ai show <prompt>` | Prints what a prompt sends a model: its type, file and version, the instructions as the system message, the conversation's turns and the request as the user message, each placeholder as the file writes it (area 21) | Built (chunk 5.5v2), with `--json`; takes the prompt's name or its type's; a misspelt action or prompt is `cli.ai_arguments` with the nearest name, and a prompt with errors shows them instead; `record` and `usage` say `toolchain.not_built_yet` until the `ai` capability |
@@ -66,7 +66,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo suggest` / `--catalogue` / `ignore <number> "<why>"` / `found <file>:<line> <Type or operation> "<why>"` / `share` / `share --approve` / `--decline` / `--new-token` | Hints where code could use a standard type or operation, never editing; lists every signal; keeps a suggestion quiet; teaches a miss; sends what was learned to Jadpo HQ | Built (chunk 5.5x), with `--json`: formats, then reports numbered findings from the signals on the standard types' entries and the loop table, and ends with the agent's instruction; `ignore` writes `ignored_suggestions.jadpo_record`, `found` writes `taught_suggestions.jadpo_record` (chunk 5.5y), both add to `.jadpo/suggest_pending`; a wrong number, place, type or operation is `cli.suggest_arguments`. `share` built in chunk 5.5y against a fake of Jadpo HQ: sends the pending hashes, shows the snippets HQ asks for and the exact payload, and sends them only with `--approve`; stops at once when sharing is turned off; an unreachable or refusing HQ is `suggest.share_failed` ("Suggestions" and "Sharing with Jadpo HQ" below) |
 | `jadpo approval --before <ref>` | Writes the review report of what changed in behaviour, policy and the API | Decided, not built: comes with records (area 18); sign-off is question 12 |
 | `jadpo deliveries` | Lists, retries, dismisses, cancels and resolves schedule runs and event deliveries; `show <id>` lists an unfinished multi-step action's steps, and `retry <id> --not-done` and `abandon <id>` act on it (area 11) | Decided (question 13; `show`, `--not-done` and `abandon` 2026-10-16), not built: comes with events (chunk 6.1) and multi-step calls |
-| `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Decided in area 12, not built |
+| `jadpo schedules` | Lists schedules; `run`, `pause`, `resume`, `history` | Built (chunk 6.2b), with `--json`: a table of each schedule's last run and next due time (or `‖ paused`), the alerts that hold and a footer; `history <name>` 20 records a page (`--page`), grouped by day, then the metrics; `pause` and `resume` set the state row; `run` runs it now in this process under its lease (`schedules.lease_held`, `schedules.run_failed`); the database is `--url`'s, the connection's setting's, or a running `jadpo dev`'s; an unknown name is `cli.schedules_arguments` with the nearest (area 12, "Chosen in chunk 6.2b") |
 | `jadpo package new <Name> --library` / `--provider` | Writes a package's own repository: the package format, `recipes/`, a `sample/` app and `GUIDE.md` | Decided in area 11 (2026-10-16), not built |
 | `jadpo package add <name or source>` | Installs a package into `packages/<name>/<version>/` and `jadpo.lock`: from the registry (the fixed order of area 11's question 13), a git repository (`github.com/acme/acme-pricing@v2.1.0`), a path in this repository (another Jadpo app's OpenAPI, `../orders`) or a URL serving an OpenAPI document; regenerates the surface and refuses one that differs from its committed `surface.jadpo_record`; a third party's git package needs an acceptance | Decided in area 11 (2026-10-16), not built: chunk 7.1 (registry and path), git later |
 | `jadpo package import <format> <file>` | Turns a published description (`openapi`, `smithy`, `postman`, `har`, `dts`) into the app's own integration in `shared/providers/<name>/<version>/`, merging corrections | Decided in area 11, not built: OpenAPI in chunk 7.2, the rest when first needed |
@@ -83,7 +83,7 @@ and ask for a missing argument with a searchable list (questions 16 and 17).
 | `jadpo runs unfinished --build <build id>` | Run against production before a deploy: lists the unfinished multi-step runs and batches whose recorded path the new build changes, so an operator knows what will stop as `diverged` (area 12) | Decided 2026-10-16, not built |
 | `jadpo batches list` / `show <id>` / `cancel <id>` | Lists batch runs (file reads and writes, `batches.each`) with their state and progress; one run's progress and problems; stops one, as `batches.cancel` does (area 12) | Decided 2026-10-16, not built |
 | `jadpo search reindex` | Rebuilds a search index from the database | Decided in area 16 (2026-10-16), not built |
-| `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17 |
+| `jadpo trace <id>` / `jadpo why <name>` / `jadpo call` / `jadpo console` | Debugging (area 17) | Proposed in area 17; `jadpo why <schedule>` built (chunk 6.2b), with `--json`: why a schedule didn't run, or how its last run went, ending with its `.jadpo` place (area 12, "Chosen in chunk 6.2b"); another name is `cli.why_arguments` |
 | `jadpo incident [file \| -]` | Explains a runtime event: from a file, from standard input (`pbpaste \| jadpo incident -`, or a log stream piped in), or, with no argument in a terminal, from text pasted at a prompt; it finds the Jadpo events inside surrounding log text and groups them by request | Decided 2026-10-13, not built: comes with debugging (area 17) |
 | `jadpo lsp` | Runs the language server for editors | Built (chunk 1.7): diagnostics, hover and go to definition, from every use of a name and from a `use` line since chunk 3.5; the VS Code extension in `editors/vscode` starts it (chunk 3.6) |
 | `jadpo help [command]` | Help for one command; `--help` works everywhere | Built (chunk 1.1): `jadpo help [command]`, `--help` with examples on every command, and `jadpo help --json` with the rule catalogue and the schemas of the manifest and of `jadpo test --json` |
@@ -521,8 +521,8 @@ root, committed and shared by the team (area 1's root list has it; area
 18's record format):
 
 ```text
-// Written by `jadpo suggest ignore`; `jadpo suggest` drops entries whose code has gone. Never edit it by hand.
-record ignored_suggestions 1
+// Generated by Jadpo from the suggestions this project ignores; update it with `jadpo suggest ignore`, never by hand.
+record ignored_suggestions 2
 
 ignore 3f9a1c0e2b7d4a51 conversion Money "Basis points, not money"
 ```
@@ -558,8 +558,8 @@ field or parameter declared there; a line with none of them is
 `cli.suggest_arguments`.
 
 ```text
-// Written by `jadpo suggest found`; `jadpo suggest` finds each pattern anywhere. Never edit it by hand.
-record taught_suggestions 1
+// Generated by Jadpo from the patterns this project taught `jadpo suggest`; update it with `jadpo suggest found`, never by hand.
+record taught_suggestions 2
 
 taught 8c1d0e5a4f3b2a19 Money "Pence held as Int" "(+ delivery subtotal)"
 ```
@@ -588,8 +588,9 @@ that writes there adds `.jadpo/` to `.gitignore`. `.jadpo/suggest_last`,
 `.jadpo/suggest_pending` and `.jadpo/suggest_signals` hold one JSON object
 per line, since they hold source text; only the committed records are in
 Jadpo's readable format. Those are written at format 2, with the shared
-header (area 18, "Checking a record"); the format-1 files shown above are
-still read, and `jadpo records update` rewrites them.
+header (area 18, "Checking a record"), as shown above; files written at
+format 1, before chunk 7.0, are still read, and `jadpo records update`
+rewrites them.
 
 | File | Committed | Holds |
 |---|---|---|
@@ -869,6 +870,7 @@ each command is built.
 | `cli.presentation_arguments` | any command | Terminal presentation option is invalid |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.routes_arguments` | `routes` | Routes command has invalid arguments |
+| `cli.schedules_arguments` | `schedules` | Schedules command has invalid arguments |
 | `cli.schema_command_required` | `schema` | Schema command requires a subcommand |
 | `cli.schema_decision_arguments` | `schema` | Schema decision command has invalid arguments |
 | `cli.schema_diff_arguments` | `schema` | Schema diff command has invalid arguments |
@@ -885,6 +887,7 @@ each command is built.
 | `cli.watch_arguments` | `watch` | Watch command has invalid arguments |
 | `cli.watch_input_read_failed` | `watch` | Watched project inputs could not be read |
 | `cli.watch_output_failed` | `watch` | Watch lifecycle event could not be written |
+| `cli.why_arguments` | `why` | Why command has invalid arguments |
 | `configuration.local_changed` | `config` | Local configuration changed during the update |
 | `configuration.local_invalid_encoding` | `config` | Local configuration is not UTF-8 text |
 | `configuration.local_read_failed` | `config` | Local configuration could not be read |
@@ -968,6 +971,9 @@ each command is built.
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
+| `schedules.lease_held` | `schedules run` | Schedule is already running |
+| `schedules.run_failed` | `schedules run` | Schedule's run failed |
+| `schedules.unavailable` | `schedules`, `why` | Schedules' database couldn't be read |
 | `suggest.record_invalid` | `suggest` | Suggestions record can't be read |
 | `suggest.share_failed` | `suggest share` | Jadpo HQ couldn't be reached or refused what was shared |
 | `test.failed` | `test` | Test run failed |

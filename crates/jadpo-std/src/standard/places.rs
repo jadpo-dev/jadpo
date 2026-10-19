@@ -305,7 +305,7 @@ pub fn is_current_country(code: &str) -> bool {
 
 /// Whether `text` is a UN/LOCODE whose first two letters are a current
 /// country's code (chunk 5.5l2). The code list itself isn't shipped: its
-/// terms of use are unclear ("Chosen in chunk 5.5l2").
+/// terms of use are unclear (area 19, "Groups with the baseline only").
 pub fn is_un_locode(text: &str) -> bool {
     text.get(..2).is_some_and(is_current_country)
 }

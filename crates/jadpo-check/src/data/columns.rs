@@ -525,8 +525,10 @@ pub fn system_table(name: &str) -> Table {
             // Each schedule's state (area 12, "Schedules"; chunk 6.2): the
             // interval its due times were worked out with, when it is next
             // due, whether an operator paused it, the lease that lets one
-            // instance run it at a time and the run holding it, and the last
-            // tick that reached it. In `schedules: { store: }`.
+            // instance run it at a time and the run holding it, the last
+            // tick that reached it, and when its last successful run
+            // started, which the alerts read (chunk 6.2b). In
+            // `schedules: { store: }`.
             add("schedule", "text", false);
             add("every_ms", "bigint", false);
             add("next_run_at", "timestamptz(3)", false);
@@ -534,6 +536,7 @@ pub fn system_table(name: &str) -> Table {
             add("lease_until", "timestamptz(3)", true);
             add("run_id", "uuid", true);
             add("last_tick_at", "timestamptz(3)", true);
+            add("last_succeeded_at", "timestamptz(3)", true);
             primary = vec!["schedule".into()];
         }
         "schedule_runs" => {

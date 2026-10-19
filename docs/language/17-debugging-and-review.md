@@ -455,10 +455,12 @@ area 19, "Every boundary through the contract").
 
 ### Status
 
-Nothing on this page is built yet. Mapped `.jadpo` stacks, `jadpo incident`,
+Almost nothing on this page is built yet. Mapped `.jadpo` stacks, `jadpo incident`,
 `why`, timelines, `test new --from`, `call` and the approval report come
 after the first build (roadmap, areas 17 and 18); the developer console, MCP
 and the review web view come after that, as product work (E11 and E06).
+Since chunk 6.2b, `jadpo why <schedule>` answers why a schedule didn't run
+(area 12, "Chosen in chunk 6.2b"); its other forms come with this page.
 
 ### Consistency with the rest of the language
 
