@@ -341,25 +341,6 @@ fn bodies(db: &dyn Db, project: Project) -> HashMap<Key, Arc<Body>> {
     out
 }
 
-/// How a column holding a value built on `builtin` is read, for those a
-/// backfill worked out in Jadpo reads and writes: one column the storage
-/// codec reads and binds.
-pub fn builtin_column(builtin: Builtin) -> Option<jadpo_std::read::Column> {
-    use jadpo_std::read::Column;
-    Some(match builtin {
-        Builtin::Bool => Column::Bool,
-        Builtin::Int => Column::Int,
-        Builtin::Decimal => Column::Decimal,
-        Builtin::Text => Column::Text,
-        Builtin::Bytes => Column::Bytes,
-        Builtin::Uuid => Column::Uuid,
-        Builtin::Instant => Column::Instant,
-        Builtin::CalendarDate => Column::Date,
-        Builtin::Duration => Column::Duration,
-        _ => return None,
-    })
-}
-
 /// How deep functions may call functions before a backfill has no form.
 const DEPTH: u32 = 16;
 
@@ -883,18 +864,12 @@ fn rounding(variant: &str) -> Option<Rounding> {
     })
 }
 
-/// The column type a literal of `builtin` is bound for: one column of a
-/// type a form takes.
+/// The column type a literal of `builtin` is bound for: the one column the
+/// storage table keeps a value of a type a form reads in, at its widest
+/// (chunk 5.8b).
 fn column_type(builtin: Builtin) -> Option<SqlType> {
-    SqlType::of_column(match builtin.representation() {
-        Builtin::Bool => "boolean",
-        Builtin::Int | Builtin::Duration => "bigint",
-        Builtin::Decimal => "numeric",
-        Builtin::Text => "text",
-        Builtin::Uuid => "uuid",
-        Builtin::Bytes => "bytea",
-        Builtin::CalendarDate => "date",
-        Builtin::Instant => "timestamptz(3)",
-        _ => return None,
-    })
+    if !form::reads(builtin) {
+        return None;
+    }
+    jadpo_std::standard::storage::builtin_column(builtin.representation())
 }

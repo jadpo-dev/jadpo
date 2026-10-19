@@ -1246,3 +1246,75 @@ fn a_backfill_reaching_a_setting_a_key_or_a_field_its_migration_adds_is_refused(
         checked.stdout
     );
 }
+
+#[test]
+fn a_backfill_in_jadpo_reads_and_fills_a_percentage_as_a_query_reads_one() {
+    // A backfill in Jadpo reads and writes a column through the one table
+    // a query's read uses (chunk 5.8b), so a percentage, held as the
+    // fraction it is in one column, is no longer refused as not built.
+    let root = folder("percentage");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/shop/types/share.jadpo",
+        "type Share = Percentage {}\n",
+    );
+    write(
+        &root,
+        ITEM,
+        "use shop/types { Share }\n\nentity Item {\n    id: Uuid\n    share: Share\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    write(
+        &root,
+        ITEM,
+        "use shop/types { Share }\n\nentity Item {\n    id: Uuid\n    share: Share\n    discount: Share\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "add_discount"]).code, 0);
+    let name = latest(&root);
+    write(
+        &root,
+        &format!("database/migrations/{name}/changes.jadpo"),
+        "migration {\n    Item.discount: {\n        backfill: Item.share\n    }\n}\n",
+    );
+    let finished = jadpo(&root, &["migrate", "new"]);
+    assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{name}/postgres.sql")))
+        .expect("postgres.sql");
+    assert!(
+        sql.contains("-- backfill Item.discount: in Jadpo, "),
+        "{sql}"
+    );
+    if !jadpo_test::live() {
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server
+        .create_database("backfill_percentage")
+        .expect("database");
+    let migrations = steps(&root);
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    runtime
+        .block_on(jadpo_runtime::migrate(&store, &migrations[..1]))
+        .expect("the first migration");
+    statement(
+        &url,
+        "INSERT INTO \"item\" (\"id\", \"share\") VALUES (gen_random_uuid(), 0.25), (gen_random_uuid(), 0.125), (gen_random_uuid(), 1.5)",
+    );
+    let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    assert_eq!(
+        rows(
+            &url,
+            "SELECT \"share\"::text, \"discount\"::text FROM \"item\" ORDER BY \"item\".\"share\""
+        ),
+        vec![
+            vec!["0.125".to_string(), "0.125".to_string()],
+            vec!["0.25".to_string(), "0.25".to_string()],
+            vec!["1.5".to_string(), "1.5".to_string()],
+        ]
+    );
+}

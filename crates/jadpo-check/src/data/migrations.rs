@@ -747,7 +747,7 @@ impl Decide<'_> {
         let mut reads = Vec::new();
         for name in names {
             let decode = match retired.iter().find(|(field, _)| *field == name) {
-                Some((_, Ty::Prim(builtin))) => super::backfill::builtin_column(*builtin)?,
+                Some((_, Ty::Prim(builtin))) => jadpo_std::read::Column::of_builtin(*builtin)?,
                 Some(_) => return None,
                 None => decode_column(
                     self.lookup,
@@ -791,7 +791,7 @@ fn decode_column(
     }
     let ty = Ty::Field(entity.to_string(), vec![field.name.clone()]);
     if let Some(builtin) = lookup.representation(&ty) {
-        return super::backfill::builtin_column(builtin);
+        return jadpo_std::read::Column::of_builtin(builtin);
     }
     match lookup.structure(&ty) {
         Ty::Named(name) => match lookup.def(&name) {

@@ -348,6 +348,12 @@ pub fn operator(op: Operator, args: &[Arg<'_>]) -> Option<String> {
     }
 }
 
+/// Whether a form reads a value of a type built on `builtin` held in one
+/// column: what a backfill's expression may hold (chunk 5.6b).
+pub fn reads(builtin: Builtin) -> bool {
+    kind(builtin).is_some()
+}
+
 /// What an operator does with a built-in type's values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
