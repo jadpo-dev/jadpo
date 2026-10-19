@@ -31,6 +31,7 @@ mod migrate;
 mod passkeys;
 mod policy;
 mod queries;
+mod records;
 mod round_trips;
 mod signed;
 mod sql;

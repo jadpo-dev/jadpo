@@ -162,10 +162,15 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
 fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, (String, String)> {
     let find = |path: &str| records.iter().find(|record| record.path == path);
     if let Some(record) = find(IDENTITIES) {
-        let failed = |error: String| (IDENTITIES.to_string(), error);
-        let text = record.text.as_ref().map_err(|error| failed(error.clone()))?;
-        return parse_identities(text)
-            .map_err(|(line, why)| failed(format!("line {}: {why}", line + 1)));
+        // A registry that can't be read is `record.edited` or
+        // `record.format_newer`, reported with every record's; until it is
+        // put right every born name is the name now.
+        return Ok(record
+            .text
+            .as_ref()
+            .ok()
+            .and_then(|text| parse_identities(text).ok())
+            .unwrap_or_default());
     }
     let Some(record) = find(LEGACY_IDENTITIES) else {
         return Ok(BTreeMap::new());

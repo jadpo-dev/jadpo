@@ -681,7 +681,7 @@ pub static COMMANDS: &[Command] = &[
         name: "records",
         synonyms: &[],
         group: "Change safely",
-        summary: "List the records and bring them up to date",
+        summary: "List and update the records",
         description: "Every file Jadpo generates and the project commits is a record (area 18): each \
                       API's api/<api>.jadpo_record, the identity registry, each translations \
                       folder's sources, the suggestions a team ignored or taught, and jadpo.lock. \

@@ -73,7 +73,7 @@ fn project(replace: &[(&str, &str)]) -> Vec<String> {
     problems(Layout::Project, &borrowed)
         .into_iter()
         // The API record is `jadpo api update`'s, not what is tested here.
-        .filter(|line| !line.contains("api.record_out_of_date"))
+        .filter(|line| !line.contains("record.out_of_date"))
         .collect()
 }
 
@@ -261,7 +261,7 @@ fn notes(en: &str, fr: &str) -> Vec<String> {
         .collect();
     problems(Layout::Project, &files)
         .into_iter()
-        .filter(|line| !line.contains("api.record_out_of_date"))
+        .filter(|line| !line.contains("record.out_of_date"))
         .collect()
 }
 

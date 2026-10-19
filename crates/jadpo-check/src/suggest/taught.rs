@@ -132,7 +132,7 @@ mod tests {
             taught("(+ delivery subtotal)", "Money", "Later reason wins"),
         ];
         let text = render(&entries);
-        assert!(text.starts_with(HEADER));
+        assert!(text.starts_with(&jadpo_db::record::header(&jadpo_db::record::TAUGHT_SUGGESTIONS, FROM)));
         let back = parse(&text).expect("reads");
         assert_eq!(back.len(), 2);
         assert!(back.iter().any(|t| t.reason == "Later reason wins"));
@@ -141,7 +141,10 @@ mod tests {
 
     #[test]
     fn a_hand_edit_is_refused_by_line() {
-        let text = format!("{HEADER}\n{KIND}\n\ntaught 0000000000000000 Money \"x\" \"(+ a b)\"\n");
+        let text = format!(
+            "{}\ntaught 0000000000000000 Money \"x\" \"(+ a b)\"\n",
+            jadpo_db::record::header(&jadpo_db::record::TAUGHT_SUGGESTIONS, FROM)
+        );
         assert_eq!(parse(&text).expect_err("refused").0, 3);
         assert!(parse("taught").is_err());
     }

@@ -154,7 +154,7 @@ mod tests {
             },
         ];
         let text = render(&entries);
-        assert!(text.starts_with(HEADER));
+        assert!(text.starts_with(&jadpo_db::record::header(&jadpo_db::record::IGNORED_SUGGESTIONS, FROM)));
         let back = parse(&text).expect("reads");
         assert_eq!(back.len(), 2);
         assert_eq!(back[0].suggestion, "Duration");
@@ -163,7 +163,10 @@ mod tests {
 
     #[test]
     fn a_hand_edit_is_refused_by_line() {
-        let text = format!("{HEADER}\n{KIND}\n\nignore nothash conversion Money \"x\"\n");
+        let text = format!(
+            "{}\nignore nothash conversion Money \"x\"\n",
+            jadpo_db::record::header(&jadpo_db::record::IGNORED_SUGGESTIONS, FROM)
+        );
         assert_eq!(parse(&text).expect_err("refused").0, 3);
         assert!(parse("ignore").is_err());
     }

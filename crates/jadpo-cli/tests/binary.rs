@@ -115,6 +115,7 @@ fn bash_completes_commands_and_values() {
             "routes",
             "ai",
             "api",
+            "records",
             "declines",
             "fix",
             "suggest",

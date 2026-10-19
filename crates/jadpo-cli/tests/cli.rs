@@ -72,6 +72,7 @@ Look things up
 
 Change safely
   api           Rewrite the API records       update
+  records       List and update the records   update
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
@@ -136,6 +137,7 @@ Look things up
 
 Change safely
   api           Rewrite the API records       update
+  records       List and update the records   update
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
@@ -298,6 +300,7 @@ fn help_json_is_the_whole_command_reference() {
             "routes",
             "ai",
             "api",
+            "records",
             "declines",
             "fix",
             "suggest",
@@ -687,6 +690,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "routes\tList every route",
             "ai\tShow what a prompt sends",
             "api\tRewrite the API records",
+            "records\tList and update the records",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
             "suggest\tHint where a standard type or operation fits",

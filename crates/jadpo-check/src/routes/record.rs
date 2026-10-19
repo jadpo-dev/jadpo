@@ -464,3 +464,16 @@ fn write(
     out
 }
 
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_openapi_version_is_the_start_of_the_records_sha256() {
+        // SHA-256 of nothing is e3b0c44298fc1c14…; line endings don't count.
+        assert_eq!(super::openapi_version(""), "e3b0c44298fc");
+        assert_eq!(
+            super::openapi_version("record api 1\r\n"),
+            super::openapi_version("record api 1\n")
+        );
+    }
+}
