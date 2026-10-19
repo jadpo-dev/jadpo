@@ -1839,14 +1839,27 @@ chunks below, taken before Phase 6.
   `jadpo check`; `jadpo records` and `jadpo records update`, which moves
   records from their old names; every example's record regenerated.
   Choices in area 18's "Chosen in chunk 7.0".
-- [ ] **6.1a System caller and delivery engine** `opus · xhigh`: from the
+- [x] **6.1a System caller and delivery engine** `opus · xhigh`: from the
   Phase 4 and Phase 5 reviews, a system caller (`Grant::System`, a
   `CallerPart` for it), so `Access.system` grants schedules and
   subscribers; one runtime-owned runner that drives an executor deferred
   (a new `Host::defer`, Workers' `waitUntil`, after the response is sent),
   inline (for 6.3's `settle:`) and per item (for 6.4); and 5.6b2's
   backfill row loop moved from the CLI into the runtime on that runner,
-  writing through each field's validator.
+  writing through each field's validator. Built: `CallerPart::System`
+  and `SystemTenant`, `Access.system` compiled into every statement and
+  a listed action's gate (`Gate::system`), the system limited to its
+  tenant or, for a schedule's run, none, and cleared for every request;
+  `jadpo_runtime::runner` with `Job`, `Deferred`, `settle`,
+  `run_deferred`, `hand_over`, `items` and `Batch`; `Host::defer`
+  replacing `Host::deliver`, committed events left on the context and
+  carried on `Response::deferred`, the native HTTP worker running them
+  as tasks after the response; `runner::InJadpo` working out backfills
+  through the `Executor` and each field's validator, which `jadpo
+  migrate apply` and `jadpo dev` just call. Choices in area 9's and area
+  12's "Chosen in chunk 6.1a"; flagged there: what only `Access.public`
+  grants is left to 6.1b's and 6.2's checks, and a schedule's run
+  reaches every tenant.
 - [ ] **6.1b Events** `opus · high`, after 6.1a (area 12, "Outbox
   placement, settled" and "Event records", decided 2026-10-19: each
   store an action writes keeps its outbox and delivery records, a
