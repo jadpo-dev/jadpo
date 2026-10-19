@@ -345,3 +345,110 @@ fn what_isn_t_the_layer_is_refused() {
         text(r#"{"type":"FeatureCollection","features":[]}"#)
     );
 }
+
+const PINS: &str = "/// A pin's label.
+type PinLabel = Text {
+    max_length: 80
+}
+
+/// What the map shows beside a pin.
+type PinProperties = Object {
+    label: PinLabel
+}
+
+/// The map's pins.
+action map_pins() -> FeatureCollection<Point, PinProperties> {
+    return FeatureCollection {
+        features: [
+            Feature {
+                geometry: Point {
+                    latitude: 51.5072
+                    longitude: -0.1276
+                    altitude: none
+                }
+                properties: PinProperties {
+                    label: PinLabel(\"Crumbs\")
+                }
+            }
+        ]
+    }
+}
+
+/// The map's layers.
+routes Pins {
+    prefix: /pins
+
+    /// Every pin, as the map draws them.
+    POST / {
+        authentication: RouteAuthentication.none
+        output: FeatureCollection<Point, PinProperties>
+        run: map_pins()
+    }
+}
+
+policy {
+    actions: {
+        map_pins: [Access.public]
+    }
+}
+";
+
+const PINS_TESTS: &str = "test \"the map fetches its pins as GeoJSON\" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: \"/pins\"
+    }
+    assert response.status == 200
+    assert response.code == none
+    assert response.output == map_pins()
+}
+";
+
+/// The pins as RFC 7946 GeoJSON, as a mapping library fetches them.
+const PINS_SENT: &str = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"label":"Crumbs"}}]}"#;
+
+/// A route sends a layer bare (area 7, "A map layer as output", chunk
+/// 5.5u7): its body is the `FeatureCollection` itself, which a mapping
+/// library fetches as it is, and a route test reads it back as the layer
+/// the action returned.
+#[test]
+fn a_route_s_layer_is_fetched_as_plain_geojson() {
+    let program = support::program(&[("main.jadpo", PINS), ("main.test.jadpo", PINS_TESTS)]);
+    let host = jadpo_runtime::MemoryHost::new();
+    let mut ctx = jadpo_runtime::Ctx::new(program.places(), &host, jadpo_runtime::Env::default());
+    let request = jadpo_runtime::http::Request {
+        method: "POST".to_string(),
+        path: "/pins".to_string(),
+        headers: vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            (
+                "idempotency-key".to_string(),
+                "6f1d2c3b-4a59-4e7f-8d10-2b3c4d5e6f70".to_string(),
+            ),
+        ],
+        ..Default::default()
+    };
+    let response = jadpo_runtime::block_on(jadpo_runtime::http::handle(
+        &program.app(),
+        &program,
+        &mut ctx,
+        &request,
+        "req_1",
+    ))
+    .expect("nothing waits");
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    assert_eq!(String::from_utf8_lossy(&response.body), PINS_SENT);
+    assert_eq!(
+        support::run(
+            &program,
+            "test main \"the map fetches its pins as GeoJSON\"",
+            vec![]
+        ),
+        jadpo_interp::Outcome::Value(Value::Unit)
+    );
+}

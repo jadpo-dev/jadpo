@@ -328,3 +328,145 @@ fn a_route_s_layer_is_described_as_geojson() {
         assert!(shown.contains(part), "{part}: {shown}");
     }
 }
+
+/// The files of a project with a route sending the map's pins as a layer
+/// typed `output`, run by `map_pins`, whose properties are
+/// `PinProperties` with `fields` beside its label.
+fn layer_project(output: &str, fields: &str) -> Vec<(&'static str, String)> {
+    vec![
+        ("app.jadpo", "application {}\n".to_string()),
+        (
+            "domains/maps/types/pin_label.jadpo",
+            "/// A pin's label.\ntype PinLabel = Text {\n    max_length: 80\n}\n".to_string(),
+        ),
+        (
+            "domains/maps/types/pin_properties.jadpo",
+            format!(
+                "use maps/types {{ PinLabel }}\n\n/// What the map shows beside a pin.\ntype PinProperties = Object {{\n    label: PinLabel{fields}\n}}\n"
+            ),
+        ),
+        (
+            "domains/maps/actions/map_pins.jadpo",
+            format!(
+                "use maps/types {{ PinLabel, PinProperties }}\n\n/// The map's pins.\naction map_pins() -> {output} {{\n    return FeatureCollection {{\n        features: [\n            Feature {{\n                geometry: Point {{\n                    latitude: 51.5072\n                    longitude: -0.1276\n                    altitude: none\n                }}\n                properties: PinProperties {{\n                    label: PinLabel(\"Crumbs\")\n                }}\n            }}\n        ]\n    }}\n}}\n"
+            ),
+        ),
+        (
+            "domains/maps/routes/pins.jadpo",
+            format!(
+                "use maps/actions {{ map_pins }}\nuse maps/types {{ PinProperties }}\n\n/// The map's layers.\nroutes Pins {{\n    prefix: /pins\n\n    /// Every pin, as the map draws them.\n    POST / {{\n        authentication: RouteAuthentication.none\n        output: {output}\n        run: map_pins()\n    }}\n}}\n"
+            ),
+        ),
+    ]
+}
+
+fn borrowed<'a>(files: &'a [(&'static str, String)]) -> Vec<(&'static str, &'a str)> {
+    files
+        .iter()
+        .map(|(path, text)| (*path, text.as_str()))
+        .collect()
+}
+
+/// A route sends a layer bare (area 7, "A map layer as output", chunk
+/// 5.5u7), so a mapping library fetches it as the whole response: the API
+/// record names it with its type arguments, and OpenAPI's response is RFC
+/// 7946's `FeatureCollection`, not an object holding one.
+#[test]
+fn a_route_sends_a_layer_bare() {
+    let files = layer_project("FeatureCollection<Point, PinProperties>", "");
+    let files = borrowed(&files);
+    // The record and the policy are the project's own business here.
+    assert_eq!(
+        support::rules(Layout::Project, &files),
+        ["api.record_out_of_date", "policy.effect_ungranted"]
+    );
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let bodies = jadpo_check::routes::record::record_bodies(&db, project);
+    let record = bodies.get("main").expect("a record");
+    assert!(
+        record.contains("output: FeatureCollection<Point, PinProperties>"),
+        "{record}"
+    );
+    assert!(
+        record.contains("object PinProperties\n    label: Text"),
+        "{record}"
+    );
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "pins", 1)
+        .expect("a document");
+    let schema = document
+        .get("paths")
+        .and_then(|paths| {
+            paths
+                .get("/pins")?
+                .get("post")?
+                .get("responses")?
+                .get("200")
+        })
+        .and_then(|ok| ok.get("content")?.get("application/json")?.get("schema"))
+        .expect("the response's schema");
+    let shown = format!("{schema:?}");
+    for part in [
+        "\"FeatureCollection\"",
+        "features",
+        "\"Feature\"",
+        "coordinates",
+        "PinProperties",
+    ] {
+        assert!(shown.contains(part), "{part}: {shown}");
+    }
+}
+
+/// A layer's properties are held to what an `Output` may hold, so only
+/// fields declared for clients leave the server; and only a collection is
+/// sent bare, never a list of them or a lone feature.
+#[test]
+fn a_layer_sends_only_what_an_output_may() {
+    for (output, fields, why) in [
+        (
+            "FeatureCollection<Point, PinProperties>",
+            "\n    owner_hash: PasswordHash",
+            "a password's hash",
+        ),
+        (
+            "FeatureCollection<Point, PinProperties>",
+            "\n    owner_password: Password",
+            "a secret",
+        ),
+        (
+            "FeatureCollection<Point, PinProperties>",
+            "\n    owner: Principal.user",
+            "a caller",
+        ),
+        ("Feature<Point, PinProperties>", "", "a lone feature"),
+        (
+            "List<FeatureCollection<Point, PinProperties>>",
+            "",
+            "a list of layers",
+        ),
+    ] {
+        let files = layer_project(output, fields);
+        let found = support::problems(Layout::Project, &borrowed(&files));
+        assert!(
+            found
+                .iter()
+                .any(|problem| problem.contains(" route.output_not_output: ")),
+            "{why}: {found:#?}"
+        );
+    }
+}
+
+/// Inside an `Output`, a layer's properties are held to the same: what the
+/// output holds is followed into them.
+#[test]
+fn an_output_holding_a_layer_holds_what_its_properties_hold() {
+    let found = problems(
+        "type PinProperties = Object {\n    owner_hash: PasswordHash\n}\n\ntype PinLayer = Output {\n    layer: FeatureCollection<Point, PinProperties>\n}\n",
+    );
+    assert!(
+        found
+            .iter()
+            .any(|problem| problem.contains(" type.password_hash_exposed: ")),
+        "{found:#?}"
+    );
+}

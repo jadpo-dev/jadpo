@@ -275,11 +275,17 @@ fn a_literal_mixing_altitudes_breaks_altitudes_agree() {
     let hole = |point: &dyn Fn(&str) -> String| {
         format!(
             "[{}]",
-            ["0.25 0.25", "0.75 0.25", "0.75 0.75", "0.25 0.75", "0.25 0.25"]
-                .iter()
-                .map(|corner| point(corner))
-                .collect::<Vec<_>>()
-                .join(", ")
+            [
+                "0.25 0.25",
+                "0.75 0.25",
+                "0.75 0.75",
+                "0.25 0.75",
+                "0.25 0.25"
+            ]
+            .iter()
+            .map(|corner| point(corner))
+            .collect::<Vec<_>>()
+            .join(", ")
         )
     };
     let line = |a: String, b: String| format!("LineString {{\n        points: [{a}, {b}]\n    }}");
@@ -291,7 +297,11 @@ fn a_literal_mixing_altitudes_breaks_altitudes_agree() {
         (
             "MultiPoint",
             "points",
-            format!("MultiPoint {{\n        points: [{}, {}]\n    }}", high("0 0"), ground("1 1")),
+            format!(
+                "MultiPoint {{\n        points: [{}, {}]\n    }}",
+                high("0 0"),
+                ground("1 1")
+            ),
         ),
         ("Polygon", "a hole", polygon(ring(&ground), hole(&high))),
         (

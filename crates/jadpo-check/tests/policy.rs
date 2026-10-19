@@ -2126,3 +2126,47 @@ action safe() -> Shown {
         assert!(all.contains(expected), "{expected}\n{all}");
     }
 }
+
+/// A map layer a route sends bare (area 7, "A map layer as output", chunk
+/// 5.5u7) is what its caller is shown, as an `Output` is: its properties
+/// carry only fields every caller of the action may read.
+#[test]
+fn a_layer_an_action_returns_carries_only_what_every_caller_may_read() {
+    let layer = |field: &str| {
+        company(&format!(
+            r#"type ProjectPin = Object {{
+    shown: Project.{field}
+}}
+
+action project_map(project_id: Project.id) fails ProjectNotFound -> FeatureCollection<Point, ProjectPin> {{
+    var project: Project = attempt Project.get(project_id)
+    return FeatureCollection {{
+        features: [
+            Feature {{
+                geometry: Point {{
+                    latitude: 51.5072
+                    longitude: -0.1276
+                    altitude: none
+                }}
+                properties: ProjectPin {{
+                    shown: project.{field}
+                }}
+            }}
+        ]
+    }}
+}}
+"#
+        ))
+    };
+    let found = layer("budget");
+    assert_eq!(
+        rules_of(&found),
+        ["policy.output_field_unproved"],
+        "{found:#?}"
+    );
+    assert!(
+        found[0].contains("`project_map` returns carries `Project.budget`, which not every caller may read"),
+        "{found:#?}"
+    );
+    assert_eq!(rules_of(&layer("name")), Vec::<&str>::new());
+}

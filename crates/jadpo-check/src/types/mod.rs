@@ -32,6 +32,13 @@ pub use body::{
     call_problems, callables_of, failure_set, failure_sets, rule_callables, typed_body,
 };
 pub use decl::type_problems;
+
+/// Whether `name` is `Feature` or `FeatureCollection` (area 20), whose
+/// properties type argument is followed wherever what a type holds is.
+pub(crate) fn is_feature_type(name: &str) -> bool {
+    name == jadpo_std::standard::geo::FEATURE
+        || name == jadpo_std::standard::geo::FEATURE_COLLECTION
+}
 pub use facts::{BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve};
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
