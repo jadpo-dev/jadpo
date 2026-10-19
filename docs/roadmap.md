@@ -717,24 +717,97 @@ chunks below, taken before Phase 6.
   command marks the schedule due and waits for the server's run record,
   never running application code on the operator's machine; against
   `jadpo dev` it still runs straight away.
+### Phase 6 review (2026-10-19)
+
+Two independent reviewers, soundness and architecture for the phases
+ahead, read everything Phase 6 built; their confirmed findings are the
+chunks below, taken before Phase 7, in this order.
+
+- [ ] **6.6a Phase 6 review fixes: exactly-once and limits** `opus ·
+  xhigh`: a subscriber whose action emits without writing keeps a handled
+  record in its outbox store, written after the outbox write, so a repeat
+  never duplicates downstream work; the sweep runs each piece at the
+  host's time and leases from the claim's time, never the tick's; a
+  batch's runs keep the chain depth they started at, so an event loop
+  through a batch stops at 16; the 1,000-event allowance counted per
+  item's action, not per batch page; a delivery claimed again over its
+  `retry:` budget or past `within:` fails, the run-limit path settling
+  against the budget; `settle:`'s `within:` races the body only, the
+  commit outside the race; ended batch runs, their problems and cancels
+  deleted by the tick after 30 days. Each from the review's reproduction,
+  a failing test first.
+- [ ] **6.6b Phase 6 review fixes: policy proofs** `opus · xhigh`: a
+  batch's `each:` parameter bound to the provenance of the `from:`
+  query's items and its inline call checked like any call, so a
+  restricted field can't be written where others read it; every action
+  a background run reaches checked against its own `actions:` line, and
+  a listed callee's line used for its own body's writes, as the plan
+  does; `BatchRun` refused in an `Input`, a placeholder and a query
+  parameter, so a run comes only from `batches.each` or a field the
+  caller may read; `route.output_required` no longer suggesting
+  `output: Unit`.
+- [ ] **6.6c Tenancy of background work** `opus · high` (areas 9 and 12,
+  decided 2026-10-19): the tenant an event or a batch run names proved to
+  come from a record of that tenant the action read or wrote under its
+  caller's policy, using 6.1c's provenance, else
+  `policy.event_tenant_unproved`; in an application with a tenant, a
+  batch's `key:` unique per call, tenant and key.
+- [ ] **6.7 Background work within a host's budget** `opus · xhigh`: each
+  invocation given a budget by its host; the runner stops taking pieces
+  and releases its claims before the budget ends, every lease the budget
+  and a margin; a batch handed on by time into a fresh invocation; the
+  native host draining on SIGTERM and releasing what it holds; one helper
+  that runs work within a budget and one lease helper (claim, renew,
+  release) for deliveries, schedules and batches, schedules' own run path
+  folded in and `Deferred::Run` used or removed. Done when a test host
+  with a 2 s budget releases a delivery rather than holding it 16
+  minutes, a batch carries on in a second invocation, and a native
+  shutdown releases a claimed delivery.
+- [ ] **6.8 Durable background records** `opus · high`, after 6.7: outbox
+  rows read by their `encoding`, a newer one parked; a batch's shape
+  from canonical type text and its call named by a stable key, its saved
+  values with an encoding and read by the standard JSON reader; the
+  system tables defined once in `jadpo-std`, with a test preparing every
+  runtime statement against the migrated schema.
+- [ ] **6.9 Serving, alerts and `why` in the runtime** `opus · high`: a
+  server handler in the runtime or `jadpo-host-native` that `jadpo dev`
+  only wraps to print; alerts raised in `schedules::tick` and kept once
+  on the schedule's state row; the `why` answer decided in the runtime,
+  as data the CLI shows.
+- [ ] **5.13 Gate time** `opus · high`: test threads capped per gate
+  step; the HTTP worker test's 150 ms ordering made deterministic;
+  `tools/verify.py` honouring `CARGO_TARGET_DIR`; §2.7's timings
+  measured again.
 - [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
   chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
   onwards) folded into the text they amend, as 5.10 did, and the code
-  comments and roadmap lines naming them repointed to their sections.
+  comments and roadmap lines naming them repointed; and the review's
+  list settled against the code: `compiler-runtime.md`'s stale runner
+  and host names, the Decisions rows on schedules and batches made to
+  match the code, "no tenant" given one meaning per kind of background
+  work, and every promise nothing builds (ended sessions deleted on the
+  tick, `jadpo deliveries`, the outbox's circuit breaker, delivery after
+  each commit in tests, deleting handled records) given a roadmap line.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in
 [packages and extension points](language/research/packages-and-extension-proposals.md).
 
-- [ ] **7.0b Capability seam and effectful operations** `opus · xhigh`,
-  from the Phase 5 review: one runtime entry point for operations with
-  effects (JSON with the plan's codec, keyed `crypto`, the clock,
-  randomness), called by both executors instead of the interpreter's own
-  dispatch, and a capability-driver seam with fakes and recordings that
-  7.1's providers, 5.5v3's `ai.generate` and 8.1's native build use.
+- [ ] **7.0b Effectful operations in the runtime** `opus · xhigh`, from
+  the Phase 5 and 6 reviews: one runtime entry point for operations with
+  effects (JSON with the plan's codec, keyed `crypto`, the clock as a
+  real operation, randomness, `emit`), called by both executors instead
+  of the interpreter's own dispatch; `Ctx`'s background-run state and its
+  capability state each one sub-struct reached through methods.
+- [ ] **7.0c The capability seam** `opus · xhigh`, after 7.0b: a seam that
+  logs each outside call on its invocation, feeding recordings, `jadpo
+  calls` and an `outcome_unknown` result; fakes as `Host` wrappers and one
+  shared test host; a delivery that targets an action or a capability;
+  no capability call inside an open transaction. 6.4b, 7.1, 7.3 and
+  5.5v3 build on it.
 - [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
-  moved after 7.0b from Phase 6, since it needs a minimal `files`
+  moved after 7.0c from Phase 6, since it needs a minimal `files`
   capability on that seam: a store's `put` and `read` of a `File` with a
   fake, then `csv.read`/`write`, `tsv`, `json_lines` and the batch forms
   of `json.read`/`write` on 6.4's runs, as area 19's "Data formats" tables
@@ -865,6 +938,10 @@ The design is area 11 as revised on 2026-10-16, with its research in
   with one rate-limit count per caller across its worker threads (today
   each thread counts its own, so a caller on several gets several
   allowances).
+  From the Phase 6 review: one `RuntimePlan` with a canonical byte
+  encoding behind a smaller `Executor` (places, plan, run); 6.9's
+  deployable handler; the corpus compiled as one generated crate, in its
+  own CI job with a time budget.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
@@ -874,6 +951,10 @@ The design is area 11 as revised on 2026-10-16, with its research in
   From chunk 5.3: a deployable carries locale data only for its
   application's supported locales (today all 533 are compiled in: about
   3.5 MB of a 3.9 MB module, 1.2 MB gzipped).
+  From the Phase 6 review: the `trigger:` adapter; an `every:` under a
+  minute an error naming the schedule (area 12, decided 2026-10-19); a
+  batch carried on in a fresh invocation; 6.7's budgets set to Workers'
+  (30 s for `waitUntil`, 15 minutes' wall time for the cron).
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
@@ -889,6 +970,9 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   writes, signed-in lists, large rows, cold start) on native, Wasm under
   wasmtime and on Workers, against an equivalent Bun and TypeScript app and
   Node; results published with the method.
+  From the Phase 6 review: deliveries swept concurrently within each
+  sweep, with a bound, and a backlog of 10,000 deliveries among the
+  workloads.
 - [ ] **9.2 Optimise WebAssembly** `opus · xhigh` until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
