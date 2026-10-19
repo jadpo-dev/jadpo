@@ -499,7 +499,7 @@ impl Program {
 
     /// The codecs a JSON-held column is written and read with (chunk
     /// 5.5w2b): `json.read`'s, numbered by the plan's JSON table.
-    pub(crate) fn stored_json(&self) -> jadpo_runtime::JsonCodecs<'_> {
+    pub fn stored_json(&self) -> jadpo_runtime::JsonCodecs<'_> {
         jadpo_runtime::JsonCodecs {
             codecs: self.json_codecs(),
             types: &self.plan().json().types,
@@ -520,6 +520,21 @@ impl Program {
                 reads: plan.reads.clone(),
                 write: plan.write,
                 validator: Some(self.validator(plan.validator)),
+            })
+            .collect()
+    }
+
+    /// The structured fields the latest migration reads or writes as JSON
+    /// in Jadpo, in a program prepared [`Prepared::with_backfills`] (chunk
+    /// 5.9c), each with its type's number in the JSON table.
+    pub fn migration_json(&self) -> Vec<jadpo_runtime::runner::StoredJson> {
+        self.plan()
+            .migration_json_fields()
+            .iter()
+            .map(|json| jadpo_runtime::runner::StoredJson {
+                migration: json.migration.clone(),
+                field: json.field.clone(),
+                number: json.number,
             })
             .collect()
     }

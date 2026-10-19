@@ -1106,10 +1106,17 @@ impl Reader<'_> {
                     }
                     None => field.json = Some(shown),
                 }
-                // The snapshot records the column as `jsonb` and nothing it
-                // allows: its rules hold inside the JSON, which no
-                // migration's SQL reads (chunk 5.9b).
-                field.allows = physical::Allows::default();
+                // The snapshot records the column as `jsonb` and what its
+                // type reads, every rule inside the JSON included, which
+                // no migration's SQL reads but `jadpo migrate apply` checks
+                // stored values against (chunk 5.9c).
+                field.allows = physical::Allows {
+                    json: Some(columns::json_reads(
+                        self.lookup,
+                        &Ty::Field(entity.to_string(), vec![name.to_string()]),
+                    )),
+                    ..physical::Allows::default()
+                };
                 field.sql_type = Some(sql);
             }
             Ok(sql) => {

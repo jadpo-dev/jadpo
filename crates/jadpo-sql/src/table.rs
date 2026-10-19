@@ -184,6 +184,56 @@ pub fn fill_in_jadpo(
     )
 }
 
+/// The check of every value stored in `column`, a structured field's JSON
+/// whose type may no longer read them (area 5, "Storage types"; chunk
+/// 5.9c), in batches of [`BATCH_ROWS`], each in a transaction of its own:
+/// the line naming `field` and saying so, the statement counting the
+/// values to check, and one batch's read, which takes the key the last
+/// batch ended at as `$1` and gives the next rows with a value, each its
+/// key and the value. `jadpo migrate apply` reads each with the field's
+/// type now, and refuses the migration while any doesn't read.
+pub fn check_in_jadpo(field: &str, table: &str, key: &str, column: &str) -> String {
+    let (t, k, c) = (ident(table), ident(key), ident(column));
+    format!(
+        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, reading every stored value with the field's type now and refusing the migration while one doesn't read\n\
+         SELECT count(*) FROM {t} WHERE {c} IS NOT NULL;\n\
+         SELECT {k}, {c} FROM {t} WHERE {k} > $1 AND {c} IS NOT NULL ORDER BY {k} LIMIT {BATCH_ROWS}",
+        marker = jadpo_std::CHECK_MARKER,
+        how = jadpo_std::IN_JADPO,
+    )
+}
+
+/// The rewrite of the values stored in `column` that a structured field's
+/// type no longer reads (chunk 5.9c), with a backfill worked out in Jadpo
+/// as [`backfill_in_jadpo`] works one out: the line naming `field`, with
+/// the digest of the code it runs (`code`), the statement counting the
+/// values to read, one batch's read, which gives the next rows with a
+/// value past `$1`, each its key, the value and then the `reads` columns,
+/// locked as an `UPDATE` would lock them, and the write, which takes the
+/// keys of those that don't read and their new values as two arrays.
+pub fn rewrite_in_jadpo(
+    field: &str,
+    table: &str,
+    key: &str,
+    column: &str,
+    sql_type: &str,
+    reads: &[String],
+    code: &str,
+) -> String {
+    let (t, k, c) = (ident(table), ident(key), ident(column));
+    let mut read = vec![column.to_string()];
+    read.extend(reads.iter().cloned());
+    format!(
+        "{marker}{field}: {how}, {BATCH_ROWS} rows a batch, each batch its own transaction, rewriting the stored values the field's type no longer reads; its code's digest {code}\n\
+         SELECT count(*) FROM {t} WHERE {c} IS NOT NULL;\n\
+         {select} WHERE {k} > $1 AND {c} IS NOT NULL ORDER BY {k} LIMIT {BATCH_ROWS} FOR NO KEY UPDATE;\n\
+         UPDATE {t} SET {c} = \"jadpo_value\".\"value\" FROM unnest($1::uuid[], $2::{sql_type}[]) AS \"jadpo_value\"(\"key\", \"value\") WHERE {t}.{k} = \"jadpo_value\".\"key\"",
+        marker = jadpo_std::REWRITE_MARKER,
+        how = jadpo_std::IN_JADPO,
+        select = jadpo_read(table, key, &read),
+    )
+}
+
 /// `SELECT key, reads… FROM table`.
 fn jadpo_read(table: &str, key: &str, reads: &[String]) -> String {
     let mut columns = vec![ident(key)];

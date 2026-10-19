@@ -94,7 +94,8 @@ pub use isolation::Isolation;
 pub use literal::Literal;
 pub use locale::{LocalePlan, locale_ordinal};
 pub use migration::{
-    BACKFILL_MARKER, Batches, FILL_MARKER, IN_JADPO, Migration, STEP_MARKER, Step,
+    BACKFILL_MARKER, Batches, CHECK_MARKER, FILL_MARKER, IN_JADPO, Migration, REWRITE_MARKER,
+    STEP_MARKER, Step, Work,
 };
 pub use money::{CURRENCIES, CURRENCY, MONEY_FIELDS};
 pub use num::{Num, compare_exact};

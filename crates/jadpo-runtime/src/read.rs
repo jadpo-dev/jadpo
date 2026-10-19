@@ -714,6 +714,35 @@ impl JsonCodecs<'_> {
     }
 }
 
+impl JsonCodecs<'_> {
+    /// Why the JSON `stored` doesn't read as type `number`, as a
+    /// migration's check of stored values names it (chunk 5.9c): the rule
+    /// and where it broke (`` `max_length` on `line` ``), never the value;
+    /// `None` when it reads.
+    pub fn unread(&self, number: u32, stored: &str) -> Option<String> {
+        if stored.trim() == "null" {
+            return Some("JSON's `null`, which is never kept for `none`".into());
+        }
+        if let Err(why) = kept_within_limits(stored) {
+            return Some(why);
+        }
+        let codec = match self.codec(number) {
+            Ok(codec) => codec,
+            Err(why) => return Some(why),
+        };
+        match self.codecs.read_value(codec, &Value::text(stored)) {
+            Ok(_) => None,
+            Err(jadpo_value::json::Unread::Malformed) => Some("not one JSON document".into()),
+            Err(jadpo_value::json::Unread::Mismatch(problem)) if problem.field.is_empty() => {
+                Some(format!("`{}`", problem.rule))
+            }
+            Err(jadpo_value::json::Unread::Mismatch(problem)) => {
+                Some(format!("`{}` on `{}`", problem.rule, problem.field))
+            }
+        }
+    }
+}
+
 /// Whether `json` is within the limits a value kept as JSON is held to
 /// (chunk 5.9b): at most [`JSON_KEPT_LIMIT`] bytes, and arrays and objects
 /// nested at most [`JSON_KEPT_DEPTH`] deep, counted outside strings.
