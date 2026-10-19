@@ -2778,6 +2778,37 @@ fn parameters_ahead(p: &Parser<'_>) -> Option<usize> {
     }
 }
 
+/// `item -> expression`, or `(key, value) -> expression` with two
+/// parameters or more in parentheses (area 19), when one starts here:
+/// `false`, having read nothing, when none does.
+fn inline_function(p: &mut Parser<'_>) -> bool {
+    if p.at(IDENT) && p.nth(1) == THIN_ARROW {
+        let lambda = p.start();
+        name(p, "the function's parameter");
+        p.bump(THIN_ARROW);
+        expr(p);
+        lambda.complete(p, LAMBDA_EXPR);
+        return true;
+    }
+    let Some(names) = parameters_ahead(p) else {
+        return false;
+    };
+    // The checker says how many the operation takes.
+    let lambda = p.start();
+    p.bump(L_PAREN);
+    for index in 0..names {
+        if index > 0 {
+            p.bump(COMMA);
+        }
+        name(p, "the function's parameter");
+    }
+    p.bump(R_PAREN);
+    p.bump(THIN_ARROW);
+    expr(p);
+    lambda.complete(p, LAMBDA_EXPR);
+    true
+}
+
 fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
     let m = p.start();
     // `x => e`, `lambda x: e`, `|x| e`: inline functions from other
@@ -2809,28 +2840,12 @@ fn arg(p: &mut Parser<'_>, named: &mut Vec<(String, (u32, u32))>) {
         named.push((word, range));
         name(p, "this argument");
         p.bump_remap(COLON);
-        expr(p);
-    } else if p.at(IDENT) && p.nth(1) == THIN_ARROW {
-        let lambda = p.start();
-        name(p, "the function's parameter");
-        p.bump(THIN_ARROW);
-        expr(p);
-        lambda.complete(p, LAMBDA_EXPR);
-    } else if let Some(names) = parameters_ahead(p) {
-        // `(key, value) -> ...`: two parameters or more, in parentheses
-        // (area 19); the checker says how many the operation takes.
-        let lambda = p.start();
-        p.bump(L_PAREN);
-        for index in 0..names {
-            if index > 0 {
-                p.bump(COMMA);
-            }
-            name(p, "the function's parameter");
+        // A named argument's value may be an inline function too: a
+        // batch's `each: row -> ...` (area 12).
+        if !inline_function(p) {
+            expr(p);
         }
-        p.bump(R_PAREN);
-        p.bump(THIN_ARROW);
-        expr(p);
-        lambda.complete(p, LAMBDA_EXPR);
+    } else if inline_function(p) {
     } else {
         if let Some((first, first_range)) = named.first() {
             let (start, _) = p.range();

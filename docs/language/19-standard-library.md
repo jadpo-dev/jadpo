@@ -998,30 +998,30 @@ type OverPlan = Bool {}
 
 /// The flour a day's batches take. Items never below zero add up to a sum
 /// never below zero, so building `Grams` from it needs no arm.
-function flour_needed(batches: List<Batch>) -> Grams {
-    return Grams(list.sum(list.map(batches, batch -> batch.grams)))
+function flour_needed(bakings: List<Batch>) -> Grams {
+    return Grams(list.sum(list.map(bakings, batch -> batch.grams)))
 }
 
 /// The day's takings at full price.
-function takings(batches: List<Batch>) -> LoafPrice {
-    return LoafPrice(list.sum(list.map(batches, batch -> batch.price)))
+function takings(bakings: List<Batch>) -> LoafPrice {
+    return LoafPrice(list.sum(list.map(bakings, batch -> batch.price)))
 }
 
 /// The heaviest batch, if there is one: `max_by` reads each batch once,
 /// where sorting would order them all to read one.
-function heaviest(batches: List<Batch>) -> Batch? {
-    return list.max_by(batches, batch -> batch.grams)
+function heaviest(bakings: List<Batch>) -> Batch? {
+    return list.max_by(bakings, batch -> batch.grams)
 }
 
 /// The batches on each shelf, in baking order.
-function by_shelf(batches: List<Batch>) -> Map<Shelf, List<Batch>> {
-    return list.group_by(batches, batch -> batch.shelf)
+function by_shelf(bakings: List<Batch>) -> Map<Shelf, List<Batch>> {
+    return list.group_by(bakings, batch -> batch.shelf)
 }
 
 /// Whether each batch came out heavier than planned, batch by batch: a
 /// two-parameter inline function is given one item from each list.
-function over_plan(batches: List<Batch>, goals: List<Grams>) -> List<OverPlan> {
-    return list.zip_with(batches, goals, (batch, goal) -> OverPlan(batch.grams > goal))
+function over_plan(bakings: List<Batch>, goals: List<Grams>) -> List<OverPlan> {
+    return list.zip_with(bakings, goals, (batch, goal) -> OverPlan(batch.grams > goal))
 }
 ```
 
@@ -7231,8 +7231,8 @@ type BatchCount = Int {
     min: 0
 }
 
-function batches_baked(batches: List<BatchName>) -> BatchCount {
-    return BatchCount(collection.count(batches))
+function batches_baked(bakings: List<BatchName>) -> BatchCount {
+    return BatchCount(collection.count(bakings))
 }
 ```
 
@@ -7240,9 +7240,9 @@ function batches_baked(batches: List<BatchName>) -> BatchCount {
 error: `collection.count` is now `list.count`
  --> main.jadpo:10:23
    |
-10 |     return BatchCount(collection.count(batches))
+10 |     return BatchCount(collection.count(bakings))
    |                       ^^^^^^^^^^^^^^^^ moved
-  reason: The standard library has one namespace for each type an operation works on, so `collection.` became `list.`, `set.` and `map.`; `batches` is a list.
+  reason: The standard library has one namespace for each type an operation works on, so `collection.` became `list.`, `set.` and `map.`; `bakings` is a list.
   next: Write `list.count` (agent)
   rule: semantic.standard_operation_moved
   help: docs/language/19-standard-library.html#semantic-standard-operation-moved
@@ -7266,8 +7266,8 @@ type BatchName = Text {
 type TraysOut = Int {}
 
 /// The batches still to bake once `done` of them are out of the oven.
-function still_to_bake(batches: List<BatchName>, done: TraysOut) -> List<BatchName> {
-    return list.drop_first(batches, done)
+function still_to_bake(bakings: List<BatchName>, done: TraysOut) -> List<BatchName> {
+    return list.drop_first(bakings, done)
 }
 ```
 
@@ -7275,7 +7275,7 @@ function still_to_bake(batches: List<BatchName>, done: TraysOut) -> List<BatchNa
 error: `done` may be negative
  --> main.jadpo:9:37
   |
-9 |     return list.drop_first(batches, done)
+9 |     return list.drop_first(bakings, done)
   |                                     ^^^^ `TraysOut` can be below `0`
   reason: `list.drop_first`'s `n` counts from the start, so it is never negative, which is proved while compiling: a literal isn't below `0` and a value's type has a `min` of at least `0`; `TraysOut` allows values below `0`.
   next: Pass a value whose type has `min: 0`, building it where a negative one is handled; count from the end with `keep_last` or `drop_last` (agent)
@@ -7758,7 +7758,7 @@ check failed: 1 error, 1 file
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
-| The format namespaces | File forms decided with batches (area 12), built with them in 6.4; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
+| The format namespaces | File forms decided with batches (area 12), built on them in 6.4b; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b, with the operators' and conditionals' forms, and by aggregate queries in 5.6c |
 | Geospatial, AI | Decided as future areas, planned in 5.5u ([area 20](20-geospatial.md)) and 5.5v; the geospatial types' baseline built in 5.5s, area 20's measures in 5.5u2, the AI types' in 5.5s2 |
 
@@ -11844,7 +11844,7 @@ first; each group of types then arrives with its baseline and its extras.
   Built.
 - **5.5g Hashing, encodings and JSON** `opus · high`: `hash`, `encoding`,
   `json.read` and `json.write` in memory with `mismatch`'s problem; the
-  batch forms and `csv`, `tsv` and `json_lines` come with batches (6.4).
+  batch forms and `csv`, `tsv` and `json_lines` come with batches (6.4b).
   Built; split on 2026-10-17, the rest is 5.5g2.
 - **5.5g2 The decode problem on a failure** `opus · high`: the built-in
   `DecodeProblem`, and a failure mapped from `mismatch` that declares a

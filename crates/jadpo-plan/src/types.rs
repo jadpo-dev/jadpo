@@ -173,6 +173,17 @@ impl Types {
         self.typed_shape(name, &fields)
     }
 
+    /// The shape of a batch type (area 12, chunk 6.4), each field typed
+    /// by its part.
+    pub(crate) fn batch_shape(&mut self, name: &str) -> ShapeId {
+        let fields: Vec<(&str, TypeRef)> = jadpo_std::batch::object_fields(name)
+            .unwrap_or_default()
+            .iter()
+            .map(|(field, part)| (*field, batch_part(*part)))
+            .collect();
+        self.typed_shape(name, &fields)
+    }
+
     /// The shape of a standard object type from its data entry's parts
     /// (area 19): each field the type its part is built on, or the
     /// standard type it holds.
@@ -201,7 +212,7 @@ impl Types {
         id
     }
 
-    fn typed_shape(&mut self, name: &str, fields: &[(&str, TypeRef)]) -> ShapeId {
+    pub(crate) fn typed_shape(&mut self, name: &str, fields: &[(&str, TypeRef)]) -> ShapeId {
         let key = Key::new(Kind::Type, name);
         if let Some(id) = self.shape_ids.get(&key) {
             return *id;
@@ -1027,4 +1038,15 @@ fn standard_part(key: &Key) -> Option<(jadpo_std::Builtin, Rules)> {
         ));
     }
     Some((part.builtin()?, part.rules()))
+}
+
+/// A batch type's field's type (area 12, chunk 6.4).
+pub(crate) fn batch_part(part: jadpo_std::batch::Part) -> TypeRef {
+    use jadpo_std::batch::Part;
+    match part {
+        Part::Of(builtin) => TypeRef::Builtin(builtin),
+        Part::Optional(builtin) => TypeRef::Nullable(Box::new(TypeRef::Builtin(builtin))),
+        Part::Enum(name) => TypeRef::Std(name.to_string(), Vec::new()),
+        Part::List(name) => TypeRef::List(Box::new(TypeRef::Std(name.to_string(), Vec::new()))),
+    }
 }

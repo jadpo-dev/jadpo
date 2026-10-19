@@ -95,6 +95,12 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
         {
             entry.column_type().into()
         }
+        // A batch run an entity keeps, as its type's JSON (area 12).
+        Ty::Opaque(name, args)
+            if args.is_empty() && jadpo_std::batch::object_fields(name).is_some() =>
+        {
+            "jsonb".into()
+        }
         Ty::Named(name) => match table.def(name) {
             Some(Def::Enum { variants }) => {
                 if variants.iter().any(|v| v.fields.is_some()) {
@@ -653,6 +659,73 @@ pub fn system_table(name: &str) -> Table {
                     method: None,
                 },
             );
+        }
+        "batch_runs" => {
+            // Batch runs (area 12, "How a run goes"; chunk 6.4): which
+            // `batches.each` call each is and the shape it saved under,
+            // its `key:` and saved values as their types' JSON, how far
+            // it got (the cursor of the next page, or that it read them
+            // all) and its counts, its state, and the lease its runner
+            // holds it by.
+            add("id", "uuid", false);
+            add("batch", "text", false);
+            add("shape", "text", false);
+            add("key", "text", true);
+            add("captured", "jsonb", false);
+            add("state", "text", false);
+            add("position", "text", true);
+            add("read_all", "boolean", false);
+            add("items_done", "bigint", false);
+            add("problems", "bigint", false);
+            add("failure", "text", true);
+            add("lease_until", "timestamptz(3)", true);
+            add("started_at", "timestamptz(3)", false);
+            add("stepped_at", "timestamptz(3)", false);
+            add("finished_at", "timestamptz(3)", true);
+            unique.insert(
+                object_name(&[&table, "batch", "key"], "key"),
+                jadpo_graph::schema::Unique {
+                    columns: vec!["batch".into(), "key".into()],
+                    rule: "system batch runs".into(),
+                },
+            );
+            indexes.insert(
+                object_name(&[&table, "state", "lease_until"], "idx"),
+                jadpo_graph::schema::Index {
+                    expression: None,
+                    columns: vec!["state".into(), "lease_until".into()],
+                    reason: "system batch runs".into(),
+                    predicate: None,
+                    collate: Vec::new(),
+                    method: None,
+                },
+            );
+        }
+        "batch_problems" => {
+            // Each item of a run that had a problem: its row, column and
+            // rule, never its value (area 12, "Problems never stop a
+            // run").
+            add("run_id", "uuid", false);
+            add("row", "bigint", false);
+            add("column", "text", false);
+            add("rule", "text", false);
+            primary = vec!["run_id".into(), "row".into()];
+            foreign_keys.insert(
+                object_name(&[&table, "run_id"], "fkey"),
+                jadpo_graph::schema::ForeignKey {
+                    columns: vec!["run_id".into()],
+                    table: jadpo_std::batch::RUNS.into(),
+                    on_delete: jadpo_graph::schema::OnDelete::Cascade,
+                },
+            );
+        }
+        "batch_cancels" => {
+            // The runs `batches.cancel` asked to stop: a row of its own, so
+            // asking never waits for the batch in hand, which stops the
+            // run once it commits.
+            add("run_id", "uuid", false);
+            add("requested_at", "timestamptz(3)", false);
+            primary = vec!["run_id".into()];
         }
         _ => {
             // Idempotency keys: one stored response per key and caller.

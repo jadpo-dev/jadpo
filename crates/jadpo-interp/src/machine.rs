@@ -89,6 +89,9 @@ pub(crate) enum Target {
     },
     /// `sessions.start` or `sessions.end` (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `batches.each`, by the number its site decodes, or with `None`
+    /// `batches.status` and `batches.cancel` (area 12, chunk 6.4).
+    Batch(jadpo_std::batch::BatchOp, Option<u32>),
 }
 
 /// Where a run of the machine stopped.
@@ -994,7 +997,8 @@ impl<'p> Machine<'p> {
                     | Target::Get(_)
                     | Target::Write(_)
                     | Target::Request { .. }
-                    | Target::Session(_) => {
+                    | Target::Session(_)
+                    | Target::Batch(..) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -1927,6 +1931,33 @@ impl<'p> Machine<'p> {
                     at: id,
                 });
                 self.tasks.push(Task::Expr(*arg));
+            }
+            // A batch run started, its progress read or a cancel asked for,
+            // in the action's transaction (area 12): `batches.each` works
+            // out only what its run saves, never its query or its actions,
+            // which the run calls later.
+            Callee::Batch(jadpo_std::batch::BatchOp::Each) => {
+                let Some(Decoded::Batch { number, sites }) = self.decoded(id) else {
+                    return Err(self.defect(ctx, "a batch with no plan", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Batch(jadpo_std::batch::BatchOp::Each, Some(*number)),
+                    count: sites.len(),
+                    at: id,
+                    then: None,
+                });
+                for site in sites.iter().rev() {
+                    self.tasks.push(Task::Expr(SiteId(*site)));
+                }
+            }
+            Callee::Batch(op) => {
+                self.tasks.push(Task::Invoke {
+                    target: Target::Batch(*op, None),
+                    count: args.len(),
+                    at: id,
+                    then: None,
+                });
+                self.arguments(args, id);
             }
             // A session started or ended, in the action's transaction.
             Callee::Session(op) => {

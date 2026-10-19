@@ -2819,8 +2819,11 @@ translations as messages in chunk 5.4c (area 10); `TextDirection` and
 `TranslationReview` came in chunk 5.4d. The file, batch and
 service types and the `Document` base come with the features that use
 them: `CsvFormat` with the standard library (chunk 5.5), `OAuthGrant` with
-packages (Phase 7), and the rest after the first build or, for batches,
-when they reach the roadmap.
+packages (Phase 7), and the rest after the first build. `BatchRun`,
+`BatchProgress` with its `BatchState`, `RowProblem` and `ImportSummary`
+came with batches in chunk 6.4 (area 12): only the runtime builds one, a
+program reads their fields, and an entity field keeps a `BatchRun` as its
+JSON; `ExportSummary` comes with the file helpers (chunk 6.4b).
 
 ### Consistency with the rest of the language
 
