@@ -220,6 +220,25 @@ impl Planner<'_> {
         let mut columns = Columns::default();
         // The record's own columns first, in its type's order.
         let mut record = self.record(entity, &query.element, &query.includes, &mut columns)?;
+        // A map layer (chunk 5.5u8): each record a `Feature`, its geometry
+        // the field `geometry:` names and its properties the record.
+        if let Some(geometry) = &query.geometry {
+            let shape = field(entity, geometry)?;
+            let at = columns.add(&shape.name, self.column(entity, shape)?);
+            record = Record {
+                ty: jadpo_std::standard::geo::FEATURE.to_string(),
+                fields: vec![
+                    (
+                        jadpo_std::standard::geo::FEATURE_FIELDS[0].to_string(),
+                        Field::Column(at),
+                    ),
+                    (
+                        jadpo_std::standard::geo::FEATURE_FIELDS[1].to_string(),
+                        Field::Record(Box::new(record)),
+                    ),
+                ],
+            };
+        }
         // A nearest-neighbour query (area 21, chunk 5.5v1b): the distance
         // from its vector, `$1`, the `id` its rows tie-break on, and each
         // record a `Nearest<T>` of what its type holds.
@@ -499,6 +518,7 @@ impl Planner<'_> {
                 page,
                 missing,
                 recheck,
+                layer: query.geometry.is_some(),
             },
         })
     }
@@ -946,6 +966,7 @@ impl Planner<'_> {
             page: None,
             missing: not_found,
             recheck: None,
+            layer: false,
         };
         Some(EntityPlan {
             key,

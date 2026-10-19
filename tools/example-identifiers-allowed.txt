@@ -34,6 +34,9 @@ lng
 # GeoJSON's `coordinates`, a common name `type.standard_exists` matches a
 # `LineString`'s list of points by (chunk 5.5u6)
 coordinates
+# A map layer, a `FeatureCollection`, as a query gives one and the
+# messages about it say (area 6, chunk 5.5u8)
+layer
 
 # `colour`'s parameters and the media types' names and parts (chunk 5.5p)
 hue
