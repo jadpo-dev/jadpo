@@ -755,6 +755,10 @@ chunks below, taken before Phase 7, in this order.
   area 12's "Chosen in chunk 6.6b" and area 9's Decisions; flagged
   there: a tenanted run's status shows only what anyone, or a role held
   across the whole application, may read.
+- [ ] **6.6d A placeholder naming a missing field** `opus · high` (found
+  in chunk 6.6b): a route placeholder typed with a field that doesn't
+  exist (`{x: Note.nope}`) drops its route silently; it is
+  `type.unknown_field` at the placeholder, with a checked example.
 - [ ] **6.6c Tenancy of background work** `opus · high` (areas 9 and 12,
   decided 2026-10-19): the tenant an event or a batch run names proved to
   come from a record of that tenant the action read or wrote under its
