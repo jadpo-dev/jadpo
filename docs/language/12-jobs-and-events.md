@@ -2179,7 +2179,7 @@ below) leaves to the build, each the most conservative reading:
   command withdraws the request, unless a tick took it meanwhile, and
   fails with `schedules.no_tick`: "No tick picked up `<name>`'s run in
   2 min", its reason that the app's own server runs it on its next tick,
-  that none came, and that the request was withdrawn and nothing ran,
+  that none came, and that the request was taken back and nothing ran,
   and its next step to check the app is running and run it again. Once
   taken, it waits for the run to end; a run still going past the lease's
   length was lost with its worker (`schedules.run_failed`). A command

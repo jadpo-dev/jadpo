@@ -1412,10 +1412,10 @@ fn request(
                 format!("No tick picked up `{name}`'s run in {wait}"),
             )
             .reason(if lease_held {
-                "The app's own server runs it on a tick once no run holds its lease, and a run held the lease throughout; the request was withdrawn, and nothing ran.".to_string()
+                "The app's own server runs it on a tick once no run holds its lease, and a run held the lease throughout; the request was taken back, and nothing ran.".to_string()
             } else {
                 format!(
-                    "The app's own server runs it on its next tick, which comes every {} while the app runs; none came, so the request was withdrawn, and nothing ran.",
+                    "The app's own server runs it on its next tick, which comes every {} while the app runs; none came, so the request was taken back, and nothing ran.",
                     span(period)
                 )
             })
