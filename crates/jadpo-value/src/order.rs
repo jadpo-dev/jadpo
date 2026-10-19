@@ -26,7 +26,9 @@ fn rank(value: &Value) -> u8 {
         Value::None => 1,
         Value::Bool(_) => 2,
         Value::Int(_) | Value::Decimal(_) => 3,
-        Value::Text(_) => 4,
+        // A secret value is text, and equals the text it holds (chunk
+        // 5.8a), so the two stand together.
+        Value::Text(_) | Value::Secret(_) => 4,
         Value::Bytes(_) => 5,
         Value::Uuid(_) => 6,
         Value::Instant(_) => 7,
@@ -41,7 +43,6 @@ fn rank(value: &Value) -> u8 {
         Value::Money(_) => 16,
         Value::Quantity(_) => 17,
         Value::Percentage(_) => 18,
-        Value::Secret(_) => 19,
     }
 }
 
@@ -69,6 +70,14 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
         (Value::Secret(a), Value::Secret(b)) => a.kind().cmp(b.kind()).then_with(|| {
             crate::secret::constant_time_cmp(a.expose().as_bytes(), b.expose().as_bytes())
         }),
+        // Against text written in source by the text alone, as `==`
+        // compares them (chunk 5.8a), so a set finds one by the other.
+        (Value::Secret(a), Value::Text(b)) => {
+            crate::secret::constant_time_cmp(a.expose().as_bytes(), b.as_bytes())
+        }
+        (Value::Text(a), Value::Secret(b)) => {
+            crate::secret::constant_time_cmp(a.as_bytes(), b.expose().as_bytes())
+        }
         (Value::Instant(a), Value::Instant(b)) | (Value::Duration(a), Value::Duration(b)) => {
             a.cmp(b)
         }

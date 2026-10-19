@@ -256,16 +256,13 @@ pub fn negate(a: &Value) -> Result<Value, Fault> {
 }
 
 /// `a == b`: contents compared, and a plain `Int` equal to the same
-/// number as a `Decimal`.
+/// number as a `Decimal`. A secret value equals the text written in source
+/// in constant time, inside any container too ([`Value`]'s `PartialEq`,
+/// chunk 5.8a).
 pub fn equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Int(_), Value::Decimal(_)) | (Value::Decimal(_), Value::Int(_)) => {
             decimals(a, b).is_some_and(|(x, y)| x == y)
-        }
-        // A secret value against text written in source, in constant time
-        // (chunk 5.5r2); two secrets compare so through `==` too.
-        (Value::Secret(secret), Value::Text(text)) | (Value::Text(text), Value::Secret(secret)) => {
-            crate::secret::constant_time_eq(secret.expose().as_bytes(), text.as_bytes())
         }
         _ => a == b,
     }
@@ -409,5 +406,51 @@ mod tests {
         let items = Value::list(vec![Value::Int(1), Value::Int(2)]);
         assert_eq!(contains(&items, &Value::Int(2)), Some(true));
         assert_eq!(contains(&Value::Int(1), &Value::Int(2)), None);
+    }
+
+    /// A secret value equals the text written in source wherever the two
+    /// meet: at the top, and inside a list, a set, a map's keys and values,
+    /// an object and an enum's data, however deep (chunk 5.8a). The order
+    /// agrees, so a set finds one by the other.
+    #[test]
+    fn a_secret_equals_its_text_inside_every_container() {
+        let secret = || Value::secret("Password", "hunter2hunter2");
+        let same = || Value::text("hunter2hunter2");
+        let other = || Value::text("hunter3hunter3");
+        let map = |key: Value, value: Value| {
+            Value::Map(std::rc::Rc::new(
+                [(key, value)]
+                    .into_iter()
+                    .collect::<std::collections::BTreeMap<_, _>>(),
+            ))
+        };
+        let record = |pw: Value| Value::record("Holder", vec![("pw".into(), pw)]);
+        let variant = |pw: Value| Value::variant("Outcome", 0, "held", vec![("pw".into(), pw)]);
+        let shapes: [&dyn Fn(Value) -> Value; 7] = [
+            &|v| v,
+            &|v| Value::list(vec![v]),
+            &|v| Value::set(vec![v]),
+            &|v| map(v, Value::Int(1)),
+            &|v| map(Value::Int(1), v),
+            &|v| Value::list(vec![record(v)]),
+            &|v| variant(Value::list(vec![v])),
+        ];
+        for (at, shape) in shapes.iter().enumerate() {
+            assert!(equal(&shape(secret()), &shape(same())), "shape {at}");
+            assert!(
+                equal(&shape(same()), &shape(secret())),
+                "shape {at}, swapped"
+            );
+            assert!(!equal(&shape(secret()), &shape(other())), "shape {at}");
+            assert_eq!(
+                crate::order::compare(&shape(secret()), &shape(same())),
+                Ordering::Equal,
+                "shape {at}"
+            );
+        }
+        assert!(crate::set::contains(&[secret()], &same()));
+        assert!(crate::set::contains(&[same()], &secret()));
+        assert!(!crate::set::contains(&[secret()], &other()));
+        assert_eq!(contains(&Value::list(vec![secret()]), &same()), Some(true));
     }
 }

@@ -2435,6 +2435,44 @@ acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
 is written.
 
+### Chosen in chunk 5.8a
+
+From the Phase 5 soundness review:
+
+- **An idempotency key's digest leaves out every secret.** The digest
+  was BLAKE3 of the request's bytes, so whoever could read
+  `jadpo_idempotency_keys` could test guessed passwords against a
+  sign-up's. It now covers the route (its method and declared path),
+  then each placeholder and the input as the route decodes them, the
+  query string, the headers it reads and the body, written back through
+  the route's own codecs, the contract's JSON, which writes every secret
+  value (`Password`, `BearerToken` and the rest, area 19) as its kind
+  alone, so a stored digest says nothing of a secret, whether it came in
+  the body or the path. Rather than a keyed hash: a key would
+  need a secret every deployment holds, and Jadpo has none, since a
+  setting is only what `config { }` declares and only the places area
+  10 lists may read one; requiring a new one of every application is a
+  language change, and keying with one an application happens to have
+  would leave the rest unprotected. So a repeat that differs only in a
+  secret is the same request, answered as the first was (and a response
+  that starts a session or carries a credential is never kept), and one
+  that differs only in its JSON's spacing or member order is the same
+  request too. What it leaves: a value that isn't secret, sent and
+  neither stored nor answered, can still be confirmed by guessing by
+  whoever reads the table, who reads the kept responses and the
+  application's own tables as well.
+- **Deleting expired keys stays 6.2's.** The index on `kept_until` it
+  needs is already in the system table; what runs it is the runtime's
+  minute tick, which 6.2 builds, so a statement with nothing to call it
+  waits for that chunk.
+- **A host without a clock answers nothing.** A deployable answers under
+  the host's clock; a host whose clock can't be read (the system clock
+  before 1970) answered as though it were 1970. Now every request,
+  health's included, is 500 `internal_fault`, its fault for the host's
+  log saying the host has no clock, and nothing runs; `jadpo dev`
+  doesn't start (`cli.dev_start_failed`, "The system clock can't be
+  read").
+
 ### Chosen in chunk 5.5u7
 
 - **Only a collection, only bare.** `output:` may be
@@ -2682,7 +2720,7 @@ is written.
 | Default rate limits until sign-in (chosen in chunk 4.1) | (Amended in chunk 4.3: a signed-in caller's requests count against its own allowance, 600 a minute, and the rest against their address; area 8's Decisions.) With no one signed in yet, every request counts against its address (the client's, as area 10's `client_address:` chooses it: the connection's own unless the application trusts a proxy's header; chunk 5.1c): 120 a minute, in memory per process within 16 MB, the oldest counters dropped first; the native host sends each address's connections to one worker thread, so no lock is taken. The `jadpo check` warning about per-instance limits comes with the Redis store, since until then nothing could silence it | 2026-10-15 |
 | Request guarantees (chosen in chunk 4.2) | A body over 1 MB answers 413 before routing; the host stops holding it there, reading and dropping up to 16 MB more so the client reads the answer. A route's deadline counts from when it is matched: when it passes, the running work is dropped with its open transaction, which the store rolls back, and a claimed key is given up; an action's commit runs after its body, outside the deadline, so a request that committed never answers 504, and its message is "The request ran out of time, and nothing it did was kept." A `GET` never takes part, whatever headers it sends | 2026-10-15 |
 | Health (chosen in chunk 4.2) | `/health/live` answers 200 `{"status":"live"}`; `/health/ready` runs `SELECT 1` on each PostgreSQL store an entity lives in, within two seconds in all, and answers 200 `{"status":"ready","stores":{"main":"ready"},"integrations":{}}`, or 503 with `not_ready` and each store that didn't answer as `unavailable`; integrations appear by name as `unchecked` once area 11 builds them. Both answer `HEAD` and `OPTIONS`, any other method 405, with `Cache-Control: no-store`; they are answered before the rate limits, so probes are never refused; a route on either path is `route.path_overlap`. Each worker (natively a worker thread, on Workers an isolate) reuses its last readiness answer for a second, so probes cost a store at most one `SELECT 1` a second per worker (amended in chunk 4.10) | 2026-10-15 |
-| Idempotency keys (chosen in chunk 4.2) | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. Until sign-in (4.3) every caller is the scope `anonymous` (amended in chunk 4.3: a signed-in caller's keys are kept under `user <id>`, and a route anyone may call keeps `anonymous`). The request's digest covers its method, path, query string, the headers its input reads and its body, byte for byte. A key is claimed in one statement of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one statement of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes; an action that writes no store keeps none, since running it again changes nothing, until area 12's `events: { store: }` names one | 2026-10-15 |
+| Idempotency keys (chosen in chunk 4.2) | `Idempotency.optional` (the default) and `Idempotency.required`, which an API's record shows as `idempotency: required` and OpenAPI as a required header on every write; any other value is `api.idempotency_invalid`. A key is 1 to 255 printable ASCII characters, else 400 `invalid_request`, as is a missing one where it is required. Until sign-in (4.3) every caller is the scope `anonymous` (amended in chunk 4.3: a signed-in caller's keys are kept under `user <id>`, and a route anyone may call keeps `anonymous`). The request's digest covers its method, path, query string, the headers its input reads and its body, byte for byte (superseded in chunk 5.8a: its route and what it says decoded, every secret value left out). A key is claimed in one statement of its own before the action runs, with no response and kept only for the route's deadline and five seconds, so a request that never finished leaves a claim that lapses; the response (status, the body exactly as sent and its code) is written over it in the action's transaction, or in one statement of its own for a failure the action returned, kept 24 hours from the request. A repeat answers with the stored response under its own `x-request-id`. Keys go in the store the action writes; an action that writes no store keeps none, since running it again changes nothing, until area 12's `events: { store: }` names one | 2026-10-15 |
 | `jadpo dev` (chosen in chunk 4.1) | Listens on 127.0.0.1, port 3000 unless `--port`; the database is the one `--url` names (until configuration, area 10) or a disposable PostgreSQL for the session, and pending migrations are applied when it starts and after each save that adds one | 2026-10-15 |
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
 | Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |

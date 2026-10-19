@@ -852,6 +852,99 @@ query named(company_id: Company.id, name: Label) -> List<ProjectCard> {
 }
 
 #[test]
+fn a_nearest_or_distance_order_sorts_only_on_fields_every_caller_may_read() {
+    // The order a `nearest` or a `geo.distance` puts records in shows
+    // the field it measures, as any order does (chunk 5.8a): only a
+    // reviewer may read `meaning` and `spot`, and owners run the queries
+    // too. `topic` and `shop` are everyone's.
+    let found = with(
+        r#"type Meaning = Vector {
+    dimensions: 2
+    distance: VectorDistance.cosine
+}
+
+type Reach = Length {
+    min: 0metre
+    max: 50km
+}
+
+type ClipCard = Output {
+    pick: [Clip.id]
+}
+
+entity Clip {
+    id: Uuid
+    owner_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    reviewer_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    meaning: Meaning {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+    topic: Meaning
+    spot: Point {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+    shop: Point
+
+    policy: {
+        read: [owner_id, reviewer_id]
+    }
+}
+
+query closest(meaning: Meaning) -> List<Nearest<ClipCard>> {
+    from: Clip
+    order: [Clip.meaning nearest meaning]
+    limit: 5
+}
+
+query closest_topic(topic: Meaning) -> List<Nearest<ClipCard>> {
+    from: Clip
+    order: [Clip.topic nearest topic]
+    limit: 5
+}
+
+query nearby(here: Point, reach: Reach) -> List<ClipCard> {
+    from: Clip
+    where: geo.within(Clip.spot, here, distance: reach)
+    order: [geo.distance(Clip.spot, here) asc]
+    limit: 5
+}
+
+query nearby_shop(here: Point, reach: Reach) -> List<ClipCard> {
+    from: Clip
+    where: geo.within(Clip.shop, here, distance: reach)
+    order: [geo.distance(Clip.shop, here) asc]
+    limit: 5
+}
+"#,
+    );
+    let all = found.join("\n");
+    for expected in [
+        "`closest` orders by `Clip.meaning`, which not every caller may read",
+        "`nearby` filters on `Clip.spot`, which not every caller may read",
+        "`nearby` orders by `Clip.spot`, which not every caller may read",
+    ] {
+        assert!(all.contains(expected), "{expected}\n{all}");
+    }
+    assert_eq!(
+        rules_of(&found),
+        [
+            "policy.output_field_unproved",
+            "policy.output_field_unproved",
+            "policy.output_field_unproved"
+        ],
+        "{found:#?}"
+    );
+}
+
+#[test]
 fn a_value_keeps_its_fields_rules_through_variables_objects_and_calls() {
     let found = company(
         r#"type Kept = Object {

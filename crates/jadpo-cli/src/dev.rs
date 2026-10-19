@@ -38,9 +38,9 @@ use jadpo_diag::{Diagnostic, rule};
 use jadpo_host_native::http::{Handler, MakeHandler, Server};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
-use jadpo_runtime::LocalFuture;
 use jadpo_runtime::config::{ConfigValues, Mode, Variables};
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
+use jadpo_runtime::{Host, LocalFuture};
 use jadpo_term::{
     Block, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token, envelope,
 };
@@ -341,6 +341,18 @@ pub fn serve_to(
     if args.no_run {
         report_ready(&mut out, None, &first, Databases::Disposable);
         return watch_only(&mut out, &root, &args.cwd, env, &mut poller, stop);
+    }
+    // Every request is answered under the system clock, so without one
+    // the server doesn't start, rather than serve as though it were 1970
+    // (chunk 5.8a).
+    if NativeHost::new().now_ms().is_none() {
+        report_failure(
+            &mut out,
+            Diagnostic::new(&rule::CLI_DEV_START_FAILED, "The system clock can't be read")
+                .reason("Every request reads the time, and the clock reads before 1970, so the server won't answer with a wrong one.")
+                .next("Set the system clock, then run `jadpo dev` again"),
+        );
+        return 1;
     }
     // The stores, and their migrations applied.
     let mut disposable = None;

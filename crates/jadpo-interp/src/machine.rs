@@ -2281,11 +2281,23 @@ impl<'p> Machine<'p> {
             let number = *number;
             return self.claims(ctx, values, number, now, at);
         }
+        // An encryption's nonce is secret randomness, never kept on a
+        // recording's tape nor taken from a replayed one, so a replay never
+        // seals with a nonce production used under the same key (chunk
+        // 5.8a); a password's salt is the invocation's random bytes, as
+        // `random`'s are.
+        let secret = op == Op::CryptoEncrypt;
         let made = jadpo_value::crypto::run(
             op,
             values,
             keys,
-            &mut |bytes: &mut [u8]| ctx.random_bytes(bytes),
+            &mut |bytes: &mut [u8]| {
+                if secret {
+                    ctx.secret_random_bytes(bytes)
+                } else {
+                    ctx.random_bytes(bytes)
+                }
+            },
             now,
         );
         match made {
