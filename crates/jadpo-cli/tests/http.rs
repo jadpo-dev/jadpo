@@ -2765,9 +2765,7 @@ fn work_that_never_waits_leaves_its_worker_to_other_requests() {
     // worker held by the slow request could only answer the quick one after
     // the slow one's deadline had passed.
     let port = dev.port;
-    let (sending, sent) = std::sync::mpsc::channel();
     let slow = std::thread::spawn(move || {
-        sending.send(Instant::now()).expect("the test is waiting");
         let reply = send(
             port,
             "POST",
@@ -2777,15 +2775,34 @@ fn work_that_never_waits_leaves_its_worker_to_other_requests() {
         );
         (reply, Instant::now())
     });
-    let slow_sent = sent.recv().expect("the slow request starts");
-    std::thread::sleep(Duration::from_millis(150));
+    // The quick request goes once the slow one is computing: it has kept
+    // its mark, so its transaction holds a write, and it sends nothing more
+    // to the database until its deadline ends it. No other request is
+    // running, so that transaction is the slow request's.
+    let started = Instant::now();
+    loop {
+        let computing = query(
+            &dev.url,
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() \
+             AND pid <> pg_backend_pid() AND state = 'idle in transaction' \
+             AND backend_xid IS NOT NULL",
+            Vec::new(),
+        );
+        if computing != vec![vec![jadpo_runtime::SqlValue::Int8(0)]] {
+            break;
+        }
+        assert!(
+            !slow.is_finished() && started.elapsed() < Duration::from_secs(30),
+            "the slow request never started computing"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let quick_sent = Instant::now();
     let quick = dev.send("POST", "/busywork", &[], r#"{"label":"quick","depth":3}"#);
     let quick_answered = Instant::now();
     assert_eq!(quick.status, 200, "{quick:?}");
     let (slow, slow_answered) = slow.join().expect("the slow request");
     assert_eq!(slow.status, 504, "{slow:?}");
-    assert!(slow_sent < quick_sent, "the slow request went first");
     assert!(
         quick_answered < slow_answered,
         "answered while the other computed, not after its deadline: quick took {:?}, \
