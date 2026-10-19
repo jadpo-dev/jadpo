@@ -1574,7 +1574,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&DATE_RANGE_FIELDS),
         text: Some(TextForm::Interval),
         json: Json::Fields(&["start", "end"]),
-        // Stored as its JSON, as `InstantRange` is.
+        // Stored in one `daterange` column (area 19, "Every standard type
+        // meets one contract").
         storage: Storage::Columns {
             parts: &[("", "daterange")],
             fixed: &[],
@@ -1692,7 +1693,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&EXCHANGE_RATE_FIELDS),
         text: Some(TextForm::ExchangeRate),
         json: Json::Fields(&["from", "to", "rate", "at"]),
-        // Stored as its JSON, as `InstantRange` is.
+        // Stored in a column per field, its currencies held to its type's
+        // `from:` and `to:`.
         storage: Storage::Columns {
             parts: &[
                 ("from", "char(3)"),
@@ -1926,8 +1928,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Object(&INSTANT_RANGE_FIELDS),
         text: Some(TextForm::Interval),
         json: Json::Fields(&["start", "end"]),
-        // Stored as its JSON, as an object is, until objects get named
-        // columns with `Money` (chunk 5.5h).
+        // Stored in one `tstzrange` column.
         storage: Storage::Columns {
             parts: &[("", "tstzrange")],
             fixed: &[],
@@ -2318,7 +2319,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Range,
         text: Some(TextForm::Range),
         json: Json::Fields(&RANGE_FIELDS),
-        // Stored as its JSON, as `InstantRange` is.
+        // Stored in one column of the range type its item type has.
         storage: Storage::Columns {
             parts: &[("", "range")],
             fixed: &[],
@@ -2649,8 +2650,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
         holds: Holds::Builtin(Builtin::ZonedTime),
         text: Some(TextForm::Zoned),
         json: Json::Parts(&[("instant", Member::Instant), ("zone", Member::Code(ZONE))]),
-        // An instant and its zone, stored as its JSON (area 5's structured
-        // values), as an object is.
+        // An instant and its zone, stored in two columns.
         storage: Storage::Columns {
             parts: &[("instant", "timestamptz(3)"), ("zone", "text")],
             fixed: &[],
