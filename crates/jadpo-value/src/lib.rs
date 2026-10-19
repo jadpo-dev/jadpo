@@ -444,6 +444,9 @@ pub fn run(
         (Op::GeoWithin, [a, b]) => geo::within(a, b, &Value::None),
         (Op::GeoCentroid, [shape]) => geo::centroid(shape),
         (Op::GeoBoundingBox, [shape]) => geo::bounding_box(shape),
+        (Op::GeoFromGeojson, [text]) => geo::from_geojson(text),
+        (Op::GeoFromLatLng, [numbers]) => geo::from_lat_lng(numbers),
+        (Op::GeoFromLngLat, [numbers]) => geo::from_lng_lat(numbers),
         (Op::GeoFromWkt, [text]) => geo::from_wkt(text),
         (Op::GeoToWkt, [shape]) => geo::to_wkt(shape),
         (
@@ -456,6 +459,9 @@ pub fn run(
             | Op::GeoWithin
             | Op::GeoCentroid
             | Op::GeoBoundingBox
+            | Op::GeoFromGeojson
+            | Op::GeoFromLatLng
+            | Op::GeoFromLngLat
             | Op::GeoFromWkt
             | Op::GeoToWkt,
             _,
@@ -953,6 +959,12 @@ mod tests {
                     Value::None,
                 ],
                 Op::GeoFromWkt => vec![Value::text("POINT(2 1)")],
+                Op::GeoFromGeojson => {
+                    vec![Value::text(r#"{"type":"Point","coordinates":[2,1]}"#)]
+                }
+                Op::GeoFromLatLng | Op::GeoFromLngLat => {
+                    vec![Value::list(vec![Value::Int(1), Value::Int(2)])]
+                }
                 Op::GeoCentroid | Op::GeoBoundingBox | Op::GeoToWkt => vec![geo::point(
                     Decimal::new(1, 0),
                     Decimal::new(2, 0),

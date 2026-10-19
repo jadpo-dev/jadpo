@@ -964,7 +964,9 @@ impl Place<'_> {
                             "`{}` unless `{option}:` says what to do",
                             condition.key.word()
                         ),
-                        None if condition.key.only_when_run() => {
+                        // What text or numbers read into a geometry is
+                        // known only when the program runs (chunk 5.11).
+                        None if condition.key.only_when_run() || namespace == "geo" => {
                             format!("`{}`", condition.key.word())
                         }
                         None => format!(
