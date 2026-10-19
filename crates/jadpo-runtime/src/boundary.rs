@@ -196,10 +196,9 @@ async fn sealed(ctx: &mut Ctx<'_>, outbox: Option<&str>, outcome: Outcome) -> Ou
             ctx.concurrent_change();
             outcome
         }
-        Err(StoreError::Fault(reason)) => Outcome::Fault(ctx.fault(
-            crate::FaultKind::Defect(reason),
-            crate::Frame::ENTRY,
-        )),
+        Err(StoreError::Fault(reason)) => {
+            Outcome::Fault(ctx.fault(crate::FaultKind::Defect(reason), crate::Frame::ENTRY))
+        }
         Err(_) => Outcome::Failed(Box::new(Failure {
             frames: ctx.frames(),
             ..unavailable()

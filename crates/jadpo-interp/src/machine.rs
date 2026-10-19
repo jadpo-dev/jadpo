@@ -667,10 +667,12 @@ impl<'p> Machine<'p> {
     fn emit(&self, ctx: &mut Ctx<'_>, value: Value, at: SiteId) -> Result<(), Stop> {
         let plan = self.program.plan();
         let key = match self.site(at).map(|site| &site.node) {
-            Some(Node::Stmt(Stmt::Emit { value: Some(built) })) => match self.site(*built).map(|site| &site.ty) {
-                Some(jadpo_graph::TypeRef::Node(key)) => key.as_str().to_string(),
-                _ => return Err(self.defect(ctx, "an event of no declared type", at)),
-            },
+            Some(Node::Stmt(Stmt::Emit { value: Some(built) })) => {
+                match self.site(*built).map(|site| &site.ty) {
+                    Some(jadpo_graph::TypeRef::Node(key)) => key.as_str().to_string(),
+                    _ => return Err(self.defect(ctx, "an event of no declared type", at)),
+                }
+            }
             _ => return Err(self.defect(ctx, "an `emit` without its event", at)),
         };
         let Some(number) = plan.json().event(&key) else {
@@ -697,11 +699,9 @@ impl<'p> Machine<'p> {
             Err(jadpo_runtime::EmitRefused::OutsideAction) => {
                 Err(self.defect(ctx, "an `emit` outside an action", at))
             }
-            Err(jadpo_runtime::EmitRefused::TooMany) => Err(self.defect(
-                ctx,
-                "more than 1,000 events emitted by one action",
-                at,
-            )),
+            Err(jadpo_runtime::EmitRefused::TooMany) => {
+                Err(self.defect(ctx, "more than 1,000 events emitted by one action", at))
+            }
             Err(jadpo_runtime::EmitRefused::TooLarge) => {
                 Err(self.defect(ctx, "an event past 64 KB", at))
             }

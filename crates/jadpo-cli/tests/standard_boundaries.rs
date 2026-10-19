@@ -595,6 +595,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "works out a constant's value at compile time",
     ),
     (
+        "crates/jadpo-check/src/events.rs",
+        "checks a subscriber's `retry: { within: }`, a duration read by the contract's own reader",
+    ),
+    (
         "crates/jadpo-check/src/identity.rs",
         "checks identity's settings, durations read by the contract's own reader",
     ),

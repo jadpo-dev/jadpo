@@ -2255,7 +2255,12 @@ fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
 /// commit with an action's own writes goes in every store that holds an
 /// entity, since any of them can be written. Their behaviour comes with
 /// areas 7 and 12; their schema is here so migrations create them.
-pub const SYSTEM_TABLES: [&str; 4] = ["outbox", "deliveries", "handled_deliveries", "idempotency_keys"];
+pub const SYSTEM_TABLES: [&str; 4] = [
+    "outbox",
+    "deliveries",
+    "handled_deliveries",
+    "idempotency_keys",
+];
 
 /// The table of browser sessions and API tokens, in the store the
 /// principal's users live in when anything signs one in (area 8).

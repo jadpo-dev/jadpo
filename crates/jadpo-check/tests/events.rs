@@ -141,7 +141,11 @@ fn a_subscriber_reads_into_the_event_it_listens_for_and_the_action_it_runs() {
         panic!("one subscriber: {subscribers:?}");
     };
     assert_eq!(subscriber.name, "mark_added");
-    assert!(subscriber.event.as_str().ends_with("TodoAdded"), "{:?}", subscriber.event);
+    assert!(
+        subscriber.event.as_str().ends_with("TodoAdded"),
+        "{:?}",
+        subscriber.event
+    );
     assert_eq!(subscriber.run.name(), "mark");
     assert_eq!(subscriber.args, [vec!["todo_id".to_string()]]);
     assert_eq!(subscriber.retry, jadpo_check::events::DEFAULT_RETRY);
@@ -151,7 +155,10 @@ fn a_subscriber_reads_into_the_event_it_listens_for_and_the_action_it_runs() {
         jadpo_check::events::outbox_store(&db, project, "add").as_deref(),
         Some("main")
     );
-    assert_eq!(jadpo_check::events::outbox_store(&db, project, "mark"), None);
+    assert_eq!(
+        jadpo_check::events::outbox_store(&db, project, "mark"),
+        None
+    );
 }
 
 #[test]
@@ -168,7 +175,9 @@ action ping(todo_id: Todo.id) -> Unit {
     let found = problems(&[("domains/planning/actions/ping.jadpo", ping)]);
     assert_eq!(
         found,
-        ["domains/planning/actions/ping.jadpo event.store_required: `ping` emits `TodoAdded` but writes no store to keep it in"]
+        [
+            "domains/planning/actions/ping.jadpo event.store_required: `ping` emits `TodoAdded` but writes no store to keep it in"
+        ]
     );
     let named = "application {\n    events: {\n        store: main\n    }\n}\n";
     assert_eq!(
@@ -197,7 +206,10 @@ action ping(todo_id: Todo.id) -> Unit {
         "application {\n    events: {\n        keep: main\n    }\n}\n",
     ] {
         assert_eq!(
-            rules(&[("domains/planning/actions/ping.jadpo", ping), ("app.jadpo", wrong)]),
+            rules(&[
+                ("domains/planning/actions/ping.jadpo", ping),
+                ("app.jadpo", wrong)
+            ]),
             ["event.settings_invalid", "event.store_required"],
             "{wrong}"
         );
@@ -235,7 +247,10 @@ function announce(todo_id: Todo.id) -> TodoAdded {
 }
 "#;
     let found = rules(&[("domains/planning/actions/announce.jadpo", in_function)]);
-    assert!(found.contains(&"event.emit_invalid".to_string()), "{found:?}");
+    assert!(
+        found.contains(&"event.emit_invalid".to_string()),
+        "{found:?}"
+    );
 }
 
 #[test]
@@ -246,21 +261,24 @@ fn a_subscriber_names_one_event_and_runs_its_own_domains_action_with_it() {
         )
     };
     let cases = [
-        ("    on: Todo\n    run: mark(event.todo_id)\n", "subscriber.event_invalid"),
+        (
+            "    on: Todo\n    run: mark(event.todo_id)\n",
+            "subscriber.event_invalid",
+        ),
         ("    on: TodoAdded\n", "subscriber.item_invalid"),
         (
             "    on: TodoAdded\n    run: mark(event.todo_id)\n    when: TodoAdded\n",
             "subscriber.item_invalid",
         ),
-        ("    on: TodoAdded\n    run: mark\n", "subscriber.run_invalid"),
+        (
+            "    on: TodoAdded\n    run: mark\n",
+            "subscriber.run_invalid",
+        ),
         (
             "    on: TodoAdded\n    run: mark(Todo.id)\n",
             "subscriber.argument_invalid",
         ),
-        (
-            "    on: TodoAdded\n    run: mark(event)\n",
-            "type.mismatch",
-        ),
+        ("    on: TodoAdded\n    run: mark(event)\n", "type.mismatch"),
         (
             "    on: TodoAdded\n    run: mark(event.todo_id)\n    retry: {\n        attempts: 0\n    }\n",
             "subscriber.retry_invalid",
@@ -272,14 +290,20 @@ fn a_subscriber_names_one_event_and_runs_its_own_domains_action_with_it() {
     ];
     for (body, rule) in cases {
         let text = subscriber(body);
-        let found = rules(&[("domains/planning/subscribers/mark_added.jadpo", text.as_str())]);
+        let found = rules(&[(
+            "domains/planning/subscribers/mark_added.jadpo",
+            text.as_str(),
+        )]);
         assert!(found.contains(&rule.to_string()), "{body}: {found:?}");
     }
     // A budget of its own.
     let text = subscriber(
         "    on: TodoAdded\n    run: mark(event.todo_id)\n    retry: {\n        attempts: 20\n        within: 3d\n    }\n",
     );
-    let changed = [("domains/planning/subscribers/mark_added.jadpo", text.as_str())];
+    let changed = [(
+        "domains/planning/subscribers/mark_added.jadpo",
+        text.as_str(),
+    )];
     let found: Vec<String> = problems(&changed)
         .into_iter()
         .filter(|problem| !problem.contains("import.unused"))
@@ -323,7 +347,9 @@ fn a_subscriber_reaching_what_only_access_public_grants_is_refused() {
     let public = TODO.replace("update: [Access.system]", "update: [Access.public]");
     assert_eq!(
         problems(&[("domains/planning/entities/todo.jadpo", public.as_str())]),
-        ["domains/planning/subscribers/mark_added.jadpo policy.system_grant_missing: `mark_added` runs as the system, which only `Access.public` lets update `Todo`"]
+        [
+            "domains/planning/subscribers/mark_added.jadpo policy.system_grant_missing: `mark_added` runs as the system, which only `Access.public` lets update `Todo`"
+        ]
     );
     // Naming `Access.system` beside it lets background work in on purpose.
     let both = TODO.replace(

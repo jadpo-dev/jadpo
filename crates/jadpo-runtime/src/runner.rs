@@ -177,17 +177,15 @@ async fn drive(
         ctx.set_deadline(Some(RUN_LIMIT_MS));
         let limit = host.sleep(RUN_LIMIT_MS);
         let outcome = match piece {
-            Piece::Job(job) => {
-                match race(as_system(executor, &mut ctx, job), limit).await {
-                    First::Left(outcome) if !ctx.out_of_time() => Some(outcome),
-                    First::Left(_) | First::Right(()) => {
-                        ctx.abandon();
-                        Some(Outcome::Fault(
-                            ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
-                        ))
-                    }
+            Piece::Job(job) => match race(as_system(executor, &mut ctx, job), limit).await {
+                First::Left(outcome) if !ctx.out_of_time() => Some(outcome),
+                First::Left(_) | First::Right(()) => {
+                    ctx.abandon();
+                    Some(Outcome::Fault(
+                        ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
+                    ))
                 }
-            }
+            },
             // A delivery that runs out of time keeps its claim until its
             // lease passes, and the sweep tries it again.
             Piece::Delivery(delivery) => {
@@ -238,7 +236,11 @@ pub async fn deliver(
     let claimed = database
         .query_once(
             outbox::CLAIM,
-            &[id.clone(), micros(now), micros(now.saturating_add(LEASE_MS))],
+            &[
+                id.clone(),
+                micros(now),
+                micros(now.saturating_add(LEASE_MS)),
+            ],
         )
         .await
         .ok()?;
@@ -270,15 +272,21 @@ pub async fn deliver(
     };
     if delivery.depth >= CHAIN_LIMIT {
         settle(FAILED, None, Some(failure_json("event_chain_limit", None))).await;
-        let mut failure =
-            crate::Failure::new("runtime event_chain_limit", "EventChainLimit", "event_chain_limit");
+        let mut failure = crate::Failure::new(
+            "runtime event_chain_limit",
+            "EventChainLimit",
+            "event_chain_limit",
+        );
         failure.kind = Some("rejected".to_string());
         return Some(Outcome::Failed(Box::new(failure)));
     }
     // A repeated delivery its subscriber handled already does nothing.
     if let Some(store) = &subscriber.store {
         let handled = match host.database(store) {
-            Some(own) => own.query_once(outbox::FIND_HANDLED, &[id.clone()]).await,
+            Some(own) => {
+                own.query_once(outbox::FIND_HANDLED, std::slice::from_ref(&id))
+                    .await
+            }
             None => Err(StoreError::Unavailable),
         };
         match handled {
@@ -289,8 +297,12 @@ pub async fn deliver(
             Ok(_) => {}
             Err(_) => {
                 let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
-                settle(PENDING, Some(next), Some(failure_json("unavailable", Some("unavailable"))))
-                    .await;
+                settle(
+                    PENDING,
+                    Some(next),
+                    Some(failure_json("unavailable", Some("unavailable"))),
+                )
+                .await;
                 return Some(Outcome::Failed(Box::new(crate::unavailable())));
             }
         }
@@ -421,8 +433,9 @@ pub async fn sweep(
             }),
             Err(problem) => {
                 let mut failure = match failure_json("payload_unreadable", None) {
-                    SqlValue::Json(text) => serde_json::from_str::<serde_json::Value>(&text)
-                        .unwrap_or_default(),
+                    SqlValue::Json(text) => {
+                        serde_json::from_str::<serde_json::Value>(&text).unwrap_or_default()
+                    }
                     _ => serde_json::Value::Null,
                 };
                 if let Some(object) = failure.as_object_mut() {
@@ -822,9 +835,7 @@ mod tests {
     use jadpo_std::policy::CallerPart;
 
     use super::*;
-    use crate::{
-        ActionBody, Caller, Database, Event, Failure, LocalFuture, Places, Row, block_on,
-    };
+    use crate::{ActionBody, Caller, Database, Event, Failure, LocalFuture, Places, Row, block_on};
 
     /// What reached the store, and in which order.
     #[derive(Default)]

@@ -1917,7 +1917,7 @@ chunks below, taken before Phase 6.
   12's "Chosen in chunk 6.1a"; flagged there: what only `Access.public`
   grants is left to 6.1b's and 6.2's checks, and a schedule's run
   reaches every tenant.
-- [ ] **6.1b Events: outbox, delivery and retries** `opus · high`, after
+- [x] **6.1b Events: outbox, delivery and retries** `opus · high`, after
   6.1a (area 9, "Background work and `Access.public`", decided
   2026-10-19: a subscriber reaching a statement only `Access.public`
   grants is a compile error; area 12, "Outbox placement, settled",
@@ -1934,7 +1934,21 @@ chunks below, taken before Phase 6.
   keys (until then such an action keeps no key, chunk 4.2); and the
   outbox sweep that picks up what deferred work dropped (its minute tick
   is 6.2's). Split from 6.1b on 2026-10-19 because it doesn't fit one
-  session.
+  session. Built: subscribers read and checked (`subscriber.` errors),
+  `emit` only in actions and only of events (`event.emit_invalid`), the
+  outbox row and a delivery record per subscriber written as the action
+  commits, in the store its transaction is in or `events: { store: }`
+  (`event.store_required`, `event.settings_invalid`); `runner::deliver`
+  claiming each delivery after the response, running the subscriber as
+  the system limited to the tenant its event's field names, its handled
+  record (`jadpo_handled_deliveries`) committing with its writes, and
+  recording success, a retry after a full-jitter backoff within `retry:`,
+  or failure; `runner::sweep` for 6.2's tick; `traceparent` honoured and
+  carried into each delivery; 1,000 events, 64 KB and 16 deep;
+  `policy.system_grant_missing`; idempotency keys beside an emitting
+  action's events; a live test of all of it and a migration for every
+  example. Choices in area 12's "Chosen in chunk 6.1b"; flagged there:
+  how an event names its tenant.
 - [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
   (area 12, "Event records", decided 2026-10-19): event shapes recorded
   and diffed in the generated record exactly as an API's is (chunk 7.0's

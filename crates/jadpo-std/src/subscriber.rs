@@ -14,7 +14,10 @@ pub struct EventsPlan {
 
 impl EventsPlan {
     /// The subscribers of the event type whose identity key is `event`.
-    pub fn subscribers_of<'a>(&'a self, event: &'a str) -> impl Iterator<Item = &'a SubscriberPlan> {
+    pub fn subscribers_of<'a>(
+        &'a self,
+        event: &'a str,
+    ) -> impl Iterator<Item = &'a SubscriberPlan> {
         self.subscribers
             .iter()
             .filter(move |subscriber| subscriber.event == event)

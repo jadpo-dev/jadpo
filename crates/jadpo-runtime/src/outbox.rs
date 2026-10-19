@@ -172,11 +172,12 @@ impl Trace {
 }
 
 fn hex(text: &str) -> bool {
-    text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    text.bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn unhex(text: &str) -> Option<Vec<u8>> {
-    if !hex(text) || text.len() % 2 != 0 {
+    if !hex(text) || !text.len().is_multiple_of(2) {
         return None;
     }
     (0..text.len())
@@ -271,8 +272,7 @@ pub(crate) async fn write(
         .iter()
         .map(|(_, _, payload)| SqlValue::Text(payload.clone()))
         .collect();
-    let encoding =
-        i16::try_from(jadpo_std::standard::ENCODING).unwrap_or(i16::MAX);
+    let encoding = i16::try_from(jadpo_std::standard::ENCODING).unwrap_or(i16::MAX);
     transaction
         .execute(
             INSERT_OUTBOX,
@@ -346,10 +346,16 @@ pub enum After {
     /// Tried again later, while its budget lasts: a failure of kind
     /// `unavailable` or `rate_limited`, or a fault before anything
     /// committed (a store that couldn't be reached, a run out of time).
-    Retry { code: String, kind: Option<String> },
+    Retry {
+        code: String,
+        kind: Option<String>,
+    },
     /// Not tried again: any other declared failure, which the same input
     /// gives again, or a defect, until someone fixes the code.
-    Fail { code: String, kind: Option<String> },
+    Fail {
+        code: String,
+        kind: Option<String>,
+    },
 }
 
 /// How `outcome` leaves a delivery.
@@ -493,7 +499,10 @@ mod tests {
         // never under a second.
         assert_eq!(backoff(3, None), 120_000);
         for seed in 0..64u64 {
-            let wait = backoff(3, Some(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).to_be_bytes()));
+            let wait = backoff(
+                3,
+                Some(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).to_be_bytes()),
+            );
             assert!((1_000..=120_000).contains(&wait), "{wait}");
         }
         // The default budget, 10 attempts, fits well inside 24 hours.
@@ -511,7 +520,10 @@ mod tests {
         };
         assert_eq!(after(&Outcome::Value(Value::Unit)), After::Succeeded);
         assert!(matches!(after(&failed("unavailable")), After::Retry { .. }));
-        assert!(matches!(after(&failed("rate_limited")), After::Retry { .. }));
+        assert!(matches!(
+            after(&failed("rate_limited")),
+            After::Retry { .. }
+        ));
         assert!(matches!(after(&failed("not_found")), After::Fail { .. }));
         let fault = |kind| {
             Outcome::Fault(Box::new(Fault {

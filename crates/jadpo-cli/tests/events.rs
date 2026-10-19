@@ -491,7 +491,10 @@ impl Store {
     }
 
     async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db.query_once(sql, &[]).await.expect("the store answers")
+        self.db
+            .query_once(sql, &[])
+            .await
+            .expect("the store answers")
     }
 
     async fn count(&self, sql: &str) -> i32 {

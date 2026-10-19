@@ -545,9 +545,14 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
 /// What background work reaches that only `Access.public` lets it in to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PublicOnly {
-    Entity { entity: String, effect: Effect },
+    Entity {
+        entity: String,
+        effect: Effect,
+    },
     /// The action's line under `actions:`.
-    Line { written: String },
+    Line {
+        written: String,
+    },
 }
 
 /// The first thing the action called `run`, run as the system, reaches
@@ -568,7 +573,9 @@ pub fn public_only(db: &dyn Db, project: Project, run: &str) -> Option<PublicOnl
     let (reached, _) = reached(db, project, access, run, false);
     reached
         .into_iter()
-        .find(|reach| reach.grants.contains(&Grant::Public) && !reach.grants.contains(&Grant::System))
+        .find(|reach| {
+            reach.grants.contains(&Grant::Public) && !reach.grants.contains(&Grant::System)
+        })
         .map(|reach| PublicOnly::Entity {
             entity: reach.entity,
             effect: reach.effect,

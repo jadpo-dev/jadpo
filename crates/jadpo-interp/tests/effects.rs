@@ -73,15 +73,6 @@ fn clock_now_reads_the_invocations_clock() {
 }
 
 #[test]
-fn emitting_an_event_is_not_built_yet() {
-    let program = main(
-        "type Note = Text {\n    max_length: 40\n}\n\naction record(note: Note) -> Unit {\n    emit note\n}\n",
-    );
-    let stopped = fault(&program, "record", vec![Value::text("hi")]);
-    assert_eq!(stopped.kind, FaultKind::NotBuiltYet("emit".to_string()));
-}
-
-#[test]
 fn time_values_compare_in_order() {
     let program = main(
         "type DueAt = Instant {}\n\ntype Late = Bool {}\n\nfunction late(due_at: DueAt, done_at: DueAt) -> Late {\n    return Late(done_at > due_at)\n}\n\nfunction deadline() -> DueAt {\n    return \"2026-10-25T09:30:00+01:00\"\n}\n",

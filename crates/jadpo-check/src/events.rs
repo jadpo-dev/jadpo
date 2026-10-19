@@ -145,9 +145,10 @@ pub fn subscribers_in(db: &dyn Db, project: Project, file: File) -> Vec<Subscrib
             out: Vec::new(),
         };
         let model = reader.subscriber(&decl, &item.name, ownership);
-        let span = decl
-            .name()
-            .map_or_else(|| node_span(path, decl.syntax()), |name| node_span(path, name.syntax()));
+        let span = decl.name().map_or_else(
+            || node_span(path, decl.syntax()),
+            |name| node_span(path, name.syntax()),
+        );
         out.push(SubscriberRead {
             model: model.map(Arc::new),
             span,
@@ -182,9 +183,7 @@ pub fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> Vec<Dia
         if !crate::policy::policy_clean(db, project) {
             continue;
         }
-        if let Some(found) =
-            crate::policy::reach::public_only(db, project, model.run.name())
-        {
+        if let Some(found) = crate::policy::reach::public_only(db, project, model.run.name()) {
             out.push(public_only(model, &read.span, &found));
         }
     }
@@ -295,16 +294,17 @@ pub fn events_settings(db: &dyn Db, project: Project) -> Arc<EventsRead> {
                     continue;
                 }
                 let databases = connections.databases();
-                let span = entry
-                    .value()
-                    .map_or_else(|| node_span(path, entry.syntax()), |v| node_span(path, v.syntax()));
+                let span = entry.value().map_or_else(
+                    || node_span(path, entry.syntax()),
+                    |v| node_span(path, v.syntax()),
+                );
                 let mut problem = Diagnostic::new(
                     &rule::EVENT_SETTINGS_INVALID,
                     format!("`store: {written}` isn't a database"),
                 )
                 .at(span.clone(), "not a database")
                 .reason(format!(
-                    "An event is kept in a database's outbox until it is delivered; this application's databases are {}.",
+                    "An event is kept in a database's outbox until its subscribers have it; this application's databases are {}.",
                     crate::and_list(&databases.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>())
                 ));
                 problem = match nearest(&written, databases.iter().map(String::as_str)) {
@@ -441,7 +441,7 @@ pub fn emit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
             )
             .at(Span::new(path, start, end), "no outbox")
             .reason(format!(
-                "An event is kept in the outbox of the store its action writes, in the same transaction, until it is delivered; `{name}` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: {{ store: }}`."
+                "An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `{name}` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: {{ store: }}`."
             ))
             .next(format!(
                 "Add `events: {{ store: {store} }}` to `application {{ }}` in `app.jadpo`"
@@ -475,7 +475,11 @@ impl Reader<'_> {
         ownership: &jadpo_db::Ownership,
     ) -> Option<SubscriberModel> {
         let mut items: BTreeMap<String, ast::Member> = BTreeMap::new();
-        for item in decl.member_list().iter().flat_map(|list| list.member_items()) {
+        for item in decl
+            .member_list()
+            .iter()
+            .flat_map(|list| list.member_items())
+        {
             let ast::MemberItem::Member(member) = item else {
                 self.out.push(self.item_invalid(
                     self.span(&item),
@@ -484,7 +488,9 @@ impl Reader<'_> {
                 ));
                 continue;
             };
-            let Some(key) = member.member_key() else { continue };
+            let Some(key) = member.member_key() else {
+                continue;
+            };
             let written = tree::written(key.syntax());
             if !SUBSCRIBER_ITEMS.contains(&written.as_str()) {
                 let near = nearest(&written, SUBSCRIBER_ITEMS.iter().copied());
@@ -538,11 +544,7 @@ impl Reader<'_> {
             name,
             ownership,
         );
-        let line = decl
-            .syntax()
-            .text_range()
-            .start()
-            .into();
+        let line = decl.syntax().text_range().start().into();
         let line = location_line(self.db, self.project, self.path, line);
         Some(SubscriberModel {
             key,
@@ -560,7 +562,7 @@ impl Reader<'_> {
     fn item_invalid(&self, span: Span, message: String, label: &str) -> Diagnostic {
         Diagnostic::new(&rule::SUBSCRIBER_ITEM_INVALID, message)
             .at(span, label.to_string())
-            .reason("A subscriber names the event it listens for with `on:` and the action it runs with `run:`, and may change its retry budget with `retry: { attempts: within: }`; nothing else.")
+            .reason("A subscriber names the event it listens for with `on:` and the action it runs with `run:`, and may change how it is retried with `retry: { attempts: within: }`; nothing else.")
             .next("Write `on: <Event>` and `run: <action>(event)`, once each")
     }
 
@@ -587,7 +589,7 @@ impl Reader<'_> {
                     )
                     .at(self.span(&value), "not an event")
                     .reason("A subscriber listens for one event, a type with the `Event` base that an action emits.")
-                    .next("Name an event, declared as `type TodoCompleted = Event { ... }` in a domain's `events/` folder"),
+                    .next("Name an event, declared as `type <Name> = Event { ... }` in a domain's `events/` folder"),
                 );
                 return None;
             }
@@ -625,7 +627,7 @@ impl Reader<'_> {
                     _ => {
                         self.out.push(self.retry_invalid(
                             span,
-                            format!("`attempts: {written}` can't be a retry budget"),
+                            format!("`attempts: {written}` can't be how often it is tried"),
                             "not 1 to 100",
                         ));
                         ok = false;
@@ -640,7 +642,7 @@ impl Reader<'_> {
                         _ => {
                             self.out.push(self.retry_invalid(
                                 span,
-                                format!("`within: {written}` can't be a retry budget"),
+                                format!("`within: {written}` can't be how long it is retried"),
                                 "not a duration up to 30 days",
                             ));
                             ok = false;
@@ -738,7 +740,8 @@ impl Reader<'_> {
         for arg in &written {
             let Some(expr) = arg.expr() else { continue };
             if arg.name().is_some() {
-                self.out.push(argument_invalid(self.span(&expr), "a named argument"));
+                self.out
+                    .push(argument_invalid(self.span(&expr), "a named argument"));
                 return None;
             }
             let (path, ty) = self.argument(&expr, event)?;
@@ -755,7 +758,11 @@ impl Reader<'_> {
                     &rule::TYPE_ARGUMENT_COUNT,
                     format!(
                         "`{name}` takes {expected} {}, not {}",
-                        if expected == 1 { "argument" } else { "arguments" },
+                        if expected == 1 {
+                            "argument"
+                        } else {
+                            "arguments"
+                        },
                         typed.len()
                     ),
                 )
@@ -813,7 +820,8 @@ impl Reader<'_> {
         };
         let root = tree::name_ref_text(&first)?;
         if root != "event" {
-            self.out.push(argument_invalid(self.span(&first), &format!("`{root}`")));
+            self.out
+                .push(argument_invalid(self.span(&first), &format!("`{root}`")));
             return None;
         }
         let mut ty = Ty::Named(event.to_string());
@@ -876,7 +884,10 @@ impl Reader<'_> {
     /// The event's field holding the tenant's id, which a subscriber is
     /// limited to (area 9).
     fn tenant(&self, event: &str) -> Tenant {
-        let Some(tenant) = crate::policy::root_policy(self.db, self.project).tenant.clone() else {
+        let Some(tenant) = crate::policy::root_policy(self.db, self.project)
+            .tenant
+            .clone()
+        else {
             return Tenant::Untenanted;
         };
         let holding: Vec<String> = self
@@ -916,6 +927,9 @@ fn location_line(db: &dyn Db, project: Project, path: &str, offset: u32) -> u32 
         .map_or(1, |file| {
             let text = file.text(db);
             let end = (offset as usize).min(text.len());
-            1 + text.as_bytes()[..end].iter().filter(|&&b| b == b'\n').count() as u32
+            1 + text.as_bytes()[..end]
+                .iter()
+                .filter(|&&b| b == b'\n')
+                .count() as u32
         })
 }

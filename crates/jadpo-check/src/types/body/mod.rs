@@ -1437,7 +1437,7 @@ impl Body<'_> {
                 Diagnostic::new(&rule::EVENT_EMIT_INVALID, format!("`emit` is given a `{ty}`"))
                     .at(self.span(expr), "not an event")
                     .reason("`emit` announces that something happened: its value is an event, a type with the `Event` base declared in a domain's `events/` folder, built where it is emitted.")
-                    .next("Emit an event, `emit TodoCompleted { ... }`, declaring it as `type TodoCompleted = Event { ... }`"),
+                    .next("Emit an event, `emit <Name> { ... }`, declaring it as `type <Name> = Event { ... }`"),
             );
             return;
         };
@@ -1450,7 +1450,7 @@ impl Body<'_> {
                 )
                 .at(self.span(emit), "only actions emit")
                 .reason(format!(
-                    "An event is kept in the same transaction as an action's writes and delivered once it commits, so only actions emit; {caller} emits by calling an action."
+                    "An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; {caller} emits by calling an action."
                 ))
                 .next("Move the `emit` into the action this code calls, or make this an action"),
             );
