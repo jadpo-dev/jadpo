@@ -1,0 +1,41 @@
+use lettings/types { SealedNote, VisitSheet }
+use lettings/failures { NoteUnreadable }
+use lettings/actions { seal_access_note }
+
+test "a contractor's sheet opens the tenancy's own note" {
+    var sealed_note: SealedNote = seal_access_note(
+        "Key in the safe by the door, code 4471.",
+        "T-1042"
+    )
+    var sheet: VisitSheet = attempt contractor_visit("T-1042", sealed_note, "2026-10-19T08:00:00Z")
+    assert sheet.way_in == "Key in the safe by the door, code 4471."
+    assert sheet.due_by == "2026-10-20T08:00:00Z"
+}
+
+test "a note moved to another tenancy can't be opened there" {
+    var sealed_note: SealedNote = seal_access_note(
+        "Key in the safe by the door, code 4471.",
+        "T-1042"
+    )
+    assert contractor_visit("T-2077", sealed_note, "2026-10-19T08:00:00Z") fails NoteUnreadable
+}
+
+test "sealing the same note twice gives different bytes" {
+    // A fresh nonce each time, so two sealed copies of one note can't be
+    // told apart from two different notes.
+    assert seal_access_note("Ring the bell.", "T-1042") != seal_access_note(
+        "Ring the bell.",
+        "T-1042"
+    )
+}
+
+test "an office that promises four hours sets its own window" {
+    // A test's `config:` changes a setting for that test and the code it
+    // calls; every other test still reads the default.
+    config: {
+        urgent_repair_within: 4h
+    }
+    var sealed_note: SealedNote = seal_access_note("Ring the bell.", "T-1042")
+    var sheet: VisitSheet = attempt contractor_visit("T-1042", sealed_note, "2026-10-19T08:00:00Z")
+    assert sheet.due_by == "2026-10-19T12:00:00Z"
+}

@@ -1,0 +1,8 @@
+use bookclub/types { RotaEntry }
+use bookclub/fixtures { hobbit, room_of_ones_own }
+
+test "members lead the books in turn" {
+    var rota: List<RotaEntry> = plan_rota(["Ann", "Bea", "Cal"], [hobbit(), room_of_ones_own()])
+    assert list.count(rota) == 2
+    assert list.map(rota, entry -> entry.leader) == ["Ann", "Bea"]
+}

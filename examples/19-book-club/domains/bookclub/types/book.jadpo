@@ -1,0 +1,9 @@
+use bookclub/types { BookTitle, Genre, PageCount }
+
+/// A book the club might read.
+type Book = Object {
+    isbn: Isbn
+    title: BookTitle
+    genre: Genre
+    length_in_pages: PageCount
+}

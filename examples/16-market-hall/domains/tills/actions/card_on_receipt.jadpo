@@ -1,0 +1,5 @@
+/// What a receipt keeps of the card that paid: its brand, from its first
+/// digits, and its last four. The number itself is never kept.
+action card_on_receipt(card: PaymentCardNumber) -> MaskedCardNumber {
+    return money.mask(card)
+}

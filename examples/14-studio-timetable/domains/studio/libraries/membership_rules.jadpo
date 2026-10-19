@@ -1,0 +1,32 @@
+// Calendar arithmetic: a date moves by calendar days, months and years,
+// never by a `Duration`. A month on from 31 January needs a day February
+// doesn't have, and the call says what to do about it.
+
+use studio/types { AnniversaryYears, JoinDay }
+use studio/failures { NoSuchDay }
+
+/// Membership dates.
+library membership_rules {
+    /// The day a member's free trial ends: two weeks after they join.
+    function trial_end(joined_on: JoinDay) -> JoinDay {
+        return temporal.add_days(joined_on, 14)
+    }
+
+    /// The day a membership first renews: a month on, or the month's last
+    /// day when it is shorter.
+    function first_renewal(joined_on: JoinDay) -> JoinDay {
+        return temporal.add_months(joined_on, 1, invalid_day: InvalidDay.last_valid_day)
+    }
+
+    /// A member's anniversary `years` on. A member who joined on 29
+    /// February has one only in leap years: the studio sends no card in
+    /// the others.
+    function anniversary_day(
+        joined_on: JoinDay,
+        years_on: AnniversaryYears
+    ) fails NoSuchDay -> JoinDay {
+        return attempt temporal.add_years(joined_on, years_on, invalid_day: InvalidDay.reject) {
+            invalid_day: NoSuchDay
+        }
+    }
+}

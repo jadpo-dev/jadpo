@@ -1,0 +1,4 @@
+/// One report a bike's tracker sends.
+type LogSize = DataSize {
+    max: 1MB
+}

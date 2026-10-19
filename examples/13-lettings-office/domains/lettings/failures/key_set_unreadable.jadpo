@@ -1,0 +1,4 @@
+/// The council's key set isn't JSON holding keys.
+type KeySetUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}

@@ -1,0 +1,6 @@
+/// A time a member proposes in the poll for the next meeting.
+decline type.standard_exists: "A proposal in a poll, not a time anyone has booked; the chosen one becomes a Meeting"
+type ProposedSlot = Object {
+    starts_at: Instant
+    ends_at: Instant
+}

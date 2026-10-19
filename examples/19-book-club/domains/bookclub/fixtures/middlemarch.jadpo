@@ -1,0 +1,11 @@
+use bookclub/types { Book, Genre }
+
+/// "Middlemarch", for the club's tests.
+fixture middlemarch() -> Book {
+    return Book {
+        isbn: "9780000000026"
+        title: "Middlemarch"
+        genre: Genre.fiction
+        length_in_pages: 880
+    }
+}

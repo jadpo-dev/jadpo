@@ -1,0 +1,10 @@
+test "the return window is counted in each language's plural forms" {
+    assert show_returns(14, Locale.en_gb).return_window == "You have 14 days to send it back."
+    assert show_returns(1, Locale.en_gb).return_window == "You have 1 day to send it back."
+    assert show_returns(
+        1,
+        Locale.de_de
+    ).return_window == "Sie haben 1 Tag Zeit für die Rücksendung."
+    assert show_returns(2, Locale.ar_eg).return_window == "لديك يومان لإرجاعه."
+    assert show_returns(14, Locale.de_de).help_text == "Fragen? Rufen Sie uns an: 0800 123 4567."
+}

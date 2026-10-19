@@ -1,0 +1,21 @@
+// A rule across a type's fields is checked wherever a value is built, so
+// a meeting that ends before it starts can't exist; nothing proves this
+// one, so `attempt` maps the rule by its name.
+
+use bookclub/types { ClubMeeting, MeetingTime }
+use bookclub/failures { BackToFront }
+
+/// A meeting about `book` from `starts` to `ends`.
+action schedule_meeting(
+    book: Isbn,
+    starts: MeetingTime,
+    ends: MeetingTime
+) fails BackToFront -> ClubMeeting {
+    return attempt ClubMeeting {
+        book: book
+        starts: starts
+        ends: ends
+    } {
+        ends_after_start: BackToFront
+    }
+}

@@ -1,0 +1,10 @@
+use bookclub/types { Book, Genre }
+
+/// The books members want to read next, put together.
+type Shortlist = Object {
+    books: List<Book>
+    longest_book: Book?
+    shortest_book: Book?
+    total_pages: Int
+    by_genre: Map<Genre, List<Book>>
+}

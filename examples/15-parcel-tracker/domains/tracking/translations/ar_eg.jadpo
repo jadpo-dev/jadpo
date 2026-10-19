@@ -1,0 +1,18 @@
+translations {
+    delivery_estimate: "الوصول {day}"
+    parcel_status: {
+        delivered: "تم التسليم"
+        held_at_depot: "محتجز في المستودع: {reason}"
+        in_transit: "في الطريق"
+        label_created: "تم إنشاء الملصق"
+        out_for_delivery: "خرج للتسليم"
+    }
+    parcels_on_the_way: {
+        zero: "لا توجد طرود في الطريق"
+        one: "طرد واحد في الطريق"
+        two: "طردان في الطريق"
+        few: "{parcels} طرود في الطريق"
+        many: "{parcels} طردًا في الطريق"
+        other: "{parcels} طرد في الطريق"
+    }
+}

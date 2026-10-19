@@ -1,0 +1,5 @@
+/// Where to get help, at the foot of every page. Both domains show it, so
+/// it lives in `shared/` and is called `translations.shared.help_line`.
+public type HelpLine = Message {
+    phone: Text
+}

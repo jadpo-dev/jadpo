@@ -1,0 +1,4 @@
+/// How long a ride took, moving.
+type RideTime = Duration {
+    min: 1m
+}

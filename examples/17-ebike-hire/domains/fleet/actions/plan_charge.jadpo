@@ -1,0 +1,38 @@
+// Kinds multiply and divide as physics says: volts times amps is watts,
+// and watts for an hour is energy. A temperature takes a difference, not
+// another temperature.
+
+use fleet/types {
+    BatteryCapacity,
+    CellTemperature,
+    ChargeLevel,
+    ChargePlan,
+    ChargeWarming,
+    ChargerCurrent,
+    PackVoltage
+}
+
+/// What charging a battery from `level` takes, and whether its cells are
+/// cool enough: lithium cells charge from 0 °C to 45 °C, and charging
+/// warms them by about 8 °C.
+action plan_charge(
+    capacity: BatteryCapacity,
+    level: ChargeLevel,
+    voltage: PackVoltage,
+    current: ChargerCurrent,
+    cells: CellTemperature
+) -> ChargePlan {
+    var charger_power: Power = voltage * current
+    // A difference of temperatures has no suffix of its own: `8degC` is a
+    // temperature, 8 °C, so a difference is made with `units.of`.
+    var charge_warming: ChargeWarming = ChargeWarming(
+        units.of(8, TemperatureDifferenceUnit.celsius)
+    )
+    var warmest: Temperature = cells + charge_warming
+    return ChargePlan {
+        charger_power: charger_power
+        still_to_go: capacity * (100% - level)
+        first_hour: charger_power * 1h
+        safe_to_charge: cells >= 0degC and warmest <= 45degC
+    }
+}

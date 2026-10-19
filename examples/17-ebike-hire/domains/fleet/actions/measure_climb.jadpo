@@ -1,0 +1,24 @@
+// Trigonometry on exact decimals: an angle gives its radians with
+// `units.in`, and `decimal.sin` and `decimal.cos` work them to the places
+// asked for, the same on every target.
+
+use fleet/types { Climb, Gradient, RideDistance }
+
+/// How much height a stretch of `distance` up `gradient` climbs, and how
+/// far it runs along the map.
+action measure_climb(road_distance: RideDistance, gradient: Gradient) -> Climb {
+    var angle_radians: Decimal = units.in(
+        gradient,
+        AngleUnit.radian,
+        scale: 9,
+        rounding: Rounding.half_even
+    )
+    return Climb {
+        height: road_distance * decimal.sin(angle_radians, scale: 6, rounding: Rounding.half_even)
+        along_the_map: road_distance * decimal.cos(
+            angle_radians,
+            scale: 6,
+            rounding: Rounding.half_even
+        )
+    }
+}

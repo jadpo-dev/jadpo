@@ -1,0 +1,4 @@
+/// A meeting that ends before it starts.
+type BackToFront = Failure {
+    kind: FailureKind.invalid_value
+}

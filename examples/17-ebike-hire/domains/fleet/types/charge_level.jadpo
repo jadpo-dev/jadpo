@@ -1,0 +1,5 @@
+/// How full a battery is.
+type ChargeLevel = Percentage {
+    min: 0%
+    max: 100%
+}

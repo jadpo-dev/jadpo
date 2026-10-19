@@ -1,0 +1,9 @@
+use lettings/types { RepairDue, ReportedAt }
+
+/// Repair deadlines.
+library repairs {
+    /// When an urgent repair reported at `reported_at` must be seen to by.
+    function urgent_repair_due(reported_at: ReportedAt) -> RepairDue {
+        return RepairDue(reported_at + config.urgent_repair_within)
+    }
+}

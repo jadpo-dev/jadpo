@@ -1,0 +1,4 @@
+/// A count of code points in a text.
+type CodePoints = Int {
+    min: 0
+}

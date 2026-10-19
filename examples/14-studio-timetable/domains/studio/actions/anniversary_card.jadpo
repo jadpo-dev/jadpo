@@ -1,0 +1,14 @@
+use studio/types { AnniversaryYears, JoinDay }
+use studio/failures { NoSuchDay }
+use studio/libraries { membership_rules }
+
+/// The date on a member's anniversary card, in their language. A date has
+/// no clock time and no zone, so a date format shows it as it is.
+action anniversary_card(
+    joined_on: JoinDay,
+    years_on: AnniversaryYears,
+    reader_locale: Locale
+) fails NoSuchDay -> PresentationText {
+    var retreat_day: JoinDay = attempt membership_rules.anniversary_day(joined_on, years_on)
+    return text.format(retreat_day, locale: reader_locale, format: TimeFormat.date_full)
+}

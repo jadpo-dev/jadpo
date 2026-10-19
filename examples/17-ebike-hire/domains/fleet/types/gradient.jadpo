@@ -1,0 +1,5 @@
+/// How steep a hill is.
+type Gradient = Angle {
+    min: 0deg
+    max: 30deg
+}

@@ -1,0 +1,4 @@
+/// How fast a flashing lamp flashes: the law allows 1 to 4 flashes a second.
+type LampFlash = Frequency {
+    max: 10Hz
+}

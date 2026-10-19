@@ -1,0 +1,11 @@
+/// When the overnight retreat starts, in every part a timetable shows.
+type RetreatStart = Output {
+    retreat_date: CalendarDate
+    retreat_year: Int
+    retreat_month: Int
+    retreat_day: Int
+    start_hour: Int
+    start_minute: Int
+    start_zone: Zone
+    starts_at: Instant
+}

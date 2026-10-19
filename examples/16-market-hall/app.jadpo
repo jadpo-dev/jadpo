@@ -1,0 +1,8 @@
+// Amounts are shown to people in a locale, so the market declares the
+// one it writes in.
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}

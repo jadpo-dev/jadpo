@@ -1,0 +1,12 @@
+use bookclub/types { ClubMemberName, MeetingRatings, Stars }
+
+/// A book's ratings, once both halves of the meeting have rated it.
+type RatingTally = Output {
+    raters: Int
+    who_rated: Set<ClubMemberName>
+    mean_stars: Decimal
+    fans: MeetingRatings
+    star_labels: Map<ClubMemberName, Text>
+    leaver_rating: Stars?
+    kept_ratings: MeetingRatings
+}

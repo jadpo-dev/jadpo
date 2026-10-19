@@ -1,0 +1,14 @@
+translations {
+    delivery_estimate: "Zustellung am {day}"
+    parcel_status: {
+        delivered: "Zugestellt"
+        held_at_depot: "Im Depot zurückgehalten: {reason}"
+        in_transit: "Unterwegs"
+        label_created: "Versandetikett erstellt"
+        out_for_delivery: "In Zustellung"
+    }
+    parcels_on_the_way: {
+        one: "{parcels} Paket ist unterwegs"
+        other: "{parcels} Pakete sind unterwegs"
+    }
+}

@@ -1,0 +1,5 @@
+/// The name a lettings office trades under.
+type OfficeName = Text {
+    min_length: 1
+    max_length: 80
+}

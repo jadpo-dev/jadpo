@@ -1,0 +1,21 @@
+// A UK postcode is an outward half, which names the sorting office's
+// district, and an inward half, always three characters.
+
+use newsletter/types { AddressLabel, CodePoints, PostcodeText }
+
+/// A printed copy's label from the postcode a subscriber typed: spaces
+/// trimmed, capitals, split into its two halves. Postcodes starting `SA62`
+/// are on the rural round, which goes out a day early.
+action label_address(typed_postcode: PostcodeText) -> AddressLabel {
+    var tidy: Text = text.upper(text.join(text.split(text.trim(typed_postcode), " "), ""))
+    var outward_half: Text = text.drop_last(tidy, 3)
+    // `text.slice` starts at a position never below 0, proved by its type;
+    // a length is never below 0, so it builds one.
+    var inward_from: CodePoints = CodePoints(text.length(outward_half))
+    return AddressLabel {
+        postcode: outward_half + " " + text.keep_last(tidy, 3)
+        outward_half: outward_half
+        inward: text.slice(tidy, inward_from, 3)
+        rural_round: text.starts_with(tidy, "SA62")
+    }
+}

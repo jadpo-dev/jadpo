@@ -1,0 +1,8 @@
+/// A printed copy's address label: the postcode tidied, and the sorting
+/// office's half of it.
+type AddressLabel = Output {
+    postcode: Text
+    outward_half: Text
+    inward: Text
+    rural_round: Bool
+}

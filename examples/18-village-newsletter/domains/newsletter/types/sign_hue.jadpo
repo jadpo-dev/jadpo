@@ -1,0 +1,2 @@
+/// The hue of the paint on a village's sign.
+type SignHue = Angle {}

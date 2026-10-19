@@ -1,0 +1,10 @@
+use newsletter/types { ConfirmToken, TokenDigest, UnsubscribeKey }
+
+/// A new subscription: the confirmation link's token, the code read out
+/// over the phone, and what the newsletter keeps of the token.
+type Subscription = Object {
+    confirm_token: ConfirmToken
+    phone_code: Text
+    token_digest: TokenDigest
+    unsubscribe_key: UnsubscribeKey
+}

@@ -1,0 +1,8 @@
+use studio/types { JoinDay }
+
+/// The days that matter in a membership.
+type MembershipDates = Output {
+    trial_ends: JoinDay
+    first_renewal: JoinDay
+    member_for: CalendarPeriod
+}

@@ -54,6 +54,15 @@ pub enum Constant {
         kind: &'static str,
         text: Hidden,
     },
+    /// Text written where a standard object type goes, such as
+    /// `"2.4.1"` for a `SemanticVersion` or `"2028-12"` for a
+    /// `CardExpiry` (area 19): the type's name and its canonical text,
+    /// which the checker proved the type reads, read through the type's
+    /// contract where it becomes a value (chunk 5.7).
+    Standard {
+        ty: &'static str,
+        text: String,
+    },
 }
 
 /// A secret value's text in a plan, printed by `{:?}` as `Hidden(..)` so
@@ -153,7 +162,8 @@ pub fn literal(
 
 impl Constant {
     /// As the storage codec takes it (chunk 5.5w3b); `None` for a value no
-    /// column holds as itself: `Unit`, a variant with fields, a secret.
+    /// column holds as itself: `Unit`, a variant with fields, a secret, a
+    /// standard object, which is stored as its parts.
     pub fn stored(&self) -> Option<crate::standard::storage::Stored<'_>> {
         use crate::standard::storage::Stored;
         Some(match self {
@@ -180,7 +190,10 @@ impl Constant {
             Constant::Variant {
                 ty, name, fields, ..
             } if fields.is_empty() => Stored::Variant { ty, name },
-            Constant::Unit | Constant::Variant { .. } | Constant::Secret { .. } => return None,
+            Constant::Unit
+            | Constant::Variant { .. }
+            | Constant::Secret { .. }
+            | Constant::Standard { .. } => return None,
         })
     }
 }

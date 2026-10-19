@@ -1,0 +1,5 @@
+/// How many weeks' rent a deposit is.
+type DepositWeeks = Int {
+    min: 1
+    max: 8
+}

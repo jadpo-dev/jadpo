@@ -1,0 +1,9 @@
+use newsletter/types { EditionColours }
+
+test "an edition's colours come from its sign's hue" {
+    var green_edition: EditionColours = edition_theme(145deg)
+    assert text.from(green_edition.accent_colour) == "#006911"
+    assert green_edition.readable_on_white
+    assert text.from(green_edition.hover_colour) == "#3f9642"
+    assert text.from(green_edition.tint) == "#dbe8db"
+}

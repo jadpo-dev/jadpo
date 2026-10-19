@@ -1,0 +1,2 @@
+/// How much charging warms a battery's cells.
+type ChargeWarming = TemperatureDifference {}

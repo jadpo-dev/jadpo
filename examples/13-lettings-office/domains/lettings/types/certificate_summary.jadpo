@@ -1,0 +1,5 @@
+/// Who a certificate names, and until when it holds.
+type CertificateSummary = Output {
+    subject: Text
+    valid_until: Instant
+}

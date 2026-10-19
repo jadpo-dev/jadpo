@@ -184,10 +184,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: schedules and subscribers (area 12)",
     ),
     // Layout places later areas fill.
-    (
-        "root file config.jadpo",
-        "not built: configuration (area 10)",
-    ),
     ("root file flags.jadpo", "not built: flags (area 16)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
     ("domain folder events", "not built: events (area 12)"),
@@ -271,11 +267,19 @@ fn built() -> BTreeSet<String> {
     out.extend(COPY_LINES.iter().map(|line| format!("copy line {line}")));
     out.insert("copy line written field replaces a copied one".to_string());
     // The standard library: every operation, every value of the enums its
-    // operations take, and the generated namespaces' built members.
+    // operations take or give, and the generated namespaces' built members.
+    // An enum an operation gives counts too (`locale.direction`'s
+    // `TextDirection`): a program builds or matches its values.
     for operation in OPERATIONS {
         out.insert(format!("std {}", operation.qualified()));
-        for param in operation.params {
-            if let jadpo_std::Kind::Enum(name) = param.kind {
+        let result = std::iter::once(operation.result);
+        for kind in operation
+            .params
+            .iter()
+            .map(|param| param.kind)
+            .chain(result)
+        {
+            if let jadpo_std::Kind::Enum(name) = kind {
                 let values = jadpo_std::enums()
                     .into_iter()
                     .find(|(enum_name, _)| *enum_name == name)
@@ -486,6 +490,9 @@ const BODY: &[&str] = &[
     "call entity operation",
     "call caller from a record",
     "call session",
+    "advance the test clock",
+    "call translation",
+    "render a prompt",
     "write create",
     "write update",
     "write update by id",
@@ -878,6 +885,14 @@ fn body_features(
                         "match value"
                     });
                     for arm in arms {
+                        // Matching a standard-library enum's value, such as
+                        // `PasswordCheck.correct`, uses it as building one does.
+                        if let Pattern::Variant(key) = &arm.pattern {
+                            let owner = key.name().split('.').next().unwrap_or("");
+                            if jadpo_std::enums().iter().any(|(name, _)| *name == owner) {
+                                std.insert(format!("std {}", key.name()));
+                            }
+                        }
                         out.insert(match &arm.pattern {
                             Pattern::Variant(_) if arm.binding.is_some() => {
                                 "pattern variant with binding"
@@ -1109,6 +1124,13 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                     Base::Refines(TypeRef::Node(_)) => {
                         used.insert("base refinement of a named type".to_string());
                     }
+                    // A declared time format: the graph has no base of its
+                    // own for `TimeFormat`, so keeps it as written.
+                    Base::Refines(TypeRef::Written(written))
+                        if BASES.contains(&written.as_str()) =>
+                    {
+                        used.insert(format!("base {written}"));
+                    }
                     Base::Refines(parent) => shapes(parent, &mut used),
                     other => {
                         used.insert(format!("base {}", other.render(&|key| key.to_string())));
@@ -1179,6 +1201,13 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                     shapes(ty, &mut used);
                 }
             }
+        }
+    }
+    // Area 10's settings: no graph node holds a setting's type, so a key
+    // or an address type a setting declares is read from `config { }`.
+    for setting in &jadpo_check::config::config(db, project).settings {
+        if let jadpo_check::types::Ty::Prim(builtin) = &setting.ty {
+            used.insert(format!("builtin {}", builtin.name()));
         }
     }
     // Area 5's settings and decisions, as the checker read them.
@@ -1450,8 +1479,18 @@ fn the_examples_use_every_built_feature() {
             ));
         }
     }
+    // A standard enum no operation takes or gives (`CardBrand`, a unit
+    // enum such as `LengthUnit`, which `units.of` takes as a unit of any
+    // kind) has values that are data, not features of their own, so an
+    // example naming one isn't asked to list it.
+    let std_enum_value = |feature: &str| {
+        feature
+            .strip_prefix("std ")
+            .and_then(|rest| rest.split_once('.'))
+            .is_some_and(|(owner, _)| jadpo_std::enums().iter().any(|(name, _)| *name == owner))
+    };
     for feature in used.keys() {
-        if !built.contains(feature) && !feature.starts_with("graph ") {
+        if !built.contains(feature) && !feature.starts_with("graph ") && !std_enum_value(feature) {
             problems.push(format!(
                 "{feature}: an example uses it, but the built features don't list it; add it to the list in crates/jadpo-check/tests/examples.rs"
             ));

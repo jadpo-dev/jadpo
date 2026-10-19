@@ -35,6 +35,11 @@ ALLOWED = ROOT / 'tools/example-identifiers-allowed.txt'
 TYPE_LIST = ROOT / 'tools/example-type-names.txt'
 TYPE_ALLOWED = ROOT / 'tools/example-type-names-allowed.txt'
 SOURCES = [ROOT / 'docs/language', ROOT / 'examples']
+
+
+def source_files(root: Path, pattern: str) -> list[Path]:
+    """Committed sources only: an example's `build/` output is generated and ignored."""
+    return [p for p in sorted(root.rglob(pattern)) if 'build' not in p.relative_to(root).parts]
 FENCE = re.compile(r'^```(\S*)(.*)$')
 IDENT = r'[A-Za-z_][A-Za-z0-9_]*'
 
@@ -108,10 +113,10 @@ def declared_names(attrs: str, lines: list[str]) -> set[str]:
 def extract() -> set[str]:
     names = set()
     for root in SOURCES:
-        for path in sorted(root.rglob('*.md')):
+        for path in source_files(root, '*.md'):
             for attrs, lines in code_blocks(path):
                 names |= declared_names(attrs, lines)
-        for path in sorted(root.rglob('*.jadpo')):
+        for path in source_files(root, '*.jadpo'):
             names |= declared_names(str(path.relative_to(root)), path.read_text().splitlines())
             names |= {m.group(1) for m in DOMAIN_PATH.finditer(str(path.relative_to(root)))}
     return names
@@ -149,10 +154,10 @@ def banned_type_names() -> list[str]:
     allowed = load_allowed()
     types = set()
     for root in SOURCES:
-        for path in sorted(root.rglob('*.md')):
+        for path in source_files(root, '*.md'):
             for _, lines in code_blocks(path):
                 types.update(TYPE_NAME.findall('\n'.join(lines)))
-        for path in sorted(root.rglob('*.jadpo')):
+        for path in source_files(root, '*.jadpo'):
             types.update(TYPE_NAME.findall(path.read_text()))
     language = {line.split('#', 1)[0].strip() for line in TYPE_ALLOWED.read_text().splitlines()}
     return sorted(name for name in types if words(name) in allowed and name not in language)

@@ -1,0 +1,8 @@
+use studio/types { StudioHours, StudioOpen }
+
+/// Whether the studio is open now, by the clock on its wall: its hours
+/// carry their zone, so a night past midnight and a clock change are
+/// read as a member at the door reads them.
+action is_studio_open(hours: StudioHours) -> StudioOpen {
+    return StudioOpen(temporal.open_at(hours, clock.now))
+}

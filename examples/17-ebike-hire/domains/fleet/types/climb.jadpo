@@ -1,0 +1,6 @@
+/// How much height a stretch of road climbs, and how far it runs along
+/// the map.
+type Climb = Output {
+    height: Length
+    along_the_map: Length
+}

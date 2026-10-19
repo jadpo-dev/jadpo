@@ -1,0 +1,4 @@
+/// An amount in a currency the till can't take here.
+type WrongCurrency = Failure {
+    kind: FailureKind.invalid_value
+}

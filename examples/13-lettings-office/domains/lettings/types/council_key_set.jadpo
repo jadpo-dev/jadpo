@@ -1,0 +1,4 @@
+/// The council's published key set, read from its JSON.
+type CouncilKeySet = Object {
+    keys: List<Jwk>
+}

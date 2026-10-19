@@ -1,0 +1,13 @@
+use tracking/types { HoldReason }
+
+/// Where a parcel has got to. Its wording for people is in the domain's
+/// language files, not here: an enum has no labels of its own.
+type ParcelStatus = Enum {
+    label_created
+    in_transit
+    out_for_delivery
+    delivered
+    held_at_depot: {
+        reason: HoldReason
+    }
+}

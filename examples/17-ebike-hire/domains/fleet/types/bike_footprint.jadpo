@@ -1,0 +1,4 @@
+/// The floor one parked bike takes.
+type BikeFootprint = Area {
+    min: 0.5sqm
+}

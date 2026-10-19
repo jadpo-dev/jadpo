@@ -1,0 +1,4 @@
+/// A price shown to visitors paying in euros.
+type EuroPrice = Money {
+    currency: Currency.eur
+}

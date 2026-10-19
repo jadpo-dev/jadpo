@@ -1,0 +1,25 @@
+// `decimal.exp` and `decimal.ln` on exact decimals: a cell loses a fixed
+// share of what it holds each charge, so what it holds decays
+// exponentially, and the charges left come from a logarithm.
+
+use fleet/types { BatteryCapacity, BatteryHealth, ChargeCycles }
+
+/// What a battery of `new_capacity` holds after `cycles` full charges, at
+/// a fade of 0.02% a charge, and how many more it has before it falls to
+/// 80% of new, when the fleet replaces it.
+action assess_battery(new_capacity: BatteryCapacity, charges_done: ChargeCycles) -> BatteryHealth {
+    var kept_share: Decimal = decimal.exp(
+        charges_done * -0.0002,
+        scale: 6,
+        rounding: Rounding.half_even
+    )
+    var limit: Decimal = decimal.ln(0.8, scale: 6, rounding: Rounding.half_even)
+    var total_charges: Int = integer.from_decimal(
+        decimal.abs(limit) / 0.0002,
+        rounding: Rounding.down
+    )
+    return BatteryHealth {
+        holds_now: new_capacity * decimal.round(kept_share, scale: 4, rounding: Rounding.half_even)
+        charges_left: integer.max(total_charges - charges_done, 0)
+    }
+}

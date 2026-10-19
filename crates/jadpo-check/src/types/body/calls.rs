@@ -2503,7 +2503,18 @@ impl Body<'_> {
             return (target, Fallible::Never);
         }
         let before = self.out.len();
-        let actual = self.infer(value);
+        let mut actual = self.infer(value);
+        // A call whose type variables only the target fixes, such as
+        // `map.with([], key, "text")`, where a literal's type comes from
+        // where it goes: checked against the collection the target is
+        // built on, which fixes them, as an argument would be.
+        if self.out.len() == before && actual.has_unknown() && !target.has_error() {
+            let structure = self.table.structure(&target);
+            if is_collection(&structure) && !structure.has_unknown() {
+                self.check(value, &structure);
+                actual = structure;
+            }
+        }
         // A value already reported as wrong proves nothing either way.
         if actual.has_error() || target.has_error() || self.out.len() > before {
             return (target, Fallible::Unknown);

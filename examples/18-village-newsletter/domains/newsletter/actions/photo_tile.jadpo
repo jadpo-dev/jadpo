@@ -1,0 +1,11 @@
+/// A reader's photo scaled to fit the website's 600 by 400 tile, keeping
+/// its shape and never made larger.
+action photo_tile(photo: ImageDimensions) -> ImageDimensions {
+    return media.fit(
+        photo,
+        within: ImageDimensions {
+            width: 600
+            height: 400
+        }
+    )
+}

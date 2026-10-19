@@ -1,0 +1,9 @@
+// Formatting a time for people needs the locales the studio writes in,
+// declared once; any other locale is a compile error where a time is
+// formatted.
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}

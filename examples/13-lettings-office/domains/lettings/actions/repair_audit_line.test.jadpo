@@ -1,0 +1,14 @@
+use lettings/types { Verbosity }
+
+test "an audit line names the tenancy" {
+    assert repair_audit_line("T-1042") == "repair reported for T-1042"
+}
+
+test "a verbose audit line adds the hour in the office's zone" {
+    clock: "2026-10-18T09:00:00Z"
+    config: {
+        log_level: Verbosity.verbose
+    }
+    // 09:00 UTC is 10:00 in London while the clocks are on summer time.
+    assert repair_audit_line("T-1042") == "repair reported for T-1042 at 10h"
+}

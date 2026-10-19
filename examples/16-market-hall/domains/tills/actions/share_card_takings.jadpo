@@ -1,0 +1,8 @@
+use tills/types { HallPitches, StallPrice, Tendered }
+
+/// The hall's card takings shared between its stalls by the pitches each
+/// rents. Like `split`, `allocate` never rounds: the shares always add up
+/// to the takings.
+action share_card_takings(takings: StallPrice, pitches: HallPitches) -> List<Tendered> {
+    return list.map(money.allocate(takings, pitches), share -> Tendered(share))
+}

@@ -1,0 +1,13 @@
+use studio/types { JoinDay, MembershipDates }
+use studio/libraries { membership_rules }
+
+/// The days that matter in a membership begun on `joined`, and how long
+/// it has run, in whole years, months and days, by the studio's calendar.
+action show_membership(joined_on: JoinDay) -> MembershipDates {
+    var studio_today: CalendarDate = temporal.date(temporal.in_zone(clock.now, config.studio_zone))
+    return MembershipDates {
+        trial_ends: membership_rules.trial_end(joined_on)
+        first_renewal: membership_rules.first_renewal(joined_on)
+        member_for: temporal.period_between(joined_on, studio_today)
+    }
+}

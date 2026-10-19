@@ -1,0 +1,6 @@
+use bookclub/fixtures { cosmos, hobbit, middlemarch }
+
+test "a long book after a short one is read more slowly" {
+    assert pages_per_week(hobbit(), middlemarch()) == 60
+    assert pages_per_week(hobbit(), cosmos()) == 99
+}

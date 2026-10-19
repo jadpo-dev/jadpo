@@ -1,0 +1,7 @@
+/// The shelf a book goes on.
+type Genre = Enum {
+    fiction
+    essays
+    science
+    poetry
+}

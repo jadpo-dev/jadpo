@@ -1,0 +1,8 @@
+use fleet/types { DockPlan }
+
+test "a dock's floor, its bikes and the walk across it" {
+    var dock: DockPlan = plan_dock(20metre, 6metre)
+    assert dock.dock_floor == 120sqm
+    assert dock.bikes == 100
+    assert dock.walk_between == 20.88metre
+}

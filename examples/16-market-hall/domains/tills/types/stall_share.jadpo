@@ -1,0 +1,6 @@
+/// How many pitches a stall rents in the hall, which decides its share
+/// of the hall's card takings.
+type StallShare = Int {
+    min: 0
+    max: 10
+}

@@ -1,0 +1,8 @@
+use fleet/types { BatteryHealth }
+
+test "a battery fades with each charge" {
+    var health: BatteryHealth = assess_battery(500Wh, 500)
+    assert health.holds_now == 452.4Wh
+    assert health.charges_left == 615
+    assert assess_battery(500Wh, 1200).charges_left == 0
+}

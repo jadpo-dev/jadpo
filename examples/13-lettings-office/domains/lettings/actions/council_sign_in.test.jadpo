@@ -1,0 +1,35 @@
+use lettings/types { KeySetText }
+use lettings/failures { CouncilTokenExpired, CouncilTokenRefused, KeySetUnreadable }
+
+/// The council's key set: RFC 8032's first test key, whose private half
+/// signed the tokens below.
+constant council_key_set: KeySetText = "{\"keys\": [{\"kty\": \"OKP\", \"crv\": \"Ed25519\", \"x\": \"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\", \"kid\": \"council-2026\"}]}"
+
+test "a council token signs a tenant in while it holds" {
+    clock: "2026-10-18T09:00:00Z"
+
+    var genuine: Jwt = "eyJhbGciOiJFZERTQSIsImtpZCI6ImNvdW5jaWwtMjAyNiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3NpZ25pbi5oYXJib3VyLWNvdW5jaWwuZXhhbXBsZSIsInN1YiI6InRlbmFudC03IiwiYXVkIjoibGV0dGluZ3MiLCJleHAiOjE3OTIzMTc2MDAsIm5iZiI6MTc5MjMxMzcwMCwiaWF0IjoxNzkyMzEzNzAwfQ.TICcnG-HtVCkuOCEONasyP0KnzaSR48-as5fhUYAI0QzFwC1pQK6hoRZkbP8f96J1kyaVgBFtoBk4_q123uxBA"
+    var council_claims: JwtClaims = attempt council_sign_in(genuine, council_key_set)
+    assert council_claims.sub == "tenant-7"
+    assert council_claims.aud == ["lettings"]
+    // The token runs out at 10:00.
+    clock.advance(61m)
+    assert council_sign_in(genuine, council_key_set) fails CouncilTokenExpired
+}
+
+test "tokens the council didn't issue for the office are refused" {
+    clock: "2026-10-18T09:00:00Z"
+
+    var for_parking: Jwt = "eyJhbGciOiJFZERTQSIsImtpZCI6ImNvdW5jaWwtMjAyNiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3NpZ25pbi5oYXJib3VyLWNvdW5jaWwuZXhhbXBsZSIsInN1YiI6InRlbmFudC03IiwiYXVkIjoicGFya2luZyIsImV4cCI6MTc5MjMxNzYwMCwibmJmIjoxNzkyMzEzNzAwLCJpYXQiOjE3OTIzMTM3MDB9.imuwxhsBVQoR_0P4SLHdWWuE8QJbhZshlpVC5Xe9SAxOlSL7pjc7lyE6xtNXhBf4dW3XjnP87Wp6D5r-yGTCAQ"
+    assert council_sign_in(for_parking, council_key_set) fails CouncilTokenRefused
+    // The genuine token's signature over claims changed to another tenant.
+    var altered: Jwt = "eyJhbGciOiJFZERTQSIsImtpZCI6ImNvdW5jaWwtMjAyNiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3NpZ25pbi5oYXJib3VyLWNvdW5jaWwuZXhhbXBsZSIsInN1YiI6InRlbmFudC0xIiwiYXVkIjoibGV0dGluZ3MiLCJleHAiOjE3OTIzMTc2MDAsIm5iZiI6MTc5MjMxMzcwMCwiaWF0IjoxNzkyMzEzNzAwfQ.TICcnG-HtVCkuOCEONasyP0KnzaSR48-as5fhUYAI0QzFwC1pQK6hoRZkbP8f96J1kyaVgBFtoBk4_q123uxBA"
+    assert council_sign_in(altered, council_key_set) fails CouncilTokenRefused
+}
+
+test "a key set that isn't one is refused" {
+    clock: "2026-10-18T09:00:00Z"
+
+    var genuine: Jwt = "eyJhbGciOiJFZERTQSIsImtpZCI6ImNvdW5jaWwtMjAyNiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3NpZ25pbi5oYXJib3VyLWNvdW5jaWwuZXhhbXBsZSIsInN1YiI6InRlbmFudC03IiwiYXVkIjoibGV0dGluZ3MiLCJleHAiOjE3OTIzMTc2MDAsIm5iZiI6MTc5MjMxMzcwMCwiaWF0IjoxNzkyMzEzNzAwfQ.TICcnG-HtVCkuOCEONasyP0KnzaSR48-as5fhUYAI0QzFwC1pQK6hoRZkbP8f96J1kyaVgBFtoBk4_q123uxBA"
+    assert council_sign_in(genuine, "{\"keys\": \"none\"}") fails KeySetUnreadable
+}

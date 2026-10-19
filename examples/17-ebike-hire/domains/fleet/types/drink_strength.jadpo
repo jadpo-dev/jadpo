@@ -1,0 +1,2 @@
+/// How strong a sports drink is.
+type DrinkStrength = Concentration {}

@@ -1,0 +1,8 @@
+use lettings/types { AccessNote, RepairDue, TenancyRef }
+
+/// What a contractor is sent for an urgent repair.
+type VisitSheet = Output {
+    tenancy_ref: TenancyRef
+    way_in: AccessNote
+    due_by: RepairDue
+}

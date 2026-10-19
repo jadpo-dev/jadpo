@@ -1,0 +1,3 @@
+/// When the studio's doors are open, in OpenStreetMap's form, with its
+/// zone.
+type StudioHours = OpeningHours {}

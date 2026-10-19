@@ -1,0 +1,2 @@
+/// Something a rider packs.
+type PannierLoad = Volume {}

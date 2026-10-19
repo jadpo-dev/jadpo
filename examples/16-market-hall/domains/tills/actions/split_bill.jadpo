@@ -1,0 +1,7 @@
+use tills/types { StallPrice, TableSize, Tendered }
+
+/// A table's bill shared between `table_size` people, every penny to someone: the
+/// leftover pennies go one each to the first shares.
+action split_bill(total: StallPrice, table_size: TableSize) -> List<Tendered> {
+    return list.map(money.split(total, table_size), share -> Tendered(share))
+}

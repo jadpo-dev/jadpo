@@ -1,0 +1,4 @@
+/// A local time the clocks skip or show twice, with no choice made.
+type UnclearTime = Failure {
+    kind: FailureKind.invalid_value
+}

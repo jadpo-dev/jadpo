@@ -1,0 +1,2 @@
+/// The ETag a page is served with.
+type PageTag = Text {}

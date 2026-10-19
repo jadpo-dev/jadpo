@@ -1,0 +1,15 @@
+use lettings/types { CertificateSummary, CertificateText }
+use lettings/failures { CertificateUnreadable }
+use lettings/libraries { council }
+
+/// Who the council's certificate names and until when, shown to whoever
+/// sets the scheme up.
+action council_certificate(
+    sent: CertificateText
+) fails CertificateUnreadable -> CertificateSummary {
+    var council_cert: Certificate = attempt council.read_council_certificate(sent)
+    return CertificateSummary {
+        subject: council_cert.subject
+        valid_until: council_cert.not_after
+    }
+}

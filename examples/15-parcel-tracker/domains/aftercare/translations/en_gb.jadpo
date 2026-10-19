@@ -1,0 +1,6 @@
+translations {
+    return_window: {
+        one: "You have {days} day to send it back."
+        other: "You have {days} days to send it back."
+    }
+}

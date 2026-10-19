@@ -1,0 +1,4 @@
+/// The JSON key set the council publishes (RFC 7517).
+type KeySetText = Text {
+    max_length: 100000
+}

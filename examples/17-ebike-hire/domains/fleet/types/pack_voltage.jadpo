@@ -1,0 +1,5 @@
+/// A battery pack's voltage.
+type PackVoltage = Voltage {
+    min: 24V
+    max: 52V
+}

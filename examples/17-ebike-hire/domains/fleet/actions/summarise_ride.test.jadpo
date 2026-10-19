@@ -1,0 +1,14 @@
+use fleet/types { RideSummary }
+
+test "legs in any unit add up as lengths" {
+    var summary: RideSummary = summarise_ride([12km, 6000metre], 1h, 165bpm, Locale.en_gb)
+    assert summary.road_distance == "18 km"
+    assert summary.miles == 11.2
+    assert summary.average_speed == "18 km/h"
+    assert summary.hard_effort
+    assert not summarise_ride([12km], 1h, 120bpm, Locale.en_gb).hard_effort
+}
+
+test "a distance is shown in the reader's own digits" {
+    assert summarise_ride([2.5km], 10m, 120bpm, Locale.de_de).road_distance == "2,5 km"
+}

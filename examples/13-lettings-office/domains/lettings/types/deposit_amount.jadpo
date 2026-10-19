@@ -1,0 +1,4 @@
+/// A deposit, in pence.
+type DepositAmount = Int {
+    min: 0
+}

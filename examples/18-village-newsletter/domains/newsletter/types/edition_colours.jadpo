@@ -1,0 +1,7 @@
+/// The colours a village's edition is printed in.
+type EditionColours = Output {
+    accent_colour: Colour
+    hover_colour: Colour
+    tint: Colour
+    readable_on_white: Bool
+}

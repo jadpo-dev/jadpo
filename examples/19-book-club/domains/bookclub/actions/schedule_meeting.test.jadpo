@@ -1,0 +1,16 @@
+use bookclub/types { ClubMeeting }
+use bookclub/failures { BackToFront }
+
+test "a meeting ends after it starts" {
+    var club_meeting: ClubMeeting = attempt schedule_meeting(
+        "9780000000019",
+        "2026-11-05T19:00:00Z",
+        "2026-11-05T21:00:00Z"
+    )
+    assert club_meeting.ends > club_meeting.starts
+    assert schedule_meeting(
+        "9780000000019",
+        "2026-11-05T21:00:00Z",
+        "2026-11-05T19:00:00Z"
+    ) fails BackToFront
+}

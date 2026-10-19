@@ -1,0 +1,10 @@
+/// An article ready for the website and the email.
+type ArticlePage = Output {
+    issue_label: Text
+    headline: Text
+    paper_section: Text
+    slug: Text
+    body: Html
+    preview: Text
+    word_count: Int
+}

@@ -1,0 +1,85 @@
+use tracking/types { ParcelStatus, TrackingPage }
+
+test "the page is in the language the browser asks for" {
+    var english_page: TrackingPage = show_tracking(
+        ParcelStatus.out_for_delivery,
+        1,
+        "2026-10-21",
+        "en-GB,en;q=0.8"
+    )
+    assert english_page.page_locale == Locale.en_gb
+    assert english_page.status == "Out for delivery"
+    assert english_page.parcels == "1 parcel on its way"
+    assert english_page.estimate == "Arriving 21 October 2026"
+    assert english_page.help_text == "Questions? Call us on 0800 123 4567."
+    var german_page: TrackingPage = show_tracking(
+        ParcelStatus.in_transit,
+        3,
+        "2026-10-21",
+        "de-AT, en;q=0.5"
+    )
+    assert german_page.page_locale == Locale.de_de
+    assert german_page.status == "Unterwegs"
+    assert german_page.parcels == "3 Pakete sind unterwegs"
+    assert german_page.estimate == "Zustellung am 21. Oktober 2026"
+}
+
+test "a browser that names no language the tracker writes gets English" {
+    assert show_tracking(
+        ParcelStatus.delivered,
+        1,
+        "2026-10-21",
+        "ja-JP"
+    ).page_locale == Locale.en_gb
+    assert show_tracking(ParcelStatus.delivered, 1, "2026-10-21", none).status == "Delivered"
+}
+
+test "a held parcel's wording carries its reason" {
+    var held_parcel: ParcelStatus = ParcelStatus.held_at_depot {
+        reason: "no one was home"
+    }
+    assert show_tracking(
+        held_parcel,
+        1,
+        "2026-10-21",
+        "en"
+    ).status == "Held at the depot: no one was home"
+}
+
+test "Arabic runs right to left, with all six of its plural forms" {
+    var two: TrackingPage = show_tracking(ParcelStatus.in_transit, 2, "2026-10-21", "ar")
+    assert two.page_locale == Locale.ar_eg
+    assert two.reading_direction == TextDirection.right_to_left
+    assert two.parcels == "طردان في الطريق"
+    assert show_tracking(
+        ParcelStatus.in_transit,
+        0,
+        "2026-10-21",
+        "ar"
+    ).parcels == "لا توجد طرود في الطريق"
+    assert show_tracking(
+        ParcelStatus.in_transit,
+        5,
+        "2026-10-21",
+        "ar"
+    ).parcels == "٥ طرود في الطريق"
+    assert show_tracking(
+        ParcelStatus.in_transit,
+        11,
+        "2026-10-21",
+        "ar"
+    ).parcels == "١١ طردًا في الطريق"
+    assert show_tracking(
+        ParcelStatus.in_transit,
+        1,
+        "2026-10-21",
+        "en"
+    ).reading_direction == TextDirection.left_to_right
+}
+
+test "Polish, still in progress, falls back to English where it has no wording" {
+    var polish: TrackingPage = show_tracking(ParcelStatus.in_transit, 2, "2026-10-21", "pl")
+    assert polish.page_locale == Locale.pl_pl
+    assert polish.parcels == "2 paczki w drodze"
+    assert polish.status == "On its way"
+}

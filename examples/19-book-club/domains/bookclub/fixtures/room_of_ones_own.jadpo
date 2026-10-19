@@ -1,0 +1,11 @@
+use bookclub/types { Book, Genre }
+
+/// "A Room of One's Own", for the club's tests.
+fixture room_of_ones_own() -> Book {
+    return Book {
+        isbn: "9780000000033"
+        title: "A Room of One's Own"
+        genre: Genre.essays
+        length_in_pages: 172
+    }
+}

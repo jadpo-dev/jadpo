@@ -1,0 +1,8 @@
+use lettings/types { SignInOutcome }
+
+/// A sign-in's outcome, and the fresh hash to store when the old one was
+/// made with older settings.
+type StaffSignInResult = Object {
+    outcome: SignInOutcome
+    fresh_hash: PasswordHash?
+}

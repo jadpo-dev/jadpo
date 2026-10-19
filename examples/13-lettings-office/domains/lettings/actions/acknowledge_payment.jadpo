@@ -1,0 +1,11 @@
+use lettings/types { RentPayment, SignedWebhook, WebhookBody, WebhookSignature }
+
+/// The webhook the office sends back once a payment is recorded, signed
+/// with the same shared secret.
+action acknowledge_payment(payment: RentPayment) -> SignedWebhook {
+    var body: WebhookBody = WebhookBody(json.write(payment))
+    return SignedWebhook {
+        body: body
+        webhook_mac: WebhookSignature(crypto.hmac(body, key: config.payments_webhook_secret))
+    }
+}

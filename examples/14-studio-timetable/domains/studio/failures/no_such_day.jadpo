@@ -1,0 +1,4 @@
+/// A day a year doesn't have, such as 29 February in 2027.
+type NoSuchDay = Failure {
+    kind: FailureKind.invalid_value
+}

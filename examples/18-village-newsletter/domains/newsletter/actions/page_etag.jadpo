@@ -1,0 +1,7 @@
+use newsletter/types { PageTag }
+
+/// The ETag a page is served with: the Base64 of its SHA-256, so a reader
+/// whose browser has it already gets "not modified".
+action page_etag(page: Html) -> PageTag {
+    return PageTag(encoding.to_base64(hash.sha256(page)))
+}

@@ -1,0 +1,7 @@
+use lettings/types { TenancyRef, WeeklyRent }
+
+/// A rent payment, as the rent collector's webhook reports it.
+type RentPayment = Object {
+    tenancy_ref: TenancyRef
+    paid: WeeklyRent
+}

@@ -1,0 +1,11 @@
+use bookclub/types { Book, Genre }
+
+/// "The Hobbit", for the club's tests.
+fixture hobbit() -> Book {
+    return Book {
+        isbn: "9780000000019"
+        title: "The Hobbit"
+        genre: Genre.fiction
+        length_in_pages: 310
+    }
+}

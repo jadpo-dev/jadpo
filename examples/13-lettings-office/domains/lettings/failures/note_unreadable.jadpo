@@ -1,0 +1,4 @@
+/// A sealed access note that its tenancy's key and reference can't open.
+type NoteUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}

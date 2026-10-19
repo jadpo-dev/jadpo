@@ -1,0 +1,4 @@
+/// A pressure the pump can't read, or one outside what the tyres take.
+type PressureUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}

@@ -1,0 +1,4 @@
+/// A hill climbs too steeply for the fleet's bikes.
+type TooSteep = Failure {
+    kind: FailureKind.invalid_value
+}

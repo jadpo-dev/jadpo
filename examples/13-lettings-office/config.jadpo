@@ -1,0 +1,40 @@
+// Every setting the office needs, in one place: what an operator sets for
+// each deployment. Each field reads the environment variable named after
+// it in capitals (`office_zone` reads `OFFICE_ZONE`), checked against its
+// type before the app starts, and code reads it as `config.<field>`.
+// `jadpo fmt` keeps the fields in name order.
+
+use lettings/types { OfficeName, RepairWindow, Verbosity }
+
+config {
+    /// The database the office's records live in. A `PostgresUrl` holds
+    /// a password, so it is always secret.
+    database_url: PostgresUrl
+    /// How much the office's audit lines say.
+    log_level: Verbosity {
+        default: Verbosity.normal
+    }
+    /// The key tenants' access notes are sealed with: 32 random bytes,
+    /// never read by code.
+    notes_key: EncryptionKey
+    /// The office's name, printed on every receipt. A required setting
+    /// with no default, so every test reads its `test:` value.
+    office_name: OfficeName {
+        test: "Harbour Lettings"
+    }
+    /// The zone the office keeps its hours in.
+    office_zone: Zone {
+        default: Zone.europe_london
+    }
+    /// The secret the rent collector signs its webhooks with. Rotated by
+    /// moving the old one to `PAYMENTS_WEBHOOK_SECRET_PREVIOUS`.
+    payments_webhook_secret: SigningKey
+    /// The key the office signs rent receipts with.
+    receipt_key: PrivateKey
+    /// The cache, on Redis.
+    redis_url: RedisUrl
+    /// How long an urgent repair may wait for a contractor.
+    urgent_repair_within: RepairWindow {
+        default: 24h
+    }
+}

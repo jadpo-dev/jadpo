@@ -1,0 +1,14 @@
+// Data has kinds too: a size over a time is a rate, and a rate for a time
+// is a size.
+
+use fleet/types { LogSize, ReportEvery, TrackerUplink }
+
+/// What a tracker sending `report` every `every` costs: its rate, and the
+/// data a day of it uses.
+action size_tracker_uplink(tracker_report: LogSize, report_interval: ReportEvery) -> TrackerUplink {
+    var rate: Bitrate = tracker_report / report_interval
+    return TrackerUplink {
+        rate: rate
+        daily_data: rate * 24h
+    }
+}

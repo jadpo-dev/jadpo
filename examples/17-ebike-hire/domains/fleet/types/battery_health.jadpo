@@ -1,0 +1,6 @@
+/// How much a battery holds now, and how many more charges it has before
+/// it falls to 80% of new.
+type BatteryHealth = Output {
+    holds_now: Energy
+    charges_left: Int
+}

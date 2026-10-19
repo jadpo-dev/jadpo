@@ -1,0 +1,2 @@
+/// An answer the club's code gives.
+type YesNo = Bool {}

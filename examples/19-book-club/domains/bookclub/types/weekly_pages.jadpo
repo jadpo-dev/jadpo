@@ -1,0 +1,4 @@
+/// How many pages a week the club reads.
+type WeeklyPages = Int {
+    min: 0
+}

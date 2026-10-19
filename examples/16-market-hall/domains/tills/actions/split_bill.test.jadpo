@@ -1,0 +1,7 @@
+use tills/types { StallPrice, Tendered }
+
+test "a bill is shared to the penny" {
+    var bill: StallPrice = StallPrice(money.from_minor(10000, Currency.gbp))
+    var bill_shares: List<Tendered> = split_bill(bill, 3)
+    assert list.map(bill_shares, share -> money.minor(share)) == [3334, 3333, 3333]
+}

@@ -1,0 +1,38 @@
+use tills/failures { WrongCurrency }
+
+test "a deal comes off a price, an amount or a share" {
+    var cheese: Price = Price {
+        amount: money.from_minor(1250, Currency.gbp)
+        includes_tax: true
+    }
+    var five_off: Discount = Discount.amount_off {
+        amount: money.from_minor(500, Currency.gbp)
+    }
+    var after_five: Price = attempt apply_deal(cheese, five_off)
+    assert after_five.amount == money.from_minor(750, Currency.gbp)
+    assert after_five.includes_tax
+    // 15% of £10.05 is £1.5075, rounded half to even to £1.51 before it
+    // comes off.
+    var honey: Price = Price {
+        amount: money.from_minor(1005, Currency.gbp)
+        includes_tax: true
+    }
+    var after_share: Price = attempt apply_deal(
+        honey,
+        Discount.percentage_off {
+            percentage: 15%
+        }
+    )
+    assert after_share.amount == money.from_minor(854, Currency.gbp)
+}
+
+test "an amount off in euros doesn't come off a price in pounds" {
+    var cheese: Price = Price {
+        amount: money.from_minor(1250, Currency.gbp)
+        includes_tax: true
+    }
+    var euros_off: Discount = Discount.amount_off {
+        amount: money.from_minor(500, Currency.eur)
+    }
+    assert apply_deal(cheese, euros_off) fails WrongCurrency
+}

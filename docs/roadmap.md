@@ -1640,6 +1640,48 @@ reference only).
   "Chosen in chunk 5.5u7").
 - [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
+- [x] **5.7 Teaching examples for Phase 5: settings, time and words**
+  `opus · high`: new numbered examples for configuration (`config.jadpo`,
+  constants, the key and address settings and what `crypto` does with
+  them), time (dates, instants, zones, periods and recurring times) and
+  translations and locales. Split on 2026-10-19 because the phase left
+  1,646 built features no example uses, more than a session: the rest are
+  5.7b to 5.7d. Built: `13-lettings-office` (settings, constants,
+  connection addresses, test values, and every `crypto` operation with
+  its key), `14-studio-timetable` (every `temporal` operation, ranges of
+  time, `TimeFormat`, the clock-change night) and `15-parcel-tracker`
+  (messages, plural forms, enums with wording, shared and Jadpo's own
+  wording, an in-progress locale). The coverage test now reads the types
+  settings declare, a declared format's base, the enums operations give
+  and std enum values matched; 1,569 features remain, 1,377 of them the
+  closed lists' values.
+- [x] **5.7b Teaching examples: money, quantities and the standard
+  vocabulary** `opus · high`, after 5.7: money and discounts, physical
+  quantities and percentages, and the standard types (identifiers,
+  contact, web, colour, text formats) with text, collections, numbers,
+  encodings, JSON and randomness, each in a realistic app. Built:
+  `16-market-hall` (money), `17-ebike-hire` (quantities and exact
+  decimal maths), `18-village-newsletter` (text, text formats, colour,
+  links, digests and encodings) and `19-book-club` (lists, sets, maps,
+  randomness, code forms, versions, a rule across fields, a declined
+  standard type). Two compiler bugs the examples found are fixed: a
+  named collection built from `map.with([], ...)` skipped its rules,
+  and a text literal of a standard object type (`SemanticVersion`,
+  `CardExpiry`, `Colour`) stayed text at runtime. 1,410 features
+  remain, 1,373 of them the closed lists' values.
+- [ ] **5.7c Teaching examples: geography and stored data** `opus · high`,
+  after 5.7b: points, shapes and queries by distance, aggregate queries
+  with time buckets, stored vectors and the nearest query (without the
+  `ai` capability), and prompts; and example 09's `Pence` and its
+  percentage discount moved to `Money`, as area 19 ("Money and
+  payments") says.
+- [ ] **5.7d Teaching examples: the closed lists** `opus · high`, after
+  5.7c: the coverage test counts each closed list a standard operation
+  takes (`Locale`, `Zone`, `Country`, `Currency`, and the unit enums such
+  as `LengthUnit`) as one feature, used when an example names any of its
+  values, since each value is already held to its source table by the
+  crate tests (decided 2026-10-19, as 5.7 recommended); then the examples
+  pass `--require-examples`.
 
 ## Phase 6 — Events and schedules (area 12)
 

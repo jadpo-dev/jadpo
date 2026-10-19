@@ -1,0 +1,17 @@
+// Lists are values: each operation gives a new list, and none changes
+// the one it was given.
+
+use bookclub/types { Book, Shortlist }
+
+/// Every member's wishes put together: each book once, the longest and
+/// shortest, how many pages all of them come to, and the books by genre.
+action make_shortlist(wishes: List<List<Book>>) -> Shortlist {
+    var books: List<Book> = list.distinct(list.flatten(wishes))
+    return Shortlist {
+        books: books
+        longest_book: list.max_by(books, book -> book.length_in_pages)
+        shortest_book: list.min_by(books, book -> book.length_in_pages)
+        total_pages: list.sum(list.map(books, book -> book.length_in_pages))
+        by_genre: list.group_by(books, book -> book.genre)
+    }
+}

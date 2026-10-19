@@ -1,0 +1,11 @@
+// Polish is listed `in_progress:`, so this file may leave wording out:
+// the delivery estimate and the statuses fall back to English until a
+// translator adds them.
+translations {
+    parcels_on_the_way: {
+        one: "{parcels} paczka w drodze"
+        few: "{parcels} paczki w drodze"
+        many: "{parcels} paczek w drodze"
+        other: "{parcels} paczki w drodze"
+    }
+}

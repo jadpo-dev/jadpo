@@ -1,0 +1,25 @@
+// An amount in a currency known only while the till runs: typed in major
+// units and checked against its currency's places, then compared with a
+// currency written out, which proves it is pounds.
+
+use tills/types { StallPrice, TypedAmount }
+use tills/failures { AmountTooPrecise, NotEnoughPaid, WrongCurrency }
+
+/// The change due when a customer hands over `amount` of `currency` for
+/// `bill`. Only pounds are taken as cash.
+action take_payment(
+    bill: StallPrice,
+    amount: TypedAmount,
+    currency: Currency
+) fails AmountTooPrecise, WrongCurrency, NotEnoughPaid -> StallPrice {
+    var paid: Money = attempt money.of(amount, currency) {
+        too_many_places: AmountTooPrecise
+    }
+    if (money.currency(paid) != Currency.gbp) {
+        reject WrongCurrency
+    }
+    var change: Int = money.minor(paid) - money.minor(bill)
+    return attempt StallPrice(money.from_minor(change, Currency.gbp)) {
+        min: NotEnoughPaid
+    }
+}

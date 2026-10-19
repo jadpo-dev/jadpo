@@ -1,0 +1,4 @@
+/// The current a charger gives.
+type ChargerCurrent = Current {
+    max: 10A
+}

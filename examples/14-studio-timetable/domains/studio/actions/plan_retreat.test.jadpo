@@ -1,0 +1,39 @@
+use studio/types { RetreatStart }
+use studio/failures { UnclearTime }
+
+test "an ordinary night's retreat starts at 01:30" {
+    var ordinary_start: RetreatStart = attempt plan_retreat("2026-10-18", Dst.reject)
+    assert ordinary_start.starts_at == "2026-10-18T00:30:00Z"
+    assert ordinary_start.retreat_date == "2026-10-18"
+    assert ordinary_start.retreat_year == 2026
+    assert ordinary_start.retreat_month == 10
+    assert ordinary_start.retreat_day == 18
+    assert ordinary_start.start_hour == 1
+    assert ordinary_start.start_minute == 30
+    assert ordinary_start.start_zone == Zone.europe_london
+}
+
+test "when 01:30 happens twice, the choice says which" {
+    // The clocks go back at 02:00 on 25 October: 01:30 comes first on
+    // summer time, then again an hour later.
+    assert plan_retreat("2026-10-25", Dst.reject) fails UnclearTime
+    var earlier: RetreatStart = attempt plan_retreat("2026-10-25", Dst.earlier)
+    var later: RetreatStart = attempt plan_retreat("2026-10-25", Dst.later)
+    var compatible_choice: RetreatStart = attempt plan_retreat("2026-10-25", Dst.compatible)
+    assert earlier.starts_at == "2026-10-25T00:30:00Z"
+    assert later.starts_at == "2026-10-25T01:30:00Z"
+    assert compatible_choice.starts_at == earlier.starts_at
+}
+
+test "when 01:30 never happens, the choice moves it" {
+    // The clocks go forward at 01:00 on 29 March, straight to 02:00.
+    assert plan_retreat("2026-03-29", Dst.reject) fails UnclearTime
+    var earlier: RetreatStart = attempt plan_retreat("2026-03-29", Dst.earlier)
+    var later: RetreatStart = attempt plan_retreat("2026-03-29", Dst.later)
+    var compatible_choice: RetreatStart = attempt plan_retreat("2026-03-29", Dst.compatible)
+    assert earlier.start_hour == 0
+    assert later.start_hour == 2
+    assert earlier.starts_at == "2026-03-29T00:30:00Z"
+    assert later.starts_at == "2026-03-29T01:30:00Z"
+    assert compatible_choice.starts_at == later.starts_at
+}

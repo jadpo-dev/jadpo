@@ -1,0 +1,15 @@
+use tills/types { StallPrice }
+use tills/failures { AmountTooPrecise, NotEnoughPaid, WrongCurrency }
+
+test "the till gives change from pounds" {
+    var bill: StallPrice = StallPrice(money.from_minor(730, Currency.gbp))
+    var change: StallPrice = attempt take_payment(bill, 10.00, Currency.gbp)
+    assert change == money.from_minor(270, Currency.gbp)
+}
+
+test "the till refuses what it can't take" {
+    var bill: StallPrice = StallPrice(money.from_minor(730, Currency.gbp))
+    assert take_payment(bill, 10.005, Currency.gbp) fails AmountTooPrecise
+    assert take_payment(bill, 10.00, Currency.eur) fails WrongCurrency
+    assert take_payment(bill, 5.00, Currency.gbp) fails NotEnoughPaid
+}

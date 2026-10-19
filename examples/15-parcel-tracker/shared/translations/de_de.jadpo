@@ -1,0 +1,3 @@
+translations {
+    help_line: "Fragen? Rufen Sie uns an: {phone}."
+}

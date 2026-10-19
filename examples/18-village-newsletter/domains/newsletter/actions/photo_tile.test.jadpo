@@ -1,0 +1,18 @@
+test "a photo fits the tile and keeps its shape" {
+    assert text.from(
+        photo_tile(
+            ImageDimensions {
+                width: 4000
+                height: 3000
+            }
+        )
+    ) == "533x400"
+    assert text.from(
+        photo_tile(
+            ImageDimensions {
+                width: 300
+                height: 200
+            }
+        )
+    ) == "300x200"
+}

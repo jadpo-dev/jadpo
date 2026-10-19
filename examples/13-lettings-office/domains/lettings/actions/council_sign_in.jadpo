@@ -1,0 +1,32 @@
+// Tenants on the council's scheme sign in with the council's own sign-in
+// service, which signs a token with Ed25519 and publishes its public keys
+// as a key set. The office reads the keys and checks each token against
+// them: the algorithm is the key's, never the token's, and the token's
+// times, issuer and audience must hold.
+
+use lettings/types { KeySetText }
+use lettings/failures { CouncilTokenExpired, CouncilTokenRefused, KeySetUnreadable }
+use lettings/libraries { council }
+
+/// What a token from the council says, once its signature, times, issuer
+/// and audience hold. Checking the times reads the clock, so this is an
+/// action.
+action council_sign_in(
+    token: Jwt,
+    published_keys: KeySetText
+) fails KeySetUnreadable, CouncilTokenRefused, CouncilTokenExpired -> JwtClaims {
+    var keys: List<Jwk> = attempt council.council_keys(published_keys)
+    return attempt crypto.verify_jwt(
+        token,
+        keys: keys,
+        issuer: "https://signin.harbour-council.example",
+        audience: "lettings"
+    ) {
+        expired: CouncilTokenExpired
+        invalid_signature: CouncilTokenRefused
+        not_yet_valid: CouncilTokenRefused
+        malformed: CouncilTokenRefused
+        wrong_audience: CouncilTokenRefused
+        wrong_issuer: CouncilTokenRefused
+    }
+}

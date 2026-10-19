@@ -1,0 +1,2 @@
+/// A page on the newsletter's website.
+type SitePage = Url {}

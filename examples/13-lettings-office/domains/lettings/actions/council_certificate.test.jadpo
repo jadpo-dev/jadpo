@@ -1,0 +1,11 @@
+use lettings/types { CertificateSummary }
+use lettings/failures { CertificateUnreadable }
+
+test "the council's certificate is read from its DER" {
+    var summary: CertificateSummary = attempt council_certificate(
+        "MIIBljCCAUigAwIBAgIIHy49TFtqeYgwBQYDK2VwMEgxCzAJBgNVBAYTAkdCMRwwGgYDVQQKDBNKYWRwbyBUZXN0LCBTaWduaW5nMRswGQYDVQQDDBJqYWRwby10ZXN0LmV4YW1wbGUwHhcNMjYxMDAxMDAwMDAwWhcNMzYxMDAxMDAwMDAwWjBIMQswCQYDVQQGEwJHQjEcMBoGA1UECgwTSmFkcG8gVGVzdCwgU2lnbmluZzEbMBkGA1UEAwwSamFkcG8tdGVzdC5leGFtcGxlMCowBQYDK2VwAyEAAJyTOxfkgCmTOYhl/AXEMRpT07QqDzpBZIRCSESxhYejUDBOMB0GA1UdDgQWBBTH4Arltue6aEupl+oqXRoIZos6LTAfBgNVHSMEGDAWgBTH4Arltue6aEupl+oqXRoIZos6LTAMBgNVHRMBAf8EAjAAMAUGAytlcANBAHkV9ilHQ5TVpSZyPobRcjo9bERYbugOAsKXD4ZJjCRPqpyK+aDc+FxV2FFnXI2UQxnYsieWNSclooiCSIuDmwA="
+    )
+    assert summary.subject == "CN=jadpo-test.example,O=Jadpo Test\\, Signing,C=GB"
+    assert summary.valid_until == "2036-10-01T00:00:00Z"
+    assert council_certificate("not base64!") fails CertificateUnreadable
+}

@@ -1,0 +1,5 @@
+/// A sum of squares, under a square root.
+type SumOfSquares = Decimal {
+    scale: 4
+    min: 0.0000
+}

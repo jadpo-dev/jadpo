@@ -1,0 +1,14 @@
+// The office's two connections read their addresses from settings: a
+// connection's `url:` is one of the few places a secret may go.
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+            url: config.database_url
+        }
+        cache: {
+            driver: Driver.redis
+            url: config.redis_url
+        }
+    }
+}

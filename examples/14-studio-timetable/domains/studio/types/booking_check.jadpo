@@ -1,0 +1,5 @@
+/// Whether a new booking clashes, and for how long.
+type BookingCheck = Output {
+    has_clash: Bool
+    clash_length: Duration
+}

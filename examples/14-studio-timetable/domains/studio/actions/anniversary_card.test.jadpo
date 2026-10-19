@@ -1,0 +1,9 @@
+use studio/failures { NoSuchDay }
+
+test "a leap-day member's card comes only in leap years" {
+    assert anniversary_card("2024-02-29", 2, Locale.en_gb) fails NoSuchDay
+    var card: PresentationText = attempt anniversary_card("2024-02-29", 4, Locale.en_gb)
+    assert card == "Tuesday, 29 February 2028"
+    var carte: PresentationText = attempt anniversary_card("2024-02-29", 4, Locale.fr_fr)
+    assert carte == "mardi 29 février 2028"
+}

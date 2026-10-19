@@ -1,0 +1,5 @@
+/// A wheel's diameter, tyre included.
+type WheelSize = Length {
+    min: 40cm
+    max: 80cm
+}

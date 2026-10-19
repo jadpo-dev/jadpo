@@ -1,0 +1,7 @@
+use bookclub/types { ProposedSlot }
+
+/// The proposal in the poll that starts soonest: the club picks the
+/// earliest that suits.
+action pick_slot(proposals: List<ProposedSlot>) -> ProposedSlot? {
+    return list.min_by(proposals, slot -> slot.starts_at)
+}

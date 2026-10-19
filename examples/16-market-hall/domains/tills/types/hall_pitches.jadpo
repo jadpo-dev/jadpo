@@ -1,0 +1,7 @@
+use tills/types { StallShare }
+
+/// The pitches each stall in the hall rents, stall by stall: at least
+/// one stall.
+type HallPitches = List<StallShare> {
+    min_length: 1
+}

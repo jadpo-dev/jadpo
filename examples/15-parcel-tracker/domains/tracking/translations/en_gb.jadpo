@@ -1,0 +1,14 @@
+translations {
+    delivery_estimate: "Arriving {day}"
+    parcel_status: {
+        delivered: "Delivered"
+        held_at_depot: "Held at the depot: {reason}"
+        in_transit: "On its way"
+        label_created: "Label created"
+        out_for_delivery: "Out for delivery"
+    }
+    parcels_on_the_way: {
+        one: "{parcels} parcel on its way"
+        other: "{parcels} parcels on their way"
+    }
+}

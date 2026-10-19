@@ -1,0 +1,7 @@
+use tills/types { ServiceCharge, ServiceRate, StallPrice }
+
+/// The service charge on `bill` at `rate`. Multiplying a `ServiceCharge`
+/// rounds the way its type says: down.
+action service_on(bill: StallPrice, rate: ServiceRate) -> ServiceCharge {
+    return ServiceCharge(ServiceCharge(bill) * rate)
+}

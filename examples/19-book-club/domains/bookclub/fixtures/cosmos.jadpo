@@ -1,0 +1,11 @@
+use bookclub/types { Book, Genre }
+
+/// "Cosmos", for the club's tests.
+fixture cosmos() -> Book {
+    return Book {
+        isbn: "9780000000040"
+        title: "Cosmos"
+        genre: Genre.science
+        length_in_pages: 396
+    }
+}

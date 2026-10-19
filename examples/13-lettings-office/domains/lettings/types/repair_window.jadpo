@@ -1,0 +1,5 @@
+/// How long a repair may wait.
+type RepairWindow = Duration {
+    min: 1h
+    max: 30d
+}

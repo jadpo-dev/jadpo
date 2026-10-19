@@ -1,0 +1,8 @@
+use fleet/types { DrinkStrength }
+
+/// Whether a rider's things fit, and how strong their drink is.
+type Packing = Output {
+    packed: Volume
+    fits_pannier: Bool
+    bottle_strength: DrinkStrength
+}

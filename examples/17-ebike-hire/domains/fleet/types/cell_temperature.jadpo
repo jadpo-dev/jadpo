@@ -1,0 +1,2 @@
+/// A battery cell's temperature.
+type CellTemperature = Temperature {}

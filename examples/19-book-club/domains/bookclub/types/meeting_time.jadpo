@@ -1,0 +1,2 @@
+/// When a meeting starts or ends.
+type MeetingTime = Instant {}

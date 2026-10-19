@@ -1,0 +1,12 @@
+use bookclub/types { Book, WeeklyPages }
+
+/// How many pages a week the club reads of `next_book`: a quarter of it,
+/// at most 100, or 60 when it is much longer than `current`.
+action pages_per_week(finished_book: Book, next_book: Book) -> WeeklyPages {
+    var weekly_pace: Int = integer.divide(next_book.length_in_pages, 4, rounding: Rounding.up)
+    var mut cap: Int = 100
+    if (integer.abs(finished_book.length_in_pages - next_book.length_in_pages) > 300) {
+        cap = 60
+    }
+    return WeeklyPages(integer.max(integer.min(weekly_pace, cap), 0))
+}

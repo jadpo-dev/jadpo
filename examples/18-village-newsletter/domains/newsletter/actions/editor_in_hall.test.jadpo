@@ -1,0 +1,4 @@
+test "editing is from the hall's network" {
+    assert editor_in_hall("192.0.2.40")
+    assert not editor_in_hall("198.51.100.7")
+}

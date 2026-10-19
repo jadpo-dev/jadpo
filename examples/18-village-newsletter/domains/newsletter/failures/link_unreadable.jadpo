@@ -1,0 +1,4 @@
+/// A link that doesn't carry an address the newsletter sent it.
+type LinkUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}

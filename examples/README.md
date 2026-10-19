@@ -46,6 +46,33 @@ README saying what it teaches, how to run it and what to try next.
     customers in one application: tenancy, membership roles, actions
     listed with who may run them, field restrictions, a role across the
     whole application and the permissions report.
+13. [13-lettings-office/](13-lettings-office/README.md): settings:
+    `config.jadpo`, a setting's types and defaults, the connections'
+    addresses, constants, test values, and the keys a `crypto` call takes
+    without code reading them: sealing, passwords, a shared secret, a
+    private key and another service's tokens.
+14. [14-studio-timetable/](14-studio-timetable/README.md): time: zones,
+    times a rule repeats on, opening hours, ranges of time, a day's,
+    week's, month's and year's bounds, calendar arithmetic and periods,
+    the night the clocks change, and times shown to people.
+15. [15-parcel-tracker/](15-parcel-tracker/README.md): translations:
+    messages, a language file per locale, plural forms, enums with
+    wording, a message two domains share, the reader's language and
+    direction, Jadpo's own text and a language still in progress.
+16. [16-market-hall/](16-market-hall/README.md): money: amounts in minor
+    units, currencies fixed by a type, rounding, prices and deals,
+    percentages, sharing to the penny, rates, cards and amounts shown to
+    people.
+17. [17-ebike-hire/](17-ebike-hire/README.md): physical quantities:
+    types with bounds in units, kinds that combine, units only at the
+    edges, exact decimal maths, and quantities a person typed.
+18. [18-village-newsletter/](18-village-newsletter/README.md): text and
+    the web: text operations, Markdown and rich text made safe, text in
+    each language, links, colours, images, networks, tokens, digests and
+    encodings.
+19. [19-book-club/](19-book-club/README.md): lists, sets and maps,
+    numbers, randomness, codes in other code systems, versions, a rule
+    across a type's fields and declining a standard type.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

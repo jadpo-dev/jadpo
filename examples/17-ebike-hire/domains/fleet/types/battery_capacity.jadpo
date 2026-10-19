@@ -1,0 +1,5 @@
+/// How much energy a battery holds when full.
+type BatteryCapacity = Energy {
+    min: 100Wh
+    max: 1kWh
+}

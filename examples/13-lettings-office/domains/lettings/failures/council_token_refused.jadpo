@@ -1,0 +1,4 @@
+/// A sign-in token the council didn't issue for the office.
+type CouncilTokenRefused = Failure {
+    kind: FailureKind.invalid_value
+}

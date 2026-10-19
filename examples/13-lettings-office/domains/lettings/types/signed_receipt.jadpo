@@ -1,0 +1,7 @@
+use lettings/types { Receipt, ReceiptSignature }
+
+/// A rent receipt and the office's signature on it.
+type SignedReceipt = Object {
+    receipt: Receipt
+    office_signature: ReceiptSignature
+}

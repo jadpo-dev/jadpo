@@ -1,0 +1,4 @@
+/// How often a tracker reports.
+type ReportEvery = Duration {
+    min: 1s
+}

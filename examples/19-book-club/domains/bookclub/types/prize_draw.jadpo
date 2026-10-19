@@ -1,0 +1,9 @@
+use bookclub/types { Book, ClubMemberName }
+
+/// The month's draw: three books to vote on, the seating, and which
+/// member hosts.
+type PrizeDraw = Object {
+    vote_on: List<Book>
+    seating: List<ClubMemberName>
+    host_number: Int
+}

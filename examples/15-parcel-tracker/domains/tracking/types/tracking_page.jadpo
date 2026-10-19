@@ -1,0 +1,10 @@
+/// What the tracking page shows, in the reader's language and the way
+/// their script runs.
+type TrackingPage = Output {
+    page_locale: Locale
+    reading_direction: TextDirection
+    status: PresentationText
+    parcels: PresentationText
+    estimate: PresentationText
+    help_text: PresentationText
+}

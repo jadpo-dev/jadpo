@@ -205,3 +205,32 @@ fn software_types_are_read_by_their_standards() {
         "Unreadable"
     );
 }
+
+/// Text written where a standard object type goes is that type's
+/// canonical text, read as the object (found in chunk 5.7, where it was
+/// kept as text, so comparing it or reading a field of it faulted).
+#[test]
+fn a_literal_of_a_standard_object_is_read_as_the_object() {
+    let source = format!(
+        "{SOURCE}
+/// The oldest version a shop still takes.
+function oldest_supported() -> SemanticVersion {{
+    return \"2.1.0\"
+}}
+
+/// Whether the oldest supported version is still in a range.
+function oldest_fits(shop_wants: VersionRange) -> YesNo {{
+    return YesNo(semver.satisfies(oldest_supported(), shop_wants))
+}}
+"
+    );
+    let program = main(&source).with_proof_checks();
+    assert_eq!(
+        value(&program, "oldest_supported", vec![]),
+        value(&program, "plugin_version", vec![text("2.1.0")])
+    );
+    assert_eq!(
+        value(&program, "oldest_fits", vec![text("^2.0.0")]),
+        Value::Bool(true)
+    );
+}

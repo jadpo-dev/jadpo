@@ -175,6 +175,32 @@ fn a_named_map_is_built_from_a_map_of_its_keys_and_values() {
     );
 }
 
+/// A map built in the construction from an empty one, `map.with([], key,
+/// value)`, whose types only the literals give: the named map fixes them,
+/// so its rules are still checked, and a construction that can break one
+/// still needs its arms (found in chunk 5.7, where it was taken as
+/// unknown and needed none).
+#[test]
+fn a_map_built_in_the_construction_is_typed_by_the_named_map() {
+    let wrapped = |body: &str| {
+        format!(
+            "type Labels = Map<Text, Text> {{\n    min_length: 2\n}}\n\nfunction labels() fails NoNames -> Labels {{\n{body}}}\n"
+        )
+    };
+    assert_eq!(
+        with_types(&wrapped(
+            "    return Labels(map.with([], \"aisle\", \"bread\"))\n"
+        )),
+        ["failure.attempt_required"]
+    );
+    assert_eq!(
+        with_types(&wrapped(
+            "    return attempt Labels(map.with([], \"aisle\", \"bread\")) {\n        min_length: NoNames\n    }\n"
+        )),
+        CLEAN
+    );
+}
+
 #[test]
 fn items_are_never_converted_in_the_same_step() {
     let found = explained(

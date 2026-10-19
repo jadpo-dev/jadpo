@@ -1,0 +1,4 @@
+/// A sign-in token from the council that has run out.
+type CouncilTokenExpired = Failure {
+    kind: FailureKind.invalid_value
+}

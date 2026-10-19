@@ -1,0 +1,37 @@
+// A length times a length is an area, and an area over an area is a plain
+// number. `decimal.sqrt` and `decimal.power` give the walk between two
+// corners, exactly to the places asked for.
+
+use fleet/types { BikeFootprint, DockPlan, DockSide, SumOfSquares }
+
+/// A docking area `width` by `depth`: its floor, how many bikes fit at
+/// 1.2 m² each, rounded down since part of a bike doesn't park, and the
+/// walk from one corner to the far one.
+action plan_dock(width: DockSide, dock_depth: DockSide) -> DockPlan {
+    var dock_floor: Area = width * dock_depth
+    var bike_footprint: BikeFootprint = 1.2sqm
+    var across_m: Decimal = units.in(
+        width,
+        LengthUnit.metre,
+        scale: 2,
+        rounding: Rounding.half_even
+    )
+    var deep_m: Decimal = units.in(
+        dock_depth,
+        LengthUnit.metre,
+        scale: 2,
+        rounding: Rounding.half_even
+    )
+    // `decimal.sqrt` takes a value whose type has `min: 0`. A sum of
+    // squares is never negative, but the compiler doesn't reason about
+    // squares; `decimal.abs` is never below 0, so it builds one.
+    var squares: SumOfSquares = SumOfSquares(
+        decimal.abs(decimal.power(across_m, 2) + decimal.power(deep_m, 2))
+    )
+    var diagonal: Decimal = decimal.sqrt(squares, scale: 2, rounding: Rounding.half_even)
+    return DockPlan {
+        dock_floor: dock_floor
+        bikes: integer.from_decimal(dock_floor / bike_footprint, rounding: Rounding.down)
+        walk_between: units.of(diagonal, LengthUnit.metre)
+    }
+}

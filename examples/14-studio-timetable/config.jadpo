@@ -1,0 +1,7 @@
+config {
+    /// The zone the studio's clocks are in: its days, weeks and months
+    /// start at midnight there.
+    studio_zone: Zone {
+        default: Zone.europe_london
+    }
+}

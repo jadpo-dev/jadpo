@@ -1,0 +1,4 @@
+/// A certificate's DER in standard Base64, as a key set's `x5c` sends it.
+type CertificateText = Text {
+    max_length: 20000
+}

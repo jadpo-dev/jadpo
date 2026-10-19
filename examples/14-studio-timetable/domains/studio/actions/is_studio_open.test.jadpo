@@ -1,0 +1,21 @@
+use studio/types { StudioHours }
+
+/// The studio's hours: early on weekdays, shorter at weekends, and shut on
+/// Christmas Day.
+constant studio_hours: StudioHours = "Mo-Fr 07:00-21:00; Sa,Su 09:00-17:00; 2026 Dec 25 off [Europe/London]"
+
+test "the doors open by the clock on the studio's wall" {
+    // 06:30 UTC is 07:30 in London on summer time, and 06:30 once the
+    // clocks have gone back.
+    clock: "2026-10-19T06:30:00Z"
+
+    assert is_studio_open(studio_hours)
+    clock.advance(7d)
+    assert not is_studio_open(studio_hours)
+}
+
+test "the studio is shut on Christmas Day" {
+    clock: "2026-12-25T10:00:00Z"
+
+    assert not is_studio_open(studio_hours)
+}

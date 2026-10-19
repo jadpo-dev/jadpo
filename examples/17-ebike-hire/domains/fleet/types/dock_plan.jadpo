@@ -1,0 +1,6 @@
+/// How a docking area is laid out.
+type DockPlan = Output {
+    dock_floor: Area
+    bikes: Int
+    walk_between: Length
+}

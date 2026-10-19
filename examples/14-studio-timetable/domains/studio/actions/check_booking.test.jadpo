@@ -1,0 +1,22 @@
+use studio/types { BookingCheck }
+
+test "bookings that meet on the hour don't clash" {
+    var requested: InstantRange = InstantRange {
+        start: "2026-10-19T10:00:00Z"
+        end: "2026-10-19T11:00:00Z"
+    }
+    var before: InstantRange = InstantRange {
+        start: "2026-10-19T09:00:00Z"
+        end: "2026-10-19T10:00:00Z"
+    }
+    var after: InstantRange = InstantRange {
+        start: "2026-10-19T10:30:00Z"
+        end: "2026-10-19T12:00:00Z"
+    }
+    var free: BookingCheck = check_booking(requested, [before])
+    assert not free.has_clash
+    assert free.clash_length == 0s
+    var taken: BookingCheck = check_booking(requested, [before, after])
+    assert taken.has_clash
+    assert taken.clash_length == 30m
+}

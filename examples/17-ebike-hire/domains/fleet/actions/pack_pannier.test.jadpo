@@ -1,0 +1,9 @@
+use fleet/types { Packing }
+
+test "what fits a pannier, and a drink's strength" {
+    var packing: Packing = pack_pannier([8litre, 6litre, 4500ml], 40g)
+    assert packing.packed == 18.5litre
+    assert packing.fits_pannier
+    assert packing.bottle_strength == 53.333333333gL
+    assert not pack_pannier([15litre, 6litre], 40g).fits_pannier
+}

@@ -1,0 +1,5 @@
+/// When the parcels should arrive, under the count. `day` is formatted
+/// in code and passed in as text, so each language only places it.
+type DeliveryEstimate = Message {
+    day: PresentationText
+}

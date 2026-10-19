@@ -1,0 +1,42 @@
+// The other half of sealing: opening a note needs no randomness, so it is
+// a function, used by the action that sends a contractor out.
+
+use lettings/types { AccessNote, ReportedAt, SealedNote, TenancyRef, VisitSheet }
+use lettings/failures { NoteUnreadable }
+use lettings/libraries { repairs }
+
+/// A sealed note's text. Another tenancy's reference, an altered note or
+/// another key can't open it.
+function open_access_note(
+    sealed_note: SealedNote,
+    tenancy_ref: TenancyRef
+) fails NoteUnreadable -> AccessNote {
+    var opened_bytes: Bytes = attempt crypto.decrypt(
+        sealed_note,
+        key: config.notes_key,
+        context: tenancy_ref
+    ) {
+        unreadable: NoteUnreadable
+    }
+    var note_text: Text = attempt encoding.from_utf8(opened_bytes) {
+        malformed: NoteUnreadable
+    }
+    return attempt AccessNote(note_text) {
+        max_length: NoteUnreadable
+    }
+}
+
+/// The sheet a contractor takes to an urgent repair: how to get in, and
+/// when it must be done by.
+action contractor_visit(
+    tenancy_ref: TenancyRef,
+    sealed_note: SealedNote,
+    reported_at: ReportedAt
+) fails NoteUnreadable -> VisitSheet {
+    var way_in: AccessNote = attempt open_access_note(sealed_note, tenancy_ref)
+    return VisitSheet {
+        tenancy_ref: tenancy_ref
+        way_in: way_in
+        due_by: repairs.urgent_repair_due(reported_at)
+    }
+}

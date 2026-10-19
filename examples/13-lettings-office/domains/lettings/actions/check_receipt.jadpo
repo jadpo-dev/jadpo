@@ -1,0 +1,11 @@
+use lettings/types { Genuine, Receipt, ReceiptSignature }
+
+/// Whether `signature` on `receipt` was made with the private half of
+/// `issuer`: the office's own key, or another office's.
+action check_receipt(
+    receipt: Receipt,
+    claimed_signature: ReceiptSignature,
+    issuer_key: PublicKey
+) -> Genuine {
+    return Genuine(crypto.verify_signature(receipt, claimed_signature, issuer_key))
+}

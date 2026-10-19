@@ -58,4 +58,4 @@ cd examples/12-recipe-book && ../../target/release/jadpo sql bakery_recipes
   <!-- try {"file": "domains/kitchen/entities/baker.jadpo", "replace": "        tenant: Tenancy.shared\n", "with": "", "check": ["policy.scope_missing"]} -->
 - In `staff_member.jadpo`, change `read: [StaffRole.owner, baker_id]` to `read: [StaffRole.owner]`. The team's route test fails with `test.assertion_failed`: a baker no longer sees even their own place.
   <!-- try {"file": "domains/kitchen/entities/staff_member.jadpo", "replace": "read: [StaffRole.owner, baker_id]", "with": "read: [StaffRole.owner]", "test": ["test.assertion_failed"], "failed": 1} -->
-- That is the last example. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [13-lettings-office](../13-lettings-office/README.md), where settings and keys come in.

@@ -1,0 +1,2 @@
+/// One line of the office's audit log.
+type AuditLine = Text {}

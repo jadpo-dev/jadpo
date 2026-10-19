@@ -1,0 +1,5 @@
+/// A week's rent, in pence.
+type WeeklyRent = Int {
+    min: 0
+    max: 1000000
+}

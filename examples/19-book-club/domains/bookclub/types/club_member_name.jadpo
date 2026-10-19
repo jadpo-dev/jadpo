@@ -1,0 +1,5 @@
+/// A club member's first name, as the club knows them.
+type ClubMemberName = Text {
+    min_length: 1
+    max_length: 40
+}

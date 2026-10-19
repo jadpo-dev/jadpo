@@ -1,0 +1,2 @@
+/// When a repair must be seen to by.
+type RepairDue = Instant {}

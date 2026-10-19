@@ -1,0 +1,14 @@
+use newsletter/types { ConfirmToken, TokenDigest, YesNo }
+use newsletter/failures { LinkUnreadable }
+
+/// Whether `token`, from a confirmation link, is the one `digest` was
+/// kept from.
+action check_confirmation(
+    token: ConfirmToken,
+    kept_digest: TokenDigest
+) fails LinkUnreadable -> YesNo {
+    var kept_bytes: Bytes = attempt encoding.from_hex(kept_digest) {
+        malformed: LinkUnreadable
+    }
+    return YesNo(kept_bytes == hash.sha256(token))
+}

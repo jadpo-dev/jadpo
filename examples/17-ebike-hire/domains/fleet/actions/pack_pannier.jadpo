@@ -1,0 +1,14 @@
+// Mass over volume is a concentration, as a sports drink's label gives it.
+
+use fleet/types { DrinkPowder, DrinkStrength, Packing, PannierLoad }
+
+/// Whether a rider's things fit a 20-litre pannier, and how strong their
+/// drink is when `powder` is mixed into a 750 ml bottle.
+action pack_pannier(rider_things: List<PannierLoad>, powder: DrinkPowder) -> Packing {
+    var packed: Volume = units.sum(rider_things)
+    return Packing {
+        packed: packed
+        fits_pannier: packed <= 20litre
+        bottle_strength: DrinkStrength(powder / 750ml)
+    }
+}

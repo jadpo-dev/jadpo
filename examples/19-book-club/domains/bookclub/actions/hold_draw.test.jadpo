@@ -1,0 +1,14 @@
+use bookclub/types { ClubMemberName, PrizeDraw }
+use bookclub/fixtures { cosmos, hobbit, middlemarch, odes, room_of_ones_own }
+
+test "the draw picks three books and seats everyone" {
+    var members: List<ClubMemberName> = ["Ann", "Bea", "Cal"]
+    var monthly_draw: PrizeDraw = hold_draw(
+        [hobbit(), middlemarch(), room_of_ones_own(), cosmos(), odes()],
+        members
+    )
+    assert list.count(list.distinct(monthly_draw.vote_on)) == 3
+    assert list.count(monthly_draw.seating) == 3
+    assert list.all(members, member -> list.contains(monthly_draw.seating, member))
+    assert monthly_draw.host_number >= 1 and monthly_draw.host_number <= 12
+}

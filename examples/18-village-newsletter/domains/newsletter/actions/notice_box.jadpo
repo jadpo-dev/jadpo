@@ -1,0 +1,7 @@
+// A notice from the editor's rich text box: blocks and marks, as a rich
+// text editor holds them, written as safe HTML.
+
+/// The notice box at the top of an issue.
+action notice_box(notice: RichText) -> Html {
+    return markup.rich_to_html(notice)
+}
