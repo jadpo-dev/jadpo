@@ -28,7 +28,10 @@
 //! the same steps, but each batch reads its rows, locked as an `UPDATE`
 //! would lock them, has [`Backfills`] work their values out in Jadpo, and
 //! writes them back in one statement; its last step does the same for the
-//! rows written meanwhile, with the table locked against writes.
+//! rows written meanwhile, with the table locked against writes. Since
+//! chunk 6.1a the runtime works them out itself, on the runner's per-item
+//! mode with the program's executor ([`crate::runner::InJadpo`]), each
+//! value kept and checked by its field's rules.
 //!
 //! A structured field whose type may no longer read the values stored as
 //! its JSON (chunk 5.9c) has them checked first, in batches, each read in
@@ -101,9 +104,10 @@ pub enum Unworked {
 }
 
 /// No program: a backfill worked out in Jadpo stops at its first row.
-struct NoProgram;
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoBackfills;
 
-impl Backfills for NoProgram {
+impl Backfills for NoBackfills {
     fn work_out(
         &self,
         _migration: &str,
@@ -269,7 +273,7 @@ pub async fn migrate_reporting(
     migrations: &[Migration],
     report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
 ) -> Result<Vec<String>, MigrateError> {
-    migrate_with(database, migrations, &NoProgram, report).await
+    migrate_with(database, migrations, &NoBackfills, report).await
 }
 
 /// [`migrate_reporting`], with `backfills` working out in Jadpo the

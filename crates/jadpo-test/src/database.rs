@@ -953,10 +953,6 @@ impl jadpo_runtime::Host for TestHost<'_> {
         }
     }
 
-    fn deliver(&self, _events: Vec<jadpo_runtime::Event>) -> jadpo_runtime::LocalFuture<'_, ()> {
-        Box::pin(async {})
-    }
-
     /// None: a test runs under its seed, so it reproduces.
     fn random(&self, _bytes: &mut [u8]) -> bool {
         false

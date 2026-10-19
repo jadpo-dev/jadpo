@@ -34,6 +34,9 @@
 //!   route table, its placeholders and input decoded, what the route runs
 //!   run, and the output or the failure envelope written, with the default
 //!   rate limits ([`RateLimits`]).
+//! - [`runner`]: the runner (chunk 6.1a), which drives an executor for
+//!   work no request waits on, as the system ([`System`]): deferred until
+//!   after a response, inline, or once per item of a batch.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -72,11 +75,12 @@ mod race;
 mod ratelimit;
 mod read;
 mod report;
+pub mod runner;
 mod store;
 mod write;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, commit_held, unavailable};
-pub use ctx::{Caller, Ctx, Held, SessionEffect};
+pub use ctx::{Caller, Ctx, Held, SessionEffect, System};
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};
 pub use failure::Failure;
@@ -90,8 +94,8 @@ pub use jadpo_std::Isolation;
 pub use jadpo_std::geography;
 pub use limits::{JSON_KEPT_DEPTH, JSON_KEPT_LIMIT, MAX_DEPTH};
 pub use migrate::{
-    Backfills, MIGRATIONS_TABLE, MigrateError, Migration, Progress, STEPS_TABLE, Standing,
-    Unworked, has_extensions, migrate, migrate_reporting, migrate_with, standing,
+    Backfills, MIGRATIONS_TABLE, MigrateError, Migration, NoBackfills, Progress, STEPS_TABLE,
+    Standing, Unworked, has_extensions, migrate, migrate_reporting, migrate_with, standing,
 };
 pub use outcome::{Assertion, AssertionDetail, Got, Outcome, Part};
 pub use places::{CallablePlace, Frame, Place, Places, Repeated, SitePlace};

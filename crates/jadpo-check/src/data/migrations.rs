@@ -785,6 +785,7 @@ impl Decide<'_> {
             write,
             sql_type,
             scale,
+            fills: (entity.name.clone(), field.name.clone()),
             code: super::backfill::fingerprint(self.db, self.project, body),
         })
     }

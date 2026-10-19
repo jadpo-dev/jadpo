@@ -29,7 +29,7 @@ use jadpo_host_native::test_authenticator::TestAuthenticator;
 use jadpo_host_native::{NativeHost, Postgres, Runtime};
 use jadpo_interp::{Prepared, Program};
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
-use jadpo_runtime::{Database, Event, Host, LocalFuture};
+use jadpo_runtime::{Database, Host, LocalFuture};
 
 /// The native host, with a wall clock the test sets.
 struct Clocked {
@@ -46,8 +46,8 @@ impl Host for Clocked {
         self.inner.database(store)
     }
 
-    fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()> {
-        self.inner.deliver(events)
+    fn defer(&self, work: LocalFuture<'static, ()>) {
+        self.inner.defer(work)
     }
 
     fn random(&self, bytes: &mut [u8]) -> bool {

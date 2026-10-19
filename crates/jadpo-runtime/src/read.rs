@@ -48,20 +48,24 @@ pub fn not_permitted() -> Failure {
 
 /// The caller's parts a statement's policy reads, in [`CallerPart`]'s
 /// order.
-fn callers(ctx: &Ctx<'_>) -> [SqlValue; 3] {
+fn callers(ctx: &Ctx<'_>) -> [SqlValue; 5] {
     [
         ctx.caller_param(CallerPart::User),
         ctx.caller_param(CallerPart::Service),
         ctx.caller_param(CallerPart::Signed),
+        ctx.caller_param(CallerPart::System),
+        ctx.caller_param(CallerPart::SystemTenant),
     ]
 }
 
 /// The value of caller part `part` among `callers`.
-pub(crate) fn caller_of(callers: &[SqlValue; 3], part: CallerPart) -> SqlValue {
+pub(crate) fn caller_of(callers: &[SqlValue; 5], part: CallerPart) -> SqlValue {
     match part {
         CallerPart::User => callers[0].clone(),
         CallerPart::Service => callers[1].clone(),
         CallerPart::Signed => callers[2].clone(),
+        CallerPart::System => callers[3].clone(),
+        CallerPart::SystemTenant => callers[4].clone(),
     }
 }
 
@@ -244,7 +248,7 @@ struct Env<'a> {
     /// An include's keys.
     keys: Option<SqlValue>,
     /// The caller's parts its policy reads.
-    callers: [SqlValue; 3],
+    callers: [SqlValue; 5],
     /// Whether it runs its statements without their policy.
     unpoliced: bool,
     /// How many rows a rechecked read's statement asks for this time

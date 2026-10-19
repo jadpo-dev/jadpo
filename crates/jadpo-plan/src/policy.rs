@@ -13,13 +13,20 @@
 //! membership in a tenant nobody belongs to yet makes its member the
 //! first, and a record moved to another tenant needs the caller's
 //! membership there too.
+//!
+//! `Access.system` (chunk 6.1a) lets in the system, the caller of a
+//! schedule's run and a subscriber's delivery (area 12), and nothing else
+//! does: a user's field, a role and `Access.authenticated` test a caller
+//! the system never is. It holds no membership, so on a tenant's records a
+//! grant naming it adds the tenant it is limited to, the one a
+//! subscriber's event came from, or every tenant for a schedule's run.
 
 use jadpo_check::data::EntityModel;
 use jadpo_check::policy::{Effect, Grant, LineGate};
 use jadpo_check::types::Ty;
 use jadpo_sql::policy::{Membership, Who, any_of, qualified};
 use jadpo_std::http::PrincipalKind;
-use jadpo_std::policy::{CallerPart, Gate};
+use jadpo_std::policy::{CallerPart, Callers, Gate};
 use jadpo_std::read::Source;
 
 use crate::queries::{Planner, Statement, field};
@@ -146,7 +153,8 @@ impl Planner<'_> {
         row: &Row<'_>,
     ) -> Option<String> {
         let condition = self.any_grant(bind, entity, grants, row)?;
-        self.in_tenant(bind, entity, condition, row)
+        let system = grants.contains(&Grant::System);
+        self.in_tenant(bind, entity, condition, row, system)
     }
 
     /// Whether the caller passes any of `grants` on `row`, without the
@@ -187,8 +195,8 @@ impl Planner<'_> {
                 },
                 Grant::Signed => whos.push(Who::Condition(bind.caller(CallerPart::Signed))),
                 Grant::Public => whos.push(Who::Anyone),
-                // No request is a schedule or a subscriber yet (area 12).
-                Grant::System => {}
+                // Schedules and subscribers (area 12), which no request is.
+                Grant::System => whos.push(Who::Condition(bind.caller(CallerPart::System))),
             }
         }
         for (at, (membership, via, listed)) in roles.into_iter().enumerate() {
@@ -210,13 +218,16 @@ impl Planner<'_> {
     }
 
     /// `condition`, limited to the tenants where the caller has a
-    /// membership when `entity`'s records belong to one.
+    /// membership when `entity`'s records belong to one; when the grants
+    /// name `Access.system` (`system`), the system's tenant too, which
+    /// it holds no membership in.
     fn in_tenant(
         &self,
         bind: &mut dyn CallerBind,
         entity: &EntityModel,
         mut condition: String,
         row: &Row<'_>,
+        system: bool,
     ) -> Option<String> {
         let anyone = condition == jadpo_sql::policy::ANYONE;
         if let Some(tenancy) = self
@@ -251,6 +262,13 @@ impl Planner<'_> {
                     let mut founding = vec![format!("{member} = {caller}")];
                     founding.extend(self.nobody_in(&at)?);
                     tenants.push(Who::Condition(format!("({})", founding.join(" AND "))));
+                }
+                if system {
+                    let system = bind.caller(CallerPart::System);
+                    let tenant = bind.caller(CallerPart::SystemTenant);
+                    tenants.push(Who::Condition(jadpo_sql::policy::system_in_tenant(
+                        &system, &tenant, &at,
+                    )));
                 }
                 let tenants = any_of(&tenants);
                 condition = if anyone {
@@ -428,20 +446,22 @@ impl Planner<'_> {
     /// What the plan checks as an action starts, from who its line under
     /// `actions:` lets call it (area 9, "Actions"): nothing for anyone at
     /// all or when the statements its own body writes decide, anyone
-    /// signed in, a role held across the whole application, or nobody.
-    /// A gate it can't plan refuses everyone rather than no one.
-    pub(crate) fn gate(&self, gate: &LineGate) -> Option<Gate> {
-        match gate {
-            LineGate::Anyone | LineGate::Statements => None,
-            LineGate::Signed => Some(Gate::Signed),
-            LineGate::Nobody => Some(Gate::Nobody),
-            LineGate::Roles(roles) => Some(self.roles_gate(roles).unwrap_or(Gate::Nobody)),
-        }
+    /// signed in, a role held across the whole application, or nobody;
+    /// and the system when the line names `Access.system` (`system`).
+    /// A gate it can't plan refuses every request rather than none.
+    pub(crate) fn gate(&self, gate: &LineGate, system: bool) -> Option<Gate> {
+        let callers = match gate {
+            LineGate::Anyone | LineGate::Statements => return None,
+            LineGate::Signed => Callers::Signed,
+            LineGate::Nobody => Callers::Nobody,
+            LineGate::Roles(roles) => self.roles_gate(roles).unwrap_or(Callers::Nobody),
+        };
+        Some(Gate { callers, system })
     }
 
     /// A caller holding one of `roles`, each held across the whole
     /// application, as a `SELECT 1` of their membership.
-    fn roles_gate(&self, roles: &[(String, String)]) -> Option<Gate> {
+    fn roles_gate(&self, roles: &[(String, String)]) -> Option<Callers> {
         let mut statement = Statement::default();
         let mut whos = Vec::new();
         let mut store = None;
@@ -457,7 +477,7 @@ impl Planner<'_> {
                 Some(vec![role.clone()]),
             )?));
         }
-        Some(Gate::Roles {
+        Some(Callers::Roles {
             store: store?,
             sql: format!("SELECT 1 WHERE {}", any_of(&whos)),
             params: statement.into_params(),
@@ -569,7 +589,8 @@ pub(crate) fn gates(
         .filter_map(|line| {
             let gate = jadpo_check::policy::reach::line_gate(db, project, &line.action)
                 .unwrap_or(LineGate::Nobody);
-            Some((line.action.clone(), planner.gate(&gate)?))
+            let system = line.who.contains(&jadpo_check::policy::ActionWho::System);
+            Some((line.action.clone(), planner.gate(&gate, system)?))
         })
         .collect()
 }
