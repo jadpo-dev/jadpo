@@ -631,7 +631,7 @@ reference only).
   "Hashing and cryptography", "Encodings" and "Data formats", questions
   14 and 24): `hash.sha256`, the 9 `encoding` operations, `json.read` and
   `json.write` in memory with `mismatch`'s problem path. The batch forms
-  and `csv`, `tsv` and `json_lines` come with batches (6.4). Done when
+  and `csv`, `tsv` and `json_lines` come with batches (6.4b). Done when
   each operation's example passes and `json.write` gives the same text
   for the same value on every target. Split on 2026-10-17 because the
   whole is more than one session: the `DecodeProblem` a failure mapped
@@ -1976,7 +1976,8 @@ chunks below, taken before Phase 6.
   2026-10-19: a schedule reaches every tenant, and reaching what only
   `Access.public` grants is a compile error) leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
-  keys (area 7).
+  keys (area 7), and picking up batch runs whose lease lapsed
+  (`jadpo_runtime::batches::resume` or `waiting`, built in 6.4).
 - [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
@@ -1997,16 +1998,32 @@ chunks below, taken before Phase 6.
   expression, area 6's "Operations in conditions" and its refusal
   example checked, and a live test of the code's answer and each index.
   Choices in area 6's "Chosen in chunk 6.3b".
-- [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
+- [x] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
   `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
   transactions that commit their writes and position together, problems
   collected, resuming after crashes and deploys; replacing chained events
-  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and the batch
-  forms of `json.read`/`write` on it, as area 19's "Data formats" tables
-  them, and `store.read`'s
-  whole-read cap. Split by the Phase 5 review: batches, status, cancel, `key:` and
-  resuming on 6.1a's runner first; the format helpers wait for a minimal
-  `files` capability (area 16).
+  for paging. Split by the Phase 5 review: the file helpers are 6.4b,
+  after a minimal `files` capability (area 16). Built: `batches.each(from:,
+  each:, finished:, key:)` in actions, `from:` a named query's `Page`
+  walked a page per transaction as the system, `each:` and `finished:`
+  one call of an action in the domain with the item, its fields or saved
+  values (`type.batch_context`, `type.batch_from_invalid`,
+  `type.batch_each_invalid`, `type.batch_capture_not_storable`); the
+  batch types and `BatchState`; runs, problems and cancels in system
+  tables beside the query's store, each page committing its items'
+  writes, problems and position together, a failed or faulted item
+  undone alone; `key:`, `batches.status`, `batches.cancel`; leases and
+  `batches::resume` for 6.2's minute tick, a run a deploy changed ending
+  `failed`; inline functions as named arguments; `batches` reserved.
+  Live tests over 20 pages, a crash mid-batch, a key, a cancel and a
+  deploy. Choices in area 12's "Chosen in chunk 6.4"; flagged there:
+  tenancy (`batches.each` refused where `policy` names a `tenant:`) and
+  the `Access.public` check for a batch's reach.
+- [ ] **6.4c Batches with tenants and grants** `opus · high` (areas 12 and
+  9, decided 2026-10-19): `batches.each` in an application with
+  `tenant:`, a run limited to the tenant its one saved tenant id names
+  (none or several reaching no tenant's records), and a batch reaching
+  what only `Access.public` grants refused as `policy.system_grant_missing`.
 - [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
   schedules and batches, passing `--require-examples`.
 
@@ -2021,6 +2038,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   randomness), called by both executors instead of the interpreter's own
   dispatch, and a capability-driver seam with fakes and recordings that
   7.1's providers, 5.5v3's `ai.generate` and 8.1's native build use.
+- [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
+  moved after 7.0b from Phase 6, since it needs a minimal `files`
+  capability on that seam: a store's `put` and `read` of a `File` with a
+  fake, then `csv.read`/`write`, `tsv`, `json_lines` and the batch forms
+  of `json.read`/`write` on 6.4's runs, as area 19's "Data formats" tables
+  them, with `ExportSummary`, `CsvFormat`, a file row's `RowProblem`
+  column and line numbers, and `store.read`'s whole-read cap; and from
+  6.4, the warning for a `from:` ordered by a field that can be updated,
+  and `estimated_total` from a query's count.
 - [ ] **7.1 Packages and connections** `opus · high`: the package format
   (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
   surface rule), library and provider kinds, `packages/` installed and

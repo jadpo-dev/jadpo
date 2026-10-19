@@ -174,6 +174,7 @@ impl Body<'_> {
             Some(
                 Reach::Caller(_)
                 | Reach::Session(_)
+                | Reach::Batch(_)
                 | Reach::AdvanceClock
                 | Reach::Translation { .. }
                 | Reach::Prompt(_),

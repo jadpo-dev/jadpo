@@ -620,6 +620,15 @@ impl Executor for Program {
         self.plan().callable(callable)?.clock
     }
 
+    fn batches(&self) -> Option<jadpo_runtime::batches::Batches<'_>> {
+        let plans = self.plan().batches();
+        (!plans.is_empty()).then(|| jadpo_runtime::batches::Batches {
+            plans,
+            json: self.stored_json(),
+            failures: self.plan().types().failures(),
+        })
+    }
+
     fn events(&self) -> Option<jadpo_runtime::outbox::Events<'_>> {
         Some(jadpo_runtime::outbox::Events {
             plan: self.plan().events(),

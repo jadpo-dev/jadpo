@@ -5,7 +5,9 @@
 //! both executors, so neither reads a type's chain or a field's key while a
 //! body runs.
 
-use jadpo_graph::body::{BinaryOp, Body, Callee, Expr, Fallible, Node, Pattern, Site, Stmt};
+use jadpo_graph::body::{
+    BinaryOp, Body, Callee, Expr, Fallible, LocalId, Node, Pattern, Site, SiteId, Stmt,
+};
 use jadpo_graph::{Key, TypeRef};
 
 use crate::constant::Constant;
@@ -110,9 +112,47 @@ pub enum Decoded {
     /// the number of its type in the JSON table, whose codec writes a
     /// value's text.
     Prompt { entry: u32, fields: Vec<u32> },
+    /// `batches.each` (area 12, chunk 6.4): its place in the plan's
+    /// batches ([`crate::Plan::batches`]), and the sites the action works
+    /// out as it starts the run, in the order the run saves them: each of
+    /// `from:`'s query's arguments, then each value `each:` and
+    /// `finished:` capture, then `key:`.
+    Batch { number: u32, sites: Vec<u32> },
     /// Something a later area builds, as written up to its arguments or
     /// block: `clock.now`, `query open_todos`, `Todo.update`.
     Written(String),
+}
+
+/// A `batches.each` call as its site decodes it, before the plan numbers
+/// the read and the store its run goes through (area 12, chunk 6.4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BatchSite {
+    /// `action catalogue.recount#1`.
+    pub name: String,
+    pub shape: String,
+    /// The query `from:` calls, by its plan's number.
+    pub query: Option<u32>,
+    /// The actions `each:` and `finished:` call, by key.
+    pub each: Option<(Key, jadpo_std::batch::BatchCall)>,
+    pub finished: Option<(Key, jadpo_std::batch::BatchCall)>,
+    pub captured: Vec<u32>,
+    pub from_args: usize,
+    pub key: Option<u32>,
+}
+
+/// The path from the inline parameter `item` to the value at `site`: the
+/// item itself, or a field inside it, `row.sku` being `["sku"]`; `None`
+/// for anything else.
+fn item_path(types: &Types, body: &Body, site: SiteId, item: LocalId) -> Option<Vec<String>> {
+    match &body.site(site).node {
+        Node::Expr(Expr::Local(local)) if *local == item => Some(Vec::new()),
+        Node::Expr(Expr::Field { receiver, field }) => {
+            let mut path = item_path(types, body, *receiver, item)?;
+            path.push(types.field_name(field).to_string());
+            Some(path)
+        }
+        _ => None,
+    }
 }
 
 /// One field given to a build.
@@ -172,6 +212,10 @@ pub(crate) struct Decoder<'a> {
     /// Each prompt's place in the plan's prompts, by its name, and the type
     /// of each field its text writes (area 21).
     pub prompt: &'a dyn Fn(&str) -> Option<PromptFields>,
+    /// The callable whose body this is, and the program's `batches.each`
+    /// calls so far, which its own are added to (area 12).
+    pub starter: &'a Key,
+    pub batches: &'a mut Vec<BatchSite>,
 }
 
 impl Decoder<'_> {
@@ -192,6 +236,138 @@ impl Decoder<'_> {
             }
         };
         Decoded::Json(at as u32)
+    }
+
+    /// `batches.each(from:, each:, finished:, key:)`: what its run saves
+    /// and calls, added to the program's batches.
+    fn batch(&mut self, body: &Body, args: &[Option<SiteId>]) -> Decoded {
+        use jadpo_std::batch::{BatchArg, BatchCall};
+        let node = |site: Option<SiteId>| site.map(|site| (site, body.site(site)));
+        let mut sites: Vec<u32> = Vec::new();
+        let mut captured: Vec<u32> = Vec::new();
+        let mut shape = String::new();
+        let mut query = None;
+        if let Some((_, from)) = node(args.first().copied().flatten())
+            && let Node::Expr(Expr::Call {
+                callee: Callee::Query(key),
+                args: given,
+                ..
+            }) = &from.node
+        {
+            query = (self.query)(key);
+            shape.push_str(&format!("from {}(", key.as_str()));
+            for arg in given.iter().flatten() {
+                let ty = body.site(*arg).ty.clone();
+                shape.push_str(&format!("{ty:?},"));
+                if let Decoded::Json(number) = self.json_type(ty) {
+                    captured.push(number);
+                    sites.push(arg.0);
+                }
+            }
+            shape.push(')');
+        }
+        let from_args = captured.len();
+        let called = |at: Option<SiteId>,
+                      word: &str,
+                      this: &mut Decoder<'_>,
+                      sites: &mut Vec<u32>,
+                      captured: &mut Vec<u32>,
+                      shape: &mut String|
+         -> Option<(Key, BatchCall)> {
+            let (_, inline) = node(at)?;
+            let Node::Expr(Expr::Inline {
+                params,
+                body: inner,
+            }) = &inline.node
+            else {
+                return None;
+            };
+            let item = *params.first()?;
+            let (_, call) = node(*inner)?;
+            let Node::Expr(Expr::Call {
+                callee: Callee::Action(key),
+                args: given,
+                ..
+            }) = &call.node
+            else {
+                return None;
+            };
+            let callable = (this.callable)(key)?;
+            shape.push_str(&format!(" {word} {}(", key.as_str()));
+            let mut out = Vec::new();
+            for arg in given.iter().flatten() {
+                if let Some(path) = item_path(this.types, body, *arg, item) {
+                    shape.push_str(&format!("item{path:?},"));
+                    out.push(BatchArg::Item(path));
+                    continue;
+                }
+                let ty = body.site(*arg).ty.clone();
+                shape.push_str(&format!("{ty:?},"));
+                let Decoded::Json(number) = this.json_type(ty) else {
+                    return None;
+                };
+                out.push(BatchArg::Captured(captured.len() as u32));
+                captured.push(number);
+                sites.push(arg.0);
+            }
+            shape.push(')');
+            Some((
+                key.clone(),
+                BatchCall {
+                    callable,
+                    args: out,
+                },
+            ))
+        };
+        let each = called(
+            args.get(1).copied().flatten(),
+            "each",
+            self,
+            &mut sites,
+            &mut captured,
+            &mut shape,
+        );
+        let finished = called(
+            args.get(2).copied().flatten(),
+            "finished",
+            self,
+            &mut sites,
+            &mut captured,
+            &mut shape,
+        );
+        let key = match node(args.get(3).copied().flatten()) {
+            Some((at, site)) => {
+                shape.push_str(&format!(" key {:?}", site.ty));
+                sites.push(at.0);
+                match self.json_type(site.ty.clone()) {
+                    Decoded::Json(number) => Some(number),
+                    _ => None,
+                }
+            }
+            None => None,
+        };
+        let ordinal = self
+            .batches
+            .iter()
+            .filter(|batch| {
+                batch
+                    .name
+                    .starts_with(&format!("{}#", self.starter.as_str()))
+            })
+            .count()
+            + 1;
+        let number = self.batches.len() as u32;
+        self.batches.push(BatchSite {
+            name: format!("{}#{ordinal}", self.starter.as_str()),
+            shape,
+            query,
+            each,
+            finished,
+            captured,
+            from_args,
+            key,
+        });
+        Decoded::Batch { number, sites }
     }
 
     fn slots(
@@ -284,11 +460,13 @@ impl Decoder<'_> {
                 Callee::Entity { entity, operation } => {
                     Decoded::Written(format!("{}.{operation}", self.types.name(entity)))
                 }
+                Callee::Batch(jadpo_std::batch::BatchOp::Each) => self.batch(body, args),
                 Callee::Std(_)
                 | Callee::Object(_)
                 | Callee::Variant(_)
                 | Callee::Caller(_)
                 | Callee::Session(_)
+                | Callee::Batch(_)
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Unknown => Decoded::Nothing,

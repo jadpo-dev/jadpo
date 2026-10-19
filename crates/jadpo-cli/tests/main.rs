@@ -9,6 +9,7 @@ mod across;
 mod aggregates;
 mod ai;
 mod backfills;
+mod batches;
 mod binary;
 mod check;
 mod cli;

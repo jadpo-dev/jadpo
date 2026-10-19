@@ -910,6 +910,24 @@ impl Body<'_> {
                 .insert(node_key(node.syntax()), (issued.clone(), vec![field]));
             return Ty::Prim(*builtin);
         }
+        // A batch run, its progress, its summary and its problems (area 12).
+        if let Some(object) = super::batches::batch_fields(&through)
+            && let Ty::Opaque(name, _) = &through
+        {
+            let Some((_, ty)) = object.iter().find(|(name, _)| *name == field) else {
+                let fields: Vec<FieldDef> = object
+                    .iter()
+                    .map(|(name, ty)| plain_field(name, ty.clone()))
+                    .collect();
+                self.unknown_field(name, &field, &fields, span, false);
+                return Ty::Error;
+            };
+            let ty = ty.clone();
+            self.facts
+                .fields
+                .insert(node_key(node.syntax()), (name.clone(), vec![field]));
+            return ty;
+        }
         // A `Range<T>`'s ends, each `none` when open (area 19).
         if let Ty::Opaque(range, args) = &through
             && range == jadpo_std::RANGE
@@ -1295,6 +1313,23 @@ impl Body<'_> {
                     .at(self.span(record), "only the runtime builds it")
                     .reason(reason)
                     .next(next),
+                );
+                self.walk(|walk| walk.member_values(record.member_list()));
+                Ty::Error
+            }
+            // A batch run, its progress, a problem or a summary: the
+            // runtime's to build, from the run it keeps (area 12).
+            ([], None) if jadpo_std::batch::object_fields(&name).is_some() => {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_NOT_RECORD,
+                        format!("`{name}` isn't built with `{{ ... }}`"),
+                    )
+                    .at(self.span(record), "only the runtime builds it")
+                    .reason(format!(
+                        "Only the runtime builds a `{name}`, from the run it keeps: `batches.each` gives the run, `batches.status` its progress, and `finished:` receives its summary."
+                    ))
+                    .next("Use the value the runtime gives, and remove this one"),
                 );
                 self.walk(|walk| walk.member_values(record.member_list()));
                 Ty::Error
@@ -1941,6 +1976,12 @@ pub(crate) fn members_of(
         return object
             .iter()
             .map(|(name, builtin)| plain(name, Ty::Prim(*builtin)))
+            .collect();
+    }
+    if let Some(object) = super::batches::batch_fields(receiver) {
+        return object
+            .into_iter()
+            .map(|(name, ty)| plain(name, ty))
             .collect();
     }
     if let Ty::Opaque(range, args) = receiver.strip_nullable()
