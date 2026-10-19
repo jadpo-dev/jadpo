@@ -123,8 +123,8 @@ pub enum Settled {
     Unsettled,
 }
 
-/// Runs the work `ctx`'s committed action left, and the work it sets off
-/// in turn, in `ctx` before it answers, until all of it has settled or
+/// Runs `work`, what a route's committed action left, and the work it
+/// sets off in turn, in `ctx` before it answers, until all of it has settled or
 /// `within` (the route's `within:` timer) finishes first (area 7,
 /// "Waiting for follow-on work"; chunk 6.3). Each delivery runs as
 /// [`deliver`] runs one, as the system limited to its event's tenant, and
@@ -136,17 +136,20 @@ pub enum Settled {
 /// which is long work no route waits on; or the piece running when
 /// `within` finished, which is dropped unfinished, nothing it did kept,
 /// its claim given back as it was ([`crate::outbox::RELEASE`]). Whatever
-/// is left goes back on `ctx`'s deferred work, for after the response,
+/// is left goes on `ctx`'s deferred work, for after the response,
 /// exactly as it would without `settle:`; a delivery waiting to retry is
 /// the sweep's.
 pub async fn settle_within(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
+    work: Vec<Deferred>,
     within: &mut crate::LocalFuture<'_, ()>,
 ) -> Settled {
     use crate::outbox::{FAILED, SUCCEEDED};
     let mut queue: VecDeque<Piece> = VecDeque::new();
-    split(ctx.take_deferred(), &mut queue);
+    split(work, &mut queue);
+    // Work left before it, which isn't this route's to wait for.
+    let earlier = ctx.take_deferred();
     let settled = loop {
         let Some(piece) = queue.pop_front() else {
             break Settled::Settled;
@@ -200,6 +203,8 @@ pub async fn settle_within(
             break Settled::Unsettled;
         }
     };
+    let left = std::mem::replace(&mut ctx.deferred, earlier);
+    ctx.deferred.extend(left);
     ctx.deferred.extend(unsplit(queue));
     settled
 }
@@ -1417,19 +1422,29 @@ mod tests {
         let mut ctx = Ctx::new(&program.places, &host, Env::default());
         signed_in(&mut ctx);
         // Work that leaves nothing behind has settled.
-        ctx.defer(job(1, "sum", None));
+        // Work left before isn't this route's to wait for.
+        ctx.defer(job(0, "earlier", None));
         let mut within: LocalFuture<'_, ()> = Box::pin(std::future::pending());
-        let settled =
-            block_on(settle_within(&program, &mut ctx, &mut within)).expect("nothing waits");
+        let settled = block_on(settle_within(
+            &program,
+            &mut ctx,
+            vec![job(1, "sum", None)],
+            &mut within,
+        ))
+        .expect("nothing waits");
         assert_eq!(settled, Settled::Settled);
-        assert!(ctx.take_deferred().is_empty());
+        assert_eq!(ctx.take_deferred(), [job(0, "earlier", None)]);
         // The job and the job it sets off run as the system; then the
         // first delivery of what they emitted can't be claimed (this
         // program has no subscribers), so the work hasn't settled, and
         // the deliveries are left for after the response.
-        ctx.defer(job(2, "order", Some(9)));
-        let settled =
-            block_on(settle_within(&program, &mut ctx, &mut within)).expect("nothing waits");
+        let settled = block_on(settle_within(
+            &program,
+            &mut ctx,
+            vec![job(2, "order", Some(9))],
+            &mut within,
+        ))
+        .expect("nothing waits");
         assert_eq!(settled, Settled::Unsettled);
         assert_eq!(
             host.log.take(),
@@ -1453,10 +1468,14 @@ mod tests {
             ["type Wrote order", "type Wrote follow-on"]
         );
         // Once `within:` has passed, nothing more runs.
-        ctx.defer(job(0, "late", None));
         let mut passed: LocalFuture<'_, ()> = Box::pin(async {});
-        let settled =
-            block_on(settle_within(&program, &mut ctx, &mut passed)).expect("nothing waits");
+        let settled = block_on(settle_within(
+            &program,
+            &mut ctx,
+            vec![job(0, "late", None)],
+            &mut passed,
+        ))
+        .expect("nothing waits");
         assert_eq!(settled, Settled::Unsettled);
         assert!(host.log.take().is_empty());
         assert_eq!(ctx.take_deferred().len(), 1);

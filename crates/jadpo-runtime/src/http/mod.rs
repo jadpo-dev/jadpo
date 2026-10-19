@@ -885,6 +885,9 @@ async fn run_with_caller(
         }
     }
     let claimed = Cell::new(false);
+    // What was left for after the response before this route ran: only
+    // its own action's work is waited for (chunk 6.3).
+    let earlier = ctx.deferred.len();
     let mut deadline = deadline;
     let mut attempt = 1;
     loop {
@@ -1059,9 +1062,13 @@ async fn run_with_caller(
             // The work the action set off, delivered now, while the
             // request waits, until it settles or `within:` passes; what
             // is left carries on after the response.
+            let work = ctx.deferred.split_off(earlier.min(ctx.deferred.len()));
             let settled = match within.as_mut() {
-                Some(within) => crate::runner::settle_within(executor, ctx, within).await,
-                None => crate::runner::Settled::Unsettled,
+                Some(within) => crate::runner::settle_within(executor, ctx, work, within).await,
+                None => {
+                    ctx.deferred.extend(work);
+                    crate::runner::Settled::Unsettled
+                }
             };
             response = answer(
                 app,
