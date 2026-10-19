@@ -704,7 +704,13 @@ pub(crate) async fn sweep_within(
             Some(SqlValue::Int4(depth)) => u32::try_from(*depth).unwrap_or(0),
             _ => 0,
         };
-        match events.read(event, payload) {
+        // The encoding its payload was written in: `NULL` for one kept
+        // before encodings were recorded (chunk 6.8).
+        let encoding = row
+            .get(8)
+            .cloned()
+            .unwrap_or(SqlValue::Null(crate::SqlType::Int2));
+        match events.read(event, payload, &encoding) {
             Ok(value) => work.push(Delivery {
                 store: store.to_string(),
                 id: *id,

@@ -66,31 +66,33 @@ pub(crate) const NOT_FOUND: (u16, &str, &str) =
     (404, "passkey_not_found", "No passkey of yours has this id.");
 
 /// Keeps a binding's new challenge, replacing its earlier one.
-const PUT_CHALLENGE: &str = "INSERT INTO \"jadpo_passkey_challenges\" (\"id\", \"challenge\", \"purpose\", \"binding\", \"principal_id\", \"user_handle\", \"state\", \"expires_at\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (\"purpose\", \"binding\") DO UPDATE SET \"id\" = EXCLUDED.\"id\", \"challenge\" = EXCLUDED.\"challenge\", \"principal_id\" = EXCLUDED.\"principal_id\", \"user_handle\" = EXCLUDED.\"user_handle\", \"state\" = EXCLUDED.\"state\", \"expires_at\" = EXCLUDED.\"expires_at\"";
+pub(crate) const PUT_CHALLENGE: &str = "INSERT INTO \"jadpo_passkey_challenges\" (\"id\", \"challenge\", \"purpose\", \"binding\", \"principal_id\", \"user_handle\", \"state\", \"expires_at\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (\"purpose\", \"binding\") DO UPDATE SET \"id\" = EXCLUDED.\"id\", \"challenge\" = EXCLUDED.\"challenge\", \"principal_id\" = EXCLUDED.\"principal_id\", \"user_handle\" = EXCLUDED.\"user_handle\", \"state\" = EXCLUDED.\"state\", \"expires_at\" = EXCLUDED.\"expires_at\"";
 
 /// Forgets the challenges that have expired.
-const SWEEP: &str = "DELETE FROM \"jadpo_passkey_challenges\" WHERE \"expires_at\" <= $1";
+pub(crate) const SWEEP: &str =
+    "DELETE FROM \"jadpo_passkey_challenges\" WHERE \"expires_at\" <= $1";
 
 /// Takes a challenge, once: whoever deletes it has it.
-const TAKE: &str = "DELETE FROM \"jadpo_passkey_challenges\" WHERE \"challenge\" = $1 AND \"purpose\" = $2 RETURNING \"binding\", \"principal_id\", \"user_handle\", \"state\", \"expires_at\"";
+pub(crate) const TAKE: &str = "DELETE FROM \"jadpo_passkey_challenges\" WHERE \"challenge\" = $1 AND \"purpose\" = $2 RETURNING \"binding\", \"principal_id\", \"user_handle\", \"state\", \"expires_at\"";
 
 /// A person's passkeys, oldest first.
-const LIST: &str = "SELECT \"id\", \"credential\", \"encoding\" FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $1 ORDER BY \"registered_at\", \"id\"";
+pub(crate) const LIST: &str = "SELECT \"id\", \"credential\", \"encoding\" FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $1 ORDER BY \"registered_at\", \"id\"";
 
 /// Keeps a new passkey while its person has fewer than the limit.
-const ADD: &str = "INSERT INTO \"jadpo_passkeys\" (\"id\", \"principal_id\", \"credential_id\", \"user_handle\", \"credential\", \"registered_at\", \"encoding\") SELECT $1, $2, $3, $4, $5, $6, $8 WHERE (SELECT count(*) FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $2) < $7";
+pub(crate) const ADD: &str = "INSERT INTO \"jadpo_passkeys\" (\"id\", \"principal_id\", \"credential_id\", \"user_handle\", \"credential\", \"registered_at\", \"encoding\") SELECT $1, $2, $3, $4, $5, $6, $8 WHERE (SELECT count(*) FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $2) < $7";
 
 /// Writes a passkey after it signed in, in this release's encoding, if its
 /// counter is still the one read: a second answer racing it changes
 /// nothing.
-const USED: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = $3, \"encoding\" = $4 WHERE \"id\" = $1 AND \"credential\" ->> 'sign_count' = $2";
+pub(crate) const USED: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = $3, \"encoding\" = $4 WHERE \"id\" = $1 AND \"credential\" ->> 'sign_count' = $2";
 
 /// Renames one of a person's passkeys, in whichever encoding it is kept:
 /// `name` is text in each.
-const RENAME: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = jsonb_set(\"credential\", '{name}', to_jsonb($3::text)) WHERE \"id\" = $1 AND \"principal_id\" = $2 RETURNING \"id\", \"credential\", \"encoding\"";
+pub(crate) const RENAME: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = jsonb_set(\"credential\", '{name}', to_jsonb($3::text)) WHERE \"id\" = $1 AND \"principal_id\" = $2 RETURNING \"id\", \"credential\", \"encoding\"";
 
 /// Removes one of a person's passkeys.
-const REMOVE: &str = "DELETE FROM \"jadpo_passkeys\" WHERE \"id\" = $1 AND \"principal_id\" = $2";
+pub(crate) const REMOVE: &str =
+    "DELETE FROM \"jadpo_passkeys\" WHERE \"id\" = $1 AND \"principal_id\" = $2";
 
 /// What a challenge is kept for.
 const SIGN_IN: &str = "sign_in";

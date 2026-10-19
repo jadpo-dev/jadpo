@@ -252,6 +252,7 @@ impl Decoder<'_> {
         let mut saved_types: Vec<TypeRef> = Vec::new();
         let mut shape = String::new();
         let mut query = None;
+        let mut query_key: Option<Key> = None;
         if let Some((_, from)) = node(args.first().copied().flatten())
             && let Node::Expr(Expr::Call {
                 callee: Callee::Query(key),
@@ -260,10 +261,11 @@ impl Decoder<'_> {
             }) = &from.node
         {
             query = (self.query)(key);
+            query_key = Some(key.clone());
             shape.push_str(&format!("from {}(", key.as_str()));
             for arg in given.iter().flatten() {
                 let ty = body.site(*arg).ty.clone();
-                shape.push_str(&format!("{ty:?},"));
+                shape.push_str(&format!("{},", ty.canonical()));
                 if let Decoded::Json(number) = self.json_type(ty.clone()) {
                     captured.push(number);
                     saved_types.push(ty);
@@ -304,12 +306,13 @@ impl Decoder<'_> {
             let mut out = Vec::new();
             for arg in given.iter().flatten() {
                 if let Some(path) = item_path(this.types, body, *arg, item) {
-                    shape.push_str(&format!("item{path:?},"));
+                    let fields: String = path.iter().map(|field| format!(".{field}")).collect();
+                    shape.push_str(&format!("item{fields},"));
                     out.push(BatchArg::Item(path));
                     continue;
                 }
                 let ty = body.site(*arg).ty.clone();
-                shape.push_str(&format!("{ty:?},"));
+                shape.push_str(&format!("{},", ty.canonical()));
                 let Decoded::Json(number) = this.json_type(ty.clone()) else {
                     return None;
                 };
@@ -348,7 +351,7 @@ impl Decoder<'_> {
         let key_type = node(args.get(3).copied().flatten()).map(|(_, site)| site.ty.clone());
         let key = match node(args.get(3).copied().flatten()) {
             Some((at, site)) => {
-                shape.push_str(&format!(" key {:?}", site.ty));
+                shape.push_str(&format!(" key {}", site.ty.canonical()));
                 sites.push(at.0);
                 match self.json_type(site.ty.clone()) {
                     Decoded::Json(number) => Some(number),
@@ -357,19 +360,29 @@ impl Decoder<'_> {
             }
             None => None,
         };
-        let ordinal = self
+        // Named by what the call is, in identity keys that survive a
+        // rename (chunk 6.8): the action starting it, the query `from:`
+        // walks and the action `each:` runs, so adding or moving another
+        // call leaves its name as it was. Only a second call of the same
+        // three in one action is told apart by its place among them.
+        let mut name = self.starter.as_str().to_string();
+        if let Some(query) = query_key {
+            name.push_str(&format!(" from {}", query.as_str()));
+        }
+        if let Some((action, _)) = &each {
+            name.push_str(&format!(" each {}", action.as_str()));
+        }
+        let alike = self
             .batches
             .iter()
-            .filter(|batch| {
-                batch
-                    .name
-                    .starts_with(&format!("{}#", self.starter.as_str()))
-            })
-            .count()
-            + 1;
+            .filter(|batch| batch.name == name || batch.name.starts_with(&format!("{name} #")))
+            .count();
+        if alike > 0 {
+            name.push_str(&format!(" #{}", alike + 1));
+        }
         let number = self.batches.len() as u32;
         self.batches.push(BatchSite {
-            name: format!("{}#{ordinal}", self.starter.as_str()),
+            name,
             shape,
             query,
             each,

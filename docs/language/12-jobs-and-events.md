@@ -1889,6 +1889,10 @@ Built in chunk 6.7: background work within its host's budget, every
 lease the budget and a minute, a batch run carried on by time in a
 fresh invocation, and a native server draining as it stops; "Chosen in
 chunk 6.7" below.
+Built in chunk 6.8: background records a later release still reads,
+an outbox row read by the encoding it records, and a batch run named by
+a stable key, its shape canonical type text and its saved values kept
+with their encoding; "Chosen in chunk 6.8" below.
 Sending the metrics and the alerts' log events to a monitoring tool waits
 for telemetry (area 16), and the console's timeline for area 17.
 
@@ -3134,6 +3138,54 @@ be replaced), each the most conservative reading:
   or a batch run, kept in the store, so none is lost when an invocation
   stops short. A test runs an action as the system through the runner's
   `as_system`.
+
+### Chosen in chunk 6.8
+
+What the Phase 6 architecture review found about records a release
+keeps for a later one to read, each the most conservative reading:
+
+- **An outbox row read by its encoding.** A delivery reads its event's
+  payload by the encoding its outbox row records (area 19, "Changing a
+  standard type's encoding"): this release's, or none, a payload kept
+  before encodings were recorded, whose forms are encoding 1's. A
+  payload of an encoding this release doesn't read, a later release's
+  after a rollback, is never guessed at: its delivery is parked,
+  `failed` with `payload_unreadable` and why, as a payload that no
+  longer reads as its type is (chunk 6.1b).
+- **A batch's call named by a stable key.** A run keeps which
+  `batches.each` call started it by what the call is, in identity keys
+  that survive a rename: the action starting it, the query `from:`
+  walks and the action `each:` runs (`action check_stock from query
+  products_to_check each action check_product`), in place of its place
+  among the action's calls (`action check_stock#1`), so adding or moving
+  another call leaves its name as it was. A second call of the same
+  three in one action adds its place among those alone (` #2`).
+- **Its shape in canonical type text.** What the run saves and calls is
+  written with each type as Jadpo writes it, naming declared types by
+  their identity keys, never a compiler's `Debug` output, so a release
+  that changes its own internals leaves every running batch's shape as
+  it was; its digest is kept as before.
+- **Saved values with their encoding.** `jadpo_batch_runs` gains an
+  `encoding` column, the encoding its saved values and its `key:` were
+  written in, `NULL` in a run kept before. The saved values stay a JSON
+  array of each value's own JSON, `null` for none, and are read with the
+  standard JSON reader, a number keeping the digits it was written with,
+  in place of a hand-written scanner splitting the array's text.
+- **What an earlier or later release kept.** A run whose encoding this
+  release doesn't read ends `failed` with why ("its saved values were
+  written in encoding 2, which this release doesn't read"), as a run
+  whose call a deploy changed does, rather than being read as something
+  else. A run kept before this release has no encoding and a call name
+  no call now gives, and its shape can't be worked out again, so it ends
+  `failed` with "it was started by a release that named its
+  `batches.each` call another way": a run still going across this
+  upgrade is started again, which `jadpo runs unfinished` will list
+  before a deploy (area 14). A run with no encoding whose call and
+  shape match is read, its values as encoding 1's.
+- **System tables defined once.** Area 5's "System tables" note: one
+  definition in `jadpo_std::system` for the checker and the runtime,
+  with every runtime statement on them prepared against the migrated
+  tables on live PostgreSQL.
 
 ### Consistency with the rest of the language
 

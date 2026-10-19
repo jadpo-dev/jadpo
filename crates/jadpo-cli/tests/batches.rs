@@ -867,8 +867,22 @@ fn the_runner_reaches_batches_only_through_the_executor() {
         .iter()
         .map(|plan| plan.name.as_str())
         .collect();
-    assert_eq!(names, ["action check_stock#1", "action quick_check#1"]);
+    // Each call named by what it is, in identity keys (chunk 6.8): the
+    // action starting it, the query `from:` walks and the action `each:`
+    // runs, never its place among the action's calls.
+    assert_eq!(
+        names,
+        [
+            "action check_stock from query products_to_check each action check_product",
+            "action quick_check from query products_to_check each action check_product"
+        ]
+    );
     let check = &batches.plans[0];
+    // Its shape in canonical type text, never a compiler's `Debug` output.
+    assert_eq!(
+        check.shape,
+        "from query products_to_check(type inventory.CheckPage,) each action check_product(item,) finished action check_done(item,field StockCheck.id,) key field StockCheck.id"
+    );
     assert_eq!(check.store, "main");
     assert_eq!(check.from_args, 1);
     assert_eq!(check.captured.len(), 2, "the page, then the check's id");
@@ -924,5 +938,82 @@ fn a_run_a_deploy_changed_stops_rather_than_reading_what_it_saved_as_something_e
         );
         assert_eq!(kept(&host, &run).await, ("failed".to_string(), 0, 0));
         assert!(counts(&host).await.iter().all(|(_, n)| *n == 0));
+    });
+}
+
+#[test]
+fn a_run_is_read_by_its_encoding_and_one_it_cannot_read_ends_failed() {
+    // Chunk 6.8: a run records the encoding its saved values and its
+    // `key:` were written in. One kept before encodings were recorded
+    // (`NULL`) reads as encoding 1's; one a later release wrote, or one an
+    // earlier release kept under a call name this one doesn't give, ends
+    // `failed` with why, never misread.
+    let Some(loaded) = load("encodings-6-8") else {
+        return;
+    };
+    let program = &loaded.program;
+    let host = host(&loaded.url);
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        stock(program, &host, 6).await;
+        let start = |change: &'static str| {
+            let host = &host;
+            async move {
+                let check = value(call(program, host, "new_check", vec![]).await.0);
+                let (outcome, work) = call(
+                    program,
+                    host,
+                    "check_stock",
+                    vec![field(&check, "id"), page(3)],
+                )
+                .await;
+                let run = field(&value(outcome), "run");
+                let encoding = host
+                    .rows(
+                        "SELECT \"encoding\"::int4 FROM \"jadpo_batch_runs\" WHERE \"state\" = 'running'",
+                        &[],
+                    )
+                    .await;
+                assert_eq!(encoding, [vec![SqlValue::Int4(1)]], "this release's encoding");
+                host.rows(
+                    &format!(
+                        "UPDATE \"jadpo_batch_runs\" SET {change} WHERE \"state\" = 'running' RETURNING \"id\""
+                    ),
+                    &[],
+                )
+                .await;
+                (run, starts(&work).remove(0))
+            }
+        };
+        let (kept_before, work) = start("\"encoding\" = NULL").await;
+        let (ran, _) = jadpo_runtime::batches::run(program, &host, &work).await;
+        assert_eq!(ran, Ran::Finished);
+        assert_eq!(kept(&host, &kept_before).await.0, "finished");
+
+        let (later, work) = start("\"encoding\" = 2").await;
+        let (ran, _) = jadpo_runtime::batches::run(program, &host, &work).await;
+        let why = "its saved values were written in encoding 2, which this release doesn't read";
+        assert_eq!(ran, Ran::Failed(why.into()));
+        assert_eq!(kept(&host, &later).await.0, "failed");
+
+        // As chunk 6.4 named calls, by their place among the action's.
+        let (renamed, work) =
+            start("\"encoding\" = NULL, \"batch\" = 'action check_stock#1'").await;
+        let (ran, _) = jadpo_runtime::batches::run(program, &host, &work).await;
+        assert_eq!(
+            ran,
+            Ran::Failed(
+                "it was started by a release that named its `batches.each` call another way"
+                    .into()
+            )
+        );
+        assert_eq!(kept(&host, &renamed).await.0, "failed");
+        let failures = host
+            .rows(
+                "SELECT \"failure\" FROM \"jadpo_batch_runs\" WHERE \"state\" = 'failed' ORDER BY \"started_at\", \"id\"",
+                &[],
+            )
+            .await;
+        assert_eq!(failures.len(), 2);
     });
 }

@@ -88,6 +88,7 @@ mod read;
 mod report;
 pub mod runner;
 pub mod schedules;
+pub mod statements;
 mod store;
 mod write;
 

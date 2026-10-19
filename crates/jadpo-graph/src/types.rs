@@ -80,6 +80,16 @@ impl TypeRef {
     }
 }
 
+impl TypeRef {
+    /// Its canonical text (chunk 6.8): as Jadpo writes it, naming each key
+    /// by the key itself, which survives a rename, never by a name it has
+    /// now. What a release keeps for a later one to compare against, a
+    /// batch run's shape, is built from it rather than from `Debug`.
+    pub fn canonical(&self) -> String {
+        self.render(&|key| key.as_str().to_string())
+    }
+}
+
 impl fmt::Display for TypeRef {
     /// With each key's born name as code writes it; the manifest names
     /// keys as they are now.
