@@ -17,6 +17,8 @@
 
 pub mod backfill;
 mod columns;
+
+pub use columns::system_table;
 pub mod lifecycle;
 pub mod migrations;
 pub mod queries;
@@ -2269,35 +2271,31 @@ fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
 /// commit with an action's own writes goes in every store that holds an
 /// entity, since any of them can be written. Their behaviour comes with
 /// areas 7 and 12; their schema is here so migrations create them.
-pub const SYSTEM_TABLES: [&str; 4] = [
-    "outbox",
-    "deliveries",
-    "handled_deliveries",
-    "idempotency_keys",
-];
+pub use jadpo_std::system::IN_EVERY_STORE as SYSTEM_TABLES;
 
 /// The tables of schedules' state and runs, in `schedules: { store: }`
 /// (area 12, chunk 6.2).
-pub const SCHEDULE_TABLES: [&str; 2] = ["schedules", "schedule_runs"];
+pub use jadpo_std::system::SCHEDULE_TABLES;
 
 /// The table of browser sessions and API tokens, in the store the
 /// principal's users live in when anything signs one in (area 8).
-pub const SESSIONS: &str = "jadpo_sessions";
+pub const SESSIONS: &str = jadpo_std::system::SESSIONS.table;
 
 /// The service keys' table, in the store the principal's services live in
 /// when service keys are declared (area 8).
-pub const SERVICE_KEYS: &str = "jadpo_service_keys";
+pub const SERVICE_KEYS: &str = jadpo_std::system::SERVICE_KEYS.table;
 
 /// The passkeys' table and their ceremonies', beside the sessions they
 /// start, when `passkey:` is declared (area 8, "Passkeys").
-pub const PASSKEYS: &str = "jadpo_passkeys";
-pub const PASSKEY_CHALLENGES: &str = "jadpo_passkey_challenges";
+pub const PASSKEYS: &str = jadpo_std::system::PASSKEYS.table;
+pub const PASSKEY_CHALLENGES: &str = jadpo_std::system::PASSKEY_CHALLENGES.table;
 
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
 /// in a wrong store are left out; their errors stop the build anyway.
 #[salsa::tracked(returns(ref))]
 pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
+    use jadpo_std::system;
     let model = data_model(db, project);
     let mut schema = Schema::default();
     let by_name: BTreeMap<&str, &EntityModel> = model
@@ -2321,20 +2319,20 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
     }
     derived_indexes(db, project, model, &mut schema);
     for store in schema.stores.values_mut() {
-        for name in SYSTEM_TABLES {
+        for system in SYSTEM_TABLES {
             store
                 .tables
-                .insert(format!("jadpo_{name}"), columns::system_table(name));
+                .insert(system.table.to_string(), columns::system_table(system));
         }
     }
     // Batch runs live in the store each run's query reads, beside the
     // writes of its items (area 12; chunk 6.4).
     for store in crate::types::batch_stores(db, project) {
         if let Some(found) = schema.stores.get_mut(store) {
-            for name in jadpo_std::batch::TABLES {
+            for system in jadpo_std::system::BATCH_TABLES {
                 found
                     .tables
-                    .insert(format!("jadpo_{name}"), columns::system_table(name));
+                    .insert(system.table.to_string(), columns::system_table(system));
             }
         }
     }
@@ -2343,20 +2341,22 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
     if let Some(store) = crate::identity::identity(db, project).sessions_store()
         && let Some(found) = schema.stores.get_mut(store)
     {
-        found
-            .tables
-            .insert(SESSIONS.to_string(), columns::system_table("sessions"));
+        found.tables.insert(
+            SESSIONS.to_string(),
+            columns::system_table(&system::SESSIONS),
+        );
     }
     if let Some(store) = crate::identity::identity(db, project).sessions_store()
         && crate::identity::identity(db, project).passkeys().is_some()
         && let Some(found) = schema.stores.get_mut(store)
     {
-        found
-            .tables
-            .insert(PASSKEYS.to_string(), columns::system_table("passkeys"));
+        found.tables.insert(
+            PASSKEYS.to_string(),
+            columns::system_table(&system::PASSKEYS),
+        );
         found.tables.insert(
             PASSKEY_CHALLENGES.to_string(),
-            columns::system_table("passkey_challenges"),
+            columns::system_table(&system::PASSKEY_CHALLENGES),
         );
     }
     if let Some(store) = crate::identity::identity(db, project).keys_store()
@@ -2364,7 +2364,7 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
     {
         found.tables.insert(
             SERVICE_KEYS.to_string(),
-            columns::system_table("service_keys"),
+            columns::system_table(&system::SERVICE_KEYS),
         );
     }
     // Schedules' state, leases and run records go in `schedules: {
@@ -2379,10 +2379,10 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 driver: Driver::Postgres.name().to_string(),
                 tables: BTreeMap::new(),
             });
-        for name in SCHEDULE_TABLES {
+        for system in SCHEDULE_TABLES {
             found
                 .tables
-                .insert(format!("jadpo_{name}"), columns::system_table(name));
+                .insert(system.table.to_string(), columns::system_table(system));
         }
     }
     Arc::new(schema)

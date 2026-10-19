@@ -742,6 +742,83 @@ impl JsonCodecs<'_> {
     }
 }
 
+impl JsonCodecs<'_> {
+    /// The values a JSON array `stored` keeps, each of type `numbers`' in
+    /// order, read with the standard JSON reader as a request's body is
+    /// (chunk 6.8): JSON's `null` for `none`. Why not, by the value's
+    /// place, its field's path and the rule, never the value.
+    pub fn read_list(&self, numbers: &[u32], stored: &str) -> Result<Vec<Value>, String> {
+        let most = JSON_KEPT_LIMIT.saturating_mul(numbers.len().max(1));
+        if stored.len() > most {
+            return Err(format!("values kept as JSON of more than {most} bytes"));
+        }
+        let (json, written) = jadpo_value::json::parse(stored.as_bytes())
+            .ok_or_else(|| "values that aren't one JSON document".to_string())?;
+        let serde_json::Value::Array(items) = json else {
+            return Err("values that aren't a JSON array".into());
+        };
+        if items.len() != numbers.len() {
+            return Err(format!(
+                "{} values kept, where {} are read",
+                items.len(),
+                numbers.len()
+            ));
+        }
+        items
+            .iter()
+            .zip(numbers)
+            .enumerate()
+            .map(|(place, (item, number))| {
+                if item.is_null() {
+                    return Ok(Value::None);
+                }
+                let codec = self.codec(*number)?;
+                let at = jadpo_value::json::Path::field(&place.to_string()).numbered(&written);
+                let mut problems = Vec::new();
+                let read = self.codecs.read(codec, item, &at, &mut problems);
+                match (read, problems.first()) {
+                    (Some(value), None) => Ok(value),
+                    (_, problem) => {
+                        let shown = place + 1;
+                        let (rule, field) = problem.map_or(("type", ""), |problem| {
+                            let field = problem.field.split_once('.').map_or("", |(_, rest)| rest);
+                            (problem.rule.as_str(), field)
+                        });
+                        Err(if field.is_empty() {
+                            format!("value {shown} isn't its type (`{rule}`)")
+                        } else {
+                            format!("value {shown} isn't its type (`{rule}` on `{field}`)")
+                        })
+                    }
+                }
+            })
+            .collect()
+    }
+}
+
+/// Whether this release reads what was kept in encoding `kept`, as an
+/// outbox row or a batch run records it (area 19, "Changing a standard
+/// type's encoding"; chunk 6.8): this release's, or none, kept before
+/// encodings were recorded, whose forms are encoding 1's. A later
+/// release's is never guessed at.
+pub(crate) fn kept_encoding(kept: &SqlValue) -> Result<(), String> {
+    match kept {
+        SqlValue::Null(_) => Ok(()),
+        SqlValue::Int2(n) if u32::try_from(*n).ok() == Some(jadpo_std::standard::ENCODING) => {
+            Ok(())
+        }
+        SqlValue::Int2(n) => Err(format!(
+            "written in encoding {n}, which this release doesn't read"
+        )),
+        _ => Err("an encoding the runtime didn't write".into()),
+    }
+}
+
+/// This release's encoding, as a row records it.
+pub(crate) fn encoding_value() -> SqlValue {
+    SqlValue::Int2(i16::try_from(jadpo_std::standard::ENCODING).unwrap_or(i16::MAX))
+}
+
 /// Whether `json` is within the limits a value kept as JSON is held to
 /// (chunk 5.9b): at most [`JSON_KEPT_LIMIT`] bytes, and arrays and objects
 /// nested at most [`JSON_KEPT_DEPTH`] deep, counted outside strings.
@@ -1367,6 +1444,20 @@ mod tests {
         )
         .expect_err("never written");
         assert!(why.contains("`null`"), "{why}");
+    }
+
+    /// What a row kept is read by the encoding it records (chunk 6.8):
+    /// this release's, or none, kept before encodings were recorded; a
+    /// later release's is never guessed at.
+    #[test]
+    fn a_row_is_read_by_the_encoding_it_records() {
+        assert_eq!(kept_encoding(&encoding_value()), Ok(()));
+        assert_eq!(kept_encoding(&SqlValue::Null(SqlType::Int2)), Ok(()));
+        assert_eq!(
+            kept_encoding(&SqlValue::Int2(2)),
+            Err("written in encoding 2, which this release doesn't read".into())
+        );
+        assert!(kept_encoding(&SqlValue::Text("1".into())).is_err());
     }
 
     /// A stored value is held to every rule its field has when it is read

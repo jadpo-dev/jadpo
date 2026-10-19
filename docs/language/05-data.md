@@ -1265,8 +1265,9 @@ de-duplication) follows the same rules and is always in a database, never
 a cache (area 16). The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
-A system table that keeps a value beyond a request, the outbox's payload
-and a passkey's credential, records the encoding it was written in, an
+A system table that keeps a value beyond a request, the outbox's payload,
+a passkey's credential and a batch run's saved values and `key:`
+(chunk 6.8), records the encoding it was written in, an
 `encoding` `smallint`, so a later release reads it by the form it has
 (area 19, "Changing a standard type's encoding"). The runtime always
 writes one, but the column may be `NULL`, for a row kept before encodings
@@ -1275,6 +1276,17 @@ with no default, so the same column is the same everywhere. A passkey
 with none is read in the form passkeys were first kept in (chunk 5.5z).
 A project whose migrations predate the column takes one migration adding
 it when `jadpo check` asks (`migration.out_of_date`).
+
+> Built in chunk 6.8: each system table is defined once, in
+> `jadpo_std::system`, which the checker turns into each store's tables
+> and the runtime's statements are written against; a name no table has
+> is no table, never another. `jadpo_runtime::statements` lists every
+> statement the runtime runs on them, a test fails when one in its source
+> isn't listed, and a live test prepares each on PostgreSQL against the
+> tables a migration makes, so a statement and its table can't drift
+> apart unseen. Statements a plan builds on a system table with an
+> application's own, a session read with its user's record, are the
+> plan's and are tested with it.
 
 ## Seeds
 

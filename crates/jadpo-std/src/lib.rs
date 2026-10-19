@@ -26,6 +26,9 @@
 //!   each store's share of a [`Migration`].
 //! - [`standard`]: every standard type's data entry (area 19), which the
 //!   contract's one implementation of each baseline operation reads.
+//! - [`system`]: the system tables the runtime keeps its own records
+//!   in, defined once for the checker's schema and the runtime's
+//!   statements (chunk 6.8).
 //! - [`OPERATIONS`]: every standard-library operation with its parameters'
 //!   kinds, its result and the Rust function that runs it in
 //!   `jadpo-value`, which the Jadpo stubs in `jadpo-check` are tested
@@ -77,6 +80,7 @@ pub mod schedule;
 pub mod sphere;
 pub mod standard;
 pub mod subscriber;
+pub mod system;
 mod time;
 pub mod translation;
 pub mod types;

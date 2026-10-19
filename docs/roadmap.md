@@ -789,12 +789,21 @@ chunks below, taken before Phase 7, in this order.
   second invocation, stopping `jadpo dev` gives back the delivery it was
   running, and `jadpo dev` exits 0 on SIGTERM. Choices in area 12's
   "Chosen in chunk 6.7".
-- [ ] **6.8 Durable background records** `opus · high`, after 6.7: outbox
-  rows read by their `encoding`, a newer one parked; a batch's shape
-  from canonical type text and its call named by a stable key, its saved
-  values with an encoding and read by the standard JSON reader; the
-  system tables defined once in `jadpo-std`, with a test preparing every
-  runtime statement against the migrated schema.
+- [x] **6.8 Durable background records** `opus · high`. Built: a
+  delivery reads its outbox row's payload by the `encoding` it records,
+  a later release's parked `payload_unreadable`; a batch run's call
+  named by identity keys (`action check_stock from query
+  products_to_check each action check_product`), its shape canonical
+  type text (`TypeRef::canonical`), and its saved values kept with a new
+  `jadpo_batch_runs.encoding` and read by the standard JSON reader
+  (`JsonCodecs::read_list`), a run a later release kept or one kept
+  before this chunk ending `failed` with why; the system tables defined
+  once in `jadpo_std::system`, with no catch-all, which the checker
+  turns into each store's tables; `jadpo_runtime::statements` listing
+  every runtime statement on them, a source scan failing on one left
+  out, and a live test preparing each against the migrated tables.
+  Examples 24 and 25 take the column's migration. Choices in area 12's
+  "Chosen in chunk 6.8".
 - [ ] **6.9 Serving, alerts and `why` in the runtime** `opus · high`: a
   server handler in the runtime or `jadpo-host-native` that `jadpo dev`
   only wraps to print; alerts raised in `schedules::tick` and kept once
