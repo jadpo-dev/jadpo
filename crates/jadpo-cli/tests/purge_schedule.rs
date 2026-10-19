@@ -491,7 +491,10 @@ fn the_purge_runs_hourly_on_the_tick_and_is_recorded_like_any_schedule() {
         "{}",
         history.stdout
     );
-    // An operator runs it now, under its lease, as any schedule.
+    // An operator runs it now, under its lease, as any schedule: against
+    // `jadpo dev`'s own database, in the command's process (chunk 6.2d).
+    let dev = serde_json::json!({ "pid": 1, "stores": { "main": url } });
+    write(&root, "build/dev/stores.json", &format!("{dev}\n"));
     let ran = watching(
         &root,
         &url,

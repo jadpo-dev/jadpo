@@ -537,6 +537,10 @@ pub fn system_table(name: &str) -> Table {
             add("run_id", "uuid", true);
             add("last_tick_at", "timestamptz(3)", true);
             add("last_succeeded_at", "timestamptz(3)", true);
+            // The run an operator asked for with `jadpo schedules run`
+            // against a deployment (chunk 6.2d): the id its record will
+            // have, until the application's own tick takes it.
+            add("run_requested", "uuid", true);
             primary = vec!["schedule".into()];
         }
         "schedule_runs" => {
@@ -721,8 +725,8 @@ pub fn system_table(name: &str) -> Table {
             // `batches.each` call each is and the shape it saved under,
             // its `key:` and saved values as their types' JSON, how far
             // it got (the cursor of the next page, or that it read them
-            // all) and its counts, its state, and the lease its runner
-            // holds it by.
+            // all) and its counts, its state, the lease its runner holds
+            // it by, and the depth in a chain of events it started at.
             add("id", "uuid", false);
             add("batch", "text", false);
             add("shape", "text", false);
@@ -738,6 +742,10 @@ pub fn system_table(name: &str) -> Table {
             add("started_at", "timestamptz(3)", false);
             add("stepped_at", "timestamptz(3)", false);
             add("finished_at", "timestamptz(3)", true);
+            // How deep in a chain of events the action that started it
+            // was, which its items run at (chunk 6.6a); `NULL` in a run
+            // kept before, which counts from the start.
+            add("depth", "integer", true);
             unique.insert(
                 object_name(&[&table, "batch", "key"], "key"),
                 jadpo_graph::schema::Unique {

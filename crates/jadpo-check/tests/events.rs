@@ -549,3 +549,89 @@ fn a_subscriber_stores_what_its_event_carries_where_its_tenants_readers_may_read
         ]
     );
 }
+
+// Every action a subscriber reaches is checked against its own line
+// under `actions:`, and a listed action's line decides its own body's
+// writes, as the plan does (chunk 6.6b).
+
+/// `settle` runs `mark` for the subscriber.
+const SETTLE: &str = r#"use planning/actions { mark }
+use planning/entities { Todo, TodoNotFound }
+
+action settle(todo_id: Todo.id) fails TodoNotFound -> Unit {
+    attempt mark(todo_id)
+}
+"#;
+
+const SETTLE_SUBSCRIBER: &str = r#"use planning/actions { settle }
+use planning/events { TodoAdded }
+
+/// Settles each new todo.
+subscriber mark_added {
+    on: TodoAdded
+    run: settle(event.todo_id)
+}
+"#;
+
+/// `mark` listed under `actions:` with `line`.
+fn listed(line: &str) -> String {
+    format!(
+        "use planning\n\npolicy {{\n    actions: {{\n        planning.mark: [{line}]\n    }}\n}}\n"
+    )
+}
+
+#[test]
+fn a_called_actions_line_naming_only_access_public_is_refused() {
+    let nested = [
+        ("domains/planning/actions/settle.jadpo", SETTLE),
+        (
+            "domains/planning/subscribers/mark_added.jadpo",
+            SETTLE_SUBSCRIBER,
+        ),
+    ];
+    assert_eq!(problems(&nested), Vec::<String>::new());
+    // `mark`'s line lets anyone at all in, the system among them, though
+    // `Todo` grants background work.
+    let public = listed("Access.public");
+    let mut with = nested.to_vec();
+    with.push(("policy.jadpo", public.as_str()));
+    assert_eq!(
+        problems(&with),
+        [
+            "domains/planning/subscribers/mark_added.jadpo policy.system_grant_missing: `mark_added` runs as the system, which only `Access.public` lets call `planning.mark`"
+        ]
+    );
+    // The subscriber's own action, listed the same way.
+    let direct = [("policy.jadpo", public.as_str())];
+    assert_eq!(
+        problems(&direct),
+        [
+            "domains/planning/subscribers/mark_added.jadpo policy.system_grant_missing: `mark_added` runs as the system, which only `Access.public` lets call `planning.mark`"
+        ]
+    );
+}
+
+#[test]
+fn a_called_actions_line_decides_its_own_writes() {
+    // `Todo` lets anyone at all update it, but `mark`'s line, which
+    // decides what `mark` writes, names the system.
+    let todo = TODO.replace("update: [Access.system]", "update: [Access.public]");
+    let line = listed("Access.authenticated, Access.system");
+    let files = [
+        ("domains/planning/entities/todo.jadpo", todo.as_str()),
+        ("domains/planning/actions/settle.jadpo", SETTLE),
+        (
+            "domains/planning/subscribers/mark_added.jadpo",
+            SETTLE_SUBSCRIBER,
+        ),
+        ("policy.jadpo", line.as_str()),
+    ];
+    assert_eq!(problems(&files), Vec::<String>::new());
+    // Without the line, `Todo`'s own `update:` decides.
+    assert_eq!(
+        problems(&files[..3]),
+        [
+            "domains/planning/subscribers/mark_added.jadpo policy.system_grant_missing: `mark_added` runs as the system, which only `Access.public` lets update `Todo`"
+        ]
+    );
+}

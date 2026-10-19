@@ -658,6 +658,8 @@ rules! {
         "12-jobs-and-events.html#schedule-store-required", "Schedule has no database named to keep its state and lease in";
     SCHEDULES_LEASE_HELD: "schedules.lease_held", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedule is already running";
+    SCHEDULES_NO_TICK: "schedules.no_tick", area 14, Error, Human,
+        "14-tooling.html#command-errors", "No tick picked up the run asked for";
     SCHEDULES_RUN_FAILED: "schedules.run_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
@@ -970,6 +972,8 @@ rules! {
         "12-jobs-and-events.html#type-batch-each-invalid", "A batch's `each:` or `finished:` is not one call of an action in its domain";
     TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#type-batch-from-invalid", "A batch's `from:` is not a call of a named query giving a `Page`";
+    TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-input", "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
         "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,

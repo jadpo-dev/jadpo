@@ -292,7 +292,8 @@ impl Decls<'_> {
                         );
                         return false;
                     }
-                } else if self.table.contains(first)
+                } else if (self.table.contains(first)
+                    || crate::std_lib::StdNames::get().is_type(first))
                     && self
                         .table
                         .resolve_with(&TypeRef::Path(names.clone(), Vec::new()), false)
@@ -343,12 +344,32 @@ impl Decls<'_> {
     /// `Type.field` naming a field `Owner` doesn't have.
     fn unknown_field_type(&mut self, names: &[String], head: &SyntaxNode) -> bool {
         let host = &names[0];
+        // A built-in type's fields name a type only where it is a standard
+        // object (`LocalTime.hour`); a batch type's are read from the
+        // value the runtime gives, never named (chunk 6.6b).
+        if !self.table.contains(host) && jadpo_std::batch::object_fields(host).is_some() {
+            let written = names.join(".");
+            self.out.push(
+                Diagnostic::new(&rule::TYPE_UNKNOWN_FIELD, format!("`{written}` isn't a type"))
+                    .at(self.span(head), "a batch type's field")
+                    .reason(format!(
+                        "A field type names a field an entity, an object or a standard object declares, such as `LocalTime.hour`; `{host}`'s fields are read from the value the runtime gives, never named as a type."
+                    ))
+                    .next("Name the field's own type, or a type of your own built on it"),
+            );
+            return false;
+        }
+        let standard = (!self.table.contains(host))
+            .then(|| super::table::standard_fields(host).unwrap_or_default());
         let (fields, word): (Vec<String>, &str) =
-            match (self.table.fields(host), self.table.variants(host)) {
-                (Some(fields), _) if names.len() == 2 => {
+            match (standard, self.table.fields(host), self.table.variants(host)) {
+                (Some(standard), _, _) => {
+                    (standard.iter().map(|f| f.name.clone()).collect(), "field")
+                }
+                (None, Some(fields), _) if names.len() == 2 => {
                     (fields.iter().map(|f| f.name.clone()).collect(), "field")
                 }
-                (_, Some(variants)) if names.len() == 3 => (
+                (None, _, Some(variants)) if names.len() == 3 => (
                     variants
                         .iter()
                         .find(|v| v.name == names[1])
@@ -692,6 +713,16 @@ impl Decls<'_> {
                         && holds_password_hash(self.table, &declared, &mut Vec::new())
                     {
                         self.password_hash_field(base, host, name, &value);
+                        continue;
+                    }
+                    // Only the runtime builds a batch type, so no request
+                    // carries one (area 12; chunk 6.6b).
+                    if base == FieldsBase::Input
+                        && let Some(batch) = holds_batch(self.table, &declared, &mut Vec::new())
+                    {
+                        let span = self.span(value.syntax());
+                        self.out
+                            .push(batch_input(&format!("`{host}.{name}`"), batch, span));
                         continue;
                     }
                     // A secret value never leaves the server, nor is kept
@@ -1840,6 +1871,82 @@ pub(crate) fn holds_password_hash(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<
             }
         }
         _ => false,
+    }
+}
+
+/// The batch type (area 12, "Batches: work over many items") a type is,
+/// or holds, however deep: in a list, a map or an option, built on one,
+/// in a field of an object or a variant's data, or a field type naming a
+/// field that holds one (`Sweep.run`). An input holding one is reported at
+/// its own declaration, so it isn't followed again.
+pub(crate) fn holds_batch(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+) -> Option<&'static str> {
+    match ty {
+        Ty::Opaque(name, args) => jadpo_std::batch::OBJECTS
+            .into_iter()
+            .find(|batch| batch == name)
+            .or_else(|| args.iter().find_map(|arg| holds_batch(table, arg, seen))),
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => holds_batch(table, inner, seen),
+        Ty::Map(key, value) => {
+            holds_batch(table, key, seen).or_else(|| holds_batch(table, value, seen))
+        }
+        Ty::Field(host, path) => {
+            let at = format!("{host}.{}", path.join("."));
+            if seen.contains(&at) {
+                return None;
+            }
+            seen.push(at);
+            let declared = table.field(host, path)?.declared.clone();
+            holds_batch(table, &declared, seen)
+        }
+        Ty::Named(name) => {
+            if seen.contains(name) {
+                return None;
+            }
+            seen.push(name.clone());
+            match table.def(name) {
+                Some(super::table::Def::Scalar { parent, .. }) => holds_batch(table, parent, seen),
+                Some(super::table::Def::Fields { base, fields, .. })
+                    if *base != FieldsBase::Input =>
+                {
+                    fields
+                        .iter()
+                        .find_map(|field| holds_batch(table, &field.declared, seen))
+                }
+                Some(super::table::Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .find_map(|field| holds_batch(table, &field.declared, seen)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// `type.batch_input`: `what`, an `Input`'s field or a route's
+/// placeholder, at `span`, holds the batch type `batch`, which only the
+/// runtime builds (area 2), so a request that named one could read or
+/// cancel any run (chunk 6.6b).
+pub(crate) fn batch_input(what: &str, batch: &str, span: Span) -> Diagnostic {
+    let problem = Diagnostic::new(
+        &rule::TYPE_BATCH_INPUT,
+        format!("{what} holds a `{batch}`, which no request carries"),
+    )
+    .at(span, format!("a `{batch}`"));
+    if batch == jadpo_std::batch::BATCH_RUN {
+        problem
+            .reason("Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.")
+            .next("Take the `id` of the record that keeps the run, and read the `BatchRun` from its field")
+    } else {
+        problem
+            .reason(format!(
+                "Only the runtime builds a `{batch}`, from a run it keeps, so one a request sent would be a run's progress or problems made up by whoever sent it."
+            ))
+            .next("Take what the request says in fields of the application's own types")
     }
 }
 
