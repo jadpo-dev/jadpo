@@ -855,6 +855,10 @@ de-duplication) follows the same rules and is always in a database, never
 a cache (area 16). The manifest
 holds a `system_table` node for each, and `jadpo_migrations`, which
 `jadpo migrate apply` keeps, is the runtime's own and in no snapshot.
+A system table that keeps a value beyond a request, the outbox's payload
+and a passkey, records the encoding it was written in, `encoding`, so a
+later release reads it by the form it has (area 19, "Changing a standard
+type's encoding"; chunk 5.9).
 
 ## Seeds
 
@@ -2538,6 +2542,23 @@ doesn't allow, and how each now works, as conservatively as it could:
   query's read uses (`jadpo_std::read::Column::of_builtin`), and literals
   bound for a form's column through the storage table's, so a backfill in
   Jadpo also reads and fills a percentage or a quantity.
+
+### Chosen in chunk 5.9
+
+What area 19's encodings needed of the system tables, as conservatively
+as it could:
+
+- **`encoding`, a `smallint`,** on `jadpo_outbox` and `jadpo_passkeys`:
+  the encoding the row's `payload` or `credential` was written in. It
+  may be `NULL`, a row kept before encodings were recorded: a migration
+  adds the column to a table that may hold rows already, and adds no
+  default, so the same column is the same everywhere. A passkey with none
+  is read as chunk 5.5z kept it; the outbox has no rows before 6.1b
+  writes it, always with an encoding.
+- **Each application with a store migrates once.** The five examples
+  with migrations gained `record_outbox_encoding`, adding the outbox's
+  column, as any project upgrading does when `jadpo check` asks for it
+  (`migration.out_of_date`).
 
 ### Carried to later areas
 

@@ -244,6 +244,11 @@ pub fn system_table(name: &str) -> Table {
             add("emitted_at", "timestamptz(3)", false);
             // W3C trace context of the action that emitted it.
             add("traceparent", "text", true);
+            // The encoding its payload was written in (area 19, "Changing
+            // a standard type's encoding"; chunk 5.9). The runtime always
+            // writes it; a migration adds it to a table that may hold rows
+            // already, so it may be `NULL`, as a passkey's may.
+            add("encoding", "smallint", true);
             indexes.insert(
                 object_name(&[&table, "emitted_at"], "idx"),
                 jadpo_graph::schema::Index {
@@ -365,6 +370,9 @@ pub fn system_table(name: &str) -> Table {
             add("user_handle", "bytea", false);
             add("credential", "jsonb", false);
             add("registered_at", "timestamptz(3)", false);
+            // The encoding `credential` was written in (chunk 5.9); `NULL`
+            // for a passkey kept before encodings were recorded.
+            add("encoding", "smallint", true);
             unique.insert(
                 object_name(&[&table, "credential_id"], "key"),
                 jadpo_graph::schema::Unique {

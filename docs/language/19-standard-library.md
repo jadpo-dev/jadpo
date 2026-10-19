@@ -11255,6 +11255,56 @@ From the Phase 5 soundness review, each the most conservative reading:
   password's salt is not secret and stays on the tape, so a replayed
   `hash_password` gives the hash the recorded run made.
 
+### Chosen in chunk 5.9
+
+What "Changing a standard type's encoding" left open, each the most
+conservative reading:
+
+- **Split.** Golden files and encodings are this chunk; storing an
+  application's objects, lists, maps and enums with data as `jsonb` is
+  5.9b.
+- **What a golden file pins.** For each valid example in the type's
+  entry: its canonical text (`none` for a type with no single text form,
+  or a secret value), the JSON the route codec writes, and each storage
+  column's value as `jadpo_sql::literal` writes it into a statement, which
+  is the value the runtime binds; above them, each column's suffix,
+  PostgreSQL type and comment. A secret value's JSON is the redaction the
+  codec writes, and it is stored `never`. `Feature` and
+  `FeatureCollection` are read and written through a program whose
+  properties are `{ name }`, as their examples' are, since their second
+  type argument is always an application's own object. People's formats
+  aren't pinned: CLDR's wording isn't an encoding and no stored value
+  holds it.
+- **One encoding for a release,** `jadpo_std::standard::ENCODING`, 1, not
+  one per type: a row or token holds values of many types, so one number
+  says which reader each needs. A golden file records the encoding that
+  last changed it; a form whose type's file records an encoding at or
+  past the release's can't be rewritten, so changing one means raising
+  the encoding, and the release notes' row for an encoding must name
+  every type whose file it changed. A new type, or an example added or
+  dropped, changes no form. A type dropped from the release keeps failing
+  the test, since a release keeps reading every type it wrote.
+- **Where the encoding is recorded:** a signed part's payload (`enc`);
+  `jadpo_outbox.encoding` for an event's payload; `jadpo_passkeys.encoding`
+  for a passkey, now `WebAuthnCredential`'s contract JSON through the
+  plan's JSON table (area 8, "Encodings of signed parts and passkeys").
+  A sealed value keeps its own version byte (chunk 5.5q2), which says how
+  it is sealed, not how what it holds is written. An idempotency key's
+  stored response is the bytes that were sent, read back as they were,
+  and holds no encoding.
+- **What was kept before encodings were recorded** is read as it was
+  written: a signed part without `enc`, whose members are encoding 1's,
+  and a passkey whose `encoding` is `NULL`, by the reader it was kept
+  with, its count a number or, as chunk 5.5z kept it, its digits. A row
+  or a token of an encoding this release doesn't know, a later one's, is
+  never guessed at: a signed part opens nothing and the record is read, a
+  passkey is refused.
+- **An entity's own columns record no encoding.** A form that changes
+  their columns' types shows in the migration snapshot, so `jadpo check`
+  asks for a migration; one that changes what a column of the same type
+  holds needs the release to give the migration that rewrites stored
+  values, which no release has needed yet.
+
 ### Decisions
 
 | Topic | Decision | Date |
