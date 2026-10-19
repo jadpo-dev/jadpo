@@ -167,6 +167,29 @@ entity Article {
 }
 ```
 
+## Background work
+
+Schedules and subscribers act as the system caller (area 12, question 8),
+which gets exactly what `Access.system` grants. The system is nobody
+signed in and holds no membership, so a user field, a role and
+`Access.authenticated` never let it in; a grant list, a field's own list
+or an `actions:` line lets it in only by naming `Access.system`. An
+entity grants background work explicitly: a schedule or a subscriber that
+reaches a statement only `Access.public` grants is a compile error, as
+`policy.effect_ungranted` refuses a route, so the runtime, where such a
+statement tests no caller and runs for the system as for everyone, never
+has to tell the two apart.
+
+On a tenant's records, a grant naming `Access.system` lets a subscriber in
+within the tenant its event came from, and a schedule's run, which no
+tenant's event starts, in every tenant. The system never moves a record to
+another tenant, which needs a membership there, and founds no tenant's
+first membership. A listed action's line naming `Access.system` lets the
+system in beside whoever else it names; a line naming only `Access.system`
+still lets in no request. No request is ever the system: only the
+runtime's runner makes the system caller, and every request, and every
+call a test makes with a caller or without one, runs as someone else.
+
 ## Tenancy
 
 Most business applications are shared by many customer companies, and the
@@ -3241,8 +3264,9 @@ Not yet:
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
 - `Access.system` reaches nothing yet: the system caller is built
-  (chunk 6.1a, "Chosen in chunk 6.1a" below), and schedules and
-  subscribers, which run as it, come in chunks 6.1b and 6.2.
+  (chunk 6.1a), and schedules and subscribers, which run as it, and the
+  check that they reach nothing only `Access.public` grants, come in
+  chunks 6.1b and 6.2.
 - An acceptance for a change that widens access, and the approval review
   that shows the report's changes (areas 14 and 18).
 - Indexes for policy: every field a condition filters on is a reference
@@ -3252,38 +3276,6 @@ Not yet:
   points at by `id`, its primary key, and a move to another tenant finds
   the records referring to it by their reference, which has its index, so
   it needs no index or migration of its own.
-
-### Chosen in chunk 6.1a
-
-The system caller, which schedules and subscribers act as (area 12,
-question 8), as conservatively as the pages allow:
-
-- **Exactly what `Access.system` grants.** The system is nobody signed in
-  and holds no membership, so a user field, a role and
-  `Access.authenticated` never let it in; a grant list, a field's own
-  list or an `actions:` line lets it in only by naming `Access.system`.
-  A statement anyone at all may run (`Access.public`) tests no caller,
-  so it runs for the system as for everyone. *Flagged:* the pages say
-  an entity grants background work explicitly; that a schedule or a
-  subscriber reaching what only `Access.public` grants is refused, as
-  `policy.effect_ungranted` refuses a route, is recommended for the
-  checker when schedules and subscribers are read (chunks 6.1b and 6.2),
-  which leaves nothing for the runtime to tell apart.
-- **Tenancy.** On a tenant's records a grant naming `Access.system` lets
-  it in within the tenant it is limited to, the one a subscriber's event
-  came from, and in every tenant when it is limited to none, as a
-  schedule's run is. *Flagged:* the pages limit subscribers and say
-  nothing of schedules; every tenant is the reading under which area
-  12's schedule over a due field works in an application with tenants.
-  Recommended as built.
-- **What it can't do.** It never moves a record to another tenant, which
-  needs a membership there, and founds no tenant's first membership.
-- **A listed action's gate.** A line naming `Access.system` lets the
-  system in beside whoever else it names; a line naming only
-  `Access.system` still lets in no request (chunk 4.8).
-- **No request is ever the system.** Only the runtime's runner makes
-  the system caller; every request, and every call a test makes with a
-  caller or without one, runs as someone else.
 
 ### Consistency with the rest of the language
 
