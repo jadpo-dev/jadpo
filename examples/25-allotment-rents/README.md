@@ -23,6 +23,7 @@ whose plots it walks.
 4. **A subscriber reaches one tenant.** `RentOverdue` holds the society's id in a field of the tenant's own `id` type, and its subscriber is limited to that society. See `domains/plots/events/rent_overdue.jadpo` and `domains/plots/subscribers/remind_overdue.jadpo`.
 5. **A batch reaches one tenant.** A run is limited to the society its saved values name, here the `Society.id` it walks. See `domains/plots/actions/invoice_round.jadpo` and [area 12, Chosen in chunk 6.4c](../../docs/language/12-jobs-and-events.md#chosen-in-chunk-64c).
 6. **Testing what a run does.** A test calls the schedule's action at a fixed clock, then a day later, and sees each plot flagged once. See `domains/plots/actions/flag_overdue_rent.test.jadpo`.
+7. **Watching schedules.** Every run, and every tick skipped and why, is recorded. `jadpo schedules` lists each schedule with its last run and when it is next due, `pause` and `resume` stop and start it, `run` runs it now under its lease, `history` shows its runs, and `jadpo why` says why it didn't run. See [area 12, Watching schedules](../../docs/language/12-jobs-and-events.md#watching-schedules).
 
 ## Run it
 
@@ -34,13 +35,26 @@ cargo build --release -p jadpo-cli
 target/release/jadpo check examples/25-allotment-rents
 target/release/jadpo test examples/25-allotment-rents
 target/release/jadpo fmt --check examples/25-allotment-rents
+cd examples/25-allotment-rents && ../../target/release/jadpo dev
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
 - `test` needs PostgreSQL, and ends with `tested: 4 passed, 4 action tests`.
-- Under `jadpo dev` the server ticks once a minute: each schedule's next
-  due time and its lease live in `jadpo_schedules`, and every run, and
-  every tick it skipped and why, in `jadpo_schedule_runs`.
+- `dev` serves the application with a disposable PostgreSQL, and ticks
+  once a minute. In a second terminal in the project, the schedule
+  commands read that database:
+
+  ```sh
+  ../../target/release/jadpo schedules
+  ../../target/release/jadpo schedules pause overdue_rent
+  ../../target/release/jadpo why overdue_rent
+  ../../target/release/jadpo schedules resume overdue_rent
+  ../../target/release/jadpo schedules run overdue_rent
+  ../../target/release/jadpo schedules history overdue_rent
+  ```
+
+  `why` answers that it is paused, and its due ticks are skipped until it
+  is resumed; `history` lists the run made by hand.
 
 ## Try next
 

@@ -1,4 +1,4 @@
--- 20261019T2003_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261019T2011_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "gardener" (
@@ -102,6 +102,7 @@ CREATE TABLE "jadpo_schedules" (
     "lease_until" timestamptz(3),
     "run_id" uuid,
     "last_tick_at" timestamptz(3),
+    "last_succeeded_at" timestamptz(3),
     CONSTRAINT "jadpo_schedules_pkey" PRIMARY KEY ("schedule")
 );
 CREATE TABLE "jadpo_sessions" (

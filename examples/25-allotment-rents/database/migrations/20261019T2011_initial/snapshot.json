@@ -550,6 +550,11 @@
               "position": 1,
               "type": "bigint"
             },
+            "last_succeeded_at": {
+              "nullable": true,
+              "position": 7,
+              "type": "timestamptz(3)"
+            },
             "last_tick_at": {
               "nullable": true,
               "position": 6,

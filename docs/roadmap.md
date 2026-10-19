@@ -676,8 +676,21 @@ chunks below, taken before Phase 6.
   the tenant its saved tenant ids name (none, or different ones, reaching
   no tenant's records), and a batch's query or actions reaching what only
   `Access.public` grants refused as `policy.system_grant_missing`.
-- [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
-  schedules and batches, passing `--require-examples`.
+- [x] **6.5 Teaching examples for Phase 6** `opus · high`: events,
+  schedules and batches, passing `--require-examples`. Built: examples
+  23-repair-cafe (events, subscribers and retries, a chain, the outbox,
+  `events: { store: }`, the event record, `settle:` answering 201 or 202,
+  and `SuccessStatus.accepted`), 24-seed-library (`batches.each` with
+  `finished:` and `key:`, problems, `batches.status` and `cancel`, and an
+  operation in `where:`) and 25-allotment-rents (a schedule reaching
+  every tenant, watched with 6.2b's commands, and a subscriber and a
+  batch limited to one); 20-fell-race reads GeoJSON and coordinate
+  pairs; the coverage test counts area 12's features, and a map layer's
+  `geometry:`. Found: in an application with a tenant, a batch's
+  `finished:` can't store what its `ImportSummary` counts in a tenant's
+  record, since the summary is given the walked records' and items'
+  provenance without the run's tenant; 6.2c's schedule tests need an
+  example when it is built.
 - [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
   chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
   onwards) folded into the text they amend, as 5.10 did, and the code
