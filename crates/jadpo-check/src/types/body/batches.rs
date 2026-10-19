@@ -263,9 +263,9 @@ impl Body<'_> {
                     format!("`{written}`'s `from:` isn't a call of a named query giving a `Page`"),
                 )
                 .at(at, label.to_string())
-                .reason(format!(
-                    "A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run."
-                ))
+                .reason(
+                    "A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run.",
+                )
                 .next(format!(
                     "Write `{written}(from: <query>(...), ...)`, with a query whose result is `Page<T>`"
                 )),

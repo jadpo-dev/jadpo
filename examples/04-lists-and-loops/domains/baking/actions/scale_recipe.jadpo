@@ -30,14 +30,14 @@ function heavy_ingredients(recipe: Recipe, over: Grams) -> List<IngredientName> 
     return list.map(heavy, ingredient -> ingredient.name)
 }
 
-/// `recipe` made `batches` times over, and which ingredients then go on
+/// `recipe` made `rounds` times over, and which ingredients then go on
 /// the floor scale.
-action scale_recipe(recipe: Recipe, batches: Batches) -> ScaledRecipe {
+action scale_recipe(recipe: Recipe, rounds: Batches) -> ScaledRecipe {
     var scaled: List<Ingredient> = list.map(
         recipe.ingredients,
         ingredient -> Ingredient {
             name: ingredient.name
-            weight: Grams(ingredient.weight * batches)
+            weight: Grams(ingredient.weight * rounds)
         }
     )
     var whole_batch: Recipe = Recipe {

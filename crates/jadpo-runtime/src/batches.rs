@@ -474,7 +474,9 @@ async fn run_inner(
     loop {
         if pages >= PAGES_PER_RUN {
             // Carried on in a run of its own, which claims it again.
-            let _ = database.query_once(RELEASE, &[id.clone()]).await;
+            let _ = database
+                .query_once(RELEASE, std::slice::from_ref(&id))
+                .await;
             left.push(Deferred::Batch(start.clone()));
             return Ran::Paused("it handed itself on after its share of pages".into());
         }
@@ -605,7 +607,7 @@ async fn batch(
         }
     };
     if held.read_all {
-        return finished(executor, open, batches, plan, &id, values, &held, now).await;
+        return finished(executor, open, plan, &id, values, &held, now).await;
     }
     // The page after the position that committed, as the system.
     let mut args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
@@ -762,18 +764,15 @@ async fn abandoned(open: Batch<'_, '_>, error: StoreError) -> Step {
 /// `finished:`, once every page is read, in a transaction of its own:
 /// its action given the run's summary, then the run finished. One that
 /// fails is undone, and the run is failed with its code.
-#[allow(clippy::too_many_arguments)]
 async fn finished(
     executor: &dyn Executor,
     mut open: Batch<'_, '_>,
-    batches: Batches<'_>,
     plan: &BatchPlan,
     id: &SqlValue,
     values: &[Value],
     held: &Held,
     now: i64,
 ) -> Step {
-    let _ = batches;
     let mut failure: Option<String> = None;
     if let Some(call) = &plan.finished {
         let Some(transaction) = open.transaction() else {
@@ -990,21 +989,14 @@ fn with_at(value: &Value, path: &[String], new: Value) -> Value {
     Value::Record(Rc::new(record))
 }
 
-/// Picks up the runs waiting in each store the program keeps runs in,
-/// whose runner's lease has lapsed by `now` (a crash or a deploy left
-/// them, or no host ran them after their action's response), and runs
-/// each as [`run`] does: what area 12's resuming after crashes and deploys
-/// is. The runtime's minute tick calls it (chunk 6.2). How each was left,
-/// with what their actions left for after.
-pub async fn resume(
-    executor: &dyn Executor,
-    host: &dyn Host,
-    now: i64,
-) -> (Vec<(BatchStart, Ran)>, Vec<Deferred>) {
+/// The runs waiting in each store the program keeps runs in, whose
+/// runner's lease has lapsed by `now`: a crash or a deploy left them, or
+/// no host ran them after their action's response. At most a hundred
+/// from each store, oldest first.
+pub async fn waiting(executor: &dyn Executor, host: &dyn Host, now: i64) -> Vec<BatchStart> {
     let mut out = Vec::new();
-    let mut left = Vec::new();
     let Some(batches) = executor.batches() else {
-        return (out, left);
+        return out;
     };
     let mut stores: Vec<&str> = batches
         .plans
@@ -1023,18 +1015,36 @@ pub async fn resume(
         else {
             continue;
         };
-        for row in rows {
-            let Some(SqlValue::Uuid(run)) = row.into_iter().next() else {
-                continue;
-            };
-            let start = BatchStart {
-                store: store.to_string(),
-                run,
-            };
-            let (ran, more) = self::run(executor, host, &start).await;
-            left.extend(more);
-            out.push((start, ran));
-        }
+        out.extend(
+            rows.into_iter()
+                .filter_map(|row| match row.into_iter().next() {
+                    Some(SqlValue::Uuid(run)) => Some(BatchStart {
+                        store: store.to_string(),
+                        run,
+                    }),
+                    _ => None,
+                }),
+        );
+    }
+    out
+}
+
+/// Picks up the runs [`waiting`] finds and runs each as [`run`] does:
+/// what area 12's resuming after crashes and deploys is. The runtime's
+/// minute tick calls it, or hands what `waiting` finds to its host to run
+/// after (chunk 6.2). How each was left, with what their actions left for
+/// after.
+pub async fn resume(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    now: i64,
+) -> (Vec<(BatchStart, Ran)>, Vec<Deferred>) {
+    let mut out = Vec::new();
+    let mut left = Vec::new();
+    for start in waiting(executor, host, now).await {
+        let (ran, more) = self::run(executor, host, &start).await;
+        left.extend(more);
+        out.push((start, ran));
     }
     (out, left)
 }

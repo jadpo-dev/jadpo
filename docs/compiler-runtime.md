@@ -2499,6 +2499,30 @@ deferred work on (a test's, a tool's) drops it: the outbox will keep
 events durable and the minute tick sweep them. Schedules (6.2) hand
 their runs to the same runner.
 
+**Batch runs** (chunk 6.4, area 12's "Chosen in chunk 6.4"). The
+checker reads `batches.each(from:, each:, finished:, key:)`
+(`types::body::batches`) into a `Callee::Batch` call whose `from:` is
+its query's call and whose `each:` and `finished:` are inline functions
+calling an action; the facts give the action a `Fact::Batch` in place of
+those calls, which are the run's, so the one-store rule counts the
+query's store and the actions' writes and policy reaches nothing for the
+caller. `jadpo-plan` decodes each such site into
+`jadpo_std::batch::BatchPlan` (`Plan::batches`): the query's read plan,
+the store, the batch's isolation, the JSON-table number of each value
+the run saves and where each argument of `each:`'s and `finished:`'s
+action comes from (`BatchArg::Item(path)` or `Captured`), and the sites
+the executor works out to start it (`Decoded::Batch`). The runtime's
+`batches` module keeps runs in the query's store (`jadpo_batch_runs`,
+`_problems`, `_cancels`, placed by `data::schema` beside a store some
+batch walks): `start` writes the run's row in the action's transaction
+and leaves `Deferred::Batch` for after the response; `run` claims the
+run with a lease and walks it a page at a time on `runner::Batch`, each
+page's items through `runner::items` (an item undone alone on a failure
+or a fault, `boundary::Undo`), then `finished:`; `resume` picks up runs
+whose lease lapsed, for 6.2's minute tick; `status` and `cancel` read the
+row and keep a cancel. An executor gives the runner its batches through
+`Executor::batches`, so compiled code runs the same runner.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own

@@ -555,9 +555,8 @@ impl Plan {
         // Each event type, numbered after every other so their numbers
         // don't move: the outbox keeps its payload as the type's contract
         // JSON, written and read by its codec (area 12; chunk 5.9b). No
-        // job takes arguments yet (a schedule's `run:` takes none) and a
-        // batch's captures come with batches, so these are all the types
-        // a payload is kept as.
+        // job takes arguments yet (a schedule's `run:` takes none); a
+        // batch's saved values were numbered with its site (chunk 6.4).
         let events = event_types(&graph)
             .into_iter()
             .map(|key| {

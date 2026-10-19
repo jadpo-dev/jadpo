@@ -449,6 +449,57 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
+/// The calls of `batches.status` and `batches.cancel` in `file` that no
+/// one store pins (area 12, chunk 6.4): a run is found by its `id` alone,
+/// in the store the application keeps its runs in, so an application
+/// whose batches keep them in more than one store, or that starts none,
+/// has nowhere to look.
+#[salsa::tracked(returns(ref))]
+pub fn batch_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let stores = batch_stores(db, project);
+    if stores.len() == 1 {
+        return Vec::new();
+    }
+    let path = file.path(db);
+    let mut out = Vec::new();
+    for (_, found) in reaches(db, project, file) {
+        for (reach, (start, end)) in found {
+            let Reach::Runs(cancels) = reach else {
+                continue;
+            };
+            let written = if cancels {
+                "batches.cancel"
+            } else {
+                "batches.status"
+            };
+            let reason = if stores.is_empty() {
+                format!(
+                    "`{written}` finds a run in the store the application keeps its runs in, beside the store its query reads, and nothing in this application starts one with `batches.each`."
+                )
+            } else {
+                let listed: Vec<String> = stores.iter().map(|s| format!("`{s}`")).collect();
+                format!(
+                    "`{written}` finds a run by its `id` alone, in the store the application keeps its runs in, and this application's batches keep them in {}; this compiler doesn't look in more than one yet.",
+                    crate::and_list(&listed)
+                )
+            };
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{written}` here isn't built yet"),
+                )
+                .at(Span::new(path, start, end), "no one store keeps the runs")
+                .reason(reason)
+                .next(format!(
+                    "Start the runs with `batches.each` over queries of one store, or do without `{written}` for now"
+                ))
+                .help_at("12-jobs-and-events.html#chosen-in-chunk-6-4"),
+            );
+        }
+    }
+    out
+}
+
 /// Where action `name`, which writes at most one store, first uses
 /// another: the store it writes is its own, or, writing none, the first it
 /// uses.

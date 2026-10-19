@@ -889,6 +889,7 @@ fn body_features(
                         Callee::Entity { .. } => "call entity operation",
                         Callee::Caller(_) => "call caller from a record",
                         Callee::Session(_) => "call session",
+                        Callee::Batch(_) => "call batch",
                         Callee::AdvanceClock => "advance the test clock",
                         Callee::Translation(_) => "call translation",
                         Callee::Prompt(_) => "render a prompt",

@@ -2769,9 +2769,9 @@ values, each the most conservative reading:
   `event` column records (`JsonTable::events`), so chunk 6.1b writes and
   reads a payload through the one codec, with the type's rules applied on
   read (area 12, "A payload is the contract's JSON"). No job takes
-  arguments yet (a schedule's `run:` takes none), and a batch's captures
-  come with batches (chunk 6.4), so event types are all a payload is
-  kept as today.
+  arguments yet (a schedule's `run:` takes none); a batch's saved values,
+  since chunk 6.4, are numbered in the same table by their types (area
+  12, "Chosen in chunk 6.4").
 
 ### Chosen in chunk 5.9c
 
