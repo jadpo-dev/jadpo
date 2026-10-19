@@ -19,6 +19,6 @@ pub use diagnostic::DiagnosticView;
 pub use json::{Json, SCHEMA_VERSION, diagnostic_json, envelope};
 pub use palette::{Symbol, Token};
 pub use report::{Diagram, DiagramLine, Field, Frame, Item, Mark, Report, Text};
-pub use screen::{Block, Change, ChangeGroup, ChangeMark, Fact, Outcome, Row, Screen};
+pub use screen::{Block, Change, ChangeGroup, ChangeMark, Fact, Outcome, Row, RowState, Screen};
 pub use sources::{Position, Sources, line_text, shown_path};
 pub use spinner::{SPINNER_DELAY, Spinner};

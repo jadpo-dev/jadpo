@@ -670,11 +670,11 @@ fn the_openapi_document_matches_its_golden_copy() {
     assert_eq!(checked.code, 0, "{}", checked.stdout);
     let document =
         std::fs::read_to_string(root.join("build/openapi/main.json")).expect("the document");
-    let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
+    let record = std::fs::read_to_string(root.join("api/main.jadpo_record")).expect("the record");
     let goldens = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/goldens");
     for (name, text) in [
         ("todos.openapi.json", &document),
-        ("todos.main.api", &record),
+        ("todos.main.jadpo_record", &record),
     ] {
         let path = goldens.join(name);
         if std::env::var_os("JADPO_BLESS").is_some() {
@@ -923,9 +923,9 @@ fn an_api_that_requires_keys_says_so_in_its_record_and_openapi() {
         let done = jadpo(&root, args);
         assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
     }
-    let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
+    let record = std::fs::read_to_string(root.join("api/main.jadpo_record")).expect("the record");
     assert!(
-        record.contains("version: 1\n\nidempotency: required\n\nPOST /notes\n"),
+        record.contains("record api 1\n\napi main\n    idempotency required\n\nPOST /notes\n"),
         "{record}"
     );
     let document: serde_json::Value = serde_json::from_str(
@@ -1464,17 +1464,17 @@ fn openapi_shows_the_session_and_what_signing_in_answers() {
     // A disabled account, a write without its CSRF token, and policy
     // refusing the create (area 9).
     assert_eq!(refused.len(), 3);
-    let record = std::fs::read_to_string(root.join("api/main.api")).expect("the record");
+    let record = std::fs::read_to_string(root.join("api/main.jadpo_record")).expect("the record");
     assert!(
-        record.contains("POST /account/sign-up\n    authentication: none\n"),
+        record.contains("POST /account/sign-up\n    authentication none\n"),
         "{record}"
     );
     assert!(
-        record.contains("POST /notes\n    caller: user\n    input:"),
+        record.contains("POST /notes\n    caller user\n    input "),
         "{record}"
     );
     assert!(
-        record.contains("\nauthentication: browser_session\n"),
+        record.contains("\napi main\n    authentication browser_session\n"),
         "the record says how clients sign in: {record}"
     );
     let listed = jadpo(&root, &["routes", "--json"]);

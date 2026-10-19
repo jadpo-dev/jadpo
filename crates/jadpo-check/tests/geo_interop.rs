@@ -301,17 +301,17 @@ fn a_route_s_layer_is_described_as_geojson() {
     // The record and the policy are the project's own business here.
     assert_eq!(
         support::rules(Layout::Project, files),
-        ["api.record_out_of_date", "policy.effect_ungranted"]
+        ["record.out_of_date", "policy.effect_ungranted"]
     );
     let db = jadpo_db::Database::default();
     let project = support::project(&db, Layout::Project, files);
-    let bodies = jadpo_check::routes::record::record_bodies(&db, project);
+    let bodies = jadpo_check::routes::record::record_texts(&db, project);
     let record = bodies.get("main").expect("a record");
     assert!(
         record.contains("layer: FeatureCollection<Point, PinProperties>"),
         "{record}"
     );
-    let document = jadpo_check::routes::openapi::document(&db, project, "main", "pins", 1)
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "pins", "1")
         .expect("a document");
     let schema = document
         .get("components")
@@ -378,21 +378,21 @@ fn a_route_sends_a_layer_bare() {
     // The record and the policy are the project's own business here.
     assert_eq!(
         support::rules(Layout::Project, &files),
-        ["api.record_out_of_date", "policy.effect_ungranted"]
+        ["record.out_of_date", "policy.effect_ungranted"]
     );
     let db = jadpo_db::Database::default();
     let project = support::project(&db, Layout::Project, &files);
-    let bodies = jadpo_check::routes::record::record_bodies(&db, project);
+    let bodies = jadpo_check::routes::record::record_texts(&db, project);
     let record = bodies.get("main").expect("a record");
     assert!(
-        record.contains("output: FeatureCollection<Point, PinProperties>"),
+        record.contains("output FeatureCollection<Point, PinProperties>"),
         "{record}"
     );
     assert!(
         record.contains("object PinProperties\n    label: Text"),
         "{record}"
     );
-    let document = jadpo_check::routes::openapi::document(&db, project, "main", "pins", 1)
+    let document = jadpo_check::routes::openapi::document(&db, project, "main", "pins", "1")
         .expect("a document");
     let schema = document
         .get("paths")

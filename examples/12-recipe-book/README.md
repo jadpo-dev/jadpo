@@ -48,8 +48,8 @@ cd examples/12-recipe-book && ../../target/release/jadpo sql bakery_recipes
 
 ## Try next
 
-- In `recipe_card.jadpo`, add `Recipe.batch_cost` to `pick:`. `jadpo check` reports `policy.output_field_unproved` at `bakery_recipes`: bakers and counter staff may call it, and only owners may read the cost. It also reports `type.missing_field` where the actions build a card without the cost, and `api.record_out_of_date`, since the card is part of what clients are sent.
-  <!-- try {"file": "domains/kitchen/types/recipe_card.jadpo", "replace": "pick: [Recipe.id, Recipe.name, Recipe.author_id]", "with": "pick: [Recipe.id, Recipe.name, Recipe.author_id, Recipe.batch_cost]", "check": ["api.record_out_of_date", "policy.output_field_unproved", "type.missing_field"]} -->
+- In `recipe_card.jadpo`, add `Recipe.batch_cost` to `pick:`. `jadpo check` reports `policy.output_field_unproved` at `bakery_recipes`: bakers and counter staff may call it, and only owners may read the cost. It also reports `type.missing_field` where the actions build a card without the cost, and `record.out_of_date`, since the card is part of what clients are sent.
+  <!-- try {"file": "domains/kitchen/types/recipe_card.jadpo", "replace": "pick: [Recipe.id, Recipe.name, Recipe.author_id]", "with": "pick: [Recipe.id, Recipe.name, Recipe.author_id, Recipe.batch_cost]", "check": ["record.out_of_date", "policy.output_field_unproved", "type.missing_field"]} -->
 - In `recipe.jadpo`, let `Access.authenticated` read `batch_cost`. `jadpo check` reports `policy.field_widens_entity`: a field only narrows its record's grants, and the record lets only its bakery's staff read it.
   <!-- try {"file": "domains/kitchen/entities/recipe.jadpo", "replace": "            read: [StaffRole.owner]\n            update: [StaffRole.owner]", "with": "            read: [Access.authenticated]\n            update: [StaffRole.owner]", "check": ["policy.field_widens_entity"]} -->
 - In `policy.jadpo`, delete the `kitchen.hand_over_recipe` line, and `Recipe` from the `use` line. `jadpo check` reports `type.field_update_forbidden`: `author_id` decides who may change a recipe, so changing it is a listed action.

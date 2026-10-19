@@ -301,7 +301,7 @@ impl Bench {
         let unexpected: Vec<_> = problems
             .iter()
             .filter(|d| !(self.stale && d.rule.id == "migration.out_of_date"))
-            .filter(|d| !(self.stale_api && d.rule.id == "api.record_out_of_date"))
+            .filter(|d| !(self.stale_api && d.rule.id == "record.out_of_date"))
             .map(|d| (d.rule.id, d.message.clone()))
             .collect();
         assert!(unexpected.is_empty(), "{what}: {unexpected:?}");
@@ -376,10 +376,10 @@ fn an_edit_rechecks_only_what_reads_it() {
         .collect();
     let written = support::project(&scratch, Layout::Project, &borrowed);
     let mut records = written.records(&scratch).clone();
-    for (api, body) in jadpo_check::routes::record::record_bodies(&scratch, written) {
+    for (api, text) in jadpo_check::routes::record::record_texts(&scratch, written) {
         records.push(Record {
             path: jadpo_check::routes::record::path(api),
-            text: Ok(jadpo_check::routes::record::file(body, 1)),
+            text: Ok(text.clone()),
         });
     }
     bench.project.set_records(&mut bench.db).to(records);

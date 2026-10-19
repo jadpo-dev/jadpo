@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 use salsa::{Durability, Setter};
 
 use crate::places::{Ownership, locate};
-use crate::{Database, File, IDENTITIES, Layout, Project, Record, is_record, parse_identities};
+use crate::{
+    Database, File, IDENTITIES, LEGACY_IDENTITIES, Layout, Project, Record, is_record,
+    parse_identities, parse_legacy_identities,
+};
 
 /// The file that marks a project's root (area 14).
 pub const PROJECT_FILE: &str = "app.jadpo";
@@ -138,11 +141,8 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
     // and its text a record, for the edits that add a line to it.
     let identities = match identities(&records) {
         Ok(lines) => lines,
-        Err(error) => {
-            unreadable.push(Unreadable {
-                path: IDENTITIES.to_string(),
-                error,
-            });
+        Err((path, error)) => {
+            unreadable.push(Unreadable { path, error });
             BTreeMap::new()
         }
     };
@@ -156,13 +156,32 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
 }
 
 /// The identity registry's lines, from its record when the project has
-/// one, or why they can't be read.
-fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, String> {
-    let Some(record) = records.iter().find(|record| record.path == IDENTITIES) else {
+/// one, else from `database/identities.json`, where it was before chunk
+/// 7.0, until `jadpo records update` rewrites it; or the file that can't
+/// be read and why.
+fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, (String, String)> {
+    let find = |path: &str| records.iter().find(|record| record.path == path);
+    if let Some(record) = find(IDENTITIES) {
+        // A registry that can't be read is `record.edited` or
+        // `record.format_newer`, reported with every record's; until it is
+        // put right every born name is the name now.
+        return Ok(record
+            .text
+            .as_ref()
+            .ok()
+            .and_then(|text| parse_identities(text).ok())
+            .unwrap_or_default());
+    }
+    let Some(record) = find(LEGACY_IDENTITIES) else {
         return Ok(BTreeMap::new());
     };
-    let text = record.text.as_ref().map_err(Clone::clone)?;
-    parse_identities(text).map_err(|error| format!("it isn't a JSON object of names: {error}"))
+    let failed = |error: String| (LEGACY_IDENTITIES.to_string(), error);
+    let text = record
+        .text
+        .as_ref()
+        .map_err(|error| failed(error.clone()))?;
+    parse_legacy_identities(text)
+        .map_err(|error| failed(format!("it isn't a JSON object of names: {error}")))
 }
 
 /// The record at `path`, read from `root`.
@@ -270,17 +289,16 @@ impl Loaded {
                 records.push(read_record(&self.root, path));
                 records.sort_by(|a, b| a.path.cmp(&b.path));
             }
-            if path == IDENTITIES {
+            if path == IDENTITIES || path == LEGACY_IDENTITIES {
+                self.unreadable
+                    .retain(|file| file.path != IDENTITIES && file.path != LEGACY_IDENTITIES);
                 match identities(&records) {
                     Ok(lines) => {
                         if &lines != self.project.identities(&self.db) {
                             self.project.set_identities(&mut self.db).to(lines);
                         }
                     }
-                    Err(error) => self.unreadable.push(Unreadable {
-                        path: path.to_string(),
-                        error,
-                    }),
+                    Err((path, error)) => self.unreadable.push(Unreadable { path, error }),
                 }
             }
             if &records != self.project.records(&self.db) {

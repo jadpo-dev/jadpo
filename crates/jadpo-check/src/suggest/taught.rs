@@ -18,11 +18,8 @@ use super::record::{quote, unquote};
 /// The record's file name, at the project root.
 pub const FILE: &str = "taught_suggestions.jadpo_record";
 
-/// The first line of the record.
-pub const HEADER: &str = "// Written by `jadpo suggest found`; `jadpo suggest` finds each pattern anywhere. Never edit it by hand.";
-
-/// The second line.
-const KIND: &str = "record taught_suggestions 1";
+/// What the header says the record is generated from.
+const FROM: &str = "the patterns this project taught `jadpo suggest`";
 
 fn is_hash(text: &str) -> bool {
     text.len() == 16
@@ -44,7 +41,7 @@ pub fn render(entries: &[Taught]) -> String {
         }
     }
     kept.sort_by(|a, b| (&a.hash, &a.suggestion).cmp(&(&b.hash, &b.suggestion)));
-    let mut out = format!("{HEADER}\n{KIND}\n");
+    let mut out = jadpo_db::record::header(&jadpo_db::record::TAUGHT_SUGGESTIONS, FROM);
     if !kept.is_empty() {
         out.push('\n');
     }
@@ -82,24 +79,10 @@ fn quoted(rest: &str) -> Option<(String, &str)> {
 /// The lines of a record, or what is wrong with it and on which line
 /// (from 0).
 pub fn parse(text: &str) -> Result<Vec<Taught>, (usize, String)> {
-    let mut lines = text.lines().enumerate();
-    match lines.next() {
-        Some((_, line)) if line == HEADER => {}
-        Some((at, _)) => {
-            return Err((at, "the first line is not the header Jadpo writes".into()));
-        }
-        None => return Err((0, "the file is empty".into())),
-    }
-    match lines.next() {
-        Some((_, line)) if line == KIND => {}
-        Some((at, line)) if line.starts_with("record taught_suggestions ") => {
-            return Err((at, "this record was written by a newer Jadpo".into()));
-        }
-        Some((at, _)) => {
-            return Err((at, format!("the second line is not `{KIND}`")));
-        }
-        None => return Err((1, "the file ends after the header".into())),
-    }
+    let kind = &jadpo_db::record::TAUGHT_SUGGESTIONS;
+    jadpo_db::record::read_header(&jadpo_db::record::normalise(text), kind, FROM)
+        .map_err(|problem| (problem.line(), problem.describe(kind)))?;
+    let lines = text.lines().enumerate().skip(2);
     let mut entries = Vec::new();
     for (at, line) in lines {
         if line.is_empty() {
@@ -149,7 +132,10 @@ mod tests {
             taught("(+ delivery subtotal)", "Money", "Later reason wins"),
         ];
         let text = render(&entries);
-        assert!(text.starts_with(HEADER));
+        assert!(text.starts_with(&jadpo_db::record::header(
+            &jadpo_db::record::TAUGHT_SUGGESTIONS,
+            FROM
+        )));
         let back = parse(&text).expect("reads");
         assert_eq!(back.len(), 2);
         assert!(back.iter().any(|t| t.reason == "Later reason wins"));
@@ -158,7 +144,10 @@ mod tests {
 
     #[test]
     fn a_hand_edit_is_refused_by_line() {
-        let text = format!("{HEADER}\n{KIND}\n\ntaught 0000000000000000 Money \"x\" \"(+ a b)\"\n");
+        let text = format!(
+            "{}\ntaught 0000000000000000 Money \"x\" \"(+ a b)\"\n",
+            jadpo_db::record::header(&jadpo_db::record::TAUGHT_SUGGESTIONS, FROM)
+        );
         assert_eq!(parse(&text).expect_err("refused").0, 3);
         assert!(parse("taught").is_err());
     }
