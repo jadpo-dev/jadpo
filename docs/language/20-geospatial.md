@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunk 5.5u5 built the query conditions, the order by distance and the derived indexes, as "Chosen in chunk 5.5u5" records; chunk 5.5u6 built interop, as "Chosen in chunk 5.5u6" records; chunk 5.5u7 built altitudes all or nothing and a layer sent from a route, as "Chosen in chunk 5.5u7" records. Chunk 5.5u8 let a query give a layer, so a `GET` route sends one (area 6, "A query giving a map layer"). Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Built: the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double (chunk 5.5u2); the predicates, `centroid`, `bounding_box` and `rings_valid` (5.5u3); storage and the declared index (5.5u4); the query conditions, the order by distance and the derived indexes (5.5u5); interop (5.5u6); altitudes all or nothing and a layer sent from a route (5.5u7); a query giving a layer, which a `GET` route sends (5.5u8; area 6, "A query giving a map layer"); `geo.from_geojson` and the two pairs (5.11). Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -52,7 +52,13 @@ PostGIS, query conditions and indexes, and the formats other systems use.
   so the interpreter, native builds and wasm32 give the same digits.
   "Precision and determinism" says where floats still appear.
 - **A geometry argument** takes any of the six geometries or a
-  `Geometry`, as `list.` operations take any list.
+  `Geometry`, as `list.` operations take any list. The measures are
+  narrower: `distance` and `bearing` take `Point`s only (question 10),
+  `length` a `LineString` or a `MultiLineString`, and `area` a `Polygon`
+  or a `MultiPolygon`. Anything else, a `Geometry` included, is
+  `type.mismatch` naming this page: the application matches a `Geometry`
+  first, so it decides what a point's area is (the operation kind
+  `Shapes` lists the types a parameter takes).
 
 ## Operations
 
@@ -71,32 +77,86 @@ PostGIS, query conditions and indexes, and the formats other systems use.
 
 The SQL forms are PostGIS's own, which 5.6c's aggregates can use; a
 query condition doesn't compile to its form but searches with a wider one
-and leaves the answer to the code ("Queries", chunk 5.5u5).
+and leaves the answer to the code ("Queries").
 `bounding_box` and `centroid` have no query use. `ST_Azimuth` gives `NULL` for two equal points (verified), which a
 query never needs, so `same_point` exists only in code.
 
 - **Distance and length agree with GeographicLib to well under a
   micrometre before rounding:** within 75 femtometres of every distance
-  in its published test set (chunk 5.5u2, "Chosen in chunk 5.5u2"),
-  where PostGIS's doubles are good to 15 nanometres. London (51.5072° N,
+  in its published test set ("Precision and determinism"), where
+  PostGIS's doubles are good to 15 nanometres. London (51.5072° N,
   0.1276° W) to Paris (48.8566° N, 2.3522° E) is 343,896.891267 m; on a
   sphere it would be 343,530.338 m, 367 m short (both verified with
   PostGIS).
+- **`geo.length` sums each edge's distance as `geo.distance` rounds it,**
+  so a line of two points is their distance exactly; a
+  `MultiLineString`'s lines are summed the same way. A distance is never
+  past 38 digits on Earth; a sum past them is a defect, as `+` is.
 - **Bearing to 9 places,** as an `Angle` keeps radians. Two equal points
   have no direction, so a call maps `same_point`, as a local time that
-  doesn't exist is mapped (area 10).
+  doesn't exist is mapped (area 10). `same_point` is the two points being
+  one place: the same latitude and the same longitude, -180 being 180, or
+  the same pole at any longitude; two points a picometre apart have a
+  direction. It is settled only by `attempt`, as decoding is, since
+  whether two points are equal is known only when the program runs. A
+  bearing that rounds to 360 is 0; at a pole it is GeographicLib's, the
+  meridian of the pole's given longitude.
 - **Area by Karney's polygon method,** each edge a geodesic. PostGIS's
   `ST_Area` gives 12,308,778,361.47 m² for the 1° square at the equator
   (verified); Jadpo gives 12,308,778,361.469453 m², and each geodesic's
-  area to GeographicLib's test set's square millimetre.
+  area to GeographicLib's test set's square millimetre. It rounds once:
+  each ring's area, the smaller of the two sides it bounds, is worked out
+  unrounded, the holes taken away and a `MultiPolygon`'s polygons added,
+  then the total is rounded half to even to the square millimetre. A hole
+  lies inside its outer ring (`rings_valid`), so holes never outweigh it.
 - **`centroid` on the sphere** (each point a unit vector, weighted and
   summed, then back to latitude and longitude), as PostGIS's
   `ST_Centroid(x, false)`, which is simpler to state and to reproduce
-  exactly than the ellipsoid's. A label's position, not a measure.
+  exactly than the ellipsoid's. A label's position, not a measure. It is
+  PostGIS's, quirks included: a multi-point's points weigh one each; a
+  line's edges each give both ends the edge's angle; a polygon is cut
+  into triangles from the first corner of its first outer ring to every
+  edge of every ring, each triangle's centre (its corners summed)
+  weighted by its area, always counted positive. So a hole adds weight
+  rather than taking it away, and a concave polygon's centroid moves with
+  the corner its ring starts at, as PostGIS's does (verified: an L-shaped
+  polygon's is 3.214° N, 3.236° E from one corner and 4.151° N, 4.159° E
+  from another). A point's centroid is itself without its altitude; one
+  whose weights cancel (two opposite points) is a defect, as PostGIS
+  gives no number there. It is rounded to the nearest double, as every
+  coordinate is.
+- **Where `geo.contains` and `ST_Covers` part.** `ST_Covers` on
+  `geography` compares two polygons ring by ring: it doesn't see a hole
+  of `a` that `b` covers (it says a square with a hole covers a square
+  over the hole), and it counts rings lying along each other as crossing
+  (it says a square doesn't cover the same square with a hole). With a
+  multi-part `a` it wants all of `b` in one part, so two points each in
+  one part aren't covered. `geo.contains` keeps "no point of `b` lies
+  outside `a`" in each of these four cases, in code and in a query
+  ("Queries"). A `MultiPolygon` is the union of its parts, which may
+  overlap.
 - **`contains` with a `BoundingBox`** compares latitudes and longitudes
   directly, the box's edges being parallels and meridians, not great
-  circles; with a `Circle`, it is `within(distance:)` of its centre.
-  `bounding_box` of a shape holding a pole runs from -180 to 180.
+  circles. A box holds any geometry in code, an edge's highest or lowest
+  point and the longitudes between its ends included; the query filter
+  stays on `Point` fields (question 11). With a `Circle`, it is
+  `within(distance:)` of its centre, so a circle holds points only, as
+  `within(distance:)` measures between points only (question 10):
+  `geo.contains(circle, shape)` and `within(shape, circle)` with anything
+  but a `Point` are `type.mismatch` naming question 10, as is
+  `within(a, b, distance:)` unless both are points. A distance is proved
+  never below 0 while compiling, as a count is
+  (`type.argument_negative`): a length written out, or a type with
+  `min: 0metre`.
+- **`bounding_box`** rounds a side worked out from an edge outwards to a
+  double, so a shape is always inside its own box; when two boxes are
+  equally narrow, it takes the one that doesn't cross the antimeridian. A
+  shape holding a pole (a point at a pole, a line through one, or a
+  polygon around or touching one) reaches every longitude: its box runs
+  from -180 to 180, and only such a box holds it, whatever longitude a
+  point at the pole is written with, since every meridian meets there.
+- **A line edge between two opposite points,** which no great circle
+  joins, is its two ends.
 - **Not here:** `buffer` (see "Left out"); distance between a point and a
   line or polygon (question 10).
 
@@ -333,21 +393,33 @@ Area 19's scope decided that a polygon's rings are closed and valid; 5.5s
 built closing and left validity here. A `Polygon` is valid when, on the
 sphere:
 
+- each ring is closed, with four points or more;
 - no ring crosses or touches itself, except where its last point meets
-  its first;
-- each hole lies inside the outer ring, and no two rings cross or overlap;
+  its first; a point repeated in a row, or a ring that turns straight
+  back along an edge, touches itself;
+- each hole lies inside the outer ring, and no two rings cross, overlap
+  or share even one point (OGC lets a hole touch the outer ring at one
+  point; read strictly, this also keeps a polygon's inside in one piece
+  without a check of its own);
 - every edge is shorter than half the globe (180° of arc), so the great
   circle it follows is the only one;
 - the polygon covers less than half the globe. Verified: PostGIS's
   `geography` reads a ring wound either way as the same, smaller area, so
   a ring meant to enclose the larger side can't be stored as meant.
 
+A ring's inside is its smaller side, as PostGIS reads it, whichever way
+it is wound, chosen from the ring's area on the sphere, summed by Van
+Oosterom and Strackee's formula in Jadpo's fixed point: exact unless the
+two sides are within about 10⁻³⁵ of each other. A ring exactly on one
+great circle, both sides equal, breaks the rule. A `MultiPolygon` has no
+rule of its own: each of its polygons is valid, and they may overlap.
+
 A polygon read from GeoJSON or WKT that isn't valid is refused, `format`
 at the ring's place, as 5.5s's other reading checks are. One built in
 code breaks a named rule, `rings_valid`, mapped like any cross-field rule
 (area 2, chunk 5.5t). Checking costs about n log n in the points (a sweep
-over the edges); a country's outline of 10,000 points takes about 70 ms
-(measured in chunk 5.5u3).
+over the edges): 0.6 ms for 100 points, 6.8 ms for 1,000 and 68 ms for a
+country's outline of 10,000 (measured natively on an Apple M1 Pro).
 
 ### Altitudes are all or nothing
 
@@ -358,10 +430,36 @@ that mixes them couldn't be stored or exchanged. A mixed geometry read
 from GeoJSON or WKT is refused, `format` at the first position of the
 other size, and one built in code breaks a named rule, `altitudes_agree`,
 mapped like `rings_valid`. A `Point` has one position, so it always
-agrees; a multi-geometry's parts must agree with each other. Built in
-chunk 5.5u7: a literal whose every point is written out, each altitude
-written `none`, given, or a value that can't be `none`, is decided while
-compiling, and anything else is attempted.
+agrees; a multi-geometry's parts must agree with each other.
+
+- **Reading.** GeoJSON is checked once the geometry has read, every
+  position in the order written, refused `format` at the first of the
+  other size (`coordinates.1.0.2`), a multi-geometry's parts across each
+  other. WKT's reader refuses a mix at that position too, as `malformed`,
+  the operation's one condition for text that isn't a geometry.
+- **What a literal decides.** `altitudes_agree` reads each `Point`
+  written out in a geometry literal, however deep (a line's points, a
+  polygon's rings, a multi-polygon's polygons): an altitude written
+  `none` is none, one written out or of a type that can't be `none` (a
+  distance) is one, and anything else, a point or a list held in a
+  variable, is known only when the program runs. Positions known both
+  ways are `type.invalid_literal` at the part holding the first of the
+  other size, whatever else is unknown; otherwise the literal is
+  attempted, as `rings_valid`'s is. So a line from points held in
+  variables is attempted, even where each variable holds a literal: the
+  checker doesn't follow a variable's value, as it doesn't for
+  `rings_valid`.
+- **A polygon's rules in order.** `rings_valid` first, then
+  `altitudes_agree`, so a literal or a value breaking both names
+  `rings_valid`, as GeoJSON and WKT check a ring before the positions'
+  sizes.
+- **Nothing downstream meets a mix.** Storage binds every geometry
+  without asking, and `geo.to_wkt` meets no geometry it can't write; one
+  put together past every door is the runtime's "value of a kind the
+  checker would have refused". The PostgreSQL driver refuses to encode a
+  shape that mixes them, since EWKB's type flag is one for the whole
+  geometry. Each geometry's examples in area 19 hold every point at a
+  height or none, and its refused examples include a mix.
 
 A polygon built from values is attempted, for both rules:
 
@@ -508,7 +606,13 @@ the rest.
   ("Geometry has Z dimension but column does not", verified). An untyped
   column takes both, and the check refuses a line in a point's column and
   a point in another system, such as ETRS89's `SRID=4258` (both verified).
-  An altitude is stored as the third coordinate.
+  An altitude is stored as the third coordinate. The check is added after
+  the table, `ALTER TABLE ... ADD CONSTRAINT "<table>_<column>_check"`,
+  as Jadpo adds every check constraint; a `Geometry`'s lists the six types
+  with `IN`, and a circle's centre has a point's. `GeometryType` gives
+  `POINT` for a point with an altitude (verified, PostGIS 3.4.2). A box's
+  sides are unchecked in the database, like every compound type's rules,
+  and a circle's radius is commented as a `Length` in metres.
 - **Stored exactly.** PostGIS keeps each coordinate as a double. A
   coordinate held as the shortest decimal of a double comes back
   unchanged; one with more digits than a double holds doesn't
@@ -516,12 +620,34 @@ the rest.
   Question 2 makes every coordinate the former, as a `Vector`'s items are
   held as single-precision floats (5.5s2). An altitude has 6 places, so it
   comes back unchanged up to a million kilometres (15 significant digits).
+- **EWKB on the wire, the doubles kept by their bits.** A geometry is
+  bound as a shape of positions, each coordinate the double its decimal
+  is, and the PostgreSQL driver sends it in PostGIS's extended WKB with
+  SRID 4326 and a third coordinate where the positions have altitudes,
+  with no type number, so the server takes the column's own type, as
+  pgvector's is sent; it reads `geography_send`'s EWKB back. The compiler
+  writes a geometry into a statement as EWKT, each coordinate the
+  shortest decimal of its double. WKB lives in the driver only
+  (question 9).
+- **Stored as given, read back as stored.** A ring keeps the order its
+  points were given, clockwise or not: PostGIS keeps it so (verified),
+  and only GeoJSON winds rings by the right-hand rule. Each coordinate
+  read back is the shortest decimal of its double, held to its range; an
+  altitude is that decimal rounded half to even to the micrometre. A
+  polygon read back is checked as a polygon read from GeoJSON is (closed
+  rings of four points or more, `rings_valid`), since another program may
+  have written the row; one that isn't, or a geometry of another kind
+  than the field's, is a fault naming the rule, never the value.
 - **The extension, only when something needs it** (question 5). The
   first migration that adds a geometry column or a geometry index starts
   with `CREATE EXTENSION IF NOT EXISTS postgis;`, in the migration's
   transaction like the rest. An application with no geometry column or
   index never creates the extension and never needs PostGIS on its
   server, as an application with no entity needs no database (area 5).
+
+Every geometry, with and without altitude, a `Geometry` of each kind, a
+box and a circle is stored and read back equal on PostGIS 3.4.2 and CI's
+3.6.4 (`jadpo-cli`'s `geography` test).
 
 A bakery's position and its delivery patches, each stored as it was
 given:
@@ -638,10 +764,20 @@ A GiST index holds one geometry column; a query that also filters on
 other fields uses their ordinary indexes beside it, which PostgreSQL
 combines. Verified: `ST_DWithin`, `ST_Covers` and the box test each use
 these indexes, the first two through `&&` on the geography's box, then
-the exact test. Chunk 5.5u4 built the declared index (`Bakery`'s
-`by_spot` above), and chunk 5.5u5 the derived ones: one on a field
-however many queries test it, none where a declared geographic index
-already holds the field, `_gist_idx` when the name is taken.
+the exact test.
+
+- **Derived:** one on a field however many queries test it, none where a
+  declared geographic index already holds the field, `_gist_idx` when the
+  name is taken. The box index records the cast in its method.
+- **Declared:** an `indexes:` entry may be a block of `fields:` and
+  `kind:`; `kind: IndexKind.geographic` is a GiST index with
+  `geography`'s own operator class on exactly one geometry field (one of
+  the six or `Geometry`), refused otherwise as `type.setting_value`. A
+  setting a block hasn't is `type.unknown_setting`, a block without
+  `fields:` `data.field_list_required`, and the same fields and kind twice
+  `data.duplicate_rule`. `IndexKind` has `geographic` and area 21's
+  `hnsw`; area 5's other kinds come with their chunks. A plain index on
+  a geometry field stays a plain one.
 
 ### A store with no PostGIS
 
@@ -654,8 +790,26 @@ already holds the field, `_gist_idx` when the name is taken.
 
 So the compiler refuses what it can see (a condition on a store that has
 no spatial queries), and the deploy step refuses what only the server
-knows. Nothing waits for the first query to fail. A role that can't
-create PostGIS, built in chunk 5.5u4:
+knows. Nothing waits for the first query to fail.
+
+Whether the role may create the extension is tried, then undone: before
+anything runs, `jadpo migrate apply` creates each extension a pending
+migration needs and the database lacks inside a savepoint, and rolls it
+back. Whether a role may create an extension that isn't trusted depends
+on the server and the provider's roles (Amazon RDS's `rds_superuser` and
+Neon's `neon_superuser` aren't PostgreSQL superusers; assumption from
+their documentation), so trying is the one sure test. Once the database
+has it, the migration's `IF NOT EXISTS` needs nothing more. The same
+holds for pgvector.
+
+An entity in Redis isn't built yet (`toolchain.not_built_yet`, area 5),
+so nothing stores a geometry there. What a Redis entity will keep, its
+GeoJSON, is the contract's own reading and writing, and every geometry,
+with and without altitude, comes back from its GeoJSON unchanged, except
+that a polygon wound clockwise comes back wound by the right-hand rule,
+which PostGIS storage doesn't do.
+
+A role that can't create PostGIS:
 
 ```text
 error: `main` has no `postgis` extension, and its role can't create it
@@ -682,28 +836,41 @@ function of a field otherwise stays refused.
 | `where: geo.intersects(DeliveryPatch.outline, area)` | Patches touching a shape | `ST_DWithin("outline", $1, 0.001)` | `geo.intersects(outline, area)` |
 | `order: [geo.distance(Bakery.spot, doorstep) asc]` | Nearest first; needs a `within(distance:)` on the same field and point (question 4) | `ORDER BY ST_Distance("spot", $1), "id"` | sorted again by `geo.distance`, then `id` |
 
-- **The index finds, the code decides** (chunk 5.5u5). A query gives
-  exactly the records the code's own `geo.` operation keeps, the field's
-  stored value against the call's: `list.filter` over every record with
-  the same operation would give the same list. PostGIS decides in doubles
-  with its own tolerances, and its `ST_Covers` on `geography` compares two
-  polygons ring by ring (the four cases "Chosen in chunk 5.5u3" records),
-  so its predicates aren't the condition. The statement searches through
-  the GiST index for every record within a millimetre of what the
-  condition says, a margin some hundred thousand times PostGIS's error,
-  so no record the code keeps is left out; the runtime then works the
-  condition out again, in Jadpo's code, on each record found. A point on
-  an edge is in, and the four cases give the page's answer (verified on
-  PostGIS 3.4.2 by chunk 5.5u5's live test, every case of
-  `tools/geo_cases.py` as a query; the gate runs it on CI's 3.6.4 too).
+- **The index finds, the code decides.** A query gives exactly the
+  records the code's own `geo.` operation keeps, the field's stored value
+  against the call's: `list.filter` over every record with the same
+  operation would give the same list. PostGIS decides in doubles with its
+  own tolerances, and its `ST_Covers` on `geography` compares two polygons
+  ring by ring (the four cases under "Operations"), so its predicates
+  aren't the condition. The statement searches through the GiST index for
+  every record within a millimetre of what the condition says, so no
+  record the code keeps is left out; the runtime then works the condition
+  out again on each record found, through `jadpo-value`'s `geo.within`,
+  `contains` and `intersects` as a body calls them, so the interpreter
+  and every compiled target decide alike. A point on an edge is in, and
+  the four cases give the page's answer.
+- **The margin is a millimetre** (`GEO_MARGIN`): `ST_DWithin(field,
+  point, distance + 0.001)` for a radius or a circle, and
+  `ST_DWithin(field, shape, 0.001)` for `within`, `contains` and
+  `intersects`, since anything inside a shape, on its edge or touching it
+  is within no distance of it, ring by ring or not. PostGIS's distances
+  are good to some nanometres, so a millimetre, some hundred thousand
+  times its error, is far past what it can miss, and close enough that it
+  rarely finds a row the code turns down. Verified: the four cases are
+  each within the margin (`ST_DWithin` true where `ST_Covers` is false),
+  and every case of `tools/geo_cases.py`, run as a query against every
+  case's shape at once, gives the code's answer on PostGIS 3.4.2
+  (Postgres.app) and on CI's 3.6.4.
 - **A box is two envelopes.** The box filter searches the point cast to
   `geometry`, whose `&&` compares longitude and latitude directly, as a
   box's sides are parallels and meridians, through an index of its own. A
   box across the antimeridian searches from its west to 180 and from
   -180 to its east; one with a side on the antimeridian also searches the
   line at the other end, -180 being 180; any other box is searched twice
-  as one. `&&` rounds to single precision, outwards, and a point at a
-  pole is in only a box of every longitude, which the code decides.
+  as one. The envelopes are worked out from the box's west and east when
+  the read runs (`EnvelopePart`), so the statement's text stays fixed.
+  `&&` rounds to single precision, outwards, and a point at a pole is in
+  only a box of every longitude, which the code decides.
 - **Nearest first inside a radius.** PostGIS's index-ordered `<->`
   measures on a sphere: London to Paris is 343,530 m by `<->` and
   343,897 m by `ST_Distance` (verified), so ordering by it would disagree
@@ -715,13 +882,17 @@ function of a field otherwise stays refused.
   the code's to the last digit. Verified plan: an index scan on `&&`, then
   `ST_DWithin`, then a sort of the matches.
 - **As many rows as it keeps.** The statement asks for as many rows as
-  the list keeps, `LIMIT $n`, or a page's size and one more. When the code
-  turns some down, or when a row past those fetched could still be nearer
-  than the last kept (PostGIS's distance to it, less the margin, isn't
-  past the code's distance to the last), it asks again for four times as
-  many, in the same transaction, until it has enough or the rows run out.
-  The margin is a millimetre, so a second statement is rare: it takes
-  rows within a millimetre of the condition, or `ST_Covers`'s four cases.
+  the read keeps (`Source::Fetch`): a list's `limit:`, `LIMIT $n`, a
+  page's size and one more, or every row for a query of one record (found
+  by a unique field). When the code turns some down, or when a row past
+  those fetched could still be nearer than the last kept (PostGIS's
+  distance to it, less the margin, isn't past the code's distance to the
+  last), it asks again for four times as many, until it has enough or the
+  rows run out. Each ask runs the whole statement again in the same
+  transaction and keeps the last answer, so it reads one state of the
+  table; a page's cursor comes from the rows the code kept. The margin is
+  a millimetre, so a second statement is rare: it takes rows within a
+  millimetre of the condition, or `ST_Covers`'s four cases.
 - **Only `asc`, and only in a `List`.** Farthest first can't use the
   radius to bound anything, and a page by distance would need a cursor on
   a computed value; both are refused, `query.order_direction` and
@@ -736,15 +907,31 @@ function of a field otherwise stays refused.
   value is always given, so it isn't a `where_present:` line. An
   include's records aren't rechecked yet, and an aggregate's totals are
   the database's (area 6, chunk 5.6c), so a `geo.` condition in an
-  include or an aggregate query is `toolchain.not_built_yet`.
+  include or an aggregate query is `toolchain.not_built_yet`. Under `or`,
+  the rows the code turns down would need the other side's answer, which
+  the statement doesn't give. A record whose field is `none` meets no
+  `geo.` condition. The values are parameters or fields inside one;
+  `within`'s `distance:` may also be a length written out, proved never
+  negative as in code.
+- **What each form takes,** as in code: `within(distance:)` and the
+  circle a `Point` field (`type.mismatch`, question 10); the box a `Point`
+  field (`query.condition_unsupported`, question 11); `within` a
+  `Polygon`, a `MultiPolygon`, a `BoundingBox` or a `Circle`; `contains`
+  and `intersects` any geometry. A `BoundingBox` or `Circle` field, kept
+  in named columns, can't be tested.
+- **`==` on a geometry field** compares exactly, as PostGIS's `=` on
+  `geography` does: an altitude, a ring's winding and a line's direction
+  all count (verified), as they do for Jadpo's own `==`. Order by a
+  geometry stays `query.order_field`.
 - **Errors reuse area 6's rules** with new reasons: a `geo.` call with the
   field anywhere but first, a box on a field that isn't a `Point`, a
   `BoundingBox` or `Circle` field, or a condition under `not` or `or` is
   `query.condition_unsupported`; a value of the wrong kind is
   `type.mismatch` and a distance that may be negative
   `type.argument_negative`, as in code; an order by `geo.distance` without
-  its radius, beside another order or in a page is `query.order_field`.
-  `migration.extension_missing` is the only new rule (chunk 5.5u4).
+  its radius, beside another order or in a page, and any other function
+  of a field in `order:`, is `query.order_field`.
+  `migration.extension_missing` is the only new rule.
 
 The page's queries, on the bakeries and patches above:
 
@@ -919,8 +1106,9 @@ test "a customer on a patch's edge is delivered to" {
 }
 ```
 
-Their statements (`jadpo sql`; the box's envelopes and the rows to fetch
-are worked out as the read runs), and the GiST indexes derived for them,
+Their statements (`jadpo sql`, which also says what runs after the
+statement, `then:`; the box's envelopes and the rows to fetch are worked
+out as the read runs), and the GiST indexes derived for them,
 beside `Bakery`'s declared `by_spot`, which already serves `spot`:
 
 ```sql
@@ -949,6 +1137,12 @@ CREATE INDEX "bakery_spot_box_idx" ON "bakery" USING gist (("spot"::geometry));
 CREATE INDEX "delivery_patch_outline_idx" ON "delivery_patch" USING gist ("outline");
 ```
 
+Beyond the page's examples, `jadpo-cli`'s `geo_queries` test runs these
+queries over two thousand bakeries and three hundred patches, each
+giving the code's answer through its index (`EXPLAIN`), with boxes
+across and onto the antimeridian and round the pole, the recheck asking
+again, ties by `id`, and every case of `tools/geo_cases.py` as a query.
+
 ## Precision and determinism
 
 | Where | Arithmetic | Same on every target? |
@@ -966,24 +1160,127 @@ CREATE INDEX "delivery_patch_outline_idx" ON "delivery_patch" USING gist ("outli
   numbers far wider than the result, rounded once at the end. A float's
   `sin` differs between platforms' maths libraries (area 19, question
   18), so a float version could give different digits on wasm32.
-- **What it costs** (measured in chunk 5.5u2, native release build):
-  9 µs for a distance along a meridian, 30 to 65 µs for any other, about
-  45 µs per edge of a polygon's area; WebAssembly takes about 2.8 times
-  as long. A request measures a handful; a batch measuring millions, or
-  the area of a 10,000-point outline (about half a second), would
-  notice. "Chosen in chunk 5.5u2" has the figures.
+- **Karney's inverse problem, ported, not called.** GeographicLib's
+  `Geodesic::GenInverse` and `PolygonArea` (C++, MIT licence) are ported
+  step for step, with the coefficients of its highest series order, 8:
+  the terms left out are below ε⁹, about 10⁻²⁵ of the leading one.
+  GeographicLib's floating-point devices become whole-number ones: its
+  `tiny_` is one unit of the last place and its machine epsilon 10⁴ of
+  them (about 10⁻³⁷), so Newton's method on the azimuth runs until the
+  longitude it reaches is that close, its bisection kept; exact decimals
+  need no `AngRound`.
+- **The working precision.** A working value is a 256-bit
+  two's-complement whole number over 2¹³⁶, on the stack; each product and
+  quotient is cut toward zero, `sqrt` and `hypot` are whole square roots,
+  `sin` and `cos` Taylor's series after taking out quarter turns, and
+  `atan2` Euler's series after taking out the nearest `atan(k/16)`. Binary
+  places give the same determinism as decimal ones, 15 times faster than
+  5.5e's decimal big numbers (600 µs a distance there); 18 decimal places
+  in an `i128` can't keep a continent's area to the square millimetre.
+  Each result is rounded half to even from the exact binary value: not
+  correctly rounded, the series being finite, but the same digits on
+  every target. (The code is `jadpo-std`'s `sphere` module, which the
+  checker and the runtime share, so a polygon literal is read by the code
+  the runtime runs.)
+- **Coordinates are doubles' shortest decimals** (question 2). A
+  `Latitude` or a `Longitude`, as a value, a field or a point's part, is
+  rounded to the shortest decimal of the nearest IEEE double as it is
+  built, before its range is checked, as a `Vector`'s items are; Rust's
+  correctly rounded parsing and printing do it, the same on every target.
+  Rounding can't take a value in range out of it (±90 and ±180 are
+  doubles), and a double whose shortest decimal has more than 38 places
+  (below 10⁻²³ of a degree) is rounded half to even to 38. A literal is
+  checked as written.
+- **Checked against Karney's test set.** C. F. F. Karney's "Test set for
+  geodesics" (2010, doi:10.5281/zenodo.32156, Creative Commons Zero),
+  GeographicLib's `GeodTest-short.dat`, is 10,000 geodesics in nine
+  groups. `tools/geodtest_sample.py` writes every 20th line, 500 of them,
+  with its group and line number, to
+  `crates/jadpo-value/examples/geodesics/reference.tsv`, checking the
+  file's SHA-256, and `--check` holds the sample to it; the full file
+  isn't committed, so the gate needs no network. The gate checks the
+  sample natively and under WebAssembly, and both must give one digest of
+  every answer. The test set's distance and point 1 are exact; point 2 is
+  rounded to 10⁻¹⁸ degrees, which moves it up to 1.6 × 10⁻¹³ m. So
+  `geo.distance` must be the reference distance rounded half to even to
+  the micrometre (either way for one within a nanometre of a tie);
+  `geo.bearing` the reference azimuth within half its 9th place plus how
+  far moving point 2 can turn it, `1.6 × 10⁻¹³ m / m₁₂`; and `geo.area`,
+  of the polygon from point 1 down its meridian, along the equator and up
+  to point 2, the reference's within its stated square millimetre, half
+  `Area`'s last place, and what moving point 2 can change it by. Where the
+  reduced length `m₁₂` is below a metre (a geodesic ending at or near the
+  point conjugate to its start: the "between vertices" and "ending close
+  to vertices" groups, and one line between the poles), only the distance
+  is checked, the direction and area being too sensitive to point 2's
+  rounding. All 10,000 lines pass, not only the sample: before rounding,
+  every distance is within 7.5 × 10⁻¹⁴ m (75 femtometres) of the
+  reference, as close as rounding point 2 allows; every azimuth within
+  `6.4 × 10⁻¹² m / m₁₂` degrees, the same limit; and each geodesic's area
+  within 8.4 × 10⁻⁷ m² for the short and near-pole groups, and within the
+  allowance elsewhere (at most 46% of it, near-antipodal lines).
+- **Predicates are exact on the sphere, by whole numbers.** A position's
+  direction is `(cos φ cos λ, cos φ sin λ, sin φ)`, each sine and cosine a
+  working value taken to within 45° of 0 on the decimal before it becomes
+  radians, and each product kept whole: every component is a whole number
+  over 2²⁷². Points on one meridian are then exactly in a plane with the
+  poles, points on the equator exactly at `z = 0`, a pole is `(0, 0, ±1)`
+  at any longitude, -180 is 180, and opposite points are exact negations.
+  Every predicate is the sign of a polynomial in the components, worked
+  out in whole numbers as wide as it needs (about 820 bits for three
+  points, 1,100 for where two edges cross), after a 40-bit unit vector
+  beside each point settles the clear cases. So a point exactly on an
+  edge, a corner, a meridian or the equator is found on it, and inside
+  includes the edge with no tolerance. Where three points are exactly on
+  one great circle, counting the edges a path crosses breaks the tie by
+  Simulation of Simplicity, as Google's S2 does (its `Sign`,
+  `CrossingSign`, `VertexCrossing` and `AngleContainsVertex`, Apache 2.0):
+  whether a point is inside a ring is the inside known at a corner from
+  the angle there, flipped by each edge the path from that corner to the
+  point crosses. No float decides anything.
+- **Checked against PostGIS.** `tools/geo_cases.py` writes 169 cases,
+  every operation, with PostGIS 3.4.2's answers on PostgreSQL 16.3, to
+  `crates/jadpo-value/examples/geodesics/shapes.tsv`: small, continental
+  and pole-holding polygons, polygons across the antimeridian and the
+  equator, holes, concave shapes, lines and multi-part shapes, and the
+  verified box whose edges bow towards the pole, away from every boundary
+  but exact ones (a polygon's own corner, a point on a meridian edge). The
+  gate checks them natively and under WebAssembly, which give one digest.
+  Every yes or no is PostGIS's but the four cases under "Operations",
+  where the file records PostGIS's answer beside the page's; each
+  centroid is within 4 × 10⁻¹² of a degree of `ST_Centroid(x, false)`'s
+  (half a micrometre); each box's side within 3 × 10⁻¹⁴ of a degree of the
+  box round PostGIS's points every 100 m along the shape.
+- **What it costs** (`cargo run --release -p jadpo-value --example
+  geodesics -- bench`, natively on an Apple M1 Pro). Measures: a distance
+  along a meridian 9 µs; 2 km across London 31 µs; London to Paris 42 µs;
+  London to Sydney 58 µs; nearly antipodal 64 µs; a bearing 47 µs; an
+  11-point line's length 315 µs; the 1° square's area 71 µs (meridians and
+  the equator are quick); a 100-point patch's area 4.5 ms, about 45 µs an
+  edge. The 500-line check takes 0.30 s natively and 0.83 s under Node's
+  WebAssembly, about 2.8 times, so a distance there is about 110 µs and
+  10 ms of CPU measures about 90. Predicates and shapes: a point in a
+  100-point patch 0.44 ms, in a 1,000-point one 4.3 ms; a 100-point patch
+  in another 30 ms (each piece of every edge is classified, about n² in
+  the points); two 100-point patches intersecting 0.9 ms;
+  `within(distance:)` 33 µs; a 100-point patch's centroid 0.37 ms and its
+  box 1.2 ms. Turning each corner into a direction (two sines and
+  cosines) is most of a small polygon's cost. A request measures a
+  handful; a batch measuring millions, or the area of a 10,000-point
+  outline (about half a second), would notice. No budget is asserted, as
+  no timing is elsewhere; the figures are the baseline a tuning chunk
+  measures against.
 - **Where code and the database could disagree, they don't.** A point
   on, or within a hair of, a polygon's edge, and a distance within a hair
   of a radius, are decided by PostGIS in doubles with its own tolerances
   and by Jadpo exactly; `ST_Covers` also parts from the page on four
-  kinds of polygon (chunk 5.5u3). So a query's condition uses PostGIS
+  kinds of polygon ("Operations"). So a query's condition uses PostGIS
   only to find the rows, through the index, a millimetre wider than the
   condition, and the runtime decides each row with the same code a body
   runs ("Queries"). The index is kept, and the answer is the code's. What
   it costs is the code's test on each row found: about 40 µs a distance
-  natively and 0.44 ms a point in a 100-point patch ("Chosen in chunk
-  5.5u3"), so a radius holding a thousand bakeries spends some 40 ms
-  sorting them by distance.
+  natively and 0.44 ms a point in a 100-point patch, so a radius holding
+  a thousand bakeries spends some 40 ms sorting them by distance.
 
 ## Interop
 
@@ -996,7 +1293,31 @@ CREATE INDEX "delivery_patch_outline_idx" ON "delivery_patch" USING gist ("outli
 | WKB | The PostgreSQL driver's own encoding; no operation | Inside the driver |
 | Other coordinate systems | Left out: `EastingNorthing` stays a value with its `Crs`, not converted | |
 
-The map's delivery layer, built in chunk 5.5u6. A feature's identity goes
+- **A feature's arguments.** `G` is one of the six geometries or
+  `Geometry`; `P` is an `Object` type of the application's, not an
+  `Input`, an `Output` or a standard object, so its fields are the
+  properties; either is refused as `type.mismatch` where the type is
+  written or where a literal's values give it. A literal takes its
+  arguments from the type its place expects, or else from its values: a
+  feature's from its geometry and its properties, a collection's from its
+  features.
+- **Read strictly.** A feature's members are `type`, which must be
+  `Feature` (another is `variant`), `geometry`, `properties` and the
+  `bbox` RFC 7946 §5 lets any object carry, checked as four or six
+  numbers and ignored, as a geometry's is (chunk 5.5s); an `id` and any
+  foreign member are `unknown_field`. A `geometry` of `null`, which RFC
+  7946 allows, is `required`, as a feature with no geometry is left out;
+  so are `properties` of `null` or none. A collection's members are
+  `type`, `features` and `bbox`; a collection of no features is read, an
+  empty layer, though a multi-geometry of no parts isn't. Each problem is
+  at its place: `features.0.properties.vans`. Written in that order,
+  `type` first, with no `bbox`.
+- **No text, no form for people.** `text.from`, `text.parse` and
+  `text.format` on a feature are `type.mismatch`; its geometry and its
+  properties have theirs. A feature field in an entity is stored as its
+  GeoJSON in `jsonb`, as area 5's structured values are.
+
+The map's delivery layer. A feature's identity goes
 in its properties, so the bakery a patch belongs to is a property, and a
 layer read from a mapping library comes back to it byte for byte:
 
@@ -1094,10 +1415,12 @@ test "a patch with one corner at a height is refused" {
 ```
 
 A route sends a layer bare, as it sends a `List` or `Page` of an `Output`
-(area 7, "A map layer as output", built in chunk 5.5u7), so a mapping
-library fetches it as the whole response, plain RFC 7946 GeoJSON. Its
-properties hold only what an `Output` may, so only fields declared for
-clients leave the server:
+(area 7, "Output and status"), so a mapping library fetches it as the
+whole response, plain RFC 7946 GeoJSON. Its properties hold only what an
+`Output` may, so only fields declared for clients leave the server. A
+layer may also be an `Output`'s field, described in OpenAPI as RFC
+7946's object with each feature's geometry and properties, and in the
+API record as, say, `FeatureCollection<Point, PinProperties>`:
 
 ```jadpo check project=geo-layer-route
 type PinLabel = Text {
@@ -1160,11 +1483,51 @@ test "the map fetches its pins as GeoJSON" {
 This route answers `POST`, since an action builds its layer. A layer of
 stored records comes from a query, which a `GET` route runs, so a mapping
 library fetches it from the route's address: area 6, "A query giving a
-map layer" (chunk 5.5u8).
+map layer".
 
+WKT and EWKT, at the edges where other systems use them:
 
-WKT, built in chunk 5.5u6, from the planner's spreadsheet, which holds
-each outline as WKT, longitude first:
+- **`geo.from_wkt` gives a `Geometry`,** the variant of the kind the text
+  names, which the application matches, as it matches a `Geometry` read
+  from GeoJSON; no `as:` picks a kind, so a reader never has to say what
+  a polygon read as a line fails with.
+- **What is read.** The six geometries, keywords in any case, `Z`
+  written apart or joined (`POINT Z (...)`, `POINTZ(...)`), a
+  multi-point's points with or without brackets, any spacing, numbers
+  with an exponent, `SRID=4326;` before it. A position is two or three
+  numbers, three for `Z`, each read as the double it is and held as that
+  double's shortest decimal (question 2); a third without `Z` is an
+  altitude, as PostGIS reads it. `M` and `ZM`, `EMPTY`,
+  `GEOMETRYCOLLECTION`, the curves and every other kind are `malformed`,
+  as are positions mixing altitudes ("Altitudes are all or nothing"). A
+  coordinate out of its range is `out_of_range`, where PostGIS's
+  `ST_GeogFromText` coerces it into range with a notice (verified,
+  PostGIS 3.4.2), as is any SRID but 4326, which PostGIS's `geography`
+  takes for other geographic systems (`SRID=4258;` is read, verified).
+- **Rings are kept as written,** as storage keeps them, not rewound: only
+  GeoJSON winds rings by the right-hand rule. A polygon is checked as one
+  read from GeoJSON is, closed rings of four points or more and
+  `rings_valid`, and one that isn't valid is `malformed`.
+- **The exact place.** The one reader, `jadpo-value`'s `geo::wkt`,
+  reports the character it stopped at, counted from 0, with the
+  condition: the start of a word that isn't a geometry, the bracket of a
+  ring or line that isn't one, the number out of range, the SRID's code.
+  The operation's failure carries the condition only, as
+  `encoding.from_hex`'s does; the place is for the tests and for a later
+  failure that receives it.
+- **`geo.to_wkt` writes `ST_AsText`'s form:** the keyword in capitals,
+  ` Z ` before the brackets when every position has an altitude, no
+  space after a comma, a multi-point's points each in brackets, each
+  coordinate the decimal the value holds and an altitude in metres with
+  no trailing zeros. `ST_AsText` keeps at most 15 places after the point,
+  so a coordinate with more (below 10⁻¹⁵ of a degree) comes back from
+  PostGIS rounded: `0.30000000000000004` is written `0.3` (verified). A
+  patch with a hole, a patch wound the other way, one at a height and
+  every other kind come back from `ST_GeogFromText` and `ST_AsText`, as
+  WKT and as EWKT, exactly as written, and read back as the value they
+  started from (`jadpo-cli`'s `geography` test).
+
+The planner's spreadsheet holds each outline as WKT, longitude first:
 
 ```jadpo check project=geo-wkt
 type SheetText = Text {}
@@ -1210,7 +1573,7 @@ test "what isn't an outline is refused" {
 }
 ```
 
-Pairs and GeoJSON text, built in chunk 5.11: a van's tracker sends its
+Pairs and GeoJSON text: a van's tracker sends its
 position latitude first, the map's pin longitude first, and a planner
 pastes a shape from a drawing tool. Each operation's name says which
 number comes first, so a swapped pair is a call that reads wrong, not a
@@ -1282,6 +1645,39 @@ test "a pasted patch is read longitude first" {
 }
 ```
 
+- **`geo.from_geojson(text)` gives a `Geometry`,** the variant of the
+  kind the text names, as `geo.from_wkt` does, read by the one GeoJSON
+  reader a geometry on the wire is: strict RFC 7946, each ring closed,
+  valid and rewound by the right-hand rule, every position's altitude
+  given or none. Only the six geometries are read; a `Feature`, a
+  `FeatureCollection` or a `GeometryCollection` is `malformed`, since a
+  layer is read with `json.read(text, as: FeatureCollection<G, P>)`.
+  Text that isn't one JSON document, or not one of the six, a ring that
+  isn't closed or valid and positions of mixed sizes included, is
+  `malformed`; a coordinate out of its range, or an altitude past a
+  `Length`'s, is `out_of_range`. The reader reports the place
+  (`coordinates.0.3`) and the rule; the operation's failure carries the
+  condition only, as `geo.from_wkt`'s does. It takes `Text` only, not
+  `Bytes`.
+- **A pair is two numbers or three.** `geo.from_lng_lat(numbers)` and
+  `geo.from_lat_lng(numbers)` take a `List` of values built on `Int` or
+  `Decimal` and give a `Point`; a third number is the altitude in
+  metres, as GeoJSON's third is, a `Length` rounded half to even to the
+  micrometre. Any other count is `malformed`. Each coordinate is first
+  held as the shortest decimal of its nearest double, as a `Point` built
+  in code is (question 2), and that value is held to its range, as
+  GeoJSON's numbers are, so `90.00000000000000001` is 90 and in range;
+  past it is `out_of_range`. The order lives only in the name: a
+  latitude of 91 is `out_of_range` from `from_lat_lng` and a longitude of
+  91 from `from_lng_lat`.
+- **Always attempted.** What a list holds, or a text, is known only when
+  the program runs, so each call maps both conditions, or `invalid:`,
+  even for a list written out, as `geo.from_wkt` does. No literal is
+  decided while compiling.
+- **No `geo.to_geojson`.** `json.write` of a geometry already writes its
+  GeoJSON, longitude first, so a pair or a text read here goes back out
+  through it or `geo.to_wkt`.
+
 ## Left out, and why
 
 | Left out | Why | Instead |
@@ -1336,7 +1732,18 @@ test "a pasted patch is read longitude first" {
   3); 5.5s's "held as written" for coordinates and its `geography`
   storage for `BoundingBox` and `Circle` change (questions 2 and 7);
   `LineString`'s and `Polygon`'s `type.standard_exists` shapes, which
-  5.5s left here, come with 5.5u6.
+  5.5s left here, are one shape: a single field `points` or
+  `coordinates` holding a list whose items are `Point`s or an `Object` of
+  `Point`'s shape, named list types included; a list that may hold
+  `none`, a set, or another field beside it isn't the shape. A list of
+  points is a path or an area's ring, and only the application knows
+  which, so the error names both, and `jadpo fix` swaps to `LineString`,
+  the list read as its `points`; a `Polygon` is the application's own
+  edit. `jadpo suggest` leaves the shape to the error, as it is only ever
+  a type's whole. `Feature` and `FeatureCollection` are in release 0.1.0
+  beside the others, so 259 standard types are built, and
+  `type.type_argument_count` lists them beside `List`, `Set`, `Map` and
+  `Range`.
 
 ### Decisions
 
@@ -1356,553 +1763,6 @@ test "a pasted patch is read longitude first" {
 | The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written (Richard, as recommended) | 2026-10-18 |
 | Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built (Richard, as recommended, after chunk 5.5u4) | 2026-10-19 |
 | A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7; Richard, as recommended, after chunk 5.5u6). A query gives one for a `GET` route since chunk 5.5u8 (area 6) | 2026-10-19 |
-
-### Chosen in chunk 5.5u2
-
-- **Karney's inverse problem, ported, not called.** GeographicLib's
-  `Geodesic::GenInverse` and `PolygonArea` (C++, MIT licence), step for
-  step, in `jadpo-value`'s `maths::geodesic`, with its series'
-  coefficients for its highest order, 8: the terms left out are below
-  ε⁹, about 10⁻²⁵ of the leading one. GeographicLib's floating-point
-  devices become whole-number ones: its `tiny_` is one unit of the last
-  place, its machine epsilon 10⁴ of them (about 10⁻³⁷), so Newton's method
-  on the azimuth runs until the longitude it reaches is that close, its
-  bisection kept; exact decimals need no `AngRound`.
-- **Working precision.** A working value is a 256-bit two's-complement
-  whole number over 2¹³⁶, about 41 decimal places, on the stack; each
-  product and quotient is cut toward zero, `sqrt` and `hypot` are whole
-  square roots, `sin` and `cos` Taylor's series after taking out quarter
-  turns, `atan2` Euler's series after taking out the nearest `atan(k/16)`.
-  Binary rather than decimal places: the same determinism, 15 times
-  faster than 5.5e's decimal big numbers (600 µs a distance there); 18
-  decimal places in an `i128`, the estimate above, can't keep a continent's
-  area to the square millimetre. Each result is rounded half to even from
-  the exact binary value; it is not correctly rounded, the series being
-  finite, but it is the same digits on every target.
-- **The test set.** C. F. F. Karney's "Test set for geodesics" (2010,
-  doi:10.5281/zenodo.32156, Creative Commons Zero), as GeographicLib
-  publishes it: `GeodTest-short.dat`, 10,000 geodesics in nine groups.
-  `tools/geodtest_sample.py` writes every 20th line, 500 of them, with
-  its group and line number, to
-  `crates/jadpo-value/examples/geodesics/reference.tsv`; it checks the
-  file's SHA-256 and `--check` holds the sample to it. The full file isn't
-  committed, so the gate needs no network. The check runs natively
-  (`jadpo-runtime`'s `geodesics` tests) and under WebAssembly (the gate's
-  wasm32 steps), and both must give one digest of every answer.
-- **What "to the micrometre" means for each measure.** The test set's
-  distance and point 1 are exact; point 2 is rounded to 10⁻¹⁸ degrees,
-  which moves it up to 1.6 × 10⁻¹³ m. `geo.distance` must be the
-  reference distance rounded half to even to the micrometre (either way
-  for one within a nanometre of a tie). `geo.bearing` must be the
-  reference azimuth within half its 9th place plus how far moving point 2
-  can turn it, `1.6 × 10⁻¹³ m / m₁₂`. `geo.area`, of the polygon from point
-  1 down its meridian, along the equator and up to point 2, must be the
-  reference's within its stated square millimetre, half `Area`'s last
-  place, and what moving point 2 can change it by. Where the reduced
-  length `m₁₂` is below a metre (a geodesic ending at or near the point
-  conjugate to its start: the "between vertices" and "ending close to
-  vertices" groups, and one line between the poles), the direction and
-  area are too sensitive to point 2's rounding to check, and only the
-  distance is.
-- **Accuracy achieved.** Every one of the 10,000 lines passes, not only
-  the sample. Before rounding, every distance is within 7.5 × 10⁻¹⁴ m
-  (75 femtometres) of the reference, which is as close as rounding point
-  2 allows; every azimuth within `6.4 × 10⁻¹² m / m₁₂` degrees, the same
-  limit; and each geodesic's area within 8.4 × 10⁻⁷ m² for the short and
-  near-pole groups, where rounding point 2 barely moves it, and within the
-  allowance elsewhere (at most 46% of it, near-antipodal lines).
-- **Benchmarks.** `cargo run --release -p jadpo-value --example
-  geodesics -- bench`, natively on the machine this chunk was built on
-  (an Apple M1 Pro): a distance along a meridian 9 µs; 2 km across London
-  31 µs; London to Paris 42 µs; London to Sydney 58 µs; nearly antipodal
-  64 µs; a bearing 47 µs; an 11-point line's length 315 µs; the 1° square's
-  area 71 µs (meridians and the equator are quick); a 100-point patch's
-  area 4.5 ms, about 45 µs an edge. The 500-line check takes 0.30 s
-  natively and 0.83 s under Node's WebAssembly, about 2.8 times, so a
-  distance there is about 110 µs and 10 ms of CPU measures about 90. No
-  budget is asserted, as no timing is elsewhere; the figures are the
-  baseline a tuning chunk measures against.
-- **`same_point`** is the two points being one place: the same latitude
-  and the same longitude, -180 being 180, or the same pole at any
-  longitude. Two points a picometre apart have a direction. It is
-  settled only by `attempt`, as decoding is: whether two points are equal
-  is known only when the program runs.
-- **A bearing that rounds to 360 is 0,** `Bearing`'s range being at
-  least 0 and below 360 here; at a pole it is GeographicLib's, the
-  meridian of the pole's given longitude.
-- **`geo.length` sums each edge's distance as `geo.distance` rounds it,**
-  so a line of two points is their distance exactly; a
-  `MultiLineString`'s lines are summed the same way. A distance is never
-  past 38 digits on Earth; a sum past them is a defect, as `+` is.
-- **`geo.area` rounds once:** each ring's area, the smaller of the two
-  sides it bounds, is worked out unrounded, the holes taken away and a
-  `MultiPolygon`'s polygons added, then the total is rounded half to even
-  to the square millimetre. Since chunk 5.5u3's `rings_valid`, a hole lies
-  inside its outer ring, so holes never outweigh it.
-- **What each measure takes.** `distance` and `bearing` take `Point`s
-  only (question 10); `length` a `LineString` or a `MultiLineString`;
-  `area` a `Polygon` or a `MultiPolygon`. Anything else, a `Geometry`
-  included, is `type.mismatch` naming this page: the application matches
-  a `Geometry` first, so it decides what a point's area is. A new
-  operation kind, `Shapes`, lists the types a parameter takes.
-- **Coordinates held as the nearest double** (question 2): a `Latitude`
-  or a `Longitude`, as a value, a field or a point's part, is rounded to
-  the shortest decimal of the nearest IEEE double as it is built, before
-  its range is checked, as a `Vector`'s items are; Rust's own correctly
-  rounded parsing and printing do it, the same on every target. Rounding
-  can't take a value in range out of it (±90 and ±180 are doubles), and a
-  double whose shortest decimal has more than 38 places (below 10⁻²³ of a
-  degree) is rounded half to even to 38. A literal is checked as written.
-- **The page's examples corrected:** a `Point` written in code gives
-  `altitude: none`, since area 2 has every field given when a value is
-  built.
-
-### Chosen in chunk 5.5u3
-
-- **Exact on the sphere, by whole numbers.** A position's direction is
-  `(cos φ cos λ, cos φ sin λ, sin φ)` with each sine and cosine one of
-  5.5u2's working values, taken to within 45° of 0 on the decimal before
-  it becomes radians, and each product kept whole: every component is a
-  whole number over 2²⁷². Points on one meridian are then exactly in a
-  plane with the poles, points on the equator exactly at `z = 0`, a pole
-  is `(0, 0, ±1)` at any longitude, -180 is 180, and opposite points are
-  exact negations. Every predicate is the sign of a polynomial in the
-  components, worked out in whole numbers as wide as it needs (about 820
-  bits for three points, 1,100 for where two edges cross), after a 40-bit
-  unit vector beside each point settles the clear cases; so a point
-  exactly on an edge, a corner, a meridian or the equator, is found on it,
-  and inside includes the edge with no tolerance. Where three points are
-  exactly on one great circle, counting the edges a path crosses breaks
-  the tie by Simulation of Simplicity, as Google's S2 does (its `Sign`,
-  `CrossingSign`, `VertexCrossing` and `AngleContainsVertex`, Apache 2.0):
-  whether a point is inside a ring is the inside known at a corner from
-  the angle there, flipped by each edge the path from that corner to the
-  point crosses. No float decides anything, so every target gives one
-  answer; the native and wasm32 digests of every case below are one.
-- **A ring's inside is the smaller side,** as PostGIS reads a ring either
-  way round, chosen from the ring's area on the sphere, summed by Van
-  Oosterom and Strackee's formula in working values: exact unless the two
-  sides are within about 10⁻³⁵ of each other, and a ring exactly on one
-  great circle, both sides equal, breaks `rings_valid`.
-- **Where it lives.** The geometry is `jadpo-std`'s `sphere` module, and
-  5.5u2's fixed-point maths moved there from `jadpo-value`, so the checker
-  reads a polygon literal by the same code the runtime runs, as every
-  standard rule is read; `jadpo-value`'s `geo` module reads values into it.
-- **Agreement with PostGIS.** `tools/geo_cases.py` writes 169 cases, every
-  operation, with PostGIS 3.4.2's answers on PostgreSQL 16.3 (this
-  machine), to `crates/jadpo-value/examples/geodesics/shapes.tsv`: small,
-  continental and pole-holding polygons, polygons across the antimeridian
-  and the equator, holes, concave shapes, lines and multi-part shapes, the
-  verified box whose edges bow towards the pole, away from every boundary
-  but exact ones (a polygon's own corner, a point on a meridian edge). The
-  gate checks them natively and under WebAssembly, as it does
-  GeographicLib's sample. Every yes or no is PostGIS's but four; each
-  centroid is within 4 × 10⁻¹² of a degree of `ST_Centroid(x, false)`'s
-  (half a micrometre); each box's side within 3 × 10⁻¹⁴ of a degree of the
-  box round PostGIS's points every 100 m along the shape.
-- **The four, where the page's meaning and `ST_Covers` part.** `ST_Covers`
-  on `geography` compares two polygons ring by ring: it doesn't see a hole
-  of `a` that `b` covers (it says a square with a hole covers a square over
-  the hole), and it counts rings lying along each other as crossing (it
-  says a square doesn't cover the same square with a hole). With a
-  multi-part `a` it wants all of `b` in one part, so two points each in one
-  part aren't covered. `geo.contains` keeps the page's "no point of `b`
-  lies outside `a`" in each; the file records PostGIS's answer beside the
-  page's. Chunk 5.5u5 has to settle these for `where: geo.contains(...)`,
-  whose SQL form is `ST_Covers`: a polygon field holding holes against a
-  polygon value, and a multi-part field.
-- **Rings may not touch at all.** Two rings sharing even one point break
-  `rings_valid`: the page's "no two rings cross or overlap", read
-  strictly, which also keeps a polygon's inside in one piece without a
-  check of its own (OGC lets a hole touch the outer ring at one point).
-  A ring touching itself anywhere but its closing point, a point repeated
-  in a row, and a ring that turns straight back along an edge all break
-  it too.
-- **`rings_valid` checks closing.** A polygon built in code wasn't checked
-  for closed rings of four points or more; the rule now does, as GeoJSON
-  reading did. A `MultiPolygon` has no rule of its own: each of its
-  polygons is valid, and they may overlap, the predicates taking the
-  multi-polygon as the union of its parts.
-- **A shape holding a pole reaches every longitude:** a point at a pole, a
-  line through one, or a polygon around or touching one has a bounding box
-  from -180 to 180, and only such a box holds it, whatever longitude a
-  point at the pole is written with, since every meridian meets there.
-- **A box holds any geometry in code,** its latitudes and longitudes
-  compared directly with the shape's, an edge's highest or lowest point
-  and the longitudes between its ends included; the query filter stays on
-  `Point` fields (question 11). A side of `bounding_box` worked out from an
-  edge is rounded outwards to a double, so a shape is always inside its
-  own box; when two boxes are equally narrow, it takes the one that
-  doesn't cross the antimeridian.
-- **A `Circle` holds points only,** as `within(distance:)` measures between
-  points only (question 10): `geo.contains(circle, shape)` and
-  `within(shape, circle)` with anything but a `Point` are `type.mismatch`
-  naming question 10, as is `within(a, b, distance:)` unless both are
-  points. A distance is proved never below 0 while compiling, as a count
-  is (`type.argument_negative`): a length written out, or a type with
-  `min: 0metre`. A line edge between two opposite points, which no great
-  circle joins, is its two ends.
-- **`centroid` is PostGIS's, quirks included,** as the page chose it to be
-  reproducible: a multi-point's points weigh one each; a line's edges each
-  give both ends the edge's angle; a polygon is cut into triangles from the
-  first corner of its first outer ring to every edge of every ring, each
-  triangle's centre (its corners summed) weighted by its area, always
-  counted positive. So a hole adds weight rather than taking it away, and
-  a concave polygon's centroid moves with the corner its ring starts at,
-  as PostGIS's does (verified: an L-shaped polygon's is 3.214° N, 3.236° E
-  from one corner and 4.151° N, 4.159° E from another). A point's centroid
-  is itself without its altitude; one whose weights cancel (two opposite
-  points) is a defect, as PostGIS gives no number there. It is rounded to
-  the nearest double, as every coordinate is.
-- **Benchmarks** (`cargo run --release -p jadpo-value --example geodesics
-  -- bench`, the machine this chunk was built on): a point in a 100-point
-  patch 0.44 ms, in a 1,000-point one 4.3 ms; a 100-point patch in
-  another 30 ms (each piece of every edge is classified, about n² in the
-  points); two 100-point patches intersecting 0.9 ms; `within(distance:)`
-  33 µs; a 100-point patch's centroid 0.37 ms and its box 1.2 ms;
-  `rings_valid` 0.6 ms for 100 points, 6.8 ms for 1,000 and 68 ms for a
-  10,000-point outline. Turning each corner into a direction (two sines
-  and cosines) is most of a small polygon's cost.
-- **The page's examples corrected:** `delivers_to` returned `Bool`, which
-  a signature can't name (`type.primitive_signature`); it returns a
-  `Delivers` built on it.
-
-### Chosen in chunk 5.5u4
-
-- **EWKB on the wire, the doubles kept by their bits.** A geometry is
-  bound as a shape of positions, each coordinate the double its decimal
-  is (exactly, since question 2), and the PostgreSQL driver sends it in
-  PostGIS's extended WKB with SRID 4326 and a third coordinate where the
-  positions have altitudes, with no type number, so the server takes the
-  column's own type, as pgvector's is sent (chunk 5.5v1); it reads
-  `geography_send`'s EWKB back. The compiler writes a geometry into a
-  statement as EWKT, each coordinate the shortest decimal of its double.
-  WKB lives in the driver only, as question 9 decided.
-- **The check is added after the table,** `ALTER TABLE ... ADD
-  CONSTRAINT "<table>_<column>_check" CHECK (ST_SRID(...) = 4326 AND
-  GeometryType(...) = 'POINT')`, as Jadpo adds every check constraint,
-  rather than inline as this page first sketched it. A `Geometry`'s check
-  lists the six types with `IN`; a circle's centre has a point's.
-  `GeometryType` gives `POINT` for a point with an altitude (verified,
-  PostGIS 3.4.2).
-- **Stored as given, read back as stored.** A ring keeps the order its
-  points were given, clockwise or not: PostGIS keeps it so (verified), and
-  only GeoJSON winds rings by the right-hand rule. Each coordinate read
-  back is the shortest decimal of its double, held to its range; an
-  altitude is that decimal rounded half to even to the micrometre. A
-  polygon read back is checked as a polygon read from GeoJSON is (closed
-  rings of four points or more, `rings_valid`), since another program may
-  have written the row; one that isn't, or a geometry of another kind
-  than the field's, is a fault naming the rule, never the value.
-- **A geometry whose positions mix altitudes isn't stored,** *since
-  decided: no geometry mixes them ("Altitudes are all or nothing", built
-  in 5.5u7), so the fault is gone.* A
-  `geography` holds every position with a third coordinate or none
-  ("can not mix dimensionality in a geometry", verified), but a Jadpo
-  geometry may mix them (a `LineString` with one point at a height, as
-  GeoJSON allows), so storing one is a fault, `internal_fault`, saying
-  PostGIS can't hold it. Nothing is stored changed. Open for Richard: the
-  recommendation is to make "every position with an altitude, or none"
-  part of a geometry's validity, refused as `format` when read and by a
-  named rule when built, so every geometry can be stored.
-- **Whether the role may create the extension is tried, then undone.**
-  Before anything runs, `jadpo migrate apply` creates each extension a
-  pending migration needs and the database lacks inside a savepoint, and
-  rolls it back: whether a role may create an extension that isn't trusted
-  depends on the server and the provider's roles (Amazon RDS's
-  `rds_superuser` and Neon's `neon_superuser` aren't PostgreSQL
-  superusers; assumption from their documentation), so trying is the one
-  sure test. A role that can't is `migration.extension_missing`, saying
-  the server offers it and that a role allowed to run `CREATE EXTENSION
-  postgis` does so once; once the database has it, the migration's
-  `IF NOT EXISTS` needs nothing more. The same holds for pgvector.
-- **The declared index.** An `indexes:` entry may be a block of
-  `fields:` and `kind:`; `kind: IndexKind.geographic` is a GiST index with
-  `geography`'s own operator class on exactly one geometry field (one of
-  the six or `Geometry`), refused otherwise as `type.setting_value`; a
-  setting a block hasn't is `type.unknown_setting`, a block without
-  `fields:` `data.field_list_required`, and the same fields and kind
-  twice `data.duplicate_rule`. `IndexKind` has `geographic` only; area
-  21's `hnsw` and area 5's other kinds come with their chunks. A plain
-  index on a geometry field stays a plain one.
-- **Derived GiST indexes move to chunk 5.5u5,** which builds the `geo.`
-  conditions that would need them: until a query can test a geometry,
-  nothing derives one.
-- **Redis.** An entity in Redis isn't built yet (`toolchain.not_built_yet`,
-  area 5), so nothing stores a geometry there. What a Redis entity will
-  keep, its GeoJSON, is the contract's own reading and writing, and a
-  test holds every geometry, with and without altitude, to come back from
-  its GeoJSON unchanged; a polygon wound clockwise comes back wound by
-  the right-hand rule, which PostGIS storage doesn't do.
-- **`==` on a geometry field in a query** compares exactly, as PostGIS's
-  `=` on `geography` does: an altitude, a ring's winding and a line's
-  direction all count (verified), as they do for Jadpo's own `==`. Order
-  by a geometry stays `query.order_field`.
-- **`BoundingBox` and `Circle`** are named columns as question 7 decided:
-  a box's sides `numeric`, unchecked in the database like every compound
-  type's rules, and a circle's radius `numeric(38, 6)`, commented as a
-  `Length` in metres.
-- **Where it was tested.** The Done-when test (`jadpo-cli`'s `geography`,
-  the gate's "live PostgreSQL: geography" step) stores every geometry
-  with and without altitude, a `Geometry` of each kind, a box and a
-  circle, and reads each back equal; it checks each column's constraint
-  refuses a line in a point's column and a point in ETRS89, and that
-  PostGIS's `ST_DWithin` uses the declared index. It runs on CI's image
-  (PostGIS 3.6.4) and on Postgres.app here (PostGIS 3.4.2).
-
-### Chosen in chunk 5.5u5
-
-- **The index finds, the code decides.** Chunk 5.5u3 left four kinds of
-  polygon where `ST_Covers` on `geography` and the page part, and PostGIS
-  decides an edge or a radius in doubles with tolerances Jadpo doesn't
-  share. Rather than refuse those pairs, which a query can't see (the
-  shapes are the rows'), or give a different answer in a query than in a
-  body, each `geo.` condition is written as a search the GiST index
-  serves that can't leave out a record the code keeps, and the runtime
-  holds each row found to the code's own operation: the field's stored
-  value and the call's value through `jadpo-value`'s `geo.within`,
-  `contains` and `intersects`, as a body calls them, so the interpreter
-  and every compiled target decide alike. The page's SQL column changes
-  accordingly, and "a pair PostGIS's `ST_Covers` doesn't handle" is no
-  longer refused.
-- **The margin is a millimetre** (`GEO_MARGIN`): `ST_DWithin(field,
-  point, distance + 0.001)` for a radius or a circle, and `ST_DWithin(field,
-  shape, 0.001)` for `within`, `contains` and `intersects`, since anything
-  inside a shape, on its edge or touching it is within no distance of it,
-  ring by ring or not. PostGIS's distances are good to some nanometres, so
-  a millimetre is far past what it can miss, and close enough that it
-  rarely finds a row the code turns down. Verified: the four cases are each
-  within the margin (`ST_DWithin` true where `ST_Covers` is false), and
-  every case of `tools/geo_cases.py`, run as a query against every case's
-  shape at once on PostGIS 3.4.2 (Postgres.app), gives the code's answer;
-  CI runs the same test on its 3.6.4.
-- **A box's envelopes are worked out when the read runs**
-  (`EnvelopePart`), from the box's west and east, so the statement's text
-  stays fixed: across the antimeridian, from the west to 180 and from -180
-  to the east; with a side on the antimeridian, the line at the other end
-  too, since the code takes -180 as 180; otherwise the box twice.
-- **Nearest first is the code's order.** The statement orders by
-  `ST_Distance` and selects it; the runtime sorts the rows the code keeps
-  by `geo.distance` as it rounds it, to the micrometre, then by `id`, the
-  tie-break a list ordered by a field has. It has fetched enough when the
-  last row it keeps is nearer, by the code, than PostGIS's distance to the
-  last row fetched less the margin, so no row it didn't fetch could come
-  before it.
-- **The statement asks for what the read keeps, then four times as
-  many** (`Source::Fetch`): a list's `limit:`, a page's size and one more,
-  every row for a query of one record (found by a unique field). Each ask
-  runs the whole statement again in the same transaction and keeps the
-  last answer, so it reads one state of the table; a page's cursor comes
-  from the rows the code kept.
-- **Where a condition may stand.** Its own `where:` line or an `and`'s
-  part: under `not` the index can't serve it, and under `or` the rows the
-  code turns down would need the other side's answer, which the statement
-  doesn't give (both `query.condition_unsupported`); `where_present:`
-  doesn't take one, its value never being absent; an include's records
-  aren't rechecked yet, nor an aggregate query's, whose totals the
-  database works out (both `toolchain.not_built_yet`). A record whose field
-  is `none` meets no `geo.` condition. The values are parameters or
-  fields inside one; `within`'s `distance:` may also be a length written
-  out, proved never negative as in code.
-- **What each form takes**, as in code: `within(distance:)` and the circle
-  a `Point` field (`type.mismatch`, question 10); the box a `Point` field
-  (`query.condition_unsupported`, question 11); `within` a `Polygon`, a
-  `MultiPolygon`, a `BoundingBox` or a `Circle` (the forms the page
-  lists); `contains` and `intersects` any geometry. A `BoundingBox` or
-  `Circle` field, kept in named columns, can't be tested. `geo.distance`
-  in `order:` is the only order, of a `List`, `asc`, beside a radius from
-  the same point on the same field; any other function of a field in
-  `order:` is `query.order_field` (before, one was silently left out).
-- **Derived indexes.** One GiST index on each geometry field a condition
-  tests, `<table>_<field>_idx`, and one on a `Point` field cast to
-  `geometry` for a box filter, `<table>_<field>_box_idx` (the index's
-  method now records the cast); none where a declared geographic index
-  holds the field; partial for `visible:` as every derived index is.
-- **`jadpo sql`** says what runs after the statement (`then:`), and where
-  the rows to fetch and a box's envelopes come from.
-- **Where it was tested.** `jadpo-check`'s geospatial tests for each form
-  and error; the golden SQL of six queries (`jadpo-plan`'s `tests/sql`);
-  and `jadpo-cli`'s `geo_queries`, in the gate's geography step: the
-  page's queries over two thousand bakeries and three hundred patches,
-  each the code's answer and each through its index (`EXPLAIN`), boxes
-  across and onto the antimeridian and round the pole, the recheck asking
-  again, ties by `id`, and every case of chunk 5.5u3's file as a query.
-  The page's queries are checked examples, and their test runs on PostGIS
-  with the docs.
-
-### Chosen in chunk 5.5u6
-
-- **`geo.from_wkt` gives a `Geometry`,** the variant of the kind the text
-  names, which the application matches, as it matches a `Geometry` read
-  from GeoJSON; no `as:` picks a kind, so a reader never has to say what
-  a polygon read as a line fails with.
-- **What WKT is read.** The six geometries, keywords in any case, `Z`
-  written apart or joined (`POINT Z (...)`, `POINTZ(...)`), a
-  multi-point's points with or without brackets, any spacing, numbers
-  with an exponent, `SRID=4326;` before it. A position is two or three
-  numbers, three for `Z`, each read as the double it is and held as that
-  double's shortest decimal (question 2); a third without `Z` is an
-  altitude, as PostGIS reads it. `M` and `ZM`, `EMPTY`,
-  `GEOMETRYCOLLECTION`, the curves and every other kind are `malformed`.
-  A coordinate out of its range is `out_of_range`, where PostGIS's
-  `ST_GeogFromText` coerces it into range with a notice (verified,
-  PostGIS 3.4.2), as is any SRID but 4326, which PostGIS's `geography`
-  takes for other geographic systems (`SRID=4258;` is read, verified).
-- **Rings are kept as written,** as storage keeps them (chunk 5.5u4),
-  not rewound: only GeoJSON winds rings by the right-hand rule. A polygon
-  is checked as one read from GeoJSON is, closed rings of four points or
-  more and `rings_valid`, and one that isn't valid is `malformed`.
-- **The exact place.** The one reader, `jadpo-value`'s `geo::wkt`,
-  reports the character it stopped at, counted from 0, with the
-  condition: the start of a word that isn't a geometry, the bracket of a
-  ring or line that isn't one, the number out of range, the SRID's code.
-  The operation's failure carries the condition only, as
-  `encoding.from_hex`'s does; the place is for the tests and for a later
-  failure that receives it.
-- **Positions with and without an altitude in one geometry,**
-  *since decided: all or nothing ("Altitudes are all or nothing", built
-  in 5.5u7):* WKT can't write one and PostGIS refuses it ("can not
-  mix dimensionality in a geometry", verified), so reading WKT that mixes
-  them is `malformed`, at the first position of the other size, and
-  `geo.to_wkt` of a geometry built in code that mixes them is a fault,
-  as storing one is (chunk 5.5u4). Nothing else changes until he decides.
-- **`geo.to_wkt` writes `ST_AsText`'s form:** the keyword in capitals,
-  ` Z ` before the brackets when every position has an altitude, no
-  space after a comma, a multi-point's points each in brackets, each
-  coordinate the decimal the value holds and an altitude in metres with
-  no trailing zeros. `ST_AsText` keeps at most 15 places after the point,
-  so a coordinate with more (below 10⁻¹⁵ of a degree) comes back from
-  PostGIS rounded: `0.30000000000000004` is written `0.3` (verified). The
-  Done-when test (`jadpo-cli`'s `geography`, "live PostgreSQL:
-  geography") holds a patch with a hole, a patch wound the other way, one
-  at a height and every other kind to come back from `ST_GeogFromText`
-  and `ST_AsText`, as WKT and as EWKT, exactly as written, and to read
-  back as the value it started from.
-- **A feature's arguments.** `G` is one of the six geometries or
-  `Geometry`; `P` is an `Object` type of the application's, not an
-  `Input`, an `Output` or a standard object, so its fields are the
-  properties; either refused as `type.mismatch` where the type is written
-  or where a literal's values give it. A literal takes its arguments from
-  the type its place expects, or else from its values: a feature's from
-  its geometry and its properties, a collection's from its features.
-- **Read strictly.** A feature's members are `type`, which must be
-  `Feature` (another is `variant`), `geometry`, `properties` and the
-  `bbox` RFC 7946 §5 lets any object carry, checked as four or six
-  numbers and ignored, as a geometry's is (chunk 5.5s); an `id` and any
-  foreign member are `unknown_field`. A `geometry` of `null`, which RFC
-  7946 allows, is `required`, as a feature with no geometry is left out;
-  so are `properties` of `null` or none. A collection's members are
-  `type`, `features` and `bbox`; a collection of no features is read, an
-  empty layer, though a multi-geometry of no parts isn't. Each problem is
-  at its place: `features.0.properties.vans`. Written in that order,
-  `type` first, with no `bbox`.
-- **No text, no form for people, no column yet.** `text.from`,
-  `text.parse` and `text.format` on a feature are `type.mismatch`; its
-  geometry and its properties have theirs. A feature field in an entity
-  is area 5's structured `jsonb`, which isn't built
-  (`toolchain.not_built_yet`); the application stores the geometry and
-  the properties as fields of their own. *Since built: chunk 5.9b stores
-  a feature field as its GeoJSON in `jsonb`, as area 5's structured
-  values are.*
-- **Sent from a route inside an `Output`,** *since decided: a route may
-  send one bare (area 7, "A map layer as output", built in 5.5u7).* Area 7 sends only an
-  `Output`, so a layer goes out as an `Output`'s field, described in
-  OpenAPI as RFC 7946's object with each feature's geometry and
-  properties, and in the API record as `FeatureCollection<Point,
-  PinProperties>`. Open for Richard: map libraries fetch a
-  `FeatureCollection` as the whole response, so letting a route send one
-  bare, as it sends a `List` or a `Page`, would save every map a wrapper.
-- **`type.standard_exists` for a list of points.** `LineString` and
-  `Polygon` share area 19's one shape, a single field `points` or
-  `coordinates` holding a list whose items are `Point`s or an `Object` of
-  `Point`'s shape, named list types included; a list that may hold `none`,
-  a set, or another field beside it isn't the shape. A list of points is a
-  path or an area's ring, and only the application knows which, so the
-  error names both, and `jadpo fix` swaps to `LineString`, the list read
-  as its `points`; a `Polygon` is the application's own edit. `jadpo
-  suggest` leaves the shape to the error, as it is only ever a type's
-  whole.
-- **Two names added,** `Feature` and `FeatureCollection`, in release
-  0.1.0 beside the others, so 259 standard types are built; and
-  `type.type_argument_count` lists them beside `List`, `Set`, `Map` and
-  `Range`.
-
-### Chosen in chunk 5.5u7
-
-- **What a literal decides.** `altitudes_agree` reads each `Point`
-  written out in a geometry literal, however deep (a line's points, a
-  polygon's rings, a multi-polygon's polygons): an altitude written
-  `none` is none, one written out or of a type that can't be `none` (a
-  distance) is one, and anything else, a point or a list held in a
-  variable, is only known when the program runs. Positions known both
-  ways are `type.invalid_literal` at the part holding the first of the
-  other size, whatever else is unknown; otherwise the literal is
-  attempted, as `rings_valid`'s is. So a line from points held in
-  variables is attempted, even where each variable holds a literal: the
-  checker doesn't follow a variable's value, as it doesn't for
-  `rings_valid`.
-- **The order of a polygon's rules.** `rings_valid` first, then
-  `altitudes_agree`, so a literal or a value breaking both names
-  `rings_valid`, as GeoJSON and WKT check a ring before the positions'
-  sizes.
-- **Reading.** GeoJSON is checked once the geometry has read, every
-  position in the order written, refused `format` at the first of the
-  other size (`coordinates.1.0.2`), a multi-geometry's parts across
-  each other. WKT's reader already refused a mix at that position since
-  5.5u6, and its condition stays `malformed`, the operation's one
-  condition for text that isn't a geometry.
-- **The faults are gone.** Storage binds a geometry without asking, and
-  `geo.to_wkt` meets no geometry it can't write; one put together past
-  every door is the runtime's "value of a kind the checker would have
-  refused". The PostgreSQL driver still refuses to encode a shape that
-  mixes them, since its EWKB type flag is one for the whole geometry.
-- **A layer from a route** is checked and sent as area 7's "Chosen in
-  chunk 5.5u7" records. A `GET` runs a query, and a query gives records
-  or an `Output`, never a layer, so a route sending one runs an action,
-  with `POST`. Open for Richard: a mapping library fetches its layer
-  with `GET`, so letting a query build one would let it point at the
-  route directly. *Decided 2026-10-19 and built in chunk 5.5u8:*
-  a query gives a layer, which a `GET` route sends (area 6, "A query
-  giving a map layer").
-- **Example values.** `LineString`'s accepted example with one point at a
-  height became one with every point at a height, and each geometry's
-  refused examples gained a mix, which the per-type tests read through
-  every boundary.
-
-### Chosen in chunk 5.11
-
-- **`geo.from_geojson(text)` gives a `Geometry`,** the variant of the
-  kind the text names, as `geo.from_wkt` does, read by the one GeoJSON
-  reader a geometry on the wire is: strict RFC 7946, each ring closed,
-  valid and rewound by the right-hand rule, every position's altitude
-  given or none. Only the six geometries are read; a `Feature`, a
-  `FeatureCollection` or a `GeometryCollection` is `malformed`, since a
-  layer is read with `json.read(text, as: FeatureCollection<G, P>)`.
-  Text that isn't one JSON document, or not one of the six, a ring that
-  isn't closed or valid and positions of mixed sizes included, is
-  `malformed`; a coordinate out of its range, or an altitude past a
-  `Length`'s, is `out_of_range`. The reader reports the place
-  (`coordinates.0.3`) and the rule; the operation's failure carries the
-  condition only, as `geo.from_wkt`'s does. It takes `Text` only, not
-  `Bytes`.
-- **A pair is two numbers or three.** `geo.from_lng_lat(numbers)` and
-  `geo.from_lat_lng(numbers)` take a `List` of values built on `Int` or
-  `Decimal` and give a `Point`; a third number is the altitude in
-  metres, as GeoJSON's third is, a `Length` rounded half to even to the
-  micrometre. Any other count is `malformed`. Each coordinate is first
-  held as the shortest decimal of its nearest double, as a `Point` built
-  in code is (question 2), and that value is held to its range, as
-  GeoJSON's numbers are, so `90.00000000000000001` is 90 and in range;
-  past it is `out_of_range`. The order lives only in the name: a
-  latitude of 91 is `out_of_range` from `from_lat_lng` and a longitude of
-  91 from `from_lng_lat`.
-- **Always attempted.** What a list holds, or a text, is known only when
-  the program runs, so each call maps both conditions, or `invalid:`,
-  even for a list written out, as `geo.from_wkt` does. No literal is
-  decided while compiling.
-- **No `geo.to_geojson`.** `json.write` of a geometry already writes its
-  GeoJSON, longitude first, so a pair or a text read here goes back out
-  through it or `geo.to_wkt`.
 
 ### Open questions
 
@@ -2029,23 +1889,22 @@ Five chunks, each one session, placed after 5.5u on the roadmap:
   geometries in Redis as GeoJSON, and CI on `postgis/postgis:16-3.4`.
   Done when an entity stores and reads back every geometry, with and
   without altitude, unchanged. *Built:* CI runs `tools/postgres/Dockerfile`
-  (chunk 5.5v1); derived indexes moved to 5.5u5, and Redis entities aren't
-  built yet ("Chosen in chunk 5.5u4").
+  (chunk 5.5v1); derived indexes were built in 5.5u5, and Redis entities
+  aren't built yet.
 - **5.5u5 Geospatial query conditions** `opus · high`, after 5.5u3 and
   5.5u4: the `geo.` conditions, the box and circle filters and order by
   distance, with area 6 amended and golden SQL for each. Done when each
   query on the page runs against PostGIS through its index and agrees with
   the code's answer on the page's examples. *Built:* every condition rechecked in code
   after an index search a millimetre wider, so the query's answer is the
-  code's, the four `ST_Covers` cases included ("Chosen in chunk 5.5u5").
+  code's, the four `ST_Covers` cases included.
 - **5.5u6 Geospatial interop** `opus · high`, after 5.5u4: `Feature` and
   `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done
   when a feature collection round-trips through JSON and a WKT polygon
-  through PostGIS unchanged. *Built:* as "Chosen in chunk 5.5u6" records;
-  mixing altitudes in one geometry was decided afterwards (all or nothing, 5.5u7).
+  through PostGIS unchanged. *Built;* mixing altitudes in one geometry
+  was decided afterwards (all or nothing, 5.5u7).
 - **5.5u7 Altitudes all or nothing; a layer from a route** `opus · high`,
   after 5.5u6: `format` when read and `altitudes_agree` when built, the
   storage and `geo.to_wkt` faults removed, and a route sending a
-  `FeatureCollection<G, P>` bare (area 7). *Built:* as "Chosen in chunk
-  5.5u7" records.
+  `FeatureCollection<G, P>` bare (area 7). *Built.*
