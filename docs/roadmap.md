@@ -1990,9 +1990,12 @@ chunks below, taken before Phase 6.
   "Watching schedules"; area 14): `jadpo schedules` with `run`, `pause`,
   `resume` and `history`, `jadpo why <schedule>`, a schedule's runs in
   `jadpo dev`'s output, the metrics and the alerts with no setup, read
-  from 6.2's run records; area 5's built-in hourly purge schedule on the
-  tick; and area 13's schedule tests (`schedule.run()`, `--kind
-  schedule`).
+  from 6.2's run records. Split on 2026-10-19: the purge schedule and
+  schedule tests are 6.2c.
+- [ ] **6.2c The purge schedule and schedule tests** `opus · high`, after
+  6.2b: area 5's built-in hourly purge schedule on the tick, recorded and
+  watched like any schedule; and area 13's schedule tests
+  (`schedule.run()` at the test's clock, `--kind schedule`).
 - [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
