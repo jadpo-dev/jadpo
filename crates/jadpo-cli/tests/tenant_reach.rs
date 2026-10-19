@@ -86,14 +86,26 @@ policy {
     (
         "domains/home/actions/join.jadpo",
         r#"use home/entities { Person }
+use home/failures { HandleTaken }
 use home/types { Handle }
 
-action join(handle: Handle) -> Person {
-    return Person.create {
+action join(handle: Handle) fails HandleTaken -> Person {
+    return attempt Person.create {
         set: {
             handle: handle
         }
+        conflict: {
+            Person.handle: HandleTaken
+        }
     }
+}
+"#,
+    ),
+    (
+        "domains/home/failures/handle_taken.jadpo",
+        r#"type HandleTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That handle is taken."
 }
 "#,
     ),
