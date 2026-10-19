@@ -359,7 +359,7 @@ pub(crate) fn time_now() -> String {
 /// The local time zone's offset from UTC in seconds, asked of `date` once:
 /// the standard library has no time zones, and a rule's time is only read
 /// by people. UTC when `date` can't say.
-fn local_offset() -> i64 {
+pub(crate) fn local_offset() -> i64 {
     let Ok(output) = std::process::Command::new("date").arg("+%z").output() else {
         return 0;
     };

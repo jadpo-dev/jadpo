@@ -82,6 +82,8 @@ pub enum Values {
     TestPath,
     /// The name of one of the project's queries or actions.
     Query,
+    /// The name of one of the project's schedules.
+    Schedule,
 }
 
 #[derive(Debug)]
@@ -716,6 +718,111 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::records,
+    },
+    Command {
+        name: "schedules",
+        synonyms: &[],
+        group: "Production",
+        summary: "Watch and control schedules",
+        description: "Every schedule's state and runs are recorded in the database its state is kept \
+                      in (area 12). `jadpo schedules` lists each schedule with its last run, when it \
+                      is next due or that it is paused, and the alerts that hold: no successful run \
+                      within twice its interval, ticks no longer arriving, a run past 80% of the \
+                      15-minute limit, three failures in a row, or a lease held past its expiry. \
+                      `history` shows a schedule's runs and skipped ticks, newest first, 20 a page, \
+                      and its metrics: runs, failures, skipped ticks, duration and delay. `pause` \
+                      and `resume` stop and start its due ticks running it. `run` runs it now in \
+                      this process, under its lease, so it never runs twice at once. The database \
+                      is the one --url names, or the one its connection's setting gives, or the one \
+                      a running jadpo dev started. Times are in UTC.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: run, pause, resume or history, or nothing to list them",
+                required: false,
+                values: Values::Fixed(crate::schedules::ACTIONS),
+            },
+            Argument {
+                name: "name",
+                description: "The schedule's name",
+                required: false,
+                values: Values::Schedule,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the schedules' state is in",
+                values: &[],
+            },
+            Flag {
+                name: "--page",
+                value: Some("n"),
+                description: "Which page of history, from 1, newest first",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See every schedule, its last run and what is next",
+                command: "jadpo schedules",
+            },
+            Example {
+                description: "See a schedule's past runs and its metrics",
+                command: "jadpo schedules history nightly_digest",
+            },
+            Example {
+                description: "Stop a schedule running until it is resumed",
+                command: "jadpo schedules pause nightly_digest",
+            },
+            Example {
+                description: "Run a schedule now",
+                command: "jadpo schedules run nightly_digest",
+            },
+        ],
+        arguments_rule: &rule::CLI_SCHEDULES_ARGUMENTS,
+        raises: &[
+            &rule::SCHEDULES_LEASE_HELD,
+            &rule::SCHEDULES_RUN_FAILED,
+            &rule::SCHEDULES_UNAVAILABLE,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::schedules,
+    },
+    Command {
+        name: "why",
+        synonyms: &[],
+        group: "Look things up",
+        summary: "Explain why a schedule didn't run",
+        description: "Answers why a schedule didn't run, or how its last run went (area 17), from its \
+                      state and run records: it is paused, a run still holds its lease, a lost run \
+                      held its lease past its expiry, ticks stopped arriving, or its last run failed, \
+                      with the failure's code and kind. The answer comes first, then its facts, then \
+                      the .jadpo place the schedule is declared in. Requests, events and records \
+                      come with debugging (area 17).",
+        arguments: &[Argument {
+            name: "name",
+            description: "The schedule's name",
+            required: true,
+            values: Values::Schedule,
+        }],
+        flags: &[Flag {
+            name: "--url",
+            value: Some("url"),
+            description: "The database the schedules' state is in",
+            values: &[],
+        }],
+        examples: &[Example {
+            description: "Find out why a schedule hasn't run",
+            command: "jadpo why nightly_digest",
+        }],
+        arguments_rule: &rule::CLI_WHY_ARGUMENTS,
+        raises: &[
+            &rule::SCHEDULES_UNAVAILABLE,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::why,
     },
     Command {
         name: "declines",
