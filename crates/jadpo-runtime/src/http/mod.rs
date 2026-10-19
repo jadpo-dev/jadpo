@@ -222,13 +222,16 @@ fn kind_message(kind: Option<&str>) -> &'static str {
 /// randomness, or from the invocation's seed in a test, so a test's ids
 /// reproduce.
 pub fn request_id(ctx: &Ctx<'_>, sequence: u64) -> String {
+    new_request_id(ctx.host(), ctx.env().seed, sequence)
+}
+
+/// [`request_id`], from `host`'s randomness or `seed`.
+fn new_request_id(host: &dyn Host, seed: Option<u64>, sequence: u64) -> String {
     let mut bytes = [0u8; 8];
-    let n = if ctx.host().random(&mut bytes) {
+    let n = if host.random(&mut bytes) {
         u64::from_be_bytes(bytes)
     } else {
-        let mut z = ctx
-            .env()
-            .seed
+        let mut z = seed
             .unwrap_or(0)
             .wrapping_add(sequence.wrapping_mul(0x9E37_79B9_7F4A_7C15))
             .wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -255,6 +258,11 @@ pub struct Worker {
 /// deployable call this, so everything around a request but reading and
 /// writing its bytes is the runtime's. The response carries its request id
 /// in `x-request-id`, and the fault behind a 500 for the host's log.
+///
+/// A host without a clock is refused: every request, health's included, is
+/// a 500 whose fault says so, and nothing runs, rather than answering as
+/// though it were 1970 (chunk 5.8a). A deployable checks [`Host::now_ms`]
+/// before it listens, so this is the last line, not the first.
 pub async fn serve_request(
     app: &App<'_>,
     executor: &dyn Executor,
@@ -262,13 +270,26 @@ pub async fn serve_request(
     worker: &Worker,
     request: &Request,
 ) -> Response {
-    let env = Env {
-        seed: None,
-        clock: Clock::fixed(host.now_ms().unwrap_or(0)),
-    };
-    let mut ctx = Ctx::new(executor.places(), host, env);
     let answered = worker.answered.get().wrapping_add(1);
     worker.answered.set(answered);
+    let Some(now) = host.now_ms() else {
+        let id = new_request_id(host, None, answered);
+        let mut response = runtime_failure(INTERNAL_FAULT, &id, None);
+        response.fault = Some(Box::new(crate::Fault {
+            kind: crate::FaultKind::Defect("the host has no clock".into()),
+            frames: Vec::new(),
+        }));
+        response.headers.push(("x-request-id".to_string(), id));
+        if request.method == "HEAD" {
+            response.body.clear();
+        }
+        return response;
+    };
+    let env = Env {
+        seed: None,
+        clock: Clock::fixed(now),
+    };
+    let mut ctx = Ctx::new(executor.places(), host, env);
     let id = request_id(&ctx, answered);
     answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await
 }
@@ -811,7 +832,7 @@ async fn run_with_caller(
                 store: store.clone(),
                 scope,
                 key,
-                digest: idempotency::digest(request, route),
+                digest: idempotency::digest(codecs, route, &params, input.as_ref()),
                 at: ctx.now(),
             });
         }

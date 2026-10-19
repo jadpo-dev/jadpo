@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"; what the page left open is "Chosen in chunk 5.6c", under "Review"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"; what the page left open is "Chosen in chunk 5.6c", under "Review"). Built in chunk 5.5u8: a query giving a map layer, a `FeatureCollection<G, P>` a `GET` route sends ("A query giving a map layer"; its choices are "Chosen in chunk 5.5u8"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -31,6 +31,7 @@ come back, so there is no separate word for it:
 | `TodoView?` | zero or one | a `where:` on a unique field |
 | `List<TodoView>` | up to a fixed number | `order:` and `limit:` |
 | `Page<TodoView>` | one page and a cursor for the next | `order:` and `page:` |
+| `FeatureCollection<Point, TodoPin>` | a map layer of up to a fixed number, each record a feature ("A query giving a map layer") | `geometry:`, `order:` and `limit:` |
 
 The element type is the entity or a type derived from it
 (`type TodoView = Output { pick: [Todo.id, Todo.title] }`, area 2); the compiler
@@ -719,6 +720,307 @@ Aggregates are the decided exception to "a query computes nothing"
 with their standard operations' SQL forms, and the rest are PostgreSQL's
 `count`, `sum`, `min` and `max`, so an aggregate query is always one
 statement, however many records it counts.
+
+## A query giving a map layer
+
+A query can return its records as a map layer, a
+`FeatureCollection<G, P>` ([area 20](20-geospatial.md), "Interop"), so a
+`GET` route sends the layer a mapping library fetches, as plain RFC 7946
+GeoJSON (area 7, "A map layer as output"). `geometry:` names the stored
+field each feature's geometry is, a `G` every record has; `P`, an `Object`
+type, is each feature's properties, its fields filled from the record's
+fields of the same names, as any result type's are. The query picks
+fields and computes nothing, so it is a bounded list like any other:
+`order:` and `limit:`, with area 20's `geo.` conditions and its order by
+`geo.distance` if it needs them. A bakery map's layer, and the bakeries
+within reach of a door:
+
+```jadpo check project=layers file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=layers file=domains/baking/types/bakery_name.jadpo hidden
+/// A bakery's name on its sign.
+type BakeryName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=layers file=domains/baking/types/search_reach.jadpo hidden
+/// How far a customer looks for a bakery.
+type SearchReach = Length {
+    min: 0metre
+    max: 50km
+}
+```
+
+```jadpo check project=layers file=domains/baking/entities/bakery.jadpo hidden
+use baking/types { BakeryName }
+
+/// A shop that bakes and delivers.
+entity Bakery {
+    id: Uuid
+    name: BakeryName
+    spot: Point
+
+    policy: {
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=layers file=domains/baking/actions/open_bakery.jadpo hidden
+use baking/entities { Bakery }
+use baking/types { BakeryName }
+
+/// Opens a bakery at a spot.
+action open_bakery(name: BakeryName, spot: Point) -> Bakery {
+    return Bakery.create {
+        set: {
+            name: name
+            spot: spot
+        }
+    }
+}
+```
+
+```jadpo check project=layers file=domains/baking/types/bakery_pin.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryName }
+
+/// What a bakery's pin on the map says: its identity goes in its
+/// properties.
+type BakeryPin = Object {
+    id: Bakery.id
+    name: BakeryName
+}
+```
+
+```jadpo check project=layers file=domains/baking/queries/bakery_map.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryPin }
+
+/// Every bakery, as the map's layer.
+query bakery_map() -> FeatureCollection<Point, BakeryPin> {
+    from: Bakery
+    geometry: Bakery.spot
+    order: [Bakery.name asc]
+    limit: 500
+}
+```
+
+```jadpo check project=layers file=domains/baking/queries/bakeries_near_map.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryPin, SearchReach }
+
+/// The bakeries within reach of a door, nearest first, as a layer.
+query bakeries_near_map(
+    doorstep: Point,
+    max_trip: SearchReach
+) -> FeatureCollection<Point, BakeryPin> {
+    from: Bakery
+    geometry: Bakery.spot
+    where: geo.within(Bakery.spot, doorstep, distance: max_trip)
+    order: [geo.distance(Bakery.spot, doorstep) asc]
+    limit: 20
+}
+```
+
+```jadpo check project=layers file=domains/baking/routes/bakeries.jadpo
+use baking/types { BakeryPin }
+use baking/queries { bakery_map }
+
+/// Bakeries, for the map.
+routes Bakeries {
+    prefix: /bakeries
+
+    /// Every bakery, as GeoJSON.
+    GET / {
+        authentication: RouteAuthentication.none
+        output: FeatureCollection<Point, BakeryPin>
+        run: bakery_map()
+    }
+}
+```
+
+```jadpo check project=layers file=domains/baking/routes/bakeries.test.jadpo
+use baking/entities { Bakery }
+use baking/types { BakeryPin }
+use baking/actions { open_bakery }
+use baking/queries { bakeries_near_map, bakery_map }
+
+test "the map fetches the bakeries as GeoJSON" {
+    var soho: Bakery = open_bakery(
+        "Soho",
+        Point {
+            latitude: 51.5136
+            longitude: -0.1365
+            altitude: none
+        }
+    )
+    var bermondsey: Bakery = open_bakery(
+        "Bermondsey",
+        Point {
+            latitude: 51.4979
+            longitude: -0.0637
+            altitude: none
+        }
+    )
+    var response: Response = request {
+        method: HttpMethod.get
+        path: "/bakeries"
+    }
+    assert response.status == 200
+    assert response.output == bakery_map()
+    assert response.output == FeatureCollection {
+        features: [
+            Feature {
+                geometry: bermondsey.spot
+                properties: BakeryPin {
+                    id: bermondsey.id
+                    name: bermondsey.name
+                }
+            },
+            Feature {
+                geometry: soho.spot
+                properties: BakeryPin {
+                    id: soho.id
+                    name: soho.name
+                }
+            }
+        ]
+    }
+    var near_soho: FeatureCollection<Point, BakeryPin> = bakeries_near_map(soho.spot, 2km)
+    assert list.map(near_soho.features, pin -> pin.properties.name) == ["Soho"]
+}
+```
+
+```jadpo check project=layers file=api/main.api hidden migrate=initial
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+GET /bakeries
+    authentication: none
+    output: FeatureCollection<Point, BakeryPin>
+    status: 200
+
+object BakeryPin
+    id: Uuid
+    name: Text { max_length: 80 }
+```
+
+`GET /bakeries` answers `{"type":"FeatureCollection","features":[...]}`,
+each feature `{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.0637,51.4979]},"properties":{"id":"...","name":"Bermondsey"}}`.
+`jadpo sql bakery_map` prints its one statement, a `SELECT` of the
+properties' columns and the geometry's.
+
+- **What it takes.** `geometry:` names a field of the entity read, of the
+  layer's own geometry type and never `none`: a feature always has one, so
+  a `Point?` field, or a `Polygon` field in a layer of `Point`s, is
+  `query.geometry_field`. A layer is one bounded list: `order:` and
+  `limit:` are required, and `page:`, `missing:`, `include:`, `group:`
+  and `aggregate:` are refused, since a layer's properties are each
+  record's own fields, one feature to a record.
+- **Its properties.** Each field of `P` is the record's field of that
+  name, `query.result_field` otherwise; a feature's identity goes in its
+  properties, so `P` picks `id` where the map needs it.
+- **Field policy.** A layer is sent as it is, so it is held as an
+  `Output` is (area 9, "Field restrictions"): every caller who may read
+  the records may read each property and the geometry, and every field
+  its conditions and order test, or the query is
+  `policy.output_field_unproved`.
+
+A property the record has no field for:
+
+```jadpo check project=e-layer-properties expect=query.result_field
+type BakeryName = Text {
+    max_length: 80
+}
+
+entity Bakery {
+    id: Uuid
+    name: BakeryName
+    spot: Point
+}
+
+type BakeryPin = Object {
+    bakery_id: Bakery.id
+    name: BakeryName
+}
+
+query bakery_map() -> FeatureCollection<Point, BakeryPin> {
+    from: Bakery
+    geometry: Bakery.spot
+    order: [Bakery.name asc]
+    limit: 500
+}
+```
+
+```text output
+error: `BakeryPin.bakery_id` isn't a field of `Bakery`
+ --> main.jadpo:16:23
+   |
+16 | query bakery_map() -> FeatureCollection<Point, BakeryPin> {
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `bakery_id` can't be filled
+  reason: A map layer fills its features' properties from `Bakery`'s fields of the same name (`id`, `name` and `spot`); nothing gives `bakery_id`.
+  next: Remove `bakery_id` from `BakeryPin`, or name it after a field of `Bakery` (agent)
+  rule: query.result_field
+  help: docs/language/06-reads-and-writes.html#query-result-field
+
+check failed: 1 error, 1 file
+```
+
+A property only the server may read:
+
+```jadpo check project=e-layer-restricted expect=policy.output_field_unproved
+type BakeryName = Text {
+    max_length: 80
+}
+
+type PhoneText = Text {
+    max_length: 20
+}
+
+entity Bakery {
+    id: Uuid
+    name: BakeryName
+    spot: Point
+    owner_phone: PhoneText {
+        policy: FieldAccess.server_only
+    }
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+type BakeryPin = Object {
+    name: BakeryName
+    owner_phone: PhoneText
+}
+
+query bakery_map() -> FeatureCollection<Point, BakeryPin> {
+    from: Bakery
+    geometry: Bakery.spot
+    order: [Bakery.name asc]
+    limit: 500
+}
+```
+
+```text output
+error: `bakery_map` sends `Bakery.owner_phone`, which not every caller may read
+ --> main.jadpo:27:23
+   |
+27 | query bakery_map() -> FeatureCollection<Point, BakeryPin> {
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ carries `owner_phone`
+  reason: Anyone `Bakery`'s `read:` lets in may call `bakery_map`, anyone at all among them, and no client may read it, as it is `FieldAccess.server_only` `owner_phone`. An output has one shape for everyone, so a field some callers may not read can't be in it.
+  next: Leave `owner_phone` out of `BakeryPin`, the features' properties (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
+```
 
 ## Children and parents
 
@@ -1750,7 +2052,7 @@ error: `order_by` isn't something a query holds
    |
 15 |     order_by: [Book.id asc]
    |     ^^^^^^^^ not a section
-  reason: A query's block holds `from:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
+  reason: A query's block holds `from:`, `geometry:`, `where:`, `where_present:`, `group:`, `aggregate:`, `order:`, `limit:`, `page:`, `include:` and `missing:`. Did you mean `order:`?
   next: Use `order:` (agent)
   rule: query.unknown_section
   help: docs/language/06-reads-and-writes.html#query-unknown-section
@@ -1975,7 +2277,7 @@ error: `titles` reads `Book` records but returns `List<Title>`
    |
 12 | query titles(title: Book.title) -> List<Title> {
    |                                    ^^^^^^^^^^^ not records of the entity
-  reason: A query's result is `Book` or an object type its fields fill (`type BookView = Output { pick: [...] }`), as `T` for exactly one record, `T?` for at most one, `List<T>` or `Page<T>`.
+  reason: A query's result is `Book` or an object type its fields fill (`type BookView = Output { pick: [...] }`), as `T` for exactly one record, `T?` for at most one, `List<T>` or `Page<T>`, or a map layer, `FeatureCollection<G, P>`.
   next: Return `Book`, or an `Output` type that picks the fields you need (agent)
   rule: query.result_type
   help: docs/language/06-reads-and-writes.html#query-result-type
@@ -2019,6 +2321,47 @@ error: `BookCard.author` isn't a field of `Book`, or an include
   next: Remove `author` from `BookCard`, or include records under it (agent)
   rule: query.result_field
   help: docs/language/06-reads-and-writes.html#query-result-field
+
+check failed: 1 error, 1 file
+```
+
+### `query.geometry_field`
+
+```jadpo check project=e-geometry-field expect=query.geometry_field
+type BakeryName = Text {
+    max_length: 80
+}
+
+entity Bakery {
+    id: Uuid
+    name: BakeryName
+    spot: Point
+    delivery_area: Polygon
+}
+
+type BakeryPin = Object {
+    id: Bakery.id
+    name: BakeryName
+}
+
+query bakery_map() -> FeatureCollection<Point, BakeryPin> {
+    from: Bakery
+    geometry: Bakery.delivery_area
+    order: [Bakery.name asc]
+    limit: 500
+}
+```
+
+```text output
+error: `Bakery.delivery_area` isn't a `Point`, so it can't be each feature's geometry
+ --> main.jadpo:19:15
+   |
+19 |     geometry: Bakery.delivery_area
+   |               ^^^^^^^^^^^^^^^^^^^^ a `Polygon`
+  reason: `FeatureCollection<Point, BakeryPin>`'s features each hold a `Point`, and a stored value goes into the layer as it is, so `geometry:` names a field of that type.
+  next: Use `Bakery.spot` (agent)
+  rule: query.geometry_field
+  help: docs/language/06-reads-and-writes.html#query-geometry-field
 
 check failed: 1 error, 1 file
 ```
@@ -4064,6 +4407,33 @@ database.
     checked after reading. Joins and `include`, ranges, other orderings,
     `matches` and other grants are compile errors naming PostgreSQL.
 
+### Chosen in chunk 5.5u8
+
+- **The syntax.** The result type names the properties type,
+  `FeatureCollection<G, P>`, as `List<Nearest<T>>` names its records; a
+  section, `geometry: Entity.field`, names the geometry field, since an
+  entity may hold several and the result type can't say which. `P` is
+  filled as any result type is, by field name, and is an `Object`, as
+  area 20 requires of a feature's properties.
+- **Exactly `G`, never `none`.** The field's type is the layer's geometry
+  type itself: a `Polygon` field doesn't fill a layer of `Geometry`, which
+  would be a value built from it, and a field that may be `none` doesn't
+  fill a feature, which always has a geometry. Both are
+  `query.geometry_field`, the one new rule; an unknown field is
+  `query.unknown_field`, as in a condition.
+- **One feature to a record.** A layer is a bounded list, as `List<T>`
+  is, so `order:` and `limit:` are required and `page:` is refused, a
+  `FeatureCollection` having no cursor. `include:`, `group:` and
+  `aggregate:` are refused too, the most conservative reading of "nothing
+  computed beyond picking fields": a property is the record's own field.
+- **Held as an `Output`.** A layer goes out as it is, so its properties
+  and its geometry are proved for every caller where the query is
+  declared, and an action returning it carries nothing more (area 9).
+- **Example 21** sends its whole drop point layer with `GET
+  /drop-points`, and its in-view action and `POST` route are gone: a
+  `GET`'s input is the query string, which can't hold a `BoundingBox`
+  (area 7), so a layer of what is in view would still need a body.
+
 ### Chosen in chunk 5.6c
 
 What "Counts, sums and groups" needed that areas 6 and 19 hadn't
@@ -4179,4 +4549,4 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |
 | Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement. Built in chunk 5.6c, as "Chosen in chunk 5.6c" sets out (area 19, questions 21 and 28) | 2026-10-18 |
 | Standard operations in `where:` (Phase 5 review) | Allowed where the operation has an exact SQL form, with a derived expression index, once conditions share one lowering (chunk 6.3b); refused as `query.condition_unsupported` until then (Richard, as recommended) | 2026-10-19 |
-| A query giving a map layer (Phase 5 review) | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields (Richard, as recommended after chunk 5.5u7) | 2026-10-19 |
+| A query giving a map layer (Phase 5 review) | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields (Richard, as recommended after chunk 5.5u7). Built in chunk 5.5u8 | 2026-10-19 |

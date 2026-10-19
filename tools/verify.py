@@ -161,10 +161,11 @@ POSTGRES = [
     # unchanged, each column's check, and a store without PostGIS, or a
     # role that can't create it, refused (area 20, chunk 5.5u4); each
     # `geo.` condition and the order by distance giving the code's
-    # answer through its index (chunk 5.5u5). The server needs
-    # PostGIS: CI's image has it (tools/postgres/Dockerfile).
+    # answer through its index (chunk 5.5u5); a query's map layer
+    # fetched from a `GET` route as GeoJSON (chunk 5.5u8). The server
+    # needs PostGIS: CI's image has it (tools/postgres/Dockerfile).
     ('live PostgreSQL: geography',
-     [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries')], []),
+     [('jadpo-cli', 'geography'), ('jadpo-cli', 'geo_queries'), ('jadpo-cli', 'geo_layers')], []),
 ]
 
 

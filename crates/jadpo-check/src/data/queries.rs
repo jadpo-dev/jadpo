@@ -10,7 +10,9 @@
 //! and `missing:` for a query that returns exactly one record. Its result
 //! type says how many records come back: `T`, `T?`, `List<T>` or
 //! `Page<T>`, where `T` is the entity or an object type whose fields it
-//! fills. Values in a query are parameters and their fields, literals,
+//! fills; or a map layer, `FeatureCollection<G, P>`, a bounded list of
+//! features whose geometry is the field `geometry:` names and whose
+//! properties `P` its fields fill (chunk 5.5u8). Values in a query are parameters and their fields, literals,
 //! enum values, lists of those and `clock.now`: a query computes nothing.
 //!
 //! Each query is read by name ([`query_read`]) into a model without
@@ -39,8 +41,9 @@ mod aggregates;
 pub use aggregates::{AggregateKind, Entry, EntryOrder, GroupKey, Grouping};
 
 /// The sections a query declaration holds (area 6, "Named queries").
-pub const SECTIONS: [&str; 10] = [
+pub const SECTIONS: [&str; 11] = [
     "from",
+    "geometry",
     "where",
     "where_present",
     "group",
@@ -299,6 +302,9 @@ pub struct QueryModel {
     /// place of `order`: each row is a value of `element`, filled from
     /// them.
     pub grouping: Option<Grouping>,
+    /// For a map layer, a `FeatureCollection<G, P>` (chunk 5.5u8): the
+    /// field each feature's geometry is, its properties being `element`.
+    pub geometry: Option<String>,
 }
 
 /// Every query of a project, without positions: for what reads them all,
@@ -360,6 +366,7 @@ pub fn query_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         entities: Entities::new(db, project),
         out: Vec::new(),
         under: Vec::new(),
+        layer: false,
     };
     let model = reader.query(symbol, &decl).map(Arc::new);
     Some(QueryRead {
@@ -441,6 +448,9 @@ struct Reader<'a> {
     /// The `not` or `or` a condition being read is under, innermost last:
     /// a `geo.` condition stands on its own line or joined by `and`.
     under: Vec<&'static str>,
+    /// Whether the query read is a map layer, whose properties come from
+    /// its records' own fields alone (chunk 5.5u8).
+    layer: bool,
 }
 
 /// The sections of one query or include block, as written.
@@ -498,8 +508,29 @@ impl<'a> Reader<'a> {
             .ret_type()
             .and_then(|ret| ret.ty())
             .map_or_else(|| span.clone(), |ty| Self::span(path, &ty));
-        let (cardinality, element_ty, nearest_result) =
+        let (cardinality, element_ty, nearest_result, layer) =
             self.result(&name, &sig.result, entity, &result_span)?;
+        // A map layer (chunk 5.5u8) names its features' geometry field, and
+        // only a map layer does.
+        self.layer = layer.is_some();
+        let mut layer_ok = true;
+        if let Some(member) = sections.first.get("geometry")
+            && layer.is_none()
+        {
+            layer_ok = false;
+            self.section_unexpected(path, member, "geometry", cardinality, &sig.result);
+        }
+        if layer.is_some() {
+            for section in ["group", "aggregate", "include"] {
+                if let Some(member) = sections.first.get(section) {
+                    layer_ok = false;
+                    self.layer_unexpected(path, member, section, &sig.result);
+                }
+            }
+            if !layer_ok {
+                return None;
+            }
+        }
         // A nearest-neighbour query (area 21): `nearest` in `order:`, and
         // `List<Nearest<T>>` as its result.
         let nearest_written = sections.first.get("order").and_then(nearest_entry);
@@ -636,8 +667,23 @@ impl<'a> Reader<'a> {
             sections.first.get("missing"),
         );
 
+        // A map layer's geometry: `geometry: Entity.field`.
+        let geometry = match (&layer, sections.first.get("geometry")) {
+            (Some(g), Some(member)) => self.geometry(path, entity, member, g, &sig.result),
+            (Some(_), None) => {
+                if !sections.suggested.contains("geometry") {
+                    self.section_required(&name, &span, cardinality, &sig.result, "geometry");
+                }
+                None
+            }
+            (None, _) => None,
+        };
+
         let element = element?;
-        if !complete || !nearest_ok || !distance_ok {
+        if !complete || !nearest_ok || !distance_ok || !layer_ok {
+            return None;
+        }
+        if layer.is_some() && geometry.is_none() {
             return None;
         }
         let key = self.lookup.registry().key(Kind::Query, &name, None);
@@ -658,6 +704,7 @@ impl<'a> Reader<'a> {
             nearest,
             distance,
             grouping: None,
+            geometry,
         })
     }
 
@@ -833,16 +880,37 @@ impl<'a> Reader<'a> {
         }
     }
 
-    /// The cardinality the result type gives, and the type of its records.
+    /// The cardinality the result type gives, the type of its records,
+    /// whether each is a `Nearest<T>`, and for a map layer, a
+    /// `FeatureCollection<G, P>` (chunk 5.5u8), its geometry type `G`: a
+    /// list of features, each record's `P`.
     fn result(
         &mut self,
         name: &str,
         result: &Ty,
         entity: &EntityModel,
         span: &Span,
-    ) -> Option<(Cardinality, String, bool)> {
+    ) -> Option<(Cardinality, String, bool, Option<Ty>)> {
         if result.has_error() {
             return None;
+        }
+        if let Ty::Opaque(collection, args) = result
+            && collection == jadpo_std::standard::geo::FEATURE_COLLECTION
+            && let [geometry, Ty::Named(properties)] = args.as_slice()
+            && matches!(
+                self.lookup.def(properties),
+                Some(Def::Fields {
+                    base: FieldsBase::Object,
+                    ..
+                })
+            )
+        {
+            return Some((
+                Cardinality::List,
+                properties.clone(),
+                false,
+                Some(geometry.clone()),
+            ));
         }
         let (cardinality, element) = match result {
             Ty::List(inner) => (Cardinality::List, inner.as_ref()),
@@ -872,7 +940,7 @@ impl<'a> Reader<'a> {
             _ => false,
         };
         if let (true, Ty::Named(ty)) = (fits, element) {
-            return Some((cardinality, ty.clone(), nearest));
+            return Some((cardinality, ty.clone(), nearest, None));
         }
         let shown = if matches!(result, Ty::Prim(Prim::Unit)) {
             "nothing".to_string()
@@ -887,7 +955,7 @@ impl<'a> Reader<'a> {
             )
             .at(span.clone(), "not records of the entity")
             .reason(format!(
-                "A query's result is `{entity_name}` or an object type its fields fill (`type {entity_name}View = Output {{ pick: [...] }}`), as `T` for exactly one record, `T?` for at most one, `List<T>` or `Page<T>`."
+                "A query's result is `{entity_name}` or an object type its fields fill (`type {entity_name}View = Output {{ pick: [...] }}`), as `T` for exactly one record, `T?` for at most one, `List<T>` or `Page<T>`, or a map layer, `FeatureCollection<G, P>`."
             ))
             .next(format!(
                 "Return `{entity_name}`, or an `Output` type that picks the fields you need"
@@ -921,6 +989,10 @@ impl<'a> Reader<'a> {
             "limit" => (
                 "Every list is bounded: `limit:` is a number, or a value whose type has a `max:`.".to_string(),
                 "Add `limit: <number>`, or return `Page<T>` to read it a page at a time".to_string(),
+            ),
+            "geometry" => (
+                "A map layer's features each hold one geometry, the stored field `geometry:` names, with their properties filled from the record's other fields.".to_string(),
+                "Add `geometry: <Entity>.<field>`, naming the field each feature's geometry is".to_string(),
             ),
             _ => (
                 "A page query reads one page at a time: `page:` gives its `size:` and the cursor to continue `after:`.".to_string(),
@@ -966,6 +1038,9 @@ impl<'a> Reader<'a> {
             ("page", Cardinality::List) => format!(
                 "`page:` belongs to a query returning `Page<T>`; `{result}` is one bounded list, sized by `limit:`."
             ),
+            ("geometry", _) => format!(
+                "`geometry:` names the field each feature of a map layer holds, for a query returning `FeatureCollection<G, P>`; `{result}` holds records, not features."
+            ),
             _ => format!("`{result}` is at most one record, so it has no pages."),
         };
         let removal = Self::span(path, member);
@@ -979,6 +1054,114 @@ impl<'a> Reader<'a> {
             .next(format!("Remove `{section}:`"))
             .edit(removal, ""),
         );
+    }
+
+    /// A section a map layer doesn't take (chunk 5.5u8): its features are
+    /// its records, each its own fields, so it neither groups them nor
+    /// includes others.
+    fn layer_unexpected(&mut self, path: &str, member: &ast::Member, section: &str, result: &Ty) {
+        let Some(key) = member.member_key() else {
+            return;
+        };
+        let reason = match section {
+            "include" => {
+                "A map layer's properties are each record's own fields, picked as they are stored; a related record's fields come from a query of their own."
+            }
+            _ => {
+                "A map layer's features are its records, one each; counting or adding up records is a query of its own."
+            }
+        };
+        self.out.push(
+            Diagnostic::new(
+                &rule::QUERY_SECTION_UNEXPECTED,
+                format!("A query returning `{result}` takes no `{section}:`"),
+            )
+            .at(Self::span(path, &key), "not for a map layer")
+            .reason(reason)
+            .next(format!("Remove `{section}:`"))
+            .edit(Self::span(path, member), ""),
+        );
+    }
+
+    /// `geometry: Entity.field` (chunk 5.5u8): the field each feature of a
+    /// map layer holds as its geometry, of the layer's geometry type `G`
+    /// itself and never `none`.
+    fn geometry(
+        &mut self,
+        path: &str,
+        entity: &EntityModel,
+        member: &ast::Member,
+        g: &Ty,
+        result: &Ty,
+    ) -> Option<String> {
+        let value = member.value()?;
+        let span = Self::span(path, &value);
+        let written = tree::written(value.syntax());
+        let named = dotted(&value).is_some_and(|(_, rest)| rest.len() == 1);
+        if !named {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_GEOMETRY_FIELD,
+                    format!("`geometry:` is `{written}`, not a field"),
+                )
+                .at(span, "not a field")
+                .reason(format!(
+                    "Each feature's geometry is a stored field of `{}`, picked as it is, so `geometry:` names one with its entity; a query computes nothing.",
+                    entity.name
+                ))
+                .next(format!("Write `geometry: {}.<field>`", entity.name)),
+            );
+            return None;
+        }
+        let field = self.field_ref(path, entity, &value)?;
+        if g.has_error() || field.ty.has_error() {
+            return None;
+        }
+        let wanted = geo_kind(self.lookup, g);
+        let found = geo_kind(self.lookup, &field.ty);
+        let shown = format!("{}.{}", entity.name, field.name);
+        if found.is_none() || found != wanted {
+            let geometries: Vec<String> = entity
+                .fields
+                .iter()
+                .filter(|f| !f.nullable && geo_kind(self.lookup, &f.ty) == wanted)
+                .map(|f| format!("{}.{}", entity.name, f.name))
+                .collect();
+            let problem = Diagnostic::new(
+                &rule::QUERY_GEOMETRY_FIELD,
+                format!("`{shown}` isn't a `{g}`, so it can't be each feature's geometry"),
+            )
+            .at(span.clone(), format!("a `{}`", field_type_name(&field.ty)))
+            .reason(format!(
+                "`{result}`'s features each hold a `{g}`, and a stored value goes into the layer as it is, so `geometry:` names a field of that type."
+            ));
+            self.out.push(match geometries.as_slice() {
+                [one] => problem.next(format!("Use `{one}`")).edit(span, one.clone()),
+                _ => problem.next(format!(
+                    "Name a `{g}` field of `{}`, or return the layer of the field's own type",
+                    entity.name
+                )),
+            });
+            return None;
+        }
+        if field.nullable {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::QUERY_GEOMETRY_FIELD,
+                    format!("`{shown}` may be `none`, and every feature has a geometry"),
+                )
+                .at(span, "may be `none`")
+                .reason(format!(
+                    "A feature of `{result}` holds a `{g}`, never `none`, so its geometry is a field every record has."
+                ))
+                .next(format!(
+                    "Make `{}` required, or name a field every `{}` has",
+                    field.name, entity.name
+                )),
+            );
+            return None;
+        }
+        Some(field.name.clone())
     }
 
     // --- conditions ------------------------------------------------------------
@@ -2830,7 +3013,25 @@ impl<'a> Reader<'a> {
                     .iter()
                     .map(|f| format!("`{}`", f.name))
                     .collect();
-                self.out.push(
+                // A map layer's properties are its records' own fields
+                // (chunk 5.5u8).
+                let problem = if self.layer {
+                    Diagnostic::new(
+                        &rule::QUERY_RESULT_FIELD,
+                        format!("`{ty}.{}` isn't a field of `{}`", field.name, entity.name),
+                    )
+                    .at(span.clone(), format!("`{}` can't be filled", field.name))
+                    .reason(format!(
+                        "A map layer fills its features' properties from `{}`'s fields of the same name ({}); nothing gives `{}`.",
+                        entity.name,
+                        crate::and_list(&names),
+                        field.name
+                    ))
+                    .next(format!(
+                        "Remove `{}` from `{ty}`, or name it after a field of `{}`",
+                        field.name, entity.name
+                    ))
+                } else {
                     Diagnostic::new(
                         &rule::QUERY_RESULT_FIELD,
                         format!("`{ty}.{}` isn't a field of `{}`, or an include", field.name, entity.name),
@@ -2845,8 +3046,9 @@ impl<'a> Reader<'a> {
                     .next(format!(
                         "Remove `{}` from `{ty}`, or include records under it",
                         field.name
-                    )),
-                );
+                    ))
+                };
+                self.out.push(problem);
                 continue;
             };
             let from = Ty::Field(entity.name.clone(), vec![column.name.clone()]);

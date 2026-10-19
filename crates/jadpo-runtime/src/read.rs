@@ -135,6 +135,14 @@ pub(crate) async fn read(
             None => Found::Missing(hidden),
         },
         Cardinality::Optional => Found::Value(values.into_iter().next().unwrap_or(Value::None)),
+        // A map layer's features, as one collection (chunk 5.5u8).
+        Cardinality::List if plan.layer => Found::Value(Value::record(
+            jadpo_std::standard::geo::FEATURE_COLLECTION,
+            vec![(
+                Rc::from(jadpo_std::standard::geo::FEATURE_COLLECTION_FIELDS[0]),
+                Value::list(values),
+            )],
+        )),
         Cardinality::List => Found::Value(Value::list(values)),
         Cardinality::Page => {
             let size = usize::try_from(env.size).unwrap_or(0);

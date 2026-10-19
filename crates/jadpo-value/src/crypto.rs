@@ -13,8 +13,11 @@
 //! A key is never a [`Value`]: an executor gives each operation the
 //! [`KeyRing`] its `key: config.<name>` names, which nothing can read,
 //! print or compare. A nonce and a salt are the invocation's random bytes
-//! (a [`Source`]), as `random`'s are: the host's generator in a
-//! deployable, a test's seed in a test, so a rerun repeats.
+//! (a [`Source`]): the host's generator in a deployable, a test's seed in
+//! a test, so a rerun repeats. A salt is recorded and replayed as
+//! `random`'s bytes are; a nonce is secret randomness, never kept on a
+//! recording's tape nor taken from a replayed one, so a replay never seals
+//! with a nonce production used (chunk 5.8a).
 //!
 //! A sealed value is laid out as
 //!

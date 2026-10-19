@@ -22,7 +22,9 @@
 //! - A lookup ignores a row past its `kept_until`; deleting such rows comes
 //!   with the runtime's minute tick (area 12, roadmap chunk 6.2).
 
-use jadpo_std::http::{IDEMPOTENCY_KEEP_MS, IDEMPOTENCY_KEY_MAX, RoutePlan};
+use jadpo_std::http::{IDEMPOTENCY_KEEP_MS, IDEMPOTENCY_KEY_MAX, RoutePlan, Segment};
+use jadpo_value::Value;
+use jadpo_value::json::Codecs;
 
 use super::{Request, Response};
 use crate::{Ctx, SqlValue};
@@ -72,23 +74,43 @@ pub(crate) fn key(request: &Request) -> Result<Option<String>, ()> {
     }
 }
 
-/// The request's digest: its method, path, query string, the headers its
-/// input reads and its body, so a repeat must send the same request.
-pub fn digest(request: &Request, route: &RoutePlan) -> String {
+/// The request's digest, which a repeat must match: its route's key (the
+/// method and the path as declared, one per route), then each placeholder
+/// and its input (the query string, the headers it reads, the body) as the
+/// route decoded them, each written back through its codec, the contract's
+/// own JSON. That JSON writes a secret value as its kind alone
+/// (`<redacted Password>`), so whoever reads the keys table can't test a
+/// guessed password or token against a digest (chunk 5.8a): a repeat that
+/// differs only in a secret is the same request.
+pub fn digest(
+    codecs: &Codecs<'_>,
+    route: &RoutePlan,
+    params: &[Option<Value>],
+    input: Option<&Value>,
+) -> String {
     let mut hasher = blake3::Hasher::new();
     let mut part = |bytes: &[u8]| {
         hasher.update(&(bytes.len() as u64).to_le_bytes());
         hasher.update(bytes);
     };
-    part(request.method.as_bytes());
-    part(request.path.as_bytes());
-    part(request.query.as_deref().unwrap_or("").as_bytes());
-    if let Some(input) = &route.input {
-        for (_, header) in &input.headers {
-            part(request.header(header).unwrap_or("").as_bytes());
+    part(route.key.as_bytes());
+    let placeholders = route.segments.iter().filter_map(|segment| match segment {
+        Segment::Param { codec, .. } => Some(*codec),
+        Segment::Fixed(_) => None,
+    });
+    let written = |codec, value: Option<&Value>| {
+        let mut out = String::new();
+        if let Some(value) = value {
+            codecs.write(codec, value, &mut out);
         }
+        out
+    };
+    for (codec, value) in placeholders.zip(params) {
+        part(written(codec, value.as_ref()).as_bytes());
     }
-    part(&request.body);
+    if let Some(plan) = &route.input {
+        part(written(plan.codec, input).as_bytes());
+    }
     hasher.finalize().to_hex().to_string()
 }
 
@@ -245,4 +267,192 @@ pub async fn release(ctx: &mut Ctx<'_>, guard: &Guard) {
             ],
         )
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use jadpo_std::http::{Codec, CodecId, InputPlan, RoutePlan, Run, Segment};
+    use jadpo_std::types::{FieldPlan, ShapeId, ShapePlan, ValidatorId};
+    use jadpo_std::{Builtin, HttpMethod, SuccessStatus};
+    use jadpo_value::json::Codecs;
+    use jadpo_value::shape::Shape;
+    use jadpo_value::{Record, Value};
+
+    use super::digest;
+
+    const TEXT: CodecId = CodecId(0);
+    const FORM: CodecId = CodecId(1);
+    const PATCH: CodecId = CodecId(2);
+    const TEXTS: CodecId = CodecId(3);
+
+    fn shape(ty: &str, fields: &[&str]) -> Shape {
+        Shape::new(&ShapePlan {
+            ty: ty.to_string(),
+            variant: None,
+            fields: fields
+                .iter()
+                .map(|name| FieldPlan {
+                    key: format!("field {ty}.{name}"),
+                    name: name.to_string(),
+                    validator: ValidatorId(0),
+                    omittable: true,
+                    absent: Some(jadpo_std::Constant::None),
+                    none_left_out: false,
+                    section: None,
+                })
+                .collect(),
+        })
+    }
+
+    /// A route with `params` text placeholders and, given one, an input.
+    fn route(key: &str, params: usize, input: Option<CodecId>) -> RoutePlan {
+        let mut segments = vec![Segment::Fixed("accounts".into())];
+        for at in 0..params {
+            segments.push(Segment::Param {
+                name: format!("p{at}"),
+                codec: TEXT,
+            });
+        }
+        RoutePlan {
+            key: key.into(),
+            method: HttpMethod::Post,
+            segments,
+            api: 0,
+            input: input.map(|codec| InputPlan {
+                codec,
+                query: false,
+                headers: Vec::new(),
+            }),
+            output: None,
+            status: SuccessStatus::NoContent,
+            deadline_ms: 10_000,
+            run: Run::Action(0),
+            keys: Some("main".into()),
+            args: Vec::new(),
+            authentication: jadpo_std::http::Authentication::Public,
+            caller: None,
+            file: "domains/accounts/routes/accounts.jadpo".into(),
+            line: 1,
+        }
+    }
+
+    /// Runs `check` with the codecs a sign-up form, a patch and a list of
+    /// text are read and written with.
+    fn with_codecs(check: impl FnOnce(&Codecs<'_>)) {
+        let codecs = [
+            Codec::Scalar {
+                builtin: Builtin::Text,
+                validator: ValidatorId(0),
+                int_as_number: true,
+            },
+            Codec::Object {
+                shape: ShapeId(0),
+                fields: vec![TEXT, TEXT],
+                validator: None,
+            },
+            Codec::Object {
+                shape: ShapeId(1),
+                fields: vec![TEXT],
+                validator: None,
+            },
+            Codec::List {
+                item: TEXT,
+                validator: ValidatorId(0),
+            },
+        ];
+        let shapes = [
+            shape("SignUpForm", &["handle", "chosen_password"]),
+            shape("NotePatch", &["text"]),
+        ];
+        check(&Codecs {
+            codecs: &codecs,
+            validators: &[],
+            shapes: &shapes,
+        });
+    }
+
+    fn form(handle: &str, password: &str) -> Value {
+        Value::record(
+            "SignUpForm",
+            vec![
+                ("handle".into(), Value::text(handle)),
+                (
+                    "chosen_password".into(),
+                    Value::secret("Password", password),
+                ),
+            ],
+        )
+    }
+
+    /// Whoever reads the keys table can't test a password guess against a
+    /// sign-up's digest: whatever the password, it is the same (chunk
+    /// 5.8a). So is a secret in a placeholder.
+    #[test]
+    fn a_digest_leaves_out_every_secret_value() {
+        with_codecs(|codecs| {
+            let sign_up = route("route POST /accounts/sign-up", 0, Some(FORM));
+            let of = |input: &Value| digest(codecs, &sign_up, &[], Some(input));
+            assert_eq!(
+                of(&form("ann", "hunter2hunter2")),
+                of(&form("ann", "correct horse battery"))
+            );
+            let reset = route("route POST /accounts/{p0}", 1, None);
+            let token = |text: &str| [Some(Value::secret("BearerToken", text))];
+            assert_eq!(
+                digest(codecs, &reset, &token("abc"), None),
+                digest(codecs, &reset, &token("xyz"), None)
+            );
+        });
+    }
+
+    /// Everything else a request says counts, so a repeat must send the
+    /// same request.
+    #[test]
+    fn a_digest_covers_the_route_and_everything_else_the_request_says() {
+        with_codecs(|codecs| {
+            let sign_up = route("route POST /accounts/sign-up", 0, Some(FORM));
+            let of = |input: &Value| digest(codecs, &sign_up, &[], Some(input));
+            assert_ne!(of(&form("ann", "x")), of(&form("bo", "x")));
+            let sign_in = route("route POST /accounts/sign-in", 0, Some(FORM));
+            assert_ne!(
+                of(&form("ann", "x")),
+                digest(codecs, &sign_in, &[], Some(&form("ann", "x")))
+            );
+            let named = route("route POST /accounts/{p0}", 1, None);
+            let name = |text: &str| [Some(Value::text(text))];
+            assert_ne!(
+                digest(codecs, &named, &name("a"), None),
+                digest(codecs, &named, &name("b"), None)
+            );
+            // Parts are told apart, not run together.
+            let listed = route("route POST /accounts/lists", 0, Some(TEXTS));
+            let texts =
+                |items: &[&str]| Value::list(items.iter().map(|text| Value::text(text)).collect());
+            assert_ne!(
+                digest(codecs, &listed, &[], Some(&texts(&["ab", "c"]))),
+                digest(codecs, &listed, &[], Some(&texts(&["a", "bc"])))
+            );
+            // A field left out isn't one sent as `none`: a patch tells them
+            // apart.
+            let patched = route("route POST /accounts/notes", 0, Some(PATCH));
+            let patch = |omitted: Option<Rc<[u32]>>| {
+                Value::Record(Rc::new(Record {
+                    ty: Rc::from("NotePatch"),
+                    fields: vec![(Rc::from("text"), Value::None)],
+                    omitted,
+                }))
+            };
+            assert_ne!(
+                digest(codecs, &patched, &[], Some(&patch(None))),
+                digest(
+                    codecs,
+                    &patched,
+                    &[],
+                    Some(&patch(Some(Rc::from(&[0u32][..]))))
+                )
+            );
+        });
+    }
 }

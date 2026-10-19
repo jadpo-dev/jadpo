@@ -167,6 +167,35 @@ fn nonces_never_repeat_across_many_seals_with_one_key() {
     assert_eq!(nonces.len(), 2000);
 }
 
+/// A nonce comes from secret randomness: a recorded run keeps none on its
+/// tape, and a replayed one draws a fresh nonce rather than the recorded
+/// bytes, so a replay never seals with a nonce production used (chunk
+/// 5.8a).
+#[test]
+fn a_nonce_is_never_recorded_or_replayed() {
+    let program = keyed(NOTES_KEY);
+    let id = program.plan().find("seal").expect("seal");
+    let host = MemoryHost::new();
+    let env = Env {
+        seed: Some(7),
+        clock: Clock::TEST,
+    };
+    let mut recording = Ctx::new(program.places(), &host, env);
+    recording.record_random();
+    let args = || vec![text("same note"), text("same record")];
+    let outcome = jadpo_runtime::block_on(program.run(&mut recording, id, args())).expect("ran");
+    assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
+    assert_eq!(recording.recorded_random(), Some(&[][..]), "no nonce kept");
+    let tape = vec![0x5a; 24];
+    let mut replaying = Ctx::new(program.places(), &host, env);
+    replaying.replay_random(tape.clone());
+    let outcome = jadpo_runtime::block_on(program.run(&mut replaying, id, args())).expect("ran");
+    let Outcome::Value(value) = outcome else {
+        panic!("{outcome:?}");
+    };
+    assert_ne!(bytes(&value)[6..30], tape[..], "a fresh nonce");
+}
+
 #[test]
 fn a_password_checks_correct_wrong_or_outdated() {
     let program = keyed(NOTES_KEY);

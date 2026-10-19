@@ -274,6 +274,8 @@ struct Fake {
     limits: Option<crate::RateLimits>,
     /// A monotonic clock that moves only when the test moves it.
     still: Option<Cell<u64>>,
+    /// No wall clock: `now_ms` gives nothing.
+    no_wall_clock: bool,
 }
 
 impl Host for Fake {
@@ -295,6 +297,10 @@ impl Host for Fake {
         } else {
             Box::pin(std::future::pending())
         }
+    }
+
+    fn now_ms(&self) -> Option<i64> {
+        (!self.no_wall_clock).then_some(NOW)
     }
 
     fn monotonic_ms(&self) -> Option<u64> {
@@ -656,6 +662,57 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
     assert_eq!(host.store.lines(), ["SELECT 1", "SELECT 1"]);
 }
 
+/// A deployable answers under the host's clock, so a host without one
+/// answers every request, health's included, with a 500 whose fault says
+/// so, running nothing and reaching no store, rather than answering at
+/// 1970 (chunk 5.8a).
+#[test]
+fn a_host_without_a_clock_is_refused_rather_than_run_at_1970() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Writes);
+    let app = App {
+        auth: &super::signed::AuthSettings::NONE,
+        client: &super::address::ClientAddress::CONNECTION,
+        table: &table,
+        codecs: Codecs {
+            codecs: &CODECS,
+            validators: &[],
+            shapes: &[],
+        },
+        failures: &[],
+        json: crate::JsonCodecs::NONE,
+    };
+    let host = Fake {
+        no_wall_clock: true,
+        ..Fake::default()
+    };
+    let worker = super::Worker::default();
+    let live = Request {
+        method: "GET".into(),
+        path: "/health/live".into(),
+        ..Request::default()
+    };
+    for request in [post(Some("k1"), "a"), live] {
+        let refused = block_on(super::serve_request(
+            &app, &program, &host, &worker, &request,
+        ))
+        .expect("nothing waits");
+        assert_eq!(
+            (refused.status, code(&refused)),
+            (500, Some("internal_fault")),
+            "{}",
+            request.path
+        );
+        assert!(refused.header("x-request-id").is_some());
+        assert_eq!(
+            refused.fault.map(|fault| fault.kind),
+            Some(crate::FaultKind::Defect("the host has no clock".into()))
+        );
+    }
+    assert_eq!(program.runs.get(), 0);
+    assert!(host.store.lines().is_empty());
+}
+
 #[test]
 fn a_passed_deadline_drops_the_work_commits_nothing_and_answers_504() {
     let table = table(Some("main"), false);
@@ -722,7 +779,13 @@ fn a_repeat_while_the_first_runs_is_a_conflict() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    let digest = super::idempotency::digest(&post(Some("k1"), "a"), &table.routes[0]);
+    let codecs = Codecs {
+        codecs: &CODECS,
+        validators: &[],
+        shapes: &[],
+    };
+    let digest =
+        super::idempotency::digest(&codecs, &table.routes[0], &[Some(Value::text("a"))], None);
     host.store.keep(
         "k1",
         (digest, None, None, NOW * 1000, (NOW + 15_000) * 1000),

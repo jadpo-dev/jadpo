@@ -1729,7 +1729,7 @@ chunks below, taken before Phase 6.
   every crate's `src/` against `MAY_ENCODE`, the boundaries checked even
   inside it, and refuses a stale entry. The example-name lists are worked
   out at check time; only the allow-lists are committed.
-- [ ] **5.8a Phase 5 review fixes: secrets and privacy** `opus · xhigh`:
+- [x] **5.8a Phase 5 review fixes: secrets and privacy** `opus · xhigh`:
   the idempotency digest keyed with a deployment secret (or taken over
   the decoded input without its secret fields), so a stored digest can't
   be used to guess a sign-up password, and the sweep that deletes old
@@ -1740,6 +1740,15 @@ chunks below, taken before Phase 6.
   `crypto.encrypt`'s nonce from secret randomness, never recorded or
   replayed; a host without a clock refused at start rather than running
   at 1970. Each a failing test first, from the review's reproductions.
+  Built: the digest is over the route and the decoded placeholders and
+  input with every secret value left out but its kind, not keyed, since
+  Jadpo has no secret every deployment holds (area 7, "Chosen in chunk
+  5.8a"); deleting expired keys stays with 6.2's tick, whose index
+  exists. `nearest` and `geo.distance` orders are checked as orders (area
+  9); `Secret` equals `Text` in every container and sorts with it; a map's
+  entry is `<key>` in a problem's path; `crypto.encrypt`'s nonce is
+  secret randomness (area 19); a host without a clock answers 500 and
+  `jadpo dev` won't start.
 - [x] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
   xhigh`: a scaled construction in a backfill run by `UPDATE` rounded as
   the runtime rounds; the backfill digest covering every type its bodies
@@ -1777,13 +1786,18 @@ chunks below, taken before Phase 6.
   way a value is made (JSON, query strings, `text.parse`, settings,
   storage reads), standard types' named rules, `altitudes_agree`, and
   `prompts.render` with restricted fields.
-- [ ] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
+- [x] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
   query giving a map layer", decided 2026-10-19): a query returning its
   records as a `FeatureCollection<G, P>`, naming the geometry field and
   the properties type, held to field policy as any query, so a `GET`
   route sends a layer; example 21's layer route moved to `GET`. Done when
   a mapping library's `GET` of the layer gets plain GeoJSON in a route
-  test, on PostGIS, with the page's example checked.
+  test, on PostGIS, with the page's example checked. *Built:*
+  `geometry: Entity.field` beside a `FeatureCollection<G, P>` result,
+  the field exactly `G` and never `none` (`query.geometry_field`), a
+  bounded list without includes, groups or pages, held to field policy
+  as an `Output`; example 21's whole layer behind `GET /drop-points`, as
+  area 6's "Chosen in chunk 5.5u8" records.
 - [ ] **5.9 Durable values** `opus · xhigh` (area 19, "Changing a
   standard type's encoding", decided 2026-10-19: only with a reader for
   the old form and a release note, enforced by a golden file): a golden file per standard type, from its
