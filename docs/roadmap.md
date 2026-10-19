@@ -1956,14 +1956,21 @@ chunks below, taken before Phase 6.
   action's events; a live test of all of it and a migration for every
   example. Choices in area 12's "Chosen in chunk 6.1b"; flagged there:
   how an event names its tenant.
-- [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
+- [x] **6.1c Event records and stored values** `opus · high`, after 6.1b
   (area 12, "Event records", decided 2026-10-19): event shapes recorded
   and diffed in the generated record exactly as an API's is (chunk 7.0's
   format, a new record kind with its header, diff and `jadpo records`
   row), acceptance waiting for area 18 as the API record's does; and from
   chunk 5.1d, what a subscriber stores from an event checked against what
   every `emit` of it put there, as area 9's stored values are (an `emit`
-  itself stores nothing a caller reads).
+  itself stores nothing a caller reads). Built: each domain's
+  `events/events.jadpo_record`, a view kind of the record format written
+  by `jadpo records update`, with its header, entry-by-entry
+  `record.out_of_date`, `record.edited` and its `jadpo records` row; what
+  every `emit` puts in an event carried in each action's flow summary,
+  and what a subscriber's action stores from it checked at the
+  subscriber's argument, keeping only the tenant relation across the
+  event. Choices in area 12's "Chosen in chunk 6.1c".
 - [ ] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
   tenants", and area 9's "Background work and `Access.public`", decided
   2026-10-19: a schedule reaches every tenant, and reaching what only

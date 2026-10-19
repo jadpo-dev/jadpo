@@ -25,6 +25,7 @@ that raised it.
 | Name | Holds | Where | Committed | Written by | Read by |
 |---|---|---|---|---|---|
 | API record | Each API's routes, fields and failure codes | `api/<api>.jadpo_record` | Yes | `jadpo api update` | `check`, reviewers, client teams |
+| Event record | Each domain's events, the fields they carry and the types those name (area 12) | `domains/<domain>/events/events.jadpo_record` | Yes | `jadpo records update` | `check`, reviewers |
 | Migrations | Each step of the database, with a snapshot of the whole schema | `database/migrations/` | Yes | `jadpo migrate new` | `migrate apply`, `check` |
 | Identity registry | What each renamed thing was born as | `database/identities.jadpo_record` | Yes | `jadpo rename`, `jadpo domain …`, `jadpo fmt --layout` | the compiler, `migrate`, `incident` |
 | Translation sources | For each locale and message, a hash of the default wording it was translated from, and each acceptance (area 10) | `translations/sources.jadpo_record` in each translations folder | Yes | `jadpo translations update`, `import`, `accept` | `check`, `translations missing`, `approval` |
@@ -646,6 +647,7 @@ check failed: 1 error, 1 file
 | Stable identity | Built (chunk 1.7): a key is the kind and the born name, and a test's key is the file it sits beside and its sentence (chunk 1.9). The registry is read once `jadpo rename` writes it (area 14). |
 | API record | Built (chunk 4.1): `jadpo api update` writes the record for each API with routes, and `jadpo check` fails while one disagrees with the routes, naming what changed; since chunk 7.0 it is `api/<api>.jadpo_record` in the record format and the error is `record.out_of_date`. Breaking-change classification and acceptances come after the first build. |
 | `.jadpo_record` files | Built (chunk 7.0): every record in the record format (the translation sources first, in chunk 5.4d), the API record as `api/<api>.jadpo_record` without `version:`, the registry as `database/identities.jadpo_record`, the header check, `record.out_of_date`, `record.edited` and `record.format_newer`, `jadpo records` and `jadpo records update`. Telling a careful hand edit of a view from a stale one needs the base build, which comes with `jadpo approval`; the editor grammar and `jadpo lsp` serving records, and `.gitattributes` from `jadpo new`, are not built. |
+| Event records | Built (chunk 6.1c): one view per domain with events, `domains/<domain>/events/events.jadpo_record`, written by `jadpo records update` and checked as the API record is; what area 12's "Chosen in chunk 6.1c" records. Acceptances come with the API record's. |
 | Lock and package surfaces | The lock's format is built (chunk 7.0: a ledger read and checked like the others); what writes it, and the surfaces, come with packages (chunk 7.1); the `git` and `link` sources later. |
 | Build stamp | Decided, not built: comes with compiled deployables (Phase 8). |
 | Approval, acceptances, package upgrade plans, `jadpo incident` | Decided, not built: after the first build (roadmap, areas 17 and 18). |
