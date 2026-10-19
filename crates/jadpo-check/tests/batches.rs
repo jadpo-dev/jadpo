@@ -671,7 +671,8 @@ fn a_saved_value_is_the_runs_tenants_when_its_record_named_the_tenant() {
     // `note_by_id`'s run is limited to the round's own society, so its
     // memo, which the treasurer reads, may go in a note of that society.
     // With the society the request named, nothing says the memo is the
-    // society's the run is limited to.
+    // society's the run is limited to, and the run's society is one the
+    // action never reached, at each value naming it (chunk 6.6c).
     let from = (
         NOTE_BY_ID,
         "from: society_plots(rent_round.society_id, PlotPage {})",
@@ -685,6 +686,8 @@ fn a_saved_value_is_the_runs_tenants_when_its_record_named_the_tenant() {
     assert_eq!(
         societies(&[from, note]),
         [
+            "domains/plots/actions/note_by_id.jadpo policy.event_tenant_unproved: `note_by_id` starts a batch in a `Society` it never reached",
+            "domains/plots/actions/note_by_id.jadpo policy.event_tenant_unproved: `note_by_id` starts a batch in a `Society` it never reached",
             "domains/plots/actions/note_by_id.jadpo policy.output_field_unproved: `note_by_id` passes `RentRound.memo` to `note_round`, which stores it in `RoundNote.memo`, though not everyone who may read `memo` may read it"
         ]
     );

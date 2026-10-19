@@ -750,10 +750,14 @@ pub fn system_table(name: &str) -> Table {
             // was, which its items run at (chunk 6.6a); `NULL` in a run
             // kept before, which counts from the start.
             add("depth", "integer", true);
+            // The tenant the run is limited to, all zeros for none, which
+            // its `key:` is unique within (chunk 6.6c); `NULL` in a run
+            // kept before, which no later start finds.
+            add("tenant", "uuid", true);
             unique.insert(
-                object_name(&[&table, "batch", "key"], "key"),
+                object_name(&[&table, "batch", "tenant", "key"], "key"),
                 jadpo_graph::schema::Unique {
-                    columns: vec!["batch".into(), "key".into()],
+                    columns: vec!["batch".into(), "tenant".into(), "key".into()],
                     rule: "system batch runs".into(),
                 },
             );

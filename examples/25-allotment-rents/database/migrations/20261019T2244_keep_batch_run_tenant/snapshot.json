@@ -258,6 +258,11 @@
             "stepped_at": {
               "position": 13,
               "type": "timestamptz(3)"
+            },
+            "tenant": {
+              "nullable": true,
+              "position": 16,
+              "type": "uuid"
             }
           },
           "indexes": {
@@ -277,9 +282,10 @@
           },
           "system": "batch_runs",
           "unique": {
-            "jadpo_batch_runs_batch_key_key": {
+            "jadpo_batch_runs_batch_tenant_key_key": {
               "columns": [
                 "batch",
+                "tenant",
                 "key"
               ],
               "rule": "system batch runs"
@@ -556,11 +562,6 @@
         },
         "jadpo_schedules": {
           "columns": {
-            "alerts": {
-              "nullable": true,
-              "position": 9,
-              "type": "jsonb"
-            },
             "every_ms": {
               "position": 1,
               "type": "bigint"
