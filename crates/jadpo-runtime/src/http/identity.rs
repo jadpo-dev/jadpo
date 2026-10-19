@@ -93,20 +93,20 @@ pub(crate) const START: &str = "INSERT INTO \"jadpo_sessions\" (\"id\", \"princi
 pub(crate) const END: &str = "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1";
 
 /// A user's API tokens that haven't ended, oldest first.
-const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
+pub(crate) const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
 
 /// Ends one API token, never a browser session.
-const REVOKE_TOKEN: &str =
+pub(crate) const REVOKE_TOKEN: &str =
     "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1 AND \"csrf_verifier\" IS NULL";
 
 /// Keeps a new service key.
-const ISSUE_KEY: &str = "INSERT INTO \"jadpo_service_keys\" (\"id\", \"principal_id\", \"verifier\", \"started_at\", \"ends_at\") VALUES ($1, $2, $3, $4, $5)";
+pub(crate) const ISSUE_KEY: &str = "INSERT INTO \"jadpo_service_keys\" (\"id\", \"principal_id\", \"verifier\", \"started_at\", \"ends_at\") VALUES ($1, $2, $3, $4, $5)";
 
 /// A service's keys that haven't expired, oldest first.
-const KEYS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_service_keys\" WHERE \"principal_id\" = $1 AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
+pub(crate) const KEYS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_service_keys\" WHERE \"principal_id\" = $1 AND \"ends_at\" > $2 ORDER BY \"started_at\", \"id\"";
 
 /// Deletes one service key.
-const REVOKE_KEY: &str = "DELETE FROM \"jadpo_service_keys\" WHERE \"id\" = $1";
+pub(crate) const REVOKE_KEY: &str = "DELETE FROM \"jadpo_service_keys\" WHERE \"id\" = $1";
 
 /// How long a route test's service key lasts: as long as a session.
 const TEST_KEY_LIFETIME_MS: i64 = SESSION_LIFETIME_MS;

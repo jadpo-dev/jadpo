@@ -797,3 +797,89 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
         let _ = (SqlType::Uuid, &events);
     });
 }
+
+#[test]
+fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
+    // Chunk 6.8: a delivery reads its event's payload by the encoding its
+    // outbox row records (area 19, "Changing a standard type's
+    // encoding"): this release's, or none, a payload kept before
+    // encodings were recorded, whose forms are encoding 1's. One a later
+    // release wrote is never guessed at: parked with its problem, as a
+    // payload that no longer reads is.
+    let root = project("encodings-6-8");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store {
+        db: postgres(&url).expect("store"),
+        seeds: Cell::new(0),
+        clock: Cell::new(T0),
+        drawn: Cell::new(0),
+    };
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        let ann = value(call(&program, &host, "join", vec![Value::text("ann")], None, None).await.0);
+        let ann_in = signed_in(&ann);
+        let ash = value(
+            call(&program, &host, "found", vec![Value::text("Ash Lane"), ann_in.clone()], Some(&ann_in), None)
+                .await
+                .0,
+        );
+        // Two chores, their work dropped as a crash would: one event kept
+        // before encodings were recorded, one a later release wrote.
+        for (title, encoding) in [("sweep", "NULL"), ("mop", "2")] {
+            let (added, dropped) = call(
+                &program,
+                &host,
+                "add_chore",
+                vec![field(&ash, "id"), field(&ann, "id"), Value::text(title)],
+                Some(&ann_in),
+                None,
+            )
+            .await;
+            value(added);
+            drop(dropped);
+            host.rows(&format!(
+                "UPDATE \"jadpo_outbox\" SET \"encoding\" = {encoding} WHERE \"encoding\" = 1 RETURNING \"id\""
+            ))
+            .await;
+        }
+        host.clock.set(T0 + 1_000);
+        sweep(&program, &host, "main", T0 + 1_000)
+            .await
+            .expect("the sweep runs");
+        let parked = host
+            .rows("SELECT COALESCE(\"o\".\"encoding\"::text, 'none'), \"d\".\"status\", \"d\".\"last_failure\" ->> 'code', \"d\".\"last_failure\" ->> 'problem' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"subscriber\" LIKE '%tally_chores' ORDER BY 1")
+            .await;
+        let text = |value: &SqlValue| match value {
+            SqlValue::Text(text) => Some(text.clone()),
+            _ => None,
+        };
+        let parked: Vec<Vec<Option<String>>> = parked
+            .iter()
+            .map(|row| row.iter().map(text).collect())
+            .collect();
+        assert_eq!(
+            parked,
+            [
+                vec![
+                    Some("2".to_string()),
+                    Some("failed".to_string()),
+                    Some("payload_unreadable".to_string()),
+                    Some("written in encoding 2, which this release doesn't read".to_string()),
+                ],
+                vec![Some("none".to_string()), Some("succeeded".to_string()), None, None],
+            ]
+        );
+    });
+}
