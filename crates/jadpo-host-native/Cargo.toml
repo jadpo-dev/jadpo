@@ -36,6 +36,10 @@ serde_json.workspace = true
 # and signatures on the OpenSSL `webauthn-rs` already links.
 openssl = { workspace = true, optional = true }
 
+[dev-dependencies]
+# A test's application builds its codecs (chunk 6.9).
+jadpo-value.workspace = true
+
 [features]
 test-authenticator = ["dep:openssl"]
 

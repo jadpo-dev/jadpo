@@ -155,6 +155,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::schedules::watch::METRICS.to_string(),
         ),
         (
+            "schedules::watch::RAISE",
+            crate::schedules::watch::RAISE.to_string(),
+        ),
+        (
             "schedules::watch::REQUEST",
             crate::schedules::watch::REQUEST.to_string(),
         ),

@@ -1506,6 +1506,7 @@ dependencies = [
  "jadpo-drivers",
  "jadpo-runtime",
  "jadpo-std",
+ "jadpo-value",
  "openssl",
  "serde_cbor_2",
  "serde_json",

@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in Phase 6, chunks 6.1a to 6.8; what is built and what isn't is under "Review", "Status".
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in Phase 6, chunks 6.1a to 6.9; what is built and what isn't is under "Review", "Status".
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1557,7 +1557,10 @@ stops short.
   to its host, which runs them once the response has been handed back:
   natively a task on the worker thread that answered, with that worker's
   program, so no thread needs a program of its own; on Workers
-  `waitUntil` (roadmap 8.2). Each piece gets a context of its own, under
+  `waitUntil` (roadmap 8.2). What a host does with a request (answer it,
+  hand on what it left) and with a tick is one runtime type every host
+  wraps, so a native server and `jadpo dev` serve through the same
+  handler, `jadpo dev` only listening to print its lines. Each piece gets a context of its own, under
   the host's clock as it starts and with no seed. A host with nothing to
   run it on, a test's or a tool's, drops it, and the tick picks up what a
   dropped piece left.
@@ -1811,7 +1814,9 @@ no error at all. Jadpo records and checks every part of a schedule's life
   kind, failures before it, next due time and trace); it succeeded; not
   due yet; or no tick has seen it. Its `.jadpo` place is the schedule's
   declaration, its doc comment's line when it has one. Other alerts
-  follow it.
+  follow it. The answer is the runtime's, as data (the answer, the alerts
+  that hold, a standing request), which the CLI says in words and the
+  console and the MCP server read too.
 - **Metrics** (area 16's telemetry): each run's lateness (start minus due)
   and duration, measured on the monotonic clock from the run's own time,
   carried by the tick's result and `jadpo dev`'s `--json` lines, and per
@@ -1826,8 +1831,24 @@ no error at all. Jadpo records and checks every part of a schedule's life
   success's start (kept on the state row as `last_succeeded_at`, so a
   monthly schedule isn't lost with its 30-day records) or else from its
   first due time. Each is a log event (`{"event": "schedule.alert",
-  "alert": …}`, area 14's question 13), printed once by `jadpo dev`;
-  sending it on waits for the hosts' log sink and telemetry (area 16).
+  "alert": …}`, area 14's question 13); sending it on waits for the
+  hosts' log sink and telemetry (area 16).
+- **The tick raises the alerts.** Once a tick's schedules have run, it
+  works out the alerts that hold for each schedule, as any reader does,
+  and records them on the schedule's state row (`alerts`: each alert's
+  id and when it was raised) in one statement that changes the record
+  only while it is what the tick read. Of several instances ticking, or
+  several Workers cron invocations, the one whose statement changed it
+  raises what newly holds, and the others raise nothing. An alert is
+  raised once until it stops holding, its details (a growing failure
+  count) changing nothing; one that stops and starts again is raised
+  again. Ticks stopping is never raised by a tick, since a tick arriving
+  is the proof they haven't. `jadpo dev` prints the alerts its tick
+  raised, so a restarted session doesn't print one already raised.
+  Readers still work the alerts out when they read: `jadpo schedules`
+  and `jadpo why` show those that hold at their own time, since a
+  stopped application raises nothing and its operator must still see
+  its alerts.
 - The console (area 17) shows each schedule's timeline of runs and ticks.
 
 ### Running a schedule by hand
@@ -2903,7 +2924,7 @@ check failed: 1 error, 2 files
 
 ### Status
 
-Built in Phase 6 (chunks 6.1a to 6.8): the runner and the system caller
+Built in Phase 6 (chunks 6.1a to 6.9): the runner and the system caller
 (area 9); `emit`, the outbox, subscribers, delivery after the response,
 handled records, retries, trace context and `events: { store: }`, with the
 errors that name `event.` and `subscriber.`; each domain's event record
@@ -2917,7 +2938,9 @@ each entity's purge schedule and a test's `schedule.run()`;
 `batches.each`, `batches.status`, `batches.cancel` and `key:`, with
 tenants, grants, what a run stores under policy and no request carrying
 a batch type; background work within its host's budget and a native
-server draining as it stops; and records a later release still reads.
+server draining as it stops; records a later release still reads; and
+alerts raised by the tick, once across instances, with `jadpo why`'s
+answer decided by the runtime.
 
 Not yet:
 

@@ -676,11 +676,11 @@ chunks below, taken before Phase 7, in this order.
   row read by the encoding it records, a batch's call named by identity
   keys with its shape in canonical type text and its saved values'
   encoding, and the system tables defined once in `jadpo_std::system`.
-- [ ] **6.9 Serving, alerts and `why` in the runtime** `opus · high`: a
-  server handler in the runtime or `jadpo-host-native` that `jadpo dev`
-  only wraps to print; alerts raised in `schedules::tick` and kept once
-  on the schedule's state row; the `why` answer decided in the runtime,
-  as data the CLI shows.
+- [x] **6.9 Serving, alerts and `why` in the runtime** `opus · high`.
+  Built: what a host does with a request and a tick in the runtime
+  (`serve::Serving`), which `jadpo dev` only observes; alerts raised by
+  the tick and recorded once on the schedule's state row; `jadpo why`'s
+  answer decided by the runtime as data.
 - [x] **5.13 Gate time** `opus · high`: test threads capped per gate
   step; the HTTP worker test's 150 ms ordering made deterministic;
   `tools/verify.py` honouring `CARGO_TARGET_DIR`; §2.7's timings
