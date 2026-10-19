@@ -319,7 +319,6 @@ async fn drive(
                     queue.extend(ctx.take_deferred());
                 }
             }
-            Deferred::Run(job) => panic!("no job is left: {job:?}"),
         }
     }
     (ran, queue.len())

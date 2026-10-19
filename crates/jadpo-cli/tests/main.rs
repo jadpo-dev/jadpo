@@ -9,6 +9,7 @@ mod across;
 mod aggregates;
 mod ai;
 mod backfills;
+mod background_budget;
 mod batch_limits;
 mod batch_tenants;
 mod batches;

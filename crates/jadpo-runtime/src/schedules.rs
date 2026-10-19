@@ -15,16 +15,19 @@
 //!   missed ticks become one run, not a backlog.
 //! - **One run at a time.** A run takes the schedule's lease in one
 //!   conditional statement (its due time unchanged and no live lease), so
-//!   two instances never both run it; the lease lasts the 15-minute limit
-//!   of a run and a minute, so a worker that dies holding it loses it
-//!   then. A due tick that finds it leased, or paused, is skipped, not
-//!   queued: recorded with its reason, its due time moved on.
+//!   two instances never both run it; the lease lasts what is left of the
+//!   tick's budget and a minute ([`crate::lease`]; chunk 6.7), so a worker
+//!   that dies holding it loses it then. A due tick that finds it leased,
+//!   or paused, is skipped, not queued: recorded with its reason, its due
+//!   time moved on.
 //! - **A run** is its action, called with nothing, as the system with no
 //!   tenant (area 9; area 12, "A schedule and tenants"), in a context of
 //!   its own whose `clock.now` is the tick's time throughout, in a new
-//!   trace, stopped at the 15-minute limit. A failed run is recorded and
-//!   not retried: the next due time is its retry. What it emitted is
-//!   delivered after it, on the runner.
+//!   trace, run within the tick's budget as the runner runs any action
+//!   ([`runner::within_budget`]): stopped at the 15-minute limit, or
+//!   before the budget ends, its commit never raced. A failed run is
+//!   recorded and not retried: the next due time is its retry. What it
+//!   emitted is delivered after it, on the runner.
 //! - **Every run is recorded** in `jadpo_schedule_runs`: due, started and
 //!   ended, how it ended with its failure's code and kind, never a value,
 //!   the events it kept and its trace; skipped ticks too. Each state row
@@ -41,7 +44,9 @@
 //! idempotency keys (area 7), and events every subscriber has had,
 //! [`SETTLED_KEPT_MS`] after they were emitted; then each of
 //! [`HOOKS`], where batch runs resume (chunk 6.4) and ended ones are
-//! deleted after 30 days (chunk 6.6a).
+//! deleted after 30 days (chunk 6.6a). The whole tick runs within the
+//! budget its host gives a tick (chunk 6.7): once that is spent it starts
+//! nothing more, and the next tick carries on.
 //!
 //! What an operator reads and does with them, `jadpo schedules` and
 //! `jadpo why`, is [`watch`] (chunk 6.2b).
@@ -54,18 +59,14 @@ use std::task::Poll;
 
 use jadpo_std::schedule::{SchedulePlan, ScheduleRun, SchedulesPlan};
 
+use crate::budget::{Budget, Invocation};
 use crate::ctx::System;
 use crate::outbox::{failure_json, micros};
-use crate::race::{First, race};
-use crate::runner::{self, Deferred, Job, RUN_LIMIT_MS};
+use crate::runner::{self, Deferred, Job};
 use crate::{
     Clock, Ctx, Env, Executor, FaultKind, Frame, Host, LocalFuture, Outcome, SqlType, SqlValue,
     StoreError,
 };
-
-/// How long a run holds its schedule's lease: the 15-minute limit of one
-/// run and a minute, as a delivery's claim.
-pub const LEASE_MS: i64 = crate::outbox::LEASE_MS;
 /// How long a run record is kept after its run started.
 pub const RUNS_KEPT_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// How long an event every subscriber has had is kept after it was
@@ -87,29 +88,40 @@ pub const SKIPPED: &str = "skipped";
 pub const BY_HAND: &str = "by_hand";
 
 /// Work the tick runs after the schedules and the runtime's own sweeps,
-/// given the program, the host and the tick's time; what it leaves runs on
-/// the runner after it.
-pub type Hook = for<'a> fn(&'a dyn Executor, &'a dyn Host, i64) -> LocalFuture<'a, Vec<Deferred>>;
+/// given the program, the host, the tick's budget and its time; what it
+/// leaves runs on the runner after it, within the same budget.
+pub type Hook = for<'a, 'h> fn(
+    &'a dyn Executor,
+    &'a dyn Host,
+    &'a Budget<'h>,
+    i64,
+) -> LocalFuture<'a, Vec<Deferred>>;
 
 /// What the tick runs after its sweeps: batch runs whose runner's lease
 /// lapsed are picked up from where they committed (chunk 6.4), and runs
 /// that ended 30 days ago are deleted (chunk 6.6a).
 pub const HOOKS: &[Hook] = &[resume_batches, clean_batches];
 
-/// [`crate::batches::resume`] as a [`Hook`]: what the runs it picked up
-/// left for after.
-fn resume_batches<'a>(
+/// [`crate::batches::resume`] as a [`Hook`], within the tick's budget:
+/// what the runs it picked up left for after.
+fn resume_batches<'a, 'h>(
     executor: &'a dyn Executor,
     host: &'a dyn Host,
+    budget: &'a Budget<'h>,
     now: i64,
 ) -> LocalFuture<'a, Vec<Deferred>> {
-    Box::pin(async move { crate::batches::resume(executor, host, now).await.1 })
+    Box::pin(async move {
+        crate::batches::resume_within(executor, host, budget, now)
+            .await
+            .1
+    })
 }
 
 /// [`crate::batches::clean`] as a [`Hook`]: it leaves nothing for after.
-fn clean_batches<'a>(
+fn clean_batches<'a, 'h>(
     executor: &'a dyn Executor,
     host: &'a dyn Host,
+    _budget: &'a Budget<'h>,
     now: i64,
 ) -> LocalFuture<'a, Vec<Deferred>> {
     Box::pin(async move {
@@ -266,27 +278,33 @@ pub struct Deleted {
     pub runs: u64,
 }
 
-/// Runs one tick at `now` on `host`: the schedules due, the runtime's own
-/// sweeps, then [`HOOKS`]. What it did.
+/// Runs one tick at `now` on `host`, within the budget its host gives a
+/// tick (chunk 6.7): the schedules due, the runtime's own sweeps, then
+/// [`HOOKS`], each only while the budget isn't spent; the next tick
+/// carries on with what this one didn't reach. What it did.
 pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked {
     let mut ticked = Ticked::default();
     let Some(plan) = executor.schedules() else {
         return ticked;
     };
+    let budget = Budget::start(host, Invocation::Tick);
+    if budget.spent() {
+        return ticked;
+    }
     if let Some(store) = &plan.store
         && !plan.schedules.is_empty()
     {
         match due(plan, host, store, now).await {
             Ok(states) => {
-                let runs = states
-                    .into_iter()
-                    .map(|(schedule, state)| take(executor, host, store, schedule, state, now));
+                let runs = states.into_iter().map(|(schedule, state)| {
+                    take(executor, host, &budget, store, schedule, state, now)
+                });
                 let mut left = Vec::new();
                 for (due, more) in join_all(runs.collect()).await.into_iter().flatten() {
                     ticked.due.push(due);
                     left.extend(more);
                 }
-                ticked.deliveries = runner::run_deferred(executor, host, left).await;
+                ticked.deliveries = runner::run_within(executor, host, &budget, left).await;
             }
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
@@ -296,7 +314,10 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
         }
     }
     for store in &plan.stores {
-        match runner::sweep(executor, host, store, now).await {
+        if budget.spent() {
+            return ticked;
+        }
+        match runner::sweep_within(executor, host, &budget, store, now).await {
             Ok(outcomes) => ticked.deliveries.extend(outcomes),
             Err(error) => {
                 ticked.problems.push((store.clone(), error));
@@ -313,10 +334,13 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
         }
     }
     for hook in HOOKS {
-        let left = hook(executor, host, now).await;
+        if budget.spent() {
+            break;
+        }
+        let left = hook(executor, host, &budget, now).await;
         ticked
             .deliveries
-            .extend(runner::run_deferred(executor, host, left).await);
+            .extend(runner::run_within(executor, host, &budget, left).await);
     }
     ticked
 }
@@ -450,13 +474,15 @@ pub fn next_due(due: i64, every: i64, now: i64) -> i64 {
     due.saturating_add(passed.saturating_add(1).saturating_mul(every))
 }
 
-/// Takes `schedule` at `now`: its due run, then the run an operator asked
-/// for when the due run left the lease free (skipped as paused, or not
-/// due), so a tick runs a schedule once at most. How each went and the
-/// work its run left; nothing for one another instance took first.
+/// Takes `schedule` at `now` within `budget`: its due run, then the run an
+/// operator asked for when the due run left the lease free (skipped as
+/// paused, or not due), so a tick runs a schedule once at most. How each
+/// went and the work its run left; nothing for one another instance took
+/// first.
 async fn take(
     executor: &dyn Executor,
     host: &dyn Host,
+    budget: &Budget<'_>,
     store: &str,
     schedule: &SchedulePlan,
     state: State,
@@ -465,7 +491,7 @@ async fn take(
     let mut out = Vec::new();
     let mut free = !state.lease_until.is_some_and(|until| until > now);
     if state.next_run_at <= now {
-        let taken = take_due(executor, host, store, schedule, state, now).await;
+        let taken = take_due(executor, host, budget, store, schedule, state, now).await;
         free = free
             && matches!(
                 taken.as_ref().map(|(due, _)| &due.ran),
@@ -476,7 +502,7 @@ async fn take(
     if let Some(run) = state.requested
         && free
     {
-        out.extend(serve(executor, host, store, schedule, state, run, now).await);
+        out.extend(serve(executor, budget, store, schedule, state, run, now).await);
     }
     out
 }
@@ -488,39 +514,36 @@ async fn take(
 /// it finds it. `None` when another instance took it first.
 async fn serve(
     executor: &dyn Executor,
-    host: &dyn Host,
+    budget: &Budget<'_>,
     store: &str,
     schedule: &SchedulePlan,
     state: State,
     run: [u8; 16],
     now: i64,
 ) -> Option<(Due, Vec<Deferred>)> {
+    let host = budget.host();
     let database = host.database(store)?;
-    let claimed = database
-        .query_once(
-            CLAIM_REQUESTED,
-            &[
-                SqlValue::Text(schedule.key.clone()),
-                SqlValue::Uuid(run),
-                micros(now.saturating_add(LEASE_MS)),
-                micros(now),
-            ],
-        )
+    let lease = Leased {
+        key: schedule.key.clone(),
+        run,
+        take: Take::Requested,
+        succeeded: None,
+    };
+    crate::lease::claim(database, budget, &lease, now)
         .await
-        .ok()?;
-    claimed.first()?;
+        .ok()??;
     let env = Env {
         seed: None,
         clock: Clock::fixed(now),
     };
     let ctx = Ctx::new(executor.places(), host, env);
     let claimed = Claimed {
-        run,
+        lease,
         due_slot: now,
         lost: state.run.map(|lost| (lost, state.lease_until)),
         reason: Some(BY_HAND),
     };
-    Some(run_claimed(executor, host, database, schedule, claimed, ctx, now).await)
+    Some(run_claimed(executor, budget, database, schedule, claimed, ctx, now).await)
 }
 
 /// Takes due `schedule` at `now`: skipped while paused or leased, run
@@ -529,6 +552,7 @@ async fn serve(
 async fn take_due(
     executor: &dyn Executor,
     host: &dyn Host,
+    budget: &Budget<'_>,
     store: &str,
     schedule: &SchedulePlan,
     state: State,
@@ -589,30 +613,26 @@ async fn take_due(
             Vec::new(),
         ));
     }
-    let run = ctx.new_id()?;
-    let claimed = database
-        .query_once(
-            CLAIM,
-            &[
-                key,
-                micros(due_slot),
-                micros(next),
-                micros(now.saturating_add(LEASE_MS)),
-                SqlValue::Uuid(run),
-                micros(now),
-            ],
-        )
+    let lease = Leased {
+        key: schedule.key.clone(),
+        run: ctx.new_id()?,
+        take: Take::Due {
+            slot: due_slot,
+            next,
+        },
+        succeeded: None,
+    };
+    crate::lease::claim(database, budget, &lease, now)
         .await
-        .ok()?;
-    claimed.first()?;
+        .ok()??;
     let lost = state.run.map(|lost| (lost, state.lease_until));
     let claimed = Claimed {
-        run,
+        lease,
         due_slot,
         lost,
         reason: None,
     };
-    Some(run_claimed(executor, host, database, schedule, claimed, ctx, now).await)
+    Some(run_claimed(executor, budget, database, schedule, claimed, ctx, now).await)
 }
 
 /// Who ran `ctx` before [`test_run`] made it the system, to put back.
@@ -634,23 +654,80 @@ pub fn test_run_ended(ctx: &mut Ctx<'_>, saved: TestRun) {
     ctx.restore_runner(saved.0);
 }
 
-/// A run whose lease has been taken: its id, the due time it runs for, the
-/// run that held the lease before it and never ended, with that lease's
-/// end, and the reason its record gives (`by_hand` for an operator's).
-pub(crate) struct Claimed {
+/// A schedule's state row as a run leases it ([`crate::lease`]; chunk
+/// 6.7): taken for run `run` as `take` says, and given back once the run
+/// has ended, keeping `succeeded`, the start of a run that succeeded, as
+/// its last success.
+pub(crate) struct Leased {
+    pub key: String,
     pub run: [u8; 16],
+    pub take: Take,
+    pub succeeded: Option<i64>,
+}
+
+/// How a run takes its schedule's lease.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Take {
+    /// The tick's due run, moving its due time from `slot` to `next`.
+    Due { slot: i64, next: i64 },
+    /// The run an operator asked the tick for ([`CLAIM_REQUESTED`]).
+    Requested,
+    /// A run `jadpo schedules run` starts now ([`watch::CLAIM_NOW`]).
+    Now,
+}
+
+impl crate::lease::Leased for Leased {
+    fn claim(&self, now: i64, until: i64) -> (&'static str, Vec<SqlValue>) {
+        let key = SqlValue::Text(self.key.clone());
+        let run = SqlValue::Uuid(self.run);
+        match self.take {
+            Take::Due { slot, next } => (
+                CLAIM,
+                vec![
+                    key,
+                    micros(slot),
+                    micros(next),
+                    micros(until),
+                    run,
+                    micros(now),
+                ],
+            ),
+            Take::Requested => (CLAIM_REQUESTED, vec![key, run, micros(until), micros(now)]),
+            Take::Now => (watch::CLAIM_NOW, vec![key, micros(until), run, micros(now)]),
+        }
+    }
+
+    fn release(&self, _now: i64) -> (&'static str, Vec<SqlValue>) {
+        (
+            RELEASE,
+            vec![
+                SqlValue::Text(self.key.clone()),
+                SqlValue::Uuid(self.run),
+                self.succeeded
+                    .map_or(SqlValue::Null(SqlType::Timestamp), micros),
+            ],
+        )
+    }
+}
+
+/// A run whose lease has been taken: the lease, the due time it runs for,
+/// the run that held the lease before it and never ended, with that
+/// lease's end, and the reason its record gives (`by_hand` for an
+/// operator's).
+pub(crate) struct Claimed {
+    pub lease: Leased,
     pub due_slot: i64,
     pub lost: Option<([u8; 16], Option<i64>)>,
     pub reason: Option<&'static str>,
 }
 
-/// Runs `schedule` under the lease `claimed` holds, at `now`: its record
-/// written as running, the action run as the system with no tenant in a
-/// new trace, stopped at the limit, then its record ended and the lease
+/// Runs `schedule` under the lease `claimed` holds, at `now`, within
+/// `budget`: its record written as running, the action run as the system
+/// with no tenant in a new trace, then its record ended and the lease
 /// given back. How it went and the work its run left.
 pub(crate) async fn run_claimed(
     executor: &dyn Executor,
-    host: &dyn Host,
+    budget: &Budget<'_>,
     database: &dyn crate::Database,
     schedule: &SchedulePlan,
     claimed: Claimed,
@@ -658,11 +735,13 @@ pub(crate) async fn run_claimed(
     now: i64,
 ) -> (Due, Vec<Deferred>) {
     let Claimed {
-        run,
+        mut lease,
         due_slot,
         lost,
         reason,
     } = claimed;
+    let host = budget.host();
+    let run = lease.run;
     let key = SqlValue::Text(schedule.key.clone());
     // A run that held the lease before and never ended was lost with its
     // worker: its record says so.
@@ -705,10 +784,11 @@ pub(crate) async fn run_claimed(
         .await;
     ctx.set_trace(Some(trace));
     let (ran, purged) = match &schedule.run {
-        ScheduleRun::Action(callable) => {
-            (run_action(executor, host, &mut ctx, *callable).await, None)
-        }
-        ScheduleRun::Purge(entity) => run_purge(executor, host, entity, now).await,
+        ScheduleRun::Action(callable) => (
+            run_action(executor, budget, &mut ctx, *callable).await,
+            None,
+        ),
+        ScheduleRun::Purge(entity) => run_purge(executor, budget, entity, now).await,
     };
     // Measured on the monotonic clock from the run's own time, so the
     // record's duration is how long it took whatever the wall clock did;
@@ -748,13 +828,11 @@ pub(crate) async fn run_claimed(
             ],
         )
         .await;
-    let succeeded = match &ran {
-        Ran::Succeeded { .. } => micros(now),
-        _ => SqlValue::Null(SqlType::Timestamp),
+    lease.succeeded = match &ran {
+        Ran::Succeeded { .. } => Some(now),
+        _ => None,
     };
-    let _ = database
-        .query_once(RELEASE, &[key, SqlValue::Uuid(run), succeeded])
-        .await;
+    crate::lease::release(database, &lease, now).await;
     (
         Due {
             schedule: schedule.key.clone(),
@@ -772,27 +850,23 @@ pub(crate) async fn run_claimed(
 }
 
 /// A schedule's action, called with nothing as the system with no tenant
-/// in `ctx`, stopped at the limit of a run: how it went.
+/// in `ctx`, within `budget` as the runner runs any action: how it went.
+/// One its limit or its host's shutdown stopped ran out of time
+/// (`deadline_exceeded`), nothing it did kept.
 async fn run_action(
     executor: &dyn Executor,
-    host: &dyn Host,
+    budget: &Budget<'_>,
     ctx: &mut Ctx<'_>,
     callable: u32,
 ) -> Ran {
-    // Work that never waits gives the thread back as it checks this.
-    ctx.set_deadline(Some(RUN_LIMIT_MS));
     let job = Job {
         callable,
         args: Vec::new(),
         system: System { tenant: None },
     };
-    let limit = host.sleep(RUN_LIMIT_MS);
-    let outcome = match race(runner::as_system(executor, ctx, job), limit).await {
-        First::Left(outcome) if !ctx.out_of_time() => outcome,
-        First::Left(_) | First::Right(()) => {
-            ctx.abandon();
-            Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY))
-        }
+    let outcome = match runner::within_budget(executor, ctx, budget, job).await {
+        Ok(outcome) => outcome,
+        Err(_) => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
     };
     match &outcome {
         Outcome::Value(_) => Ran::Succeeded {
@@ -815,16 +889,18 @@ async fn run_action(
 
 /// The built-in purge of `entity` at `now` (area 5, "Lifecycle"; chunk
 /// 6.2c): the compiler's own operation, outside every action and policy,
-/// [`crate::PURGE_BATCHES`] batches at most, stopped at the limit of a
-/// run. How it went and what it deleted. A store that can't be reached is
-/// `unavailable`, as for an action; anything else the store refuses is an
-/// `internal_fault`, the batches before it staying deleted.
+/// [`crate::PURGE_BATCHES`] batches at most, run within `budget`: stopped
+/// at the limit of a run, or before the budget ends. How it went and what
+/// it deleted. A store that can't be reached is `unavailable`, as for an
+/// action; anything else the store refuses is an `internal_fault`, the
+/// batches before it staying deleted.
 async fn run_purge(
     executor: &dyn Executor,
-    host: &dyn Host,
+    budget: &Budget<'_>,
     entity: &str,
     now: i64,
 ) -> (Ran, Option<crate::purge::Purged>) {
+    let host = budget.host();
     let failed = |code: &str, kind: Option<&str>| Ran::Failed {
         code: code.to_string(),
         kind: kind.map(str::to_string),
@@ -833,13 +909,11 @@ async fn run_purge(
         return (failed("internal_fault", None), None);
     };
     let run = crate::purge::purge_after(host, plan, now, crate::PURGE_BATCHES, after.unwrap_or(0));
-    match race(run, host.sleep(RUN_LIMIT_MS)).await {
-        First::Left(Ok(purged)) => (Ran::Succeeded { events: 0 }, Some(purged)),
-        First::Left(Err(StoreError::Unavailable)) => {
-            (failed("unavailable", Some("unavailable")), None)
-        }
-        First::Left(Err(_)) => (failed("internal_fault", None), None),
-        First::Right(()) => (failed("deadline_exceeded", None), None),
+    match budget.run(run).await {
+        Ok(Ok(purged)) => (Ran::Succeeded { events: 0 }, Some(purged)),
+        Ok(Err(StoreError::Unavailable)) => (failed("unavailable", Some("unavailable")), None),
+        Ok(Err(_)) => (failed("internal_fault", None), None),
+        Err(_) => (failed("deadline_exceeded", None), None),
     }
 }
 

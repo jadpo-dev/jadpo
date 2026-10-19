@@ -14,15 +14,18 @@
 //!   (chunks 4.2 and 4.9), the system clock, rate limits counted in the
 //!   worker's own bounded memory (chunk 4.10), and the work a response
 //!   leaves, run as a task on the worker's thread once the response is
-//!   handed back (chunk 6.1a).
+//!   handed back (chunk 6.1a); it drains when the server stops, its
+//!   background work giving back what it holds (chunk 6.7).
 //! - [`http`]: the listener and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1).
+//! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
+//!   drains (chunk 6.7).
 //!
 //! Built so far: the runtime and the transport the PostgreSQL driver needs
 //! (chunk 3.1), serving HTTP (chunk 4.1), running a response's
-//! follow-on work in the background (chunk 6.1a), and the timer that
-//! ticks the runtime's schedules and sweeps (chunk 6.2). Local disk and
-//! inbox come with their areas.
+//! follow-on work in the background (chunk 6.1a), the timer that ticks
+//! the runtime's schedules and sweeps (chunk 6.2), and draining on a stop
+//! (chunk 6.7). Local disk and inbox come with their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -41,19 +44,24 @@
 
 pub mod http;
 pub mod passkeys;
+mod signals;
 #[cfg(feature = "test-authenticator")]
 pub mod test_authenticator;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
 use std::rc::Rc;
+use std::task::{Poll, Waker};
+use std::time::Duration;
 
 use jadpo_drivers::{Endpoint, Stream, Transport};
 use jadpo_runtime::{Allowed, Database, Host, LocalFuture, RateLimits, StoreError};
 use jadpo_std::http::RateLimit;
 use tokio::task::LocalSet;
+
+pub use signals::stop_signals;
 
 pub use jadpo_drivers::postgres::Postgres;
 
@@ -141,12 +149,65 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
 /// (area 16), and the work responses leave for after they are sent
 /// ([`Host::defer`]), which the HTTP worker takes as each response is
 /// handed back ([`NativeHost::take_deferred`]) and runs as tasks of its
-/// own on the worker's thread (chunk 6.1a).
+/// own on the worker's thread (chunk 6.1a). Each invocation of background
+/// work has the whole run limit as its budget, the runtime's default, and
+/// what it hands on runs as a task of its own; once the host drains
+/// ([`NativeHost::drain`]) its background work stops and gives back what
+/// it holds (chunk 6.7).
 #[derive(Debug, Default)]
 pub struct NativeHost {
     stores: BTreeMap<String, Postgres>,
     limits: RateLimits,
     deferred: Deferred,
+    background: Rc<Background>,
+}
+
+/// How long a host draining waits for its background work to give back
+/// what it holds before the process ends without it: each piece stops at
+/// once, so this only bounds the statements that give its claims back.
+pub const DRAIN_GRACE: Duration = Duration::from_secs(10);
+
+/// The background work a host has running (deferred work, ticks, work
+/// handed on), and whether it is shutting down (chunk 6.7).
+struct Background {
+    stop: tokio::sync::watch::Sender<bool>,
+    running: Cell<usize>,
+    /// Who waits for the last of it to end: a drain.
+    idle: RefCell<Vec<Waker>>,
+}
+
+impl Default for Background {
+    fn default() -> Background {
+        Background {
+            stop: tokio::sync::watch::channel(false).0,
+            running: Cell::new(0),
+            idle: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+impl std::fmt::Debug for Background {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Background")
+            .field("stopping", &*self.stop.borrow())
+            .field("running", &self.running.get())
+            .finish()
+    }
+}
+
+/// One piece of background work, counted until it ends or is dropped.
+struct Counted(Rc<Background>);
+
+impl Drop for Counted {
+    fn drop(&mut self) {
+        let left = self.0.running.get().saturating_sub(1);
+        self.0.running.set(left);
+        if left == 0 {
+            for waiting in self.0.idle.borrow_mut().drain(..) {
+                waiting.wake();
+            }
+        }
+    }
 }
 
 /// Work given to run after a response, until the worker takes it.
@@ -172,9 +233,45 @@ impl NativeHost {
 
     /// The work it was given to run after the response being answered,
     /// for whoever sends that response to run once it has been handed
-    /// back: the HTTP worker, as a task on its thread.
+    /// back: the HTTP worker, as a task on its thread. Each is counted as
+    /// the host's background work, which a drain waits for.
     pub fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
         std::mem::take(&mut *self.deferred.0.borrow_mut())
+            .into_iter()
+            .map(|work| self.track(work))
+            .collect()
+    }
+
+    /// `work` counted as the host's background work until it ends or is
+    /// dropped, so a drain waits for it: what the runtime's tick runs as.
+    pub fn track(&self, work: LocalFuture<'static, ()>) -> LocalFuture<'static, ()> {
+        let background = Rc::clone(&self.background);
+        background.running.set(background.running.get() + 1);
+        let counted = Counted(background);
+        Box::pin(async move {
+            let _counted = counted;
+            work.await;
+        })
+    }
+
+    /// Shuts its background work down (chunk 6.7): every budget it runs
+    /// within ends at once, so the piece each is running stops and gives
+    /// back what it held, and it takes nothing more. The future waits for
+    /// that work to end, at most [`DRAIN_GRACE`].
+    pub fn drain(&self) -> LocalFuture<'static, ()> {
+        self.background.stop.send_replace(true);
+        let background = Rc::clone(&self.background);
+        Box::pin(async move {
+            let idle = std::future::poll_fn(|cx| {
+                if background.running.get() == 0 {
+                    Poll::Ready(())
+                } else {
+                    background.idle.borrow_mut().push(cx.waker().clone());
+                    Poll::Pending
+                }
+            });
+            let _ = tokio::time::timeout(DRAIN_GRACE, idle).await;
+        })
     }
 }
 
@@ -195,6 +292,25 @@ impl Host for NativeHost {
     /// back ([`NativeHost::take_deferred`]).
     fn defer(&self, work: LocalFuture<'static, ()>) {
         self.deferred.0.borrow_mut().push(work);
+    }
+
+    /// A task of its own on this thread, counted as background work; none
+    /// once the host is draining, since what it would run waits in the
+    /// store for the next process. Called only from work this thread's
+    /// `LocalSet` runs, as everything a worker defers is.
+    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+        if *self.background.stop.borrow() {
+            return;
+        }
+        tokio::task::spawn_local(self.track(work));
+    }
+
+    /// Finishes once [`NativeHost::drain`] begins.
+    fn stopping(&self) -> LocalFuture<'_, ()> {
+        let mut stop = self.background.stop.subscribe();
+        Box::pin(async move {
+            let _ = stop.wait_for(|stopping| *stopping).await;
+        })
     }
 
     /// The process's environment.

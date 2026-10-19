@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
-use jadpo_runtime::runner::{Deferred, Job, settle};
+use jadpo_runtime::runner::{Job, as_system as run_as_system};
 use jadpo_runtime::{
     Caller, Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, System,
 };
@@ -411,9 +411,7 @@ async fn as_system(
         args,
         system: System { tenant },
     };
-    let mut ran = settle(program, &mut ctx, vec![Deferred::Run(job)]).await;
-    assert_eq!(ran.len(), 1);
-    ran.remove(0)
+    run_as_system(program, &mut ctx, job).await
 }
 
 fn value(outcome: Outcome) -> Value {

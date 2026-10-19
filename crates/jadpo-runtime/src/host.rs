@@ -285,6 +285,39 @@ pub trait Host {
         drop(work);
     }
 
+    /// How long one invocation of background work of kind `invocation`
+    /// may run on this host, in milliseconds from when it starts (chunk
+    /// 6.7): the runner takes no more work and gives back what it holds
+    /// before it ends, and every lease it takes lasts what is left of it
+    /// and a margin ([`crate::budget`], [`crate::lease`]). At most the
+    /// 15-minute limit of a run. Natively and under `jadpo dev`, and on a
+    /// host that says nothing, that limit; on Workers its platform's, 30
+    /// seconds after a response and 15 minutes for the cron (chunk 8.2).
+    fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
+        let _ = invocation;
+        crate::budget::GENEROUS_MS
+    }
+
+    /// A future that finishes once the host begins to shut down: natively
+    /// on SIGTERM, or ctrl-c under `jadpo dev` (chunk 6.7). Background
+    /// work's budget ends there: the piece running is stopped and what it
+    /// held given back as it was. A host that never shuts its work down so
+    /// gives one that never finishes.
+    fn stopping(&self) -> LocalFuture<'_, ()> {
+        Box::pin(std::future::pending())
+    }
+
+    /// Runs `work` as a fresh invocation, with a budget of its own: what an
+    /// invocation whose budget was spent hands on, a batch run carried on
+    /// and the work it hadn't reached (chunk 6.7). Natively a task of its
+    /// own on the worker's thread; on Workers a fresh invocation (chunk
+    /// 8.2). A host with nothing to run it on, as a test's or a tool's,
+    /// drops it: what it held was given back, and the minute tick takes it
+    /// up.
+    fn hand_on(&self, work: LocalFuture<'static, ()>) {
+        drop(work);
+    }
+
     /// The value of the environment variable `name` (area 10): the
     /// platform's environment, or on Workers a binding. `None` when it
     /// isn't set, or for a host with no environment, as a test's, whose
