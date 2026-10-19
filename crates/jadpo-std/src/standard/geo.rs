@@ -1094,18 +1094,18 @@ pub const FEATURE_ENTRY: StandardType = StandardType {
     shape: None,
     examples: examples(
         &[(
-            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Crumbs"}}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}"#,
             "",
         )],
         &[
             // An `id`, which properties carry; no geometry; properties
             // left out or `null`; another GeoJSON object; a foreign member.
-            r#"{"type":"Feature","id":7,"geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"}}"#,
-            r#"{"type":"Feature","geometry":null,"properties":{"name":"Crumbs"}}"#,
+            r#"{"type":"Feature","id":7,"geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Site A"}}"#,
+            r#"{"type":"Feature","geometry":null,"properties":{"name":"Site A"}}"#,
             r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]}}"#,
             r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":null}"#,
             r#"{"type":"Point","coordinates":[0,0]}"#,
-            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"},"title":"A shop"}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Site A"},"title":"A shop"}"#,
         ],
     ),
     release: FIRST_RELEASE,
@@ -1128,7 +1128,7 @@ pub const FEATURE_COLLECTION_ENTRY: StandardType = StandardType {
     examples: examples(
         &[
             (
-                r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Crumbs"}}]}"#,
+                r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}]}"#,
                 "",
             ),
             (r#"{"type":"FeatureCollection","features":[]}"#, ""),
@@ -1136,7 +1136,7 @@ pub const FEATURE_COLLECTION_ENTRY: StandardType = StandardType {
         &[
             r#"{"type":"FeatureCollection"}"#,
             r#"{"type":"FeatureCollection","features":[{"type":"Point","coordinates":[0,0]}]}"#,
-            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Crumbs"}}"#,
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{"name":"Site A"}}"#,
         ],
     ),
     release: FIRST_RELEASE,
