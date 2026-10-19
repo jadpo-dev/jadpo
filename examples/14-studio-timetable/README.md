@@ -50,4 +50,4 @@ target/release/jadpo fmt --check examples/14-studio-timetable
   <!-- try {"file": "domains/studio/actions/show_membership.test.jadpo", "replace": "text.format(membership.member_for, locale: Locale.en_gb)", "with": "text.format(membership.member_for, locale: Locale.de_de)", "check": ["type.locale_unsupported"]} -->
 - In `count_bookings.jadpo`, start the week on `Weekday.sunday`. The counting test fails with `test.assertion_failed`: the Monday booking is in last week now.
   <!-- try {"file": "domains/studio/actions/count_bookings.jadpo", "replace": "starts_on: Weekday.monday", "with": "starts_on: Weekday.sunday", "test": ["test.assertion_failed"], "failed": 1} -->
-- Next, [15-parcel-tracker](../15-parcel-tracker/README.md) words its messages in each language.
+- Then read [15-parcel-tracker](../15-parcel-tracker/README.md), which words its messages in each language.

@@ -55,6 +55,10 @@ README saying what it teaches, how to run it and what to try next.
     times a rule repeats on, opening hours, ranges of time, a day's,
     week's, month's and year's bounds, calendar arithmetic and periods,
     the night the clocks change, and times shown to people.
+15. [15-parcel-tracker/](15-parcel-tracker/README.md): translations:
+    messages, a language file per locale, plural forms, enums with
+    wording, a message two domains share, the reader's language and
+    direction, Jadpo's own text and a language still in progress.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

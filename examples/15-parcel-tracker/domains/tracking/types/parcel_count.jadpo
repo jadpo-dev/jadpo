@@ -1,0 +1,5 @@
+/// How many parcels an order was sent in.
+type ParcelCount = Int {
+    min: 0
+    max: 1000
+}

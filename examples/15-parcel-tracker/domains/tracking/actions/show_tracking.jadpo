@@ -1,0 +1,28 @@
+// Each message is one typed call, `translations.<domain>.<message>(...)`,
+// taking its fields by name and the locale, and giving
+// `PresentationText`: text to show, never to store. An enum with wording
+// is called the same way, with its value.
+
+use tracking/types { ArrivalDay, BrowserLanguages, ParcelCount, ParcelStatus, TrackingPage }
+
+/// The tracking page, in the language the reader's browser asks for, out
+/// of the ones the tracker writes in.
+action show_tracking(
+    status: ParcelStatus,
+    parcels: ParcelCount,
+    arriving: ArrivalDay,
+    languages: BrowserLanguages?
+) -> TrackingPage {
+    var reader_pick: Locale = locale.from_accept_language(languages)
+    return TrackingPage {
+        page_locale: reader_pick
+        reading_direction: locale.direction(reader_pick)
+        status: translations.tracking.parcel_status(status, locale: reader_pick)
+        parcels: translations.tracking.parcels_on_the_way(parcels: parcels, locale: reader_pick)
+        estimate: translations.tracking.delivery_estimate(
+            day: text.format(arriving, locale: reader_pick, format: TimeFormat.date_long),
+            locale: reader_pick
+        )
+        help_text: translations.shared.help_line(phone: "0800 123 4567", locale: reader_pick)
+    }
+}

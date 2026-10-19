@@ -1,0 +1,2 @@
+/// The day a parcel should arrive.
+type ArrivalDay = CalendarDate {}

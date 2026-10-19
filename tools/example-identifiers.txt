@@ -30,6 +30,7 @@ admin_orders
 adults
 after_fifth
 after_five
+aftercare
 afternoon
 afternoon_slot
 afterwards
@@ -71,6 +72,7 @@ approved
 archive_todo
 archived
 archived_at
+arrival_day
 arrivals
 arrived_at
 article
@@ -470,6 +472,7 @@ delivers
 delivers_to
 delivery
 delivery_cost
+delivery_estimate
 delivery_fee
 delivery_id
 delivery_note
@@ -562,6 +565,7 @@ end_block
 end_of_day
 end_of_january
 end_shift
+english_page
 enrol
 enrolled
 entered
@@ -570,6 +574,7 @@ entrant
 entrants
 entry_count
 entry_id
+estimate
 euro_price
 euros
 euros_to_pounds
@@ -646,6 +651,7 @@ from_provider
 gap_days
 generally_available
 genuine
+german_page
 give_note
 given_rating
 glucose_for_us_lab
@@ -691,9 +697,13 @@ heater_power
 heaviest
 heavy
 heavy_ingredients
+held_at_depot
 held_document
+held_parcel
 hello
 help_article
+help_line
+help_text
 hide_todo
 higher
 hit
@@ -735,6 +745,7 @@ in_review
 in_shop
 in_stock
 in_store
+in_transit
 in_view
 in_yen
 incoming_call
@@ -812,6 +823,7 @@ kitchen_busy
 kitchen_staff
 lab_certificate
 label_at
+label_created
 label_jar
 label_line
 label_weight
@@ -1157,6 +1169,7 @@ order_view
 ordered_at
 ordered_quantity
 ordinary_start
+out_for_delivery
 out_of_stock
 outbound_signature
 outcome_label
@@ -1196,6 +1209,7 @@ packer
 page_colour
 page_count
 page_link
+page_locale
 page_todos
 paid
 paid_by_faster_payments
@@ -1209,8 +1223,10 @@ parcel_held
 parcel_in_inches
 parcel_label
 parcel_size
+parcel_status
 parcel_to
 parcels
+parcels_on_the_way
 paris_price
 partner
 partner_added
@@ -1299,6 +1315,7 @@ platform_role
 platform_staff
 plugin_release
 plugin_version
+polish
 pong
 portion_count
 portions
@@ -1399,6 +1416,7 @@ reader_day
 reader_local_day
 reader_locale
 reader_pick
+reading_direction
 receipt
 receipt_for
 receipt_from
@@ -1509,6 +1527,9 @@ retreat_night
 retreat_start
 retreat_year
 return_book
+return_days
+return_notice
+return_window
 returned_at
 review_stage
 reviewer_id
@@ -1648,7 +1669,9 @@ show_membership
 show_note
 show_on_menu
 show_placed
+show_returns
 show_sent
+show_tracking
 shown_at_desk
 shown_publicly
 sign_in_check
@@ -1862,6 +1885,7 @@ total_weight
 totals_since
 touch
 town
+tracking_page
 trade_term
 tray
 tray_capacity

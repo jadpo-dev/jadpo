@@ -1,0 +1,12 @@
+// A second domain: its own message from its own `translations/`, and the
+// shared help line every page carries.
+
+use aftercare/types { ReturnDays, ReturnNotice }
+
+/// What the returns page says, in `reader_locale`.
+action show_returns(days: ReturnDays, reader_locale: Locale) -> ReturnNotice {
+    return ReturnNotice {
+        return_window: translations.aftercare.return_window(days: days, locale: reader_locale)
+        help_text: translations.shared.help_line(phone: "0800 123 4567", locale: reader_locale)
+    }
+}

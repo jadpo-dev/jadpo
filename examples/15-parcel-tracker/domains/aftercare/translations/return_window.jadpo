@@ -1,0 +1,4 @@
+/// How long a customer has to send an order back, on the returns page.
+type ReturnWindow = Message {
+    days: PluralCount
+}

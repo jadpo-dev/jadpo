@@ -1,0 +1,6 @@
+translations {
+    return_window: {
+        one: "Sie haben {days} Tag Zeit für die Rücksendung."
+        other: "Sie haben {days} Tage Zeit für die Rücksendung."
+    }
+}

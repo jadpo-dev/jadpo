@@ -1,0 +1,5 @@
+/// What a customer is told about sending something back.
+type ReturnNotice = Output {
+    return_window: PresentationText
+    help_text: PresentationText
+}

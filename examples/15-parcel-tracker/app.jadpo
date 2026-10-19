@@ -1,0 +1,10 @@
+// The languages the tracker writes in. Polish is still being translated:
+// listed in `in_progress:`, it falls back to the default where its
+// wording is missing, and every other supported locale must be complete.
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de, Locale.ar_eg, Locale.pl_pl]
+    in_progress: [Locale.pl_pl]
+}

@@ -64,4 +64,4 @@ cd examples/13-lettings-office && ../../target/release/jadpo config check
   <!-- try {"file": "domains/lettings/actions/acknowledge_payment.jadpo", "replace": "WebhookBody(json.write(payment))", "with": "WebhookBody(json.write(config.payments_webhook_secret))", "check": ["configuration.secret_flow", "type.mismatch"]} -->
 - In `contractor_visit.test.jadpo`, set `urgent_repair_within` to `45d` in the last test's `config:`. `jadpo check` reports the rule it breaks: a test's value is checked as a `default:` is, against `RepairWindow`'s `max: 30d`.
   <!-- try {"file": "domains/lettings/actions/contractor_visit.test.jadpo", "replace": "urgent_repair_within: 4h", "with": "urgent_repair_within: 45d", "check": ["configuration.default_invalid"]} -->
-- Next, [14-studio-timetable](../14-studio-timetable/README.md) works with time.
+- Then read [14-studio-timetable](../14-studio-timetable/README.md), which works with time.

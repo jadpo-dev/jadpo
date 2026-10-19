@@ -1,0 +1,4 @@
+/// The languages a browser asks for, from its `Accept-Language` header.
+type BrowserLanguages = Text {
+    max_length: 500
+}

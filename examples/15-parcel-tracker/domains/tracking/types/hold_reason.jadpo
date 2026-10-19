@@ -1,0 +1,4 @@
+/// Why a parcel is being held.
+type HoldReason = Text {
+    max_length: 80
+}

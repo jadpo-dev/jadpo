@@ -267,11 +267,19 @@ fn built() -> BTreeSet<String> {
     out.extend(COPY_LINES.iter().map(|line| format!("copy line {line}")));
     out.insert("copy line written field replaces a copied one".to_string());
     // The standard library: every operation, every value of the enums its
-    // operations take, and the generated namespaces' built members.
+    // operations take or give, and the generated namespaces' built members.
+    // An enum an operation gives counts too (`locale.direction`'s
+    // `TextDirection`): a program builds or matches its values.
     for operation in OPERATIONS {
         out.insert(format!("std {}", operation.qualified()));
-        for param in operation.params {
-            if let jadpo_std::Kind::Enum(name) = param.kind {
+        let result = std::iter::once(operation.result);
+        for kind in operation
+            .params
+            .iter()
+            .map(|param| param.kind)
+            .chain(result)
+        {
+            if let jadpo_std::Kind::Enum(name) = kind {
                 let values = jadpo_std::enums()
                     .into_iter()
                     .find(|(enum_name, _)| *enum_name == name)
@@ -877,6 +885,14 @@ fn body_features(
                         "match value"
                     });
                     for arm in arms {
+                        // Matching a standard-library enum's value, such as
+                        // `PasswordCheck.correct`, uses it as building one does.
+                        if let Pattern::Variant(key) = &arm.pattern {
+                            let owner = key.name().split('.').next().unwrap_or("");
+                            if jadpo_std::enums().iter().any(|(name, _)| *name == owner) {
+                                std.insert(format!("std {}", key.name()));
+                            }
+                        }
                         out.insert(match &arm.pattern {
                             Pattern::Variant(_) if arm.binding.is_some() => {
                                 "pattern variant with binding"
@@ -1107,6 +1123,13 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 match base {
                     Base::Refines(TypeRef::Node(_)) => {
                         used.insert("base refinement of a named type".to_string());
+                    }
+                    // A declared time format: the graph has no base of its
+                    // own for `TimeFormat`, so keeps it as written.
+                    Base::Refines(TypeRef::Written(written))
+                        if BASES.contains(&written.as_str()) =>
+                    {
+                        used.insert(format!("base {written}"));
                     }
                     Base::Refines(parent) => shapes(parent, &mut used),
                     other => {

@@ -1,0 +1,5 @@
+/// How many days a customer has to send something back.
+type ReturnDays = Int {
+    min: 1
+    max: 365
+}

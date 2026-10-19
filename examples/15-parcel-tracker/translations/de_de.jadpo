@@ -1,0 +1,12 @@
+// The app's wording of text Jadpo itself writes, grouped by whose text
+// it is. Jadpo ships English; every other complete locale words what the
+// app's switched-on features show: here, `TextDirection`, since the app
+// declares its locales.
+translations {
+    jadpo: {
+        text_direction: {
+            left_to_right: "ltr"
+            right_to_left: "rtl"
+        }
+    }
+}

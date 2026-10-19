@@ -1,0 +1,4 @@
+/// How many parcels are on their way, at the top of the tracking page.
+type ParcelsOnTheWay = Message {
+    parcels: PluralCount
+}
