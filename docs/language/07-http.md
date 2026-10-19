@@ -1127,6 +1127,46 @@ error: `POST /memos` has no `output:`
 check failed: 1 error, 1 file
 ```
 
+What returns `Unit` sends nothing, so the route answers 204 rather than
+naming an `output:` (Phase 6 review, chunk 6.6b):
+
+```jadpo check project=e-output-required-unit expect=route.output_required
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+action check_memo(input: AddMemo) -> Unit {
+    assert input.text == input.text
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST /checks {
+        input: AddMemo
+        run: check_memo(input)
+    }
+}
+```
+
+```text output
+error: `POST /memos/checks` has no `output:`
+ --> main.jadpo:16:5
+   |
+16 |     POST /checks {
+   |     ^^^^^^^^^^^^ no `output:`
+  reason: A route shows its contract without opening what it runs: `check_memo` returns `Unit`, so the route sends nothing, which `status: SuccessStatus.no_content` says, answering 204 with no body.
+  next: Add `status: SuccessStatus.no_content` (agent)
+  rule: route.output_required
+  help: docs/language/07-http.html#route-output-required
+
+check failed: 1 error, 1 file
+```
+
 ### `route.output_mismatch`
 
 `output:` is exactly what the route runs returns:

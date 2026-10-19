@@ -1116,6 +1116,16 @@ impl Reader<'_> {
             return None;
         }
         let type_span = self.span(&written);
+        // Only the runtime builds a batch type, so no request carries one
+        // (area 12; chunk 6.6b).
+        if let Some(batch) = crate::types::decl::holds_batch(self.lookup, &ty, &mut Vec::new()) {
+            self.out.push(crate::types::decl::batch_input(
+                &format!("Placeholder `{name}`"),
+                batch,
+                type_span,
+            ));
+            return None;
+        }
         let structure = self.lookup.structure(&ty);
         let named = matches!(ty, Ty::Named(_) | Ty::Field(..));
         let scalar = matches!(&structure, Ty::Prim(prim) if !sent_as_object(*prim));
@@ -1353,6 +1363,19 @@ impl Reader<'_> {
                     return None;
                 }
             }
+            // What returns `Unit` sends nothing: the route answers 204,
+            // since no route sends `Unit` (Phase 6 review).
+            (_, None) if sig.result == Ty::Prim(Prim::Unit) => {
+                self.out.push(
+                    Diagnostic::new(&rule::ROUTE_OUTPUT_REQUIRED, format!("`{label}` has no `output:`"))
+                        .at(head_span.clone(), "no `output:`")
+                        .reason(format!(
+                            "A route shows its contract without opening what it runs: `{run_name}` returns `Unit`, so the route sends nothing, which `status: SuccessStatus.no_content` says, answering 204 with no body."
+                        ))
+                        .next("Add `status: SuccessStatus.no_content`"),
+                );
+                return None;
+            }
             (_, None) => {
                 self.out.push(
                     Diagnostic::new(&rule::ROUTE_OUTPUT_REQUIRED, format!("`{label}` has no `output:`"))
@@ -1500,6 +1523,12 @@ impl Reader<'_> {
                 .unwrap_or_default();
             for field in fields {
                 if field.header.is_some() || field.declared.has_error() {
+                    continue;
+                }
+                // A batch type is reported where the input declares it.
+                if crate::types::decl::holds_batch(self.lookup, &field.declared, &mut Vec::new())
+                    .is_some()
+                {
                     continue;
                 }
                 if !self.query_value(&field.declared) {

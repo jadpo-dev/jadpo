@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "Chosen in chunk 6.4d"). "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "Chosen in chunk 6.4d"). Built in chunk 6.6b: every action background work reaches checked against its own line under `actions:`, a listed action's line deciding its own body's writes wherever it is called from, and what `batches.status` gives held to what decides every batch's failures (area 12, "Chosen in chunk 6.6b"). "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -2229,6 +2229,69 @@ error: `send_due` runs as the system, which only `Access.public` lets update `Re
 check failed: 1 error, 1 file
 ```
 
+Every action background work reaches lets the system in by its own line
+under `actions:`, wherever it is called from, as it does a request, so a
+line naming only `Access.public` is refused however deep (chunk 6.6b):
+
+```jadpo check project=e-system-grant-missing-line expect=policy.system_grant_missing
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.authenticated, Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action mark_sent(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt mark_sent(reminder_id)
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(event.reminder_id)
+}
+
+policy {
+    actions: {
+        mark_sent: [Access.public]
+    }
+}
+```
+
+```text output
+error: `send_due` runs as the system, which only `Access.public` lets call `mark_sent`
+ --> main.jadpo:33:12
+   |
+33 | subscriber send_due {
+   |            ^^^^^^^^ runs as `Access.system`
+  reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `mark_sent`'s line under `actions:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `mark_sent`'s line under `actions:` (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
+
 ### `policy.public_grant_missing`
 
 A route anyone may call reaches an entity that does not grant `Access.public`:
@@ -3701,4 +3764,5 @@ Not yet:
 | User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |
 | Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
 | Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |
+| Lines of the actions background work calls (chosen in chunk 6.6b) | Every action a schedule, a subscriber or a batch reaches, itself or through another, is checked against its own line under `actions:`, so a line naming `Access.public` and not `Access.system` is `policy.system_grant_missing` however deep; a listed action's line decides the creates, updates, deletes and transitions of its own body wherever it is called from, as the plan builds them, for a route as for background work (Phase 6 review: before, only the action run was read for its line, and what it called used its entities' grants) | 2026-10-19 |
 | The tenant background work names (Phase 6 review) | The tenant id an event or a batch run names must come from a record of that tenant the action read or wrote under its caller's policy, proved from the provenance 6.1c tracks; otherwise `policy.event_tenant_unproved`, so a caller can't aim system work at a tenant they don't belong to (Richard, as recommended) | 2026-10-19 |

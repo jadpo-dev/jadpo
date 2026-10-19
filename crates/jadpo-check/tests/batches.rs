@@ -718,3 +718,363 @@ fn a_reference_to_the_tenant_names_a_runs_tenant() {
         }
     );
 }
+
+// The Phase 6 review's policy proofs (chunk 6.6b).
+
+/// A diary application: each writer's diaries hold a secret only its
+/// owner and background work read, and a board anyone signed in reads.
+/// `changes` replaces text in the files, by path.
+fn diaries(changes: &[(&str, &str, &str)]) -> Vec<String> {
+    let mut files: Vec<(String, String)> = DIARIES
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect();
+    for (path, from, to) in changes {
+        match files.iter_mut().find(|(at, _)| at == path) {
+            Some(file) => {
+                assert!(file.1.contains(from), "{path} has no {from:?}");
+                file.1 = file.1.replace(from, to);
+            }
+            None => files.push((path.to_string(), to.to_string())),
+        }
+    }
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|line| !line.contains("import.unused"))
+        .collect()
+}
+
+const DIARIES: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "authentication.jadpo",
+        "use journal/entities { Writer }\n\nprincipal {\n    user: {\n        subject: Writer.handle\n    }\n}\n\nauthentication {\n    browser_session: {\n        cookie: \"journal_session\"\n    }\n}\n",
+    ),
+    (
+        "domains/journal/types/line.jadpo",
+        "type Line = Text {\n    min_length: 1\n    max_length: 200\n}\n",
+    ),
+    (
+        "domains/journal/types/diary_page.jadpo",
+        "type DiaryPage = Input {\n    page_size: PageSize {\n        default: 25\n    }\n    after: PageCursor {\n        optional: true\n    }\n}\n",
+    ),
+    (
+        "domains/journal/entities/writer.jadpo",
+        "use journal/types { Line }\n\nentity Writer {\n    id: Uuid\n    handle: Line {\n        unique: true\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [id]\n    }\n}\n",
+    ),
+    (
+        // Only its owner, and background work, read a diary's secret.
+        "domains/journal/entities/diary.jadpo",
+        "use journal/entities { Writer }\nuse journal/types { Line }\n\nentity Diary {\n    id: Uuid\n    owner_id: Writer.id {\n        on_delete: OnDelete.cascade\n    }\n    title: Line\n    secret: Line {\n        policy: {\n            read: [owner_id, Access.system]\n        }\n    }\n\n    policy: {\n        create: [owner_id]\n        read: [Access.authenticated, Access.system]\n    }\n}\n",
+    ),
+    (
+        // Anyone signed in reads the board.
+        "domains/journal/entities/board.jadpo",
+        "use journal/types { Line }\n\nentity Board {\n    id: Uuid\n    text: Line\n\n    policy: {\n        create: [Access.system]\n        read: [Access.authenticated, Access.system]\n    }\n}\n",
+    ),
+    (
+        "domains/journal/queries/diaries.jadpo",
+        "use journal/entities { Diary }\nuse journal/types { DiaryPage }\n\nquery diaries(page: DiaryPage) -> Page<Diary> {\n    from: Diary\n    order: [Diary.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n",
+    ),
+    (
+        "domains/journal/actions/post_item.jadpo",
+        "use journal/entities { Board, Diary }\n\naction post_item(diary: Diary) -> Unit {\n    var posted: Board = Board.create {\n        set: {\n            text: diary.title\n        }\n    }\n    assert posted.text == posted.text\n}\n",
+    ),
+    (
+        "domains/journal/actions/post_all.jadpo",
+        "use journal/actions { post_item }\nuse journal/queries { diaries }\nuse journal/types { DiaryPage }\n\naction post_all(page: DiaryPage) -> BatchRun {\n    return batches.each(\n        from: diaries(page),\n        each: diary -> post_item(diary)\n    )\n}\n",
+    ),
+];
+
+const POST_ITEM: &str = "domains/journal/actions/post_item.jadpo";
+
+#[test]
+fn a_runs_item_written_where_others_read_it_is_refused() {
+    // A diary's title anyone signed in reads may go on the board.
+    assert_eq!(diaries(&[]), Vec::<String>::new());
+    // Its secret, which only its owner reads, may not: each item is one
+    // of the diaries `from:` finds, followed into what `each:`'s action
+    // stores, as a call's arguments are.
+    let secret = (POST_ITEM, "text: diary.title", "text: diary.secret");
+    assert_eq!(
+        diaries(&[secret]),
+        [
+            "domains/journal/actions/post_all.jadpo policy.output_field_unproved: `post_all` passes `Diary.secret` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it"
+        ]
+    );
+    // The same when the secret is the item's field `each:` passes, or
+    // when the whole diary is its owner's alone.
+    let post_text = (
+        "domains/journal/actions/post_text.jadpo",
+        "",
+        "use journal/entities { Board }\nuse journal/types { Line }\n\naction post_text(line: Line) -> Unit {\n    var posted: Board = Board.create {\n        set: {\n            text: line\n        }\n    }\n    assert posted.text == posted.text\n}\n",
+    );
+    let each = (
+        "domains/journal/actions/post_all.jadpo",
+        "use journal/actions { post_item }\n",
+        "use journal/actions { post_item, post_text }\n",
+    );
+    let field = (
+        "domains/journal/actions/post_all.jadpo",
+        "each: diary -> post_item(diary)",
+        "each: diary -> post_text(diary.secret)",
+    );
+    assert_eq!(
+        diaries(&[post_text, each, field]),
+        [
+            "domains/journal/actions/post_all.jadpo policy.output_field_unproved: `post_all` passes `Diary.secret` to `post_text`, which stores it in `Board.text`, though not everyone who may read `text` may read it"
+        ]
+    );
+    let owners = (
+        "domains/journal/entities/diary.jadpo",
+        "read: [Access.authenticated, Access.system]",
+        "read: [owner_id, Access.system]",
+    );
+    assert_eq!(
+        diaries(&[owners]),
+        [
+            "domains/journal/actions/post_all.jadpo policy.output_field_unproved: `post_all` passes `Diary.title` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it"
+        ]
+    );
+}
+
+/// A shop where shoppers sign in, with `routes` as its routes file and
+/// `types` among its types: the problems, each with its message.
+fn requested(types: &str, routes: &str) -> Vec<String> {
+    let auth = (
+        "authentication.jadpo",
+        "use shop/entities { Shopper }\n\nprincipal {\n    user: {\n        subject: Shopper.handle\n    }\n}\n\nauthentication {\n    browser_session: {\n        cookie: \"shop_session\"\n    }\n}\n",
+    );
+    let shopper = (
+        "domains/shop/entities/shopper.jadpo",
+        "use shop/types { ShelfCode }\n\nentity Shopper {\n    id: Uuid\n    handle: ShelfCode {\n        unique: true\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [id]\n    }\n}\n",
+    );
+    let types = format!("use shop/entities {{ Sweep }}\nuse shop/types {{ ShelfCode }}\n\n{types}");
+    let halted = (
+        "domains/shop/types/halted.jadpo",
+        "use shop/types { ShelfCode }\n\ntype Halted = Output {\n    code: ShelfCode\n}\n",
+    );
+    // Neither reaches an entity, so its line says who may call it.
+    let policy = (
+        "policy.jadpo",
+        "use shop\n\npolicy {\n    actions: {\n        shop.halt: [Access.authenticated]\n        shop.take: [Access.authenticated]\n    }\n}\n",
+    );
+    let halt = (
+        "domains/shop/actions/halt.jadpo",
+        "use shop/types { Halted }\n\naction halt(run: BatchRun) -> Halted {\n    batches.cancel(run)\n    return Halted {\n        code: \"halted\"\n    }\n}\n",
+    );
+    let take = (
+        "domains/shop/actions/take.jadpo",
+        "use shop/types { Asked, Halted }\n\naction take(asked: Asked) -> Halted {\n    return Halted {\n        code: \"taken\"\n    }\n}\n",
+    );
+    let stop_kept = (
+        "domains/shop/actions/stop_kept.jadpo",
+        "use shop/entities { Sweep, SweepNotFound }\n\naction stop_kept(sweep_id: Sweep.id) fails SweepNotFound -> Unit {\n    var sweep: Sweep = attempt Sweep.get(sweep_id)\n    match sweep.run {\n        some(run) -> {\n            batches.cancel(run)\n        }\n        none -> {}\n    }\n}\n",
+    );
+    let routes = format!(
+        "use shop/actions {{ halt, stop_kept, take }}\nuse shop/entities {{ Sweep }}\nuse shop/types {{ Asked, Halted }}\n\nroutes Runs {{\n    prefix: /runs\n\n    {routes}\n}}\n"
+    );
+    let db = jadpo_db::Database::default();
+    let mut files: Vec<(&str, &str)> = BASE.to_vec();
+    let start = format!("{IMPORTS}{GOOD}");
+    files.extend([
+        auth,
+        shopper,
+        halt,
+        halted,
+        policy,
+        take,
+        stop_kept,
+        SEE_PAGE,
+        ("domains/shop/actions/start.jadpo", start.as_str()),
+        ("domains/shop/types/asked.jadpo", types.as_str()),
+        ("domains/shop/routes/runs.jadpo", routes.as_str()),
+    ]);
+    let project = support::project(&db, Layout::Project, &files);
+    jadpo_check::check(&db, project)
+        .iter()
+        .filter(|d| !matches!(d.rule.id, "import.unused" | "record.out_of_date"))
+        .map(|d| format!("{} {}", d.rule.id, d.message))
+        .collect()
+}
+
+const ASKED: &str = "type Asked = Input {\n    run: BatchRun\n}\n";
+
+const POST_HALT: &str =
+    "POST / {\n        input: Asked\n        output: Halted\n        run: halt(input.run)\n    }";
+
+#[test]
+fn no_request_carries_a_batch_type() {
+    // A run comes from `batches.each` or a field the caller may read
+    // (chunk 6.6b): in a body, a query string or a placeholder, anyone
+    // could name any run, and read or stop it.
+    assert_eq!(
+        requested(ASKED, POST_HALT),
+        ["type.batch_input `Asked.run` holds a `BatchRun`, which no request carries"]
+    );
+    let query = "DELETE / {\n        input: Asked\n        output: Halted\n        run: halt(input.run)\n    }";
+    assert_eq!(
+        requested(ASKED, query),
+        ["type.batch_input `Asked.run` holds a `BatchRun`, which no request carries"]
+    );
+    let placeholder = "POST /{run: BatchRun} {\n        input: Asked\n        output: Halted\n        run: halt(run)\n    }";
+    let unused = "type Asked = Input {\n    note: ShelfCode\n}\n";
+    assert_eq!(
+        requested(unused, placeholder),
+        ["type.batch_input Placeholder `run` holds a `BatchRun`, which no request carries"]
+    );
+}
+
+#[test]
+fn a_batch_type_anywhere_in_an_input_is_refused() {
+    for (field, batch) in [
+        ("runs: List<BatchRun>", "BatchRun"),
+        ("run: BatchRun?", "BatchRun"),
+        ("at: BatchProgress", "BatchProgress"),
+        ("summary: ImportSummary", "ImportSummary"),
+        ("problems: List<RowProblem>", "RowProblem"),
+        // An entity's field holding one, and an object holding one.
+        ("run: Sweep.run", "BatchRun"),
+        ("kept: Kept", "BatchRun"),
+        // A type built on one.
+        ("run: KeptRun", "BatchRun"),
+    ] {
+        let types = format!(
+            "type Kept = Object {{\n    run: BatchRun\n}}\n\ntype KeptRun = BatchRun {{}}\n\ntype Asked = Input {{\n    {field}\n}}\n"
+        );
+        let route = "POST / {\n        input: Asked\n        output: Halted\n        run: take(input)\n    }";
+        let found = requested(&types, route);
+        let name = field.split(':').next().unwrap_or_default();
+        assert!(
+            found.contains(&format!(
+                "type.batch_input `Asked.{name}` holds a `{batch}`, which no request carries"
+            )),
+            "{field}: {found:?}"
+        );
+    }
+}
+
+#[test]
+fn a_batch_types_field_names_no_type() {
+    // A run's `id` is read from the run; named as a type it would stand
+    // for nothing, and let a request's value through where a run goes.
+    let types = "type Asked = Input {\n    run: BatchRun.id\n}\n";
+    assert_eq!(
+        requested(types, POST_HALT),
+        ["type.unknown_field `BatchRun.id` isn't a type"]
+    );
+    let types = "type Asked = Input {\n    run: InstantRange.begin\n}\n";
+    assert_eq!(
+        requested(types, POST_HALT),
+        ["type.unknown_field `InstantRange` has no field `begin`"]
+    );
+}
+
+#[test]
+fn a_run_kept_where_the_caller_may_read_it_is_stopped() {
+    // The run a sweep keeps: `stop_kept` finds the sweep under its
+    // grants, and stops the run it holds.
+    let route = "POST /{sweep_id: Sweep.id}/stop {\n        status: SuccessStatus.no_content\n        run: stop_kept(sweep_id)\n    }";
+    let types = "type Asked = Input {\n    note: ShelfCode\n}\n";
+    assert_eq!(requested(types, route), Vec::<String>::new());
+}
+
+/// The diary application with `run_count`, which tells its caller how
+/// many diaries a run couldn't check, each item's `check_item` refusing a
+/// diary whose `field` is a draft; `listed`, with a line letting in only
+/// those signed in.
+fn counted(field: &str, listed: bool) -> Vec<String> {
+    let draft = (
+        "domains/journal/failures/draft.jadpo",
+        "",
+        "type Draft = Failure {\n    kind: FailureKind.rejected\n    message: \"This diary is a draft.\"\n}\n",
+    );
+    let check_item = format!(
+        "use journal/entities {{ Diary }}\nuse journal/failures {{ Draft }}\n\naction check_item(diary: Diary) fails Draft -> Unit {{\n    if (diary.{field} == \"draft\") {{\n        reject Draft {{}}\n    }}\n}}\n"
+    );
+    let check_item = (
+        "domains/journal/actions/check_item.jadpo",
+        "",
+        check_item.as_str(),
+    );
+    let each = (
+        "domains/journal/actions/post_all.jadpo",
+        "use journal/actions { post_item }\n",
+        "use journal/actions { check_item }\n",
+    );
+    let calls = (
+        "domains/journal/actions/post_all.jadpo",
+        "each: diary -> post_item(diary)",
+        "each: diary -> check_item(diary)",
+    );
+    let run_count = (
+        "domains/journal/actions/run_count.jadpo",
+        "",
+        "use journal/types { RunTally }\n\naction run_count(run: BatchRun) -> RunTally {\n    var at: BatchProgress = batches.status(run)\n    return RunTally {\n        problems: at.problems\n    }\n}\n",
+    );
+    let output = (
+        "domains/journal/types/run_tally.jadpo",
+        "",
+        "type RunTally = Output {\n    problems: Int\n}\n",
+    );
+    let line = (
+        "policy.jadpo",
+        "",
+        "use journal\n\npolicy {\n    actions: {\n        journal.run_count: [Access.authenticated]\n    }\n}\n",
+    );
+    let mut changes = vec![draft, check_item, each, calls, run_count, output];
+    if listed {
+        changes.push(line);
+    }
+    diaries(&changes)
+}
+
+#[test]
+fn a_runs_status_is_held_to_what_decides_its_failures() {
+    // How many items a run couldn't post shows what decided they failed
+    // (chunk 6.6b): a diary's secret, which only its owner reads.
+    assert_eq!(
+        counted("secret", true),
+        [
+            "domains/journal/actions/run_count.jadpo policy.output_field_unproved: `journal.RunTally.problems` carries `Diary.secret`, which not every caller of `run_count` may read"
+        ]
+    );
+    // Its title anyone signed in reads, and `run_count`'s line lets in
+    // only those signed in.
+    assert_eq!(counted("title", true), Vec::<String>::new());
+    // A caller nothing is known of finds the run by its `id` alone, so it
+    // may read only what anyone at all may.
+    assert_eq!(
+        counted("title", false),
+        [
+            "domains/journal/actions/run_count.jadpo policy.output_field_unproved: `journal.RunTally.problems` carries `Diary.title`, which not every caller of `run_count` may read"
+        ]
+    );
+}
+
+#[test]
+fn a_status_read_by_a_runs_own_action_is_solved() {
+    // Whether `check_after` fails is decided by another run's status,
+    // which every batch's failures decide, its own among them: a cycle,
+    // solved as a summary's is.
+    let after = (
+        "domains/journal/actions/check_after.jadpo",
+        "",
+        "use journal/entities { Diary }\nuse journal/failures { Draft }\n\naction check_after(diary: Diary, earlier: BatchRun) fails Draft -> Unit {\n    var at: BatchProgress = batches.status(earlier)\n    if (at.problems > 0) {\n        reject Draft {}\n    }\n}\n",
+    );
+    let draft = (
+        "domains/journal/failures/draft.jadpo",
+        "",
+        "type Draft = Failure {\n    kind: FailureKind.rejected\n    message: \"This diary is a draft.\"\n}\n",
+    );
+    let start = (
+        "domains/journal/actions/post_all.jadpo",
+        "use journal/actions { post_item }\nuse journal/queries { diaries }\nuse journal/types { DiaryPage }\n\naction post_all(page: DiaryPage) -> BatchRun {\n    return batches.each(\n        from: diaries(page),\n        each: diary -> post_item(diary)\n    )\n}\n",
+        "use journal/actions { check_after }\nuse journal/queries { diaries }\nuse journal/types { DiaryPage }\n\naction post_all(page: DiaryPage, earlier: BatchRun) -> BatchRun {\n    return batches.each(\n        from: diaries(page),\n        each: diary -> check_after(diary, earlier)\n    )\n}\n",
+    );
+    assert_eq!(diaries(&[after, draft, start]), Vec::<String>::new());
+}

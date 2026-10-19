@@ -740,16 +740,25 @@ chunks below, taken before Phase 7, in this order.
   the budget; `settle:`'s `within:` and the run limit racing the body
   only; and the tick deleting batch runs 30 days after they ended. Each
   from a failing live test of the review's reproduction.
-- [ ] **6.6b Phase 6 review fixes: policy proofs** `opus · xhigh`: a
-  batch's `each:` parameter bound to the provenance of the `from:`
-  query's items and its inline call checked like any call, so a
-  restricted field can't be written where others read it; every action
-  a background run reaches checked against its own `actions:` line, and
-  a listed callee's line used for its own body's writes, as the plan
-  does; `BatchRun` refused in an `Input`, a placeholder and a query
-  parameter, so a run comes only from `batches.each` or a field the
-  caller may read; `route.output_required` no longer suggesting
-  `output: Unit`.
+- [x] **6.6b Phase 6 review fixes: policy proofs** `opus · xhigh`.
+  Built: the review's batch-item case a test, refused with or without a
+  tenant, as 6.4d's following of each item already did; every action
+  background work reaches checked against its own `actions:` line, and a
+  listed action's line deciding its own body's writes wherever it is
+  called from, routes included, as the plan does, with a live test;
+  `type.batch_input` for a batch type in an `Input` (body or query
+  string) or a placeholder, and a batch type's field named as a type
+  refused rather than standing for nothing; `batches.status` held to
+  what decides every batch's failures, read by a caller known only by
+  its line; `route.output_required` suggesting
+  `SuccessStatus.no_content` for an action returning `Unit`. Choices in
+  area 12's "Chosen in chunk 6.6b" and area 9's Decisions; flagged
+  there: a tenanted run's status shows only what anyone, or a role held
+  across the whole application, may read.
+- [ ] **6.6d A placeholder naming a missing field** `opus · high` (found
+  in chunk 6.6b): a route placeholder typed with a field that doesn't
+  exist (`{x: Note.nope}`) drops its route silently; it is
+  `type.unknown_field` at the placeholder, with a checked example.
 - [ ] **6.6c Tenancy of background work** `opus · high` (areas 9 and 12,
   decided 2026-10-19): the tenant an event or a batch run names proved to
   come from a record of that tenant the action read or wrote under its
