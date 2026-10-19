@@ -45,6 +45,11 @@ pub(crate) struct Boundary {
     pub store: Option<String>,
     /// What the action emitted, for after it commits.
     pub outbox: Vec<Event>,
+    /// Where in `outbox` the running action's own events begin, which
+    /// its allowance of [`crate::outbox::MAX_EVENTS`] counts from: 0, but
+    /// for each item of a batch, an action of its own whose events join
+    /// its page's (chunk 6.6a).
+    pub allowance: usize,
     /// Its events' deliveries, once written to the outbox in its
     /// transaction as it commits (chunk 6.1b), for the runner after it
     /// commits.
@@ -862,7 +867,7 @@ impl<'p> Ctx<'p> {
         let Some(boundary) = &mut self.boundary else {
             return Err(EmitRefused::OutsideAction);
         };
-        if boundary.outbox.len() >= crate::outbox::MAX_EVENTS {
+        if boundary.outbox.len().saturating_sub(boundary.allowance) >= crate::outbox::MAX_EVENTS {
             return Err(EmitRefused::TooMany);
         }
         if event.payload.len() > crate::outbox::MAX_EVENT_BYTES {

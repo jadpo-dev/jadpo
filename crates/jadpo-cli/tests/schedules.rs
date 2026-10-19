@@ -754,7 +754,8 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         );
 
         // A delivery left behind by a worker that died holding it: the
-        // tick's sweep delivers it once its claim has lapsed.
+        // tick's sweep takes it up once its claim has lapsed, and, its one
+        // attempt spent, fails it without running it again (chunk 6.6a).
         host.rows("UPDATE \"jadpo_deliveries\" SET \"status\" = 'running', \"next_attempt_at\" = '2026-10-19T12:20:00Z' WHERE \"id\" = (SELECT \"d\".\"id\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" ORDER BY \"o\".\"emitted_at\" DESC LIMIT 1) RETURNING 1")
             .await;
         let early = tick(&program, &host, at(196)).await;
@@ -767,27 +768,35 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
             [
                 ("failed".to_string(), 1),
                 ("succeeded".to_string(), 1),
-                ("succeeded".to_string(), 2),
+                ("failed".to_string(), 1),
             ]
         );
+        let lost = host
+            .rows("SELECT \"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" ORDER BY \"last_tried_at\" DESC LIMIT 1")
+            .await;
+        assert_eq!(lost, [vec![SqlValue::Text("lease_expired".into())]]);
 
         // Expired idempotency keys are deleted; a key still kept stays.
         host.rows("INSERT INTO \"jadpo_idempotency_keys\" (\"scope\", \"key\", \"request_digest\", \"stored_at\", \"kept_until\") VALUES ('anonymous', 'old', 'd', '2026-10-19T09:00:00Z', '2026-10-20T09:00:00Z'), ('anonymous', 'fresh', 'd', '2026-10-20T12:00:00Z', '2026-10-21T12:00:00Z') RETURNING 1")
             .await;
         // A day later: the events every subscriber had are deleted with
-        // their deliveries; the one whose delivery failed stays for an
+        // their deliveries; the two whose delivery failed stay for an
         // operator, and the census this tick takes is too new to go.
         let day = tick(&program, &host, at(28 * 60)).await;
         assert_eq!(day.deleted.keys, 1);
-        assert_eq!(day.deleted.events, 2);
+        assert_eq!(day.deleted.events, 1);
         assert!(day.problems.is_empty(), "{:?}", day.problems);
         let keys = host.rows("SELECT \"key\" FROM \"jadpo_idempotency_keys\"").await;
         assert_eq!(keys, [vec![SqlValue::Text("fresh".into())]]);
         assert_eq!(
             host.deliveries().await,
-            [("failed".to_string(), 1), ("succeeded".to_string(), 1)]
+            [
+                ("failed".to_string(), 1),
+                ("failed".to_string(), 1),
+                ("succeeded".to_string(), 1)
+            ]
         );
-        assert_eq!(host.count("SELECT count(*) FROM \"jadpo_outbox\"").await, 2);
+        assert_eq!(host.count("SELECT count(*) FROM \"jadpo_outbox\"").await, 3);
 
         // Run records are kept 30 days.
         let month = tick(&program, &host, at(31 * 24 * 60)).await;

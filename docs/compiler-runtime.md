@@ -1845,6 +1845,24 @@ jitter) or `failed`; `runner::sweep` delivers what is due in a store,
 for 6.2's minute tick. The statements are `jadpo_runtime::outbox`'s,
 on its own system tables, as the idempotency keys' are.
 
+**Delivering once, within limits** (chunk 6.6a). `boundary::seal`
+writes a delivery's handled record after the outbox rows, in whichever
+store the transaction is in by then, and a subscriber's plan names the
+store its action writes or else its outbox store, so an action that
+only emits keeps one. `runner::attempt_delivery` claims at the host's
+time (a lost lease's last failure becoming `lease_expired`), gives up
+without running a delivery claimed over its budget or past `within:`
+(`outbox::GIVE_UP`), and takes a `Cut`: a route's `within:`, which gives
+the delivery back, or the run limit, which settles it as an attempt
+that timed out. Either races only the action's body (`runner::held`,
+`Ctx::hold` and `commit_held`, as a route does), never its commit.
+`runner::drive` reads the host's clock per piece, so the sweep never
+runs late work at the tick's time. A batch run's row keeps the chain
+depth it started at (`depth`), which each page's context takes; each
+item resets the boundary's event allowance (`Boundary::allowance`); and
+`batches::clean`, a tick hook, deletes runs that ended 30 days ago with
+their problems and cancels.
+
 **Schedules and the tick** (chunk 6.2). The checker reads each schedule
 (`jadpo_check::schedules`: `every:` and `run:`, an action of its own
 domain taking nothing) and where their state is kept
