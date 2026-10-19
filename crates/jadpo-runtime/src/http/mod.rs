@@ -34,7 +34,10 @@
 //! runs gets the caller; a signed-in caller's requests count against its
 //! own rate limit and keep their idempotency keys apart. Policy (chunk
 //! 4.4) is compiled into the statements what a route runs sends, and an
-//! action's gate is checked by the action boundary.
+//! action's gate is checked by the action boundary. Whoever signed in, or
+//! no one, a request is never the system (chunk 6.1a): the caller only the
+//! runner gives a schedule's run or a subscriber's delivery, which
+//! `Access.system` grants.
 
 pub mod address;
 #[cfg(test)]
@@ -111,6 +114,10 @@ pub struct Response {
     /// The address the request counted as (area 10, "Client addresses"),
     /// for the host's log line; never sent.
     pub client: Option<String>,
+    /// The work what it ran left for after it is sent: what its action
+    /// emitted once it committed (chunk 6.1a). The host hands it to the
+    /// runner ([`crate::runner::hand_over`]); never sent.
+    pub deferred: Vec<crate::runner::Deferred>,
 }
 
 impl Response {
@@ -291,7 +298,10 @@ pub async fn serve_request(
     };
     let mut ctx = Ctx::new(executor.places(), host, env);
     let id = request_id(&ctx, answered);
-    answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await
+    let mut response =
+        answer_request(app, executor, &mut ctx, request, &id, Some(&worker.ready)).await;
+    response.deferred = ctx.take_deferred();
+    response
 }
 
 /// Answers `request` with `app`'s routes, running what a route runs with
@@ -315,6 +325,8 @@ async fn answer_request(
     request_id: &str,
     ready: Option<&health::Readiness>,
 ) -> Response {
+    // A request is never the system, whatever context it is answered in.
+    ctx.system = None;
     ctx.set_client(app.client.of(request));
     let mut response = respond(app, executor, ctx, request, request_id, ready).await;
     response.client = ctx.client().map(str::to_string);
@@ -1104,6 +1116,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         fault: None,
         counted: false,
         client: None,
+        deferred: Vec::new(),
     }
 }
 

@@ -27,8 +27,7 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Event, Executor, Host, LocalFuture, MigrateError, Migration,
-    Outcome, SqlValue,
+    Clock, Ctx, Database, Env, Executor, Host, MigrateError, Migration, Outcome, SqlValue,
 };
 use jadpo_term::Environment;
 use jadpo_value::Value;
@@ -463,10 +462,6 @@ struct Store(jadpo_host_native::Postgres);
 impl Host for Store {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(&self.0)
-    }
-
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
     }
 
     fn random(&self, _bytes: &mut [u8]) -> bool {

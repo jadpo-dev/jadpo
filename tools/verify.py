@@ -144,8 +144,9 @@ POSTGRES = [
     # limits and reloading; and the golden OpenAPI document (area 7).
     ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http')], []),
     # Policy through `jadpo test`: tenancy, roles, owner fields, listed
-    # actions and credentials; concealment through the runtime (area 9).
-    ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
+    # actions and credentials; concealment through the runtime (area 9);
+    # the system caller the runner gives background work (chunk 6.1a).
+    ('live PostgreSQL: policy', [('jadpo-cli', 'policy'), ('jadpo-cli', 'system')], []),
     # The runtime's request path counted in round trips (chunk 4.10),
     # and signed sessions: no read to sign in while a signed part
     # lasts, the delay's bound on revocation, key rotation, the key

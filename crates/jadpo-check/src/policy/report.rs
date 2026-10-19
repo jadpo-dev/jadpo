@@ -14,7 +14,9 @@
 use jadpo_db::{Db, ItemKind, Ownership, Project};
 use jadpo_graph::json::Value;
 
-use super::{Access, ActionGrants, Effect, EntityPolicy, FieldPolicy, GrantList, Membership};
+use super::{
+    Access, ActionGrants, Effect, EntityPolicy, FieldPolicy, Grant, GrantList, Membership,
+};
 use crate::lookups::{Lookup, NameView};
 
 /// The report as Markdown and as JSON.
@@ -126,6 +128,18 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             "The tenant is `{tenant}`: every grant on a record that belongs to one applies \
              only within the `{tenant}`s where the caller holds a membership.\n\n"
         ));
+        let system = access.entities.values().any(|policy| {
+            policy
+                .lists
+                .values()
+                .any(|list| list.grants.contains(&Grant::System))
+        });
+        if system {
+            markdown.push_str(&format!(
+                "`Access.system` holds no membership: a subscriber's delivery reaches only \
+                 the `{tenant}` its event came from, and a schedule's run every `{tenant}`.\n\n"
+            ));
+        }
     }
     if access
         .entities

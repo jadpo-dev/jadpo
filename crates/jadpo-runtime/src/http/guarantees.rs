@@ -19,8 +19,8 @@ use jadpo_value::json::Codecs;
 use super::idempotency::{CLAIM, RELEASE, STORE};
 use super::{App, Request, Response, handle};
 use crate::{
-    ActionBody, Ctx, Database, Env, Event, Executor, Failure, Host, Isolation, LocalFuture,
-    Outcome, Places, Row, SqlValue, StoreError, Transaction, block_on,
+    ActionBody, Ctx, Database, Env, Executor, Failure, Host, Isolation, LocalFuture, Outcome,
+    Places, Row, SqlValue, StoreError, Transaction, block_on,
 };
 
 /// One kept key: its digest, status, response, `stored_at`, `kept_until`.
@@ -283,10 +283,6 @@ impl Host for Fake {
         (store == "main" && !self.no_store).then_some(&self.store as &dyn Database)
     }
 
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
-    }
-
     fn random(&self, _bytes: &mut [u8]) -> bool {
         false
     }
@@ -342,6 +338,9 @@ enum Ends {
     /// Runs without waiting until the deadline has passed, then succeeds,
     /// as a body whose executor never stopped it would.
     Spins,
+    /// Writes, writes down whether the system runs it, as policy would
+    /// bind it (`system true` or `system false`), and emits `type Done`.
+    Emits,
 }
 
 /// Runs the one action: it writes, then ends as `ends` says.
@@ -383,6 +382,18 @@ impl<'p> ActionBody<'p> for Body {
                 Ends::Hangs => std::future::pending().await,
                 Ends::Spins => {
                     while !ctx.out_of_time() {}
+                    Outcome::Value(Value::Unit)
+                }
+                Ends::Emits => {
+                    let system = ctx.caller_param(jadpo_std::policy::CallerPart::System);
+                    if let Ok(transaction) = ctx.transaction("main").await {
+                        let line = format!("system {}", system == SqlValue::Bool(true));
+                        let _ = transaction.execute(&line, &[]).await;
+                    }
+                    ctx.emit(crate::Event {
+                        key: "type Done".into(),
+                        value: Value::Unit,
+                    });
                     Outcome::Value(Value::Unit)
                 }
             }
@@ -1079,4 +1090,123 @@ fn a_route_without_input_refuses_a_query_string_and_a_body() {
     blank.body = b" \r\n".to_vec();
     blank.query = Some(String::new());
     assert_eq!(send(&table, &program, &host, &blank, NOW).status, 204);
+}
+
+/// What an action emitted waits for the runner until its response is
+/// built, and only once it committed: the response carries it for the
+/// host to run after it is sent (chunk 6.1a), so delivery never holds a
+/// request up.
+#[test]
+fn what_a_request_emits_is_left_for_after_its_response() {
+    let table = table(Some("main"), false);
+    let app = App {
+        auth: &super::signed::AuthSettings::NONE,
+        client: &super::address::ClientAddress::CONNECTION,
+        table: &table,
+        codecs: Codecs {
+            codecs: &CODECS,
+            validators: &[],
+            shapes: &[],
+        },
+        failures: &[],
+        json: crate::JsonCodecs::NONE,
+    };
+    let worker = super::Worker::default();
+    let program = Program::new(Ends::Emits);
+    let host = Fake::default();
+    let response = block_on(super::serve_request(
+        &app,
+        &program,
+        &host,
+        &worker,
+        &post(Some("k1"), "a"),
+    ))
+    .expect("nothing waits");
+    assert_eq!(response.status, 204);
+    assert_eq!(
+        response.deferred,
+        [crate::runner::Deferred::Events(vec![crate::Event {
+            key: "type Done".into(),
+            value: Value::Unit,
+        }])]
+    );
+    let lines = host.store.lines();
+    assert_eq!(
+        lines.last().map(String::as_str),
+        Some("commit"),
+        "{lines:?}"
+    );
+    // An action that fails leaves nothing.
+    let program = Program::new(Ends::NotFound);
+    let host = Fake::default();
+    let response = block_on(super::serve_request(
+        &app,
+        &program,
+        &host,
+        &worker,
+        &post(Some("k2"), "a"),
+    ))
+    .expect("nothing waits");
+    assert_eq!(response.status, 404);
+    assert!(response.deferred.is_empty());
+}
+
+/// No request ever acts as the system, the caller only the runner gives
+/// a schedule's run or a subscriber's delivery (area 9, `Access.system`;
+/// chunk 6.1a): not a deployable's, and not one answered in a context the
+/// runner had made the system's.
+#[test]
+fn no_request_is_ever_the_system() {
+    let table = table(Some("main"), false);
+    let program = Program::new(Ends::Emits);
+    let host = Fake::default();
+    let app = App {
+        auth: &super::signed::AuthSettings::NONE,
+        client: &super::address::ClientAddress::CONNECTION,
+        table: &table,
+        codecs: Codecs {
+            codecs: &CODECS,
+            validators: &[],
+            shapes: &[],
+        },
+        failures: &[],
+        json: crate::JsonCodecs::NONE,
+    };
+    let worker = super::Worker::default();
+    let served = block_on(super::serve_request(
+        &app,
+        &program,
+        &host,
+        &worker,
+        &post(Some("k1"), "a"),
+    ))
+    .expect("nothing waits");
+    assert_eq!(served.status, 204);
+    let mut ctx = Ctx::new(&program.places, &host, Env::default());
+    ctx.act_as_system(crate::System {
+        tenant: Some([7; 16]),
+    });
+    let handled = block_on(handle(
+        &app,
+        &program,
+        &mut ctx,
+        &post(Some("k2"), "b"),
+        "req_2",
+    ))
+    .expect("nothing waits");
+    assert_eq!(handled.status, 204);
+    let lines = host.store.lines();
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line.starts_with("system"))
+            .collect::<Vec<_>>(),
+        ["system false", "system false"],
+        "{lines:?}"
+    );
+    assert_eq!(ctx.system(), None);
+    assert_eq!(
+        ctx.caller_param(jadpo_std::policy::CallerPart::SystemTenant),
+        SqlValue::Null(crate::SqlType::Uuid)
+    );
 }

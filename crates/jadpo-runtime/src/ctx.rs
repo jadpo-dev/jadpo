@@ -4,8 +4,10 @@
 //! that capture the stack, the recording of a failed `assert`'s parts, and
 //! the state of the action boundary the runtime runs ([`crate::action`]):
 //! the transaction it opens at the first store operation and the events
-//! waiting to be delivered once it commits; and the effects with one
-//! source each, the clock and new identities. Reads and writes run through
+//! waiting to be delivered once it commits; the work it leaves for after
+//! its response (chunk 6.1a, [`crate::runner`]); who runs it, a request's
+//! signed-in caller or the system; and the effects with one source each,
+//! the clock and new identities. Reads and writes run through
 //! [`crate::store`] against it; integration calls join it with their area.
 
 use std::fmt;
@@ -13,6 +15,7 @@ use std::fmt;
 use jadpo_value::Value;
 
 use crate::outcome::{Assertion, AssertionDetail, Part};
+use crate::runner::Deferred;
 use crate::{
     Env, Event, Failure, Fault, FaultKind, Frame, Host, Isolation, MAX_DEPTH, Places, SqlType,
     SqlValue, StoreError, Transaction,
@@ -78,6 +81,17 @@ pub struct Caller {
     pub session: Option<[u8; 16]>,
 }
 
+/// The system: who a schedule's run and a subscriber's delivery act as
+/// (area 9, `Access.system`; area 12), a caller of its own that only the
+/// runtime's runner makes ([`crate::runner`]), never a request (chunk
+/// 6.1a). Policy lets it in exactly where a grant names `Access.system`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct System {
+    /// The tenant it is limited to: the one a subscriber's event came
+    /// from. `None` for a schedule's run, which isn't.
+    pub tenant: Option<[u8; 16]>,
+}
+
 /// An action's transaction and outbox, kept open after its body succeeded
 /// for whoever asked the boundary to hold it ([`Ctx::hold`]): the HTTP
 /// component, which writes the request's idempotency key into the same
@@ -136,6 +150,13 @@ pub struct Ctx<'p> {
     pub(crate) held: Option<Held>,
     /// The signed-in caller of the request being answered (area 8).
     pub(crate) caller: Option<Caller>,
+    /// The system, when the runner runs a schedule's or a subscriber's
+    /// work; never alongside a caller.
+    pub(crate) system: Option<System>,
+    /// What runs after the response, in the order it was left: what
+    /// committed actions emitted, and runs the runner was handed (chunk
+    /// 6.1a).
+    pub(crate) deferred: Vec<Deferred>,
     /// The address the request being answered counts as (area 10, "Client
     /// addresses"); `None` when none is known.
     client: Option<String>,
@@ -183,6 +204,8 @@ impl<'p> Ctx<'p> {
             hold: false,
             held: None,
             caller: None,
+            system: None,
+            deferred: Vec::new(),
             client: None,
             unpoliced: false,
             draws: 0,
@@ -210,9 +233,11 @@ impl<'p> Ctx<'p> {
     }
 
     /// Sets the request's signed-in caller, for what a route runs; the
-    /// policy compiled into each statement applies to it (area 9).
+    /// policy compiled into each statement applies to it (area 9). Whoever
+    /// signed in, or no one, it is never the system.
     pub fn set_caller(&mut self, caller: Option<Caller>) {
         self.caller = caller;
+        self.system = None;
         self.unpoliced = false;
     }
 
@@ -222,7 +247,55 @@ impl<'p> Ctx<'p> {
     /// policy (areas 9 and 13). Nothing a request runs does this.
     pub fn set_unpoliced(&mut self) {
         self.caller = None;
+        self.system = None;
         self.unpoliced = true;
+    }
+
+    /// The system, when what runs is a schedule's or a subscriber's work
+    /// (area 12); `None` for everything a request or a test's call runs.
+    pub fn system(&self) -> Option<System> {
+        self.system
+    }
+
+    /// Runs what follows as the system, with no signed-in caller and with
+    /// policy: only the runner does this ([`crate::runner`]), so nothing
+    /// outside the runtime, a request least of all, can.
+    pub(crate) fn act_as_system(&mut self, system: System) {
+        self.caller = None;
+        self.system = Some(system);
+        self.unpoliced = false;
+    }
+
+    /// Who runs what follows, to put back with [`Ctx::restore_runner`]
+    /// once the runner's work inside it is done.
+    pub(crate) fn runner(&self) -> (Option<Caller>, Option<System>, bool) {
+        (self.caller.clone(), self.system, self.unpoliced)
+    }
+
+    pub(crate) fn restore_runner(
+        &mut self,
+        (caller, system, unpoliced): (Option<Caller>, Option<System>, bool),
+    ) {
+        self.caller = caller;
+        self.system = system;
+        self.unpoliced = unpoliced;
+    }
+
+    /// Leaves `work` to run after the response: the runner runs it, in
+    /// the background on a deployable (`Host::defer`), or at once for a
+    /// route that waits for it (chunk 6.1a).
+    pub fn defer(&mut self, work: Deferred) {
+        self.deferred.push(work);
+    }
+
+    /// The work left for after the response, in the order it was left.
+    pub fn deferred(&self) -> &[Deferred] {
+        &self.deferred
+    }
+
+    /// Takes the work left for after the response.
+    pub fn take_deferred(&mut self) -> Vec<Deferred> {
+        std::mem::take(&mut self.deferred)
     }
 
     /// Whether statements leave their policy out ([`Ctx::set_unpoliced`]).
@@ -232,7 +305,8 @@ impl<'p> Ctx<'p> {
 
     /// The value of part `part` of the caller, for the policy compiled into
     /// a statement: the signed-in user's or service's `id`, `NULL` for
-    /// anyone else, and whether anyone is signed in.
+    /// anyone else, whether anyone is signed in, whether the system runs
+    /// it, and the tenant the system is limited to, `NULL` when it isn't.
     pub fn caller_param(&self, part: jadpo_std::policy::CallerPart) -> SqlValue {
         use jadpo_std::policy::CallerPart;
         let held = self.caller.as_ref().and_then(|caller| match &caller.value {
@@ -240,6 +314,11 @@ impl<'p> Ctx<'p> {
             _ => None,
         });
         match part {
+            CallerPart::System => SqlValue::Bool(self.system.is_some()),
+            CallerPart::SystemTenant => match self.system.and_then(|system| system.tenant) {
+                Some(tenant) => SqlValue::Uuid(tenant),
+                None => SqlValue::Null(SqlType::Uuid),
+            },
             CallerPart::Signed => SqlValue::Bool(held.is_some()),
             CallerPart::User | CallerPart::Service => {
                 let wanted = if part == CallerPart::User {
@@ -807,10 +886,6 @@ mod tests {
     impl Host for Random {
         fn database(&self, _store: &str) -> Option<&dyn crate::Database> {
             None
-        }
-
-        fn deliver(&self, _events: Vec<Event>) -> crate::LocalFuture<'_, ()> {
-            Box::pin(async {})
         }
 
         fn random(&self, bytes: &mut [u8]) -> bool {

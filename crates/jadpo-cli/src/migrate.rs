@@ -1003,20 +1003,25 @@ fn apply(call: &Call) -> Reply {
     // The interpreter's values never cross threads, so the program is made
     // on the thread that runs it, with the stack its recursion needs.
     let ran = jadpo_interp::on_large_stack(move || {
-        let worker = Worker {
-            program: prepared.map(jadpo_interp::Program::new),
-        };
-        run(&url, |database| {
-            Box::pin(async move {
+        let program = prepared.map(jadpo_interp::Program::new);
+        with_backfills(program.as_ref(), |backfills| {
+            let runtime = jadpo_host_native::Runtime::new()
+                .map_err(|error| jadpo_runtime::StoreError::Fault(error.to_string()))?;
+            let database = jadpo_host_native::postgres(&url)?;
+            Ok(runtime.block_on(async {
                 let mut filled: Vec<Filled> = Vec::new();
-                let ran =
-                    jadpo_runtime::migrate_with(database, &migrations, &worker, &mut |progress| {
+                let ran = jadpo_runtime::migrate_with(
+                    &database,
+                    &migrations,
+                    backfills,
+                    &mut |progress| {
                         track(&mut filled, progress);
                         std::ops::ControlFlow::Continue(())
-                    })
-                    .await;
+                    },
+                )
+                .await;
                 ran.map(|ran| (ran, filled))
-            })
+            }))
         })
     });
     match ran {
@@ -1040,86 +1045,19 @@ fn apply(call: &Call) -> Reply {
     }
 }
 
-/// Works out in Jadpo, with the project's interpreter, the latest
-/// migration's backfills that have no SQL form (chunk 5.6b2): each row's
-/// columns read through the storage codec, the backfill run as a function
-/// of them, and its value written back through the codec, at its field's
-/// places for a decimal.
-pub(crate) struct Worker {
-    program: Option<jadpo_interp::Program>,
-}
-
-impl Worker {
-    pub(crate) fn new(program: Option<jadpo_interp::Program>) -> Worker {
-        Worker { program }
-    }
-}
-
-impl jadpo_runtime::Backfills for Worker {
-    fn work_out(
-        &self,
-        migration: &str,
-        field: &str,
-        rows: &[&[jadpo_runtime::SqlValue]],
-    ) -> Result<Vec<jadpo_runtime::SqlValue>, jadpo_runtime::Unworked> {
-        use jadpo_runtime::{Outcome, Unworked};
-        let program = self.program.as_ref().ok_or(Unworked::Unavailable)?;
-        let plan = program
-            .plan()
-            .backfills()
-            .iter()
-            .find(|plan| plan.migration == migration && plan.field == field)
-            .ok_or(Unworked::Unavailable)?;
-        let mut out = Vec::with_capacity(rows.len());
-        for (at, row) in rows.iter().enumerate() {
-            let stopped = |reason: String| Unworked::Stopped { at, reason };
-            if row.len() != plan.reads.len() {
-                return Err(stopped("its row didn't hold every column it reads".into()));
-            }
-            let args = row
-                .iter()
-                .zip(&plan.reads)
-                .map(|(sql, column)| jadpo_runtime::from_sql(sql, column))
-                .collect::<Result<Vec<_>, String>>()
-                .map_err(|why| stopped(format!("a column it reads held {why}")))?;
-            let outcome = program
-                .call_id(plan.callable, args)
-                .map_err(|error| stopped(error.to_string()))?;
-            let value = match outcome {
-                Outcome::Value(value) => value,
-                Outcome::Fault(fault) => {
-                    let place = fault
-                        .stack(program.places())
-                        .into_iter()
-                        .next()
-                        .map(|place| format!(" at {place}"))
-                        .unwrap_or_default();
-                    let what = match &fault.kind {
-                        jadpo_runtime::FaultKind::Defect(what)
-                        | jadpo_runtime::FaultKind::NotBuiltYet(what)
-                        | jadpo_runtime::FaultKind::Store(what) => format!(" ({what})"),
-                        _ => String::new(),
-                    };
-                    return Err(stopped(format!(
-                        "it faulted with `{}`{what}{place}",
-                        fault.kind.classification()
-                    )));
-                }
-                Outcome::Failed(_) | Outcome::Assertion(_) => {
-                    return Err(stopped("it failed, which the checker rules out".into()));
-                }
-            };
-            let value = match (value, plan.scale) {
-                (jadpo_value::Value::Decimal(decimal), Some(scale)) => jadpo_value::Value::Decimal(
-                    decimal
-                        .rescale(scale, jadpo_value::Rounding::HalfEven)
-                        .ok_or_else(|| stopped("its decimal has more than 38 digits".into()))?,
-                ),
-                (value, _) => value,
-            };
-            out.push(jadpo_runtime::to_sql(&value, plan.write).map_err(stopped)?);
-        }
-        Ok(out)
+/// Runs `apply` with the latest migration's backfills that have no SQL
+/// form worked out by the runtime with `program`'s interpreter (chunks
+/// 5.6b2 and 6.1a), or with none when there is no program.
+pub(crate) fn with_backfills<T>(
+    program: Option<&jadpo_interp::Program>,
+    apply: impl FnOnce(&dyn jadpo_runtime::Backfills) -> T,
+) -> T {
+    match program {
+        Some(program) => apply(&jadpo_runtime::runner::InJadpo::new(
+            program,
+            program.backfills(),
+        )),
+        None => apply(&jadpo_runtime::NoBackfills),
     }
 }
 

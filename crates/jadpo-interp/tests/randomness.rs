@@ -138,10 +138,6 @@ impl Host for Generator {
         None
     }
 
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
-    }
-
     fn random(&self, bytes: &mut [u8]) -> bool {
         for byte in bytes {
             let next = self.0.get().wrapping_mul(31).wrapping_add(7);
