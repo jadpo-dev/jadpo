@@ -580,6 +580,13 @@ chunks below, taken before Phase 6.
 - [x] **5.11 Geo constructions** `opus · high`. Built: `geo.from_geojson`,
   `geo.from_lng_lat` and `geo.from_lat_lng`.
 
+- [ ] **5.12 Leftovers from consolidation** `opus · high`: `Bic`'s
+  country checked against `Country` as decided; the code comments that
+  name deleted "Chosen in chunk" notes repointed to their sections; area
+  14's two record examples shown in format 2; area 12's open question 16
+  marked superseded by its 2026-10-19 decision; and the notes Phase 6
+  added (6.1a onwards) folded once Phase 6's chunks have merged.
+
 ## Phase 6 — Events and schedules (area 12)
 
 - [x] **7.0 Generated records** `opus · high`. Built: the
