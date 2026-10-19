@@ -7,8 +7,8 @@
 //! are a person's health (area 15); a dose and an instruction describe a
 //! medicine, as a leaflet gives them, and a patient's prescription is an
 //! application's own record, which it marks, as a person's allergy is
-//! (chunk 5.5m). What the page left open is area 19's "Chosen in chunk
-//! 5.5m2".
+//! (chunk 5.5m). What the page left open is settled in area 19's "Groups
+//! with the baseline only".
 
 use super::across::{Order, StandardRule, in_order};
 use super::{

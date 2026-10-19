@@ -360,7 +360,7 @@ fn the_start_up_check_refuses_a_store_that_lost_its_extension() {
 
 /// Items of `[-1, 1]` in sixteenths: their products and every running sum
 /// of eight are exact floats, so pgvector's distance and the code's agree
-/// to the bit ("Chosen in chunk 5.5v1").
+/// to the bit (area 21, "Storing a vector").
 fn sixteenths(seed: u64, count: usize) -> Vec<f32> {
     let mut state = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
     (0..count)

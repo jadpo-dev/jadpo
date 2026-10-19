@@ -806,6 +806,8 @@ pub enum Validator {
     Isin,
     /// An LEI's mod-97 (ISO 17442, ISO 7064 mod 97-10).
     Lei,
+    /// A BIC whose country is a current one (ISO 9362, ISO 3166-1).
+    Bic,
     /// An ABA routing number's 3-7-1 checksum.
     AbaRoutingNumber,
     /// An NHS number's mod-11 check digit.
@@ -921,6 +923,7 @@ impl Validator {
             Validator::Luhn => identifiers::passes_luhn(text),
             Validator::Isin => identifiers::is_isin(text),
             Validator::Lei => identifiers::is_lei(text),
+            Validator::Bic => identifiers::is_bic(text),
             Validator::AbaRoutingNumber => identifiers::is_aba_routing_number(text),
             Validator::NhsNumber => identifiers::is_nhs_number(text),
             Validator::UkNationalInsuranceNumber => {

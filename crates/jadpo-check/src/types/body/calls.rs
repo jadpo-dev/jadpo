@@ -2575,7 +2575,7 @@ impl Body<'_> {
         }
         let into_percentage = self.table.representation(&target) == Some(Prim::Percentage);
         // A ratio becomes a percentage by construction, `Percentage(0.25)`
-        // being 25% (area 19, "Chosen in chunk 5.5d").
+        // being 25% (area 19, "The standard operator table").
         if into_percentage
             && is_literal(value)
             && let Const::Number {

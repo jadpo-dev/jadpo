@@ -6,7 +6,7 @@
 //! coordinates applications pass between them. A geometry is stored in a
 //! PostGIS `geography` column ([`Storage::Geography`], area 20, chunk
 //! 5.5u4); a `BoundingBox` and a `Circle` in named columns. What the page
-//! left open is area 19's "Chosen in chunk 5.5s".
+//! left open is settled in area 19's "Geospatial: a future area".
 
 use super::across::{Check, Order, Parts, StandardRule, Verdict, in_order};
 use super::{

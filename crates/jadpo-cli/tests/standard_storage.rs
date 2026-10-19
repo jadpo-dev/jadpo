@@ -112,7 +112,7 @@ fn reading(entry: &StandardType, ty: &str) -> String {
 
 /// Whether a GeoJSON geometry's positions mix with and without an
 /// altitude, which PostGIS's `geography` can't hold, so storing one is a
-/// fault (area 20, "Chosen in chunk 5.5u4").
+/// fault (area 20, "Altitudes are all or nothing").
 fn mixes_altitudes(text: &str) -> bool {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
         return false;
