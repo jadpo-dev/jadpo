@@ -11,7 +11,7 @@ use std::cell::Cell;
 use crate::support;
 
 use jadpo_interp::{Executor, FaultKind, Outcome, Program, Value};
-use jadpo_runtime::{Clock, Ctx, Env, Event, Host, LocalFuture, MemoryHost};
+use jadpo_runtime::{Clock, Ctx, Env, Host, MemoryHost};
 use support::{fault, int, list, main, text, value};
 
 const SOURCE: &str = "type Seat = Text {\n    max_length: 4\n}\n\ntype Reference = Text {}\n\ntype Roll = Int {}\n\ntype Pick = Int {\n    min: 0\n}\n\ntype Low = Int {}\n\naction cancel_link() -> Reference {\n    return Reference(random.token())\n}\n\naction booking_reference() -> Reference {\n    return Reference(random.code(8))\n}\n\naction roll(low: Low, high: Low) -> Roll {\n    return Roll(random.integer(low, high))\n}\n\naction seating(seats: List<Seat>) -> List<Seat> {\n    return random.shuffle(seats)\n}\n\naction winners(seats: List<Seat>, count: Pick) -> List<Seat> {\n    return random.sample(seats, count)\n}\n\naction draws() -> List<Reference> {\n    return [Reference(random.token()), Reference(random.code(6)), Reference(text.from(random.integer(1, 1000000)))]\n}\n";

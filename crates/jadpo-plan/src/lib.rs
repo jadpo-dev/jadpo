@@ -311,7 +311,8 @@ impl Plan {
         if !backfills.is_empty() {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
             for (backfill, (entity, field)) in backfills.iter_mut().zip(&backfill_fields) {
-                let key = jadpo_check::graph::field_key(&lookup, entity, &[field.clone()]);
+                let key =
+                    jadpo_check::graph::field_key(&lookup, entity, std::slice::from_ref(field));
                 backfill.validator = types.validator_id(&TypeRef::Field(key));
             }
         }
