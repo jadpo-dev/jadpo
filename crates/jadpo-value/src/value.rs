@@ -397,7 +397,8 @@ impl PartialEq for Value {
     /// Contents compared, `Bytes` in time that depends on their lengths
     /// alone, wherever they are, so how long comparing two digests, tags or
     /// sealed values takes says nothing of where they differ (chunk 5.5r3);
-    /// a secret value compares so too (chunk 5.5r2).
+    /// a secret value compares so too, with another or with text (chunks
+    /// 5.5r2 and 5.8a).
     fn eq(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Bytes(a), Value::Bytes(b)) => crate::secret::constant_time_eq(a, b),
@@ -418,6 +419,13 @@ impl PartialEq for Value {
             (Value::Record(a), Value::Record(b)) => a == b,
             (Value::Variant(a), Value::Variant(b)) => a == b,
             (Value::Secret(a), Value::Secret(b)) => a == b,
+            // A secret value against text written in source, in constant
+            // time, wherever the two meet: at the top, and inside a list, a
+            // set, a map, an object or an enum's data (chunk 5.8a).
+            (Value::Secret(secret), Value::Text(text))
+            | (Value::Text(text), Value::Secret(secret)) => {
+                crate::secret::constant_time_eq(secret.expose().as_bytes(), text.as_bytes())
+            }
             _ => false,
         }
     }

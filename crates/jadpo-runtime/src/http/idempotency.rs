@@ -22,7 +22,9 @@
 //! - A lookup ignores a row past its `kept_until`; deleting such rows comes
 //!   with the runtime's minute tick (area 12, roadmap chunk 6.2).
 
-use jadpo_std::http::{IDEMPOTENCY_KEEP_MS, IDEMPOTENCY_KEY_MAX, RoutePlan};
+use jadpo_std::http::{IDEMPOTENCY_KEEP_MS, IDEMPOTENCY_KEY_MAX};
+
+use jadpo_value::Value;
 
 use super::{Request, Response};
 use crate::{Ctx, SqlValue};
@@ -72,24 +74,151 @@ pub(crate) fn key(request: &Request) -> Result<Option<String>, ()> {
     }
 }
 
-/// The request's digest: its method, path, query string, the headers its
-/// input reads and its body, so a repeat must send the same request.
-pub fn digest(request: &Request, route: &RoutePlan) -> String {
+/// The request's digest, which a repeat must match: its route (`route
+/// POST /widgets/{name}`, the method and the path as declared), then what
+/// it says as the route reads it, each placeholder and its input (the
+/// query string, the headers it reads, the body), decoded. Every secret
+/// value is left out but for its kind, so whoever reads the keys table
+/// can't test a guessed password or token against a digest (chunk 5.8a):
+/// a repeat that differs only in a secret is the same request.
+pub fn digest(route: &str, params: &[Option<Value>], input: Option<&Value>) -> String {
     let mut hasher = blake3::Hasher::new();
-    let mut part = |bytes: &[u8]| {
-        hasher.update(&(bytes.len() as u64).to_le_bytes());
-        hasher.update(bytes);
+    part(&mut hasher, route.as_bytes());
+    count(&mut hasher, params.len());
+    for param in params {
+        feed(&mut hasher, param.as_ref().unwrap_or(&Value::None));
+    }
+    feed(&mut hasher, input.unwrap_or(&Value::None));
+    hasher.finalize().to_hex().to_string()
+}
+
+fn count(hasher: &mut blake3::Hasher, n: usize) {
+    hasher.update(&(n as u64).to_le_bytes());
+}
+
+/// `bytes`, after their length, so parts are never run together.
+fn part(hasher: &mut blake3::Hasher, bytes: &[u8]) {
+    count(hasher, bytes.len());
+    hasher.update(bytes);
+}
+
+/// `value` into `hasher`: a tag for its kind, then what it holds, each
+/// part told apart from the next. A secret value gives its kind alone.
+fn feed(hasher: &mut blake3::Hasher, value: &Value) {
+    let tag = |hasher: &mut blake3::Hasher, tag: u8| {
+        hasher.update(&[tag]);
     };
-    part(request.method.as_bytes());
-    part(request.path.as_bytes());
-    part(request.query.as_deref().unwrap_or("").as_bytes());
-    if let Some(input) = &route.input {
-        for (_, header) in &input.headers {
-            part(request.header(header).unwrap_or("").as_bytes());
+    let fields = |hasher: &mut blake3::Hasher, fields: &[(std::rc::Rc<str>, Value)]| {
+        count(hasher, fields.len());
+        for (name, value) in fields {
+            part(hasher, name.as_bytes());
+            feed(hasher, value);
+        }
+    };
+    match value {
+        Value::Unit => tag(hasher, 0),
+        Value::None => tag(hasher, 1),
+        Value::Bool(flag) => {
+            tag(hasher, 2);
+            hasher.update(&[u8::from(*flag)]);
+        }
+        Value::Int(n) => {
+            tag(hasher, 3);
+            hasher.update(&n.to_le_bytes());
+        }
+        Value::Decimal(d) => {
+            tag(hasher, 4);
+            hasher.update(&d.mantissa.to_le_bytes());
+            hasher.update(&d.scale.to_le_bytes());
+        }
+        Value::Text(text) => {
+            tag(hasher, 5);
+            part(hasher, text.as_bytes());
+        }
+        Value::Bytes(bytes) => {
+            tag(hasher, 6);
+            part(hasher, bytes);
+        }
+        Value::Uuid(text) => {
+            tag(hasher, 7);
+            part(hasher, text.as_bytes());
+        }
+        Value::Instant(ms) => {
+            tag(hasher, 8);
+            hasher.update(&ms.to_le_bytes());
+        }
+        Value::Date(day) => {
+            tag(hasher, 9);
+            hasher.update(&day.to_le_bytes());
+        }
+        Value::Zoned(zoned) => {
+            tag(hasher, 10);
+            hasher.update(&zoned.millis.to_le_bytes());
+            hasher.update(&zoned.zone.to_le_bytes());
+        }
+        Value::Duration(ms) => {
+            tag(hasher, 11);
+            hasher.update(&ms.to_le_bytes());
+        }
+        Value::Money(money) => {
+            tag(hasher, 12);
+            hasher.update(&money.currency.to_le_bytes());
+            hasher.update(&money.minor.to_le_bytes());
+        }
+        Value::Quantity(quantity) => {
+            tag(hasher, 13);
+            part(hasher, format!("{:?}", quantity.kind).as_bytes());
+            hasher.update(&quantity.amount.to_le_bytes());
+        }
+        Value::Percentage(d) => {
+            tag(hasher, 14);
+            hasher.update(&d.mantissa.to_le_bytes());
+            hasher.update(&d.scale.to_le_bytes());
+        }
+        Value::List(items) | Value::Set(items) => {
+            tag(
+                hasher,
+                if matches!(value, Value::List(_)) {
+                    15
+                } else {
+                    16
+                },
+            );
+            count(hasher, items.len());
+            for item in items.iter() {
+                feed(hasher, item);
+            }
+        }
+        Value::Map(entries) => {
+            tag(hasher, 17);
+            count(hasher, entries.len());
+            for (key, value) in entries.iter() {
+                feed(hasher, key);
+                feed(hasher, value);
+            }
+        }
+        Value::Record(record) => {
+            tag(hasher, 18);
+            part(hasher, record.ty.as_bytes());
+            fields(hasher, &record.fields);
+            // A field left out isn't one sent as `none` (a patch's).
+            let omitted = record.omitted.as_deref().unwrap_or_default();
+            count(hasher, omitted.len());
+            for at in omitted {
+                hasher.update(&at.to_le_bytes());
+            }
+        }
+        Value::Variant(variant) => {
+            tag(hasher, 19);
+            part(hasher, variant.ty.as_bytes());
+            part(hasher, variant.name.as_bytes());
+            fields(hasher, &variant.fields);
+        }
+        Value::Secret(secret) => {
+            tag(hasher, 20);
+            part(hasher, secret.kind().as_bytes());
         }
     }
-    part(&request.body);
-    hasher.finalize().to_hex().to_string()
 }
 
 /// What claiming a key found.
@@ -245,4 +374,92 @@ pub async fn release(ctx: &mut Ctx<'_>, guard: &Guard) {
             ],
         )
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use jadpo_value::{Record, Value};
+
+    use super::digest;
+
+    const SIGN_UP: &str = "route POST /accounts/sign-up";
+
+    fn form(handle: &str, password: &str) -> Value {
+        Value::record(
+            "SignUpForm",
+            vec![
+                ("handle".into(), Value::text(handle)),
+                (
+                    "chosen_password".into(),
+                    Value::secret("Password", password),
+                ),
+            ],
+        )
+    }
+
+    /// Whoever reads the keys table can't test a password guess against a
+    /// sign-up's digest: whatever the password, it is the same (chunk
+    /// 5.8a). So is a secret in a placeholder.
+    #[test]
+    fn a_digest_leaves_out_every_secret_value() {
+        let of = |input: &Value| digest(SIGN_UP, &[], Some(input));
+        assert_eq!(
+            of(&form("ann", "hunter2hunter2")),
+            of(&form("ann", "correct horse battery"))
+        );
+        let token = |text: &str| [Some(Value::secret("BearerToken", text))];
+        assert_eq!(
+            digest("route POST /resets/{token}", &token("abc"), None),
+            digest("route POST /resets/{token}", &token("xyz"), None)
+        );
+        // The redacted text it would show as is still text, not a secret.
+        assert_ne!(
+            of(&form("ann", "x")),
+            of(&Value::record(
+                "SignUpForm",
+                vec![
+                    ("handle".into(), Value::text("ann")),
+                    ("chosen_password".into(), Value::text("<redacted Password>")),
+                ],
+            ))
+        );
+    }
+
+    /// Everything else a request says counts, so a repeat must send the
+    /// same request.
+    #[test]
+    fn a_digest_covers_the_route_and_everything_else_the_request_says() {
+        let of = |input: &Value| digest(SIGN_UP, &[], Some(input));
+        assert_ne!(of(&form("ann", "x")), of(&form("bo", "x")));
+        assert_ne!(
+            digest(SIGN_UP, &[], None),
+            digest("route POST /accounts/sign-in", &[], None)
+        );
+        let name = |text: &str| [Some(Value::text(text))];
+        assert_ne!(
+            digest("route POST /widgets/{name}", &name("a"), None),
+            digest("route POST /widgets/{name}", &name("b"), None)
+        );
+        // Parts are told apart, not run together.
+        let texts = |items: &[&str]| Value::list(items.iter().map(|t| Value::text(t)).collect());
+        assert_ne!(of(&texts(&["ab", "c"])), of(&texts(&["a", "bc"])));
+        assert_ne!(of(&texts(&["a"])), of(&Value::set(vec![Value::text("a")])));
+        assert_ne!(of(&Value::Int(1)), of(&Value::Duration(1)));
+        assert_ne!(
+            of(&Value::Bytes(Rc::from(&b"ab"[..]))),
+            of(&Value::Bytes(Rc::from(&b"ba"[..])))
+        );
+        // A field left out isn't one sent as `none`: a patch tells them
+        // apart.
+        let patch = |omitted: Option<Rc<[u32]>>| {
+            Value::Record(Rc::new(Record {
+                ty: Rc::from("NotePatch"),
+                fields: vec![(Rc::from("text"), Value::None)],
+                omitted,
+            }))
+        };
+        assert_ne!(of(&patch(None)), of(&patch(Some(Rc::from(&[0u32][..])))));
+    }
 }

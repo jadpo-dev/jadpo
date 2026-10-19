@@ -5153,7 +5153,8 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
   the other is expected is a type error.
 - **`mismatch` names the first problem** the way area 7's `invalid_input`
   does: the field's path with list positions as numbers
-  (`lines.2.quantity`) and the rule (`max`), never the value. A failure
+  (`lines.2.quantity`) and a map's entry as `<key>` (chunk 5.8a), and the
+  rule (`max`), never the value. A failure
   mapped from it that declares a `problem: DecodeProblem` field receives
   them (chunk 5.5g2): a built-in type holding `field: Text` and
   `rule: Text`, named as area 7's problems are, which only the runtime
@@ -8178,7 +8179,8 @@ under "Errors").
   a failure's `details` as in `invalid_input`'s. The path is the one the
   report names (chunk 5.5g). A map's key and an unknown field's name are
   parts of the path, as area 7 names them for a request; neither is a
-  field's value.
+  field's value. (Superseded in chunk 5.8a for a map's key, which is a
+  value: an entry is `<key>` in the path.)
 - **Only a field written `problem: DecodeProblem` receives it,** by that
   name and that type exactly (not `DecodeProblem?`); a field of another
   name or type is an ordinary field the arm gives. An arm that gives
@@ -11186,6 +11188,34 @@ testing every form against the runtime changed:
   combining marks, open and held range ends, every pair of days across a
   leap February and thousands of pairs from the year 0 to 9999, and
   IPv4-mapped IPv6 addresses. No form was dropped.
+
+### Chosen in chunk 5.8a
+
+From the Phase 5 soundness review, each the most conservative reading:
+
+- **A secret value equals its text wherever the two meet.** `==` compared
+  a `Password` with text written in source only at the top, so
+  `[p] == ["hunter2hunter2"]` was `false`. It now compares them, in time
+  that depends on the lengths alone, inside a list, a set, a map's keys
+  and values, an object and an enum's data, however deep, and the
+  canonical order puts a secret value with text, ordered by its text,
+  so `set.contains` finds one by the other and the order still agrees
+  with `==`.
+- **A map's entry is `<key>` in a problem's path.** A map's key is a
+  value, an email address as often as not, so a `DecodeProblem`'s
+  `field`, `invalid_input`'s problems (area 7) and a failure's report
+  name an entry `scores.<key>`, whether its key or its value broke the
+  rule, at any depth (`scores.<key>.<key>`), never by the key's text.
+  Not by position: an object's members are read in name order, so a
+  position would be the key's rank among the others and not where the
+  sender wrote it. This supersedes the map half of "Chosen in chunk
+  5.5g2"; an unknown field's name stays in the path, as area 7 decided.
+- **An encryption's nonce is secret randomness.** `crypto.encrypt` draws
+  its nonce as a credential's bytes are drawn (chunk 5.5r2): never kept on
+  a recording's tape nor taken from a replayed one, so a replay never
+  seals with a nonce a production run used under the same key. A
+  password's salt is not secret and stays on the tape, so a replayed
+  `hash_password` gives the hash the recorded run made.
 
 ### Decisions
 
