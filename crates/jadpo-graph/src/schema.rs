@@ -257,6 +257,11 @@ impl OnDelete {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Index {
     pub columns: Vec<String>,
+    /// The expression it holds in place of its columns, as SQL, which reads
+    /// them: an operation's SQL form a query's condition compares (area 6,
+    /// "Operations in conditions", chunk 6.3b), `char_length("title")::bigint`.
+    /// `None` for an index of its columns.
+    pub expression: Option<String>,
     pub reason: String,
     /// A partial index's condition, as SQL: the records a lifecycle's
     /// `visible:` lets normal reads see (area 5, "Indexes").
@@ -277,10 +282,11 @@ impl Index {
     /// needs the same index changes nothing the database holds (chunk
     /// 5.9d).
     pub fn builds_same(&self, other: &Index) -> bool {
-        self.columns == other.columns
-            && self.predicate == other.predicate
-            && self.collate == other.collate
-            && self.method == other.method
+        let unreasoned = |index: &Index| Index {
+            reason: String::new(),
+            ..index.clone()
+        };
+        unreasoned(self) == unreasoned(other)
     }
 }
 
@@ -461,6 +467,9 @@ impl Table {
         for (name, index) in &self.indexes {
             let mut entry = Value::object();
             entry.set("columns", strings(&index.columns));
+            if let Some(expression) = &index.expression {
+                entry.set("expression", expression);
+            }
             entry.set("reason", &index.reason);
             if let Some(predicate) = &index.predicate {
                 entry.set("where", predicate);
@@ -561,6 +570,10 @@ impl Table {
             indexes.insert(
                 name.clone(),
                 Index {
+                    expression: entry
+                        .get("expression")
+                        .and_then(Value::as_str)
+                        .map(String::from),
                     columns: list_of(entry, "columns")?,
                     reason: text_of(entry, "reason")?,
                     predicate: entry.get("where").and_then(Value::as_str).map(String::from),
@@ -1139,6 +1152,7 @@ mod tests {
         table.indexes.insert(
             "todo_meaning_idx".into(),
             Index {
+                expression: None,
                 columns: vec!["meaning".into()],
                 reason: "index Todo.by_meaning".into(),
                 predicate: None,
@@ -1161,6 +1175,7 @@ mod tests {
         // Chunk 5.9d: only what defines an index is compared.
         let index = |reason: &str, columns: &[&str]| Index {
             columns: columns.iter().map(|c| c.to_string()).collect(),
+            expression: None,
             reason: reason.into(),
             predicate: None,
             collate: vec!["title".into()],

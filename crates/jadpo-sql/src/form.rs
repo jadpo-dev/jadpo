@@ -2,7 +2,13 @@
 //! gives exactly the result the runtime gives for one standard operation,
 //! for every argument, written from its arguments' SQL. A computed
 //! backfill whose every operation has one runs as one `UPDATE` per batch
-//! (area 5, "Computed backfills"); aggregate queries are their second user.
+//! (area 5, "Computed backfills"); aggregate queries are their second
+//! user, and a query's conditions their third (area 6, "Operations in
+//! conditions", chunk 6.3b), which [`crate::condition`] lowers through
+//! [`operation`] and indexes where [`indexable`] says PostgreSQL can.
+//! `ai.distance` has one more form, pgvector's operator, which area 21
+//! decided a query's distance is: the one form here outside area 19's
+//! tables, so [`has_form`] doesn't name it and no backfill uses it.
 //!
 //! Each form here is tested against the runtime on the same inputs, on
 //! live PostgreSQL (`crates/jadpo-cli/tests/sql_forms.rs`), and area 19's
@@ -30,12 +36,12 @@
 //!   deterministic; only `temporal.period_between`, which needs its two
 //!   dates many times over, names them once in a subquery.
 
-use jadpo_std::{Builtin, Op, Rounding};
+use jadpo_std::{Builtin, Op, Rounding, VectorDistance};
 
 use crate::text_literal;
 
 /// How an argument's value is held in SQL.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Held {
     /// One column's value of a type built on this built-in type, as area
     /// 5's storage types hold it: text as `text`, a date as `date`.
@@ -45,6 +51,14 @@ pub enum Held {
     /// A range, in PostgreSQL's range type of its ends, which are built on
     /// this built-in type.
     Range(Builtin),
+    /// A pgvector `vector` (area 21, "Storing a vector").
+    Vector,
+    /// A value of this standard geospatial type (area 20): a geometry in a
+    /// PostGIS `geography`, or a `BoundingBox` or a `Circle` given whole.
+    Shape(&'static str),
+    /// A `double precision` the database works out: the distance pgvector
+    /// gives (area 21, chunk 5.5v1b).
+    Double,
 }
 
 /// One argument of an operation, in the operation's parameter order.
@@ -61,6 +75,9 @@ pub enum Arg<'a> {
     Whole(i64),
     /// One character written out (`text.pad_start`'s `fill:`).
     Character(char),
+    /// How two vectors are compared, which the checker gives
+    /// `ai.distance` from their type (area 21, chunk 5.5v1).
+    Metric(VectorDistance),
     /// An option the call leaves out.
     Absent,
 }
@@ -282,7 +299,40 @@ pub fn operation(op: Op, args: &[Arg<'_>]) -> Option<Form> {
         (Op::WebCidrContains, [Value(x, _), Value(a, _)]) => {
             one(format!("(({x})::cidr >>= ({a})::inet)"))
         }
+        // pgvector's distance by the vectors' type's metric (area 21,
+        // "The nearest-neighbour query"): a `double precision`, `NULL`
+        // for a `NULL` vector, as every operator of pgvector's is strict.
+        (
+            Op::AiDistance,
+            [
+                Value(x, Held::Vector),
+                Value(a, Held::Vector),
+                Arg::Metric(metric),
+            ],
+        ) => one(format!("{x} {} {a}", metric.operator())),
         _ => None,
+    }
+}
+
+/// Whether PostgreSQL can index `op`'s form on a first argument held as
+/// `first`, its other arguments written out (area 6, "Operations in
+/// conditions", chunk 6.3b): an index's expression may call only
+/// immutable functions and may not read a subquery. `map.count` and
+/// `temporal.period_between` read a subquery; `hash.sha256` and
+/// `encoding.to_utf8` of text convert it with `convert_to`, which
+/// PostgreSQL marks stable, since it reads the database's encoding; a
+/// range's operations take a range written out, which a query can't
+/// write. A live test builds an index on every other form
+/// (`crates/jadpo-cli/tests/operation_conditions.rs`).
+pub fn indexable(op: Op, first: Held) -> bool {
+    match op {
+        Op::MapCount | Op::TemporalPeriodBetween => false,
+        Op::RangeContains | Op::RangeOverlaps | Op::RangeIntersection => false,
+        Op::HashSha256 => {
+            matches!(first, Held::Builtin(builtin) if builtin.representation() == Builtin::Bytes)
+        }
+        Op::EncodingToUtf8 | Op::AiDistance => false,
+        other => has_form(other),
     }
 }
 

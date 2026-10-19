@@ -1949,14 +1949,22 @@ chunks below, taken before Phase 6.
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
   they settle and with `202` past `within:`.
-- [ ] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
+- [x] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
   review: a query condition is either an exact SQL form or an index
   prefilter with a check the runtime runs on each row, one path for
   standard operations, `geo.` and `ai.distance`; all SQL text written in
   `jadpo-sql` (today `jadpo-plan` writes the vector, `ST_Distance` and
   `SET LOCAL hnsw.*` SQL itself); `data/queries.rs` split along the way.
   Then standard operations with an exact SQL form allowed in `where:`,
-  with a derived expression index (area 6, decided 2026-10-19).
+  with a derived expression index (area 6, decided 2026-10-19). Built:
+  `Condition::Call` lowered by `jadpo_sql::condition::lowering` to an
+  exact form or an index search, the read plan's recheck a generic
+  `Check` run by `jadpo_value::run`; every SQL text `jadpo-plan` wrote
+  moved to `jadpo-sql`, held there by a test; the checker's query reader
+  split into ten modules; operations in `where:` with an index on their
+  expression, area 6's "Operations in conditions" and its refusal
+  example checked, and a live test of the code's answer and each index.
+  Choices in area 6's "Chosen in chunk 6.3b".
 - [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
   `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
   transactions that commit their writes and position together, problems

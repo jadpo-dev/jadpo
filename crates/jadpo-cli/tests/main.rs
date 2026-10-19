@@ -31,6 +31,7 @@ mod locales;
 mod lsp;
 mod manifest;
 mod migrate;
+mod operation_conditions;
 mod passkeys;
 mod policy;
 mod queries;

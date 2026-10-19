@@ -838,3 +838,53 @@ query patches_crossing(round: LineString, after: PageCursor?) -> Page<DeliveryPa
         after: after
     }
 }
+
+type BookTitle = Text {
+    max_length: 200
+}
+
+type PublicationYear = Int {
+    min: 1450
+    max: 2100
+}
+
+entity Book {
+    id: Uuid
+    title: BookTitle
+    subtitle: BookTitle?
+    published_on: CalendarDate
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+type BookCard = Output {
+    pick: [Book.id, Book.title]
+}
+
+/// An operation with an exact SQL form standing where a field does (chunk
+/// 6.3b): its form compared with a parameter, the literal bound as one.
+query spine_titles() -> List<BookCard> {
+    from: Book
+    where: text.length(Book.title) <= 24
+    order: [Book.title asc]
+    limit: 50
+}
+
+query published_in(year: PublicationYear) -> List<BookCard> {
+    from: Book
+    where: temporal.year(Book.published_on) == year
+    order: [Book.title asc]
+    limit: 100
+}
+
+/// Its other arguments written into the expression, so its index holds
+/// it; a `Bool` alone under `not`, of a field that may be `none`.
+query quiet_subtitles(prefix: Book.title) -> List<BookCard> {
+    from: Book
+    where: text.keep_first(Book.title, 3) == prefix
+    where: not text.ends_with(Book.subtitle, "!")
+    order: [Book.id asc]
+    limit: 20
+}

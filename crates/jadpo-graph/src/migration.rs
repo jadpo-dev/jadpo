@@ -988,6 +988,20 @@ fn add_foreign_key(table: &str, name: &str, def: &Table) -> Statement {
 
 fn create_index(table: &str, name: &str, def: &Table) -> Statement {
     let index = def.indexes.get(name);
+    // An index of an operation's result (chunk 6.3b).
+    if let Some(found) = index
+        && let Some(expression) = &found.expression
+    {
+        return Statement {
+            sql: table::create_expression_index(
+                table,
+                name,
+                expression,
+                found.predicate.as_deref(),
+            ),
+            does: "create index",
+        };
+    }
     let columns: Vec<table::IndexColumn<'_>> = index
         .map(|i| {
             i.columns
@@ -1322,6 +1336,7 @@ mod tests {
             table.indexes.insert(
                 "todo_old_idx".into(),
                 Index {
+                    expression: None,
                     columns: vec!["old".into()],
                     reason: "index Todo.by_old".into(),
                     predicate: None,

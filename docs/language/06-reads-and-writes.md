@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"; what the page left open is "Chosen in chunk 5.6c", under "Review"). Built in chunk 5.5u8: a query giving a map layer, a `FeatureCollection<G, P>` a `GET` route sends ("A query giving a map layer"; its choices are "Chosen in chunk 5.5u8"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"; what the page left open is "Chosen in chunk 5.6c", under "Review"). Built in chunk 5.5u8: a query giving a map layer, a `FeatureCollection<G, P>` a `GET` route sends ("A query giving a map layer"; its choices are "Chosen in chunk 5.5u8"). Built in chunk 6.3b: a standard operation with an exact SQL form in a condition, with an index on its expression ("Operations in conditions"; its choices are "Chosen in chunk 6.3b"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -276,20 +276,22 @@ query due_todos(owner_id: User.id, filter: ListTodos) -> List<TodoView> {
 ```
 
 A condition must be one the database can use an index for: a field,
-named first, compared with a value. A function applied to a field, two
-fields compared, and a value worked out in the query are refused; values
+named first, compared with a value. Two fields compared and a value
+worked out in the query are refused, and so is a function applied to a
+field, but for the operations below; values
 are parameters and their fields, literals, enum values, lists of those and
 `clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
 accepted wherever a literal is, since it is a value fixed while compiling
 (decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
-durations, as they do in a body (area 3). Besides `ai.distance` (area
-21), the one function a field may be passed to is a `geo.` test, which a
-GiST index serves: `geo.within`,
-`geo.contains` or `geo.intersects` with a geometry field first and a
-parameter after, on a `where:` line of its own or joined by `and`; the
-index finds the records and Jadpo's own code decides each, so the query
-gives the code's answer ([area 20](20-geospatial.md), "Queries", built
-in chunk 5.5u5). A field that is `none` meets no
+durations, as they do in a body (area 3). A field may be passed to three
+kinds of operation. `ai.distance` (area 21) is compared with a bound. A
+`geo.` test (`geo.within`, `geo.contains` or `geo.intersects`) takes a
+geometry field first and a parameter after, on a `where:` line of its
+own or joined by `and`, and a GiST index serves it: the index finds the
+records and Jadpo's own code decides each, so the query gives the code's
+answer ([area 20](20-geospatial.md), "Queries", built in chunk 5.5u5).
+And a standard operation with an exact SQL form stands where the field
+would ("Operations in conditions", below). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
 absent; that is what `where_present:` is for. The compiler creates the
@@ -303,6 +305,178 @@ accepts exactly one `field == value`, and a nullable field cannot be tested
 at all. The page example is under the next section.
 
 :::
+
+### Operations in conditions
+
+A standard operation may stand where a field does when area 19 gives it
+an exact SQL form ([area 19](19-standard-library.md), "SQL forms"): the
+field is its first argument, and every other argument is written out, a
+literal, a constant or an enum value such as `Rounding.half_even`. The
+database works the operation out with that form, which gives exactly what
+the operation gives in code, so the query keeps the records `list.filter`
+would keep with the same operation (decided 2026-10-19, built in chunk
+6.3b). Its result is compared with a value as a field's is, by `==`, `!=`,
+`in` and, for numbers, times, dates and durations, the orderings; an
+operation that gives a `Bool` is the condition itself.
+
+```jadpo check project=operation-conditions file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/book_title.jadpo hidden
+/// A book's title, as printed on its cover.
+type BookTitle = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/publication_year.jadpo hidden
+/// A year a book can have been first published in.
+type PublicationYear = Int {
+    min: 1450
+    max: 2100
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/publication_day.jadpo hidden
+/// The day a book was first published.
+type PublicationDay = CalendarDate {}
+```
+
+```jadpo check project=operation-conditions file=domains/library/entities/book.jadpo
+use library/types { BookTitle, PublicationDay }
+
+/// A book in the catalogue.
+entity Book {
+    id: Uuid
+    title: BookTitle
+    published_on: PublicationDay
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/book_card.jadpo hidden
+use library/entities { Book }
+
+/// A book in a list.
+type BookCard = Output {
+    pick: [Book.id, Book.title]
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/actions/add_book.jadpo hidden
+use library/entities { Book }
+use library/types { BookTitle, PublicationDay }
+
+/// Adds a book to the catalogue.
+action add_book(title: BookTitle, published_on: PublicationDay) -> Book {
+    return Book.create {
+        set: {
+            title: title
+            published_on: published_on
+        }
+    }
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/queries/spine_titles.jadpo
+use library/entities { Book }
+use library/types { BookCard }
+
+/// The books whose title fits on a spine label.
+query spine_titles() -> List<BookCard> {
+    from: Book
+    where: text.length(Book.title) <= 24
+    order: [Book.title asc]
+    limit: 50
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/queries/published_in.jadpo migrate=initial
+use library/entities { Book }
+use library/types { BookCard, PublicationYear }
+
+/// The books first published in a year.
+query published_in(year_published: PublicationYear) -> List<BookCard> {
+    from: Book
+    where: temporal.year(Book.published_on) == year_published
+    order: [Book.title asc]
+    limit: 100
+}
+```
+
+A title is counted in code points, as `text.length` counts it, however
+many bytes it takes, and a year ends where `temporal.year` says, run on
+PostgreSQL:
+
+```jadpo check project=operation-conditions file=domains/library/queries/spine_titles.test.jadpo
+use library/entities { Book }
+use library/types { BookCard, BookTitle }
+use library/actions { add_book }
+use library/queries { published_in }
+
+test "a query keeps the books its operation keeps in code" {
+    var dune: Book = add_book(BookTitle("Dune"), "1965-08-01")
+    var cafe: Book = add_book(BookTitle("Café Society à la Plage!"), "1965-12-31")
+    var left_hand: Book = add_book(BookTitle("The Left Hand of Darkness"), "1969-03-01")
+    var spine: List<BookCard> = spine_titles()
+    assert text.join(list.map(spine, card -> card.title), ", ") == text.join(
+        [cafe.title, dune.title],
+        ", "
+    )
+    assert text.length(cafe.title) == 24
+    assert text.length(left_hand.title) == 25
+    var sixty_five: List<BookCard> = published_in(1965)
+    assert list.count(sixty_five) == 2
+    assert list.count(published_in(1969)) == 1
+}
+```
+
+- **Every other argument is written out.** The compiler derives an index
+  on the operation's result for each record, `CREATE INDEX ... ((form))`,
+  one for each operation of a field however many queries test it, as it
+  derives one for a field's test (area 5, "Indexes"); a value given when
+  the query runs would change what the index holds, so a parameter as
+  another argument is `query.condition_unsupported`.
+- **Only an exact form, and one an index can hold.** An operation without
+  a SQL form (`text.lower`, whose result PostgreSQL's collation would
+  decide) is `query.condition_unsupported`, and so is one whose form an
+  index can't hold: `map.count` and `temporal.period_between` read a
+  subquery, and `hash.sha256` and `encoding.to_utf8` of text convert
+  through the database's encoding, which PostgreSQL won't index. A field
+  kept in several columns, such as an amount of money, or whole as its
+  JSON, such as a list, isn't compared in a query yet, its operations
+  included.
+- **The field first, once.** The field is the operation's first argument,
+  given as it is; an operation of another operation's result, or with the
+  field anywhere else, is `query.condition_unsupported`.
+- **`none`.** A record whose field is `none` meets no condition on an
+  operation of it, `not` included, as code can't call the operation on
+  `none`.
+- **Anywhere a comparison stands.** Under `not` and `or`, on a
+  `where_present:` line, in an include's `where:` and in an aggregate
+  query, since the database works the operation out exactly; `order:`
+  still takes fields only.
+
+The statements (`jadpo sql`) and the indexes derived for them:
+
+```sql
+-- spine_titles
+SELECT "id", "title"
+FROM "book"
+WHERE char_length("title")::bigint <= $1
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT 50
+
+-- published_in
+SELECT "id", "title"
+FROM "book"
+WHERE (CASE WHEN extract(year FROM "published_on") < 0 THEN extract(year FROM "published_on") + 1 ELSE extract(year FROM "published_on") END)::bigint = $1
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT 100
+
+CREATE INDEX "book_published_on_year_idx" ON "book" (((CASE WHEN extract(year FROM "published_on") < 0 THEN extract(year FROM "published_on") + 1 ELSE extract(year FROM "published_on") END)::bigint));
+CREATE INDEX "book_title_length_idx" ON "book" ((char_length("title")::bigint));
+```
 
 ## Order and pages
 
@@ -2483,6 +2657,42 @@ error: `Book.title > title` isn't a condition a query can use
 check failed: 1 error, 1 file
 ```
 
+A standard operation stands where a field does only when it has an exact
+SQL form ("Operations in conditions", chunk 6.3b). `text.lower` has none,
+since PostgreSQL's would follow the database's collation:
+
+```jadpo check project=e-condition-no-form expect=query.condition_unsupported
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+}
+
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: text.lower(Book.title) == title
+    order: [Book.title asc]
+    limit: 20
+}
+```
+
+```text output
+error: `text.lower(Book.title) == title` isn't a condition a query can use
+ --> main.jadpo:12:12
+   |
+12 |     where: text.lower(Book.title) == title
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not an indexable condition
+  reason: `text.lower` has no SQL form, an expression PostgreSQL works out exactly as the code does (area 19, "SQL forms"), so the database can't decide this condition.
+  next: Compare `Book.title` itself, or keep what the condition needs in a field of its own (agent)
+  rule: query.condition_unsupported
+  help: docs/language/06-reads-and-writes.html#query-condition-unsupported
+
+check failed: 1 error, 1 file
+```
+
 ### `query.value_unsupported`
 
 ```jadpo check project=e-value-unsupported expect=query.value_unsupported
@@ -4450,6 +4660,70 @@ database.
     checked after reading. Joins and `include`, ranges, other orderings,
     `matches` and other grants are compile errors naming PostgreSQL.
 
+### Chosen in chunk 6.3b
+
+What "Operations in conditions" needed that the decision (Phase 5
+review, 2026-10-19) didn't say, each the most conservative reading, and
+the one lowering it is built on:
+
+- **One lowering for every operation in a condition.** `ai.distance`, the
+  `geo.` tests and the new operations are one model, a call of an
+  operation on a field and what the condition asks of its result, decided
+  one of two ways: its SQL form compared in the statement (area 19's
+  exact forms, and `ai.distance` as pgvector works it out, which area 21
+  decided a query's distance is), or a search an index serves, a margin
+  wider than the condition, whose rows the runtime holds to the operation
+  in the code a function body's call of it runs, asking again for more
+  when that leaves the read short (the `geo.` tests, area 20). No query's
+  statement changed.
+- **Which operations.** Those area 19 gives an exact form, less those
+  PostgreSQL can't index: `map.count` and `temporal.period_between` read
+  a subquery, and `hash.sha256` and `encoding.to_utf8` of text call
+  `convert_to`, which PostgreSQL marks stable since it reads the
+  database's encoding. A range's operations take a range written out,
+  which a query can't write, and a field of money or a range isn't
+  compared in a query yet, operations included (`toolchain.not_built_yet`,
+  as before); nor is a field kept whole as its JSON (an object, a list, a
+  set, a map or an enum with data, chunk 5.9b), whose `list.count` would
+  otherwise have a form. A live test builds an index on every other form.
+- **The field first, once, and every other argument written out:** a
+  literal, a constant, an enum value, a rounding mode, `decimal.round`'s
+  `scale:`, `text.pad_start`'s `fill:`. Each is held to what code holds it
+  to while compiling (a zero divisor, a negative count, empty text to
+  find), and written into the statement's text, so the index and the
+  statement hold the same expression and PostgreSQL matches them. A
+  parameter there, an operation of another's result, or the field
+  anywhere but first is `query.condition_unsupported`.
+- **Compared as a field is.** Its result takes `==`, `!=`, `in` and, for
+  numbers, times, dates and durations, the orderings, against the values
+  a field's comparison takes; a literal is decoded for the result's type.
+  A `Bool` is the condition itself, and its `not` is written `IS FALSE`,
+  since PostgreSQL turns `NOT (a = b)` into `a <> b` before it looks for an
+  index. `== none` is `type.incomparable`: an operation gives a value
+  whenever it is called.
+- **`none`.** A record whose field is `none` meets no condition on an
+  operation of it, `not` included (`"field" IS NOT NULL AND ...`), as code
+  can't call the operation on `none`; `ai.distance` keeps its statement,
+  pgvector's operators giving `NULL` for `NULL`.
+- **Wherever a comparison stands:** under `not` and `or`, on a
+  `where_present:` line, in an include's `where:` and in an aggregate
+  query, all of which the database works out exactly. A search still
+  stands on its own line or under `and`, outside includes and aggregates.
+- **The index.** One B-tree on each expression, however many queries and
+  includes compare it, `<table>_<column>_<operation>_idx`, another
+  expression of the same operation and field named apart by its digest,
+  partial for `visible:` as every derived index is. The schema keeps it as
+  an index's `expression`, beside the column it reads, and a migration
+  creates it with `CREATE INDEX ... ((expression))`.
+- **Where it was tested.** The checker's own tests for each form and
+  refusal; the golden SQL of three queries (`jadpo-plan`'s `tests/sql`);
+  and a live test (`jadpo-cli`'s `operation_conditions`) running ten
+  queries over six hundred books, edge cases among them (code points
+  and Unicode's white space, years before 1 AD, halves rounded each way,
+  `none`), each the code's answer and each through its index (`EXPLAIN`
+  with sequential and plain index scans off), and building an index on
+  every form a condition may use.
+
 ### Chosen in chunk 5.8c
 
 - **A result type names no rule across its fields**
@@ -4607,5 +4881,5 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |
 | Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |
 | Aggregate queries | `group:` and `aggregate:` blocks shaped like `include:`; `count()`, `sum`, `min`, `max` and `average(F, scale:, rounding:)`, each what code gives; groups of exactly-comparing fields and time buckets of dates; `List<T>` with `group:`, `T` without; one statement. Built in chunk 5.6c, as "Chosen in chunk 5.6c" sets out (area 19, questions 21 and 28) | 2026-10-18 |
-| Standard operations in `where:` (Phase 5 review) | Allowed where the operation has an exact SQL form, with a derived expression index, once conditions share one lowering (chunk 6.3b); refused as `query.condition_unsupported` until then (Richard, as recommended) | 2026-10-19 |
+| Standard operations in `where:` (Phase 5 review) | Allowed where the operation has an exact SQL form, with a derived expression index, once conditions share one lowering (chunk 6.3b); refused as `query.condition_unsupported` until then (Richard, as recommended). Built in chunk 6.3b, as "Chosen in chunk 6.3b" sets out | 2026-10-19 |
 | A query giving a map layer (Phase 5 review) | A query may return its records as a `FeatureCollection<G, P>`, naming the geometry field and the properties type, so a `GET` route can send a layer; nothing is computed beyond picking fields (Richard, as recommended after chunk 5.5u7). Built in chunk 5.5u8 | 2026-10-19 |
