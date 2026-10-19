@@ -1,0 +1,16 @@
+use tills/types { PoundsToEuros, StallPrice }
+
+test "a price in euros at the morning's rate" {
+    var rate: PoundsToEuros = PoundsToEuros(
+        ExchangeRate {
+            from: Currency.gbp
+            to: Currency.eur
+            rate: 1.17
+            at: "2026-10-19T08:00:00Z"
+        }
+    )
+    // £10.50 at 1.17 is €12.285, rounded half to even to €12.28.
+    var cheese: StallPrice = StallPrice(money.from_minor(1050, Currency.gbp))
+    assert price_in_euros(cheese, rate) == money.from_minor(1228, Currency.eur)
+    assert money.currency(price_in_euros(cheese, rate)) == Currency.eur
+}

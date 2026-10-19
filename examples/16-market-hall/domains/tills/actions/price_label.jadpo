@@ -1,0 +1,47 @@
+// One formatter shows every amount, with Money's options: the symbol,
+// the code or the currency's name; whole units for a menu board; and a
+// refund in brackets, as accounts write it.
+
+use tills/types { StallPrice }
+
+/// How a price is shown where a person reads it.
+type LabelStyle = Enum {
+    receipt
+    menu_board
+    till_export
+    spoken
+    refund
+}
+
+/// `price` as `style` shows it, in `reader_locale`.
+action price_label(
+    price: StallPrice,
+    style: LabelStyle,
+    reader_locale: Locale
+) -> PresentationText {
+    return match style {
+        LabelStyle.receipt -> text.format(
+            price,
+            locale: reader_locale,
+            display: MoneyDisplay.symbol,
+            precision: MoneyPrecision.minor,
+            sign: MoneySign.standard
+        )
+        LabelStyle.menu_board -> text.format(
+            price,
+            locale: reader_locale,
+            precision: MoneyPrecision.whole
+        )
+        LabelStyle.till_export -> text.format(
+            price,
+            locale: reader_locale,
+            display: MoneyDisplay.code
+        )
+        LabelStyle.spoken -> text.format(price, locale: reader_locale, display: MoneyDisplay.name)
+        LabelStyle.refund -> text.format(
+            StallPrice(price) * -1,
+            locale: reader_locale,
+            sign: MoneySign.accounting
+        )
+    }
+}

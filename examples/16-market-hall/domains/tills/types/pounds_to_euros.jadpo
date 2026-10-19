@@ -1,0 +1,6 @@
+/// The rate the market's bank gives it each morning. Its currencies are
+/// fixed, so a rate the wrong way round doesn't compile.
+type PoundsToEuros = ExchangeRate {
+    from: Currency.gbp
+    to: Currency.eur
+}

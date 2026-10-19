@@ -1,0 +1,7 @@
+/// The service charge on a table's bill: rounded down to a penny, so a
+/// customer never pays a fraction more than the rate says.
+type ServiceCharge = Money {
+    currency: Currency.gbp
+    min: 0
+    rounding: Rounding.down
+}

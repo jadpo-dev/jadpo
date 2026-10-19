@@ -1,0 +1,4 @@
+/// An amount typed into the till, in the major units of its currency.
+type TypedAmount = Decimal {
+    scale: 3
+}

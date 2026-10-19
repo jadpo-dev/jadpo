@@ -1,0 +1,7 @@
+use tills/types { StallPrice }
+
+/// A stall's sales added up; `Currency.gbp` gives the zero a day with no
+/// sales adds up to.
+action day_total(sales: List<StallPrice>) -> StallPrice {
+    return StallPrice(money.sum(sales, Currency.gbp))
+}

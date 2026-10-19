@@ -1,0 +1,5 @@
+/// The share of a bill the service charge is.
+type ServiceRate = Percentage {
+    min: 0%
+    max: 20%
+}

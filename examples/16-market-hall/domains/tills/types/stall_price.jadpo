@@ -1,0 +1,8 @@
+/// What something costs at a stall, in pounds. The currency is fixed, so
+/// adding an amount in another currency doesn't compile, and `*` and `/`
+/// round half up to a penny.
+type StallPrice = Money {
+    currency: Currency.gbp
+    min: 0
+    rounding: Rounding.half_up
+}

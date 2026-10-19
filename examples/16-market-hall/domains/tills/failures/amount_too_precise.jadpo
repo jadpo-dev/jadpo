@@ -1,0 +1,4 @@
+/// An amount with more places than its currency has, such as 10.505 pounds.
+type AmountTooPrecise = Failure {
+    kind: FailureKind.invalid_value
+}

@@ -1,0 +1,8 @@
+use tills/types { StallPrice }
+
+test "the service charge rounds down to a penny" {
+    // 12.5% of £23.48 is £2.935: a customer pays £2.93.
+    var bill: StallPrice = StallPrice(money.from_minor(2348, Currency.gbp))
+    assert service_on(bill, 12.5%) == money.from_minor(293, Currency.gbp)
+    assert service_on(bill, 0%) == money.from_minor(0, Currency.gbp)
+}

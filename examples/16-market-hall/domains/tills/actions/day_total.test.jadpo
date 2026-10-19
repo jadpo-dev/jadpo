@@ -1,0 +1,8 @@
+use tills/types { StallPrice }
+
+test "a day's sales add up, and no sales add up to nothing" {
+    var bread: StallPrice = StallPrice(money.from_minor(250, Currency.gbp))
+    var jam: StallPrice = StallPrice(money.from_minor(375, Currency.gbp))
+    assert day_total([bread, jam]) == money.from_minor(625, Currency.gbp)
+    assert day_total([]) == money.from_minor(0, Currency.gbp)
+}

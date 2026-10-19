@@ -1,0 +1,14 @@
+// `Price` keeps whether an amount includes VAT, so a gross price is never
+// taken for a net one, and `Discount` is a choice of an amount off or a
+// percentage off: standard types that are an enum with data.
+
+use tills/failures { WrongCurrency }
+
+/// A price with a stall's deal taken off it. A percentage's share is
+/// rounded before it comes off, so the receipt's lines add up; an amount
+/// off in another currency fails.
+action apply_deal(price: Price, deal: Discount) fails WrongCurrency -> Price {
+    return attempt money.apply_discount(price, deal) {
+        currency_mismatch: WrongCurrency
+    }
+}

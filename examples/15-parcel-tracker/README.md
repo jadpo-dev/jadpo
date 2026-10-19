@@ -55,4 +55,4 @@ cd examples/15-parcel-tracker && ../../target/release/jadpo translations missing
   <!-- try {"file": "domains/tracking/translations/ar_eg.jadpo", "replace": "        two: \"طردان في الطريق\"\n", "with": "", "check": ["translation.variant_missing"]} -->
 - In `app.jadpo`, take `in_progress:` out. `jadpo check` reports `translation.wording_missing` for each message Polish doesn't word yet, and `translation.file_missing` for each folder with no Polish file at all: a complete language has no fallback.
   <!-- try {"file": "app.jadpo", "replace": "    in_progress: [Locale.pl_pl]\n", "with": "", "check": ["translation.file_missing", "translation.wording_missing"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [16-market-hall](../16-market-hall/README.md), which counts money.

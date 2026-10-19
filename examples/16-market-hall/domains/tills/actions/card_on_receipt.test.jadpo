@@ -1,0 +1,8 @@
+test "a receipt keeps a card's brand and last four" {
+    var kept_card: MaskedCardNumber = card_on_receipt("4242424242424242")
+    assert kept_card == MaskedCardNumber {
+        brand: CardBrand.visa
+        last_four: "4242"
+    }
+    assert text.format(kept_card, locale: Locale.en_gb) == "Visa •••• 4242"
+}

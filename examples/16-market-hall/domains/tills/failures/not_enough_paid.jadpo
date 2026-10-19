@@ -1,0 +1,4 @@
+/// Less handed over than the bill.
+type NotEnoughPaid = Failure {
+    kind: FailureKind.invalid_value
+}

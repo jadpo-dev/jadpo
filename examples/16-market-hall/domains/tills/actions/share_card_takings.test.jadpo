@@ -1,0 +1,7 @@
+use tills/types { StallPrice, Tendered }
+
+test "card takings are shared by pitches, every penny to a stall" {
+    var takings: StallPrice = StallPrice(money.from_minor(100001, Currency.gbp))
+    var stall_shares: List<Tendered> = share_card_takings(takings, [1, 2, 2])
+    assert list.map(stall_shares, share -> money.minor(share)) == [20001, 40000, 40000]
+}

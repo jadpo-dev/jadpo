@@ -1,0 +1,3 @@
+/// Money a customer hands over, in whatever currency they pay in: known
+/// only while the till runs.
+type Tendered = Money {}

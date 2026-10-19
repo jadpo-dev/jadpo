@@ -1,0 +1,13 @@
+use tills/types { StallPrice }
+
+test "one amount, shown each way a person reads it" {
+    var hamper: StallPrice = StallPrice(money.from_minor(123450, Currency.gbp))
+    assert price_label(hamper, LabelStyle.receipt, Locale.en_gb) == "£1,234.50"
+    // The gap after the code is a no-break space, as CLDR writes it, so
+    // the code never ends a line apart from its amount.
+    assert price_label(hamper, LabelStyle.till_export, Locale.en_gb) == "GBP 1,234.50"
+    assert price_label(hamper, LabelStyle.spoken, Locale.en_gb) == "1,234.50 British pounds"
+    assert price_label(hamper, LabelStyle.refund, Locale.en_gb) == "(£1,234.50)"
+    var pie: StallPrice = StallPrice(money.from_minor(1240, Currency.gbp))
+    assert price_label(pie, LabelStyle.menu_board, Locale.en_gb) == "£12"
+}

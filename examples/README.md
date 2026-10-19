@@ -59,6 +59,10 @@ README saying what it teaches, how to run it and what to try next.
     messages, a language file per locale, plural forms, enums with
     wording, a message two domains share, the reader's language and
     direction, Jadpo's own text and a language still in progress.
+16. [16-market-hall/](16-market-hall/README.md): money: amounts in minor
+    units, currencies fixed by a type, rounding, prices and deals,
+    percentages, sharing to the penny, rates, cards and amounts shown to
+    people.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

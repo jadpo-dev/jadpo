@@ -1,0 +1,8 @@
+use tills/types { EuroPrice, PoundsToEuros, StallPrice }
+
+/// A price for visitors paying in euros, at the morning's rate. The
+/// rate's type fixes both currencies, so this can't fail, and the result
+/// is in euros, rounded half to even to a cent.
+action price_in_euros(price: StallPrice, rate: PoundsToEuros) -> EuroPrice {
+    return EuroPrice(money.convert(price, rate))
+}

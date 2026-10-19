@@ -30,6 +30,7 @@ admin_orders
 adults
 after_fifth
 after_five
+after_share
 aftercare
 afternoon
 afternoon_slot
@@ -65,6 +66,7 @@ application_configuration
 applies_in
 applies_to
 apply_code
+apply_deal
 appoint_editor
 appraisal
 approve_consent
@@ -273,6 +275,7 @@ card_label
 card_name
 card_not_full
 card_on_file
+card_on_receipt
 card_view
 cards
 carrot
@@ -320,6 +323,7 @@ checked_on
 checkout
 checkout_unavailable
 checkup
+cheese
 child_count
 chocolate
 choose_handover
@@ -451,6 +455,7 @@ cut_to
 cut_to_order
 cyd
 day_count
+day_total
 days_left
 days_overdue
 de_parcel
@@ -577,6 +582,7 @@ entry_id
 estimate
 euro_price
 euros
+euros_off
 euros_to_pounds
 eve
 evening
@@ -681,6 +687,8 @@ half_term_from_text
 half_term_json
 half_term_kept
 half_term_vevent
+hall_pitches
+hamper
 hand_over
 hand_over_recipe
 handle_taken
@@ -712,6 +720,7 @@ hold_reason
 holding_deposit
 holding_weeks
 home_zone
+honey
 hourly_load
 hourly_rise
 house_colour
@@ -787,6 +796,7 @@ item_name
 item_page
 item_price
 jadpo_audit
+jam
 jar_label
 jar_name
 job_run_at
@@ -799,6 +809,7 @@ judge_note
 keep_memo
 keeper
 kept_after
+kept_card
 kept_digest
 kept_hash
 kept_letter
@@ -826,6 +837,7 @@ label_at
 label_created
 label_jar
 label_line
+label_style
 label_weight
 labelled
 landed
@@ -978,6 +990,7 @@ memo_text
 memo_view
 memos
 menu
+menu_board
 menu_cake
 menu_entry
 menu_filter
@@ -1072,6 +1085,7 @@ not_an_account
 not_an_address
 not_an_iban
 not_an_nhs_number
+not_enough_paid
 not_praised
 not_work
 not_your_order
@@ -1297,10 +1311,12 @@ photo
 photo_bytes
 photo_key
 pickup_outlet
+pie
 piece_count
 pin_note
 ping
 pinned_fingerprint
+pitches
 place_order
 place_request
 placed_label
@@ -1338,6 +1354,7 @@ preview_text
 price_band
 price_basket
 price_flour
+price_in_euros
 price_item
 price_label
 price_lines
@@ -1452,6 +1469,7 @@ referral_letter
 referral_text
 referral_unreadable
 refresh_meaning
+refund
 register_and_record
 register_both
 registration_closed
@@ -1606,12 +1624,16 @@ sent_pem
 sent_photo
 sent_rate
 sent_text
+service_charge
 service_fake_identity
+service_on
+service_rate
 set_oven
 set_password
 setting_off
 settings_colour
 severe
+share_card_takings
 share_code
 share_off
 shared_secret_forgery
@@ -1709,7 +1731,9 @@ southbank
 spacer
 spelt
 spent_tokens
+split_bill
 split_evenly
+spoken
 sponge
 spot
 square_centimetres
@@ -1727,6 +1751,9 @@ staff_sign_in
 staff_sign_in_result
 staff_view
 stage
+stall_price
+stall_share
+stall_shares
 stamp_card
 stamp_count
 stamped_once
@@ -1797,6 +1824,7 @@ swatch
 swatch_chroma
 swatch_hue
 swatch_share
+table_size
 tag_all
 tag_line
 tag_memo
@@ -1806,6 +1834,7 @@ take_flour
 take_loan
 take_off_menu
 take_on
+take_payment
 takings
 tallies
 tea_query
@@ -1815,6 +1844,7 @@ team_id
 temperature_for
 ten
 tenancy_ref
+tendered
 tenth
 territory
 territory_id
@@ -1841,8 +1871,10 @@ tier_count
 tier_name
 tier_scale
 tiers_above
+till_export
 till_scan
 till_total
+tills
 time_lived
 times_lent
 tin_area
@@ -1903,6 +1935,7 @@ turned_down
 twenty_in_threes
 twice_daily
 two_open_todos
+typed_amount
 typed_colour
 typed_domain
 typed_in
