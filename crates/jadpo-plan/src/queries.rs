@@ -184,6 +184,15 @@ struct Columns {
     kinds: Vec<Column>,
 }
 
+/// `hnsw.max_scan_tuples` for a nearest-neighbour query (chunk 5.8c):
+/// pgvector's most, so an iterative scan ends only when it has filled the
+/// query's limit or run out of records, as area 21 says a filtered search
+/// does. pgvector's default, 20,000, stops a filtered search early and
+/// silently, returning fewer records than match. What the scan may hold
+/// in memory stays pgvector's own bound, `work_mem` times
+/// `hnsw.scan_mem_multiplier`, the database's to set.
+const MAX_SCAN_TUPLES: u32 = 2_147_483_647;
+
 /// pgvector's default `hnsw.ef_search`: a nearest-neighbour query never
 /// searches fewer candidates than this (area 21, chunk 5.5v1b).
 const EF_SEARCH: u64 = 40;
@@ -480,12 +489,14 @@ impl Planner<'_> {
         // pgvector's search settings for the rest of the transaction: at
         // least as many candidates as the query returns, and iterative
         // scans in strict order, so a filtered search still fills its
-        // limit (pgvector 0.8.0 and later).
-        // An exact search reads no index, and needs neither.
+        // limit (pgvector 0.8.0 and later), visiting as many records as
+        // that takes rather than stopping at 20,000 (chunk 5.8c).
+        // An exact search reads no index, and needs none of them.
         let settings = match &nearest {
             Some((_, Some(_), _, most)) => vec![
                 format!("SET LOCAL hnsw.ef_search = {}", (*most).max(EF_SEARCH)),
                 "SET LOCAL hnsw.iterative_scan = strict_order".to_string(),
+                format!("SET LOCAL hnsw.max_scan_tuples = {MAX_SCAN_TUPLES}"),
             ],
             _ => Vec::new(),
         };

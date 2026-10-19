@@ -195,13 +195,20 @@ pub fn vector_holding(table: &dyn TypeView, expected: &Ty, items: &[Const]) -> R
     let Some((key, _)) = ai::holding(&floats, dimensions, metric) else {
         return Ok(());
     };
+    // The type that says so: the one writing `distance:` or
+    // `dimensions:`, or `Vector` itself, which compares by cosine unless
+    // told otherwise.
     let host = chain
         .iter()
         .find(|(_, rules)| match key {
             jadpo_std::RuleKey::Distance => rules.distance.is_some(),
             _ => rules.dimensions.is_some(),
         })
-        .or(chain.first())
+        .or_else(|| {
+            chain
+                .iter()
+                .find(|(_, rules)| rules.standard.is_some_and(ai::rounds))
+        })
         .map_or_else(String::new, |(host, _)| host.clone());
     let (rule, why) = match key {
         jadpo_std::RuleKey::Distance => (

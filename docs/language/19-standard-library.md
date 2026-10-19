@@ -5137,7 +5137,7 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `json.read(text, as: T)` | `T`, decoded and checked against every rule of `T`; `text` is `Text`, or `Bytes` in UTF-8 | `malformed` (not JSON), `mismatch` (a field missing, unknown or breaking a rule) | none |
+| `json.read(text, as: T)` | `T`, decoded and checked against every rule of `T`; `text` is `Text`, or `Bytes` in UTF-8 | `malformed` (not JSON, or an object naming a member twice), `mismatch` (a field missing, unknown or breaking a rule) | none |
 | `json.write(value)` | `Text`, compact; fields in declared order, sets and map keys in canonical order, so the same value always gives the same text | | none |
 | `json.read(file, items_at:, as:, each:, finished:, key:)` | `BatchRun` over a large JSON list in a stored `File`, `items_at:` naming where the list sits in the document; each item an `Input` of `as:`, handed to `each:` | As `csv.read` | none |
 | `json.write(store, name:, from:, each:, finished:, key:)` | `BatchRun` writing a large JSON list, each item of `from:` turned into an `Output` by `each:` | As `csv.write` | none |
@@ -11216,6 +11216,29 @@ From the Phase 5 soundness review, each the most conservative reading:
   seals with a nonce a production run used under the same key. A
   password's salt is not secret and stays on the tape, so a replayed
   `hash_password` gives the hash the recorded run made.
+
+### Chosen in chunk 5.8c
+
+From the Phase 5 soundness review, each the most conservative reading:
+
+- **A JSON object that names a member twice is no document Jadpo
+  reads:** `json.read` is `malformed`, and a request's body is refused as
+  any body that isn't JSON is, whether the object is an `Object`'s, an
+  `Input`'s or a map's. Reading kept the last one, which another reader
+  might not, so the value read could be one the sender didn't mean;
+  `crypto.verify_jwt` already refuses a token whose claims do the same
+  (chunk 5.5r). A set's repeated item stays a `duplicate` problem, since
+  it is a value, not the document's shape.
+- **A vector's item is the float nearest its own text.** JSON was read
+  as a double, then rounded to the float, which is a different float for
+  a number near the midpoint of two; each number's text as written is now
+  kept beside the document, so an item is rounded once, as 5.5s2 says.
+  The reader is Jadpo's own, RFC 8259's grammar as `serde_json` reads it,
+  with the same 128 levels of nesting, and reads every number's double
+  correctly rounded.
+- **What a vector type holds beyond its length** (area 21, "Chosen in
+  chunk 5.8c"): not all zeros when compared by cosine, `distance`, and its
+  items within ±65,504 when indexed at half precision, `min` and `max`.
 
 ### Decisions
 

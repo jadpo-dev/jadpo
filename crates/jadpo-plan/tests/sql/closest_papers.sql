@@ -1,6 +1,7 @@
 -- query closest_papers: list, store main
 SET LOCAL hnsw.ef_search = 40;
 SET LOCAL hnsw.iterative_scan = strict_order;
+SET LOCAL hnsw.max_scan_tuples = 2147483647;
 SELECT *
 FROM (
   SELECT "id", "meaning", "full_meaning", "meaning" <=> $1 AS "jadpo_distance"

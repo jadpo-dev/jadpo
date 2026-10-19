@@ -1154,3 +1154,146 @@ fn a_distance_that_is_no_number_meets_no_condition() {
         [shown(2), shown(3)]
     );
 }
+
+/// A filtered nearest query visits as many records as filling its limit
+/// takes (chunk 5.8c): 30,000 notes nearer than the five it wants, which
+/// its condition turns away, are more than pgvector's default
+/// `hnsw.max_scan_tuples` of 20,000, which would end the scan with none.
+#[test]
+fn a_filtered_nearest_query_fills_its_limit_past_twenty_thousand_records() {
+    if !jadpo_test::live() || pgvector_too_old() {
+        return;
+    }
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("vectors-scan-tuples");
+    let _ = fs::remove_dir_all(&root);
+    write(&root, "app.jadpo", "application {}\n");
+    for (file, text) in [
+        (
+            "types/meaning.jadpo",
+            "/// A note's meaning.\ntype Meaning = Vector {\n    dimensions: 2\n}\n",
+        ),
+        (
+            "entities/note.jadpo",
+            "use notes/types { Meaning }\n\n/// A note.\nentity Note {\n    id: Uuid\n    meaning: Meaning\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "types/note_card.jadpo",
+            "use notes/entities { Note }\n\n/// A note in a list.\ntype NoteCard = Output {\n    pick: [Note.id]\n}\n",
+        ),
+        (
+            "queries/nearest_far.jadpo",
+            "use notes/entities { Note }\nuse notes/types { Meaning, NoteCard }\n\n/// The five notes nearest a meaning of those at least 0.5 from it.\nquery nearest_far(from_meaning: Meaning) -> List<Nearest<NoteCard>> {\n    from: Note\n    where: ai.distance(Note.meaning, from_meaning) >= 0.5\n    order: [Note.meaning nearest from_meaning]\n    limit: 5\n}\n",
+        ),
+        (
+            "actions/find_nearest_far.jadpo",
+            "use notes/queries { nearest_far }\nuse notes/types { Meaning, NoteCard }\n\n/// The five.\naction find_nearest_far(from_meaning: Meaning) -> List<Nearest<NoteCard>> {\n    return nearest_far(from_meaning)\n}\n",
+        ),
+    ] {
+        write(&root, &format!("domains/notes/{file}"), text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let url = database("vector_scan_tuples");
+    let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    rows(
+        &url,
+        "INSERT INTO note (id, meaning) SELECT gen_random_uuid(), ('[1,' || (i * 0.00001)::text || ']')::vector FROM generate_series(1, 30000) AS i",
+        &[],
+    );
+    let far: [[f32; 2]; 5] = [
+        [0.0, 1.0],
+        [-1.0, 0.0],
+        [0.0, -1.0],
+        [-1.0, 1.0],
+        [-1.0, -1.0],
+    ];
+    for (n, meaning) in far.iter().enumerate() {
+        let mut id = [0u8; 16];
+        id[15] = n as u8 + 1;
+        id[6] = 0x40;
+        id[8] = 0x80;
+        rows(
+            &url,
+            "INSERT INTO note (id, meaning) VALUES ($1, $2)",
+            &[SqlValue::Uuid(id), bits(meaning)],
+        );
+    }
+    rows(&url, "ANALYZE note", &[]);
+    // The index serves the order, whatever the table's size would
+    // otherwise make the planner choose, and the scan has the memory it
+    // needs, so the setting under test is what decides how far it goes.
+    let name = url.rsplit('/').next().expect("a database name").to_string();
+    rows(
+        &url,
+        &format!("ALTER DATABASE \"{name}\" SET enable_seqscan = off"),
+        &[],
+    );
+    rows(
+        &url,
+        &format!("ALTER DATABASE \"{name}\" SET work_mem = '256MB'"),
+        &[],
+    );
+    let loaded = jadpo_db::load(&root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let id = program.plan().find("find_nearest_far").expect("the action");
+    let found = runtime.block_on(async {
+        let env = Env {
+            seed: Some(1),
+            clock: Clock::TEST,
+        };
+        let mut ctx = Ctx::new(program.places(), &host, env);
+        program.run(&mut ctx, id, vec![vector(&[1.0, 0.0])]).await
+    });
+    let Outcome::Value(Value::List(found)) = found else {
+        panic!("expected a list, got {found:?}");
+    };
+    assert_eq!(found.len(), 5, "the five far notes: {found:?}");
+    // pgvector's default would have ended the scan first: the same
+    // statement without the setting finds fewer.
+    let plan = program
+        .plan()
+        .query_named("nearest_far")
+        .expect("the query's plan");
+    assert!(
+        plan.read
+            .settings
+            .iter()
+            .any(|setting| setting == "SET LOCAL hnsw.max_scan_tuples = 2147483647"),
+        "{:?}",
+        plan.read.settings
+    );
+    let params: Vec<SqlValue> = plan
+        .read
+        .select
+        .params
+        .iter()
+        .map(|param| match &param.source {
+            jadpo_std::read::Source::Arg { .. } => bits(&[1.0, 0.0]),
+            jadpo_std::read::Source::Stored(value) => value.clone(),
+            other => panic!("a parameter from {other:?}"),
+        })
+        .collect();
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    let defaulted = runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        for setting in &plan.read.settings {
+            if !setting.contains("max_scan_tuples") {
+                transaction.batch(setting).await.expect("a setting");
+            }
+        }
+        let rows = transaction
+            .query(&plan.read.select.sql, &params)
+            .await
+            .expect("the statement");
+        let _ = transaction.rollback().await;
+        rows
+    });
+    assert!(
+        defaulted.len() < 5,
+        "pgvector's default scan found {} of the five",
+        defaulted.len()
+    );
+}
