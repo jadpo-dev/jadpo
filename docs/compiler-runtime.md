@@ -320,7 +320,12 @@ a JSON-held standard value (`RichText`, `RichTextBlock`, `LocalisedText`,
 parameter `WriteSource::Json`, and the runtime's `store` is given the
 table with the program's validators and shapes (`JsonCodecs`, as
 `json.read` is given them), so its `jsonb` holds what `json.write` writes
-and reads back as `json.read` reads.
+and reads back as `json.read` reads. Since chunk 5.9b that is every field
+stored as JSON, an application's enum with data, object, list, set or map
+among them (`FieldModel::json` holds its type), within the 1 MiB and 128
+levels a request's body is read to (`JSON_KEPT_LIMIT`, `JSON_KEPT_DEPTH`),
+and the table numbers each event type too, by its identity key
+(`JsonTable::events`), for the outbox's payload.
 Since chunk 5.5w3 a codec of a standard type a built-in type holds reads
 and writes it through the contract's JSON (`jadpo_value::standard::json`),
 by its entry's `Json`: its canonical text, or an object of the members

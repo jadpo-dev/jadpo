@@ -607,6 +607,52 @@ The migration's SQL is `UPDATE "parcel" SET "size" = 'medium' WHERE
 > column, untyped and held to its geometry type and to WGS84 by a check
 > constraint; the first migration with one creates the extension.
 
+Built in chunk 5.9b: an application's enum with data, object, list, set
+and map is stored as its type's contract JSON in one `jsonb` column, as
+the standard collections are, written by the route codec and read back
+with every rule of its type and the field's own, so a row edited outside
+Jadpo to break one is a fault when it is read. What the page left open is
+"Chosen in chunk 5.9b", under "Review".
+
+```jadpo check project=structured-fields
+type Tag = Text {
+    max_length: 20
+}
+
+type Grams = Int {
+    min: 0
+    max: 100000
+}
+
+/// What is printed on a parcel.
+type Label = Object {
+    line: Tag
+    note: Tag?
+}
+
+/// How a parcel leaves.
+type Delivery = Enum {
+    pickup
+    courier: {
+        company: Tag
+        weight: Grams
+    }
+}
+
+entity Parcel {
+    id: Uuid
+    label: Label
+    tags: List<Tag>
+    weights: Map<Tag, Grams>
+    delivery: Delivery
+    second_label: Label?  // `NULL` when it is `none`
+}
+```
+
+A parcel going by courier keeps `{"tag": "courier", "company": "Swift",
+"weight": 920}` in `delivery`, one to be picked up `"pickup"`, and its
+`weights` `{"box": 120, "loaf": 800}`, keys in their canonical order.
+
 ## Migrations
 
 Entities describe the schema you want; a migration records each step from
@@ -979,6 +1025,48 @@ error: `Todo.keeper` holds a whole `User`
   next: Store `User.id` instead (agent)
   rule: data.entity_in_field
   help: docs/language/05-data.html#data-entity-in-field
+
+check failed: 1 error, 1 file
+```
+
+### `data.field_without_json`
+
+A structured field is stored as its type's JSON, so everything inside it
+has a stored form: no event, failure, email, message, prompt, `Input` or
+`Output`, and no map keyed by a type with no single text form (chunk
+5.9b).
+
+```jadpo check project=e-field-without-json expect=data.field_without_json
+type Tag = Text {
+    max_length: 20
+}
+
+/// A parcel was sent.
+type ParcelSent = Event {
+    label: Tag
+}
+
+/// What a parcel's shipments hold.
+type Shipments = Object {
+    sent: List<ParcelSent>
+}
+
+entity Parcel {
+    id: Uuid
+    shipments: Shipments
+}
+```
+
+```text output
+error: `Parcel.shipments` can't be stored as JSON
+ --> main.jadpo:17:16
+   |
+17 |     shipments: Shipments
+   |                ^^^^^^^^^ `ParcelSent` has no stored form
+  reason: A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps; `Parcel.shipments` holds `ParcelSent`, an event, which is emitted, not written.
+  next: Store what `Parcel.shipments` needs in an `Object` of the application's, or in fields of its own (agent)
+  rule: data.field_without_json
+  help: docs/language/05-data.html#data-field-without-json
 
 check failed: 1 error, 1 file
 ```
@@ -2350,36 +2438,11 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate` takes it with `--url`, and the application's refusal to
   start against a database that doesn't match comes with the compiled
   deployables (Phase 8).
-- An application's own structured fields (an enum with data, an object,
-  a list, a set or a map) on an entity: their `jsonb` holds the API's
-  JSON, whose codec only the standard collections' columns have so far
-  (chunk 5.5w2b), so until then the field is refused where it is declared
-  rather than every read and write of it failing as it runs (chunk 3.10):
-
-```jadpo check project=e-structured-field expect=toolchain.not_built_yet
-type Tag = Text {
-    max_length: 20
-}
-
-entity Parcel {
-    id: Uuid
-    tags: List<Tag>
-}
-```
-
-```text output
-error: Storing a `List<Tag>` field isn't built yet
- --> main.jadpo:7:11
-  |
-7 |     tags: List<Tag>
-  |           ^^^^^^^^^ structured, stored as `jsonb`
-  reason: Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `Parcel.tags`.
-  next: Store what `Parcel.tags` holds in fields of its own, or as records of an entity that refers to `Parcel`, for now (agent)
-  rule: toolchain.not_built_yet
-  help: docs/language/05-data.html#storage-types
-
-check failed: 1 error, 1 file
-```
+- Changing the type of a field stored as JSON isn't migrated: the
+  snapshot records the column as `jsonb` and nothing its type allows, so
+  a stored value the new type no longer reads is a fault when read; and a
+  required structured field added to an entity with records takes no
+  `backfill:` yet, so it is added as `T?` ("Chosen in chunk 5.9b").
 
 ### Chosen in chunk 5.6b
 
@@ -2559,6 +2622,90 @@ as it could:
   with migrations gained `record_outbox_encoding`, adding the outbox's
   column, as any project upgrading does when `jadpo check` asks for it
   (`migration.out_of_date`).
+
+### Chosen in chunk 5.9b
+
+What the pages left open about storing an application's structured
+values, each the most conservative reading:
+
+- **One codec, the route's.** An enum with data, an object, a list, a set
+  or a map is kept in one `jsonb` column as exactly what `json.write`
+  writes for its type, and read back as a request's body is, with its
+  type's rules and the field's own: chunk 5.5w2b's path for the standard
+  collections, now for any type, the plan numbering the field's type in
+  its JSON table. A set and a map's keys are written in their canonical
+  order, and a variant without data as its name, as on the wire.
+  PostgreSQL keeps `jsonb` in its own key order and spacing, so the text
+  isn't byte for byte what was written, but it reads back `==`.
+- **What a stored value holds:** what that JSON holds, values built on the
+  built-in and standard types, enums, and `Object`s made of them, in
+  lists, sets and maps, a type that holds itself included. An `Input`, an
+  `Output`, an event, a failure, an email, a message or a prompt inside
+  one, a map keyed by a type with no single text form, a format and a
+  plural count are `data.field_without_json` (under "Errors"). A secret
+  value, an API token or a service key, an entity and text for people
+  are refused inside a stored value as in a column of their own
+  (`type.secret_exposed`, `type.auth_credential_stored`,
+  `data.entity_in_field`, `type.presentation_text_persistence`). A
+  `PasswordHash` is kept, as a field of its own is; every `Input` and
+  `Output` that would carry one off the server is refused already (area
+  19).
+- **Read with its rules; what doesn't read is a fault.** A row edited
+  outside Jadpo whose JSON breaks a rule, isn't its type or is past the
+  limits below is a fault when it is read, named by the rule and where in
+  the value it broke (`max` on `weight`), never the value, as chunk
+  5.5w2b's are.
+- **`none` is the column's `NULL`,** never JSON's `null`, which in the
+  column is a row written outside Jadpo and a fault. Inside the value, a
+  part that is `none` is JSON's `null`, as the wire writes it.
+- **No query compares or sorts one.** A condition on such a field is
+  `toolchain.not_built_yet` and an order by one `query.order_field`, as
+  chunk 5.5w2b chose for the standard collections; the field is read
+  whole wherever its record is. No `unique:` or index covers one
+  (`toolchain.not_built_yet`), since PostgreSQL compares `jsonb` by its
+  own rules rather than Jadpo's `==`; for the same reason a lifecycle
+  tests one only with `== none` or `!= none`, and a transition or
+  `initial:` sets one only to `none` (`data.lifecycle_condition`,
+  `data.lifecycle_value`). Any other value is written by an action,
+  through the codec, and an update by `id` sets one only from a value it
+  is given, since the database doesn't work one out in one step
+  (`toolchain.not_built_yet`, as for money).
+- **An id inside is a value, not a reference.** A `User.id` inside a
+  stored value has no foreign key and no `on_delete:`, as an event's
+  payload has none (area 12); a link the database must keep is a field of
+  its own, or a link entity (question 1).
+- **Policy is the field's.** A field's `policy:` covers its whole stored
+  value, as any field's does; a field of an `Object` takes no `policy:`
+  (`type.unknown_setting`), and a part is read only by reading its field,
+  so area 9's proofs hold it as they hold the field.
+- **Limits.** A stored value is at most 1 MiB of JSON, the most a
+  request's body may be (area 7), nested at most 128 arrays and objects
+  deep, the most a request's body is read to, so whatever is kept could
+  have arrived in a request and always reads back. Writing a larger or a
+  deeper one is a fault naming the limit, as is reading one written
+  outside Jadpo; PostgreSQL's own limit on `jsonb` is far above both.
+- **Encodings follow from 5.9.** The column holds the contract's JSON, so
+  a standard type inside it is pinned by that type's golden file and the
+  release's encoding (area 19, "Changing a standard type's encoding").
+  As chunk 5.9 chose for an entity's columns, a JSON column records no
+  encoding of its own: a release that changed what a standard type's JSON
+  holds would give the migration that rewrites stored values.
+- **Not built yet.** The migration snapshot records a JSON column as
+  `jsonb` and nothing its type allows, since its rules hold inside the
+  JSON, which no migration's SQL reads; so changing a stored type, or the
+  field's own rules, is no migration, and a stored value the new type no
+  longer reads is a fault when read. A required structured field added to
+  an entity with records takes no `backfill:` yet: a literal can't be
+  written for one, and a backfill worked out in Jadpo fills no JSON
+  (chunk 5.6b2); it is added as `T?`.
+- **Event payloads through the same table.** Every event type is
+  numbered in the plan's JSON table, by the identity key the outbox's
+  `event` column records (`JsonTable::events`), so chunk 6.1b writes and
+  reads a payload through the one codec, with the type's rules applied on
+  read (area 12, "A payload is the contract's JSON"). No job takes
+  arguments yet (a schedule's `run:` takes none), and a batch's captures
+  come with batches (chunk 6.4), so event types are all a payload is
+  kept as today.
 
 ### Carried to later areas
 

@@ -146,6 +146,27 @@ fn is_principal(name: &str) -> bool {
         .any(|kind| kind.type_name() == name)
 }
 
+/// Every event type the project declares, by key, in key order.
+fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
+    let mut keys: Vec<Key> = graph
+        .nodes()
+        .iter()
+        .filter(|node| {
+            node.kind == Kind::Type
+                && matches!(
+                    node.detail,
+                    jadpo_graph::Detail::Type {
+                        base: jadpo_graph::Base::Event,
+                        ..
+                    }
+                )
+        })
+        .map(|node| node.key.clone())
+        .collect();
+    keys.sort();
+    keys
+}
+
 /// A checked project's plan.
 #[derive(Debug)]
 pub struct Plan {
@@ -455,7 +476,31 @@ impl Plan {
                 settings,
             });
         }
-        let json = routes::json_table(db, project, &mut types, &json_types);
+        // Each event type, numbered after every other so their numbers
+        // don't move: the outbox keeps its payload as the type's contract
+        // JSON, written and read by its codec (area 12; chunk 5.9b). No
+        // job takes arguments yet (a schedule's `run:` takes none) and a
+        // batch's captures come with batches, so these are all the types
+        // a payload is kept as.
+        let events = event_types(&graph)
+            .into_iter()
+            .map(|key| {
+                let ty = TypeRef::Node(key.clone());
+                let number = match json_types.iter().position(|known| *known == ty) {
+                    Some(at) => at,
+                    None => {
+                        json_types.push(ty);
+                        json_types.len() - 1
+                    }
+                };
+                jadpo_std::http::EventJson {
+                    key: key.as_str().to_string(),
+                    number: u32::try_from(number).unwrap_or(u32::MAX),
+                }
+            })
+            .collect();
+        let mut json = routes::json_table(db, project, &mut types, &json_types);
+        json.events = events;
         let mut routes = routes::table(
             db,
             project,

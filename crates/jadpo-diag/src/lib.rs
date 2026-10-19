@@ -242,6 +242,8 @@ rules! {
         "05-data.html#data-entity-in-field", "Field holds an entity instead of a reference to one";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
         "05-data.html#data-field-list-required", "Unique rule or index is not a list of fields";
+    DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,
+        "05-data.html#data-field-without-json", "Structured field holds a type with no stored JSON form";
     DATA_GENERATED_TYPE: "data.generated_type", area 5, Error, Agent,
         "05-data.html#data-generated-type", "Generated field is not a required `Instant`";
     DATA_IDENTITY_MISSING: "data.identity_missing", area 5, Error, Agent,

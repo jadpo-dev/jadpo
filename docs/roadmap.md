@@ -1829,7 +1829,7 @@ chunks below, taken before Phase 6.
   `WebAuthnCredential`'s contract JSON through the plan's JSON table;
   parts and passkeys kept before encodings read as they were written, as
   area 19's "Chosen in chunk 5.9" records.
-- [ ] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
+- [x] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
   split from 5.9), after 5.9: JSON columns for any type the route codec
   handles, so an application's objects, lists, maps and enums with data
   can be stored as `jsonb` (today `toolchain.not_built_yet`), read
@@ -1837,7 +1837,21 @@ chunks below, taken before Phase 6.
   event and job types numbered in the plan's JSON table, so 6.1b writes
   the outbox's payload through it. Done when an entity storing an object,
   a list, a map and an enum with data reads each back unchanged on live
-  PostgreSQL, its rules enforced.
+  PostgreSQL, its rules enforced. *Built:* chunk 5.5w2b's column path
+  for any structured type, its parts with no stored form
+  `data.field_without_json`; a value kept as JSON held to a request
+  body's 1 MiB and 128 levels, `none` the column's `NULL`; no query
+  condition, order, unique rule, index or lifecycle value but `none` on
+  one; every event type numbered in the JSON table by its identity key
+  (no job takes arguments yet); live tests reading each back unchanged
+  and faulting on rows edited to break a rule. Changing a stored type
+  isn't migrated yet. Choices in area 5's "Chosen in chunk 5.9b".
+- [ ] **5.9c Migrating stored structured values** `opus · high` (area 5),
+  after 5.9b: the migration snapshot records what a JSON column's type
+  allows, so changing the stored type or the field's rules makes a
+  migration that rewrites or refuses stored values the new type can't
+  read, rather than a fault on read; and a required structured field
+  added to a table with rows taking a `backfill:` as any other field does.
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and

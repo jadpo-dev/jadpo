@@ -14,6 +14,7 @@ mod body;
 pub(crate) mod decl;
 mod facts;
 mod formats;
+pub(crate) mod json_form;
 pub(crate) mod literal;
 mod loading;
 mod recursion;

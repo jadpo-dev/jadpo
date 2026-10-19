@@ -42,6 +42,7 @@ mod identity;
 mod imports;
 mod incremental;
 mod isolation;
+mod json_columns;
 mod lists;
 mod locales;
 mod logic;
