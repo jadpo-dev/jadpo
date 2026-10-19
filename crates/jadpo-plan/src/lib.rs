@@ -103,6 +103,11 @@ pub struct CallablePlan {
     /// For a test: where its `clock:` starts its clock, in milliseconds
     /// since 1970-01-01T00:00:00Z (area 13, "Test settings").
     pub clock: Option<i64>,
+    /// For an action that emits, itself or through what it calls: the
+    /// store its outbox is in when it begins no transaction of its own,
+    /// the one it writes or the one `events: { store: }` names (area 12,
+    /// chunk 6.1b).
+    pub outbox: Option<String>,
 }
 
 impl CallablePlan {
@@ -167,6 +172,49 @@ fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
     keys
 }
 
+/// The subscriber table (area 12, chunk 6.1b): each subscriber that reads
+/// cleanly, with the callable it runs and the store its action writes.
+fn events_plan(
+    db: &dyn Db,
+    project: Project,
+    by_key: &HashMap<Key, u32>,
+) -> jadpo_std::subscriber::EventsPlan {
+    use jadpo_check::events::Tenant;
+    use jadpo_std::subscriber::{SubscriberPlan, TenantFrom};
+    let written = jadpo_check::types::written_stores(db, project);
+    let subscribers = jadpo_check::events::subscribers(db, project)
+        .iter()
+        .filter_map(|model| {
+            let callable = *by_key.get(&model.run)?;
+            Some(SubscriberPlan {
+                key: model.key.as_str().to_string(),
+                name: model.name.clone(),
+                event: model.event.as_str().to_string(),
+                callable,
+                args: model.args.clone(),
+                attempts: model.retry.attempts,
+                within_ms: model.retry.within_ms,
+                tenant: match &model.tenant {
+                    Tenant::Untenanted => TenantFrom::Untenanted,
+                    Tenant::Field(field) => TenantFrom::Field(field.clone()),
+                    Tenant::None => TenantFrom::Nowhere,
+                },
+                store: written
+                    .get(model.run.name())
+                    .and_then(|stores| stores.keys().next().cloned()),
+                file: model.path.clone(),
+                line: model.line,
+            })
+        })
+        .collect();
+    jadpo_std::subscriber::EventsPlan {
+        subscribers,
+        store: jadpo_check::events::events_settings(db, project)
+            .store
+            .clone(),
+    }
+}
+
 /// A checked project's plan.
 #[derive(Debug)]
 pub struct Plan {
@@ -202,6 +250,9 @@ pub struct Plan {
     /// Every prompt that checks, which `prompts.render` fills (area 21,
     /// chunk 5.5v2).
     prompts: jadpo_std::prompt::PromptPlan,
+    /// Every subscriber, and the store an action that writes none keeps
+    /// its events in (area 12, chunk 6.1b).
+    events: jadpo_std::subscriber::EventsPlan,
     /// The latest migration's backfills `jadpo migrate apply` works out in
     /// Jadpo (chunk 5.6b2), in a plan built for it.
     backfills: Vec<BackfillPlan>,
@@ -241,6 +292,9 @@ pub struct BackfillPlan {
     pub callable: u32,
     /// How each of their columns is read, in parameter order.
     pub reads: Vec<jadpo_std::read::Column>,
+    /// The rules each value read is held to, in the same order (chunk
+    /// 5.9d): `None` for a field the migration retires.
+    pub held: Vec<Option<jadpo_std::read::FieldRules>>,
     /// The column type its value is written as.
     pub write: jadpo_std::SqlType,
     /// Its field's rules, its type's included, which each value is kept
@@ -302,6 +356,8 @@ impl Plan {
         let mut backfills = Vec::new();
         // The field each fills, by its entity's and its own name.
         let mut backfill_fields: Vec<(String, String)> = Vec::new();
+        // The fields each reads, by their names now.
+        let mut backfill_reads: Vec<Vec<Option<String>>> = Vec::new();
         let mut backfill_lines: HashMap<Key, (String, u32)> = HashMap::new();
         if with_backfills {
             for backfill in jadpo_check::data::migrations::jadpo_backfills(db, project) {
@@ -319,9 +375,18 @@ impl Plan {
                         .iter()
                         .map(|read| read.decode.clone())
                         .collect(),
+                    held: Vec::new(),
                     write: backfill.plan.write,
                     validator: ValidatorId(0),
                 });
+                backfill_reads.push(
+                    backfill
+                        .plan
+                        .reads
+                        .iter()
+                        .map(|read| read.name.clone())
+                        .collect::<Vec<_>>(),
+                );
                 backfill_fields.push(backfill.plan.fills.clone());
                 backfill_lines.insert(key.clone(), (backfill.field.clone(), backfill.line));
                 found.push((
@@ -351,10 +416,31 @@ impl Plan {
         let mut types = Types::new(Arc::clone(&graph), rule_bodies);
         if !backfills.is_empty() {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
-            for (backfill, (entity, field)) in backfills.iter_mut().zip(&backfill_fields) {
+            for ((backfill, (entity, field)), reads) in backfills
+                .iter_mut()
+                .zip(&backfill_fields)
+                .zip(&backfill_reads)
+            {
                 let key =
                     jadpo_check::graph::field_key(&lookup, entity, std::slice::from_ref(field));
                 backfill.validator = types.validator_id(&TypeRef::Field(key));
+                // Each stored value it reads is held to its field's rules,
+                // as a query's read is (chunk 5.9d).
+                backfill.held = reads
+                    .iter()
+                    .map(|read| {
+                        let read = read.as_ref()?;
+                        let key = jadpo_check::graph::field_key(
+                            &lookup,
+                            entity,
+                            std::slice::from_ref(read),
+                        );
+                        Some(jadpo_std::read::FieldRules {
+                            field: format!("{entity}.{read}"),
+                            validator: types.validator_id(&TypeRef::Field(key)),
+                        })
+                    })
+                    .collect();
             }
         }
         // The types the JSON table numbers: each JSON-held field's, which
@@ -498,8 +584,12 @@ impl Plan {
                 })
                 .collect();
             let clock = clocks.get(&key).copied();
+            let outbox = (kind == Kind::Action)
+                .then(|| jadpo_check::events::outbox_store(db, project, key.name()))
+                .flatten();
             callables.push(CallablePlan {
                 clock,
+                outbox,
                 key,
                 kind,
                 file,
@@ -609,6 +699,7 @@ impl Plan {
             &queries,
         );
         routes.identity = identity;
+        let events = events_plan(db, project, &by_key);
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();
@@ -628,6 +719,7 @@ impl Plan {
             locales: jadpo_check::locales::locales(db, project).plan.clone(),
             json,
             prompts,
+            events,
             backfills,
             migration_json,
             batches,
@@ -644,6 +736,12 @@ impl Plan {
     pub fn batch(&self, number: u32) -> Option<&jadpo_std::batch::BatchPlan> {
         let at = (*self.batch_numbers.get(number as usize)?)?;
         self.batches.get(at as usize)
+    }
+
+    /// Every subscriber, and where an action that writes no store keeps
+    /// its events (area 12, chunk 6.1b).
+    pub fn events(&self) -> &jadpo_std::subscriber::EventsPlan {
+        &self.events
     }
 
     /// The structured fields the latest migration reads or writes as JSON

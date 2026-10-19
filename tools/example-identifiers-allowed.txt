@@ -247,6 +247,8 @@ closed
 contact
 cutoff
 deliver
+# A delivery of an event to a subscriber, and its record (area 12, chunk 6.1b)
+delivery
 decline
 declined
 due

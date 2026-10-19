@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
-    Cardinality, Check, Column, Field, IncludeShape, Operand, ReadPlan, Recheck, Record, Select,
-    Size, Source,
+    Cardinality, Check, Column, Field, FieldRules, IncludeShape, Operand, ReadPlan, Recheck,
+    Record, Select, Size, Source,
 };
 use jadpo_value::Value;
 
@@ -482,8 +482,8 @@ fn checked(
     for operand in &check.args {
         args.push(match operand {
             Operand::Column(at) => {
-                let value =
-                    field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?;
+                let value = stored_value(row, &select.columns, &select.held, *at, env.json)
+                    .map_err(Problem::Defect)?;
                 if value == Value::None {
                     return Ok(None);
                 }
@@ -584,9 +584,8 @@ fn record(
     let mut fields = Vec::with_capacity(shape.fields.len());
     for (name, field) in &shape.fields {
         let value = match field {
-            Field::Column(at) => {
-                field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?
-            }
+            Field::Column(at) => stored_value(row, &select.columns, &select.held, *at, env.json)
+                .map_err(Problem::Defect)?,
             Field::Record(inner) => record(inner, row, select, found, env)?,
             Field::Include(at) => {
                 let (Some(include), Some(matched)) =
@@ -963,6 +962,61 @@ pub fn field_value(
     Ok(value)
 }
 
+/// The value of the field whose column is at `at` of `row`, as
+/// [`field_value`] reads it, held to the rules `held` names for that column
+/// (area 5, "A field's rules on read"; chunk 5.9d).
+pub fn stored_value(
+    row: &[SqlValue],
+    columns: &[Column],
+    held: &[Option<FieldRules>],
+    at: u32,
+    json: JsonCodecs<'_>,
+) -> Result<Value, String> {
+    let value = field_value(row, columns, at, json)?;
+    held_to(&value, held.get(at as usize).and_then(Option::as_ref), json)?;
+    Ok(value)
+}
+
+/// Whether `value`, read from the store, keeps every rule of the field
+/// `held` names: checked by the field's own validator, the one a write
+/// checks it by, so a stored value is refused on read for exactly what a
+/// write refuses (chunk 5.9d). Jadpo writes none that breaks one, so a row
+/// that does was written around it, and reading it is a defect naming the
+/// field and the rule, never the value.
+pub fn held_to(
+    value: &Value,
+    held: Option<&FieldRules>,
+    json: JsonCodecs<'_>,
+) -> Result<(), String> {
+    let Some(held) = held else {
+        return Ok(());
+    };
+    if matches!(value, Value::None) {
+        return Ok(());
+    }
+    let validator = json
+        .codecs
+        .validators
+        .get(held.validator.0 as usize)
+        .ok_or_else(|| format!("`{}`'s rules, which the plan doesn't have", held.field))?;
+    kept_by(&held.field, validator, value)
+}
+
+/// Whether `value`, stored for `field`, keeps `validator`'s rules: a
+/// defect naming the field and the rule broken when it doesn't.
+pub fn kept_by(
+    field: &str,
+    validator: &jadpo_value::Validator,
+    value: &Value,
+) -> Result<(), String> {
+    if matches!(value, Value::None) {
+        return Ok(());
+    }
+    validator
+        .check(value)
+        .map_err(|invalid| format!("a stored `{field}` that breaks {}", invalid.broken(None)))
+}
+
 /// A vector read back from pgvector: each float as the decimal a vector
 /// keeps it as (chunk 5.5s2), so what was written reads back unchanged.
 fn vector_value(bits: &[u32]) -> Result<Value, String> {
@@ -1313,5 +1367,60 @@ mod tests {
         )
         .expect_err("never written");
         assert!(why.contains("`null`"), "{why}");
+    }
+
+    /// A stored value is held to every rule its field has when it is read
+    /// (chunk 5.9d), by the field's own validator: one that breaks a rule
+    /// is a defect naming the field and the rule, never the value; `none`
+    /// and a column with no rules of its own read as they are.
+    #[test]
+    fn a_stored_value_is_held_to_its_fields_rules() {
+        use jadpo_std::types::ValidatorId;
+        let stars = jadpo_value::Validator::new(
+            Some(jadpo_std::Builtin::Int),
+            vec![jadpo_std::Rules {
+                min: jadpo_std::Num::parse("1"),
+                max: jadpo_std::Num::parse("5"),
+                ..jadpo_std::Rules::default()
+            }],
+        );
+        let validators = [stars];
+        let json = JsonCodecs {
+            codecs: jadpo_value::json::Codecs {
+                codecs: &[],
+                validators: &validators,
+                shapes: &[],
+            },
+            types: &[],
+        };
+        let columns = [Column::Int, Column::Int];
+        let held = [
+            Some(FieldRules {
+                field: "Tool.stars".into(),
+                validator: ValidatorId(0),
+            }),
+            None,
+        ];
+        let read = |n: i64, at: u32| {
+            stored_value(
+                &[SqlValue::Int8(n), SqlValue::Int8(n)],
+                &columns,
+                &held,
+                at,
+                json,
+            )
+        };
+        assert_eq!(read(4, 0), Ok(Value::Int(4)));
+        let why = read(77, 0).expect_err("past its max");
+        assert_eq!(why, "a stored `Tool.stars` that breaks `max: 5`");
+        assert!(!why.contains("77"), "{why}");
+        assert_eq!(read(77, 1), Ok(Value::Int(77)), "no rules of its own");
+        assert_eq!(
+            stored_value(&[SqlValue::Null(SqlType::Int8)], &columns, &held, 0, json),
+            Ok(Value::None)
+        );
+        // A plan's rules always come with its validators.
+        let missing = stored_value(&[SqlValue::Int8(4)], &columns, &held, 0, JsonCodecs::NONE);
+        assert!(missing.is_err(), "{missing:?}");
     }
 }

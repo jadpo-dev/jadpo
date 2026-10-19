@@ -78,7 +78,7 @@ fn reaches_of(fact: &Fact) -> Vec<Reach> {
                 .collect();
         }
         Fact::Runs(op) => Reach::Runs(*op == jadpo_std::batch::BatchOp::Cancel),
-        Fact::Fixture(_) | Fact::Function(_) => return Vec::new(),
+        Fact::Fixture(_) | Fact::Function(_) | Fact::Emits(_) => return Vec::new(),
     }]
 }
 

@@ -18,6 +18,8 @@ mod config;
 mod crate_graph;
 mod declines;
 mod decode_problems;
+mod events;
+mod field_rules_on_read;
 mod fix;
 mod fmt;
 mod geo_layers;

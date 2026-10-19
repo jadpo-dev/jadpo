@@ -41,6 +41,8 @@ pub enum Fact {
     Writes(Write),
     /// A session or key operation (area 8).
     Session(SessionOp),
+    /// `emit`: the event type's key (area 12).
+    Emits(Key),
     /// `batches.each` (area 12): a run, started once the action commits,
     /// walking a query and calling an action per item, and another once
     /// it finishes. The calls are the run's, as the system, never the
@@ -93,6 +95,18 @@ impl BodyFacts {
             .as_ref()
             .filter(|key| key.kind().is_some_and(|kind| kinds.contains(&kind)))
     }
+}
+
+/// The fact site `site` of `body` holds, if any: an `emit` names the
+/// event type its value is.
+fn fact_in(body: &Body, site: &jadpo_graph::body::Site) -> Option<Fact> {
+    if let Node::Stmt(jadpo_graph::body::Stmt::Emit { value: Some(value) }) = &site.node {
+        return match &body.site(*value).ty {
+            jadpo_graph::TypeRef::Node(key) => Some(Fact::Emits(key.clone())),
+            _ => None,
+        };
+    }
+    fact_of(&site.node)
 }
 
 /// The fact a site holds, if any.
@@ -217,7 +231,7 @@ fn facts_of(body: &Body) -> Vec<(Fact, SiteId)> {
             if let Some((_, fact)) = batches.iter().find(|(site, _)| *site == at) {
                 return Some((Fact::Batch(fact.clone()), at));
             }
-            Some((fact_of(&site.node)?, at))
+            Some((fact_in(body, site)?, at))
         })
         .collect()
 }

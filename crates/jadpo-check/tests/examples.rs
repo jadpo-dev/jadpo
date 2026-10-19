@@ -146,15 +146,11 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: provider packages (area 11)",
     ),
     ("syntax SCHEDULE_DECL", "not built: schedules (area 12)"),
-    ("syntax SUBSCRIBER_DECL", "not built: subscribers (area 12)"),
-    ("syntax EMIT_STMT", "not built: events (area 12)"),
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
     // Bases later areas define.
-    ("base Event", "not built: events (area 12)"),
     ("base EmailMessage", "not built: emails (area 16)"),
     // Typed body parts later areas build.
-    ("body stmt emit", "not built: events (area 12)"),
     (
         "body operator in",
         "a query's condition (area 6); area 3's operators don't include it",
@@ -174,10 +170,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "the status a route answers when it says none",
     ),
     (
-        "setting SuccessStatus.accepted",
-        "not built: the background work a 202 hands over to (area 12)",
-    ),
-    (
         "setting Idempotency.optional",
         "what an API does when it says nothing",
     ),
@@ -189,18 +181,9 @@ const EXEMPT: &[(&str, &str)] = &[
         "setting AuthenticationMethod.oauth_token",
         "not built: acting as an OAuth provider, after the first build (area 8)",
     ),
-    (
-        "setting Access.system",
-        "not built: schedules and subscribers (area 12)",
-    ),
     // Layout places later areas fill.
     ("root file flags.jadpo", "not built: flags (area 16)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
-    ("domain folder events", "not built: events (area 12)"),
-    (
-        "domain folder subscribers",
-        "not built: subscribers (area 12)",
-    ),
     ("domain folder emails", "not built: emails (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),

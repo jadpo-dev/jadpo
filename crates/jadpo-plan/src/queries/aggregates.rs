@@ -36,6 +36,10 @@ struct Selected {
     inner: Vec<(String, String)>,
     outer: Vec<(String, String)>,
     column: Column,
+    /// For a group by a field, and a field's `min` or `max`: a stored
+    /// value of the field, held to its rules when read (chunk 5.9d). A
+    /// count, a sum, an average and a bucket are worked out, and hold none.
+    held: Option<FieldRules>,
     group: Option<String>,
     sort: String,
 }
@@ -76,6 +80,7 @@ impl Planner<'_> {
             .collect();
         let mut rows: Vec<(String, String)> = Vec::new();
         let mut kinds: Vec<Column> = Vec::new();
+        let mut held: Vec<Option<FieldRules>> = Vec::new();
         let mut starts: Vec<u32> = Vec::new();
         for entry in &selected {
             starts.push(u32::try_from(rows.len()).ok()?);
@@ -86,6 +91,7 @@ impl Planner<'_> {
                 } else {
                     Column::Part
                 });
+                held.push(if at == 0 { entry.held.clone() } else { None });
             }
         }
         let groups: Vec<String> = selected.iter().filter_map(|s| s.group.clone()).collect();
@@ -132,6 +138,7 @@ impl Planner<'_> {
                     permitted: None,
                     params: statement.into_params(),
                     columns: kinds,
+                    held,
                     record: Record {
                         ty: query.element.ty.clone(),
                         fields,
@@ -166,6 +173,7 @@ impl Planner<'_> {
             inner: vec![(expr.clone(), name.to_string())],
             outer: vec![(alias.clone(), name.to_string())],
             column: kind,
+            held: None,
             group: group.then_some(expr),
             sort: alias.clone(),
         };
@@ -184,8 +192,11 @@ impl Planner<'_> {
                     }
                     _ => alias.clone(),
                 };
+                let held =
+                    (!matches!(kind, Column::Json(_))).then(|| self.held_field(entity, field));
                 Selected {
                     sort,
+                    held,
                     ..one(column, kind, true)
                 }
             }
@@ -237,6 +248,7 @@ impl Planner<'_> {
                                 ty: "Money".to_string(),
                                 may_be_none: false,
                             },
+                            held: None,
                             group: None,
                             sort: alias.clone(),
                         }
@@ -252,7 +264,12 @@ impl Planner<'_> {
                 let read = self.column(entity, field)?;
                 let max = *kind == AggregateKind::Max;
                 let text = read == Column::Text;
-                one(aggregate::extreme(&column, max, text), read, false)
+                let held =
+                    (!matches!(read, Column::Json(_))).then(|| self.held_field(entity, field));
+                Selected {
+                    held,
+                    ..one(aggregate::extreme(&column, max, text), read, false)
+                }
             }
             // The sum at `scale:` places and how many values there are,
             // grouped; outside, `decimal.divide`'s form of the one by the
@@ -281,6 +298,7 @@ impl Planner<'_> {
                     ],
                     outer: vec![(form.value()?.to_string(), name.to_string())],
                     column: Column::Decimal,
+                    held: None,
                     group: None,
                     sort: alias.clone(),
                 }

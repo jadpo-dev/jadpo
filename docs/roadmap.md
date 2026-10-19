@@ -1858,13 +1858,20 @@ chunks below, taken before Phase 6.
   read (by count and rule, never a value), or rewrites them with an
   optional `backfill:`; a structured backfill is worked out in Jadpo and
   written through the codec, as area 5's "Chosen in chunk 5.9c" records.
-- [ ] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
+- [x] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
   "A field's rules on read", decided 2026-10-19): every stored field
   checked against its type's rules when read, a broken one a defect naming
   the rule and never the value, on both executors and on live PostgreSQL;
   and a derived index's recorded reason no longer part of what the
   migration diff compares, so adding a query that sorts first never drops
-  and recreates an identical index (found in chunk 5.5u8).
+  and recreates an identical index (found in chunk 5.5u8). Built: each
+  selected column carries its field's validator in the plan, and the
+  runtime's one read path checks every stored value with it (queries,
+  `get`, includes, aggregate groups and `min`/`max`, nearest and layer
+  queries, the record a write gives back, backfill reads), a defect naming
+  the field and the rule; the diff and the out-of-date check compare an
+  index by what builds it, its reason recorded by the next migration.
+  Choices in area 5's "Chosen in chunk 5.9d".
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and
@@ -1917,21 +1924,46 @@ chunks below, taken before Phase 6.
   12's "Chosen in chunk 6.1a"; flagged there: what only `Access.public`
   grants is left to 6.1b's and 6.2's checks, and a schedule's run
   reaches every tenant.
-- [ ] **6.1b Events** `opus · high`, after 6.1a (area 9, "Background
-  work and `Access.public`", decided 2026-10-19: a subscriber reaching a
-  statement only `Access.public` grants is a compile error; area 12, "Outbox
-  placement, settled" and "Event records", decided 2026-10-19: each
-  store an action writes keeps its outbox and delivery records, a
-  subscriber's handled record in its own store, schedule leases in
-  `schedules: { store: }`; event shapes recorded and diffed as API
-  records are):
-  outbox, subscribers, retries and trace context on 6.1a's runner and
-  system caller, and `events: { store: }`, with the compile error for an
+- [x] **6.1b Events: outbox, delivery and retries** `opus · high`, after
+  6.1a (area 9, "Background work and `Access.public`", decided
+  2026-10-19: a subscriber reaching a statement only `Access.public`
+  grants is a compile error; area 12, "Outbox placement, settled",
+  decided 2026-10-19: each store an action writes keeps its outbox and
+  delivery records, a subscriber's handled record in its own store,
+  schedule leases in `schedules: { store: }`): subscribers read and
+  checked; `emit` writing the outbox row in the same transaction as the
+  action's writes; delivery after the response on 6.1a's runner, each
+  subscriber as the system limited to its event's tenant, with a handled
+  record in the store it writes and no reference across stores; retries
+  with area 12's backoff and `retry:`; trace context carried from the
+  emitting request; `events: { store: }`, with the compile error for an
   action that writes no store but needs one for its outbox or idempotency
-  keys (until then such an action keeps no key, chunk 4.2). From chunk 5.1d: what a subscriber stores
-  from an event is checked against what every `emit` of it put there, as
-  area 9's stored values are (an `emit` itself stores nothing a caller
-  reads).
+  keys (until then such an action keeps no key, chunk 4.2); and the
+  outbox sweep that picks up what deferred work dropped (its minute tick
+  is 6.2's). Split from 6.1b on 2026-10-19 because it doesn't fit one
+  session. Built: subscribers read and checked (`subscriber.` errors),
+  `emit` only in actions and only of events (`event.emit_invalid`), the
+  outbox row and a delivery record per subscriber written as the action
+  commits, in the store its transaction is in or `events: { store: }`
+  (`event.store_required`, `event.settings_invalid`); `runner::deliver`
+  claiming each delivery after the response, running the subscriber as
+  the system limited to the tenant its event's field names, its handled
+  record (`jadpo_handled_deliveries`) committing with its writes, and
+  recording success, a retry after a full-jitter backoff within `retry:`,
+  or failure; `runner::sweep` for 6.2's tick; `traceparent` honoured and
+  carried into each delivery; 1,000 events, 64 KB and 16 deep;
+  `policy.system_grant_missing`; idempotency keys beside an emitting
+  action's events; a live test of all of it and a migration for every
+  example. Choices in area 12's "Chosen in chunk 6.1b"; flagged there:
+  how an event names its tenant.
+- [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
+  (area 12, "Event records", decided 2026-10-19): event shapes recorded
+  and diffed in the generated record exactly as an API's is (chunk 7.0's
+  format, a new record kind with its header, diff and `jadpo records`
+  row), acceptance waiting for area 18 as the API record's does; and from
+  chunk 5.1d, what a subscriber stores from an event checked against what
+  every `emit` of it put there, as area 9's stored values are (an `emit`
+  itself stores nothing a caller reads).
 - [ ] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
   tenants", and area 9's "Background work and `Access.public`", decided
   2026-10-19: a schedule reaches every tenant, and reaching what only

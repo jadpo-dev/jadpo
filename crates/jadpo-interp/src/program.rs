@@ -518,6 +518,14 @@ impl Program {
                 field: plan.field.clone(),
                 callable: plan.callable,
                 reads: plan.reads.clone(),
+                held: plan
+                    .held
+                    .iter()
+                    .map(|held| {
+                        held.as_ref()
+                            .map(|held| (held.field.clone(), self.validator(held.validator)))
+                    })
+                    .collect(),
                 write: plan.write,
                 validator: Some(self.validator(plan.validator)),
             })
@@ -618,6 +626,14 @@ impl Executor for Program {
             plans,
             json: self.stored_json(),
             failures: self.plan().types().failures(),
+        })
+    }
+
+    fn events(&self) -> Option<jadpo_runtime::outbox::Events<'_>> {
+        Some(jadpo_runtime::outbox::Events {
+            plan: self.plan().events(),
+            json: self.stored_json(),
+            numbers: &self.plan().json().events,
         })
     }
 

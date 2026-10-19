@@ -307,6 +307,14 @@ impl<'p> ActionBody<'p> for Action<'_> {
         self.at
     }
 
+    /// The store its plan keeps its events in (area 12, chunk 6.1b).
+    fn outbox(&self) -> Option<&str> {
+        self.program
+            .plan()
+            .callable(self.callee)
+            .and_then(|callable| callable.outbox.as_deref())
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             outcome(body(self.program, ctx, self.callee, self.args.clone(), self.at).await)

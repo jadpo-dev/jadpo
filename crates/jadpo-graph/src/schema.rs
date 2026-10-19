@@ -275,6 +275,21 @@ pub struct Index {
     pub method: Option<IndexMethod>,
 }
 
+impl Index {
+    /// Whether it builds the same index as `other`: the same columns or
+    /// expression, kind, operator class, settings and partial condition.
+    /// Its reason is only what it is for, so a query that sorts first and
+    /// needs the same index changes nothing the database holds (chunk
+    /// 5.9d).
+    pub fn builds_same(&self, other: &Index) -> bool {
+        let unreasoned = |index: &Index| Index {
+            reason: String::new(),
+            ..index.clone()
+        };
+        unreasoned(self) == unreasoned(other)
+    }
+}
+
 /// An index's access method and its column's operator class.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IndexMethod {
@@ -322,6 +337,25 @@ pub fn object_name(parts: &[&str], suffix: &str) -> String {
 // --- snapshot.json -----------------------------------------------------------
 
 impl Schema {
+    /// Whether it asks the database for what `other` does, every index's
+    /// reason aside: the reason says which query first needed an index,
+    /// and is recorded by the next migration written for another change,
+    /// never a change of its own (chunk 5.9d).
+    pub fn same_but_reasons(&self, other: &Schema) -> bool {
+        fn unreasoned(schema: &Schema) -> Schema {
+            let mut out = schema.clone();
+            for store in out.stores.values_mut() {
+                for table in store.tables.values_mut() {
+                    for index in table.indexes.values_mut() {
+                        index.reason.clear();
+                    }
+                }
+            }
+            out
+        }
+        unreasoned(self) == unreasoned(other)
+    }
+
     /// The snapshot document, in canonical JSON.
     pub fn to_document(&self) -> String {
         let mut root = Value::object();
@@ -779,9 +813,14 @@ fn table_changes(store: &str, table: &str, was: &Table, now: &Table, out: &mut V
     keyed(&was.foreign_keys, &now.foreign_keys, |name, added| {
         out.push(at(if added { add_foreign } else { drop_foreign }, name));
     });
-    keyed(&was.indexes, &now.indexes, |name, added| {
-        out.push(at(if added { add_index } else { drop_index }, name));
-    });
+    keyed_by(
+        &was.indexes,
+        &now.indexes,
+        Index::builds_same,
+        |name, added| {
+            out.push(at(if added { add_index } else { drop_index }, name));
+        },
+    );
     keyed(&was.checks, &now.checks, |name, added| {
         out.push(at(if added { add_check } else { drop_check }, name));
     });
@@ -793,15 +832,25 @@ fn table_changes(store: &str, table: &str, was: &Table, now: &Table, out: &mut V
 fn keyed<T: PartialEq>(
     was: &BTreeMap<String, T>,
     now: &BTreeMap<String, T>,
+    found: impl FnMut(&str, bool),
+) {
+    keyed_by(was, now, |a: &T, b: &T| a == b, found);
+}
+
+/// [`keyed`], with `same` saying whether two entries are one.
+fn keyed_by<T>(
+    was: &BTreeMap<String, T>,
+    now: &BTreeMap<String, T>,
+    same: impl Fn(&T, &T) -> bool,
     mut found: impl FnMut(&str, bool),
 ) {
     for (name, old) in was {
-        if now.get(name) != Some(old) {
+        if !now.get(name).is_some_and(|new| same(old, new)) {
             found(name, false);
         }
     }
     for (name, new) in now {
-        if was.get(name) != Some(new) {
+        if !was.get(name).is_some_and(|old| same(old, new)) {
             found(name, true);
         }
     }
@@ -1119,6 +1168,38 @@ mod tests {
         let document = schema.to_document();
         assert!(document.contains("\"with\": [\n"), "{document}");
         assert_eq!(Schema::read(&document), Ok(schema));
+    }
+
+    #[test]
+    fn an_indexs_reason_is_never_a_change() {
+        // Chunk 5.9d: only what defines an index is compared.
+        let index = |reason: &str, columns: &[&str]| Index {
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+            expression: None,
+            reason: reason.into(),
+            predicate: None,
+            collate: vec!["title".into()],
+            method: None,
+        };
+        let with = |index: Index| {
+            let mut schema = todo(true);
+            schema
+                .stores
+                .get_mut("main")
+                .and_then(|store| store.tables.get_mut("todo"))
+                .expect("the table")
+                .indexes
+                .insert("todo_title_id_sorted_idx".into(), index);
+            schema
+        };
+        let before = with(index("query by_title", &["title", "id"]));
+        let after = with(index("query a_by_title", &["title", "id"]));
+        assert_eq!(changes(&before, &after), Vec::new());
+        assert!(before.same_but_reasons(&after));
+        assert_ne!(before, after, "the reason is still recorded");
+        let other = with(index("query by_title", &["title", "due_at"]));
+        assert_eq!(changes(&before, &other).len(), 2, "dropped and made again");
+        assert!(!before.same_but_reasons(&other));
     }
 
     #[test]

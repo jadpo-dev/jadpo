@@ -829,22 +829,31 @@ impl Planner<'_> {
     }
 
     /// The record a written row becomes: every column of the entity.
-    fn returned(&self, entity: &EntityModel) -> Option<Returned> {
+    fn returned(&mut self, entity: &EntityModel) -> Option<Returned> {
         let mut columns = Vec::new();
+        let mut held = Vec::new();
         let mut fields = Vec::new();
         for field in &entity.fields {
             let at = columns.len() as u32;
             let column = self.column(entity, field)?;
             // A compound type comes back in its several columns (area 19).
             let parts = field.columns().len().max(1);
+            // Every stored field is read back, held to its rules (chunk
+            // 5.9d); a JSON-held one by its codec.
+            held.push(
+                (!matches!(column, jadpo_std::read::Column::Json(_)))
+                    .then(|| self.held_field(entity, field)),
+            );
             columns.push(column);
             for _ in 1..parts {
                 columns.push(jadpo_std::read::Column::Part);
+                held.push(None);
             }
             fields.push((field.name.clone(), Field::Column(at)));
         }
         Some(Returned {
             columns,
+            held,
             record: Record {
                 ty: entity.name.clone(),
                 fields,
