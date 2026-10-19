@@ -142,7 +142,9 @@ POSTGRES = [
     # Routes over real HTTP: `jadpo dev` on the native host, requests
     # over TCP, the failure envelope, query and header input, rate
     # limits and reloading; and the golden OpenAPI document (area 7).
-    ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http')], []),
+    # Rules across fields in a query string, a body named twice, and a
+    # stored standard object breaking its rules (chunk 5.8c).
+    ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http'), ('jadpo-cli', 'rule_slice')], []),
     # Policy through `jadpo test`: tenancy, roles, owner fields, listed
     # actions and credentials; concealment through the runtime (area 9).
     ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
