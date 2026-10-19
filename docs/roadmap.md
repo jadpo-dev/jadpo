@@ -1618,6 +1618,18 @@ reference only).
   What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
   of an instant, which needs a zone PostgreSQL may not see as Jadpo
   does, is left for Richard.
+- [ ] **5.5u7 Altitudes all or nothing; a layer from a route** `opus ·
+  high` (areas 20 and 7, decided 2026-10-19), after 5.5u6: a geometry
+  mixing positions with and without an altitude refused as `format` when
+  read from GeoJSON or WKT and by the rule `altitudes_agree` when built
+  (area 20, "Altitudes are all or nothing"), replacing 5.5u6's
+  provisional refusal and the fault in storage and `geo.to_wkt`; a route
+  sending a `FeatureCollection<G, P>` bare, its `P` held to what an
+  `Output` may hold, in OpenAPI and the API record, and
+  `route.output_not_output`'s reason amended (area 7, "A map layer as
+  output"). Done when a mixed geometry is refused at each door with a
+  checked example, and a route's layer is fetched as plain GeoJSON in a
+  route test.
 - [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
 
