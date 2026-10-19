@@ -452,15 +452,27 @@ pub fn tenant(subscriber: &SubscriberPlan, value: &Value) -> Option<[u8; 16]> {
         TenantFrom::Nowhere => Some(NO_TENANT),
         TenantFrom::Field(field) => {
             let held = match value {
-                Value::Record(record) => record.get(field).cloned(),
+                Value::Record(record) => record.get(field),
                 _ => None,
             };
-            match held.map(|held| crate::to_sql(&held, SqlType::Uuid)) {
-                Some(Ok(SqlValue::Uuid(bytes))) => Some(bytes),
-                _ => Some(NO_TENANT),
-            }
+            Some(named_tenant(held.into_iter()))
         }
     }
+}
+
+/// The tenant values holding a tenant's id name (an event's field, a
+/// batch's saved values; chunk 6.4c): the one they all name, or
+/// [`NO_TENANT`] when there is none, one is `none`, or they differ.
+pub fn named_tenant<'a>(held: impl Iterator<Item = &'a Value>) -> [u8; 16] {
+    let mut named: Option<[u8; 16]> = None;
+    for value in held {
+        match (crate::to_sql(value, SqlType::Uuid), named) {
+            (Ok(SqlValue::Uuid(bytes)), None) => named = Some(bytes),
+            (Ok(SqlValue::Uuid(bytes)), Some(already)) if bytes == already => {}
+            _ => return NO_TENANT,
+        }
+    }
+    named.unwrap_or(NO_TENANT)
 }
 
 #[cfg(test)]

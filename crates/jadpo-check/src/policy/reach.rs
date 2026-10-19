@@ -590,7 +590,23 @@ pub fn public_only(db: &dyn Db, project: Project, run: &str) -> Option<PublicOnl
             written: line.written.clone(),
         });
     }
-    let (reached, _) = reached(db, project, access, run, false);
+    public_only_reached(db, project, access, run, false)
+}
+
+/// The same for the query called `query`, which a batch's run reads as
+/// the system (chunk 6.4c).
+pub fn public_only_query(db: &dyn Db, project: Project, query: &str) -> Option<PublicOnly> {
+    public_only_reached(db, project, &Policies::new(db, project), query, true)
+}
+
+fn public_only_reached(
+    db: &dyn Db,
+    project: Project,
+    access: &Policies<'_>,
+    run: &str,
+    query: bool,
+) -> Option<PublicOnly> {
+    let (reached, _) = reached(db, project, access, run, query);
     reached
         .into_iter()
         .find(|reach| {

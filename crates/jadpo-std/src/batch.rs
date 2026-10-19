@@ -173,6 +173,23 @@ pub struct BatchPlan {
     pub finished: Option<BatchCall>,
     /// The JSON table's number of `key:`'s type, when the call has one.
     pub key: Option<u32>,
+    /// The tenant the run is limited to (area 12, "A batch's tenant";
+    /// chunk 6.4c).
+    pub tenant: BatchTenant,
+}
+
+/// Where a run's tenant comes from: its saved values holding a tenant's
+/// id, as an event's tenant comes from its field holding one
+/// ([`crate::subscriber::TenantFrom`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BatchTenant {
+    /// The application has no tenant: nothing limits the system.
+    Untenanted,
+    /// The saved values whose type is the tenant's `id`: their places in
+    /// [`BatchPlan::captured`], and whether `key:` is one. The run is
+    /// limited to the one tenant they all name, and to no tenant when
+    /// there is none, one is `none`, or they name different tenants.
+    Saved { captured: Vec<u32>, key: bool },
 }
 
 /// An action `each:` or `finished:` calls, by number, with its

@@ -122,7 +122,7 @@ impl Body<'_> {
             return failed(self);
         }
         match op {
-            BatchOp::Each => self.batch_each(call, callee, written),
+            BatchOp::Each => self.batch_each(call, written),
             BatchOp::Status | BatchOp::Cancel => {
                 let args = Self::arguments(call);
                 if args.len() != 1 || args.iter().any(|arg| arg.name().is_some()) {
@@ -157,33 +157,7 @@ impl Body<'_> {
     }
 
     /// `batches.each(from:, each:, finished:, key:)`.
-    fn batch_each(
-        &mut self,
-        call: &ast::CallExpr,
-        callee: &ast::Expr,
-        written: &str,
-    ) -> (Ty, CallKind, Reach) {
-        let span = self.span(callee);
-        // Which tenant a run is limited to isn't decided for a run an
-        // action starts (area 9 limits a subscriber to its event's), so an
-        // application with tenants waits for that (chosen in chunk 6.4).
-        if crate::policy::root_policy(self.db, self.project)
-            .tenant
-            .is_some()
-        {
-            self.out.push(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` in an application with tenants isn't built yet"),
-                )
-                .at(span.clone(), "declared, not built")
-                .reason(format!(
-                    "A run works as the system, and which tenant a run an action starts is limited to isn't decided yet, so this compiler doesn't run `{written}` where `policy {{ }}` names a `tenant:`."
-                ))
-                .next(format!("Do without `{written}` for now"))
-                .help_at("12-jobs-and-events.html#chosen-in-chunk-6-4"),
-            );
-        }
+    fn batch_each(&mut self, call: &ast::CallExpr, written: &str) -> (Ty, CallKind, Reach) {
         let args = Self::arguments(call);
         let mut slots: Vec<Option<usize>> = Vec::new();
         let mut given: [Option<Expr>; 4] = [None, None, None, None];
