@@ -362,6 +362,16 @@ fn write(
             ));
         }
         entry.push(format!("status {}", route.status.code()));
+        // A route that waits for its work answers 202 when it hadn't
+        // settled in time (area 7, "Waiting for follow-on work").
+        if let Some(settle) = &route.settle {
+            entry.push(format!(
+                "settle within {}",
+                jadpo_std::Dur {
+                    millis: i128::from(settle.within_ms)
+                }
+            ));
+        }
         let mut codes: Vec<String> = Vec::new();
         for failure in &route.fails {
             let Some(key) = declaration_key(lookup, failure) else {

@@ -362,7 +362,21 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
             continue;
         }
         let Some(model) = &read.model else { continue };
-        for route in &model.routes {
+        // Each route, then, for one that waits for its work, the query it
+        // answers with, checked as a route running it would be (chunk 6.3).
+        let answers: Vec<crate::routes::RouteModel> = model
+            .routes
+            .iter()
+            .filter_map(|route| {
+                let settle = route.settle.as_ref()?;
+                Some(crate::routes::RouteModel {
+                    run: settle.answer.clone(),
+                    settle: None,
+                    ..route.clone()
+                })
+            })
+            .collect();
+        for route in model.routes.iter().chain(&answers) {
             let label = route.label();
             let Some(span) = read
                 .spans

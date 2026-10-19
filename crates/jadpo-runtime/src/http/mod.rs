@@ -577,6 +577,11 @@ async fn run_route(
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
     let mut deadline = host.sleep(u64::from(route.deadline_ms));
+    // So does how long a route waits for its follow-on work (chunk 6.3).
+    let within = route
+        .settle
+        .as_ref()
+        .map(|settle| host.sleep(u64::from(settle.within_ms)));
     // Who is calling, before the input is read or anything runs (area 8).
     let mut reissued = None;
     let mut exchanged = None;
@@ -647,8 +652,8 @@ async fn run_route(
         }
         (None, _) => {
             run_with_caller(
-                app, executor, ctx, request, request_id, route, segments, deadline, caller, scope,
-                reissued,
+                app, executor, ctx, request, request_id, route, segments, deadline, within, caller,
+                scope, reissued,
             )
             .await
         }
@@ -697,8 +702,19 @@ fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)
     }
 }
 
+/// What a route answers before or instead of running what it runs.
+enum Early {
+    Respond(Response),
+    /// A repeat of a route that waits for its follow-on work: its answer
+    /// query's arguments, as JSON, and the status kept for it (chunk 6.3).
+    Answer {
+        status: u16,
+        args: String,
+    },
+}
+
 /// The rest of a route's run, once its caller is known: `deadline` is the
-/// route's timer, already running.
+/// route's timer, already running, and `within` its `settle:`'s.
 #[allow(clippy::too_many_arguments)]
 async fn run_with_caller(
     app: &App<'_>,
@@ -709,6 +725,7 @@ async fn run_with_caller(
     route: &RoutePlan,
     segments: &[String],
     deadline: crate::LocalFuture<'_, ()>,
+    mut within: Option<crate::LocalFuture<'_, ()>>,
     caller: Option<crate::Caller>,
     scope: String,
     reissued: Option<identity::Reissued>,
@@ -876,13 +893,26 @@ async fn run_with_caller(
             if first && let Some(guard) = &guard {
                 match idempotency::claim(ctx, guard, route.deadline_ms).await {
                     Claim::Claimed => claimed.set(true),
-                    Claim::Replay(response) => return Err(response),
-                    Claim::Reused => return Err(runtime_failure(KEY_REUSED, request_id, None)),
+                    Claim::Replay(response) => return Err(Early::Respond(response)),
+                    Claim::Answer { status, args } => return Err(Early::Answer { status, args }),
+                    Claim::Reused => {
+                        return Err(Early::Respond(runtime_failure(
+                            KEY_REUSED, request_id, None,
+                        )));
+                    }
                     Claim::InFlight => {
-                        return Err(runtime_failure(KEY_IN_FLIGHT, request_id, None));
+                        return Err(Early::Respond(runtime_failure(
+                            KEY_IN_FLIGHT,
+                            request_id,
+                            None,
+                        )));
                     }
                     Claim::Unavailable => {
-                        return Err(runtime_failure(UNAVAILABLE, request_id, None));
+                        return Err(Early::Respond(runtime_failure(
+                            UNAVAILABLE,
+                            request_id,
+                            None,
+                        )));
                     }
                 }
             }
@@ -929,7 +959,26 @@ async fn run_with_caller(
             // A body that ran past the deadline without waiting, stopped
             // by its executor or not, is answered as one that waited past it.
             First::Left(Ok(outcome)) if !ctx.out_of_time() => outcome,
-            First::Left(Err(response)) => return response,
+            First::Left(Err(Early::Respond(response))) => return response,
+            // A repeat runs the answer query again, rather than replaying a
+            // stored body, so it shows how far the work has got (area 7).
+            First::Left(Err(Early::Answer { status, args })) => {
+                let Some(settle) = &route.settle else {
+                    return runtime_failure(INTERNAL_FAULT, request_id, None);
+                };
+                let Some(values) = kept_args(app, settle, &args) else {
+                    return runtime_failure(INTERNAL_FAULT, request_id, None);
+                };
+                let answered = race(answer_query(app, ctx, settle, &values), &mut deadline).await;
+                let First::Left(outcome) = answered else {
+                    return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
+                };
+                let mut response = answer(app, route, request_id, outcome);
+                if response.status == route.status.code() {
+                    response.status = status;
+                }
+                return response;
+            }
             First::Left(Ok(_)) | First::Right(()) => {
                 // Whatever was running is dropped, its transaction with it.
                 ctx.abandon();
@@ -958,10 +1007,25 @@ async fn run_with_caller(
                 Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
                 Outcome::Fault(_) | Outcome::Assertion(_) => false,
             };
-        let mut response = answer(app, route, request_id, outcome);
+        // A route that waits for its follow-on work answers with its
+        // query once the action has committed, and keeps the query's
+        // arguments for a repeat rather than a body (chunk 6.3).
+        let settling = match (&route.settle, &outcome) {
+            (Some(settle), Outcome::Value(result)) => Some((settle, answer_args(settle, result))),
+            _ => None,
+        };
+        let mut response = match &settling {
+            Some(_) => Response::default(),
+            None => answer(app, route, request_id, outcome),
+        };
         let guard = guard.as_ref().filter(|_| claimed.get());
         let keep = guard.filter(|_| storable);
-        let params = keep.map(|guard| idempotency::store_params(guard, &response));
+        let params = keep.map(|guard| match &settling {
+            Some((settle, args)) => {
+                idempotency::answer_params(guard, ACCEPTED, written_args(app, settle, args))
+            }
+            None => idempotency::store_params(guard, &response),
+        });
         let then = match (keep, &params) {
             (Some(guard), Some(params)) => {
                 Some((guard.store.as_str(), idempotency::STORE, params.as_slice()))
@@ -991,6 +1055,31 @@ async fn run_with_caller(
                 return runtime_failure(UNAVAILABLE, request_id, None);
             }
         }
+        if let Some((settle, args)) = &settling {
+            // The work the action set off, delivered now, while the
+            // request waits, until it settles or `within:` passes; what
+            // is left carries on after the response.
+            let settled = match within.as_mut() {
+                Some(within) => crate::runner::settle_within(executor, ctx, within).await,
+                None => crate::runner::Settled::Unsettled,
+            };
+            response = answer(
+                app,
+                route,
+                request_id,
+                answer_query(app, ctx, settle, args).await,
+            );
+            if response.status == route.status.code() {
+                match settled {
+                    crate::runner::Settled::Settled => {
+                        if let Some(guard) = keep {
+                            idempotency::settled(ctx, guard, route.status.code()).await;
+                        }
+                    }
+                    crate::runner::Settled::Unsettled => response.status = ACCEPTED,
+                }
+            }
+        }
         if let (Some(effect), Some(plan)) = (&session, &app.table.identity) {
             response.headers.extend(identity::set_cookies(plan, effect));
         }
@@ -1005,6 +1094,98 @@ async fn run_with_caller(
             idempotency::release(ctx, guard).await;
         }
         return response;
+    }
+}
+
+/// What a route that waits for its follow-on work answers with when the
+/// work hadn't settled within `within:` (area 7).
+const ACCEPTED: u16 = 202;
+
+/// The arguments `settle`'s answer query takes from the action's
+/// `result`: each a path read through it.
+fn answer_args(settle: &jadpo_std::http::SettlePlan, result: &Value) -> Vec<Value> {
+    settle
+        .args
+        .iter()
+        .map(|path| {
+            let mut at = result.clone();
+            for name in path {
+                at = match &at {
+                    Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
+                    _ => Value::None,
+                };
+            }
+            at
+        })
+        .collect()
+}
+
+/// `args`, the answer query's arguments, as the JSON kept with an
+/// `Idempotency-Key`: an array, each written by its parameter's codec.
+fn written_args(app: &App<'_>, settle: &jadpo_std::http::SettlePlan, args: &[Value]) -> String {
+    let mut out = String::from("[");
+    for (at, (value, codec)) in args.iter().zip(&settle.codecs).enumerate() {
+        if at > 0 {
+            out.push(',');
+        }
+        app.codecs.write(*codec, value, &mut out);
+    }
+    out.push(']');
+    out
+}
+
+/// The answer query's arguments kept as `kept` ([`written_args`]), read
+/// back by their codecs; `None` when they no longer read.
+fn kept_args(
+    app: &App<'_>,
+    settle: &jadpo_std::http::SettlePlan,
+    kept: &str,
+) -> Option<Vec<Value>> {
+    let (json, numbers) = jadpo_value::json::parse(kept.as_bytes())?;
+    let serde_json::Value::Array(items) = json else {
+        return None;
+    };
+    if items.len() != settle.codecs.len() {
+        return None;
+    }
+    let mut problems = Vec::new();
+    let values = items
+        .iter()
+        .zip(&settle.codecs)
+        .map(|(item, codec)| {
+            app.codecs.read(
+                *codec,
+                item,
+                &Path::default().numbered(&numbers),
+                &mut problems,
+            )
+        })
+        .collect::<Option<Vec<_>>>()?;
+    problems.is_empty().then_some(values)
+}
+
+/// Runs `settle`'s answer query with `args`, as the request's caller and
+/// under the query's policy, as a `GET` running it would (chunk 6.3).
+async fn answer_query(
+    app: &App<'_>,
+    ctx: &mut Ctx<'_>,
+    settle: &jadpo_std::http::SettlePlan,
+    args: &[Value],
+) -> Outcome {
+    match crate::store(
+        ctx,
+        StoreOp::Read(&settle.answer),
+        app.failures,
+        app.json,
+        args,
+        Frame::ENTRY,
+    )
+    .await
+    {
+        Stored::Value(value) => Outcome::Value(value),
+        Stored::Failed(failure) => Outcome::Failed(failure),
+        Stored::Conflict { cause, .. } => Outcome::Failed(cause),
+        Stored::Fault(fault) => Outcome::Fault(fault),
     }
 }
 

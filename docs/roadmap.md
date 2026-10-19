@@ -1971,10 +1971,22 @@ chunks below, taken before Phase 6.
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7), and picking up batch runs whose lease lapsed
   (`jadpo_runtime::batches::resume` or `waiting`, built in 6.4).
-- [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
+- [x] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
-  they settle and with `202` past `within:`.
+  they settle and with `202` past `within:`. Built: `settle: { answer:
+  within: }` read and checked (`route.settle_invalid`; `output:` the
+  query's result, its failures the route's, policy checking what it
+  reaches); `runner::settle_within` running the deliveries and their
+  follow-ons inline until each succeeded or failed for good, stopping at
+  a retry, an unclaimed delivery, a batch run or `within:`, a cut-short
+  delivery given back and the rest left for after the response; the
+  answer query run as the request's caller, 202 when unsettled; an
+  `Idempotency-Key` keeping the query's arguments, so a repeat runs it
+  again; both answers in OpenAPI and a `settle within` line in the
+  record; a live test and a route test of it. Choices in area 7's
+  "Chosen in chunk 6.3"; flagged there: a route whose action starts a
+  batch always answers 202.
 - [x] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
   review: a query condition is either an exact SQL form or an index
   prefilter with a check the runtime runs on each row, one path for

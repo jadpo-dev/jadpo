@@ -271,6 +271,14 @@ impl Part<'_> {
                     .edges
                     .push((route.key.clone(), EdgeKind::Runs, callee));
             }
+            // The query it answers with once its work settles (chunk 6.3).
+            if let Some(settle) = &route.settle
+                && let Some(answer) = declaration_key(self.lookup, &settle.answer.name)
+            {
+                self.out
+                    .edges
+                    .push((route.key.clone(), EdgeKind::Runs, answer));
+            }
             let mut uses: BTreeSet<Key> = BTreeSet::new();
             uses.extend(input);
             if let Some(output) = &output {
