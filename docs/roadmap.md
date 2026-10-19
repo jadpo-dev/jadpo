@@ -1867,7 +1867,7 @@ chunks below, taken before Phase 6.
   a listed action's gate (`Gate::system`), the system limited to its
   tenant or, for a schedule's run, none, and cleared for every request;
   `jadpo_runtime::runner` with `Job`, `Deferred`, `settle`,
-  `run_deferred`, `hand_over`, `items` and `Batch`; `Host::defer`
+  `run_deferred`, `after_response`, `items` and `Batch`; `Host::defer`
   replacing `Host::deliver`, committed events left on the context and
   carried on `Response::deferred`, the native HTTP worker running them
   as tasks after the response; `runner::InJadpo` working out backfills

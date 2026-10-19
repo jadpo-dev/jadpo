@@ -6,7 +6,7 @@
 //!
 //! - **Deferred**, after the response that set it off is sent: what an
 //!   action left once it committed ([`Ctx::defer`]) goes to the host with
-//!   [`hand_over`], which runs it with [`run_deferred`] through
+//!   [`after_response`], which runs it with [`run_deferred`] through
 //!   [`Host::defer`] (Workers' `waitUntil`, natively a task on the
 //!   worker's thread), each run in a context of its own under the host's
 //!   clock and the 15-minute limit of one run (area 12, "Limits").
@@ -102,7 +102,7 @@ async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outc
         ));
     }
     let saved = ctx.runner();
-    ctx.act_as_system(job.system);
+    ctx.become_system(job.system);
     let outcome = executor.run(ctx, job.callable, job.args).await;
     ctx.restore_runner(saved);
     outcome
@@ -158,7 +158,7 @@ pub async fn run_deferred(
 /// sent ([`Host::defer`]), with [`run_deferred`]: what a deployable and
 /// `jadpo dev` do with the work a response left (`Response::deferred`).
 /// `executor` and `host` are kept until it has run.
-pub fn hand_over(executor: Rc<dyn Executor>, host: Rc<dyn Host>, work: Vec<Deferred>) {
+pub fn after_response(executor: Rc<dyn Executor>, host: Rc<dyn Host>, work: Vec<Deferred>) {
     if work.is_empty() {
         return;
     }
@@ -240,7 +240,7 @@ impl<'c, 'p> Batch<'c, 'p> {
             return Err(error);
         }
         let saved = ctx.runner();
-        ctx.act_as_system(system);
+        ctx.become_system(system);
         Ok(Batch { ctx, saved })
     }
 
@@ -782,12 +782,12 @@ mod tests {
             ..Fake::default()
         });
         let host: Rc<dyn Host> = Rc::clone(&fake) as Rc<dyn Host>;
-        hand_over(Rc::clone(&program), Rc::clone(&host), Vec::new());
+        after_response(Rc::clone(&program), Rc::clone(&host), Vec::new());
         assert!(
             fake.deferred.borrow().is_empty(),
             "nothing to run, nothing handed over"
         );
-        hand_over(
+        after_response(
             Rc::clone(&program),
             Rc::clone(&host),
             vec![job(2, "order", None)],

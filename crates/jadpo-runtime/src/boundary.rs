@@ -748,7 +748,7 @@ mod tests {
                 _ => None,
             }
         };
-        let system = |ctx: &mut Ctx<'_>| ctx.act_as_system(crate::System::default());
+        let system = |ctx: &mut Ctx<'_>| ctx.become_system(crate::System::default());
         let signed_in = |ctx: &mut Ctx<'_>| {
             ctx.set_caller(Some(crate::Caller {
                 value: Value::Unit,

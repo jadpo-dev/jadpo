@@ -468,7 +468,7 @@ fn the_system_is_let_in_exactly_where_access_system_grants_and_no_caller_is() {
     let report = fs::read_to_string(root.join("build/report/permissions.md")).expect("the report");
     assert!(
         report.contains(
-            "`Access.system` holds no membership: a subscriber's delivery reaches only the `Household` its event came from, and a schedule's run every `Household`."
+            "`Access.system` holds no membership: a subscriber reaches only the `Household` its event came from, and a schedule every `Household`."
         ),
         "{report}"
     );

@@ -116,7 +116,7 @@ pub struct Response {
     pub client: Option<String>,
     /// The work what it ran left for after it is sent: what its action
     /// emitted once it committed (chunk 6.1a). The host hands it to the
-    /// runner ([`crate::runner::hand_over`]); never sent.
+    /// runner ([`crate::runner::after_response`]); never sent.
     pub deferred: Vec<crate::runner::Deferred>,
 }
 

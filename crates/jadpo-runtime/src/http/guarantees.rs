@@ -1183,7 +1183,7 @@ fn no_request_is_ever_the_system() {
     .expect("nothing waits");
     assert_eq!(served.status, 204);
     let mut ctx = Ctx::new(&program.places, &host, Env::default());
-    ctx.act_as_system(crate::System {
+    ctx.become_system(crate::System {
         tenant: Some([7; 16]),
     });
     let handled = block_on(handle(

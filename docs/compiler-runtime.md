@@ -2412,7 +2412,7 @@ constant. Nothing here is interpreter-only, so the compiled deployables
 **The system caller and the runner** (chunk 6.1a). Background work,
 area 12's schedules and subscribers, acts as the system (area 9,
 `Access.system`): `Ctx::system` holds it, with the tenant a subscriber's
-event came from, and only the runner sets it (`Ctx::act_as_system` is
+event came from, and only the runner sets it (`Ctx::become_system` is
 the crate's own); `set_caller`, `set_unpoliced` and every request the
 HTTP component answers clear it. Policy binds it as two caller parts,
 `CallerPart::System` (whether the system runs the statement) and
@@ -2429,7 +2429,7 @@ a boundary of its own:
 - **deferred**: a committed action's outbox is left on the context as
   `Deferred::Events` (`Ctx::defer`), never delivered in the request
   (`Host::deliver` is gone); `serve_request` moves what a request left
-  to `Response::deferred`, and the host hands it to `runner::hand_over`,
+  to `Response::deferred`, and the host hands it to `runner::after_response`,
   which gives `Host::defer` a future running `run_deferred` once the
   response has been handed back: natively the HTTP worker takes it
   (`Handler::take_deferred`, `NativeHost::take_deferred`) and spawns it

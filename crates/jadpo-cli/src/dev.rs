@@ -165,7 +165,7 @@ impl Handler for DevHandler {
             )
             .await;
             // What the response left runs after it is sent (chunk 6.1a).
-            jadpo_runtime::runner::hand_over(
+            jadpo_runtime::runner::after_response(
                 Rc::clone(&program) as Rc<dyn jadpo_runtime::Executor>,
                 Rc::clone(&self.host) as Rc<dyn Host>,
                 std::mem::take(&mut response.deferred),

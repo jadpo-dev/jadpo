@@ -136,8 +136,8 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
         });
         if system {
             markdown.push_str(&format!(
-                "`Access.system` holds no membership: a subscriber's delivery reaches only \
-                 the `{tenant}` its event came from, and a schedule's run every `{tenant}`.\n\n"
+                "`Access.system` holds no membership: a subscriber reaches only the \
+                 `{tenant}` its event came from, and a schedule every `{tenant}`.\n\n"
             ));
         }
     }

@@ -260,7 +260,7 @@ impl<'p> Ctx<'p> {
     /// Runs what follows as the system, with no signed-in caller and with
     /// policy: only the runner does this ([`crate::runner`]), so nothing
     /// outside the runtime, a request least of all, can.
-    pub(crate) fn act_as_system(&mut self, system: System) {
+    pub(crate) fn become_system(&mut self, system: System) {
         self.caller = None;
         self.system = Some(system);
         self.unpoliced = false;

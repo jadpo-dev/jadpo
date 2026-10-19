@@ -270,7 +270,7 @@ pub trait Host {
     /// Runs `work` once the response being answered has been handed back,
     /// without holding that response up: what the runner gives it to run
     /// a committed action's follow-on work in the background (area 12,
-    /// "Where events travel"; chunk 6.1a, [`crate::runner::hand_over`]).
+    /// "Where events travel"; chunk 6.1a, [`crate::runner::after_response`]).
     /// Workers' `waitUntil`, natively a task on the worker's own thread.
     /// A host with nothing to run it on, as a test's or a tool's, drops it:
     /// what an event sets off is kept in the outbox, which the minute
