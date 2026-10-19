@@ -452,3 +452,269 @@ action start(page: ItemPage) -> BatchRun {
         "{found:?}"
     );
 }
+
+// A batch's summary under policy (area 12, "Chosen in chunk 6.4d"): in an
+// application with a tenant, a run's `finished:` stores what its
+// `ImportSummary` counts in a record of the tenant the run is limited to.
+
+/// An allotment application whose societies are its tenants: a round of
+/// invoices walks one society's plots, and `finished:` records how it went
+/// in the round. `changes` replaces text in the files, by path.
+fn societies(changes: &[(&str, &str, &str)]) -> Vec<String> {
+    let mut files: Vec<(String, String)> = SOCIETIES
+        .iter()
+        .map(|(path, text)| (path.to_string(), text.to_string()))
+        .collect();
+    for (path, from, to) in changes {
+        let file = files
+            .iter_mut()
+            .find(|(at, _)| at == path)
+            .unwrap_or_else(|| panic!("no file {path}"));
+        assert!(file.1.contains(from), "{path} has no {from:?}");
+        file.1 = file.1.replace(from, to);
+    }
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let found: Vec<String> = support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|line| !line.contains("import.unused"))
+        .collect();
+    // The summary holds counts and problems, never a record's fields.
+    for line in &found {
+        for field in ["items", "items_with_problems", "problems"] {
+            assert!(
+                !line.contains(&format!(".{field}`")),
+                "a problem names a field the summary's records don't have: {line}"
+            );
+        }
+    }
+    found
+}
+
+const SOCIETIES: &[(&str, &str)] = &[
+    (
+        "app.jadpo",
+        "use plots/entities { Gardener }\n\napplication {}\n\nprincipal {\n    user: {\n        subject: Gardener.email\n    }\n}\n",
+    ),
+    (
+        "authentication.jadpo",
+        "authentication {\n    browser_session: {\n        cookie: \"allotments_session\"\n    }\n}\n",
+    ),
+    (
+        "policy.jadpo",
+        "use plots/entities { Society }\n\npolicy {\n    tenant: Society\n}\n",
+    ),
+    (
+        "domains/plots/types/officer_role.jadpo",
+        "type OfficerRole = Enum {\n    secretary\n    treasurer\n}\n",
+    ),
+    (
+        "domains/plots/types/name.jadpo",
+        "type Name = Text {\n    min_length: 1\n    max_length: 80\n}\n",
+    ),
+    (
+        "domains/plots/types/plot_page.jadpo",
+        "type PlotPage = Input {\n    page_size: PageSize {\n        default: 50\n    }\n    after: PageCursor {\n        optional: true\n    }\n}\n",
+    ),
+    (
+        "domains/plots/failures/plot_unlet.jadpo",
+        "type PlotUnlet = Failure {\n    kind: FailureKind.rejected\n    message: \"Nobody rents this plot.\"\n}\n",
+    ),
+    (
+        "domains/plots/entities/gardener.jadpo",
+        "use plots/types { Name }\n\nentity Gardener {\n    id: Uuid\n    email: Email {\n        unique: true\n    }\n    name: Name\n\n    policy: {\n        create: [Access.public]\n        read: [id]\n        update: [id]\n        tenant: Tenancy.shared\n    }\n}\n",
+    ),
+    (
+        "domains/plots/entities/society.jadpo",
+        "use plots/types { Name, OfficerRole }\n\nentity Society {\n    id: Uuid\n    name: Name\n\n    policy: {\n        create: [Access.authenticated]\n        read: [OfficerRole.secretary, OfficerRole.treasurer, Access.system]\n        update: [OfficerRole.secretary]\n    }\n}\n",
+    ),
+    (
+        "domains/plots/entities/officer.jadpo",
+        "use plots/entities { Gardener, Society }\nuse plots/types { OfficerRole }\n\nentity Officer {\n    id: Uuid\n    society_id: Society.id {\n        on_delete: OnDelete.cascade\n    }\n    gardener_id: Gardener.id {\n        on_delete: OnDelete.cascade\n    }\n    role: OfficerRole\n\n    membership: {\n        scope: society_id\n        member: gardener_id\n        role: role\n    }\n\n    policy: {\n        create: [OfficerRole.secretary]\n        read: [OfficerRole.secretary, OfficerRole.treasurer]\n        delete: [OfficerRole.secretary]\n    }\n}\n",
+    ),
+    (
+        // `lapsed` and `notes` only the secretary reads.
+        "domains/plots/entities/plot.jadpo",
+        "use plots/entities { Society }\nuse plots/types { Name, OfficerRole }\n\nentity Plot {\n    id: Uuid\n    society_id: Society.id {\n        on_delete: OnDelete.cascade\n    }\n    holder: Name?\n    rent: Int\n    lapsed: Bool {\n        policy: {\n            read: [OfficerRole.secretary, Access.system]\n        }\n    }\n    notes: Name {\n        policy: {\n            read: [OfficerRole.secretary, Access.system]\n        }\n    }\n\n    policy: {\n        create: [OfficerRole.secretary]\n        read: [OfficerRole.secretary, OfficerRole.treasurer, Access.system]\n        update: [OfficerRole.secretary, Access.system]\n    }\n}\n",
+    ),
+    (
+        "domains/plots/entities/rent_round.jadpo",
+        "use plots/entities { Society }\nuse plots/types { Name, OfficerRole }\n\nentity RentRound {\n    id: Uuid\n    society_id: Society.id {\n        on_delete: OnDelete.cascade\n    }\n    memo: Name\n    invoices: BatchRun?\n    invoiced: Int?\n    unlet: Int?\n\n    policy: {\n        create: [OfficerRole.treasurer]\n        read: [OfficerRole.treasurer, Access.system]\n        update: [OfficerRole.treasurer, Access.system]\n    }\n}\n",
+    ),
+    (
+        "domains/plots/entities/invoice.jadpo",
+        "use plots/entities { Plot, RentRound, Society }\nuse plots/types { Name, OfficerRole }\n\nentity Invoice {\n    id: Uuid\n    society_id: Society.id {\n        on_delete: OnDelete.cascade\n    }\n    plot_id: Plot.id {\n        on_delete: OnDelete.cascade\n    }\n    round_id: RentRound.id {\n        on_delete: OnDelete.cascade\n    }\n    amount: Int\n    memo: Name?\n\n    policy: {\n        create: [Access.system]\n        read: [OfficerRole.treasurer, Access.system]\n    }\n}\n",
+    ),
+    (
+        "domains/plots/entities/round_note.jadpo",
+        "use plots/entities { Society }\nuse plots/types { Name, OfficerRole }\n\nentity RoundNote {\n    id: Uuid\n    society_id: Society.id {\n        on_delete: OnDelete.cascade\n    }\n    memo: Name\n    invoiced: Int\n\n    policy: {\n        create: [Access.system]\n        read: [OfficerRole.treasurer, Access.system]\n    }\n}\n",
+    ),
+    (
+        // Every society's officers read a tally.
+        "domains/plots/entities/tally.jadpo",
+        "entity Tally {\n    id: Uuid\n    unlet: Int\n\n    policy: {\n        create: [Access.system]\n        read: [Access.authenticated]\n        tenant: Tenancy.shared\n    }\n}\n",
+    ),
+    (
+        "domains/plots/queries/society_plots.jadpo",
+        "use plots/entities { Plot, Society }\nuse plots/types { PlotPage }\n\nquery society_plots(society_id: Society.id, page: PlotPage) -> Page<Plot> {\n    from: Plot\n    where: Plot.society_id == society_id\n    order: [Plot.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n",
+    ),
+    (
+        "domains/plots/actions/invoice_plot.jadpo",
+        "use plots/entities { Invoice, Plot, RentRound, RentRoundNotFound }\nuse plots/failures { PlotUnlet }\n\naction invoice_plot(plot: Plot, round_id: RentRound.id) fails PlotUnlet, RentRoundNotFound -> Invoice {\n    if (plot.holder == none) {\n        reject PlotUnlet {}\n    }\n    return attempt Invoice.create {\n        set: {\n            society_id: plot.society_id\n            plot_id: plot.id\n            round_id: round_id\n            amount: plot.rent\n            memo: none\n        }\n    }\n}\n",
+    ),
+    (
+        // Writes nothing: whether it fails is all it shows.
+        "domains/plots/actions/check_plot.jadpo",
+        "use plots/entities { Plot }\nuse plots/failures { PlotUnlet }\n\naction check_plot(plot: Plot) fails PlotUnlet -> Unit {\n    if (plot.holder == none) {\n        reject PlotUnlet {}\n    }\n}\n",
+    ),
+    (
+        "domains/plots/actions/record_round.jadpo",
+        "use plots/entities { RentRound, RentRoundNotFound }\n\naction record_round(summary: ImportSummary, round_id: RentRound.id) fails RentRoundNotFound -> Unit {\n    attempt RentRound.update(round_id) {\n        set: {\n            invoiced: summary.items\n            unlet: summary.items_with_problems\n        }\n    }\n}\n",
+    ),
+    (
+        "domains/plots/actions/tally_round.jadpo",
+        "use plots/entities { Tally }\n\naction tally_round(summary: ImportSummary) -> Unit {\n    var kept: Tally = Tally.create {\n        set: {\n            unlet: summary.items_with_problems\n        }\n    }\n    assert kept.unlet >= 0\n}\n",
+    ),
+    (
+        "domains/plots/actions/note_round.jadpo",
+        "use plots/entities { RoundNote, Society, SocietyNotFound }\nuse plots/types { Name }\n\naction note_round(summary: ImportSummary, society_id: Society.id, memo: Name) fails SocietyNotFound -> Unit {\n    var kept: RoundNote = attempt RoundNote.create {\n        set: {\n            society_id: society_id\n            memo: memo\n            invoiced: summary.items\n        }\n    }\n    assert kept.invoiced >= 0\n}\n",
+    ),
+    (
+        "domains/plots/actions/invoice_round.jadpo",
+        "use plots/actions { check_plot, invoice_plot, note_round, record_round, tally_round }\nuse plots/entities { RentRound }\nuse plots/queries { society_plots }\nuse plots/types { PlotPage }\n\naction invoice_round(rent_round: RentRound) -> RentRound {\n    var invoicing: BatchRun = batches.each(\n        from: society_plots(rent_round.society_id, PlotPage {}),\n        each: plot -> invoice_plot(plot, rent_round.id),\n        finished: summary -> record_round(summary, rent_round.id),\n        key: rent_round.id\n    )\n    return RentRound.update(rent_round) {\n        set: {\n            invoices: invoicing\n        }\n    }\n}\n",
+    ),
+    (
+        // A round found by its `id`, whose memo `finished:` notes.
+        "domains/plots/actions/note_by_id.jadpo",
+        "use plots/actions { invoice_plot, note_round }\nuse plots/entities { RentRound, RentRoundNotFound, Society }\nuse plots/queries { society_plots }\nuse plots/types { PlotPage }\n\naction note_by_id(round_id: RentRound.id, society_id: Society.id) fails RentRoundNotFound -> BatchRun {\n    var rent_round: RentRound = attempt RentRound.get(round_id)\n    return batches.each(\n        from: society_plots(rent_round.society_id, PlotPage {}),\n        each: plot -> invoice_plot(plot, rent_round.id),\n        finished: summary -> note_round(summary, rent_round.society_id, rent_round.memo),\n        key: rent_round.id\n    )\n}\n",
+    ),
+];
+
+const ROUND: &str = "domains/plots/actions/invoice_round.jadpo";
+const INVOICE_PLOT: &str = "domains/plots/actions/invoice_plot.jadpo";
+const CHECK_PLOT: &str = "domains/plots/actions/check_plot.jadpo";
+const NOTE_BY_ID: &str = "domains/plots/actions/note_by_id.jadpo";
+
+#[test]
+fn a_tenanted_runs_finished_stores_its_counts_in_the_tenants_record() {
+    // `invoiced` is how many plots the run walked, and `unlet` how many
+    // of them `invoice_plot` refused, which `holder` decided: the run is
+    // limited to the round's society, whose treasurer reads both.
+    assert_eq!(societies(&[]), Vec::<String>::new());
+}
+
+#[test]
+fn what_decided_a_runs_failures_goes_with_its_summary() {
+    // `lapsed` decides which plots fail, so the count of those that did
+    // shows it, and only the secretary reads it.
+    let each = (
+        ROUND,
+        "each: plot -> invoice_plot(plot, rent_round.id)",
+        "each: plot -> check_plot(plot)",
+    );
+    let lapsed = (CHECK_PLOT, "if (plot.holder == none)", "if (plot.lapsed)");
+    assert_eq!(
+        societies(&[each, lapsed]),
+        [
+            "domains/plots/actions/invoice_round.jadpo policy.output_field_unproved: `invoice_round` passes a value decided by `Plot.lapsed` to `record_round`, which stores it in `RentRound.unlet`, though not everyone who may read `unlet` may read it"
+        ]
+    );
+    // How many plots the run walked shows nothing of them.
+    let invoiced_only = (
+        "domains/plots/actions/record_round.jadpo",
+        "            unlet: summary.items_with_problems\n",
+        "",
+    );
+    assert_eq!(
+        societies(&[each, lapsed, invoiced_only]),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_runs_summary_stored_where_every_tenant_reads_it_is_refused() {
+    // A tally every society's officers read isn't the round's society's.
+    let finished = (
+        ROUND,
+        "finished: summary -> record_round(summary, rent_round.id)",
+        "finished: summary -> tally_round(summary)",
+    );
+    assert_eq!(
+        societies(&[finished]),
+        [
+            "domains/plots/actions/invoice_round.jadpo policy.output_field_unproved: `invoice_round` passes a value decided by `Plot.holder` to `tally_round`, which stores it in `Tally.unlet`, though not everyone who may read `unlet` may read it"
+        ]
+    );
+}
+
+#[test]
+fn what_a_runs_action_stores_from_its_item_is_followed() {
+    // The item is one of the plots the run walked: its `notes`, which only
+    // the secretary reads, can't go in an invoice the treasurer reads.
+    let memo = (INVOICE_PLOT, "memo: none", "memo: plot.notes");
+    assert_eq!(
+        societies(&[memo]),
+        [
+            "domains/plots/actions/invoice_round.jadpo policy.output_field_unproved: `invoice_round` passes `Plot.notes` to `invoice_plot`, which stores it in `Invoice.memo`, though not everyone who may read `memo` may read it",
+            "domains/plots/actions/note_by_id.jadpo policy.output_field_unproved: `note_by_id` passes `Plot.notes` to `invoice_plot`, which stores it in `Invoice.memo`, though not everyone who may read `memo` may read it",
+        ]
+    );
+    // Its `holder` the treasurer reads, within the society.
+    let holder = (INVOICE_PLOT, "memo: none", "memo: plot.holder");
+    assert_eq!(societies(&[holder]), Vec::<String>::new());
+}
+
+#[test]
+fn a_saved_value_is_the_runs_tenants_when_its_record_named_the_tenant() {
+    // `note_by_id`'s run is limited to the round's own society, so its
+    // memo, which the treasurer reads, may go in a note of that society.
+    // With the society the request named, nothing says the memo is the
+    // society's the run is limited to.
+    let from = (
+        NOTE_BY_ID,
+        "from: society_plots(rent_round.society_id, PlotPage {})",
+        "from: society_plots(society_id, PlotPage {})",
+    );
+    let note = (
+        NOTE_BY_ID,
+        "note_round(summary, rent_round.society_id, rent_round.memo)",
+        "note_round(summary, society_id, rent_round.memo)",
+    );
+    assert_eq!(
+        societies(&[from, note]),
+        [
+            "domains/plots/actions/note_by_id.jadpo policy.output_field_unproved: `note_by_id` passes `RentRound.memo` to `note_round`, which stores it in `RoundNote.memo`, though not everyone who may read `memo` may read it"
+        ]
+    );
+}
+
+#[test]
+fn a_reference_to_the_tenant_names_a_runs_tenant() {
+    // `rent_round.society_id` is of the tenant's `id` type, as declared
+    // by `RentRound`'s field: a saved value of it limits the run to that
+    // society (chunk 6.4d), and so does one of `Society.id` itself.
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, SOCIETIES);
+    let registry = jadpo_check::graph::registry(&db, project);
+    let field = |entity: &str, name: &str| {
+        jadpo_graph::TypeRef::Field(jadpo_check::graph::entity_field_key(
+            &registry,
+            entity,
+            &[name.to_string()],
+        ))
+    };
+    let saved = [
+        field("RentRound", "society_id"),
+        field("RentRound", "id"),
+        jadpo_graph::TypeRef::Nullable(Box::new(field("Society", "id"))),
+    ];
+    assert_eq!(
+        jadpo_check::batches::run_tenant(&db, project, &saved, Some(&field("Plot", "society_id"))),
+        jadpo_std::batch::BatchTenant::Saved {
+            captured: vec![0, 2],
+            key: true
+        }
+    );
+}

@@ -16,7 +16,7 @@ use jadpo_graph::body::{Body, Callee, Expr, Node, SiteId};
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::batch::{BatchOp, BatchTenant};
 
-use crate::types::{callables_of, typed_body};
+use crate::types::{Ty, TypeView, callables_of, typed_body};
 
 /// The type a value holding the tenant's id has, `Household.id`, by its
 /// field's key: `None` when the application has no tenant.
@@ -29,11 +29,36 @@ pub fn tenant_id(db: &dyn Db, project: Project) -> Option<Key> {
     ))
 }
 
-/// Whether a value of type `ty` holds the tenant's id, `none` or not.
-fn holds_tenant_id(ty: &TypeRef, tenant_id: &Key) -> bool {
+/// Whether a value of type `ty` holds the tenant's id, `none` or not:
+/// one of the tenant's `id` type, or of a field declared with it, as a
+/// reference to the tenant is (`RentRound.society_id`, chunk 6.4d).
+pub(crate) fn holds_tenant_id(types: &dyn TypeView, ty: &TypeRef, tenant_id: &Key) -> bool {
     match ty {
-        TypeRef::Nullable(inner) => holds_tenant_id(inner, tenant_id),
-        TypeRef::Field(key) => key == tenant_id,
+        TypeRef::Nullable(inner) => holds_tenant_id(types, inner, tenant_id),
+        TypeRef::Field(key) if key == tenant_id => true,
+        TypeRef::Field(key) => {
+            let Some(tenant) = tenant_id.name().strip_suffix(".id").map(str::to_string) else {
+                return false;
+            };
+            key.name().rsplit_once('.').is_some_and(|(host, field)| {
+                types
+                    .field(host, &[field.to_string()])
+                    .is_some_and(|field| declared_tenant_id(types, &field.declared, &tenant, 0))
+            })
+        }
+        _ => false,
+    }
+}
+
+/// Whether a field declared `ty` holds the id of the entity `tenant`.
+fn declared_tenant_id(types: &dyn TypeView, ty: &Ty, tenant: &str, depth: usize) -> bool {
+    match ty {
+        Ty::Nullable(inner) => declared_tenant_id(types, inner, tenant, depth),
+        Ty::Field(host, path) if host == tenant && path.as_slice() == ["id"] => true,
+        // A field declared as another field's type, a few deep at most.
+        Ty::Field(host, path) if depth < 8 => types
+            .field(host, path)
+            .is_some_and(|field| declared_tenant_id(types, &field.declared, tenant, depth + 1)),
         _ => false,
     }
 }
@@ -41,21 +66,23 @@ fn holds_tenant_id(ty: &TypeRef, tenant_id: &Key) -> bool {
 /// Where a run's tenant comes from, given the types of the values it
 /// saves, in order, and of its `key:`.
 pub fn run_tenant(
-    tenant_id: Option<&Key>,
+    db: &dyn Db,
+    project: Project,
     saved: &[TypeRef],
     key: Option<&TypeRef>,
 ) -> BatchTenant {
-    let Some(tenant_id) = tenant_id else {
+    let Some(tenant_id) = tenant_id(db, project) else {
         return BatchTenant::Untenanted;
     };
+    let types = crate::lookups::Lookup::new(db, project);
     BatchTenant::Saved {
         captured: saved
             .iter()
             .enumerate()
-            .filter(|(_, ty)| holds_tenant_id(ty, tenant_id))
+            .filter(|(_, ty)| holds_tenant_id(&types, ty, &tenant_id))
             .map(|(at, _)| at as u32)
             .collect(),
-        key: key.is_some_and(|ty| holds_tenant_id(ty, tenant_id)),
+        key: key.is_some_and(|ty| holds_tenant_id(&types, ty, &tenant_id)),
     }
 }
 
