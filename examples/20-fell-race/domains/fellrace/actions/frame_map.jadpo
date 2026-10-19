@@ -1,0 +1,13 @@
+// `geo.bounding_box` is the smallest box of parallels and meridians
+// holding a shape, and `geo.centroid` its centre, which places a label.
+
+use fellrace/types { MapFraming }
+
+/// The race map: framed on the course, the fell's name in the middle of
+/// the land.
+action frame_map(course_line: LineString, fell_land: Polygon) -> MapFraming {
+    return MapFraming {
+        view: geo.bounding_box(course_line)
+        label_at: geo.centroid(fell_land)
+    }
+}

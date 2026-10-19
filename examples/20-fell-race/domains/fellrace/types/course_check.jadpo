@@ -1,0 +1,5 @@
+/// What the safety officer checks about a course before the race.
+type CourseCheck = Object {
+    on_open_land: Bool
+    crosses_road: Bool
+}

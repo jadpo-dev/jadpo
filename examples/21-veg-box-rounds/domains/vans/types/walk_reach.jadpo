@@ -1,0 +1,5 @@
+/// How far a customer will walk to collect their box.
+type WalkReach = Length {
+    min: 0metre
+    max: 5km
+}

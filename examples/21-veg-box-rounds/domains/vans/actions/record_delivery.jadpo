@@ -1,0 +1,20 @@
+use vans/entities { Delivery, DropPoint }
+use vans/types { BoxCount, DeliveryDay }
+use vans/libraries { crates, fees }
+
+/// Records the boxes a van left at a drop point.
+action record_delivery(
+    drop_point: DropPoint,
+    delivered_on: DeliveryDay,
+    boxes: BoxCount
+) -> Delivery {
+    return Delivery.create {
+        set: {
+            drop_point_id: drop_point.id
+            delivered_on: delivered_on
+            boxes: boxes
+            fee: fees.for_delivery(boxes)
+            crates_used: crates.for_boxes(boxes)
+        }
+    }
+}

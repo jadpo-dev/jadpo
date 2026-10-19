@@ -1,0 +1,53 @@
+use fellrace/types { RunnerStatus }
+use fellrace/fixtures { fitz_park, latrigg_top }
+
+test "a runner near Latrigg's top has checked in, and is on the marshal's map" {
+    var watch_fix: Point = Point {
+        latitude: 54.6172
+        longitude: -3.1205
+        altitude: 366metre
+    }
+    var finish_field: Circle = Circle {
+        centre: fitz_park().spot
+        radius: 40metre
+    }
+    var view: BoundingBox = BoundingBox {
+        south: 54.61
+        west: -3.13
+        north: 54.62
+        east: -3.11
+    }
+    var status: RunnerStatus = track_runner(watch_fix, latrigg_top(), 30metre, finish_field, view)
+    assert status.at_checkpoint
+    assert not status.past_finish
+    assert status.on_screen
+    var farther_out: RunnerStatus = track_runner(
+        watch_fix,
+        latrigg_top(),
+        10metre,
+        finish_field,
+        view
+    )
+    assert not farther_out.at_checkpoint
+}
+
+test "a runner in the park has finished, off the marshal's map" {
+    var watch_fix: Point = Point {
+        latitude: 54.6037
+        longitude: -3.1312
+        altitude: none
+    }
+    var finish_field: Circle = Circle {
+        centre: fitz_park().spot
+        radius: 40metre
+    }
+    var view: BoundingBox = BoundingBox {
+        south: 54.61
+        west: -3.13
+        north: 54.62
+        east: -3.11
+    }
+    var status: RunnerStatus = track_runner(watch_fix, latrigg_top(), 30metre, finish_field, view)
+    assert status.past_finish
+    assert not status.on_screen
+}

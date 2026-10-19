@@ -1,0 +1,6 @@
+/// Where a runner's latest fix puts them.
+type RunnerStatus = Object {
+    at_checkpoint: Bool
+    past_finish: Bool
+    on_screen: Bool
+}

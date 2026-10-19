@@ -1,0 +1,14 @@
+use vans/entities { DropPoint }
+use vans/types { BoxCount, CrateCount, DeliveryDay, DeliveryFee }
+
+/// Boxes a van left at a drop point one day.
+entity Delivery {
+    id: Uuid
+    drop_point_id: DropPoint.id {
+        on_delete: OnDelete.restricted
+    }
+    delivered_on: DeliveryDay
+    boxes: BoxCount
+    fee: DeliveryFee
+    crates_used: CrateCount
+}

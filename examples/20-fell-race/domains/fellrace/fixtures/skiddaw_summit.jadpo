@@ -1,0 +1,14 @@
+use fellrace/types { RaceCheckpoint }
+
+/// Skiddaw's summit, where the race turns.
+fixture skiddaw_summit() -> RaceCheckpoint {
+    return RaceCheckpoint {
+        number: 3
+        name: "Skiddaw"
+        spot: Point {
+            latitude: 54.6511
+            longitude: -3.1478
+            altitude: 931metre
+        }
+    }
+}

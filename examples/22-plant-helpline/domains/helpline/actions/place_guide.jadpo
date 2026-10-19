@@ -1,0 +1,20 @@
+// Until the `ai` capability makes embeddings itself, a vector arrives as
+// JSON from the service that made it; reading it checks its length
+// against the type's `dimensions:`.
+
+use helpline/entities { CareGuide }
+use helpline/types { EmbeddingReply, GuideMeaning }
+use helpline/failures { MeaningUnreadable }
+
+/// Keeps the meaning the embedding service gave a guide.
+action place_guide(guide: CareGuide, reply: EmbeddingReply) fails MeaningUnreadable -> CareGuide {
+    var advice_meaning: GuideMeaning = attempt json.read(reply, as: GuideMeaning) {
+        malformed: MeaningUnreadable
+        mismatch: MeaningUnreadable  // the wrong number of dimensions
+    }
+    return CareGuide.update(guide) {
+        set: {
+            advice_meaning: advice_meaning
+        }
+    }
+}

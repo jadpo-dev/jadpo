@@ -1,0 +1,18 @@
+use helpline/entities { CareGuide }
+use helpline/types { GuideMeaning }
+use helpline/fixtures { guide_shelf }
+
+test "a question is sent with the guides nearest it" {
+    var shelf: List<CareGuide> = guide_shelf()
+    assert list.count(shelf) == 4
+    var sent: List<ChatMessage> = brief_for_question(
+        "When should I repot my orchid?",
+        GuideMeaning([8.0, 2.0, 0.0, 1.0]),
+        Locale.en_gb,
+        Month.april
+    )
+    assert list.last(sent) == ChatMessage {
+        role: ChatRole.user
+        content: "<gardener_question>\nWhen should I repot my orchid?\n</gardener_question>\n\n<guides>\n[{\"title\":\"Repotting an orchid\",\"care_advice\":\"Repot in spring, into bark.\"},{\"title\":\"Watering an orchid\",\"care_advice\":\"Water weekly, and let it drain.\"}]\n</guides>"
+    }
+}

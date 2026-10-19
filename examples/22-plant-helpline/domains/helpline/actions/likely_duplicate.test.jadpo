@@ -1,0 +1,11 @@
+use helpline/types { GuideMeaning }
+
+test "two guides pointing the same way are much the same" {
+    var orchid_repotting: GuideMeaning = GuideMeaning([4.0, 1.0, 0.0, 0.0])
+    var orchid_potting_on: GuideMeaning = GuideMeaning([8.0, 2.0, 0.0, 1.0])
+    var lawn_feeding: GuideMeaning = GuideMeaning([0.0, 1.0, 4.0, 0.0])
+    assert ai.distance(orchid_repotting, orchid_potting_on) == 0.007272823794567618
+    assert ai.distance(orchid_repotting, lawn_feeding) == 0.9411764705882353
+    assert likely_duplicate(orchid_repotting, orchid_potting_on)
+    assert not likely_duplicate(orchid_repotting, lawn_feeding)
+}

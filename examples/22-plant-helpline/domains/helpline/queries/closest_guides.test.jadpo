@@ -1,0 +1,25 @@
+// Runs on PostgreSQL with pgvector 0.8.0 or later, whose iterative scans
+// keep a filtered search filling its limit.
+
+use helpline/entities { CareGuide }
+use helpline/types { GuideCard, GuideMeaning }
+use helpline/fixtures { guide_shelf }
+
+test "the guides nearest a question come nearest first, with their distance" {
+    var shelf: List<CareGuide> = guide_shelf()
+    assert list.count(shelf) == 4
+    var gardener_question: GuideMeaning = GuideMeaning([8.0, 2.0, 0.0, 1.0])
+    var nearest_guides: List<Nearest<GuideCard>> = closest_guides(gardener_question)
+    // The lawn guide is too far away, and the rose guide has no meaning
+    // yet.
+    assert list.map(nearest_guides, nearest -> nearest.item.slug) == [
+        "repotting-an-orchid",
+        "watering-an-orchid"
+    ]
+    // The distance pgvector worked out is the one `ai.distance` gives in
+    // code.
+    assert list.map(nearest_guides, nearest -> nearest.distance) == [
+        ai.distance(GuideMeaning([4.0, 1.0, 0.0, 0.0]), gardener_question),
+        ai.distance(GuideMeaning([3.0, 2.0, 0.0, 0.0]), gardener_question)
+    ]
+}

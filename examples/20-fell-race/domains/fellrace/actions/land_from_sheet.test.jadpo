@@ -1,0 +1,26 @@
+use fellrace/types { SheetText }
+use fellrace/failures { NotLand }
+
+test "an outline or several pieces are land" {
+    var one: List<Polygon> = attempt land_from_sheet(
+        SheetText("POLYGON((-3.17 54.6,-3.1 54.6,-3.1 54.66,-3.17 54.66,-3.17 54.6))")
+    )
+    assert list.count(one) == 1
+    var fell_pieces: List<Polygon> = attempt land_from_sheet(
+        SheetText(
+            "MULTIPOLYGON(((-3.17 54.6,-3.1 54.6,-3.1 54.66,-3.17 54.6)),((-3.0 54.6,-2.9 54.6,-2.9 54.7,-3.0 54.6)))"
+        )
+    )
+    assert list.count(fell_pieces) == 2
+}
+
+test "a point, a line, bad text and another grid aren't" {
+    assert land_from_sheet(SheetText("POINT(-3.1478 54.6511)")) fails NotLand
+    assert land_from_sheet(SheetText("LINESTRING(-3.131 54.6035,-3.1206 54.617)")) fails NotLand
+    assert land_from_sheet(SheetText("MULTIPOINT((-3.131 54.6035),(-3.1206 54.617))")) fails NotLand
+    assert land_from_sheet(
+        SheetText("MULTILINESTRING((-3.131 54.6035,-3.1206 54.617))")
+    ) fails NotLand
+    assert land_from_sheet(SheetText("POLYGON((-3.17 54.6,-3.1 54.6")) fails NotLand
+    assert land_from_sheet(SheetText("SRID=27700;POINT(325000 523000)")) fails NotLand
+}

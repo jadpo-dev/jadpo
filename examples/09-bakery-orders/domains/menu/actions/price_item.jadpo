@@ -1,34 +1,36 @@
 // The menu's prices. `sales` asks for them through this public action
 // rather than keeping prices of its own, so a price changes in one place.
 
-use shared/types { Grain, MenuItem, Pence, SliceCount }
+use shared/types { Grain, MenuItem, SliceCount, Sterling }
 use shared/libraries { pricing }
 
 /// A loaf's price by its grain.
-function loaf_price(grain: Grain) -> Pence {
+function loaf_price(grain: Grain) -> Sterling {
     return match grain {
-        Grain.white -> 250
-        Grain.wholemeal -> 290
-        Grain.rye -> 340
+        Grain.white -> pricing.pence(250)
+        Grain.wholemeal -> pricing.pence(290)
+        Grain.rye -> pricing.pence(340)
     }
 }
 
-/// A cake's price: 350 a slice, and a whole cake of 16 slices is 10% off.
-function cake_price(slices: SliceCount) -> Pence {
-    var full: Pence = Pence(slices * 350)
+/// A cake's price: £3.50 a slice, and a whole cake of 16 slices is 10%
+/// off.
+function cake_price(slices: SliceCount) -> Sterling {
+    var full: Sterling = Sterling(pricing.pence(350) * slices)
     if (slices == 16) {
         // Taking 90% rather than subtracting 10% keeps the result provably
-        // never below zero, so no check is needed.
-        return pricing.percent_of(full, 90)
+        // never below zero, so no check is needed; a half penny goes to
+        // the even penny, as `Sterling` rounds.
+        return Sterling(full * 90%)
     }
     return full
 }
 
 /// What one of `item` costs.
-public action price_item(item: MenuItem) -> Pence {
+public action price_item(item: MenuItem) -> Sterling {
     return match item {
         MenuItem.loaf(loaf) -> loaf_price(loaf.grain)
         MenuItem.cake(cake) -> cake_price(cake.slices)
-        MenuItem.coffee -> 280
+        MenuItem.coffee -> pricing.pence(280)
     }
 }

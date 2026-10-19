@@ -1,0 +1,10 @@
+// A prompt in `shared/prompts/` belongs to no one domain, as a shared
+// type doesn't. A field of type `List<ChatMessage>` is the conversation
+// so far: its messages are sent in order between the instructions and the
+// request, not as a data block.
+
+/// Sums up a helpline call for the gardener who calls back.
+type SummariseCall = Prompt {
+    call_so_far: List<ChatMessage>
+    reader_locale: Locale
+}

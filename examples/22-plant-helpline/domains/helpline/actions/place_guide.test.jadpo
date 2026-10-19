@@ -1,0 +1,26 @@
+use helpline/entities { CareGuide }
+use helpline/types { GuideMeaning }
+use helpline/failures { MeaningUnreadable }
+use helpline/actions { publish_guide }
+
+test "a guide keeps the meaning the service gave it" {
+    var guide: CareGuide = attempt publish_guide(
+        "repotting-an-orchid",
+        "Repotting an orchid",
+        "Repot in **spring**, into bark, never soil."
+    )
+    assert guide.advice_meaning == none
+    var placed: CareGuide = attempt place_guide(guide, "[4, 1, 0, 0]")
+    var read_back: CareGuide = attempt CareGuide.get(placed.id)
+    assert read_back.advice_meaning == GuideMeaning([4.0, 1.0, 0.0, 0.0])
+}
+
+test "a reply of the wrong length isn't a meaning" {
+    var guide: CareGuide = attempt publish_guide(
+        "repotting-an-orchid",
+        "Repotting an orchid",
+        "Repot in **spring**, into bark, never soil."
+    )
+    assert place_guide(guide, "[4, 1, 0]") fails MeaningUnreadable
+    assert place_guide(guide, "four, one") fails MeaningUnreadable
+}

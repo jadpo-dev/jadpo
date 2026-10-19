@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread::JoinHandle;
 
-use jadpo_runtime::Migration;
+use jadpo_runtime::{MigrateError, Migration};
 
 use crate::postgres::{Server, ServerError};
 
@@ -64,9 +64,33 @@ pub fn template_digest(steps: &[Migration]) -> String {
     hasher.finalize().to_hex()[..16].to_string()
 }
 
+/// Why a store's template couldn't be built.
+#[derive(Clone, Debug)]
+enum Unmade {
+    /// Its migrations were refused: an extension the server lacks, say.
+    Refused(MigrateError),
+    /// Anything else, as the test that needed it reports it.
+    Failed(String),
+}
+
+impl From<String> for Unmade {
+    fn from(error: String) -> Unmade {
+        Unmade::Failed(error)
+    }
+}
+
+impl std::fmt::Display for Unmade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unmade::Refused(error) => write!(f, "applying the migrations failed: {error:?}"),
+            Unmade::Failed(error) => f.write_str(error),
+        }
+    }
+}
+
 /// The template of one store: built once per process and digest.
-fn template(server: &Server, store: &str, steps: &[Migration]) -> Result<String, String> {
-    static BUILT: OnceLock<Mutex<BTreeMap<String, Result<String, String>>>> = OnceLock::new();
+fn template(server: &Server, store: &str, steps: &[Migration]) -> Result<String, Unmade> {
+    static BUILT: OnceLock<Mutex<BTreeMap<String, Result<String, Unmade>>>> = OnceLock::new();
     let name = format!("jadpo_tpl_{}_{}", short(store), template_digest(steps));
     let built = BUILT.get_or_init(|| Mutex::new(BTreeMap::new()));
     let mut built = built
@@ -95,7 +119,7 @@ fn short(store: &str) -> String {
         .collect()
 }
 
-fn build_template(server: &Server, name: &str, steps: &[Migration]) -> Result<String, String> {
+fn build_template(server: &Server, name: &str, steps: &[Migration]) -> Result<String, Unmade> {
     if exists(server, name)? {
         return Ok(name.to_string());
     }
@@ -123,7 +147,7 @@ fn build_template(server: &Server, name: &str, steps: &[Migration]) -> Result<St
             if exists(server, name).unwrap_or(false) {
                 Ok(name.to_string())
             } else {
-                Err(error)
+                Err(error.into())
             }
         }
     }
@@ -131,19 +155,19 @@ fn build_template(server: &Server, name: &str, steps: &[Migration]) -> Result<St
 
 /// Applies `steps` to the database at `url`, on a runtime of its own that
 /// is gone, with its connections, when this returns.
-fn migrate(url: &str, steps: &[Migration]) -> Result<(), String> {
+fn migrate(url: &str, steps: &[Migration]) -> Result<(), Unmade> {
     let url = url.to_string();
     let migrations = steps.to_vec();
-    std::thread::spawn(move || -> Result<(), String> {
+    std::thread::spawn(move || -> Result<(), Unmade> {
         let runtime = jadpo_host_native::Runtime::new().map_err(|e| e.to_string())?;
         let store = jadpo_host_native::postgres(&url).map_err(|e| format!("{e:?}"))?;
         runtime
             .block_on(jadpo_runtime::migrate(&store, &migrations))
             .map(|_| ())
-            .map_err(|e| format!("applying the migrations failed: {e:?}"))
+            .map_err(Unmade::Refused)
     })
     .join()
-    .map_err(|_| "the migrating thread panicked".to_string())?
+    .map_err(|_| Unmade::Failed("the migrating thread panicked".to_string()))?
 }
 
 /// Whether the server has a database called `name`.
@@ -292,6 +316,9 @@ type Started = (Arc<Server>, BTreeMap<String, Template>);
 struct State {
     /// The server and each store's template, once the first test asked.
     ready: Option<Result<Started, String>>,
+    /// The store whose migrations the server refused, and why, when that
+    /// is why `ready` failed.
+    refused: Option<(String, MigrateError)>,
     /// Copies prepared and not yet taken.
     pool: VecDeque<Copy>,
     /// How many copies tests want ready.
@@ -403,6 +430,20 @@ impl TestDatabases {
         Vec::new()
     }
 
+    /// Starts the server and builds each store's template, unless a test
+    /// already has, and gives the store whose migrations the server
+    /// refused, and why: `jadpo test` stops on that before any test runs,
+    /// as `jadpo migrate apply` does (areas 20 and 21). Any other trouble
+    /// is left for the tests that need a database to report.
+    pub fn refused(&self) -> Option<(String, MigrateError)> {
+        self.start_workers();
+        let mut state = self.shared.state.lock().ok()?;
+        while state.ready.is_none() {
+            state = self.shared.changed.wait(state).ok()?;
+        }
+        state.refused.clone()
+    }
+
     fn start_workers(&self) {
         let Ok(mut worker) = self.worker.lock() else {
             return;
@@ -439,20 +480,24 @@ fn poisoned() -> String {
 /// The first worker: starts the server and builds the templates, then
 /// starts the other workers and works beside them until the run is over.
 fn prepare(shared: &Arc<Shared>) {
-    let ready = (|| -> Result<Started, String> {
-        let server = server()?;
+    let ready = (|| -> Result<Started, (Option<String>, Unmade)> {
+        let server = server().map_err(|error| (None, error.into()))?;
         let mut templates = BTreeMap::new();
         for (store, steps) in &shared.steps {
-            let name = template(&server, store, steps)?;
+            let name =
+                template(&server, store, steps).map_err(|error| (Some(store.clone()), error))?;
             templates.insert(store.clone(), Template { name, reset: None });
         }
         Ok((server, templates))
     })();
     let (server, mut templates) = match ready {
         Ok(started) => started,
-        Err(error) => {
+        Err((store, error)) => {
             if let Ok(mut state) = shared.state.lock() {
-                state.ready = Some(Err(error));
+                if let (Some(store), Unmade::Refused(refused)) = (store, &error) {
+                    state.refused = Some((store, refused.clone()));
+                }
+                state.ready = Some(Err(error.to_string()));
                 shared.changed.notify_all();
             }
             return;

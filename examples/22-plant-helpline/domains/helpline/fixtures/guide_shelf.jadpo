@@ -1,0 +1,34 @@
+// Test data: guides published and placed through the help desk's own
+// actions, each where the embedding service would place it, and one it
+// hasn't placed yet.
+
+use helpline/entities { CareGuide }
+use helpline/actions { place_guide, publish_guide }
+
+/// Two orchid guides, a lawn guide and a rose guide not yet placed.
+fixture guide_shelf() -> List<CareGuide> {
+    var repotting: CareGuide = attempt publish_guide(
+        "repotting-an-orchid",
+        "Repotting an orchid",
+        "Repot in spring, into bark."
+    )
+    var watering: CareGuide = attempt publish_guide(
+        "watering-an-orchid",
+        "Watering an orchid",
+        "Water weekly, and let it drain."
+    )
+    var lawn: CareGuide = attempt publish_guide(
+        "feeding-a-lawn",
+        "Feeding a lawn",
+        "Feed in spring."
+    )
+    var roses: CareGuide = attempt publish_guide(
+        "pruning-roses",
+        "Pruning roses",
+        "Prune in late winter."
+    )
+    var repotting_placed: CareGuide = attempt place_guide(repotting, "[4, 1, 0, 0]")
+    var watering_placed: CareGuide = attempt place_guide(watering, "[3, 2, 0, 0]")
+    var lawn_placed: CareGuide = attempt place_guide(lawn, "[0, 1, 4, 0]")
+    return [repotting_placed, watering_placed, lawn_placed, roses]
+}

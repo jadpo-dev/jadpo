@@ -1,0 +1,14 @@
+use fellrace/types { MapFraming }
+use fellrace/fixtures { skiddaw_common, skiddaw_route }
+
+test "the map frames the course and labels the common" {
+    var framing: MapFraming = frame_map(skiddaw_route(), skiddaw_common())
+    assert framing.view == BoundingBox {
+        south: 54.6035
+        west: -3.1478
+        north: 54.6511
+        east: -3.1206
+    }
+    assert framing.label_at.latitude == 54.62933683758465
+    assert framing.label_at.longitude == -3.1347609287839386
+}

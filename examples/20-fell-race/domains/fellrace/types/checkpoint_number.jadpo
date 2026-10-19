@@ -1,0 +1,5 @@
+/// A checkpoint's number, in the order runners reach them.
+type CheckpointNumber = Int {
+    min: 1
+    max: 30
+}

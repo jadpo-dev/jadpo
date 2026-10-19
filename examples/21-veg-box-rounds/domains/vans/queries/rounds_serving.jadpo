@@ -1,0 +1,15 @@
+// `DropPoint`'s declared geographic index already holds `spot`, so these
+// queries derive none for it; a round's `outline` gets one,
+// `van_round_outline_idx`, however many queries test it.
+
+use vans/entities { VanRound }
+use vans/types { VanRoundCard }
+
+/// The rounds whose area holds a customer's door; one on the boundary
+/// counts.
+query rounds_serving(doorstep: Point) -> List<VanRoundCard> {
+    from: VanRound
+    where: geo.contains(VanRound.outline, doorstep)
+    order: [VanRound.name asc]
+    limit: 10
+}

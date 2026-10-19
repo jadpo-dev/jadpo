@@ -1,0 +1,7 @@
+use helpline/types { GuideTitle }
+
+/// The part of a care guide a question is answered from.
+type GuideExcerpt = Object {
+    title: GuideTitle
+    care_advice: Markdown
+}

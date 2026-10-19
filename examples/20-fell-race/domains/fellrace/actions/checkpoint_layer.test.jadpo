@@ -1,0 +1,8 @@
+use fellrace/types { LayerJson }
+use fellrace/fixtures { latrigg_top }
+
+test "the checkpoints go to the map as GeoJSON" {
+    assert checkpoint_layer([latrigg_top()]) == LayerJson(
+        "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[-3.1206,54.617,368]},\"properties\":{\"number\":2,\"name\":\"Latrigg\"}}]}"
+    )
+}

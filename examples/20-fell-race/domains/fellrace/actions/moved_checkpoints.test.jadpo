@@ -1,0 +1,18 @@
+use fellrace/types { LayerJson, RaceCheckpoint }
+use fellrace/failures { NotALayer }
+use fellrace/actions { checkpoint_layer }
+use fellrace/fixtures { fitz_park, latrigg_top, skiddaw_summit }
+
+test "checkpoints come back from the mapping tool as they went" {
+    var checkpoints: List<RaceCheckpoint> = [fitz_park(), latrigg_top(), skiddaw_summit()]
+    var read_back: List<RaceCheckpoint> = attempt moved_checkpoints(checkpoint_layer(checkpoints))
+    assert read_back == checkpoints
+}
+
+test "a line where a checkpoint belongs isn't a layer of checkpoints" {
+    assert moved_checkpoints(
+        LayerJson(
+            "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[-3.131,54.6035],[-3.1206,54.617]]},\"properties\":{\"number\":1,\"name\":\"Fitz Park\"}}]}"
+        )
+    ) fails NotALayer
+}

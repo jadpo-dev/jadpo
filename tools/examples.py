@@ -28,6 +28,13 @@ with migrations is checked and formatted, but its `jadpo test` runs, and
 the "Try next" edits that name test outcomes, are reported as skipped,
 since they need PostgreSQL.
 
+A project with a `nearest` query needs pgvector 0.8.0 for its HNSW index
+(area 21). Where the server offers an older one (Postgres.app ships
+0.7.0), `jadpo test` refuses with `migration.extension_outdated` before
+any test runs, and the project's tests and test-outcome edits are
+reported as skipped, as the live tests of crates/jadpo-cli/tests/vectors.rs
+are; under CI, whose image has 0.8.7, that refusal fails.
+
 `--export-corpus` writes each project and its `jadpo test --json` document
 to build/spec-corpus/examples/<project>/, beside the language pages'
 projects, for the differential run. Which built features the examples
@@ -40,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -64,6 +72,26 @@ def needs_postgres(project: Path) -> bool:
 
 def source_files(project: Path) -> list[Path]:
     return sorted(p for p in project.rglob('*') if p.is_file() and 'build' not in p.relative_to(project).parts)
+
+
+# `jadpo test`'s refusal when the server's pgvector is older than a
+# `nearest` query's HNSW index needs.
+PGVECTOR_OUTDATED = 'migration.extension_outdated'
+
+
+def pgvector_outdated(document: str) -> bool:
+    """Whether `jadpo test --json` stopped on the server's pgvector being
+    too old for a `nearest` query, which skips the project's tests outside
+    CI (CI's image has 0.8.7, so there it is a failure)."""
+    try:
+        rules = [d.get('rule') for d in json.loads(document).get('diagnostics', [])]
+    except ValueError:
+        return False
+    return rules == [PGVECTOR_OUTDATED] and not os.environ.get('CI')
+
+
+# The projects whose tests were skipped for an old pgvector, by name.
+OLD_PGVECTOR: set[str] = set()
 
 
 def check(project: Path) -> tuple[list[str], str | None]:
@@ -94,6 +122,9 @@ def check(project: Path) -> tuple[list[str], str | None]:
         if SKIP_POSTGRES and needs_postgres(project):
             return problems, None
         code, document = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
+        if pgvector_outdated(document):
+            OLD_PGVECTOR.add(name)
+            return problems, None
         try:
             tests = (json.loads(document).get('data') or {}).get('tests') or []
         except ValueError:
@@ -185,6 +216,8 @@ def try_edit(project: Path, edit: dict) -> list[str]:
                 problems.append(f'{label}: the README says {", ".join(edit["check"])}, but jadpo check reports {", ".join(rules) or "nothing"}')
         if 'test' in edit and not (SKIP_POSTGRES and needs_postgres(project)):
             _, out = jadpo(['test', '.', '--json', '--seed', TEST_SEED], cwd=copy)
+            if pgvector_outdated(out):
+                return problems
             try:
                 document = json.loads(out)
             except ValueError:
@@ -248,6 +281,9 @@ def main() -> int:
     if skipped:
         print(f'skipped: jadpo test for {", ".join(skipped)}, whose migrations need PostgreSQL '
               f'(JADPO_SKIP_POSTGRES is set)')
+    if OLD_PGVECTOR:
+        print(f'skipped: jadpo test for {", ".join(sorted(OLD_PGVECTOR))}, whose nearest queries need '
+              f'pgvector 0.8.0, which the server doesn\'t offer')
     for problem in problems:
         print(f'  FAIL {problem}')
     print(f'{len(found)} example project(s) checked, formatted and tested')

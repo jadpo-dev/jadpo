@@ -1,0 +1,29 @@
+// A query with `nearest` on a vector field gets an HNSW index, which the
+// compiler derives. Declaring one with `kind: IndexKind.hnsw` tunes it:
+// `m:` is how many links each vector keeps, and `ef_construction:` how
+// many candidates are weighed as each is linked. More of either finds the
+// nearest more reliably in a large table, but builds slower.
+
+use helpline/types { GuideMeaning, GuideSlug, GuideTitle }
+
+/// A plant care guide on the help site, with its meaning once the
+/// embedding service has placed it.
+entity CareGuide {
+    id: Uuid
+    slug: GuideSlug {
+        unique: true
+    }
+    title: GuideTitle
+    care_advice: Markdown
+    on_help_site: Bool
+    advice_meaning: GuideMeaning?
+
+    indexes: {
+        by_meaning: {
+            fields: [advice_meaning]
+            kind: IndexKind.hnsw
+            m: 24  // tens of thousands of guides, searched on every question
+            ef_construction: 128
+        }
+    }
+}

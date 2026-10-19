@@ -1,0 +1,10 @@
+// `ai.distance` works the same distance out in code as pgvector does in
+// a query, to the same digits, for two vectors of one type.
+
+use helpline/types { GuideMeaning, MuchTheSame }
+
+/// Whether two guides say much the same thing, so an editor can merge
+/// them.
+action likely_duplicate(first: GuideMeaning, second: GuideMeaning) -> MuchTheSame {
+    return MuchTheSame(ai.distance(first, second) <= 0.05)
+}

@@ -1,0 +1,22 @@
+use vans/entities { VanRound }
+use vans/fixtures { keswick_round }
+
+test "a diversion through the valley crosses the round" {
+    var keswick_van_round: VanRound = keswick_round()
+    assert keswick_van_round.name == "Keswick and Newlands"
+    var diversion: LineString = LineString {
+        points: [
+            Point {
+                latitude: 54.65
+                longitude: -3.16
+                altitude: none
+            },
+            Point {
+                latitude: 54.55
+                longitude: -3.16
+                altitude: none
+            }
+        ]
+    }
+    assert list.map(rounds_crossed(diversion), card -> card.name) == ["Keswick and Newlands"]
+}

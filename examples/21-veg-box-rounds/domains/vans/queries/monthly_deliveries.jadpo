@@ -1,0 +1,28 @@
+// An aggregate query counts and adds up the records it finds instead of
+// returning them: one row for each group, here each month, worked out
+// by the database in one statement. A time bucket, `temporal.year` or
+// `temporal.month` of a date, is a group like a field; each aggregate
+// gives exactly what code adding up the same records would give.
+
+use vans/entities { Delivery }
+use vans/types { DeliveryDay, MonthOfDeliveries }
+
+/// Deliveries since `from_day`, by month, the latest month first.
+query monthly_deliveries(from_day: DeliveryDay) -> List<MonthOfDeliveries> {
+    from: Delivery
+    where: Delivery.delivered_on >= from_day
+    group: {
+        delivery_year: temporal.year(Delivery.delivered_on)
+        delivery_month: temporal.month(Delivery.delivered_on)
+    }
+    aggregate: {
+        deliveries_made: count()
+        boxes_left: sum(Delivery.boxes)
+        fees_charged: sum(Delivery.fee)
+        smallest_drop: min(Delivery.boxes)
+        largest_drop: max(Delivery.boxes)
+        mean_boxes: average(Delivery.boxes, scale: 1, rounding: Rounding.half_even)
+    }
+    order: [delivery_year desc, delivery_month desc]
+    limit: 12
+}

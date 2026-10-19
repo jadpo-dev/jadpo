@@ -1,0 +1,24 @@
+// WKT is the text form GIS tools and PostGIS write, longitude first;
+// `geo.from_wkt` and `geo.to_wkt` are the only places that order lives.
+// What it reads is a `Geometry`, a choice of the six shapes, matched like
+// any enum with data.
+
+use fellrace/types { SheetText }
+use fellrace/failures { NotLand }
+
+/// The open fell from the land agent's spreadsheet: one outline, or
+/// several pieces.
+action land_from_sheet(sheet_text: SheetText) fails NotLand -> List<Polygon> {
+    var sheet_shape: Geometry = attempt geo.from_wkt(sheet_text) {
+        malformed: NotLand  // not WKT, or rings that cross
+        out_of_range: NotLand  // past a pole, or another coordinate system
+    }
+    return match sheet_shape {
+        Geometry.polygon(one) -> [one.polygon]
+        Geometry.multi_polygon(fell_pieces) -> fell_pieces.multi_polygon.polygons
+        Geometry.point -> reject NotLand
+        Geometry.multi_point -> reject NotLand
+        Geometry.line_string -> reject NotLand
+        Geometry.multi_line_string -> reject NotLand
+    }
+}

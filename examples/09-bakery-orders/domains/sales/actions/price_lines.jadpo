@@ -1,16 +1,17 @@
 // The basket's lines at the menu's prices. An action, not a function,
 // because it asks `menu` for each price through its public action.
 
-use shared/types { Pence }
+use shared/types { Sterling }
+use shared/libraries { pricing }
 use sales/types { Basket }
 use menu
 
 /// What `basket`'s lines cost at the menu's prices, before any discount.
-action price_lines(basket: Basket) -> Pence {
-    var mut subtotal: Pence = 0
+action price_lines(basket: Basket) -> Sterling {
+    var mut subtotal: Sterling = pricing.pence(0)
     for line in basket.lines {
-        var each: Pence = menu.price_item(line.item)
-        subtotal = Pence(subtotal + each * line.count)
+        var each: Sterling = menu.price_item(line.item)
+        subtotal = Sterling(subtotal + each * line.count)
     }
     return subtotal
 }

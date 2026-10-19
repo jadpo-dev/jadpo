@@ -1,0 +1,8 @@
+use vans/types { VanRoundName }
+
+/// The area one van covers on its round.
+entity VanRound {
+    id: Uuid
+    name: VanRoundName
+    outline: Polygon
+}

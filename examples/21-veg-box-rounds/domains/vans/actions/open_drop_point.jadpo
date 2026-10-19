@@ -1,0 +1,12 @@
+use vans/entities { DropPoint }
+use vans/types { DropPointName }
+
+/// Opens a drop point at its spot.
+action open_drop_point(name: DropPointName, spot: Point) -> DropPoint {
+    return DropPoint.create {
+        set: {
+            name: name
+            spot: spot
+        }
+    }
+}

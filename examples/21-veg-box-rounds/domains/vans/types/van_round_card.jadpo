@@ -1,0 +1,6 @@
+use vans/entities { VanRound }
+
+/// A van's round in a list.
+type VanRoundCard = Output {
+    pick: [VanRound.id, VanRound.name]
+}

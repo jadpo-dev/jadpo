@@ -1,0 +1,10 @@
+// A `Polygon` is its `outer` ring and its `holes`, each ring closed: its
+// last point is its first. `geo.area` takes the holes away.
+
+use fellrace/types { LandArea }
+
+/// How much open fell the race may use: the common, less the farm's
+/// walled field in the middle of it.
+action open_land(fell_land: Polygon) -> LandArea {
+    return LandArea(geo.area(fell_land))
+}

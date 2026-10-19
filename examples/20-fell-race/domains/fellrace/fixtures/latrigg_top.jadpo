@@ -1,0 +1,14 @@
+use fellrace/types { RaceCheckpoint }
+
+/// Latrigg's top, the first climb.
+fixture latrigg_top() -> RaceCheckpoint {
+    return RaceCheckpoint {
+        number: 2
+        name: "Latrigg"
+        spot: Point {
+            latitude: 54.617
+            longitude: -3.1206
+            altitude: 368metre
+        }
+    }
+}

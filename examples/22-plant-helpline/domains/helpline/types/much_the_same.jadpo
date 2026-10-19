@@ -1,0 +1,2 @@
+/// Whether two guides say much the same thing.
+type MuchTheSame = Bool {}

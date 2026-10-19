@@ -1,0 +1,33 @@
+use vans/entities { Delivery, DropPoint }
+use vans/types { MonthOfDeliveries }
+use vans/actions { open_drop_point, record_delivery }
+
+test "deliveries add up by month, the latest first" {
+    var market: DropPoint = open_drop_point(
+        "Keswick Market",
+        Point {
+            latitude: 54.6013
+            longitude: -3.1347
+            altitude: none
+        }
+    )
+    var market_deliveries: List<Delivery> = [
+        record_delivery(market, "2026-10-30", 12),
+        record_delivery(market, "2026-11-06", 7),
+        record_delivery(market, "2026-11-13", 18),
+        record_delivery(market, "2026-11-20", 4)
+    ]
+    assert list.count(market_deliveries) == 4
+    var by_month: List<MonthOfDeliveries> = monthly_deliveries("2026-10-01")
+    assert list.map(by_month, month -> month.delivery_month) == [11, 10]
+    assert list.map(by_month, month -> month.deliveries_made) == [3, 1]
+    assert list.map(by_month, month -> month.boxes_left) == [29, 12]
+    assert list.map(by_month, month -> money.minor(month.fees_charged)) == [1760, 680]
+    assert list.map(by_month, month -> month.smallest_drop) == [4, 12]
+    assert list.map(by_month, month -> month.largest_drop) == [18, 12]
+    assert list.map(by_month, month -> month.mean_boxes) == [9.7, 12.0]
+}
+
+test "a month with no deliveries has no row" {
+    assert monthly_deliveries("2026-01-01") == []
+}

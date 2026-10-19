@@ -1,0 +1,14 @@
+use fellrace/failures { NotAnOutline }
+use fellrace/fixtures { skiddaw_common }
+
+test "the walled field is taken off the common" {
+    var skiddaw_fell: Polygon = skiddaw_common()
+    var without_field: Polygon = attempt Polygon {
+        outer: skiddaw_fell.outer
+        holes: []
+    } {
+        invalid: NotAnOutline
+    }
+    assert open_land(skiddaw_fell) == 29834482.786419sqm
+    assert geo.area(without_field) == 30193867.968207sqm
+}

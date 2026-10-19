@@ -1,0 +1,12 @@
+// A `Point` names its latitude and longitude, so no reader has to
+// remember which comes first, and may carry an altitude: a summit's
+// height above the WGS84 ellipsoid. Every `geo.` operation ignores it.
+
+use fellrace/types { CheckpointName, CheckpointNumber }
+
+/// A place every runner must pass, where a marshal records them.
+type RaceCheckpoint = Object {
+    number: CheckpointNumber
+    name: CheckpointName
+    spot: Point
+}

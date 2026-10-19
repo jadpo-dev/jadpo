@@ -152,6 +152,14 @@ pub enum Ran {
     NothingToRerun {
         gone: usize,
     },
+    /// The test database's server refused `store`'s migrations for an
+    /// extension it doesn't have, or has too old, so no test that needs a
+    /// database could run (areas 20 and 21): the command reports it as
+    /// `jadpo migrate apply` does.
+    Unmigrated {
+        store: String,
+        error: jadpo_runtime::MigrateError,
+    },
     Done(Box<Run>),
 }
 
@@ -378,6 +386,19 @@ pub(crate) fn choose_and_run(
         .count();
     let databases = (!steps.is_empty() && users > 0)
         .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed).for_tests(users));
+    // A server without an extension the migrations create, or with too
+    // old a one, stops the run before any test does; anything else that
+    // keeps a test database from being made is each test's fault to report.
+    if let Some((store, error)) = databases.as_ref().and_then(|databases| databases.refused())
+        && matches!(
+            error,
+            jadpo_runtime::MigrateError::ExtensionMissing { .. }
+                | jadpo_runtime::MigrateError::ExtensionNotCreatable { .. }
+                | jadpo_runtime::MigrateError::ExtensionOutdated { .. }
+        )
+    {
+        return Ran::Unmigrated { store, error };
+    }
     let failures = run::run_all(prepared, &ordered, &rerun, databases.as_ref());
     drop(databases);
     let results: Vec<TestResult> = ordered

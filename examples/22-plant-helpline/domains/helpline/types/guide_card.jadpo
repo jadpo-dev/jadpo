@@ -1,0 +1,6 @@
+use helpline/entities { CareGuide }
+
+/// A care guide in a list of answers.
+type GuideCard = Output {
+    pick: [CareGuide.id, CareGuide.slug, CareGuide.title, CareGuide.care_advice]
+}

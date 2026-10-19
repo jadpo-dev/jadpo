@@ -1,0 +1,5 @@
+/// A question a gardener asked the helpline, as they typed it or as the
+/// phone line wrote it down.
+type GardenerQuestion = Text {
+    max_length: 2000
+}

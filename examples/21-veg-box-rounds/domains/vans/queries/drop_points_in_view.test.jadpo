@@ -1,0 +1,16 @@
+use vans/entities { DropPoint }
+use vans/types { DropPointCard }
+use vans/fixtures { keswick_drop_points }
+
+test "only the pins inside the map's box are found" {
+    var all_three: List<DropPoint> = keswick_drop_points()
+    assert list.count(all_three) == 3
+    var keswick_view: BoundingBox = BoundingBox {
+        south: 54.59
+        west: -3.2
+        north: 54.61
+        east: -3.12
+    }
+    var in_view: List<DropPointCard> = drop_points_in_view(keswick_view)
+    assert list.map(in_view, card -> card.name) == ["Braithwaite Stores", "Keswick Market"]
+}

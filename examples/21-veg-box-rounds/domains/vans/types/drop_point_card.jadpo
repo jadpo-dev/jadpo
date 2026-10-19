@@ -1,0 +1,6 @@
+use vans/entities { DropPoint }
+
+/// A drop point in a list or on a map.
+type DropPointCard = Output {
+    pick: [DropPoint.id, DropPoint.name, DropPoint.spot]
+}

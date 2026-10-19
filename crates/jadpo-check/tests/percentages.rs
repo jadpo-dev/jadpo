@@ -200,3 +200,21 @@ fn ratios_and_fractions_are_standard_objects() {
         "`Ratio` is a standard type"
     );
 }
+
+/// A percentage written out has the one value it is, so an amount that is
+/// never negative times `90%` is never negative either, and building a
+/// type with `min: 0` from it takes no `attempt`, as it doesn't from a
+/// percentage type with bounds; one that may be negative still does
+/// (chunk 5.7c, example 09's whole cake).
+#[test]
+fn a_percent_literal_s_value_bounds_a_product() {
+    let source = "type Sterling = Money {\n    currency: Currency.gbp\n    min: 0\n}\n\nfunction cake(full: Sterling) -> Sterling {\n    return Sterling(full * 90%)\n}\n\nfunction bounded(full: Sterling, cut: Reduction) -> Sterling {\n    return Sterling(full * cut)\n}\n";
+    assert_eq!(rules(source), NONE);
+    assert_eq!(
+        rules(
+            "type Sterling = Money {\n    currency: Currency.gbp\n    min: 0\n}\n\nfunction refund(full: Sterling) -> Sterling {\n    return Sterling(full * -10%)\n}\n"
+        ),
+        ["failure.attempt_required"],
+        "a negative percentage can take the amount below its `min`"
+    );
+}

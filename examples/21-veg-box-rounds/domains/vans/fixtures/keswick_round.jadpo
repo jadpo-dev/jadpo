@@ -1,0 +1,39 @@
+use vans/entities { VanRound }
+use vans/actions { draw_round }
+
+/// The van round that covers Keswick and the valley west of it.
+fixture keswick_round() -> VanRound {
+    return draw_round(
+        "Keswick and Newlands",
+        Polygon {
+            outer: [
+                Point {
+                    latitude: 54.58
+                    longitude: -3.22
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.58
+                    longitude: -3.1
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.62
+                    longitude: -3.1
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.62
+                    longitude: -3.22
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.58
+                    longitude: -3.22
+                    altitude: none
+                }
+            ]
+            holes: []
+        }
+    )
+}

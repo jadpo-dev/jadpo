@@ -1,10 +1,13 @@
-use shared/types { Pence, Percent }
+// Money has no literal: an amount is a whole number of its currency's
+// minor units, pence here, with its currency, so `pricing.pence` says
+// both once for the whole bakery.
+
+use shared/types { PenceCount, Sterling }
 
 /// Prices worked out from other prices.
 library pricing {
-    /// `percent` per cent of `amount`, to the nearest penny; a half penny
-    /// goes to the even penny.
-    function percent_of(amount: Pence, percent: Percent) -> Pence {
-        return Pence(integer.divide(amount * percent, 100, rounding: Rounding.half_even))
+    /// An amount written in pence: `pricing.pence(250)` is £2.50.
+    function pence(count: PenceCount) -> Sterling {
+        return Sterling(money.from_minor(count, Currency.gbp))
     }
 }

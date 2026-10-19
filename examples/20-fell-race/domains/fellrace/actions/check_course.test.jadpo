@@ -1,0 +1,56 @@
+use fellrace/types { CourseCheck }
+use fellrace/fixtures { skiddaw_common, skiddaw_route }
+
+test "the course stays on the common and crosses the Keswick road once" {
+    var keswick_road: LineString = LineString {
+        points: [
+            Point {
+                latitude: 54.61
+                longitude: -3.15
+                altitude: none
+            },
+            Point {
+                latitude: 54.61
+                longitude: -3.1
+                altitude: none
+            }
+        ]
+    }
+    var safety_check: CourseCheck = check_course(skiddaw_route(), skiddaw_common(), keswick_road)
+    assert safety_check.on_open_land
+    assert safety_check.crosses_road
+}
+
+test "a course through the walled field leaves the open land" {
+    var through_the_field: LineString = LineString {
+        points: [
+            Point {
+                latitude: 54.63
+                longitude: -3.115
+                altitude: none
+            },
+            Point {
+                latitude: 54.645
+                longitude: -3.115
+                altitude: none
+            }
+        ]
+    }
+    var far_road: LineString = LineString {
+        points: [
+            Point {
+                latitude: 54.7
+                longitude: -3.2
+                altitude: none
+            },
+            Point {
+                latitude: 54.7
+                longitude: -3.0
+                altitude: none
+            }
+        ]
+    }
+    var safety_check: CourseCheck = check_course(through_the_field, skiddaw_common(), far_road)
+    assert not safety_check.on_open_land
+    assert not safety_check.crosses_road
+}

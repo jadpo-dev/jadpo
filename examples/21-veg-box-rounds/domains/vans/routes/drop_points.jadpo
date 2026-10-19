@@ -1,0 +1,23 @@
+// A route sends a layer bare, as it sends a list: the whole response is
+// plain GeoJSON, which a mapping library fetches as it is. Its
+// properties hold only what an `Output` may, so nothing meant for the
+// server leaves it.
+//
+// The route answers `POST`: a `GET` runs a query, and a query can't build
+// a layer yet, so an action builds it.
+
+use vans/types { DropPointPin, MapView }
+use vans/actions { drop_point_map }
+
+/// Drop points, for the customer map.
+routes DropPoints {
+    prefix: /drop-points
+
+    /// The drop points in view, as GeoJSON.
+    POST /in-view {
+        authentication: RouteAuthentication.none
+        input: MapView
+        output: FeatureCollection<Point, DropPointPin>
+        run: drop_point_map(input.view)
+    }
+}

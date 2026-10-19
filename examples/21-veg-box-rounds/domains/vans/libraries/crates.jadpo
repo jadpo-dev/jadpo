@@ -1,0 +1,13 @@
+// A library's pure functions run anywhere a value is worked out: in an
+// action, and in a migration's backfill, which works out each stored
+// row's value from its own fields.
+
+use vans/types { BoxCount, CrateCount }
+
+/// How the rounds pack boxes.
+library crates {
+    /// Six boxes to a crate, and a part-filled crate is still a crate.
+    function for_boxes(boxes: BoxCount) -> CrateCount {
+        return CrateCount(integer.divide(boxes, 6, rounding: Rounding.up))
+    }
+}

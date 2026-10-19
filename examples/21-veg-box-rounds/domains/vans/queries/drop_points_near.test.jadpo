@@ -1,0 +1,17 @@
+use vans/entities { DropPoint }
+use vans/types { DropPointCard }
+use vans/fixtures { keswick_drop_points }
+
+test "drop points within a walk come nearest first" {
+    var all_three: List<DropPoint> = keswick_drop_points()
+    assert list.count(all_three) == 3
+    var doorstep: Point = Point {
+        latitude: 54.6
+        longitude: -3.15
+        altitude: none
+    }
+    var in_reach: List<DropPointCard> = drop_points_near(doorstep, 5km)
+    assert list.map(in_reach, card -> card.name) == ["Keswick Market", "Braithwaite Stores"]
+    var next_door: List<DropPointCard> = drop_points_near(doorstep, 1km)
+    assert list.map(next_door, card -> card.name) == ["Keswick Market"]
+}

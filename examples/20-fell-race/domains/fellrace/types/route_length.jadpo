@@ -1,0 +1,2 @@
+/// How far the course is along its line, checkpoint to checkpoint.
+type RouteLength = Length {}

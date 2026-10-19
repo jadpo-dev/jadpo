@@ -1,0 +1,78 @@
+use fellrace/failures { NotAnOutline }
+
+test "four corners clicked round make an outline" {
+    var first: Point = Point {
+        latitude: 54.6
+        longitude: -3.17
+        altitude: none
+    }
+    var clicked: List<Point> = [
+        first,
+        Point {
+            latitude: 54.6
+            longitude: -3.1
+            altitude: none
+        },
+        Point {
+            latitude: 54.66
+            longitude: -3.1
+            altitude: none
+        },
+        Point {
+            latitude: 54.66
+            longitude: -3.17
+            altitude: none
+        }
+    ]
+    var outline: Polygon = attempt outline_land(clicked, first)
+    assert list.count(outline.outer) == 5
+}
+
+test "corners clicked across each other aren't an outline" {
+    var first: Point = Point {
+        latitude: 54.6
+        longitude: -3.17
+        altitude: none
+    }
+    var crossed: List<Point> = [
+        first,
+        Point {
+            latitude: 54.66
+            longitude: -3.1
+            altitude: none
+        },
+        Point {
+            latitude: 54.6
+            longitude: -3.1
+            altitude: none
+        },
+        Point {
+            latitude: 54.66
+            longitude: -3.17
+            altitude: none
+        }
+    ]
+    assert outline_land(crossed, first) fails NotAnOutline
+}
+
+test "one corner with a height isn't an outline" {
+    var first: Point = Point {
+        latitude: 54.6
+        longitude: -3.17
+        altitude: none
+    }
+    var clicked: List<Point> = [
+        first,
+        Point {
+            latitude: 54.6
+            longitude: -3.1
+            altitude: 210metre
+        },
+        Point {
+            latitude: 54.66
+            longitude: -3.1
+            altitude: none
+        }
+    ]
+    assert outline_land(clicked, first) fails NotAnOutline
+}

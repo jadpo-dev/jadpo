@@ -1,0 +1,23 @@
+// A `FeatureCollection` is a map layer: GeoJSON's features, each a
+// geometry and its properties, built from what a query found.
+
+use vans/types { DropPointCard, DropPointPin }
+use vans/queries { drop_points_in_view }
+
+/// The drop points on the part of the map a customer is looking at, as
+/// a layer the map draws.
+action drop_point_map(view: BoundingBox) -> FeatureCollection<Point, DropPointPin> {
+    var in_view_points: List<DropPointCard> = drop_points_in_view(view)
+    return FeatureCollection {
+        features: list.map(
+            in_view_points,
+            drop_point -> Feature {
+                geometry: drop_point.spot
+                properties: DropPointPin {
+                    drop_point_id: drop_point.id
+                    name: drop_point.name
+                }
+            }
+        )
+    }
+}

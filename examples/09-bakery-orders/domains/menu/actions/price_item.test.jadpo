@@ -1,21 +1,22 @@
 use shared/types { Grain, MenuItem }
+use shared/libraries { pricing }
 
 test "loaves are priced by their grain" {
     var rye: MenuItem = MenuItem.loaf {
         grain: Grain.rye
     }
-    assert price_item(rye) == 340
-    assert loaf_price(Grain.white) == 250
+    assert price_item(rye) == pricing.pence(340)
+    assert loaf_price(Grain.white) == pricing.pence(250)
 }
 
 test "a whole cake is 10% off its slices" {
     var whole: MenuItem = MenuItem.cake {
         slices: 16
     }
-    assert price_item(whole) == 5040
-    assert cake_price(4) == 1400
+    assert price_item(whole) == pricing.pence(5040)
+    assert cake_price(4) == pricing.pence(1400)
 }
 
 test "coffee has one price" {
-    assert price_item(MenuItem.coffee) == 280
+    assert price_item(MenuItem.coffee) == pricing.pence(280)
 }

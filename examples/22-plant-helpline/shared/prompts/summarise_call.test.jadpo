@@ -1,0 +1,27 @@
+test "the call so far is sent as turns before the request" {
+    var sent: List<ChatMessage> = prompts.render(
+        SummariseCall {
+            call_so_far: [
+                ChatMessage {
+                    role: ChatRole.user
+                    content: "My orchid's leaves are going yellow."
+                },
+                ChatMessage {
+                    role: ChatRole.assistant
+                    content: "Is it standing in water?"
+                }
+            ]
+            reader_locale: Locale.en_gb
+        }
+    )
+    assert list.map(sent, message -> message.role) == [
+        ChatRole.system,
+        ChatRole.user,
+        ChatRole.assistant,
+        ChatRole.user
+    ]
+    assert list.last(sent) == ChatMessage {
+        role: ChatRole.user
+        content: "Sum up the call above."
+    }
+}

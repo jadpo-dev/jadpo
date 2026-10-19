@@ -292,6 +292,47 @@ fn a_database_without_an_extension_is_refused_before_anything_runs() {
     assert_eq!(installed, [[SqlValue::Text("vector".into())]]);
 }
 
+/// `jadpo test` refuses a server without an extension the migrations
+/// create before any test runs, as `migrate apply` does, rather than
+/// each test faulting on the database it couldn't be given (chunk 5.7c).
+#[test]
+fn jadpo_test_refuses_a_server_without_an_extension_before_any_test_runs() {
+    if skipped() {
+        return;
+    }
+    let root = project("test-missing");
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    let (sql, path) = migration_sql(&root);
+    fs::write(
+        &path,
+        sql.replace(
+            "CREATE EXTENSION IF NOT EXISTS \"vector\"",
+            "CREATE EXTENSION IF NOT EXISTS \"jadpo_missing\"",
+        ),
+    )
+    .expect("write");
+    let refused = jadpo(&root, &["test", "--json", "--seed", "1"]);
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    let document: serde_json::Value = serde_json::from_str(&refused.stdout).expect("json");
+    let rules: Vec<&str> = document["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .filter_map(|diagnostic| diagnostic["rule"].as_str())
+        .collect();
+    assert_eq!(rules, ["migration.extension_missing"], "{}", refused.stdout);
+    assert_eq!(document["data"], serde_json::Value::Null, "no test ran");
+    let shown = jadpo(&root, &["test"]);
+    assert!(
+        shown
+            .stdout
+            .contains("error: `main` has no `jadpo_missing` extension\n"),
+        "{}{}",
+        shown.stdout,
+        shown.stderr
+    );
+}
+
 #[test]
 fn the_start_up_check_refuses_a_store_that_lost_its_extension() {
     if skipped() {

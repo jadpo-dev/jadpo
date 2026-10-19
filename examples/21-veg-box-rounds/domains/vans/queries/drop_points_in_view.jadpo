@@ -1,0 +1,14 @@
+// A box searches the point as plain longitude and latitude, as a box's
+// sides are parallels and meridians, through an index of its own that
+// the compiler derives: `drop_point_spot_box_idx`.
+
+use vans/entities { DropPoint }
+use vans/types { DropPointCard }
+
+/// The pins inside the map a customer is looking at.
+query drop_points_in_view(view: BoundingBox) -> List<DropPointCard> {
+    from: DropPoint
+    where: geo.within(DropPoint.spot, view)
+    order: [DropPoint.name asc]
+    limit: 200
+}

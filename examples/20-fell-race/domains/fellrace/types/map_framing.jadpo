@@ -1,0 +1,5 @@
+/// Where the race map looks, and where it writes the fell's name.
+type MapFraming = Object {
+    view: BoundingBox
+    label_at: Point
+}

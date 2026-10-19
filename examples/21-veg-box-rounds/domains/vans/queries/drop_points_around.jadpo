@@ -1,0 +1,10 @@
+use vans/entities { DropPoint }
+use vans/types { DropPointCard }
+
+/// The drop points inside a circle the planner drew round a village.
+query drop_points_around(village: Circle) -> List<DropPointCard> {
+    from: DropPoint
+    where: geo.within(DropPoint.spot, village)
+    order: [DropPoint.name asc]
+    limit: 50
+}

@@ -1,0 +1,18 @@
+// A `geo.` condition names the field first and the value after, and a
+// GiST index serves it. The index finds every record within a millimetre
+// of the condition, and Jadpo's own `geo.` code then decides each one, so
+// a query keeps exactly what the same test in code would keep.
+//
+// Nearest first is an order by `geo.distance` from the same point the
+// `where:` searches around: without the radius, nothing would bound it.
+
+use vans/entities { DropPoint }
+use vans/types { DropPointCard, WalkReach }
+
+/// The drop points a customer could walk to, nearest first.
+query drop_points_near(doorstep: Point, max_walk: WalkReach) -> List<DropPointCard> {
+    from: DropPoint
+    where: geo.within(DropPoint.spot, doorstep, distance: max_walk)
+    order: [geo.distance(DropPoint.spot, doorstep) asc]
+    limit: 10
+}

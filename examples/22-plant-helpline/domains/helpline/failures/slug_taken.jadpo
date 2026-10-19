@@ -1,0 +1,5 @@
+/// Another guide already has that address.
+type SlugTaken = Failure {
+    kind: FailureKind.conflict
+    message: "Another guide already has that address."
+}
