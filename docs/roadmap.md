@@ -1704,42 +1704,82 @@ reference only).
   17 now names a unit of every kind, listing a bike for a partner's
   catalogue, and the gate passes with `--require-examples`.
 
+### Phase 5 review (2026-10-19)
+
+Two independent reviewers, soundness and architecture for the phases
+ahead, read everything Phase 5 built. Their confirmed findings are the
+chunks below, taken before Phase 6.
+
+- [ ] **5.8 Gate honesty** `opus · high`: every test file's live
+  PostgreSQL tests run in the full profile and in CI, through one shared
+  `live()` helper replacing the per-file `skipped()` copies (today
+  `standard_storage`, `sql_literals`, `backfills`, `passkeys` and `config`
+  skip on every run, CI included), and a full run or CI fails on any
+  `skipped:` line; the "one encoder" guard denies across every crate with
+  an allow-list instead of grepping five files; `example-identifiers.txt`
+  generated at check time, with only the allow-list committed. Done when
+  removing a file from the old list can't make its live tests skip
+  silently, and the guard catches a JSON writer added in a new crate.
+- [ ] **5.8a Phase 5 review fixes: secrets and privacy** `opus · xhigh`:
+  the idempotency digest keyed with a deployment secret (or taken over
+  the decoded input without its secret fields), so a stored digest can't
+  be used to guess a sign-up password, and the sweep that deletes old
+  keys; a `nearest` order held to the same field policy as any order
+  (`policy.output_field_unproved`); `Secret` compared with `Text` inside
+  lists and other containers, in constant time; a map key never in a
+  `DecodeProblem`'s `field` (named by position or as `<key>`);
+  `crypto.encrypt`'s nonce from secret randomness, never recorded or
+  replayed; a host without a clock refused at start rather than running
+  at 1970. Each a failing test first, from the review's reproductions.
+- [ ] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
+  xhigh`: a scaled construction in a backfill run by `UPDATE` rounded as
+  the runtime rounds; the backfill digest covering every type its bodies
+  reach and the toolchain version, so a resumed backfill can't mix values;
+  every backfill on a table filled before any column becomes required,
+  then one last step for all of them; config reads and key-taking
+  `crypto` refused where a backfill reaches (`migration.backfill_outside_row`),
+  as is a field the same migration adds; the last step locking writes and
+  never reads (`CHECK … NOT VALID`, `VALIDATE`, then `SET NOT NULL`), as
+  area 5 says; a constant's `scale:` rounding as area 2 says. Done when
+  each review reproduction passes on live PostgreSQL.
+- [ ] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
+  query result type with cross-field rules checked row by row as it is
+  read, or refused; `ai.distance` in `where:` never keeping a NaN or
+  infinite distance and comparing against the bound's exact double, and a
+  zero vector refused where a cosine type is built; vector types of 2,001
+  to 4,000 dimensions holding items to ±65,504 so their `halfvec` index
+  takes every value; JSON reading a vector item's own text as a float and
+  refusing a repeated object or map member; `hnsw.max_scan_tuples` set so
+  a filtered nearest query fills its limit, as area 21 says. Then the
+  slice the review couldn't cover, as tests: cross-field rules on every
+  way a value is made (JSON, query strings, `text.parse`, settings,
+  storage reads), standard types' named rules, `altitudes_agree`, and
+  `prompts.render` with restricted fields.
+- [ ] **5.9 Durable values** `opus · xhigh`, **needs Richard** first on
+  whether a release may change how a standard type is sent or stored
+  (recommended: only with a reader for the old form and a release note,
+  enforced by a golden file): a golden file per standard type, from its
+  examples, pinning its text, JSON, storage columns and SQL literal; an
+  encoding version on every durable row and token (session tokens, the
+  outbox row, the stored passkey credential, now `WebAuthnCredential`'s
+  standard JSON); JSON columns for any type the route codec handles, so an
+  application's objects, lists, maps and enums with data can be stored
+  (today `toolchain.not_built_yet`), with event and job types numbered in
+  the plan's JSON table.
+- [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
+  note folded into the text it amends and what it supersedes deleted
+  (they contradict each other and the code: area 19's `ai.embed` and
+  `ai.generate` failures against area 21, "stored as its JSON" for types
+  now stored in columns, `ZonedTime`'s storage, mixed altitudes in
+  `compiler-runtime.md`, a quantity's JSON); `compiler-runtime.md` §2.1
+  cut to the crate table; finished roadmap chunks collapsed to one line
+  each. Area 12's outbox and schedule-state placement once Richard decides
+  (6.1b).
+- [ ] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
+  `geo.from_lng_lat` and `geo.from_lat_lng`, decided and used by area 20's
+  pages but marked not built.
+
 ## Phase 6 — Events and schedules (area 12)
-
-- [ ] **6.1 Events:** `opus · high` outbox, subscribers, retries, `Access.system`, trace
-  context, and `events: { store: }`, with the compile error for an action
-  that writes no store but needs one for its outbox or idempotency keys
-  (until then such an action keeps no key, chunk 4.2). From the Phase 4
-  review: a system caller, so `Access.system` grants schedules and
-  subscribers (today every policed statement refuses them), and events
-  delivered after the response is sent, through the host (Workers'
-  `waitUntil`), not before it. From chunk 5.1d: what a subscriber stores
-  from an event is checked against what every `emit` of it put there, as
-  area 9's stored values are (an `emit` itself stores nothing a caller
-  reads).
-- [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
-  and the runtime's own sweeps, starting with deleting expired idempotency
-  keys (area 7).
-- [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
-  "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
-  events and their follow-ons at once, answers with the named query when
-  they settle and with `202` past `within:`.
-- [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
-  `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
-  transactions that commit their writes and position together, problems
-  collected, resuming after crashes and deploys; replacing chained events
-  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and the batch
-  forms of `json.read`/`write` on it, as area 19's "Data formats" tables
-  them, and `store.read`'s
-  whole-read cap. Split before starting if the format helpers make it more
-  than one session.
-- [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
-  schedules and batches, passing `--require-examples`.
-
-## Phase 7 — Packages, capabilities and email (areas 11, 16)
-
-The design is area 11 as revised on 2026-10-16, with its research in
-[packages and extension points](language/research/packages-and-extension-proposals.md).
 
 - [ ] **7.0 Generated records** `opus · high` (area 18, decided
   2026-10-16): the API record and identity registry renamed to
@@ -1750,6 +1790,70 @@ The design is area 11 as revised on 2026-10-16, with its research in
   2026-10-16): the API record loses its `version:` counter, the OpenAPI
   version coming from a hash of the record, and `jadpo.lock` takes the
   format.
+  Moved before Phase 6 by the Phase 5 review, so 6.1b records event
+  shapes in this format rather than one it replaces.
+- [ ] **6.1a System caller and delivery engine** `opus · xhigh`: from the
+  Phase 4 and Phase 5 reviews, a system caller (`Grant::System`, a
+  `CallerPart` for it), so `Access.system` grants schedules and
+  subscribers; one runtime-owned runner that drives an executor deferred
+  (a new `Host::defer`, Workers' `waitUntil`, after the response is sent),
+  inline (for 6.3's `settle:`) and per item (for 6.4); and 5.6b2's
+  backfill row loop moved from the CLI into the runtime on that runner,
+  writing through each field's validator.
+- [ ] **6.1b Events** `opus · high`, after 6.1a, **needs Richard** first on
+  where the outbox lives (area 12 says both the main store and each store
+  an action writes; recommended: each store the action writes, delivery
+  records beside it, a subscriber's handled record in its own store,
+  schedule leases in `schedules: { store: }` defaulting to the only
+  store) and on event records (recommended: recorded and diffed as API
+  records are, acceptance waiting for area 18 with the API record's):
+  outbox, subscribers, retries and trace context on 6.1a's runner and
+  system caller, and `events: { store: }`, with the compile error for an
+  action that writes no store but needs one for its outbox or idempotency
+  keys (until then such an action keeps no key, chunk 4.2). From chunk 5.1d: what a subscriber stores
+  from an event is checked against what every `emit` of it put there, as
+  area 9's stored values are (an `emit` itself stores nothing a caller
+  reads).
+- [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
+  and the runtime's own sweeps, starting with deleting expired idempotency
+  keys (area 7).
+- [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
+  "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
+  events and their follow-ons at once, answers with the named query when
+  they settle and with `202` past `within:`.
+- [ ] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
+  review: a query condition is either an exact SQL form or an index
+  prefilter with a check the runtime runs on each row, one path for
+  standard operations, `geo.` and `ai.distance`; all SQL text written in
+  `jadpo-sql` (today `jadpo-plan` writes the vector, `ST_Distance` and
+  `SET LOCAL hnsw.*` SQL itself); `data/queries.rs` split along the way.
+  Standard operations in `where:` stay refused until Richard decides
+  (recommended: allowed with an exact SQL form and a derived expression
+  index, after this chunk).
+- [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
+  `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
+  transactions that commit their writes and position together, problems
+  collected, resuming after crashes and deploys; replacing chained events
+  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and the batch
+  forms of `json.read`/`write` on it, as area 19's "Data formats" tables
+  them, and `store.read`'s
+  whole-read cap. Split by the Phase 5 review: batches, status, cancel, `key:` and
+  resuming on 6.1a's runner first; the format helpers wait for a minimal
+  `files` capability (area 16).
+- [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
+  schedules and batches, passing `--require-examples`.
+
+## Phase 7 — Packages, capabilities and email (areas 11, 16)
+
+The design is area 11 as revised on 2026-10-16, with its research in
+[packages and extension points](language/research/packages-and-extension-proposals.md).
+
+- [ ] **7.0b Capability seam and effectful operations** `opus · xhigh`,
+  from the Phase 5 review: one runtime entry point for operations with
+  effects (JSON with the plan's codec, keyed `crypto`, the clock,
+  randomness), called by both executors instead of the interpreter's own
+  dispatch, and a capability-driver seam with fakes and recordings that
+  7.1's providers, 5.5v3's `ai.generate` and 8.1's native build use.
 - [ ] **7.1 Packages and connections** `opus · high`: the package format
   (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
   surface rule), library and provider kinds, `packages/` installed and
