@@ -2193,10 +2193,10 @@ entity Draft {
 }
 ```
 
-```jadpo check project=e-backfill-setting file=domains/notes/libraries/labels.jadpo
+```jadpo check project=e-backfill-setting file=domains/notes/libraries/draft_labels.jadpo
 use notes/types { Label }
 
-library labels {
+library draft_labels {
     function default_label() -> Label {
         return config.draft_label
     }
@@ -2206,7 +2206,7 @@ library labels {
 ```jadpo check project=e-backfill-setting file=database/migrations/20261020T1401_add_label/changes.jadpo expect=migration.backfill_outside_row
 migration {
     Draft.label: {
-        backfill: labels.default_label()
+        backfill: draft_labels.default_label()
     }
 }
 ```
@@ -2215,9 +2215,9 @@ migration {
 error: The backfill for `Draft.label` can't read `config.draft_label`
  --> database/migrations/20261020T1401_add_label/changes.jadpo:3:19
   |
-3 |         backfill: labels.default_label()
-  |                   ^^^^^^^^^^^^^^^^^^^^^^ reads a setting, through `labels.default_label`
-  reason: A backfill gives each `Draft` record the value its own fields give, whenever and wherever the migration runs, and `labels.default_label` reads `config.draft_label`, which each deployment sets for itself.
+3 |         backfill: draft_labels.default_label()
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads a setting, through `draft_labels.default_label`
+  reason: A backfill gives each `Draft` record the value its own fields give, whenever and wherever the migration runs, and `draft_labels.default_label` reads `config.draft_label`, which each deployment sets for itself.
   next: Work the value out without `config.draft_label`: from `Draft`'s own fields, or a constant (agent)
   rule: migration.backfill_outside_row
   help: docs/language/05-data.html#migration-backfill-outside-row
@@ -2248,7 +2248,7 @@ use notes/types { Title }
 entity Draft {
     id: Uuid
     title: Title
-    heading: Title
+    subheading: Title
 }
 ```
 
@@ -2257,14 +2257,14 @@ migration {
     Draft.title: {
         backfill: "Untitled"
     }
-    Draft.heading: {
+    Draft.subheading: {
         backfill: Draft.title
     }
 }
 ```
 
 ```text output
-error: The backfill for `Draft.heading` can't read `Draft.title`
+error: The backfill for `Draft.subheading` can't read `Draft.title`
  --> database/migrations/20261020T1401_add_titles/changes.jadpo:6:19
   |
 6 |         backfill: Draft.title
