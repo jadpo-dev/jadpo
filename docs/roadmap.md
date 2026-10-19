@@ -702,7 +702,7 @@ chunks below, taken before Phase 7, in this order.
   given one meaning per kind of background work (area 12, "Background
   work and tenants"); and 6.10, 6.11, 6.12, 5.13b and 7.2b for what
   nothing builds. Areas 7 (2,852 to 2,830 lines), 9 (4,250 to 4,278),
-  12 (3,515 to 3,257) and 13 (1,980 to 1,970), `compiler-runtime.md`
+  12 (3,515 to 3,258) and 13 (1,980 to 1,970), `compiler-runtime.md`
   (2,382 to 2,388) and this roadmap (1,088 to 987).
 - [ ] **6.10 The tick's remaining deletes** `opus · high` (areas 8 and
   12, "The tick"): ended browser sessions, API tokens and expired keys
