@@ -535,7 +535,7 @@ pub fn migration_sql(
                 {
                     let field =
                         need.map_or_else(|| format!("{}.{column}", entity_of(new)), Needed::key);
-                    match need.and_then(&decided) {
+                    match need.and_then(decided) {
                         Some(Decided::InJadpo { reads, code }) => plan.batches.push(Statement {
                             sql: table::rewrite_in_jadpo(
                                 &field,

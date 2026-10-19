@@ -772,7 +772,7 @@ async fn check_batch<'s>(
             tally.checking.len() - 1
         }
     };
-    let after = tally.checking[index].after;
+    let after = tally.checking.get(index).and_then(|c| c.after);
     let rows = transaction
         .query(&batches.batch, &[SqlValue::Uuid(after.unwrap_or([0; 16]))])
         .await?;
@@ -814,12 +814,13 @@ async fn check_batch<'s>(
         }
     }
     let unread = unread(backfills, &migration.name, &batches.field, &values)?;
-    let checking = &mut tally.checking[index];
-    for problem in unread.into_iter().flatten() {
-        checking.unread += 1;
-        checking.first.get_or_insert(problem);
+    if let Some(checking) = tally.checking.get_mut(index) {
+        for problem in unread.into_iter().flatten() {
+            checking.unread += 1;
+            checking.first.get_or_insert(problem);
+        }
+        checking.after = Some(ended);
     }
-    checking.after = Some(ended);
     Ok(Some(OneStep {
         applied: false,
         field: Some(&batches.field),
