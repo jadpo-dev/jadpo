@@ -39,6 +39,7 @@ mod queries;
 mod records;
 mod round_trips;
 mod rule_slice;
+mod schedules;
 mod signed;
 mod sql;
 mod sql_forms;

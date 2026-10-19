@@ -68,6 +68,7 @@ mod records_measures;
 mod result_rules;
 mod review;
 mod scale;
+mod schedule_checks;
 mod schedules;
 mod secrets;
 mod security_records;
