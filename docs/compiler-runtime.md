@@ -2098,7 +2098,7 @@ steps running at once on one PostgreSQL container named by
 `JADPO_TEST_DATABASE_URL`) and `wasm32`; `docs` and `tests` each build and
 start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
-"Chosen in chunk 5.5v1"), while the toolchain installs. A local run's
+"Without pgvector"), while the toolchain installs. A local run's
 disposable server comes from the machine's own PostgreSQL tools, which
 need pgvector for the vector tests and PostGIS for the geography tests
 (Postgres.app ships both). The
