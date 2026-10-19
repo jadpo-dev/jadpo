@@ -1092,7 +1092,7 @@ test "a London day has 25 hours when the clocks go back" {
 > Amended 2026-10-18 by area 19 (chunk 5.5k4): `resolve` takes a
 > `LocalDateTime`, which has its own clock time, or a date with `at:` a
 > clock time written out or a `LocalTime`, each under the same `dst:`; the
-> choices are area 19's "Chosen in chunk 5.5k4".
+> choices are in area 19's "Time and calendar additions".
 
 The `temporal` library (question 7, Option B in the
 [time and formatting proposals](research/10-configuration-and-time-proposals.md)),
