@@ -2230,13 +2230,44 @@ tests` skips those files, so no test runs twice. Each step prints `ok` or
 reruns each failing binary or file (`cargo test -p jadpo-cli --test
 integration queries::`). `--profile quick` leaves out the live PostgreSQL
 steps and the wasm32 build and skips `jadpo test` for projects with
-migrations, so it starts no PostgreSQL. On a ten-core Mac with nothing to
-rebuild, the full gate takes about 14 s and quick about 11 s (15 s and
-12 s before chunk 3.11, measured alternately on a machine busy with other
-builds); touching a crate low in the graph costs about 8 s of building
-(12 to 15 s before), and that full gate about 27 s (31 to 35 s). `--group lint|docs|tests|wasm32` runs one
-CI job's share, and `--require-examples` makes the coverage test fail on a
-feature no example uses (above).
+migrations, so it starts no PostgreSQL. The live PostgreSQL steps,
+twenty-odd processes of `jadpo-cli`'s integration binary, run their
+tests on two threads each (`RUST_TEST_THREADS`, from the core count and
+the binaries run at once; chunk 5.13), so together they keep about two
+per core; every other binary keeps libtest's default, since `compiler
+tests` is the longest step and mostly waits on the processes its tests
+start: capping it to two threads as well made the full gate 126 to 168 s
+against 95 to 96 s. The gate finds what cargo built, and the wasm32
+examples, where cargo says they are, so `CARGO_TARGET_DIR` holds.
+`--group lint|docs|tests|wasm32` runs one CI job's share, and
+`--require-examples` makes the coverage test fail on a feature no
+example uses (above).
+
+**Gate timings** (chunk 5.13, 2026-10-19; `CARGO_INCREMENTAL=0
+CARGO_PROFILE_DEV_DEBUG=0`). The 14 s measured on 2026-10-15 no longer
+holds: the gate has grown to 45 steps. On the ten-core Mac, shared with
+two other agents' gates (one-minute load average 25 to 120 at the start
+of a run, up to 184 during one), the full gate with nothing to rebuild
+reports 86 to 107 s before this chunk (median 100 s over eight runs, one
+outlier at 152 s); on the code it merged with, 95 to 111 s without the
+cap and 89 and 96 s with it, within the noise of a shared machine. Its
+wall-clock time is 12 to 15 s more, about 10 s of which is stopping the
+run's PostgreSQL server and removing its folder, after the summary is
+printed. From an empty `target/` it took 219 s before (61 s of building,
+load 25 to 91) and 316 s after (150 s of building, load up to 175): cold
+runs are mostly building, and the building follows the machine's load.
+The steps' running threads peak at about 45 at the 90th percentile with
+or without the cap (median 13 with it, 15 without), from `jadpo test`'s
+workers and clippy as much as from libtest, so the review's load
+averages of 248 to 281 were several gates at once. The critical path is
+a few long serial tests (`manifest determinism`'s two tests take 21 s
+alone and 80 s or more inside the gate) and `compiler tests`, which no
+thread setting tried shortened. In CI (four-core runners), the last 30
+successful runs of 19 October took a median of 353 s from start to end
+(265 to 486 s), the `tests` job 334 s (256 to 464 s), of which the gate
+was 280 s (203 to 432 s), and `docs` 162 s; this chunk's branch took 264
+s, the `tests` job 256 s and its gate 219 s, one run, so a sign rather
+than a measure.
 
 **CI.** GitHub Actions on Linux runs the gate's four groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`

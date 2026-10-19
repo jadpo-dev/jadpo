@@ -22,6 +22,7 @@ finishes; failures' output follows, then a summary.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -42,9 +43,28 @@ GROUPS = ('lint', 'docs', 'tests', 'wasm32')
 # Each test binary is a process of its own and runs its tests on threads;
 # this many run at once.
 JOBS = os.cpu_count() or 4
+# The live PostgreSQL steps, twenty-odd processes of one binary, each run
+# their tests on this many threads (RUST_TEST_THREADS) rather than one per
+# core, so together they keep about two per core (chunk 5.13). Every other
+# binary keeps libtest's default: `compiler tests` is the gate's longest
+# step and mostly waits on the processes its tests start, and capping it
+# too made the gate slower.
+LIVE_THREADS = str(max(2, 2 * (os.cpu_count() or 4) // JOBS))
 # Each crate's integration tests are one binary, each test file a module of
 # it (crates/*/tests/main.rs).
 INTEGRATION = 'integration'
+
+
+@functools.cache
+def target_dir() -> Path:
+    """Cargo's build folder: `target/` unless CARGO_TARGET_DIR or cargo's
+    configuration names another, as cargo itself reads them."""
+    try:
+        process = subprocess.run(['cargo', 'metadata', '--format-version', '1', '--no-deps', '--locked'],
+                                 cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        return Path(json.loads(process.stdout)['target_directory'])
+    except (OSError, ValueError, KeyError):
+        return ROOT / 'target'
 
 
 def wasm_crates() -> list[str]:
@@ -317,7 +337,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                   '--example', 'decimal_maths'], lane='cargo'),
             Step('Decimal maths gives the reference digits under wasm32', 'wasm32',
                  ['node', 'tools/run_wasm.mjs',
-                  f'target/{WASM}/debug/examples/decimal_maths.wasm'], lane='cargo'),
+                  str(target_dir() / WASM / 'debug/examples/decimal_maths.wasm')], lane='cargo'),
             # SHA-256, the encodings and `json.write`'s text (area 19,
             # chunk 5.5g): the same fixed answers the native test checks,
             # so `json.write` gives byte-identical text on both targets.
@@ -326,7 +346,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                   '--example', 'formats'], lane='cargo'),
             Step('hashing, encodings and JSON give the fixed answers under wasm32', 'wasm32',
                  ['node', 'tools/run_wasm.mjs',
-                  f'target/{WASM}/debug/examples/formats.wasm'], lane='cargo'),
+                  str(target_dir() / WASM / 'debug/examples/formats.wasm')], lane='cargo'),
             # The geodesic measures (area 20, chunk 5.5u2): GeographicLib's
             # test sample and the digest of every answer, as natively; and
             # the predicates and shapes against PostGIS's answers (chunk
@@ -336,7 +356,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
                   '--example', 'geodesics'], lane='cargo'),
             Step('geodesic measures give the native digits under wasm32', 'wasm32',
                  ['node', 'tools/run_wasm.mjs',
-                  f'target/{WASM}/debug/examples/geodesics.wasm'], lane='cargo'),
+                  str(target_dir() / WASM / 'debug/examples/geodesics.wasm')], lane='cargo'),
         ]
     coverage = next(step for step in checks if step.name == 'teaching examples cover every built feature')
     coverage.args, coverage.show = ['--nocapture'], 'note:'
@@ -373,9 +393,15 @@ def build_tests() -> tuple[bool, str, list[TestBinary], dict[str, str]]:
     """`cargo test --no-run` over the workspace: every test binary, and
     `jadpo` and jadpo-test-server beside them, built once with one set of
     features."""
+    return built(['cargo', 'test', '--locked', '--workspace', '--no-run'])
+
+
+def built(command: list[str]) -> tuple[bool, str, list[TestBinary], dict[str, str]]:
+    """Runs a cargo build: whether it passed, its diagnostics, and the test
+    binaries and tools it built, where cargo says it put them (so
+    CARGO_TARGET_DIR is honoured)."""
     process = subprocess.run(
-        ['cargo', 'test', '--locked', '--workspace', '--no-run',
-         '--message-format=json-render-diagnostics'],
+        [*command, '--message-format=json-render-diagnostics'],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace')
     binaries, tools = [], {}
     for line in process.stdout.splitlines():
@@ -399,9 +425,8 @@ def build_tests() -> tuple[bool, str, list[TestBinary], dict[str, str]]:
 def build_tools() -> tuple[bool, str, dict[str, str]]:
     """Only `jadpo` and jadpo-test-server, for a run that needs no test
     binaries (CI's docs job)."""
-    ok, output = run(['cargo', 'build', '--locked', '-p', 'jadpo-cli', '-p', 'jadpo-test', '--bins'])
-    names = ('jadpo', SERVER_BIN) if ok else ()
-    return ok, output, {name: str(ROOT / 'target/debug' / name) for name in names}
+    ok, output, _, tools = built(['cargo', 'build', '--locked', '-p', 'jadpo-cli', '-p', 'jadpo-test', '--bins'])
+    return ok, output, tools
 
 
 class PostgresServer:
@@ -460,7 +485,8 @@ def test_jobs(step: Step, binaries: list[TestBinary]):
         selector = {'lib': '--lib', 'bin': f'--bin {binary.target}'}.get(binary.kind, f'--test {binary.target}')
         label = ' '.join([f'cargo test -p {binary.package} {selector}',
                           *(filters if step.tests != 'everything' else [])])
-        env = {**step.env, 'CARGO_MANIFEST_DIR': binary.manifest_dir, 'CARGO_PKG_NAME': binary.package}
+        env = {**step.env, 'CARGO_MANIFEST_DIR': binary.manifest_dir, 'CARGO_PKG_NAME': binary.package,
+               **({'RUST_TEST_THREADS': os.environ.get('RUST_TEST_THREADS', LIVE_THREADS)} if step.postgres else {})}
         yield label, [binary.executable, *filters, *step.args], binary.manifest_dir, env
 
 
