@@ -184,16 +184,18 @@ pub fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> Vec<Dia
             continue;
         }
         if let Some(found) = crate::policy::reach::public_only(db, project, model.run.name()) {
-            out.push(public_only(model, &read.span, &found));
+            out.push(public_only("subscriber", &model.name, &read.span, &found));
         }
     }
     out
 }
 
-/// `policy.system_grant_missing`: a subscriber's action reaches what only
-/// `Access.public` grants, which never lets the system in on purpose.
-fn public_only(
-    model: &SubscriberModel,
+/// `policy.system_grant_missing`: the action a schedule or a subscriber
+/// runs (`kind`, called `name`) reaches what only `Access.public` grants,
+/// which never lets the system in on purpose.
+pub(crate) fn public_only(
+    kind: &str,
+    name: &str,
     span: &Span,
     found: &crate::policy::reach::PublicOnly,
 ) -> Diagnostic {
@@ -216,13 +218,12 @@ fn public_only(
     Diagnostic::new(
         &rule::POLICY_SYSTEM_GRANT_MISSING,
         format!(
-            "`{}` runs as the system, which only `Access.public` lets {what}",
-            model.name
+            "`{name}` runs as the system, which only `Access.public` lets {what}"
         ),
     )
     .at(span.clone(), "runs as `Access.system`")
     .reason(format!(
-        "A subscriber runs as the system, which an entity grants background work by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in."
+        "A {kind} runs as the system, which an entity grants background work by naming `Access.system`; {place} names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in."
     ))
     .next(next)
 }
@@ -919,7 +920,7 @@ fn argument_invalid(span: Span, what: &str) -> Diagnostic {
 }
 
 /// The 1-based line `offset` is on in the file at `path`.
-fn location_line(db: &dyn Db, project: Project, path: &str, offset: u32) -> u32 {
+pub(crate) fn location_line(db: &dyn Db, project: Project, path: &str, offset: u32) -> u32 {
     project
         .files(db)
         .iter()

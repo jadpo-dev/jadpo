@@ -1839,6 +1839,27 @@ jitter) or `failed`; `runner::sweep` delivers what is due in a store,
 for 6.2's minute tick. The statements are `jadpo_runtime::outbox`'s,
 on its own system tables, as the idempotency keys' are.
 
+**Schedules and the tick** (chunk 6.2). The checker reads each schedule
+(`jadpo_check::schedules`: `every:` and `run:`, an action of its own
+domain taking nothing) and where their state is kept
+(`schedules_settings`: `schedules: { store: }` or the only database, else
+`schedule.store_required`); the plan holds the schedule table
+(`jadpo_std::schedule::SchedulesPlan`, `Plan::schedules`, which
+`Executor::schedules` gives the runtime) with the stores holding the
+runtime's own tables. `jadpo_runtime::schedules::tick(executor, host,
+now)` is the one entry point every host calls: it makes and touches each
+schedule's state row (`jadpo_schedules`), takes the lease of each one due
+in one conditional statement, runs them side by side as the system with
+no tenant under the tick's clock and a new trace, records each run and
+skipped tick (`jadpo_schedule_runs`) and delivers what they emitted; then
+in each store it calls `runner::sweep` and deletes expired idempotency
+keys and events every subscriber has had, and runs `schedules::HOOKS`,
+which picks up batch runs whose lease lapsed (`batches::resume`). Natively the HTTP server's first
+worker runs a timer that starts the tick at each whole minute of UTC, or
+each shortest `every:` (`Handler::tick`, `schedules::tick_every_ms`);
+`jadpo dev` ticks. On Workers the cron trigger calls the same function
+(chunk 8.2).
+
 **Batch runs** (chunk 6.4, area 12's "Chosen in chunk 6.4"). The
 checker reads `batches.each(from:, each:, finished:, key:)`
 (`types::body::batches`) into a `Callee::Batch` call whose `from:` is

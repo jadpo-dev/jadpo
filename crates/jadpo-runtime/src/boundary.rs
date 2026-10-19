@@ -163,6 +163,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         };
         match ended {
             Ended::Committed => {
+                ctx.emitted = ctx.emitted.saturating_add(boundary.kept);
                 committed(ctx, boundary.sealed);
                 return outcome;
             }
@@ -259,10 +260,12 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             }
             sealed.outbox.push((id, event.key, event.payload));
         }
+        let written = u32::try_from(sealed.outbox.len()).unwrap_or(u32::MAX);
         let transaction = ctx.transaction(&store).await?;
         crate::outbox::write(transaction, &sealed, emitted_at, trace, depth).await?;
         if let Some(boundary) = ctx.boundary.as_mut() {
             boundary.sealed = sealed.deliveries;
+            boundary.kept = written;
         }
     }
     if let Some(handled) = handled

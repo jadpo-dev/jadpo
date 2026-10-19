@@ -339,7 +339,7 @@ below):
   stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
-  purge schedule will call it (chunk 6.2); until then nothing runs it on a
+  purge schedule will call it (chunk 6.2b); until then nothing runs it on a
   timer. Each run reports how many records each batch deleted, which the
   schedule logs.
 
@@ -1253,10 +1253,12 @@ under way, by its challenge's verifier, with what it is bound to and when
 it expires; area 8, chunk 5.5z) go beside the sessions they start.
 Schedule state, each schedule's lease included, goes in the store
 `schedules: { store: }` names in `app.jadpo`, or the only store when there
-is one (area 12; schedules come in chunk 6.2); other features that
-only keep state name their store the same way (`flags: { store: main }`),
-and with several stores a missing one is a compile error naming the
-feature. The runtime
+is one (area 12): `jadpo_schedules` (each schedule's next due time, lease
+and last tick) and `jadpo_schedule_runs` (each run and skipped tick),
+created when a schedule is declared. Other features that only keep state
+name their store the same way (`flags: { store: main }`), and with
+several stores a missing one is a compile error naming the feature. The
+runtime
 state decided on 2026-10-16 (multi-step call records and batch runs beside
 the outbox, OAuth grants, poll state, and webhook and queue
 de-duplication) follows the same rules and is always in a database, never
@@ -2811,7 +2813,7 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 - Seeds and `jadpo seed` are not built. An entity's `policy:` and
   `membership:` are area 9's, built in chunk 4.4.
 - A lifecycle's `purge: { after: config.<setting> }` waits for configuration
-  (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2).
+  (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2b).
 - `jadpo rename`, which writes the identity registry (area 18), comes with
   area 14's tooling; until then a field renamed by hand reads as one
   removed and one added.

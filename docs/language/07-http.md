@@ -2395,10 +2395,7 @@ declared.
 
 Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
 `serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
-with the importer in chunk 7.2, the served route with no chunk yet); deleting
-expired idempotency keys from the runtime's minute tick (6.2; the index on
-`kept_until` it needs is already in place); `settle:` (6.3); a route's own
-`rate_limit:` and the Redis
+with the importer in chunk 7.2, the served route with no chunk yet); `settle:` (6.3); a route's own `rate_limit:` and the Redis
 store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
