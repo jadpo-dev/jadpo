@@ -1,0 +1,43 @@
+ProblemDetails: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column type text
+column status smallint
+column title text
+column detail text
+column instance text
+
+example {"type":"https://example.com/probs/out-of-credit","status":403,"title":"You do not have enough credit.","detail":"You have 30 credits, but that costs 50.","instance":"https://example.net/account/12345/msgs/abc"}
+text none
+json {"type":"https://example.com/probs/out-of-credit","status":403,"title":"You do not have enough credit.","detail":"You have 30 credits, but that costs 50.","instance":"https://example.net/account/12345/msgs/abc"}
+stored type 'https://example.com/probs/out-of-credit'
+stored status 403
+stored title 'You do not have enough credit.'
+stored detail 'You have 30 credits, but that costs 50.'
+stored instance 'https://example.net/account/12345/msgs/abc'
+
+example {"status":404,"title":"Not Found"}
+text none
+json {"status":404,"title":"Not Found"}
+stored type NULL::text
+stored status 404
+stored title 'Not Found'
+stored detail NULL::text
+stored instance NULL::text
+
+example {"status":503}
+text none
+json {"status":503}
+stored type NULL::text
+stored status 503
+stored title NULL::text
+stored detail NULL::text
+stored instance NULL::text
+
+example {}
+text none
+json {}
+stored type NULL::text
+stored status NULL::smallint
+stored title NULL::text
+stored detail NULL::text
+stored instance NULL::text

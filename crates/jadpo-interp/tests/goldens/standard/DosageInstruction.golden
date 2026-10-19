@@ -1,0 +1,38 @@
+DosageInstruction: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column dose_kind text
+column dose_amount numeric(38, 9) -- Mass in kilograms (kg) when kind is mass; Volume in cubic metres (m³) when kind is volume
+column route text
+column times integer
+column per bigint
+column as_needed boolean
+
+example {"dose":{"tag":"mass","amount":{"value":"500","unit":"mg"}},"route":"oral","times":2,"per":"PT24H","as_needed":false}
+text none
+json {"dose":{"tag":"mass","amount":{"value":"0.0005","unit":"kg"}},"route":"oral","times":2,"per":"PT24H","as_needed":false}
+stored dose_kind 'mass'
+stored dose_amount 0.0005
+stored route 'oral'
+stored times 2
+stored per 86400000
+stored as_needed FALSE
+
+example {"dose":{"tag":"volume","amount":{"value":"10","unit":"ml"}},"route":"oral","times":1,"per":"PT6H","as_needed":true}
+text none
+json {"dose":{"tag":"volume","amount":{"value":"0.00001","unit":"cubic_metre"}},"route":"oral","times":1,"per":"PT6H","as_needed":true}
+stored dose_kind 'volume'
+stored dose_amount 0.00001
+stored route 'oral'
+stored times 1
+stored per 21600000
+stored as_needed TRUE
+
+example {"dose":{"tag":"mass","amount":{"value":"40","unit":"mg"}},"route":"subcutaneous","times":1,"per":"PT168H","as_needed":false}
+text none
+json {"dose":{"tag":"mass","amount":{"value":"0.00004","unit":"kg"}},"route":"subcutaneous","times":1,"per":"PT168H","as_needed":false}
+stored dose_kind 'mass'
+stored dose_amount 0.00004
+stored route 'subcutaneous'
+stored times 1
+stored per 604800000
+stored as_needed FALSE

@@ -1,0 +1,13 @@
+Hmac: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column bytea
+
+example sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c=
+text sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c=
+json "sDRMYdjbOFNcqK/OrwvxK4gdwgDJgz2nJuk3bC4yz/c="
+stored E'\\xb0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7'::bytea
+
+example W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM=
+text W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM=
+json "W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM="
+stored E'\\x5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843'::bytea

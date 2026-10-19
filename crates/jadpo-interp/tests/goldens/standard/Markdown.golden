@@ -1,0 +1,23 @@
+Markdown: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example Fresh **soup** daily.
+text Fresh **soup** daily.
+json "Fresh **soup** daily."
+stored 'Fresh **soup** daily.'
+
+example # Soups\n\n- Leek\n- Tomato
+text # Soups\n\n- Leek\n- Tomato
+json "# Soups\n\n- Leek\n- Tomato"
+stored E'# Soups\n\n- Leek\n- Tomato'
+
+example Tom & Jerry
+text Tom & Jerry
+json "Tom & Jerry"
+stored 'Tom & Jerry'
+
+example Visit [our site](https://example.com/).\r\n
+text Visit [our site](https://example.com/).\r\n
+json "Visit [our site](https://example.com/).\r\n"
+stored E'Visit [our site](https://example.com/).\r\n'

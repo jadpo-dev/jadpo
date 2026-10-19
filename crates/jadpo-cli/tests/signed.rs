@@ -807,6 +807,49 @@ fn an_api_token_renews_in_a_header_and_signs_in_without_a_read() {
     assert_eq!(json(&crossed)["who"], "cat");
 }
 
+/// A signed part records the encoding it was written in (area 19, chunk
+/// 5.9): one written before encodings were recorded still signs in
+/// without a read, and one of an encoding this release doesn't know is
+/// renewed by reading the record, as an expired one is.
+#[test]
+fn a_part_signed_before_encodings_were_recorded_still_signs_in() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("encodings");
+    let (mut eve, _) = sign_up(&live, "eve");
+    let (first, _) = live.send(&eve.post("/echo"));
+    let renewed = cookie(&first, "notes_session").expect("a renewed cookie");
+    let (secret, signed) = renewed.split_once('.').expect("a signed part");
+    let key = jadpo_runtime::http::signed::SigningKey::new(KEY, None);
+    let payload = key.open(signed).expect("signed with the current key");
+    let mut claims: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
+    assert_eq!(claims["enc"], 1, "{payload}");
+
+    // As chunk 5.1b signed it, with no `enc`.
+    let fields = claims.as_object_mut().expect("an object");
+    fields.remove("enc");
+    let before = serde_json::Value::Object(fields.clone()).to_string();
+    eve.session = format!("{secret}.{}", key.sign(&before));
+    let (old, trips) = live.send(&eve.post("/echo"));
+    assert_eq!((old.status, trips), (200, 0), "{}", json(&old));
+    assert_eq!(json(&old)["who"], "eve");
+    assert_eq!(cookie(&old, "notes_session"), None, "nothing to renew");
+
+    // An encoding a later release writes: the record is read, and the
+    // part renewed in this release's.
+    fields.insert("enc".into(), 2.into());
+    let later = serde_json::Value::Object(fields.clone()).to_string();
+    eve.session = format!("{secret}.{}", key.sign(&later));
+    let (read, trips) = live.send(&eve.post("/echo"));
+    assert_eq!((read.status, trips), (200, 1), "{}", json(&read));
+    let again = cookie(&read, "notes_session").expect("renewed");
+    let (_, signed) = again.split_once('.').expect("a signed part");
+    let payload = key.open(signed).expect("signed with the current key");
+    let claims: serde_json::Value = serde_json::from_str(&payload).expect("JSON");
+    assert_eq!(claims["enc"], 1, "{payload}");
+}
+
 #[test]
 fn a_rotated_key_still_verifies_and_new_parts_sign_with_the_current_one() {
     if !jadpo_test::live() {

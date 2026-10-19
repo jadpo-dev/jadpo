@@ -1,0 +1,10 @@
+ZonedTime: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column instant timestamptz(3)
+column zone text
+
+example 2026-10-25T09:30:00+00:00[Europe/London]
+text 2026-10-25T09:30:00+00:00[Europe/London]
+json {"instant":"2026-10-25T09:30:00Z","zone":"Europe/London"}
+stored instant '2026-10-25 09:30:00.000000+00'::timestamptz
+stored zone 'Europe/London'

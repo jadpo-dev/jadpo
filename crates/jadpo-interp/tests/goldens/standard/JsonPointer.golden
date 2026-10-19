@@ -1,0 +1,23 @@
+JsonPointer: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example /foo/0
+text /foo/0
+json "/foo/0"
+stored '/foo/0'
+
+example /a~1b
+text /a~1b
+json "/a~1b"
+stored '/a~1b'
+
+example /m~0n
+text /m~0n
+json "/m~0n"
+stored '/m~0n'
+
+example 
+text 
+json ""
+stored ''

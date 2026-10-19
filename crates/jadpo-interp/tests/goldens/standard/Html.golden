@@ -1,0 +1,23 @@
+Html: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example <p>Fresh <strong>soup</strong> daily.</p>
+text <p>Fresh <strong>soup</strong> daily.</p>
+json "<p>Fresh <strong>soup</strong> daily.</p>"
+stored '<p>Fresh <strong>soup</strong> daily.</p>'
+
+example Tom &amp; Jerry
+text Tom &amp; Jerry
+json "Tom &amp; Jerry"
+stored 'Tom &amp; Jerry'
+
+example <ul><li>Leek</li><li>Tomato</li></ul>
+text <ul><li>Leek</li><li>Tomato</li></ul>
+json "<ul><li>Leek</li><li>Tomato</li></ul>"
+stored '<ul><li>Leek</li><li>Tomato</li></ul>'
+
+example <a href="https://example.com/" rel="noopener noreferrer nofollow">our site</a>
+text <a href="https://example.com/" rel="noopener noreferrer nofollow">our site</a>
+json "<a href=\"https://example.com/\" rel=\"noopener noreferrer nofollow\">our site</a>"
+stored '<a href="https://example.com/" rel="noopener noreferrer nofollow">our site</a>'

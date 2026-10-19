@@ -1,0 +1,8 @@
+Email: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example someone@example.com
+text someone@example.com
+json "someone@example.com"
+stored 'someone@example.com'

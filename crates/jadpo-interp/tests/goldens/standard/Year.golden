@@ -1,0 +1,13 @@
+Year: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column smallint
+
+example 1999
+text 1999
+json "1999"
+stored 1999
+
+example 2026
+text 2026
+json "2026"
+stored 2026

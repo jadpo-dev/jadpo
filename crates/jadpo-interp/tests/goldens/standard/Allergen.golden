@@ -1,0 +1,18 @@
+Allergen: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example cereals_containing_gluten
+text cereals_containing_gluten
+json "cereals_containing_gluten"
+stored 'cereals_containing_gluten'
+
+example milk
+text milk
+json "milk"
+stored 'milk'
+
+example sulphites
+text sulphites
+json "sulphites"
+stored 'sulphites'

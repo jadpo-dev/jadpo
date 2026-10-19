@@ -48,6 +48,7 @@ mod security_records;
 mod sets_maps;
 mod software;
 mod soundness;
+mod standard_goldens;
 mod standard_rules;
 mod standard_types;
 mod text;

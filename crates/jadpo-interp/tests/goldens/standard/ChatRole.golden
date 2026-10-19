@@ -1,0 +1,23 @@
+ChatRole: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example system
+text system
+json "system"
+stored 'system'
+
+example user
+text user
+json "user"
+stored 'user'
+
+example assistant
+text assistant
+json "assistant"
+stored 'assistant'
+
+example tool
+text tool
+json "tool"
+stored 'tool'

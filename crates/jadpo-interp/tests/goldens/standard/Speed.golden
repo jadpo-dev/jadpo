@@ -1,0 +1,18 @@
+Speed: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 6) -- Speed in metres per second (m/s)
+
+example 0.5 mps
+text 0.5 mps
+json {"value":"0.5","unit":"mps"}
+stored 0.5
+
+example 13.4112 mps
+text 13.4112 mps
+json {"value":"13.4112","unit":"mps"}
+stored 13.4112
+
+example 340 mps
+text 340 mps
+json {"value":"340","unit":"mps"}
+stored 340

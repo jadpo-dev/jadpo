@@ -1,0 +1,13 @@
+UkUtr: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 1234567890
+text 1234567890
+json "1234567890"
+stored '1234567890'
+
+example 9876543210
+text 9876543210
+json "9876543210"
+stored '9876543210'

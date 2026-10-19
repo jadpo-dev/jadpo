@@ -1,0 +1,47 @@
+UnitQuantity: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column count bigint
+column amount numeric(38, 9) -- Mass in kilograms (kg) when kind is mass; Volume in cubic metres (m³) when kind is volume; Length in metres (m) when kind is length; Area in square metres (m²) when kind is area
+
+example {"tag":"each","count":3}
+text none
+json {"tag":"each","count":3}
+stored kind 'each'
+stored count 3
+stored amount NULL::numeric
+
+example {"tag":"each","count":1200}
+text none
+json {"tag":"each","count":1200}
+stored kind 'each'
+stored count 1200
+stored amount NULL::numeric
+
+example {"tag":"mass","amount":{"value":"2.5","unit":"kg"}}
+text none
+json {"tag":"mass","amount":{"value":"2.5","unit":"kg"}}
+stored kind 'mass'
+stored count NULL::bigint
+stored amount 2.5
+
+example {"tag":"volume","amount":{"value":"0.0015","unit":"cubic_metre"}}
+text none
+json {"tag":"volume","amount":{"value":"0.0015","unit":"cubic_metre"}}
+stored kind 'volume'
+stored count NULL::bigint
+stored amount 0.0015
+
+example {"tag":"length","amount":{"value":"12","unit":"metre"}}
+text none
+json {"tag":"length","amount":{"value":"12","unit":"metre"}}
+stored kind 'length'
+stored count NULL::bigint
+stored amount 12
+
+example {"tag":"area","amount":{"value":"20","unit":"sqm"}}
+text none
+json {"tag":"area","amount":{"value":"20","unit":"sqm"}}
+stored kind 'area'
+stored count NULL::bigint
+stored amount 20

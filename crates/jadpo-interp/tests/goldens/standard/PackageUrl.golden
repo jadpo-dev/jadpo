@@ -1,0 +1,33 @@
+PackageUrl: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example pkg:npm/%40angular/animation@12.3.1
+text pkg:npm/%40angular/animation@12.3.1
+json "pkg:npm/%40angular/animation@12.3.1"
+stored 'pkg:npm/%40angular/animation@12.3.1'
+
+example pkg:pypi/django@1.11.1
+text pkg:pypi/django@1.11.1
+json "pkg:pypi/django@1.11.1"
+stored 'pkg:pypi/django@1.11.1'
+
+example pkg:maven/org.apache.xmlgraphics/batik-anim@1.9.1?classifier=sources&packaging=jar
+text pkg:maven/org.apache.xmlgraphics/batik-anim@1.9.1?classifier=sources&packaging=jar
+json "pkg:maven/org.apache.xmlgraphics/batik-anim@1.9.1?classifier=sources&packaging=jar"
+stored 'pkg:maven/org.apache.xmlgraphics/batik-anim@1.9.1?classifier=sources&packaging=jar'
+
+example pkg:deb/debian/curl@7.50.3-1?arch=i386&distro=jessie
+text pkg:deb/debian/curl@7.50.3-1?arch=i386&distro=jessie
+json "pkg:deb/debian/curl@7.50.3-1?arch=i386&distro=jessie"
+stored 'pkg:deb/debian/curl@7.50.3-1?arch=i386&distro=jessie'
+
+example pkg:golang/google.golang.org/genproto#googleapis/api/annotations
+text pkg:golang/google.golang.org/genproto#googleapis/api/annotations
+json "pkg:golang/google.golang.org/genproto#googleapis/api/annotations"
+stored 'pkg:golang/google.golang.org/genproto#googleapis/api/annotations'
+
+example pkg:docker/cassandra@sha256:244fd47e07d1004f0aed9c
+text pkg:docker/cassandra@sha256:244fd47e07d1004f0aed9c
+json "pkg:docker/cassandra@sha256:244fd47e07d1004f0aed9c"
+stored 'pkg:docker/cassandra@sha256:244fd47e07d1004f0aed9c'

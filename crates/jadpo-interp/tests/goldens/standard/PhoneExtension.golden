@@ -1,0 +1,13 @@
+PhoneExtension: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 1
+text 1
+json "1"
+stored '1'
+
+example 2047
+text 2047
+json "2047"
+stored '2047'

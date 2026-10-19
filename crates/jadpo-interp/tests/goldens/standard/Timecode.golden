@@ -1,0 +1,53 @@
+Timecode: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column hours smallint
+column minutes smallint
+column seconds smallint
+column frames smallint
+column rate_numerator integer
+column rate_denominator integer
+column drop_frame boolean
+
+example {"hours":1,"minutes":0,"seconds":0,"frames":0,"rate":"25/1","drop_frame":false}
+text none
+json {"hours":1,"minutes":0,"seconds":0,"frames":0,"rate":"25/1","drop_frame":false}
+stored hours 1
+stored minutes 0
+stored seconds 0
+stored frames 0
+stored rate_numerator 25
+stored rate_denominator 1
+stored drop_frame FALSE
+
+example {"hours":0,"minutes":10,"seconds":0,"frames":0,"rate":"30000/1001","drop_frame":true}
+text none
+json {"hours":0,"minutes":10,"seconds":0,"frames":0,"rate":"30000/1001","drop_frame":true}
+stored hours 0
+stored minutes 10
+stored seconds 0
+stored frames 0
+stored rate_numerator 30000
+stored rate_denominator 1001
+stored drop_frame TRUE
+
+example {"hours":0,"minutes":1,"seconds":0,"frames":2,"rate":"30000/1001","drop_frame":true}
+text none
+json {"hours":0,"minutes":1,"seconds":0,"frames":2,"rate":"30000/1001","drop_frame":true}
+stored hours 0
+stored minutes 1
+stored seconds 0
+stored frames 2
+stored rate_numerator 30000
+stored rate_denominator 1001
+stored drop_frame TRUE
+
+example {"hours":23,"minutes":59,"seconds":59,"frames":59,"rate":"60000/1001","drop_frame":false}
+text none
+json {"hours":23,"minutes":59,"seconds":59,"frames":59,"rate":"60000/1001","drop_frame":false}
+stored hours 23
+stored minutes 59
+stored seconds 59
+stored frames 59
+stored rate_numerator 60000
+stored rate_denominator 1001
+stored drop_frame FALSE

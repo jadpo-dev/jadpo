@@ -1,0 +1,13 @@
+MultiPoint: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column geography
+
+example {"type":"MultiPoint","coordinates":[[-0.1276,51.5072],[2.3522,48.8566]]}
+text none
+json {"type":"MultiPoint","coordinates":[[-0.1276,51.5072],[2.3522,48.8566]]}
+stored 'SRID=4326;MULTIPOINT (-0.1276 51.5072, 2.3522 48.8566)'::geography
+
+example {"type":"MultiPoint","coordinates":[[0,0]]}
+text none
+json {"type":"MultiPoint","coordinates":[[0,0]]}
+stored 'SRID=4326;MULTIPOINT (0 0)'::geography

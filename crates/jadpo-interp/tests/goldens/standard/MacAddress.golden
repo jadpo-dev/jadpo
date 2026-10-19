@@ -1,0 +1,13 @@
+MacAddress: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example AC-DE-48-00-00-80
+text AC-DE-48-00-00-80
+json "AC-DE-48-00-00-80"
+stored 'AC-DE-48-00-00-80'
+
+example 00-00-5E-00-53-01
+text 00-00-5E-00-53-01
+json "00-00-5E-00-53-01"
+stored '00-00-5E-00-53-01'

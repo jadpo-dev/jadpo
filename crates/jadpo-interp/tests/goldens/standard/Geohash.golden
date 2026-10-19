@@ -1,0 +1,18 @@
+Geohash: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example g
+text g
+json "g"
+stored 'g'
+
+example gcpvj0duq
+text gcpvj0duq
+json "gcpvj0duq"
+stored 'gcpvj0duq'
+
+example u09tvw0f6szy
+text u09tvw0f6szy
+json "u09tvw0f6szy"
+stored 'u09tvw0f6szy'

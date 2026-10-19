@@ -1,0 +1,16 @@
+CardExpiry: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column year integer
+column month integer
+
+example 2026-12
+text 2026-12
+json "2026-12"
+stored year 2026
+stored month 12
+
+example 2028-01
+text 2028-01
+json "2028-01"
+stored year 2028
+stored month 1

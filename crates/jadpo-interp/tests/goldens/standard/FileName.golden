@@ -1,0 +1,28 @@
+FileName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example report.pdf
+text report.pdf
+json "report.pdf"
+stored 'report.pdf'
+
+example Résumé 2026.docx
+text Résumé 2026.docx
+json "Résumé 2026.docx"
+stored 'Résumé 2026.docx'
+
+example .gitignore
+text .gitignore
+json ".gitignore"
+stored '.gitignore'
+
+example archive.tar.gz
+text archive.tar.gz
+json "archive.tar.gz"
+stored 'archive.tar.gz'
+
+example CONSOLE.txt
+text CONSOLE.txt
+json "CONSOLE.txt"
+stored 'CONSOLE.txt'

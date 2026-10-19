@@ -1,0 +1,23 @@
+Hostname: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example example.com
+text example.com
+json "example.com"
+stored 'example.com'
+
+example localhost
+text localhost
+json "localhost"
+stored 'localhost'
+
+example 192.0.2.1
+text 192.0.2.1
+json "192.0.2.1"
+stored '192.0.2.1'
+
+example 2001:db8::1
+text 2001:db8::1
+json "2001:db8::1"
+stored '2001:db8::1'

@@ -1,0 +1,18 @@
+ExifOrientation: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 1
+text 1
+json "1"
+stored '1'
+
+example 6
+text 6
+json "6"
+stored '6'
+
+example 8
+text 8
+json "8"
+stored '8'

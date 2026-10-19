@@ -1,0 +1,13 @@
+FeatureCollection: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column jsonb
+
+example {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}]}
+text none
+json {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}]}
+stored '{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}]}'::jsonb
+
+example {"type":"FeatureCollection","features":[]}
+text none
+json {"type":"FeatureCollection","features":[]}
+stored '{"type":"FeatureCollection","features":[]}'::jsonb

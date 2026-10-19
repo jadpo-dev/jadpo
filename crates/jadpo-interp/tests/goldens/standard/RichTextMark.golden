@@ -1,0 +1,28 @@
+RichTextMark: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example strong
+text strong
+json "strong"
+stored 'strong'
+
+example emphasis
+text emphasis
+json "emphasis"
+stored 'emphasis'
+
+example code
+text code
+json "code"
+stored 'code'
+
+example underline
+text underline
+json "underline"
+stored 'underline'
+
+example strike_through
+text strike_through
+json "strike_through"
+stored 'strike_through'

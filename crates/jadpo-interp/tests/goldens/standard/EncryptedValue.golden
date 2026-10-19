@@ -1,0 +1,13 @@
+EncryptedValue: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column bytea
+
+example AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw==
+text AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw==
+json "AQGhssPUAAECAwQFBgcICQoLDA0ODxAREhMUFRYXgIGCg4SFhoeIiYqLjI2Ojw=="
+stored E'\\x0101a1b2c3d4000102030405060708090a0b0c0d0e0f1011121314151617808182838485868788898a8b8c8d8e8f'::bytea
+
+example AQGhssPUGBkaGxwdHh8gISIjJCUmJygpKissLS4vaGVsbG+QkZKTlJWWl5iZmpucnZ6f
+text AQGhssPUGBkaGxwdHh8gISIjJCUmJygpKissLS4vaGVsbG+QkZKTlJWWl5iZmpucnZ6f
+json "AQGhssPUGBkaGxwdHh8gISIjJCUmJygpKissLS4vaGVsbG+QkZKTlJWWl5iZmpucnZ6f"
+stored E'\\x0101a1b2c3d418191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f68656c6c6f909192939495969798999a9b9c9d9e9f'::bytea

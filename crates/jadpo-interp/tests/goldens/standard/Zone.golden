@@ -1,0 +1,13 @@
+Zone: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example Europe/London
+text Europe/London
+json "Europe/London"
+stored 'Europe/London'
+
+example America/New_York
+text America/New_York
+json "America/New_York"
+stored 'America/New_York'

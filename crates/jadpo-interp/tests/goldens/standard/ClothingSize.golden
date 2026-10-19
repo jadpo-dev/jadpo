@@ -1,0 +1,34 @@
+ClothingSize: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column system text
+column size text
+
+example UK 10
+text UK 10
+json "UK 10"
+stored system 'UK'
+stored size '10'
+
+example EU 38
+text EU 38
+json "EU 38"
+stored system 'EU'
+stored size '38'
+
+example US 00
+text US 00
+json "US 00"
+stored system 'US'
+stored size '00'
+
+example US M
+text US M
+json "US M"
+stored system 'US'
+stored size 'M'
+
+example UK 3XL
+text UK 3XL
+json "UK 3XL"
+stored system 'UK'
+stored size '3XL'

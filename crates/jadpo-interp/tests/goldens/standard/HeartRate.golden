@@ -1,0 +1,23 @@
+HeartRate: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 3) -- Frequency in hertz (Hz)
+
+example 1 Hz
+text 1 Hz
+json {"value":"1","unit":"Hz"}
+stored 1
+
+example 1.2 Hz
+text 1.2 Hz
+json {"value":"1.2","unit":"Hz"}
+stored 1.2
+
+example 1.217 Hz
+text 1.217 Hz
+json {"value":"1.217","unit":"Hz"}
+stored 1.217
+
+example 2.5 Hz
+text 2.5 Hz
+json {"value":"2.5","unit":"Hz"}
+stored 2.5

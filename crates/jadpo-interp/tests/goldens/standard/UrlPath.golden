@@ -1,0 +1,23 @@
+UrlPath: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example /
+text /
+json "/"
+stored '/'
+
+example /products/42
+text /products/42
+json "/products/42"
+stored '/products/42'
+
+example /search/caf%C3%A9
+text /search/caf%C3%A9
+json "/search/caf%C3%A9"
+stored '/search/caf%C3%A9'
+
+example /docs/
+text /docs/
+json "/docs/"
+stored '/docs/'

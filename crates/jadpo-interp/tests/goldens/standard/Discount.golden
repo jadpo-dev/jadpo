@@ -1,0 +1,30 @@
+Discount: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column amount bigint
+column currency char(3)
+column percentage numeric
+
+example {"tag":"amount_off","amount":{"amount":500,"currency":"GBP"}}
+text none
+json {"tag":"amount_off","amount":{"amount":500,"currency":"GBP"}}
+stored kind 'amount_off'
+stored amount 500
+stored currency 'GBP'
+stored percentage NULL::numeric
+
+example {"tag":"percentage_off","percentage":"20%"}
+text none
+json {"tag":"percentage_off","percentage":"20%"}
+stored kind 'percentage_off'
+stored amount NULL::bigint
+stored currency NULL::text
+stored percentage 0.20
+
+example {"tag":"percentage_off","percentage":"12.5%"}
+text none
+json {"tag":"percentage_off","percentage":"12.5%"}
+stored kind 'percentage_off'
+stored amount NULL::bigint
+stored currency NULL::text
+stored percentage 0.125

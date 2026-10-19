@@ -1,0 +1,13 @@
+CabinClass: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example economy
+text economy
+json "economy"
+stored 'economy'
+
+example premium_economy
+text premium_economy
+json "premium_economy"
+stored 'premium_economy'

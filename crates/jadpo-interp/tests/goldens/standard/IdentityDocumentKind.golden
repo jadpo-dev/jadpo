@@ -1,0 +1,13 @@
+IdentityDocumentKind: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example passport
+text passport
+json "passport"
+stored 'passport'
+
+example driving_licence
+text driving_licence
+json "driving_licence"
+stored 'driving_licence'

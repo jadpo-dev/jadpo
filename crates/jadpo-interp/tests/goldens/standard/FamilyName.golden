@@ -1,0 +1,18 @@
+FamilyName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example Somerville
+text Somerville
+json "Somerville"
+stored 'Somerville'
+
+example van der Berg
+text van der Berg
+json "van der Berg"
+stored 'van der Berg'
+
+example 山田
+text 山田
+json "山田"
+stored '山田'

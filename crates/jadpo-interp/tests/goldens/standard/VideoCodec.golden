@@ -1,0 +1,28 @@
+VideoCodec: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example avc1.42001E
+text avc1.42001E
+json "avc1.42001E"
+stored 'avc1.42001E'
+
+example hvc1.1.6.L93.B0
+text hvc1.1.6.L93.B0
+json "hvc1.1.6.L93.B0"
+stored 'hvc1.1.6.L93.B0'
+
+example av01.0.04M.08
+text av01.0.04M.08
+json "av01.0.04M.08"
+stored 'av01.0.04M.08'
+
+example vp09.00.10.08
+text vp09.00.10.08
+json "vp09.00.10.08"
+stored 'vp09.00.10.08'
+
+example vp8
+text vp8
+json "vp8"
+stored 'vp8'

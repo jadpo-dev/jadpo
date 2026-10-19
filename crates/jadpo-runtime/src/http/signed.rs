@@ -8,17 +8,19 @@
 //! A signed part is `<payload>.<tag>`, both base64url without padding: the
 //! payload is JSON of what the read found (the credential's method, its
 //! row and verifier, the caller's `id` and subject, when it expires, and a
-//! browser session's CSRF verifier), the tag its keyed BLAKE3 hash under a
-//! key derived from the method's `SigningKey` setting. New parts are signed
-//! with the setting's current value; a part signed with its `_PREVIOUS`
-//! value is still accepted (area 10, "Signing keys"). The tag is compared
-//! in constant time, and the code is host-agnostic, so it builds for
-//! wasm32 as it does natively.
+//! browser session's CSRF verifier) and the encoding it was written in
+//! (area 19, "Changing a standard type's encoding"; chunk 5.9), the tag
+//! its keyed BLAKE3 hash under a key derived from the method's
+//! `SigningKey` setting. New parts are signed with the setting's current
+//! value; a part signed with its `_PREVIOUS` value is still accepted (area
+//! 10, "Signing keys"). The tag is compared in constant time, and the code
+//! is host-agnostic, so it builds for wasm32 as it does natively.
 
 use std::fmt;
 
 use jadpo_std::AuthenticationMethod;
 use jadpo_std::http::IdentityPlan;
+use jadpo_std::standard::ENCODING;
 
 use crate::SqlValue;
 use crate::config::ConfigValues;
@@ -175,8 +177,10 @@ pub(crate) struct Claims {
 }
 
 impl Claims {
+    /// The payload, in this release's encoding, which it records as `enc`.
     pub fn to_json(&self) -> Option<String> {
         let mut object = serde_json::Map::new();
+        object.insert("enc".into(), ENCODING.into());
         object.insert("m".into(), self.method.name().into());
         if let Some(row) = &self.row {
             object.insert("r".into(), hex(row).into());
@@ -191,10 +195,26 @@ impl Claims {
         Some(serde_json::Value::Object(object).to_string())
     }
 
+    /// What a payload says, read by the encoding it records: this
+    /// release's, or none, a part signed before encodings were recorded
+    /// (chunk 5.1b), whose members are encoding 1's. A part of any other
+    /// encoding says nothing, so the request reads the record, as it does
+    /// for one that has expired.
     pub fn from_json(text: &str) -> Option<Claims> {
         let serde_json::Value::Object(object) = serde_json::from_str(text).ok()? else {
             return None;
         };
+        match object.get("enc") {
+            None => Claims::members(&object),
+            Some(encoding) if encoding.as_u64() == Some(u64::from(ENCODING)) => {
+                Claims::members(&object)
+            }
+            Some(_) => None,
+        }
+    }
+
+    /// Encoding 1's members.
+    fn members(object: &serde_json::Map<String, serde_json::Value>) -> Option<Claims> {
         let text = |name: &str| object.get(name).and_then(|value| value.as_str());
         Some(Claims {
             method: AuthenticationMethod::from_name(text("m")?)?,
@@ -379,6 +399,40 @@ mod tests {
             let json = claims.to_json().unwrap();
             assert_eq!(Claims::from_json(&json), Some(claims));
         }
+    }
+
+    /// A part records the encoding it was written in (area 19, chunk 5.9);
+    /// one written before encodings were recorded, as chunk 5.1b wrote it,
+    /// still reads, and one of an encoding this release doesn't know
+    /// doesn't, so the request reads the record.
+    #[test]
+    fn claims_record_their_encoding_and_older_parts_still_read() {
+        let claims = Claims {
+            method: AuthenticationMethod::BrowserSession,
+            row: Some([1; 16]),
+            verifier: "ab".repeat(32),
+            principal: [2; 16],
+            subject: SqlValue::Text("ann".into()),
+            expires: 1_792_504_800_000,
+            csrf: Some("cd".repeat(32)),
+        };
+        let json = claims.to_json().unwrap();
+        let written: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(written["enc"], 1, "{json}");
+        // As chunk 5.1b wrote it, with no `enc`.
+        let before = format!(
+            r#"{{"c":"{csrf}","e":1792504800000,"m":"browser_session","p":"{principal}","r":"{row}","s":"tann","v":"{verifier}"}}"#,
+            csrf = "cd".repeat(32),
+            principal = "02".repeat(16),
+            row = "01".repeat(16),
+            verifier = "ab".repeat(32),
+        );
+        assert_eq!(Claims::from_json(&before), Some(claims.clone()));
+        let later = json.replace("\"enc\":1", "\"enc\":2");
+        assert_ne!(later, json);
+        assert_eq!(Claims::from_json(&later), None);
+        let unreadable = json.replace("\"enc\":1", "\"enc\":\"1\"");
+        assert_eq!(Claims::from_json(&unreadable), None);
     }
 
     #[test]

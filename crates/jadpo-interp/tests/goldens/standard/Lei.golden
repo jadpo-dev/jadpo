@@ -1,0 +1,13 @@
+Lei: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 506700GE1G29325QX363
+text 506700GE1G29325QX363
+json "506700GE1G29325QX363"
+stored '506700GE1G29325QX363'
+
+example HWUPKR0MPOU8FGXBT394
+text HWUPKR0MPOU8FGXBT394
+json "HWUPKR0MPOU8FGXBT394"
+stored 'HWUPKR0MPOU8FGXBT394'

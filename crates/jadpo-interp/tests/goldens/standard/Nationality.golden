@@ -1,0 +1,13 @@
+Nationality: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example FR
+text FR
+json "FR"
+stored 'FR'
+
+example GB
+text GB
+json "GB"
+stored 'GB'

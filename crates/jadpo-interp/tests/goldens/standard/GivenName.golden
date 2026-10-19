@@ -1,0 +1,18 @@
+GivenName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example Mary
+text Mary
+json "Mary"
+stored 'Mary'
+
+example José María
+text José María
+json "José María"
+stored 'José María'
+
+example 太郎
+text 太郎
+json "太郎"
+stored '太郎'

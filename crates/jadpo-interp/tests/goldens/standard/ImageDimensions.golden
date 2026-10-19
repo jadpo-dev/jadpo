@@ -1,0 +1,28 @@
+ImageDimensions: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column width integer
+column height integer
+
+example 1x1
+text 1x1
+json {"width":1,"height":1}
+stored width 1
+stored height 1
+
+example 4000x3000
+text 4000x3000
+json {"width":4000,"height":3000}
+stored width 4000
+stored height 3000
+
+example 320x240
+text 320x240
+json {"width":320,"height":240}
+stored width 320
+stored height 240
+
+example 2147483647x1
+text 2147483647x1
+json {"width":2147483647,"height":1}
+stored width 2147483647
+stored height 1

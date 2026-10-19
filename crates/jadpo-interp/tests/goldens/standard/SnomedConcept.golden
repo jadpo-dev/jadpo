@@ -1,0 +1,23 @@
+SnomedConcept: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 22298006
+text 22298006
+json "22298006"
+stored '22298006'
+
+example 73211009
+text 73211009
+json "73211009"
+stored '73211009'
+
+example 138875005
+text 138875005
+json "138875005"
+stored '138875005'
+
+example 999480561000087100
+text 999480561000087100
+json "999480561000087100"
+stored '999480561000087100'

@@ -1,0 +1,23 @@
+FilePath: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example /var/lib/acme/uploads
+text /var/lib/acme/uploads
+json "/var/lib/acme/uploads"
+stored '/var/lib/acme/uploads'
+
+example reports/2026/october.csv
+text reports/2026/october.csv
+json "reports/2026/october.csv"
+stored 'reports/2026/october.csv'
+
+example ../shared/logo.png
+text ../shared/logo.png
+json "../shared/logo.png"
+stored '../shared/logo.png'
+
+example /
+text /
+json "/"
+stored '/'

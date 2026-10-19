@@ -1,0 +1,23 @@
+NetworkPort: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column integer
+
+example 22
+text 22
+json 22
+stored 22
+
+example 443
+text 443
+json 443
+stored 443
+
+example 8080
+text 8080
+json 8080
+stored 8080
+
+example 65535
+text 65535
+json 65535
+stored 65535
