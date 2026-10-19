@@ -537,6 +537,10 @@ pub fn system_table(name: &str) -> Table {
             add("run_id", "uuid", true);
             add("last_tick_at", "timestamptz(3)", true);
             add("last_succeeded_at", "timestamptz(3)", true);
+            // The run an operator asked for with `jadpo schedules run`
+            // against a deployment (chunk 6.2d): the id its record will
+            // have, until the application's own tick takes it.
+            add("run_requested", "uuid", true);
             primary = vec!["schedule".into()];
         }
         "schedule_runs" => {

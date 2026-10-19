@@ -731,8 +731,10 @@ pub static COMMANDS: &[Command] = &[
                       15-minute limit, three failures in a row, or a lease held past its expiry. \
                       `history` shows a schedule's runs and skipped ticks, newest first, 20 a page, \
                       and its metrics: runs, failures, skipped ticks, duration and delay. `pause` \
-                      and `resume` stop and start its due ticks running it. `run` runs it now in \
-                      this process, under its lease, so it never runs twice at once. The database \
+                      and `resume` stop and start its due ticks running it. `run` runs it now, under \
+                      its lease, so it never runs twice at once: in this process against the \
+                      database a running jadpo dev started, and otherwise by asking the app's own \
+                      next tick, waiting for that run's record. The database \
                       is the one --url names, or the one its connection's setting gives, or the one \
                       a running jadpo dev started. Times are in UTC.",
         arguments: &[
@@ -784,6 +786,7 @@ pub static COMMANDS: &[Command] = &[
         arguments_rule: &rule::CLI_SCHEDULES_ARGUMENTS,
         raises: &[
             &rule::SCHEDULES_LEASE_HELD,
+            &rule::SCHEDULES_NO_TICK,
             &rule::SCHEDULES_RUN_FAILED,
             &rule::SCHEDULES_UNAVAILABLE,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,

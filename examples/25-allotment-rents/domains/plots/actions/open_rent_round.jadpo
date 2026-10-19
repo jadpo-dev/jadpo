@@ -11,6 +11,8 @@ action open_rent_round(
             society_id: society_id
             charge_year: charge_year
             invoices: none
+            invoiced: none
+            unlet: none
         }
     }
 }

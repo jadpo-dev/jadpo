@@ -9,8 +9,11 @@
 //!   run it.
 //! - `history <name>` shows its records newest first, 20 a page, grouped by
 //!   day, then its metrics over the records kept.
-//! - `pause` and `resume` set it on its state row; `run` runs it now in this
-//!   process, under its lease.
+//! - `pause` and `resume` set it on its state row. `run` runs it now in this
+//!   process, under its lease, against `jadpo dev`'s own database; against
+//!   any other, a deployment's, it asks the application's own tick to run
+//!   it and waits for that run's record, running no application code and
+//!   reading none of its settings here (chunk 6.2d).
 //! - `jadpo why <name>` answers "why didn't it run?" in area 17's shape: the
 //!   answer in a sentence, its facts, the `.jadpo` place last.
 //!
@@ -25,7 +28,7 @@ use std::path::{Path, PathBuf};
 use jadpo_check::schedules::ScheduleModel;
 use jadpo_diag::{Diagnostic, rule};
 use jadpo_runtime::schedules::watch::{
-    self, Alert, AlertKind, Declared, Metrics, Paused, RunNow, RunRecord, Watch, Watched,
+    self, Alert, AlertKind, Declared, Metrics, Paused, Requested, RunNow, RunRecord, Watch, Watched,
 };
 use jadpo_runtime::schedules::{Due, Ran};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table};
@@ -478,6 +481,16 @@ fn duration(ms: i64) -> String {
     }
 }
 
+/// A period, as a whole number of its unit when it is one: `2 s`, `2 min`.
+fn span(ms: u64) -> String {
+    let ms = i64::try_from(ms).unwrap_or(i64::MAX);
+    if ms % 1_000 == 0 && ms < 60_000 {
+        format!("{} s", ms / 1_000)
+    } else {
+        duration(ms)
+    }
+}
+
 /// `8 s ago`, `3 min ago`, `2 h ago`, or `2026-10-18 23:45` a day or
 /// more before.
 fn ago(at: i64, now: i64) -> String {
@@ -751,6 +764,10 @@ fn schedule_json(schedule: &Watched, model: Option<&ScheduleModel>) -> Json {
         (
             "failuresInARow",
             Json::from(i64::from(schedule.failures_in_a_row)),
+        ),
+        (
+            "runRequested",
+            Json::from(state.is_some_and(|s| s.requested.is_some())),
         ),
     ])
 }
@@ -1225,10 +1242,17 @@ fn pause(call: &Call, project: &Project, schedule: &ScheduleModel, paused: bool)
 
 fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
     let name = project.shown(schedule);
-    let (state_store, _) = match project.database(call) {
+    let (state_store, state_url) = match project.database(call) {
         Ok(found) => found,
         Err(reply) => return reply,
     };
+    // Only `jadpo dev`'s own database, which it notes for the session, is
+    // run against here; any other is a deployment's, whose own server
+    // runs it (area 12, decided 2026-10-19).
+    if dev_stores(&project.root).get(&state_store) != Some(&state_url) {
+        return request(call, project, schedule, &state_store, &state_url);
+    }
+    crate::run::say(&format!("Running `{name}`"));
     // The project as `jadpo dev` runs it: checked, with its settings.
     let ready = match crate::dev::prepare(&project.root, &call.environment, true) {
         Ok(ready) => ready,
@@ -1326,28 +1350,211 @@ fn run(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         }
     };
     match ran {
-        Err((started, until)) => {
-            let holder = match started {
-                Some(started) => format!("A run that started at {}", clock(started, now)),
-                None => "Another run".to_string(),
-            };
-            Reply::Failed(Box::new(
-                Diagnostic::new(
-                    &rule::SCHEDULES_LEASE_HELD,
-                    format!("`{name}` is already running"),
-                )
-                .reason(format!(
-                    "{holder} holds its lease until {}, and only one run of a schedule happens at a time.",
-                    clock(until, now)
-                ))
-                .next(format!("Wait for it to end, or see it with `jadpo why {name}`")),
-            ))
-        }
-        Ok(due) => ran_screen(&name, &due),
+        Err((started, until)) => lease_held(&name, started, until, now),
+        Ok(due) => ran_screen(&name, &due, false),
     }
 }
 
-fn ran_screen(name: &str, due: &Due) -> Reply {
+/// How often the wait for a requested run reads its record.
+const POLL_MS: u64 = 200;
+
+/// How a wait for the run asked of the application's tick ended.
+enum Waited {
+    /// Its record ended.
+    Ended(RunRecord),
+    /// A run holds the lease, so nothing was asked: when it started, if
+    /// its record says, and the lease's end.
+    LeaseHeld { started: Option<i64>, until: i64 },
+    /// No tick took it in time, so it was withdrawn; whether a run held
+    /// the lease then.
+    NoTick { lease_held: bool },
+    /// A tick took it, but its run held the lease past its end and never
+    /// ended: its worker was lost.
+    Lost(RunRecord),
+}
+
+/// `jadpo schedules run` against a deployment (area 12, decided
+/// 2026-10-19; chunk 6.2d): asks the application's own tick to run the
+/// schedule by hand, under its lease, and waits for that run's record.
+/// Nothing of the application runs here, and none of its settings are read.
+fn request(
+    call: &Call,
+    project: &Project,
+    schedule: &ScheduleModel,
+    store: &str,
+    url: &str,
+) -> Reply {
+    let name = project.shown(schedule);
+    let declared = Declared {
+        key: schedule.key.as_str().to_string(),
+        name: name.clone(),
+        every_ms: schedule.every_ms,
+    };
+    let now = now(call);
+    // The application ticks for all its schedules at once.
+    let period = tick_every(&project.declared());
+    crate::run::say(&format!("Asking the app's next tick to run `{name}`"));
+    let waited = with_database(store, url, |database| {
+        let declared = declared.clone();
+        Box::pin(async move { wait_for(database, &declared, period, now).await })
+    });
+    let waited = match waited {
+        Ok(waited) => waited,
+        Err(reply) => return reply,
+    };
+    let wait = span(period.saturating_mul(2));
+    match waited {
+        Waited::Ended(record) => ran_screen(&name, &due_of(&record), true),
+        Waited::LeaseHeld { started, until } => lease_held(&name, started, until, now),
+        Waited::NoTick { lease_held } => Reply::failed(
+            Diagnostic::new(
+                &rule::SCHEDULES_NO_TICK,
+                format!("No tick picked up `{name}`'s run in {wait}"),
+            )
+            .reason(if lease_held {
+                "The app's own server runs it on a tick once no run holds its lease, and a run held the lease throughout; the request was taken back, and nothing ran.".to_string()
+            } else {
+                format!(
+                    "The app's own server runs it on its next tick, which comes every {} while the app runs; none came, so the request was taken back, and nothing ran.",
+                    span(period)
+                )
+            })
+            .next(if lease_held {
+                format!("See the run with `jadpo why {name}`, then run `jadpo schedules run {name}` again")
+            } else {
+                format!("Check the app is running, then run `jadpo schedules run {name}` again")
+            }),
+        ),
+        Waited::Lost(record) => Reply::failed(
+            Diagnostic::new(
+                &rule::SCHEDULES_RUN_FAILED,
+                format!("`{name}`'s run on the app never ended"),
+            )
+            .reason(format!(
+                "It started at {} and held its lease past its end, so its worker was lost; the next tick records it as lease_expired.",
+                clock(record.started, now)
+            ))
+            .next(format!("See it with `jadpo why {name}`")),
+        ),
+    }
+}
+
+/// Asks `schedule`'s next tick for a run and waits for its record:
+/// until a tick takes it, at most twice the period the application ticks
+/// at, or longer while another run holds the lease, up to the lease's
+/// length; then until it ends, up to the lease's length again. Each is
+/// measured on this machine's own clock, so its clock never has to agree
+/// with the application's.
+async fn wait_for(
+    database: &dyn jadpo_runtime::Database,
+    schedule: &Declared,
+    period: u64,
+    now: i64,
+) -> Result<Waited, jadpo_runtime::StoreError> {
+    use std::time::{Duration, Instant};
+    let host = jadpo_host_native::NativeHost::new();
+    let run = match watch::request_run(database, &host, schedule, now).await? {
+        Requested::Waiting { run, .. } => run,
+        Requested::LeaseHeld { started, until } => return Ok(Waited::LeaseHeld { started, until }),
+    };
+    crate::run::say(&format!(
+        "Waiting for the app's next tick to run `{}`",
+        schedule.name
+    ));
+    let tick_wait = Duration::from_millis(period.saturating_mul(2));
+    let lease =
+        Duration::from_millis(u64::try_from(jadpo_runtime::schedules::LEASE_MS).unwrap_or(0));
+    let began = Instant::now();
+    let mut deadline = began + tick_wait;
+    let mut taken: Option<Instant> = None;
+    loop {
+        if let Some(record) = watch::run(database, run).await? {
+            if !record.is_running() {
+                return Ok(Waited::Ended(record));
+            }
+            let since = *taken.get_or_insert_with(Instant::now);
+            crate::run::say(&format!("Running `{}` on the app", schedule.name));
+            if since.elapsed() > lease + tick_wait {
+                return Ok(Waited::Lost(record));
+            }
+        } else {
+            let state = watch::states(database)
+                .await?
+                .into_iter()
+                .find(|state| state.schedule == schedule.key);
+            let lease_held = state.as_ref().is_some_and(|state| state.run_id.is_some());
+            let waiting = state
+                .as_ref()
+                .is_some_and(|state| state.requested == Some(run));
+            if waiting && lease_held {
+                // Another run holds the lease: the request waits for it,
+                // and for a tick after it.
+                deadline =
+                    deadline.max((Instant::now() + tick_wait).min(began + lease + tick_wait));
+            }
+            // Taken by a tick, its record comes next; gone without one,
+            // another wait withdrew it.
+            if Instant::now() >= deadline
+                && (!waiting || watch::withdraw(database, &schedule.key, run).await?)
+            {
+                return Ok(Waited::NoTick { lease_held });
+            }
+        }
+        jadpo_runtime::Host::sleep(&host, POLL_MS).await;
+    }
+}
+
+/// A requested run's record as the screens show a run.
+fn due_of(record: &RunRecord) -> Due {
+    Due {
+        schedule: record.schedule.clone(),
+        due_slot: record.due,
+        ran: match record.outcome.as_str() {
+            "succeeded" => Ran::Succeeded {
+                events: u32::try_from(record.events.unwrap_or(0)).unwrap_or(0),
+            },
+            _ => Ran::Failed {
+                code: record
+                    .code
+                    .clone()
+                    .unwrap_or_else(|| "internal_fault".to_string()),
+                kind: record.kind.clone(),
+            },
+        },
+        started: record.started,
+        ended: record.ended.unwrap_or(record.started),
+        trace: record.trace.clone(),
+        items: record.items.map(|items| u64::try_from(items).unwrap_or(0)),
+        batches: Vec::new(),
+        by_hand: record.by_hand_run(),
+    }
+}
+
+/// `schedules.lease_held`: a run that started at `started` holds the
+/// lease until `until`.
+fn lease_held(name: &str, started: Option<i64>, until: i64, now: i64) -> Reply {
+    let holder = match started {
+        Some(started) => format!("A run that started at {}", clock(started, now)),
+        None => "Another run".to_string(),
+    };
+    Reply::Failed(Box::new(
+        Diagnostic::new(
+            &rule::SCHEDULES_LEASE_HELD,
+            format!("`{name}` is already running"),
+        )
+        .reason(format!(
+            "{holder} holds its lease until {}, and only one run of a schedule happens at a time.",
+            clock(until, now)
+        ))
+        .next(format!(
+            "Wait for it to end, or see it with `jadpo why {name}`"
+        )),
+    ))
+}
+
+/// How a run went: here, against `jadpo dev`, or on the application's
+/// tick, against a deployment (`on_app`).
+fn ran_screen(name: &str, due: &Due, on_app: bool) -> Reply {
     let data = Json::object([
         ("schedule", Json::from(name)),
         (
@@ -1386,7 +1593,13 @@ fn ran_screen(name: &str, due: &Due) -> Reply {
             "traceparent",
             due.trace.as_deref().map_or(Json::Null, Json::from),
         ),
+        ("requested", Json::from(on_app)),
     ]);
+    let ran = if on_app {
+        format!("The app's tick ran `{name}`")
+    } else {
+        format!("Ran `{name}`")
+    };
     match &due.ran {
         Ran::Failed { code, kind } => {
             let screen = Screen::new()
@@ -1405,8 +1618,9 @@ fn ran_screen(name: &str, due: &Due) -> Reply {
                 format!("`{name}` failed with {code}"),
             )
             .reason(format!(
-                "Its action ended with {}; the run is recorded, and its next due time is its retry.",
-                failure(Some(code), kind.as_deref())
+                "Its action ended with {}{}; the run is recorded, and its next due time is its retry.",
+                failure(Some(code), kind.as_deref()),
+                if on_app { " on the app's tick" } else { "" }
             ))
             .next(format!("Fix the cause, then run `jadpo schedules run {name}` again"));
             Reply::Report {
@@ -1421,12 +1635,12 @@ fn ran_screen(name: &str, due: &Due) -> Reply {
                 outcome: Outcome::Success,
                 text: match due.items {
                     Some(items) => format!(
-                        "Ran `{name}` in {}: {}",
+                        "{ran} in {}: {}",
                         duration(due.duration_ms()),
                         purged(items)
                     ),
                     None => format!(
-                        "Ran `{name}` in {}, emitting {}",
+                        "{ran} in {}, emitting {}",
                         duration(due.duration_ms()),
                         plural(u64::from(*count), "event", "events")
                     ),
@@ -1471,6 +1685,19 @@ fn explain(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
     let place = format!("{}:{}", schedule.path, schedule.line);
     let answer = answer(&watched, &recent, &name, period, now);
     let mut fields = answer.fields.clone();
+    // A run asked of the application's tick that none has taken yet
+    // (chunk 6.2d).
+    if watched
+        .schedules
+        .first()
+        .and_then(|schedule| schedule.state.as_ref())
+        .is_some_and(|state| state.requested.is_some())
+    {
+        fields.push((
+            "request".to_string(),
+            "a run by hand, waiting for the app's next tick".to_string(),
+        ));
+    }
     fields.push(("schedule".to_string(), place.clone()));
     let mut screen = Screen::new().with(Block::Answer {
         headline: answer.headline.clone(),
@@ -1800,6 +2027,11 @@ pub(crate) fn dev_line(name: &str, due: &Due) -> (String, Json) {
         Ran::Failed { code, kind } => ("failed", failure(Some(code), kind.as_deref())),
         Ran::Skipped(why) => ("skipped", skip_reason(Some(why.word())).to_string()),
     };
+    let detail = if due.by_hand {
+        format!("{detail} · by hand")
+    } else {
+        detail
+    };
     let json = Json::object([
         ("event", Json::from("schedule")),
         ("schedule", Json::from(name)),
@@ -1814,6 +2046,14 @@ pub(crate) fn dev_line(name: &str, due: &Due) -> (String, Json) {
             due.trace.as_deref().map_or(Json::Null, Json::from),
         ),
     ]);
+    // A run an operator asked for says so (chunk 6.2d).
+    let json = match json {
+        Json::Object(mut fields) if due.by_hand => {
+            fields.push(("reason".to_string(), Json::from("by_hand")));
+            Json::Object(fields)
+        }
+        json => json,
+    };
     // A purge's log line says how many records each batch deleted (area
     // 5, "Lifecycle"; chunk 6.2c).
     let json = match (json, due.items) {
@@ -1893,6 +2133,7 @@ mod tests {
             trace: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".into()),
             items: None,
             batches: Vec::new(),
+            by_hand: false,
         };
         let (detail, json) = dev_line("census", &due);
         assert_eq!(detail, "bell_missing · unavailable");

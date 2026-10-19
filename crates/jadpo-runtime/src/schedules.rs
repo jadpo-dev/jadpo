@@ -29,6 +29,12 @@
 //!   ended, how it ended with its failure's code and kind, never a value,
 //!   the events it kept and its trace; skipped ticks too. Each state row
 //!   keeps the last tick that reached it. Records are kept 30 days.
+//! - **A run an operator asked for** (`jadpo schedules run` against a
+//!   deployment; chunk 6.2d) waits on the state row as `run_requested`,
+//!   the id its record will have. A tick runs it by hand under the lease,
+//!   paused or not, its grid left as it was, when no run holds the lease
+//!   and the schedule's due run didn't take it on the same tick: one run
+//!   of a schedule per tick, so a request waits for the next tick then.
 //!
 //! On each tick the runtime also sweeps its own tables in every store
 //! that holds them: deliveries left behind ([`runner::sweep`]), expired
@@ -117,8 +123,9 @@ fn clean_batches<'a>(
 /// unnested.
 pub const ENSURE: &str = "INSERT INTO \"jadpo_schedules\" (\"schedule\", \"every_ms\", \"next_run_at\", \"paused\") SELECT \"s\".\"schedule\", \"s\".\"every_ms\", \"s\".\"next_run_at\", FALSE FROM unnest($1::text[], $2::int8[], $3::timestamptz[]) AS \"s\"(\"schedule\", \"every_ms\", \"next_run_at\") ON CONFLICT (\"schedule\") DO NOTHING";
 
-/// Records tick `$1` on each of schedules `$2`, giving each one's state.
-pub const TICKED: &str = "UPDATE \"jadpo_schedules\" SET \"last_tick_at\" = GREATEST(COALESCE(\"last_tick_at\", $1), $1) WHERE \"schedule\" = ANY($2::text[]) RETURNING \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\"";
+/// Records tick `$1` on each of schedules `$2`, giving each one's state
+/// and the run an operator asked for, if any.
+pub const TICKED: &str = "UPDATE \"jadpo_schedules\" SET \"last_tick_at\" = GREATEST(COALESCE(\"last_tick_at\", $1), $1) WHERE \"schedule\" = ANY($2::text[]) RETURNING \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"run_requested\"";
 
 /// Schedule `$1`'s `every:` changed to `$2`: its next due time is the
 /// earlier of the one kept and `$3`, one new interval after the tick.
@@ -128,6 +135,12 @@ pub const REGRID: &str = "UPDATE \"jadpo_schedules\" SET \"every_ms\" = $2, \"ne
 /// moving its next due time from `$2` to `$3`: only while that due time
 /// stands, it isn't paused and no live lease holds it, so one claimer wins.
 pub const CLAIM: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3, \"lease_until\" = $4, \"run_id\" = $5 WHERE \"schedule\" = $1 AND \"next_run_at\" = $2 AND NOT \"paused\" AND (\"lease_until\" IS NULL OR \"lease_until\" <= $6) RETURNING \"schedule\"";
+
+/// Takes schedule `$1`'s lease at tick `$4` until `$3` for run `$2`, the
+/// one an operator asked for, which no longer waits: only while that is
+/// the request standing and no live lease holds it, paused or not, its
+/// due time left as it is.
+pub const CLAIM_REQUESTED: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = $3, \"run_id\" = $2, \"run_requested\" = NULL WHERE \"schedule\" = $1 AND \"run_requested\" = $2 AND (\"lease_until\" IS NULL OR \"lease_until\" <= $4) RETURNING \"schedule\"";
 
 /// Moves schedule `$1`'s next due time from `$2` to `$3` past a tick that
 /// skips it: once, by whichever instance gets there first.
@@ -212,6 +225,9 @@ pub struct Due {
     /// How many records each of a purge's batches deleted, in order, which
     /// its log line carries (area 5); empty for any other run.
     pub batches: Vec<u64>,
+    /// Whether an operator started it (`jadpo schedules run`), rather than
+    /// its due time: its record's reason is `by_hand` (chunk 6.2d).
+    pub by_hand: bool,
 }
 
 impl Due {
@@ -322,11 +338,13 @@ struct State {
     paused: bool,
     lease_until: Option<i64>,
     run: Option<[u8; 16]>,
+    /// The run an operator asked for, still waiting for a tick.
+    requested: Option<[u8; 16]>,
 }
 
 /// Records the tick on every schedule's row, making the rows it lacks,
-/// and gives each schedule due at `now` with its state, interval changes
-/// applied.
+/// and gives each schedule due at `now`, or with a run an operator asked
+/// for, with its state, interval changes applied.
 async fn due<'p>(
     plan: &'p SchedulesPlan,
     host: &dyn Host,
@@ -389,7 +407,7 @@ async fn due<'p>(
             }
             state.every_ms = every;
         }
-        if state.next_run_at <= now {
+        if state.next_run_at <= now || state.requested.is_some() {
             out.push((schedule, state));
         }
     }
@@ -418,6 +436,10 @@ fn read_state(row: &[SqlValue]) -> Option<State> {
             Some(SqlValue::Uuid(id)) => Some(*id),
             _ => None,
         },
+        requested: match row.get(6) {
+            Some(SqlValue::Uuid(id)) => Some(*id),
+            _ => None,
+        },
     })
 }
 
@@ -428,10 +450,83 @@ pub fn next_due(due: i64, every: i64, now: i64) -> i64 {
     due.saturating_add(passed.saturating_add(1).saturating_mul(every))
 }
 
+/// Takes `schedule` at `now`: its due run, then the run an operator asked
+/// for when the due run left the lease free (skipped as paused, or not
+/// due), so a tick runs a schedule once at most. How each went and the
+/// work its run left; nothing for one another instance took first.
+async fn take(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    store: &str,
+    schedule: &SchedulePlan,
+    state: State,
+    now: i64,
+) -> Vec<(Due, Vec<Deferred>)> {
+    let mut out = Vec::new();
+    let mut free = !state.lease_until.is_some_and(|until| until > now);
+    if state.next_run_at <= now {
+        let taken = take_due(executor, host, store, schedule, state, now).await;
+        free = free
+            && matches!(
+                taken.as_ref().map(|(due, _)| &due.ran),
+                Some(Ran::Skipped(Skipped::Paused))
+            );
+        out.extend(taken);
+    }
+    if let Some(run) = state.requested
+        && free
+    {
+        out.extend(serve(executor, host, store, schedule, state, run, now).await);
+    }
+    out
+}
+
+/// Runs by hand, at `now` under the lease, the run `run` an operator asked
+/// `schedule`'s tick for (`jadpo schedules run` against a deployment;
+/// chunk 6.2d), paused or not, its due time left as it is: recorded with
+/// `run` as its id and `by_hand` as its reason, so the command waiting for
+/// it finds it. `None` when another instance took it first.
+async fn serve(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    store: &str,
+    schedule: &SchedulePlan,
+    state: State,
+    run: [u8; 16],
+    now: i64,
+) -> Option<(Due, Vec<Deferred>)> {
+    let database = host.database(store)?;
+    let claimed = database
+        .query_once(
+            CLAIM_REQUESTED,
+            &[
+                SqlValue::Text(schedule.key.clone()),
+                SqlValue::Uuid(run),
+                micros(now.saturating_add(LEASE_MS)),
+                micros(now),
+            ],
+        )
+        .await
+        .ok()?;
+    claimed.first()?;
+    let env = Env {
+        seed: None,
+        clock: Clock::fixed(now),
+    };
+    let ctx = Ctx::new(executor.places(), host, env);
+    let claimed = Claimed {
+        run,
+        due_slot: now,
+        lost: state.run.map(|lost| (lost, state.lease_until)),
+        reason: Some(BY_HAND),
+    };
+    Some(run_claimed(executor, host, database, schedule, claimed, ctx, now).await)
+}
+
 /// Takes due `schedule` at `now`: skipped while paused or leased, run
 /// once its lease is this tick's. `None` when another instance took it
 /// first; otherwise how it went and the work its run left.
-async fn take(
+async fn take_due(
     executor: &dyn Executor,
     host: &dyn Host,
     store: &str,
@@ -489,6 +584,7 @@ async fn take(
                 trace: None,
                 items: None,
                 batches: Vec::new(),
+                by_hand: false,
             },
             Vec::new(),
         ));
@@ -669,6 +765,7 @@ pub(crate) async fn run_claimed(
             trace: Some(trace.header()),
             items,
             batches: purged.map(|purged| purged.batches).unwrap_or_default(),
+            by_hand: reason == Some(BY_HAND),
         },
         ctx.take_deferred(),
     )

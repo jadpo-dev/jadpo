@@ -699,25 +699,29 @@ chunks below, taken before Phase 6.
   every tenant, watched with 6.2b's commands, and a subscriber and a
   batch limited to one); 20-fell-race reads GeoJSON and coordinate
   pairs; the coverage test counts area 12's features, and a map layer's
-  `geometry:`. Found: in an application with a tenant, a batch's
-  `finished:` can't store what its `ImportSummary` counts in a tenant's
-  record, since the summary is given the walked records' and items'
-  provenance without the run's tenant; 6.2c's schedule tests need an
-  example when it is built.
-- [ ] **6.4d A batch's summary under policy** `opus · xhigh` (found in
-  chunk 6.5): in an application with a tenant, a batch's `finished:`
-  action can store nothing from its `ImportSummary` in a tenant's record,
-  since the checker takes the summary as holding the walked records and
-  each item's result (naming fields that don't exist) and drops the run's
-  tenant; the summary carries counts and problems only, and the run's
-  tenant proves what it reaches, as 6.1c does for an event, in
-  `jadpo-check/src/policy/flow.rs`. Then example 25's tenanted batch gains
-  its `finished:`.
-- [ ] **6.2d `jadpo schedules run` against a deployment** `opus · high`
-  (area 12, decided 2026-10-19): against a deployed application the
-  command marks the schedule due and waits for the server's run record,
-  never running application code on the operator's machine; against
-  `jadpo dev` it still runs straight away.
+  `geometry:`. Found: 6.2c's schedule tests need an example when it is
+  built.
+- [x] **6.4d A batch's summary under policy** `opus · xhigh` (found in
+  chunk 6.5). Built: a batch's `ImportSummary` holding counts and
+  problems only, decided by what decides whether `each:`'s action
+  fails; each item followed into what that action stores, as a record
+  of the run's tenant; a saved value proved as one that has left its
+  record but for the record a saved tenant id was read from; a field
+  declared with the tenant's `id` type naming a run's tenant, which
+  6.4c missed, so example 25's run reached no society; example 25's
+  round recording how it went with `finished:`; a live test. Choices
+  in area 12's "Chosen in chunk 6.4d"; flagged there: `batches.status`'s
+  count of problems isn't held to what decides them.
+- [x] **6.2d `jadpo schedules run` against a deployment** `opus · high`
+  (area 12, decided 2026-10-19). Built: against any database but the one
+  a running `jadpo dev` noted, the command writes a run's id to the state
+  row's new `run_requested` column and waits for its record, running no
+  application code and reading none of its settings; the tick runs it by
+  hand under the lease when its due run left the lease free; no tick
+  within twice the tick period withdraws it with `schedules.no_tick`;
+  against `jadpo dev` it still runs straight away (area 12, "Chosen in
+  chunk 6.2d").
+
 ### Phase 6 review (2026-10-19)
 
 Two independent reviewers, soundness and architecture for the phases

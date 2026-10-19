@@ -1,0 +1,21 @@
+// `finished:` runs once, after the last page, limited to the round's
+// society as every page is. Its `ImportSummary` holds counts and
+// problems, never a plot's values: `items` is how many plots the run
+// walked, and `items_with_problems` how many `invoice_plot` refused,
+// which shows which plots nobody holds. Both may go in the round, since
+// the treasurer who reads the round reads the society's plots too.
+
+use plots/entities { RentRound, RentRoundNotFound }
+
+/// Keeps how a round's invoicing went.
+action record_round(
+    summary: ImportSummary,
+    round_id: RentRound.id
+) fails RentRoundNotFound -> Unit {
+    attempt RentRound.update(round_id) {
+        set: {
+            invoiced: summary.items
+            unlet: summary.items_with_problems
+        }
+    }
+}

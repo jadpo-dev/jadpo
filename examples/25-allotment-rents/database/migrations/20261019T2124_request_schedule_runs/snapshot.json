@@ -197,11 +197,6 @@
               "position": 4,
               "type": "jsonb"
             },
-            "depth": {
-              "nullable": true,
-              "position": 15,
-              "type": "integer"
-            },
             "failure": {
               "nullable": true,
               "position": 10,
@@ -588,6 +583,11 @@
               "position": 5,
               "type": "uuid"
             },
+            "run_requested": {
+              "nullable": true,
+              "position": 8,
+              "type": "uuid"
+            },
             "schedule": {
               "position": 0,
               "type": "text"
@@ -902,6 +902,13 @@
               "position": 0,
               "type": "uuid"
             },
+            "invoiced": {
+              "allows": {},
+              "field": "invoiced",
+              "nullable": true,
+              "position": 4,
+              "type": "bigint"
+            },
             "invoices": {
               "allows": {
                 "json": {
@@ -920,6 +927,13 @@
               "field": "society_id",
               "position": 1,
               "type": "uuid"
+            },
+            "unlet": {
+              "allows": {},
+              "field": "unlet",
+              "nullable": true,
+              "position": 5,
+              "type": "bigint"
             }
           },
           "entity": "RentRound",
