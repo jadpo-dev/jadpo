@@ -1852,6 +1852,13 @@ chunks below, taken before Phase 6.
   migration that rewrites or refuses stored values the new type can't
   read, rather than a fault on read; and a required structured field
   added to a table with rows taking a `backfill:` as any other field does.
+- [ ] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
+  "A field's rules on read", decided 2026-10-19): every stored field
+  checked against its type's rules when read, a broken one a defect naming
+  the rule and never the value, on both executors and on live PostgreSQL;
+  and a derived index's recorded reason no longer part of what the
+  migration diff compares, so adding a query that sorts first never drops
+  and recreates an identical index (found in chunk 5.5u8).
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and
@@ -1891,7 +1898,9 @@ chunks below, taken before Phase 6.
   inline (for 6.3's `settle:`) and per item (for 6.4); and 5.6b2's
   backfill row loop moved from the CLI into the runtime on that runner,
   writing through each field's validator.
-- [ ] **6.1b Events** `opus · high`, after 6.1a (area 12, "Outbox
+- [ ] **6.1b Events** `opus · high`, after 6.1a (area 9, "Background
+  work and `Access.public`", decided 2026-10-19: a subscriber reaching a
+  statement only `Access.public` grants is a compile error; area 12, "Outbox
   placement, settled" and "Event records", decided 2026-10-19: each
   store an action writes keeps its outbox and delivery records, a
   subscriber's handled record in its own store, schedule leases in
@@ -1904,7 +1913,10 @@ chunks below, taken before Phase 6.
   from an event is checked against what every `emit` of it put there, as
   area 9's stored values are (an `emit` itself stores nothing a caller
   reads).
-- [ ] **6.2 Schedules:** `opus · high` leases, the native tick, schedule monitoring basics,
+- [ ] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
+  tenants", and area 9's "Background work and `Access.public`", decided
+  2026-10-19: a schedule reaches every tenant, and reaching what only
+  `Access.public` grants is a compile error) leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7).
 - [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
