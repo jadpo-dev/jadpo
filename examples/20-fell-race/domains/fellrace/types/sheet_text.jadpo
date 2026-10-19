@@ -1,0 +1,2 @@
+/// A cell of the land agent's spreadsheet, holding an outline as WKT.
+type SheetText = Text {}

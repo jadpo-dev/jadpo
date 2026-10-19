@@ -1,5 +1,6 @@
+use shared/libraries { pricing }
 use sales/fixtures { family_basket }
 
 test "the lines cost the menu's prices" {
-    assert price_lines(family_basket(none)) == 3860
+    assert price_lines(family_basket(none)) == pricing.pence(3860)
 }

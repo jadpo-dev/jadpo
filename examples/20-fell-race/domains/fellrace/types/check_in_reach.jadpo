@@ -1,0 +1,6 @@
+/// How close a runner's watch must put them to a checkpoint for it to
+/// count: a watch's position wanders a few metres.
+type CheckInReach = Length {
+    min: 0metre
+    max: 100metre
+}

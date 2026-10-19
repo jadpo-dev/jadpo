@@ -1,0 +1,5 @@
+/// What the farm charges a drop point for a delivery, in pounds.
+type DeliveryFee = Money {
+    currency: Currency.gbp
+    min: 0
+}

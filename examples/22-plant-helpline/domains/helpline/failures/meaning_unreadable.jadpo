@@ -1,0 +1,6 @@
+/// The embedding service sent back something that isn't a guide's
+/// meaning.
+type MeaningUnreadable = Failure {
+    kind: FailureKind.invalid_value
+    message: "The embedding service's reply couldn't be read."
+}

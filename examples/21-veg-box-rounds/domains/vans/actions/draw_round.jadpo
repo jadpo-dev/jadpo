@@ -1,0 +1,12 @@
+use vans/entities { VanRound }
+use vans/types { VanRoundName }
+
+/// Draws the area a van covers.
+action draw_round(name: VanRoundName, outline: Polygon) -> VanRound {
+    return VanRound.create {
+        set: {
+            name: name
+            outline: outline
+        }
+    }
+}

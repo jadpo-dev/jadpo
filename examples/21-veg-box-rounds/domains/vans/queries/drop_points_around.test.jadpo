@@ -1,0 +1,18 @@
+use vans/entities { DropPoint }
+use vans/types { DropPointCard }
+use vans/fixtures { keswick_drop_points }
+
+test "a circle round a village finds its drop point" {
+    var all_three: List<DropPoint> = keswick_drop_points()
+    assert list.count(all_three) == 3
+    var threlkeld: Circle = Circle {
+        centre: Point {
+            latitude: 54.62
+            longitude: -3.055
+            altitude: none
+        }
+        radius: 1km
+    }
+    var in_view_points: List<DropPointCard> = drop_points_around(threlkeld)
+    assert list.map(in_view_points, card -> card.name) == ["Threlkeld Village Hall"]
+}

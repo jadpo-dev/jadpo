@@ -1,0 +1,23 @@
+// `geo.within` with `distance:` asks whether two points are that close;
+// without it, whether one shape is inside another, a `Circle` and a
+// `BoundingBox` among them. A box's sides are parallels and meridians, as
+// a map's edges are.
+
+use fellrace/types { CheckInReach, RaceCheckpoint, RunnerStatus }
+
+/// Where a runner's watch puts them: at the checkpoint they are heading
+/// for, inside the finish field the timing mats cover, and on the part of
+/// the map a marshal is looking at.
+action track_runner(
+    watch_fix: Point,
+    next_checkpoint: RaceCheckpoint,
+    reach: CheckInReach,
+    finish_field: Circle,
+    view: BoundingBox
+) -> RunnerStatus {
+    return RunnerStatus {
+        at_checkpoint: geo.within(watch_fix, next_checkpoint.spot, distance: reach)
+        past_finish: geo.within(watch_fix, finish_field)
+        on_screen: geo.within(watch_fix, view)
+    }
+}

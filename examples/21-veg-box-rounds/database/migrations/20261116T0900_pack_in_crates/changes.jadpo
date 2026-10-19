@@ -1,0 +1,13 @@
+// A backfill can be worked out from each stored row's own fields: here
+// the crates a delivery used, from its boxes, through the same library
+// function `record_delivery` uses. `Delivery.boxes` means each row's
+// stored value. The rows are filled in batches, each its own
+// transaction, so a long table is never locked for the whole backfill;
+// then the field is made required.
+
+/// Counts the crates every delivery already made used.
+migration {
+    Delivery.crates_used: {
+        backfill: crates.for_boxes(Delivery.boxes)
+    }
+}

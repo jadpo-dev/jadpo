@@ -1,0 +1,15 @@
+// A vector type stands for the model that made its vectors: `dimensions:`
+// is how many numbers it gives, and `distance:` how two are compared,
+// which the model's makers say. A field of it is a pgvector column. Two
+// vector types can't be compared, since they may come from different
+// models.
+//
+// A real model's vectors are hundreds of numbers long. The help desk's
+// are four, so its tests can write them out.
+
+/// What a care guide, or a question, is about, as the help desk's
+/// embedding model places it.
+type GuideMeaning = Vector {
+    dimensions: 4
+    distance: VectorDistance.cosine
+}

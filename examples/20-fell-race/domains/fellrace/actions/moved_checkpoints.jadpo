@@ -1,0 +1,21 @@
+use fellrace/types { CheckpointLabel, LayerJson, RaceCheckpoint }
+use fellrace/failures { NotALayer }
+
+/// The checkpoints an organiser moved in a mapping tool.
+action moved_checkpoints(sent: LayerJson) fails NotALayer -> List<RaceCheckpoint> {
+    var layer: FeatureCollection<Point, CheckpointLabel> = attempt json.read(
+        sent,
+        as: FeatureCollection<Point, CheckpointLabel>
+    ) {
+        malformed: NotALayer
+        mismatch: NotALayer  // a line where a point belongs, or no number
+    }
+    return list.map(
+        layer.features,
+        feature -> RaceCheckpoint {
+            number: feature.properties.number
+            name: feature.properties.name
+            spot: feature.geometry
+        }
+    )
+}

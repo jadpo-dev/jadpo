@@ -1,0 +1,23 @@
+/// The course as the organisers drew it, checkpoint to checkpoint. A
+/// line's points all have heights or none do; these have none.
+fixture skiddaw_route() -> LineString {
+    return LineString {
+        points: [
+            Point {
+                latitude: 54.6035
+                longitude: -3.131
+                altitude: none
+            },
+            Point {
+                latitude: 54.617
+                longitude: -3.1206
+                altitude: none
+            },
+            Point {
+                latitude: 54.6511
+                longitude: -3.1478
+                altitude: none
+            }
+        ]
+    }
+}

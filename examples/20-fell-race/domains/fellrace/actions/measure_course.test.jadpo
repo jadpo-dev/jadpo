@@ -1,0 +1,5 @@
+use fellrace/fixtures { skiddaw_route }
+
+test "the course is its legs added up" {
+    assert measure_course(skiddaw_route()) == 5828.748145metre
+}

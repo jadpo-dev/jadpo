@@ -1,0 +1,18 @@
+// A polygon is valid when it is built: its rings don't cross, each hole
+// is inside the outer ring, and every corner has an altitude or none
+// does. One built from values is attempted, each rule an arm; one
+// written out is checked while compiling.
+
+use fellrace/failures { NotAnOutline }
+
+/// The land an organiser outlined by clicking its corners on the map,
+/// back to the first.
+action outline_land(clicked: List<Point>, first: Point) fails NotAnOutline -> Polygon {
+    return attempt Polygon {
+        outer: list.append(clicked, first)
+        holes: []
+    } {
+        rings_valid: NotAnOutline  // edges that cross
+        altitudes_agree: NotAnOutline  // some corners with a height, some without
+    }
+}

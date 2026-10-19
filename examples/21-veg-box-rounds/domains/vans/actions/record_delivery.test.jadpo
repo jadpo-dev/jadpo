@@ -1,0 +1,16 @@
+use vans/entities { Delivery, DropPoint }
+use vans/actions { open_drop_point }
+
+test "a delivery is charged by its boxes and packed in crates of six" {
+    var market: DropPoint = open_drop_point(
+        "Keswick Market",
+        Point {
+            latitude: 54.6013
+            longitude: -3.1347
+            altitude: none
+        }
+    )
+    var delivery: Delivery = record_delivery(market, "2026-11-06", 13)
+    assert delivery.fee == money.from_minor(720, Currency.gbp)
+    assert delivery.crates_used == 3
+}

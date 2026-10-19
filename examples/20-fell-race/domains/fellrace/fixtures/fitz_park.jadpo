@@ -1,0 +1,18 @@
+// Test data the race's tests share: the Skiddaw race, from Keswick to
+// the summit by Latrigg. Each checkpoint has its height, as a runner's
+// watch records it.
+
+use fellrace/types { RaceCheckpoint }
+
+/// The start, in Fitz Park in Keswick.
+fixture fitz_park() -> RaceCheckpoint {
+    return RaceCheckpoint {
+        number: 1
+        name: "Fitz Park"
+        spot: Point {
+            latitude: 54.6035
+            longitude: -3.131
+            altitude: 80metre
+        }
+    }
+}

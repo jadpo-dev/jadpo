@@ -1,0 +1,36 @@
+// Test data the rounds' tests share, made through the farm's own action
+// so every rule applies.
+
+use vans/entities { DropPoint }
+use vans/actions { open_drop_point }
+
+/// Three drop points around Keswick: the market in town, the shop in
+/// Braithwaite to the west and the village hall in Threlkeld to the east.
+fixture keswick_drop_points() -> List<DropPoint> {
+    return [
+        open_drop_point(
+            "Keswick Market",
+            Point {
+                latitude: 54.6013
+                longitude: -3.1347
+                altitude: none
+            }
+        ),
+        open_drop_point(
+            "Braithwaite Stores",
+            Point {
+                latitude: 54.6032
+                longitude: -3.1953
+                altitude: none
+            }
+        ),
+        open_drop_point(
+            "Threlkeld Village Hall",
+            Point {
+                latitude: 54.6195
+                longitude: -3.0558
+                altitude: none
+            }
+        )
+    ]
+}

@@ -1,0 +1,4 @@
+/// A care guide's title.
+type GuideTitle = Text {
+    max_length: 120
+}

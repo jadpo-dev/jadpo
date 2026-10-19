@@ -1,0 +1,2 @@
+/// How much open fell the race may use.
+type LandArea = Area {}

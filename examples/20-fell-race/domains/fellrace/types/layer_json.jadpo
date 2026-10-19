@@ -1,0 +1,2 @@
+/// A map layer as GeoJSON text.
+type LayerJson = Text {}

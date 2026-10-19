@@ -1,0 +1,9 @@
+// A `LineString` is its `points` in order; `geo.length` adds up the
+// geodesic between each pair.
+
+use fellrace/types { RouteLength }
+
+/// How far the course is along the line the organisers drew.
+action measure_course(course_line: LineString) -> RouteLength {
+    return RouteLength(geo.length(course_line))
+}

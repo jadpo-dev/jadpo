@@ -1,0 +1,32 @@
+use vans/entities { VanRound }
+use vans/types { VanRoundCard }
+use vans/fixtures { keswick_round }
+
+test "a door inside a round, or on its boundary, is served by it" {
+    var keswick_van_round: VanRound = keswick_round()
+    assert keswick_van_round.name == "Keswick and Newlands"
+    var in_town: List<VanRoundCard> = rounds_serving(
+        Point {
+            latitude: 54.6
+            longitude: -3.14
+            altitude: none
+        }
+    )
+    assert list.map(in_town, card -> card.name) == ["Keswick and Newlands"]
+    var on_the_boundary: List<VanRoundCard> = rounds_serving(
+        Point {
+            latitude: 54.6
+            longitude: -3.22
+            altitude: none
+        }
+    )
+    assert list.count(on_the_boundary) == 1
+    var in_threlkeld: List<VanRoundCard> = rounds_serving(
+        Point {
+            latitude: 54.6195
+            longitude: -3.0558
+            altitude: none
+        }
+    )
+    assert list.count(in_threlkeld) == 0
+}

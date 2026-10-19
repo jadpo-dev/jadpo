@@ -942,6 +942,11 @@ impl Body<'_> {
                 .map_or(Interval::ANY, |inner| self.interval(&inner, reading)),
             Expr::Literal(_) => match Const::from_expr(expr) {
                 Const::Number { value, .. } => Interval::exact(value),
+                // A percentage is its fraction, as a percentage type's
+                // bounds are held (`90%` is 0.90).
+                found @ Const::Percentage(_) => {
+                    found.percentage().map_or(Interval::ANY, Interval::exact)
+                }
                 _ => Interval::ANY,
             },
             Expr::PrefixExpr(prefix) => {

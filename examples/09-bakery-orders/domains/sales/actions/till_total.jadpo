@@ -1,21 +1,22 @@
 // Handling failures in application code: the till decides what each of
 // `price_basket`'s failures means for a sale.
 
-use shared/types { Pence }
+use shared/types { Sterling }
 use sales/types { Basket }
-use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
+use sales/failures { BasketEmpty, CodeNotInPounds, CodeUnknown, DiscountTooLarge }
 use sales/actions { price_basket, price_lines }
 
-/// What the till charges for `basket`. An old or mistyped code shouldn't
-/// stop a sale, so the till charges full price instead, and the customer
-/// can ask about the code afterwards. An empty basket, or a code worth
+/// What the till charges for `basket`. An old or mistyped code, or one for
+/// another currency, shouldn't stop a sale, so the till charges full price
+/// instead, and the customer can ask about the code afterwards. An empty basket, or a code worth
 /// more than the basket, still stops it.
-action till_total(basket: Basket) fails BasketEmpty, DiscountTooLarge -> Pence {
+action till_total(basket: Basket) fails BasketEmpty, DiscountTooLarge -> Sterling {
     return match price_basket(basket) {
         success(receipt) -> receipt.total
         // Recovering: the same lines at full price. A handled failure
         // leaves the `fails` list, so `CodeUnknown` isn't in this one.
         CodeUnknown -> price_lines(basket)
+        CodeNotInPounds -> price_lines(basket)
         // `propagate` passes these on unchanged, for the caller to handle.
         BasketEmpty -> propagate
         DiscountTooLarge -> propagate

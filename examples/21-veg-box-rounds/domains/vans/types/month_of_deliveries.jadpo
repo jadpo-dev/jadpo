@@ -1,0 +1,13 @@
+use vans/entities { Delivery }
+
+/// A month of deliveries on the farm's report.
+type MonthOfDeliveries = Output {
+    delivery_year: Int
+    delivery_month: Int
+    deliveries_made: Int
+    boxes_left: Int
+    fees_charged: Money
+    smallest_drop: Delivery.boxes
+    largest_drop: Delivery.boxes
+    mean_boxes: Decimal
+}

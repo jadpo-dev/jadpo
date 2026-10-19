@@ -1,0 +1,25 @@
+// A geometry field is one PostGIS `geography` column, checked to its
+// shape and to WGS84, and the first migration that adds one creates the
+// PostGIS extension. An index of kind `IndexKind.geographic` is declared
+// only for lookups made from outside the application: the compiler
+// derives the indexes its own queries need.
+
+use vans/types { DropPointName }
+
+/// A shop or porch where the farm leaves boxes for customers to collect.
+entity DropPoint {
+    id: Uuid
+    name: DropPointName
+    spot: Point
+
+    policy: {
+        read: [Access.public]
+    }
+
+    indexes: {
+        by_spot: {
+            fields: [spot]
+            kind: IndexKind.geographic  // the drivers' navigation app's own lookups
+        }
+    }
+}

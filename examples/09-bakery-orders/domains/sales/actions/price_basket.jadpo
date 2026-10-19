@@ -1,32 +1,26 @@
 // Pricing a basket: the menu's prices for each line, then a discount code
-// if the customer gave one. Three failures can leave it, each a declared
+// if the customer gave one. Four failures can leave it, each a declared
 // type in `failures/`, and `menu` is reached only through its public
 // action.
+//
+// A code's worth is the standard `Discount`: a percentage off, or an
+// amount of money off. A `Discount`'s amount may be in any currency, so
+// one in pounds is checked when it is used.
 
-use shared/types { Pence, Percent }
+use shared/types { Sterling }
 use shared/libraries { pricing }
 use sales/types { Basket, DiscountCode, Receipt }
-use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
+use sales/failures { BasketEmpty, CodeNotInPounds, CodeUnknown, DiscountTooLarge }
 use sales/actions { price_lines }
 
-/// What a discount code is worth: a share of the basket, or an amount.
-type BasketDiscount = Enum {
-    percent: {
-        off: Percent
-    }
-    fixed: {
-        off: Pence
-    }
-}
-
 /// The discount the code `code` gives.
-function discount_for(code: DiscountCode) fails CodeUnknown -> BasketDiscount {
+function discount_for(code: DiscountCode) fails CodeUnknown -> Discount {
     return match code {
-        "TENOFF" -> BasketDiscount.percent {
-            off: 10
+        "TENOFF" -> Discount.percentage_off {
+            percentage: 10%
         }
-        "FIVEPOUNDS" -> BasketDiscount.fixed {
-            off: 500
+        "FIVEPOUNDS" -> Discount.amount_off {
+            amount: money.from_minor(500, Currency.gbp)
         }
         _ -> reject CodeUnknown {
             code: code
@@ -34,29 +28,36 @@ function discount_for(code: DiscountCode) fails CodeUnknown -> BasketDiscount {
     }
 }
 
-/// What `discount` takes off `subtotal`.
-function amount_off(discount: BasketDiscount, subtotal: Pence) -> Pence {
-    return match discount {
-        BasketDiscount.percent(percent) -> pricing.percent_of(subtotal, percent.off)
-        BasketDiscount.fixed(fixed) -> fixed.off
+/// What `discount` takes off `subtotal`: a percentage's share rounded half
+/// to even to a penny, as `Sterling` rounds, or an amount in pounds.
+function amount_off(discount: Discount, subtotal: Sterling) fails CodeNotInPounds -> Sterling {
+    match discount {
+        Discount.percentage_off(share) -> {
+            return Sterling(subtotal * share.percentage)
+        }
+        Discount.amount_off(fixed) -> {
+            return attempt Sterling(fixed.amount) {
+                currency: CodeNotInPounds
+            }
+        }
     }
 }
 
 /// The receipt for `basket`.
 public action price_basket(
     basket: Basket
-) fails BasketEmpty, CodeUnknown, DiscountTooLarge -> Receipt {
+) fails BasketEmpty, CodeNotInPounds, CodeUnknown, DiscountTooLarge -> Receipt {
     if (list.count(basket.lines) == 0) {
         reject BasketEmpty
     }
-    var subtotal: Pence = price_lines(basket)
-    var mut off: Pence = 0
+    var subtotal: Sterling = price_lines(basket)
+    var mut off: Sterling = pricing.pence(0)
     // `attempt` starts a statement, so a code's discount is worked out in
     // a block arm rather than inside a value.
     match basket.code {
         some(code) -> {
-            var discount: BasketDiscount = attempt discount_for(code)
-            off = amount_off(discount, subtotal)
+            var discount: Discount = attempt discount_for(code)
+            off = attempt amount_off(discount, subtotal)
         }
         none -> {}
     }
@@ -66,11 +67,11 @@ public action price_basket(
     //
     // An `if (off > subtotal) { reject ... }` before it wouldn't make this
     // plain. A comparison bounds each side by the other side's range, so
-    // it would say `off` is at most what any `Pence` can be, never that
+    // it would say `off` is at most what any `Sterling` can be, never that
     // `subtotal - off` is at least 0: the compiler doesn't reason about
     // the difference between two values. The rule's own check is the way
     // to say it.
-    var total: Pence = attempt Pence(subtotal - off) {
+    var total: Sterling = attempt Sterling(subtotal - off) {
         min: DiscountTooLarge {
             subtotal: subtotal
         }

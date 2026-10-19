@@ -1,0 +1,4 @@
+/// A care guide's address on the help site, `repotting-an-orchid`.
+type GuideSlug = Text {
+    max_length: 80
+}

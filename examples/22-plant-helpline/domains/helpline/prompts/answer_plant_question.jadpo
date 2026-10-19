@@ -1,0 +1,20 @@
+// A prompt is a type built on `Prompt`, one per file in `prompts/`: its
+// fields are the placeholders, and its words live beside it in
+// `answer_plant_question.prompt`, prose a reviewer reads, in two sections,
+// `# Instructions` and `# Request`. Every placeholder names a field and
+// every field is used, or the project doesn't compile.
+//
+// Free text, here the question and the guides, may only be sent under
+// `# Request`, each inside a tag of its own, so it is always data and
+// never instructions. A closed value, a `Locale` or an enum, may appear in
+// the instructions, since it can't carry an instruction.
+
+use helpline/types { GardenerQuestion, GuideExcerpt }
+
+/// Answers a gardener's question using only the care guides found for it.
+type AnswerPlantQuestion = Prompt {
+    gardener_question: GardenerQuestion
+    guides: List<GuideExcerpt>
+    reader_locale: Locale
+    asked_in: Month
+}

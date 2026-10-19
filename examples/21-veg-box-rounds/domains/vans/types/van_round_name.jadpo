@@ -1,0 +1,4 @@
+/// What a van's round is called.
+type VanRoundName = Text {
+    max_length: 80
+}

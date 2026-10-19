@@ -1,0 +1,10 @@
+use vans/entities { VanRound }
+use vans/types { VanRoundCard }
+
+/// The rounds a road closure's diversion passes through.
+query rounds_crossed(diversion: LineString) -> List<VanRoundCard> {
+    from: VanRound
+    where: geo.intersects(VanRound.outline, diversion)
+    order: [VanRound.name asc]
+    limit: 10
+}

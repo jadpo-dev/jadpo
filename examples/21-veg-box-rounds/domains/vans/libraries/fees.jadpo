@@ -1,0 +1,9 @@
+use vans/types { BoxCount, DeliveryFee }
+
+/// What deliveries cost.
+library fees {
+    /// £2 for the van to stop, and 40p a box.
+    function for_delivery(boxes: BoxCount) -> DeliveryFee {
+        return DeliveryFee(money.from_minor(200 + boxes * 40, Currency.gbp))
+    }
+}

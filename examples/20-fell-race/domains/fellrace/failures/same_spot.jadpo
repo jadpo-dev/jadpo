@@ -1,0 +1,5 @@
+/// Two checkpoints in the same place have no direction between them.
+type SameSpot = Failure {
+    kind: FailureKind.invalid_value
+    message: "Those two checkpoints are in the same place."
+}

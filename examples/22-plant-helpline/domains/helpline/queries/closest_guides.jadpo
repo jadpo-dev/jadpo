@@ -1,0 +1,17 @@
+// `nearest` orders by how close each record's vector is to the one
+// given, through the HNSW index, and the result is `Nearest<T>`: the
+// record and its `distance`. `ai.distance` in a `where:` drops anything
+// further than a threshold; a record whose vector is `none` never
+// matches. A nearest query needs `limit:`.
+
+use helpline/entities { CareGuide }
+use helpline/types { GuideCard, GuideMeaning }
+
+/// The three published guides nearest a question, none further than 0.5.
+query closest_guides(question_meaning: GuideMeaning) -> List<Nearest<GuideCard>> {
+    from: CareGuide
+    where: CareGuide.on_help_site == true
+    where: ai.distance(CareGuide.advice_meaning, question_meaning) <= 0.5
+    order: [CareGuide.advice_meaning nearest question_meaning]
+    limit: 3
+}

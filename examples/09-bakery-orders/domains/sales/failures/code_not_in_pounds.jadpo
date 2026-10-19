@@ -1,0 +1,5 @@
+/// A code takes an amount off in another currency.
+type CodeNotInPounds = Failure {
+    kind: FailureKind.invalid_value
+    message: "That discount code is for another currency."
+}

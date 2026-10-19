@@ -65,7 +65,8 @@ README saying what it teaches, how to run it and what to try next.
     people.
 17. [17-ebike-hire/](17-ebike-hire/README.md): physical quantities:
     types with bounds in units, kinds that combine, units only at the
-    edges, exact decimal maths, and quantities a person typed.
+    edges, every kind's units by name, exact decimal maths, and
+    quantities a person typed.
 18. [18-village-newsletter/](18-village-newsletter/README.md): text and
     the web: text operations, Markdown and rich text made safe, text in
     each language, links, colours, images, networks, tokens, digests and
@@ -73,6 +74,18 @@ README saying what it teaches, how to run it and what to try next.
 19. [19-book-club/](19-book-club/README.md): lists, sets and maps,
     numbers, randomness, codes in other code systems, versions, a rule
     across a type's fields and declining a standard type.
+20. [20-fell-race/](20-fell-race/README.md): geography in code:
+    points, lines and polygons, distances, bearings, lengths and areas
+    on the ellipsoid, inside, across and near, boxes and circles,
+    polygons valid when built, WKT and GeoJSON layers.
+21. [21-veg-box-rounds/](21-veg-box-rounds/README.md): stored places:
+    PostGIS columns, queries nearest first, in a box, a circle or an
+    area, the indexes they need, a map layer from a route, counts and
+    sums by month, and a backfill worked out from each row.
+22. [22-plant-helpline/](22-plant-helpline/README.md): stored vectors,
+    the nearest query and its tuned index, distance in code, and
+    prompts: checked prompt files, rendering, a shared prompt and a
+    conversation.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

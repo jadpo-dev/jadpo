@@ -1,0 +1,6 @@
+/// One leg of the course: how far it is between two checkpoints as the
+/// crow flies, and which way to set off.
+type Leg = Object {
+    leg_length: Length
+    setting_off: Bearing
+}

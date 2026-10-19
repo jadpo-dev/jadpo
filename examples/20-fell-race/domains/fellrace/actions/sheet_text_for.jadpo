@@ -1,0 +1,6 @@
+use fellrace/types { SheetText }
+
+/// The open fell as a cell of the land agent's spreadsheet.
+action sheet_text_for(fell_land: Polygon) -> SheetText {
+    return SheetText(geo.to_wkt(fell_land))
+}

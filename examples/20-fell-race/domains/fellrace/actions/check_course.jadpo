@@ -1,0 +1,14 @@
+// `geo.contains` and `geo.intersects` take any two geometries. Inside
+// includes the edge: a course that runs along the boundary wall is still
+// on the land.
+
+use fellrace/types { CourseCheck }
+
+/// Whether a course stays on the open land, and whether it crosses the
+/// road, where the race needs a marshal.
+action check_course(course_line: LineString, fell_land: Polygon, road: LineString) -> CourseCheck {
+    return CourseCheck {
+        on_open_land: geo.contains(fell_land, course_line)
+        crosses_road: geo.intersects(course_line, road)
+    }
+}

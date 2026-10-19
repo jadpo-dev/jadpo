@@ -1,0 +1,7 @@
+use fellrace/types { CheckpointName, CheckpointNumber }
+
+/// What a checkpoint's pin on the race map says.
+type CheckpointLabel = Object {
+    number: CheckpointNumber
+    name: CheckpointName
+}

@@ -1,0 +1,18 @@
+// `geo.distance` and `geo.bearing` measure on the WGS84 ellipsoid, the
+// shape GPS uses, by Karney's method in whole-number arithmetic, so every
+// machine gives the same digits. Two equal points have no direction
+// between them, so `geo.bearing` can fail, `same_point`.
+
+use fellrace/types { Leg, RaceCheckpoint }
+use fellrace/failures { SameSpot }
+
+/// The leg from one checkpoint to the next.
+action measure_leg(from: RaceCheckpoint, to: RaceCheckpoint) fails SameSpot -> Leg {
+    var setting_off: Bearing = attempt geo.bearing(from.spot, to.spot) {
+        same_point: SameSpot
+    }
+    return Leg {
+        leg_length: geo.distance(from.spot, to.spot)
+        setting_off: setting_off
+    }
+}

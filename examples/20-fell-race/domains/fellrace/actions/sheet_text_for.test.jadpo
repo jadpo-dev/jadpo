@@ -1,0 +1,12 @@
+use fellrace/types { SheetText }
+use fellrace/actions { land_from_sheet }
+use fellrace/fixtures { skiddaw_common }
+
+test "the common goes back to the spreadsheet as WKT, longitude first" {
+    var sheet_text: SheetText = sheet_text_for(skiddaw_common())
+    assert sheet_text == SheetText(
+        "POLYGON((-3.17 54.6,-3.1 54.6,-3.1 54.66,-3.17 54.66,-3.17 54.6),(-3.12 54.635,-3.11 54.635,-3.11 54.64,-3.12 54.64,-3.12 54.635))"
+    )
+    var read_back: List<Polygon> = attempt land_from_sheet(sheet_text)
+    assert read_back == [skiddaw_common()]
+}

@@ -48,4 +48,4 @@ target/release/jadpo fmt --check examples/19-book-club
   <!-- try {"file": "domains/bookclub/actions/schedule_meeting.jadpo", "replace": "        ends_after_start: BackToFront\n", "with": "", "check": ["failure.rule_unmapped"]} -->
 - In `tally_ratings.jadpo`, divide by `raters` instead of `how_many`. `jadpo check` reports `type.divisor_zero`: a plain count can be 0, and the condition proves it isn't only by building a `RaterCount`.
   <!-- try {"file": "domains/bookclub/actions/tally_ratings.jadpo", "replace": "decimal.divide(total * 1.00, how_many,", "with": "decimal.divide(total * 1.00, raters,", "check": ["semantic.unused_variable", "type.divisor_zero"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [20-fell-race](../20-fell-race/README.md), which works with places.

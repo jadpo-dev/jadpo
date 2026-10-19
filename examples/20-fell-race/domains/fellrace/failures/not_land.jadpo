@@ -1,0 +1,5 @@
+/// The land agent's sheet doesn't hold an outline of land.
+type NotLand = Failure {
+    kind: FailureKind.invalid_value
+    message: "That cell doesn't hold an outline of land."
+}

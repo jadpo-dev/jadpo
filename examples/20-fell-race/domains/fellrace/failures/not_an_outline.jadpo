@@ -1,0 +1,5 @@
+/// The corners an organiser clicked don't outline a piece of land.
+type NotAnOutline = Failure {
+    kind: FailureKind.invalid_value
+    message: "Those corners don't outline a piece of land."
+}

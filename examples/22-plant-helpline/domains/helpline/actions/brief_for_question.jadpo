@@ -1,0 +1,34 @@
+// Retrieval: the guides nearest a question are found by meaning, then
+// sent with it, so the model answers from the help desk's own advice.
+// `prompts.render` gives the messages a model would be sent: the
+// instructions as the `system` message, then the request as the `user`
+// one. Sending them is the `ai` capability's, which comes later.
+
+use helpline/types { GardenerQuestion, GuideCard, GuideExcerpt, GuideMeaning }
+use helpline/queries { closest_guides }
+use helpline/prompts { AnswerPlantQuestion }
+
+/// What the helpline's model is sent for a gardener's question: the
+/// question, and the guides nearest it.
+action brief_for_question(
+    gardener_question: GardenerQuestion,
+    question_meaning: GuideMeaning,
+    reader_locale: Locale,
+    asked_in: Month
+) -> List<ChatMessage> {
+    var nearest_guides: List<Nearest<GuideCard>> = closest_guides(question_meaning)
+    return prompts.render(
+        AnswerPlantQuestion {
+            gardener_question: gardener_question
+            guides: list.map(
+                nearest_guides,
+                nearest -> GuideExcerpt {
+                    title: nearest.item.title
+                    care_advice: nearest.item.care_advice
+                }
+            )
+            reader_locale: reader_locale
+            asked_in: asked_in
+        }
+    )
+}

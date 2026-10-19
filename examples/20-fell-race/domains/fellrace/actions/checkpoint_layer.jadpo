@@ -1,0 +1,23 @@
+// A map layer is GeoJSON: a `FeatureCollection` of `Feature`s, each a
+// geometry and its properties. A feature's identity goes in its
+// properties, as here its number. `json.write` sends one, and `json.read`
+// reads one back, refusing what isn't a layer of this shape.
+
+use fellrace/types { CheckpointLabel, LayerJson, RaceCheckpoint }
+
+/// The checkpoints as the race map's layer.
+action checkpoint_layer(checkpoints: List<RaceCheckpoint>) -> LayerJson {
+    var layer: FeatureCollection<Point, CheckpointLabel> = FeatureCollection {
+        features: list.map(
+            checkpoints,
+            each_checkpoint -> Feature {
+                geometry: each_checkpoint.spot
+                properties: CheckpointLabel {
+                    number: each_checkpoint.number
+                    name: each_checkpoint.name
+                }
+            }
+        )
+    }
+    return LayerJson(json.write(layer))
+}

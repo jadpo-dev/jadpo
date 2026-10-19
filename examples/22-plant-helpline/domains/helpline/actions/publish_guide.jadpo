@@ -1,0 +1,23 @@
+use helpline/entities { CareGuide }
+use helpline/types { GuideSlug, GuideTitle }
+use helpline/failures { SlugTaken }
+
+/// Publishes a care guide; the embedding service places it later.
+action publish_guide(
+    slug: GuideSlug,
+    title: GuideTitle,
+    care_advice: Markdown
+) fails SlugTaken -> CareGuide {
+    return attempt CareGuide.create {
+        set: {
+            slug: slug
+            title: title
+            care_advice: care_advice
+            on_help_site: true
+            advice_meaning: none
+        }
+        conflict: {
+            CareGuide.slug: SlugTaken
+        }
+    }
+}

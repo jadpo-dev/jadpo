@@ -22,6 +22,7 @@ decimal maths, the same digits on every target.
 4. **Exact maths.** `decimal.sin`, `cos`, `atan2`, `pi`, `sqrt`, `power`, `exp` and `ln` work exact decimals to the places asked for, so an angle's height, a wheel's rollout, a dock's diagonal and a battery's fade are the same on every target. See `domains/fleet/actions/measure_climb.jadpo`, `domains/fleet/actions/survey_hill.jadpo`, `domains/fleet/actions/plan_dock.jadpo` and `domains/fleet/actions/assess_battery.jadpo`.
 5. **Reading a quantity a person typed.** `text.parse` reads `45 psi` or `3.2 bar` as a pressure, fails `unknown_unit` for `45 kg`, and checks the type's bounds. See `domains/fleet/actions/check_bike.jadpo`.
 6. **Areas, volumes, concentrations and data.** A length times a length is an area, a mass over a volume a concentration, a size over a time a bitrate. See `domains/fleet/actions/plan_dock.jadpo`, `domains/fleet/actions/pack_pannier.jadpo` and `domains/fleet/actions/size_tracker_uplink.jadpo`.
+7. **Every kind's units by name.** A partner's catalogue prints bare numbers, each in its column's unit: `units.in` with a unit from the kind's own list, `PressureUnit.psi`, `VolumeUnit.us_gallon` or `TemperatureUnit.fahrenheit`. See `domains/fleet/actions/list_for_partner.jadpo` and `domains/fleet/types/model_spec.jadpo`.
 
 ## Run it
 
@@ -36,7 +37,7 @@ target/release/jadpo fmt --check examples/17-ebike-hire
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
-- `test` ends with `tested: 13 passed, 13 action tests`.
+- `test` ends with `tested: 14 passed, 14 action tests`.
 
 ## Try next
 
@@ -46,4 +47,6 @@ target/release/jadpo fmt --check examples/17-ebike-hire
   <!-- try {"file": "domains/fleet/actions/plan_charge.jadpo", "replace": "var charger_power: Power = voltage * current", "with": "var charger_power: Power = voltage + current", "check": ["type.arithmetic_operand"]} -->
 - In `check_bike.test.jadpo`, fit the `6 bar` bike with a `300W` motor. `jadpo check` reports `type.invalid_literal`: `MotorPower` stops at the law's 250 W.
   <!-- try {"file": "domains/fleet/actions/check_bike.test.jadpo", "replace": "check_bike(\"6 bar\", 15lx, 2Hz, 250W,", "with": "check_bike(\"6 bar\", 15lx, 2Hz, 300W,", "check": ["type.invalid_literal"]} -->
+- In `list_for_partner.jadpo`, print the tyre pressure in `VolumeUnit.us_gallon`. `jadpo check` reports `type.mismatch`: a unit from another kind's list doesn't fit a pressure.
+  <!-- try {"file": "domains/fleet/actions/list_for_partner.jadpo", "replace": "            PressureUnit.psi,", "with": "            VolumeUnit.us_gallon,", "check": ["type.mismatch"]} -->
 - Then read [18-village-newsletter](../18-village-newsletter/README.md), which works with text for the web.

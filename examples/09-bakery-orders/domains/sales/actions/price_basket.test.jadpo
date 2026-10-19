@@ -1,26 +1,27 @@
-use shared/types { MenuItem }
+use shared/types { MenuItem, Sterling }
+use shared/libraries { pricing }
 use sales/types { Basket, BasketLine, Receipt }
-use sales/failures { BasketEmpty, CodeUnknown, DiscountTooLarge }
+use sales/failures { BasketEmpty, CodeNotInPounds, CodeUnknown, DiscountTooLarge }
 use sales/fixtures { family_basket }
 
 test "a basket without a code pays its subtotal" {
     var receipt: Receipt = attempt price_basket(family_basket(none))
     assert receipt == Receipt {
-        subtotal: 3860
-        discount: 0
-        total: 3860
+        subtotal: pricing.pence(3860)
+        discount: pricing.pence(0)
+        total: pricing.pence(3860)
     }
 }
 
 test "a percentage code takes its share off" {
     var receipt: Receipt = attempt price_basket(family_basket("TENOFF"))
-    assert receipt.discount == 386
-    assert receipt.total == 3474
+    assert receipt.discount == pricing.pence(386)
+    assert receipt.total == pricing.pence(3474)
 }
 
 test "a fixed code takes its amount off" {
     var receipt: Receipt = attempt price_basket(family_basket("FIVEPOUNDS"))
-    assert receipt.total == 3360
+    assert receipt.total == pricing.pence(3360)
 }
 
 test "a fixed code worth more than the basket is refused" {
@@ -46,11 +47,20 @@ test "an empty basket and an unknown code fail" {
 }
 
 test "a percentage off rounds to the nearest penny" {
-    // A pure test: `amount_off` is a function. 10% of 3865 is 386.5, and
-    // a half penny goes to the even penny.
-    var tenth: BasketDiscount = BasketDiscount.percent {
-        off: 10
+    // A pure test: `amount_off` is a function. 10% of £38.65 is 386.5p,
+    // and a half penny goes to the even penny.
+    var tenth: Discount = Discount.percentage_off {
+        percentage: 10%
     }
-    assert amount_off(tenth, 3865) == 386
-    assert amount_off(tenth, 3875) == 388
+    var off_38_65: Sterling = attempt amount_off(tenth, pricing.pence(3865))
+    assert off_38_65 == pricing.pence(386)
+    var off_38_75: Sterling = attempt amount_off(tenth, pricing.pence(3875))
+    assert off_38_75 == pricing.pence(388)
+}
+
+test "an amount off in another currency is refused" {
+    var euros_off: Discount = Discount.amount_off {
+        amount: money.from_minor(500, Currency.eur)
+    }
+    assert amount_off(euros_off, pricing.pence(3860)) fails CodeNotInPounds
 }

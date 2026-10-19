@@ -1,0 +1,20 @@
+use fellrace/types { Leg, RaceCheckpoint }
+use fellrace/failures { SameSpot }
+use fellrace/fixtures { fitz_park, latrigg_top }
+
+test "the first leg is measured on the ellipsoid, its heights ignored" {
+    var latrigg: RaceCheckpoint = latrigg_top()
+    var first_leg: Leg = attempt measure_leg(fitz_park(), latrigg)
+    assert first_leg.leg_length == 1646.16802metre
+    assert first_leg.setting_off == 24.087910047
+    var on_the_map: Point = Point {
+        latitude: latrigg.spot.latitude
+        longitude: latrigg.spot.longitude
+        altitude: none
+    }
+    assert geo.distance(fitz_park().spot, on_the_map) == first_leg.leg_length
+}
+
+test "a leg to the same place has no direction" {
+    assert measure_leg(fitz_park(), fitz_park()) fails SameSpot
+}

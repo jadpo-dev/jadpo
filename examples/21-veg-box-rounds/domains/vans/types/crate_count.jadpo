@@ -1,0 +1,2 @@
+/// How many crates of six a delivery's boxes went in.
+type CrateCount = Int {}

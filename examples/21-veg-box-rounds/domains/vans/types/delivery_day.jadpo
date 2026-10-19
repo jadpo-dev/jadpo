@@ -1,0 +1,2 @@
+/// The day boxes were left at a drop point.
+type DeliveryDay = CalendarDate {}

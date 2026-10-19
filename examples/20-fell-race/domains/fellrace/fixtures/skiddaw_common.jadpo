@@ -1,0 +1,65 @@
+// A polygon written out is checked while compiling: rings that cross
+// wouldn't compile.
+
+/// The open common the race may use, and the walled field inside it that
+/// it may not: the field is a hole.
+fixture skiddaw_common() -> Polygon {
+    return Polygon {
+        outer: [
+            Point {
+                latitude: 54.6
+                longitude: -3.17
+                altitude: none
+            },
+            Point {
+                latitude: 54.6
+                longitude: -3.1
+                altitude: none
+            },
+            Point {
+                latitude: 54.66
+                longitude: -3.1
+                altitude: none
+            },
+            Point {
+                latitude: 54.66
+                longitude: -3.17
+                altitude: none
+            },
+            Point {
+                latitude: 54.6
+                longitude: -3.17
+                altitude: none
+            }
+        ]
+        holes: [
+            [
+                Point {
+                    latitude: 54.635
+                    longitude: -3.12
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.635
+                    longitude: -3.11
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.64
+                    longitude: -3.11
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.64
+                    longitude: -3.12
+                    altitude: none
+                },
+                Point {
+                    latitude: 54.635
+                    longitude: -3.12
+                    altitude: none
+                }
+            ]
+        ]
+    }
+}

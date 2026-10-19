@@ -1638,8 +1638,9 @@ reference only).
   field policy. Open for Richard: a `GET` runs a query, which can't build
   a layer, so a route sending one answers `POST` for now (areas 7 and 20,
   "Chosen in chunk 5.5u7").
-- [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
+- [x] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
+  Built as 5.7 to 5.7d, below.
 - [x] **5.7 Teaching examples for Phase 5: settings, time and words**
   `opus · high`: new numbered examples for configuration (`config.jadpo`,
   constants, the key and address settings and what `crypto` does with
@@ -1669,19 +1670,39 @@ reference only).
   and a text literal of a standard object type (`SemanticVersion`,
   `CardExpiry`, `Colour`) stayed text at runtime. 1,410 features
   remain, 1,373 of them the closed lists' values.
-- [ ] **5.7c Teaching examples: geography and stored data** `opus · high`,
+- [x] **5.7c Teaching examples: geography and stored data** `opus · high`,
   after 5.7b: points, shapes and queries by distance, aggregate queries
   with time buckets, stored vectors and the nearest query (without the
   `ai` capability), and prompts; and example 09's `Pence` and its
   percentage discount moved to `Money`, as area 19 ("Money and
-  payments") says.
-- [ ] **5.7d Teaching examples: the closed lists** `opus · high`, after
+  payments") says. Built: `20-fell-race` (every `geo.` operation, both
+  polygon rules attempted, WKT matched over `Geometry`'s six shapes,
+  GeoJSON layers), `21-veg-box-rounds` (PostGIS columns, queries by
+  distance, box, circle, `contains` and `intersects` with their indexes,
+  a bare `FeatureCollection` sent from a `POST` route, an aggregate
+  query by month and a computed backfill) and `22-plant-helpline`
+  (vectors, `ai.distance`, the nearest query with a declared HNSW index,
+  prompts in a domain and in `shared/`, rendering); example 09 now
+  prices in `Sterling`, built on `Money`, with the standard `Discount`.
+  `22`'s tests need pgvector 0.8.0, so `tools/examples.py` reports them
+  skipped where the server is older, failing under CI, as the live tests
+  do. Two compiler bugs the examples found are fixed: a percentage
+  written out had no range, so `Sterling(full * 90%)` needed an
+  `attempt`, and `jadpo test` on a server missing an extension faulted
+  every test with the runtime's debug text instead of refusing with
+  `migration.extension_missing` or `_outdated`, as areas 20 and 21 say.
+  1,373 features remain, all of them the closed lists' values.
+- [x] **5.7d Teaching examples: the closed lists** `opus · high`, after
   5.7c: the coverage test counts each closed list a standard operation
   takes (`Locale`, `Zone`, `Country`, `Currency`, and the unit enums such
   as `LengthUnit`) as one feature, used when an example names any of its
   values, since each value is already held to its source table by the
   crate tests (decided 2026-10-19, as 5.7 recommended); then the examples
-  pass `--require-examples`.
+  pass `--require-examples`. Built: the 23 lists, the 19 unit enums
+  among them, are `closed list` features, found where a file names a
+  value; the rule is in the coverage test's own documentation. Example
+  17 now names a unit of every kind, listing a bike for a partner's
+  catalogue, and the gate passes with `--require-examples`.
 
 ## Phase 6 — Events and schedules (area 12)
 

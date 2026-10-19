@@ -1,0 +1,41 @@
+use fleet/types { ModelSpec, PartnerListing }
+
+test "the partner's catalogue gets each figure in its own unit" {
+    var city_bike: ModelSpec = ModelSpec {
+        parked_footprint: 1.2sqm
+        battery_capacity: 0.5kWh
+        motor_power: 250W
+        pack_voltage: 36V
+        charger_current: 4A
+        tyre_pressure: 3.5bar
+        lamp_brightness: 70lx
+        lamp_flash: 2Hz
+        bell_loudness: 85dB
+        pannier_load: 20litre
+        drink_strength: 60gL
+        drink_powder: 40g
+        tracker_report: 2kB
+        tracker_rate: 0.5kbps
+        assist_cutoff: 25kmh
+        hottest_cell: 45degC
+    }
+    var listing: PartnerListing = list_for_partner(city_bike)
+    assert listing == PartnerListing {
+        footprint_square_feet: 12.9
+        battery_watt_hours: 500.0
+        motor_kilowatts: 0.25
+        pack_volts: 36.0
+        charger_milliamps: 4000.0
+        tyre_psi: 51.0
+        lamp_lux: 70.0
+        flash_hertz: 2.0
+        bell_decibels: 85.0
+        pannier_us_gallons: 5.3
+        drink_milligrams_per_decilitre: 6000.0
+        powder_ounces: 1.4
+        report_kibibytes: 2.0
+        uplink_kilobits_per_second: 0.5
+        assist_miles_per_hour: 15.5
+        hottest_cell_fahrenheit: 113.0
+    }
+}

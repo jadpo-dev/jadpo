@@ -1,0 +1,16 @@
+// Written by `jadpo api update` from the routes; never edit it by hand.
+// `jadpo check` fails while it disagrees with them.
+version: 1
+
+POST /drop-points/in-view
+    authentication: none
+    input: MapView (body)
+    output: FeatureCollection<Point, DropPointPin>
+    status: 200
+
+object DropPointPin
+    drop_point_id: Uuid
+    name: Text { max_length: 80 }
+
+input MapView
+    view: BoundingBox

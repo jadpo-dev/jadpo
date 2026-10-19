@@ -109,6 +109,17 @@ pub(crate) fn view(ran: Ran) -> (Screen, Json, Vec<Diagnostic>, BTreeMap<String,
             vec![*diagnostic],
             BTreeMap::new(),
         ),
+        // The test database's server lacks an extension the migrations
+        // create: the same error `jadpo migrate apply` gives.
+        Ran::Unmigrated { store, error } => {
+            let diagnostic = crate::migrate::migrate_failed(&store, error);
+            (
+                Screen::new().with(Block::diagnostic(&diagnostic, &())),
+                Json::Null,
+                vec![diagnostic],
+                BTreeMap::new(),
+            )
+        }
         Ran::NothingToRerun { gone } => (
             Screen::new().with(Block::summary(
                 Outcome::Success,

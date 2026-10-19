@@ -1,0 +1,2 @@
+/// What the embedding service sent back: a vector as a JSON list.
+type EmbeddingReply = Text {}
