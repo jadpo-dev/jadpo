@@ -2396,6 +2396,10 @@ check failed: 1 error, 1 file
       migration snapshots like any entity, prefixed `jadpo_`, so
       `jadpo migrate new` creates and changes them and `jadpo check` reports
       drift in them too.
+
+    *Superseded 2026-10-19* by "Outbox placement, settled" (Decisions):
+    a schedule's lease goes in `schedules: { store: }`, not always the
+    main store, and each store an action writes keeps its own outbox.
 17. **Can a request's whole effect be traced through events?** Raised by
     Richard (2026-10-13). *Recommendation:* yes, always on. An event is
     stored with the trace context of the action that emitted it (W3C
