@@ -229,7 +229,9 @@ impl Handler for DevHandler {
         let shared = Arc::clone(&self.shared);
         let raised = Rc::clone(&self.raised);
         let paused = Rc::clone(&self.paused);
-        Some(Box::pin(async move {
+        // Counted as the host's background work, so stopping waits for it
+        // to give back what it holds (chunk 6.7).
+        Some(self.host.track(Box::pin(async move {
             let Some(now) = host.now_ms() else {
                 return;
             };
@@ -283,7 +285,11 @@ impl Handler for DevHandler {
                     let _ = log.send(event);
                 }
             }
-        }))
+        })))
+    }
+
+    fn drain(&self) -> LocalFuture<'static, ()> {
+        self.host.drain()
     }
 
     fn tick_every_ms(&self) -> u64 {
@@ -464,14 +470,20 @@ fn shorten(path: &str) -> String {
 }
 
 /// Runs the session on the process's streams until it is stopped with
-/// ctrl-c; the exit code when it can't start.
+/// ctrl-c or SIGTERM, when the server drains, its background work giving
+/// back what it holds (chunk 6.7); the exit code when it can't start. A
+/// second signal ends it at once.
 pub fn serve(args: &DevArgs, env: &Environment) -> u8 {
+    let stop = jadpo_host_native::stop_signals().ok();
     serve_to(
         args,
         env,
         &mut std::io::stdout(),
         &mut std::io::stderr(),
-        &|| false,
+        &|| {
+            stop.as_ref()
+                .is_some_and(|stop| stop.load(Ordering::SeqCst))
+        },
     )
 }
 

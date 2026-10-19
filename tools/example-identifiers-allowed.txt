@@ -468,3 +468,8 @@ starts
 # An attribute type's short name RFC 4514 §3 defines, which a certificate's
 # distinguished name is written with (chunk 5.5r5)
 street
+# The language's own word for what work may spend (area 6's and area 12's
+# retry budget), and the runtime's for how long an invocation of
+# background work may run (area 12, chunk 6.7); area 9's example names a
+# field `budget` too
+budget

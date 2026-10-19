@@ -765,17 +765,23 @@ chunks below, taken before Phase 7, in this order.
   caller's policy, using 6.1c's provenance, else
   `policy.event_tenant_unproved`; in an application with a tenant, a
   batch's `key:` unique per call, tenant and key.
-- [ ] **6.7 Background work within a host's budget** `opus · xhigh`: each
-  invocation given a budget by its host; the runner stops taking pieces
-  and releases its claims before the budget ends, every lease the budget
-  and a margin; a batch handed on by time into a fresh invocation; the
-  native host draining on SIGTERM and releasing what it holds; one helper
-  that runs work within a budget and one lease helper (claim, renew,
-  release) for deliveries, schedules and batches, schedules' own run path
-  folded in and `Deferred::Run` used or removed. Done when a test host
-  with a 2 s budget releases a delivery rather than holding it 16
-  minutes, a batch carries on in a second invocation, and a native
-  shutdown releases a claimed delivery.
+- [x] **6.7 Background work within a host's budget** `opus · xhigh`.
+  Built: each invocation of background work given a budget by its host
+  (`Host::budget_ms`: the whole 15-minute run limit natively and by
+  default, a test's smaller), the runner taking no piece once it is
+  spent and running every action within it through one helper
+  (`runner::within_budget`, `Budget::run` for a purge or a page); every
+  lease, a delivery's, a schedule's and a batch run's, what is left of
+  the budget and a minute, through one lease helper (`lease`); a batch
+  run handed on by time into a fresh invocation (`Host::hand_on`), in
+  place of 500 pages; the tick within its budget, schedules' run path
+  folded in; the native server draining on SIGTERM, and on ctrl-c under
+  `jadpo dev`, giving back what its background work holds;
+  `Deferred::Run` and `runner::settle` removed. Live tests: a 2 s budget
+  ends a stalled delivery and takes nothing more, a batch carries on in a
+  second invocation, stopping `jadpo dev` gives back the delivery it was
+  running, and `jadpo dev` exits 0 on SIGTERM. Choices in area 12's
+  "Chosen in chunk 6.7".
 - [ ] **6.8 Durable background records** `opus · high`, after 6.7: outbox
   rows read by their `encoding`, a newer one parked; a batch's shape
   from canonical type text and its call named by a stable key, its saved

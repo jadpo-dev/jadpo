@@ -9,11 +9,11 @@
 //!   once; nothing is written for an action that rolls back.
 //! - Once it commits, each delivery is left for the runner
 //!   ([`crate::runner::Deferred::Deliveries`]), which claims its record
-//!   (`running`, its lease the 15-minute limit of a run and a minute),
-//!   runs the subscriber's action as the system limited to the event's
-//!   tenant, and records how it ended: `succeeded`; `pending` again with
-//!   its next attempt after a backoff with full jitter, while its budget
-//!   lasts; or `failed`.
+//!   (`running`, its lease what is left of the runner's budget and a
+//!   minute, [`crate::lease`]; chunk 6.7), runs the subscriber's action as
+//!   the system limited to the event's tenant, and records how it ended:
+//!   `succeeded`; `pending` again with its next attempt after a backoff
+//!   with full jitter, while its budget lasts; or `failed`.
 //! - A subscriber's action commits a handled record
 //!   (`jadpo_handled_deliveries`, keyed by the delivery's `id`) in the
 //!   store it writes, with its writes, so a repeated delivery finds it and
@@ -47,10 +47,6 @@ pub const SWEEP_BATCH: u32 = 100;
 /// ceiling (full jitter), and is never under a second.
 pub const BACKOFF_BASE_MS: i64 = 30_000;
 pub const BACKOFF_CAP_MS: i64 = 6 * 60 * 60 * 1000;
-/// How long a claimed delivery is the claimer's: the 15-minute limit of
-/// one run and a minute. A worker that dies holding it loses it then, and
-/// the sweep takes it up again.
-pub const LEASE_MS: i64 = crate::runner::RUN_LIMIT_MS as i64 + 60_000;
 /// The tenant a delivery whose event names none is limited to: an
 /// identity no record has, so it reaches no tenant's records (chosen in
 /// chunk 6.1b).
@@ -108,9 +104,44 @@ pub const PARK: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'failed', \
 
 /// Gives back attempt `$2` of delivery `$1`, which a route that waits
 /// for its follow-on work stopped waiting for while its subscriber's
-/// action ran (area 7, `settle:`; chunk 6.3): `pending` and due at `$3`,
-/// the attempt not counted, for deferred work to run it again.
+/// action ran (area 7, `settle:`; chunk 6.3), or whose host began to
+/// shut down while it ran (chunk 6.7): `pending` and due at `$3`, the
+/// attempt not counted, for deferred work or the sweep to run it again.
 pub const RELEASE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'pending', \"attempts\" = \"attempts\" - 1, \"next_attempt_at\" = $3 WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
+
+/// A delivery's record as the runner leases it ([`crate::lease`]):
+/// claimed for its next attempt, and given back with that attempt, its
+/// number known once it is claimed, not counted.
+pub(crate) struct Leased {
+    pub id: [u8; 16],
+    /// The attempt the claim is for: 0 until it is claimed.
+    pub attempt: u32,
+}
+
+impl crate::lease::Leased for Leased {
+    fn claim(&self, now: i64, until: i64) -> (&'static str, Vec<SqlValue>) {
+        (
+            CLAIM,
+            vec![
+                SqlValue::Uuid(self.id),
+                micros(now),
+                micros(until),
+                failure_json(LEASE_EXPIRED, None),
+            ],
+        )
+    }
+
+    fn release(&self, now: i64) -> (&'static str, Vec<SqlValue>) {
+        (
+            RELEASE,
+            vec![
+                SqlValue::Uuid(self.id),
+                SqlValue::Int4(i32::try_from(self.attempt).unwrap_or(i32::MAX)),
+                micros(now),
+            ],
+        )
+    }
+}
 
 /// A W3C trace context (`traceparent`): the trace a request starts or
 /// continues, and the span of the work under way, which an emitted event

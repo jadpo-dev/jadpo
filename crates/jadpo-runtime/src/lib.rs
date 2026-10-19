@@ -36,7 +36,9 @@
 //!   rate limits ([`RateLimits`]).
 //! - [`runner`]: the runner (chunk 6.1a), which drives an executor for
 //!   work no request waits on, as the system ([`System`]): deferred until
-//!   after a response, inline, or once per item of a batch.
+//!   after a response, while a route waits for it, or once per item of a
+//!   batch, each invocation within the [`budget`] its host gives it and
+//!   each claim it takes a [`lease`] of the same length (chunk 6.7).
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -58,6 +60,7 @@
 
 pub mod batches;
 mod boundary;
+pub mod budget;
 pub mod config;
 mod ctx;
 mod env;
@@ -66,6 +69,7 @@ mod failure;
 mod fault;
 mod host;
 pub mod http;
+pub mod lease;
 mod limits;
 mod migrate;
 pub mod outbox;

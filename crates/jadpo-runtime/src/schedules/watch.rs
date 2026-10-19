@@ -18,7 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_std::schedule::SchedulePlan;
 
-use super::{BY_HAND, Claimed, ENSURE, RUNNING, SKIPPED, run_claimed};
+use super::{BY_HAND, Claimed, ENSURE, Leased, RUNNING, SKIPPED, Take, run_claimed};
+use crate::budget::{Budget, Invocation};
 use crate::outbox::micros;
 use crate::runner::{self, RUN_LIMIT_MS};
 use crate::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, StoreError};
@@ -667,7 +668,8 @@ pub enum RunNow {
 /// Runs `schedule` at `now`, outside the grid, as `jadpo schedules run`
 /// does: under its lease, paused or not, so only one run of it happens at
 /// a time; its record says an operator started it (`by_hand`), and its
-/// next due time is left as it is.
+/// next due time is left as it is. It runs within the budget its host
+/// gives a tick, as the tick's runs do (chunk 6.7).
 pub async fn run_now(
     executor: &dyn Executor,
     host: &dyn Host,
@@ -687,30 +689,26 @@ pub async fn run_now(
     let run = ctx
         .new_id()
         .ok_or_else(|| StoreError::Fault("no random bytes for a run's id".into()))?;
-    let claimed = database
-        .query_once(
-            CLAIM_NOW,
-            &[
-                SqlValue::Text(schedule.key.clone()),
-                micros(now.saturating_add(super::LEASE_MS)),
-                SqlValue::Uuid(run),
-                micros(now),
-            ],
-        )
-        .await?;
-    let Some(row) = claimed.first() else {
+    let budget = Budget::start(host, Invocation::Tick);
+    let lease = Leased {
+        key: schedule.key.clone(),
+        run,
+        take: Take::Now,
+        succeeded: None,
+    };
+    let Some(row) = crate::lease::claim(database, &budget, &lease, now).await? else {
         let (started, until) = holder(database, &schedule.key, now).await?;
         return Ok(RunNow::LeaseHeld { started, until });
     };
     let lost = uuid(row.first()).map(|lost| (lost, millis(row.get(1))));
     let claimed = Claimed {
-        run,
+        lease,
         due_slot: now,
         lost,
         reason: Some(BY_HAND),
     };
-    let (due, left) = run_claimed(executor, host, database, schedule, claimed, ctx, now).await;
-    let deliveries = runner::run_deferred(executor, host, left).await;
+    let (due, left) = run_claimed(executor, &budget, database, schedule, claimed, ctx, now).await;
+    let deliveries = runner::run_within(executor, host, &budget, left).await;
     Ok(RunNow::Ran { due, deliveries })
 }
 
