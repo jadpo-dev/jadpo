@@ -3154,7 +3154,7 @@ entity Note {
     reviewer_id: User.id {
         on_delete: OnDelete.cascade
     }
-    shared: Bool
+    circulated: Bool
     summary: NoteText
     appraisal: NoteText {
         policy: {
@@ -3170,7 +3170,7 @@ entity Note {
 
 entity Bulletin {
     id: Uuid
-    words: NoteText
+    blurb: NoteText
 
     policy: {
         create: [Access.system]
@@ -3178,58 +3178,58 @@ entity Bulletin {
     }
 }
 
-type NoteShared = Event {
+type NoteCirculated = Event {
     note_id: Note.id
-    words: NoteText
+    blurb: NoteText
 }
 
-action share_summary(note_id: Note.id) fails NoteNotFound -> Unit {
+action circulate_summary(note_id: Note.id) fails NoteNotFound -> Unit {
     var note: Note = attempt Note.update(note_id) {
         set: {
-            shared: true
+            circulated: true
         }
     }
-    emit NoteShared {
+    emit NoteCirculated {
         note_id: note.id
-        words: note.summary
+        blurb: note.summary
     }
 }
 
-action share_appraisal(note_id: Note.id) fails NoteNotFound -> Unit {
+action circulate_appraisal(note_id: Note.id) fails NoteNotFound -> Unit {
     var note: Note = attempt Note.update(note_id) {
         set: {
-            shared: true
+            circulated: true
         }
     }
-    emit NoteShared {
+    emit NoteCirculated {
         note_id: note.id
-        words: note.appraisal
+        blurb: note.appraisal
     }
 }
 
-action post_bulletin(words: NoteText) -> Unit {
+action post_bulletin(blurb: NoteText) -> Unit {
     var bulletin: Bulletin = Bulletin.create {
         set: {
-            words: words
+            blurb: blurb
         }
     }
-    assert bulletin.words == words
+    assert bulletin.blurb == blurb
 }
 
-subscriber post_shared {
-    on: NoteShared
-    run: post_bulletin(event.words)
+subscriber post_circulated {
+    on: NoteCirculated
+    run: post_bulletin(event.blurb)
 }
 ```
 
 ```text output
-error: `post_shared` passes `Note.appraisal` to `post_bulletin`, which stores it in `Bulletin.words`, though not everyone who may read `words` may read it
+error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which stores it in `Bulletin.blurb`, though not everyone who may read `blurb` may read it
  --> main.jadpo:91:24
    |
-91 |     run: post_bulletin(event.words)
+91 |     run: post_bulletin(event.blurb)
    |                        ^^^^^^^^^^^ an `emit` filled this from `Note.appraisal`
-  reason: `post_bulletin` stores what it is given here in `Bulletin.words`, and everyone who may read `Bulletin.words`, anyone signed in among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
-  next: Pass the event's ids and have `post_bulletin` read what it stores, or give `words`'s `read:` only those who may read `appraisal` (agent)
+  reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`, and everyone who may read `Bulletin.blurb`, anyone signed in among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
+  next: Pass the event's ids and have `post_bulletin` read what it stores, or give `blurb`'s `read:` only those who may read `appraisal` (agent)
   rule: policy.output_field_unproved
   help: docs/language/09-policy.html#policy-output-field-unproved
 
@@ -3265,7 +3265,7 @@ entity Note {
     reviewer_id: User.id {
         on_delete: OnDelete.cascade
     }
-    shared: Bool
+    circulated: Bool
     summary: NoteText
     appraisal: NoteText {
         policy: {
@@ -3281,7 +3281,7 @@ entity Note {
 
 entity Bulletin {
     id: Uuid
-    words: NoteText
+    blurb: NoteText
 
     policy: {
         create: [Access.system]
@@ -3289,35 +3289,35 @@ entity Bulletin {
     }
 }
 
-type NoteShared = Event {
+type NoteCirculated = Event {
     note_id: Note.id
-    words: NoteText
+    blurb: NoteText
 }
 
-action share_summary(note_id: Note.id) fails NoteNotFound -> Unit {
+action circulate_summary(note_id: Note.id) fails NoteNotFound -> Unit {
     var note: Note = attempt Note.update(note_id) {
         set: {
-            shared: true
+            circulated: true
         }
     }
-    emit NoteShared {
+    emit NoteCirculated {
         note_id: note.id
-        words: note.summary
+        blurb: note.summary
     }
 }
 
-action post_bulletin(words: NoteText) -> Unit {
+action post_bulletin(blurb: NoteText) -> Unit {
     var bulletin: Bulletin = Bulletin.create {
         set: {
-            words: words
+            blurb: blurb
         }
     }
-    assert bulletin.words == words
+    assert bulletin.blurb == blurb
 }
 
-subscriber post_shared {
-    on: NoteShared
-    run: post_bulletin(event.words)
+subscriber post_circulated {
+    on: NoteCirculated
+    run: post_bulletin(event.blurb)
 }
 ```
 
