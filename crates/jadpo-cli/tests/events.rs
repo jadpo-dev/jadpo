@@ -674,8 +674,8 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
             other => panic!("not the outbox row: {other:?}"),
         }
         let pending = ("pending".to_string(), 0, None);
-        assert_eq!(host.deliveries("tally_chores").await, [pending.clone()]);
-        assert_eq!(host.deliveries("ring_bell").await, [pending.clone()]);
+        assert_eq!(host.deliveries("tally_chores").await, vec![pending.clone()]);
+        assert_eq!(host.deliveries("ring_bell").await, vec![pending]);
         assert_eq!(host.tallies().await, [], "nothing delivered in the request");
 
         // An action that fails emits nothing: its outbox row rolls back

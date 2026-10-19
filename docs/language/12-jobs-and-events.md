@@ -834,7 +834,7 @@ type NoteSeen = Event {
     note: Note
 }
 
-action see(note: Note) -> Unit {
+action glance(note: Note) -> Unit {
     emit NoteSeen {
         note: note
     }
@@ -842,12 +842,12 @@ action see(note: Note) -> Unit {
 ```
 
 ```text output
-error: `see` emits `NoteSeen` but writes no store to keep it in
+error: `glance` emits `NoteSeen` but writes no store to keep it in
  --> main.jadpo:10:5
    |
 10 |     emit NoteSeen {
    |     ^^^^^^^^^^^^^^^ no outbox
-  reason: An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `see` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
+  reason: An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `glance` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
   next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
   rule: event.store_required
   help: docs/language/12-jobs-and-events.html#event-store-required
