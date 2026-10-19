@@ -310,7 +310,7 @@ pub async fn start(
         at(now),
         // How deep in a chain of events it was started, which its items
         // run at (chunk 6.6a).
-        SqlValue::Int4(i32::try_from(ctx.chain).unwrap_or(i32::MAX)),
+        SqlValue::Int4(i32::try_from(ctx.chain()).unwrap_or(i32::MAX)),
         SqlValue::Uuid(tenant),
     ];
     let transaction = match ctx.transaction(&plan.store).await {
@@ -700,7 +700,7 @@ async fn step(
     // started the run, so what they emit is one deeper than the event
     // that set it off, and a loop through a batch stops as any does
     // (chunk 6.6a).
-    ctx.chain = saved.depth;
+    ctx.background_mut().set_chain(saved.depth);
     // Work that never waits gives the thread back as it checks this, and
     // stops once the budget is spent (chunk 6.7).
     ctx.set_deadline(Some(budget.limit_ms()));

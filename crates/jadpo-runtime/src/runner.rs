@@ -177,9 +177,11 @@ pub async fn settle_within(
             break Settled::Unsettled;
         }
     };
-    let left = std::mem::replace(&mut ctx.deferred, earlier);
-    ctx.deferred.extend(left);
-    ctx.deferred.extend(unsplit(queue));
+    let left = ctx.take_deferred();
+    let background = ctx.background_mut();
+    background.defer_all(earlier);
+    background.defer_all(left);
+    background.defer_all(unsplit(queue));
     settled
 }
 
@@ -572,17 +574,18 @@ async fn attempt_delivery(
             tenant: outbox::tenant(subscriber, &delivery.value),
         },
     };
-    let (trace, chain) = (ctx.trace(), ctx.chain);
+    let (trace, chain) = (ctx.trace(), ctx.chain());
     let continued = match delivery.trace {
         Some(parent) => ctx.new_span(parent),
         None => ctx.new_trace(),
     };
     ctx.set_trace(Some(continued));
-    ctx.chain = delivery.depth.saturating_add(1);
-    ctx.handled = subscriber.store.clone().map(|store| crate::ctx::Handled {
+    let background = ctx.background_mut();
+    background.set_chain(delivery.depth.saturating_add(1));
+    background.set_handled(subscriber.store.clone().map(|store| crate::ctx::Handled {
         store,
         id: delivery.id,
-    });
+    }));
     let ran = match within {
         // A route stopping its wait gives the delivery back, as the host
         // shutting down does.
@@ -591,9 +594,10 @@ async fn attempt_delivery(
             .map_err(|()| Cut::ShuttingDown),
         None => within_budget(executor, ctx, budget, job).await,
     };
-    ctx.handled = None;
-    ctx.set_trace(trace);
-    ctx.chain = chain;
+    let background = ctx.background_mut();
+    background.set_handled(None);
+    background.set_trace(trace);
+    background.set_chain(chain);
     let outcome = match ran {
         Ok(outcome) => outcome,
         // What the subscriber's action had begun is dropped, nothing it
@@ -819,8 +823,8 @@ pub async fn items(
     for (at, args) in items.into_iter().enumerate() {
         ran += 1;
         let outcome = if ctx.in_action() {
-            if let Some(boundary) = &mut ctx.boundary {
-                boundary.allowance = boundary.outbox.len();
+            if let Some(boundary) = ctx.boundary_mut() {
+                boundary.own_allowance();
             }
             match crate::boundary::Undo::take(ctx).await {
                 Ok(undo) => {
@@ -867,12 +871,9 @@ impl<'c, 'p> Batch<'c, 'p> {
                 "a batch opened inside a running action".into(),
             ));
         }
-        ctx.boundary = Some(crate::ctx::Boundary {
-            isolation,
-            ..Default::default()
-        });
+        ctx.open_boundary(isolation);
         if let Err(error) = ctx.transaction(store).await {
-            ctx.boundary = None;
+            ctx.close_boundary();
             return Err(error);
         }
         let saved = ctx.runner();
@@ -901,18 +902,13 @@ impl<'c, 'p> Batch<'c, 'p> {
     /// the batch did may be kept, and the run runs it again.
     pub fn changed(&self) -> bool {
         self.ctx
-            .boundary
-            .as_ref()
-            .is_some_and(|boundary| boundary.concurrent_change)
+            .boundary()
+            .is_some_and(crate::boundary::Boundary::changed)
     }
 
     /// The batch's transaction, for the run's own statements.
     pub fn transaction(&mut self) -> Option<&mut dyn Transaction> {
-        let boundary = self.ctx.boundary.as_mut()?;
-        match &mut boundary.transaction {
-            Some(transaction) => Some(transaction.as_mut()),
-            None => None,
-        }
+        self.ctx.boundary_mut()?.open_transaction()
     }
 
     /// Commits the batch: its items' writes and whatever the run wrote in
@@ -922,33 +918,33 @@ impl<'c, 'p> Batch<'c, 'p> {
     pub async fn commit(self) -> Result<(), StoreError> {
         let Batch { ctx, saved } = self;
         let written = crate::boundary::seal(ctx, None).await;
-        let mut boundary = ctx.boundary.take().unwrap_or_default();
+        let mut boundary = ctx.close_boundary();
         if let Err(error) = written {
             ctx.restore_runner(saved);
-            if let Some(transaction) = boundary.transaction.take() {
+            if let Some(transaction) = boundary.take_transaction() {
                 let _ = transaction.rollback().await;
             }
             return Err(error);
         }
         ctx.restore_runner(saved);
-        let Some(transaction) = boundary.transaction else {
+        let Some(transaction) = boundary.take_transaction() else {
             return Err(StoreError::Fault("a batch without its transaction".into()));
         };
-        if boundary.concurrent_change {
+        if boundary.changed() {
             let _ = transaction.rollback().await;
             return Err(StoreError::ConcurrentChange);
         }
         transaction.commit().await?;
-        crate::boundary::committed(ctx, boundary.sealed);
+        crate::boundary::committed(ctx, boundary.take_sealed());
         Ok(())
     }
 
     /// Gives the batch up: nothing it wrote is kept.
     pub async fn rollback(self) {
         let Batch { ctx, saved } = self;
-        let boundary = ctx.boundary.take().unwrap_or_default();
+        let mut boundary = ctx.close_boundary();
         ctx.restore_runner(saved);
-        if let Some(transaction) = boundary.transaction {
+        if let Some(transaction) = boundary.take_transaction() {
             let _ = transaction.rollback().await;
         }
     }
