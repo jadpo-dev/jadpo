@@ -149,6 +149,22 @@ std_enum! {
 }
 
 std_enum! {
+    /// Where a batch run stands (area 2, "The batch types' fields"; area
+    /// 12, "Batches"): what `batches.status` gives as its `state`.
+    BatchState: "BatchState" {
+        /// Its batches are still going, or waiting to resume.
+        Running: "running",
+        /// Its last batch and `finished:` committed.
+        Finished: "finished",
+        /// It stopped for good: a fault it can't go past, or a deploy that
+        /// changed what it saved.
+        Failed: "failed",
+        /// `batches.cancel` stopped it after the batch in hand.
+        Cancelled: "cancelled",
+    }
+}
+
+std_enum! {
     /// Which instant a local time takes when a zone's clocks change around
     /// it (area 10, question 7): an `overlap` happens twice, a `gap` never.
     /// Without `dst:`, or with `reject`, such a time is a failure the
@@ -561,6 +577,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (Month::NAME, Month::NAMES.to_vec()),
         (TextDirection::NAME, TextDirection::NAMES.to_vec()),
         (TranslationReview::NAME, TranslationReview::NAMES.to_vec()),
+        (BatchState::NAME, BatchState::NAMES.to_vec()),
         (Dst::NAME, Dst::NAMES.to_vec()),
         (InvalidDay::NAME, InvalidDay::NAMES.to_vec()),
         (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
@@ -634,6 +651,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         Month::NAME => position(Month::NAMES),
         TextDirection::NAME => position(TextDirection::NAMES),
         TranslationReview::NAME => position(TranslationReview::NAMES),
+        BatchState::NAME => position(BatchState::NAMES),
         Dst::NAME => position(Dst::NAMES),
         InvalidDay::NAME => position(InvalidDay::NAMES),
         ComponentStyle::NAME => position(ComponentStyle::NAMES),

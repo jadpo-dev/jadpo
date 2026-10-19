@@ -304,6 +304,11 @@ pub struct Plan {
     /// The structured fields the latest migration reads or writes as JSON
     /// in Jadpo (chunk 5.9c), in a plan built for it.
     migration_json: Vec<MigrationJson>,
+    /// Every `batches.each` call, by the number its site decodes (area
+    /// 12, chunk 6.4).
+    batches: Vec<jadpo_std::batch::BatchPlan>,
+    /// Each `batches.each` site's number's place in `batches`.
+    batch_numbers: Vec<Option<u32>>,
 }
 
 /// A structured field the latest migration checks, rewrites or fills as
@@ -565,6 +570,8 @@ impl Plan {
             })
             .collect();
         let mut callables = Vec::with_capacity(found.len());
+        // Each `batches.each` call, as its site decodes it (area 12).
+        let mut batch_sites: Vec<sites::BatchSite> = Vec::new();
         for (key, kind, file, body) in found {
             let node = graph.get(&key);
             let name = node.map_or(key.name(), |node| node.name.as_str());
@@ -593,6 +600,8 @@ impl Plan {
                 setting: &|key: &Key| setting_ids.get(key).copied(),
                 json: &mut json_types,
                 prompt: &|key: &str| prompt_fields.get(key).cloned(),
+                starter: &key,
+                batches: &mut batch_sites,
             }
             .body(&body, text);
             let gate = (kind == Kind::Action)
@@ -639,12 +648,50 @@ impl Plan {
                 settings,
             });
         }
+        // Each batch's run: the query it walks, the store it is kept in and
+        // the level its batches begin their transactions at, repeatable
+        // read when an action it calls loads a record (area 12).
+        let mut batches: Vec<jadpo_std::batch::BatchPlan> = Vec::new();
+        let mut batch_numbers: Vec<Option<u32>> = Vec::new();
+        for plan in batch_sites.into_iter().map(|site| {
+            let read = queries.get(site.query? as usize)?.read.clone();
+            let (_, each) = site.each.clone()?;
+            let isolation = [&site.each, &site.finished]
+                .into_iter()
+                .flatten()
+                .map(|(key, _)| {
+                    graph
+                        .get(key)
+                        .and_then(|node| node.isolation())
+                        .unwrap_or_default()
+                })
+                .max()
+                .unwrap_or(Isolation::ReadCommitted);
+            Some(jadpo_std::batch::BatchPlan {
+                name: site.name,
+                shape: site.shape,
+                store: read.store.clone(),
+                isolation,
+                read,
+                captured: site.captured,
+                from_args: site.from_args,
+                each,
+                finished: site.finished.map(|(_, call)| call),
+                key: site.key,
+            })
+        }) {
+            // A call whose query or action has no plan is refused by the
+            // checker; its site finds no batch.
+            batch_numbers.push(plan.map(|plan| {
+                batches.push(plan);
+                (batches.len() - 1) as u32
+            }));
+        }
         // Each event type, numbered after every other so their numbers
         // don't move: the outbox keeps its payload as the type's contract
         // JSON, written and read by its codec (area 12; chunk 5.9b). No
-        // job takes arguments yet (a schedule's `run:` takes none) and a
-        // batch's captures come with batches, so these are all the types
-        // a payload is kept as.
+        // job takes arguments yet (a schedule's `run:` takes none); a
+        // batch's saved values were numbered with its site (chunk 6.4).
         let events = event_types(&graph)
             .into_iter()
             .map(|key| {
@@ -722,7 +769,20 @@ impl Plan {
             schedules,
             backfills,
             migration_json,
+            batches,
+            batch_numbers,
         }
+    }
+
+    /// Every `batches.each` call's run (area 12, chunk 6.4).
+    pub fn batches(&self) -> &[jadpo_std::batch::BatchPlan] {
+        &self.batches
+    }
+
+    /// The run of the `batches.each` call whose site decodes `number`.
+    pub fn batch(&self, number: u32) -> Option<&jadpo_std::batch::BatchPlan> {
+        let at = (*self.batch_numbers.get(number as usize)?)?;
+        self.batches.get(at as usize)
     }
 
     /// Every subscriber, and where an action that writes no store keeps

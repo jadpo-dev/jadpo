@@ -14,7 +14,10 @@
 
 use jadpo_db::{Db, ItemKind, Project};
 use jadpo_graph::Key;
-use jadpo_graph::body::{Body, Callee, Expr, Node};
+use std::collections::BTreeSet;
+
+use jadpo_graph::body::{Body, Callee, Expr, Node, SiteId};
+use jadpo_std::batch::BatchOp;
 use jadpo_std::http::SessionOp;
 use jadpo_std::write::WriteOp;
 
@@ -40,6 +43,25 @@ pub enum Fact {
     Session(SessionOp),
     /// `emit`: the event type's key (area 12).
     Emits(Key),
+    /// `batches.each` (area 12): a run, started once the action commits,
+    /// walking a query and calling an action per item, and another once
+    /// it finishes. The calls are the run's, as the system, never the
+    /// action's own.
+    Batch(BatchFact),
+    /// `batches.status` or `batches.cancel` (area 12), which read or write
+    /// the runs a store keeps.
+    Runs(BatchOp),
+}
+
+/// A batch an action starts, without positions.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BatchFact {
+    /// The query `from:` walks, by name.
+    pub query: Option<String>,
+    /// The action `each:` calls per item.
+    pub each: Option<Key>,
+    /// The action `finished:` calls once.
+    pub finished: Option<Key>,
 }
 
 /// One write, without positions.
@@ -102,6 +124,7 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
             Callee::Fixture(key) => Fact::Fixture(key.clone()),
             Callee::Function(key) | Callee::LibraryFunction(key) => Fact::Function(key.clone()),
             Callee::Session(op) => Fact::Session(*op),
+            Callee::Batch(op @ (BatchOp::Status | BatchOp::Cancel)) => Fact::Runs(*op),
             _ => return None,
         },
         Expr::Write {
@@ -132,12 +155,96 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
     })
 }
 
+/// The batch a `batches.each` call starts, and the sites inside it that
+/// are the run's rather than the action's: `from:`'s query call, and the
+/// action `each:` and `finished:` each call.
+fn batch_of(body: &Body, args: &[Option<SiteId>]) -> (BatchFact, Vec<SiteId>) {
+    let node = |site: Option<SiteId>| site.map(|site| (site, &body.site(site).node));
+    let mut skip = Vec::new();
+    let mut fact = BatchFact {
+        query: None,
+        each: None,
+        finished: None,
+    };
+    if let Some((
+        site,
+        Node::Expr(Expr::Call {
+            callee: Callee::Query(query),
+            ..
+        }),
+    )) = node(args.first().copied().flatten())
+    {
+        fact.query = Some(query.name().to_string());
+        skip.push(site);
+    }
+    let called = |at: Option<SiteId>, skip: &mut Vec<SiteId>| match node(at) {
+        Some((
+            _,
+            Node::Expr(Expr::Inline {
+                body: Some(inner), ..
+            }),
+        )) => match node(Some(*inner)) {
+            Some((
+                site,
+                Node::Expr(Expr::Call {
+                    callee: Callee::Action(key),
+                    ..
+                }),
+            )) => {
+                skip.push(site);
+                Some(key.clone())
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    fact.each = called(args.get(1).copied().flatten(), &mut skip);
+    fact.finished = called(args.get(2).copied().flatten(), &mut skip);
+    (fact, skip)
+}
+
+/// Each of `body`'s facts with the site it is at, in source order: a
+/// `batches.each` call's own fact in place of the run's calls inside it.
+fn facts_of(body: &Body) -> Vec<(Fact, SiteId)> {
+    let mut batches: Vec<(SiteId, BatchFact)> = Vec::new();
+    let mut skip: BTreeSet<SiteId> = BTreeSet::new();
+    for (at, site) in body.sites.iter().enumerate() {
+        if let Node::Expr(Expr::Call {
+            callee: Callee::Batch(BatchOp::Each),
+            args,
+            ..
+        }) = &site.node
+        {
+            let (fact, inside) = batch_of(body, args);
+            skip.extend(inside);
+            batches.push((SiteId(at as u32), fact));
+        }
+    }
+    body.sites
+        .iter()
+        .enumerate()
+        .filter_map(|(at, site)| {
+            let at = SiteId(at as u32);
+            if skip.contains(&at) {
+                return None;
+            }
+            if let Some((_, fact)) = batches.iter().find(|(site, _)| *site == at) {
+                return Some((Fact::Batch(fact.clone()), at));
+            }
+            Some((fact_in(body, site)?, at))
+        })
+        .collect()
+}
+
 /// Each of `body`'s facts with its site's range, in source order: the
 /// same facts as [`body_facts`], for a check that reports where one is.
 pub fn facts_at(body: &Body) -> Vec<(Fact, (u32, u32))> {
-    body.sites
-        .iter()
-        .filter_map(|site| Some((fact_in(body, site)?, (site.start, site.end))))
+    facts_of(body)
+        .into_iter()
+        .map(|(fact, at)| {
+            let site = body.site(at);
+            (fact, (site.start, site.end))
+        })
         .collect()
 }
 
@@ -147,11 +254,9 @@ pub fn body_facts<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
     let checked = typed_body(db, project, callable);
     BodyFacts {
         key: checked.key.clone(),
-        facts: checked
-            .body
-            .sites
-            .iter()
-            .filter_map(|site| fact_in(&checked.body, site))
+        facts: facts_of(&checked.body)
+            .into_iter()
+            .map(|(fact, _)| fact)
             .collect(),
     }
 }

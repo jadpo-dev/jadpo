@@ -354,6 +354,7 @@ impl<'a> Canon<'a> {
             Callee::Translation(key) => format!("translations.{key}"),
             Callee::Caller(kind) => format!("{kind:?}"),
             Callee::Session(op) => format!("{op:?}"),
+            Callee::Batch(op) => format!("batches.{}", op.name()),
             Callee::AdvanceClock => "clock.advance".into(),
             Callee::Unknown => "…".into(),
             other => other

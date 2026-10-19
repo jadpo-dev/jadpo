@@ -70,6 +70,10 @@ pub enum Deferred {
     Deliveries(Vec<Delivery>),
     /// A run of a callable as the system.
     Run(Job),
+    /// A batch run to go on with (area 12, chunk 6.4): one an action
+    /// started, left as it was started and found only once that action
+    /// has committed, or one a run handed on to carry it further.
+    Batch(crate::batches::BatchStart),
 }
 
 /// Runs `work`, and the work it sets off in turn, in `ctx`, the
@@ -84,6 +88,9 @@ pub async fn settle(
 ) -> Vec<Outcome> {
     let mut queue = VecDeque::from(work);
     let mut outcomes = Vec::new();
+    // A batch run is long work no route waits on: it is left for after
+    // the response (chunk 6.4).
+    let mut later = Vec::new();
     while let Some(next) = queue.pop_front() {
         let before = ctx.deferred.len();
         match next {
@@ -93,10 +100,12 @@ pub async fn settle(
                     outcomes.extend(deliver(executor, ctx, delivery).await);
                 }
             }
+            Deferred::Batch(start) => later.push(Deferred::Batch(start)),
         }
         let after = before.min(ctx.deferred.len());
         queue.extend(ctx.deferred.split_off(after));
     }
+    ctx.deferred.extend(later);
     outcomes
 }
 
@@ -134,6 +143,7 @@ pub async fn run_deferred(
 enum Piece {
     Job(Job),
     Delivery(Delivery),
+    Batch(crate::batches::BatchStart),
 }
 
 /// Runs `work` as [`run_deferred`] does, at `now` when it is given and
@@ -152,6 +162,7 @@ async fn drive(
                 Deferred::Deliveries(deliveries) => {
                     queue.extend(deliveries.into_iter().map(Piece::Delivery));
                 }
+                Deferred::Batch(start) => queue.push_back(Piece::Batch(start)),
             }
         }
     };
@@ -198,6 +209,19 @@ async fn drive(
                         ))
                     }
                 }
+            }
+            // A batch run makes a context per batch and keeps within one
+            // run's time by handing itself on (chunk 6.4).
+            Piece::Batch(start) => {
+                let (ran, more) = crate::batches::run(executor, host, &start).await;
+                split(more, &mut queue);
+                Some(match ran {
+                    crate::batches::Ran::Failed(why) => Outcome::Fault(Box::new(crate::Fault {
+                        kind: FaultKind::Defect(format!("a batch run stopped: {why}")),
+                        frames: Vec::new(),
+                    })),
+                    _ => Outcome::Value(Value::Unit),
+                })
             }
         };
         split(ctx.take_deferred(), &mut queue);
@@ -552,6 +576,21 @@ impl<'c, 'p> Batch<'c, 'p> {
         each: &mut dyn FnMut(usize, Outcome) -> ControlFlow<()>,
     ) -> usize {
         items(executor, self.ctx, callable, list, each).await
+    }
+
+    /// The context the batch runs in, for a read in its transaction (a
+    /// batch run's page, chunk 6.4).
+    pub fn ctx(&mut self) -> &mut Ctx<'p> {
+        self.ctx
+    }
+
+    /// Whether an item or a read found a concurrent change: then nothing
+    /// the batch did may be kept, and the run runs it again.
+    pub fn changed(&self) -> bool {
+        self.ctx
+            .boundary
+            .as_ref()
+            .is_some_and(|boundary| boundary.concurrent_change)
     }
 
     /// The batch's transaction, for the run's own statements.
@@ -1024,7 +1063,7 @@ mod tests {
                 Deferred::Deliveries(deliveries) => {
                     deliveries.into_iter().map(|d| d.event).collect()
                 }
-                Deferred::Run(_) => Vec::new(),
+                Deferred::Run(_) | Deferred::Batch(_) => Vec::new(),
             })
             .collect()
     }

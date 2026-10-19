@@ -1,0 +1,1130 @@
+//! Batch runs (area 12, "Batches: work over many items"; chunk 6.4), on
+//! the runner's per-item mode ([`crate::runner::Batch`]).
+//!
+//! - **Starting.** `batches.each` in an action ([`start`]) writes the run's
+//!   row in the action's own transaction: which call it is, the shape it
+//!   saved under, its `key:` and the values it saves (each `from:`
+//!   argument and each value `each:` and `finished:` capture, as their
+//!   types' JSON). With a `key:` another start of the same call finds the
+//!   row its key already has and gives that run instead. The action leaves
+//!   the run for after its response ([`crate::runner::Deferred::Batch`]);
+//!   if it rolls back the row was never kept, and the runner finds nothing
+//!   to run.
+//! - **Running.** The runner ([`run`]) claims the run with a lease, then
+//!   goes a page of `from:` at a time: each page is one transaction, as
+//!   the system, that locks the run's row, reads the page after the
+//!   position the row keeps, runs `each:`'s action per item (one that
+//!   fails is undone alone and becomes a problem, never its value), writes
+//!   the problems, the position and the counts, and commits. After the
+//!   last page `finished:` runs in a transaction of its own and the run is
+//!   finished. A crash or a deploy anywhere loses only the batch in hand:
+//!   the lease lapses, and [`resume`] picks the run up from the position
+//!   that committed.
+//! - **Asking.** `batches.status` reads the row ([`status`]);
+//!   `batches.cancel` keeps a row of its own ([`cancel`]), which the next
+//!   batch finds, so asking never waits for the batch in hand.
+//!
+//! What a run reads is the plan's ([`BatchPlan`]): the same for the
+//! interpreter and compiled code, which give it through
+//! [`crate::Executor::batches`].
+
+use std::ops::ControlFlow;
+use std::rc::Rc;
+
+use jadpo_std::BatchState;
+use jadpo_std::batch::{BatchArg, BatchPlan, LEASE_MS};
+use jadpo_std::types::FailurePlan;
+use jadpo_value::Value;
+
+use crate::read::{JsonCodecs, uuid_text};
+use crate::runner::{Batch, Deferred};
+use crate::{
+    Clock, Ctx, Env, Executor, FaultKind, Frame, Host, Outcome, Row, SqlType, SqlValue, StoreError,
+    StoreOp, Stored, System,
+};
+
+/// What a program's batches run with: each `batches.each` call's plan, the
+/// codecs their saved values are kept in, and the failure plans a read
+/// raises from.
+#[derive(Clone, Copy, Debug)]
+pub struct Batches<'a> {
+    pub plans: &'a [BatchPlan],
+    pub json: JsonCodecs<'a>,
+    pub failures: &'a [FailurePlan],
+}
+
+impl<'a> Batches<'a> {
+    /// The plan of the call a run kept by its name.
+    fn plan(&self, name: &str) -> Option<&'a BatchPlan> {
+        self.plans.iter().find(|plan| plan.name == name)
+    }
+
+    /// The store the program keeps its runs in: the one every batch's
+    /// query reads, which the checker holds `batches.status` and
+    /// `batches.cancel` to.
+    fn store(&self) -> Option<&'a str> {
+        self.plans.first().map(|plan| plan.store.as_str())
+    }
+}
+
+/// A run the runner is to run once the action that started it has
+/// committed, or that a sweep found waiting.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BatchStart {
+    pub store: String,
+    pub run: [u8; 16],
+}
+
+/// How many pages one run's runner goes through, at most, before it hands
+/// the run back to be carried on in a run of its own: what keeps one run
+/// within area 12's 15-minute limit on a host whose invocations end.
+const PAGES_PER_RUN: u32 = 500;
+
+/// How many times one batch is tried again after a concurrent change
+/// before the runner leaves the run for a later sweep.
+const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
+
+/// The most runs one sweep picks up.
+const SWEEP_LIMIT: i64 = 100;
+
+const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
+
+const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\"";
+
+const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
+
+const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"stepped_at\" = $7 WHERE \"id\" = $1";
+
+const PROBLEM: &str = "INSERT INTO \"jadpo_batch_problems\" (\"run_id\", \"row\", \"column\", \"rule\") VALUES ($1, $2, $3, $4)";
+
+const END: &str = "UPDATE \"jadpo_batch_runs\" SET \"state\" = $2, \"failure\" = $3, \"lease_until\" = NULL, \"stepped_at\" = $4, \"finished_at\" = $4 WHERE \"id\" = $1";
+
+const RELEASE: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = NULL WHERE \"id\" = $1 AND \"state\" = 'running'";
+
+const STATUS: &str =
+    "SELECT \"items_done\", \"problems\", \"state\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
+
+const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
+
+const CANCEL: &str = "INSERT INTO \"jadpo_batch_cancels\" (\"run_id\", \"requested_at\") VALUES ($1, $2) ON CONFLICT (\"run_id\") DO NOTHING";
+
+const WAITING: &str = "SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $1) ORDER BY \"started_at\", \"id\" LIMIT $2";
+
+/// A time as a `timestamptz` parameter.
+fn at(millis: i64) -> SqlValue {
+    SqlValue::Timestamp(millis.saturating_mul(1000))
+}
+
+/// The JSON array the values a run saves are kept in: each value's own
+/// JSON, through its type's codec, `null` for none.
+fn saved(json: JsonCodecs<'_>, plan: &BatchPlan, values: &[Value]) -> Result<String, String> {
+    let mut out = String::from("[");
+    for (place, (number, value)) in plan.captured.iter().zip(values).enumerate() {
+        if place > 0 {
+            out.push(',');
+        }
+        match json.write(*number, value)? {
+            SqlValue::Json(text) => out.push_str(&text),
+            _ => out.push_str("null"),
+        }
+    }
+    out.push(']');
+    Ok(out)
+}
+
+/// The values a run saved, read back through their types' codecs; why
+/// not, never a value.
+fn read_saved(json: JsonCodecs<'_>, plan: &BatchPlan, text: &str) -> Result<Vec<Value>, String> {
+    let parts =
+        split_array(text).ok_or_else(|| "its saved values aren't a JSON array".to_string())?;
+    if parts.len() != plan.captured.len() {
+        return Err(format!(
+            "it saved {} values, and its call now saves {}",
+            parts.len(),
+            plan.captured.len()
+        ));
+    }
+    parts
+        .into_iter()
+        .zip(&plan.captured)
+        .map(|(part, number)| {
+            if part.trim() == "null" {
+                Ok(Value::None)
+            } else {
+                json.read(*number, part)
+            }
+        })
+        .collect()
+}
+
+/// The elements of a JSON array, each as its own text: split at the
+/// array's own commas, outside strings and nested values.
+fn split_array(text: &str) -> Option<Vec<&str>> {
+    let inner = text.trim().strip_prefix('[')?.strip_suffix(']')?;
+    if inner.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    let mut out = Vec::new();
+    let (mut depth, mut quoted, mut escaped, mut from) = (0usize, false, false, 0usize);
+    for (place, byte) in inner.bytes().enumerate() {
+        if quoted {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => quoted = false,
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => quoted = true,
+            b'[' | b'{' => depth += 1,
+            b']' | b'}' => depth = depth.checked_sub(1)?,
+            b',' if depth == 0 => {
+                out.push(inner.get(from..place)?);
+                from = place + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(inner.get(from..)?);
+    Some(out)
+}
+
+/// A run's id from the `BatchRun` a program holds.
+fn run_id(run: &Value) -> Option<[u8; 16]> {
+    let Value::Record(record) = run else {
+        return None;
+    };
+    match crate::to_sql(record.get("id")?, SqlType::Uuid) {
+        Ok(SqlValue::Uuid(bytes)) => Some(bytes),
+        _ => None,
+    }
+}
+
+/// The `BatchRun` a program holds for the run `id`.
+fn run_value(id: &[u8; 16]) -> Value {
+    Value::record(
+        jadpo_std::batch::BATCH_RUN,
+        vec![(Rc::from("id"), Value::uuid(&uuid_text(id)))],
+    )
+}
+
+fn fault(ctx: &mut Ctx<'_>, what: impl Into<String>, site: u32) -> Stored {
+    Stored::Fault(ctx.fault(FaultKind::Defect(what.into()), site))
+}
+
+/// A store's refusal at `site` of the action calling a batch operation.
+fn refused(ctx: &mut Ctx<'_>, error: StoreError, site: u32) -> Stored {
+    match crate::read::refused(ctx, error, site) {
+        crate::read::Interrupt::Failed(failure) => Stored::Failed(failure),
+        crate::read::Interrupt::Fault(fault) => Stored::Fault(fault),
+    }
+}
+
+/// `batches.each`, at `site` of the running action: keeps the run's row
+/// in the action's transaction and leaves the run for after its response.
+/// `values` are what the call saves, in the plan's order, then its `key:`.
+pub async fn start(
+    ctx: &mut Ctx<'_>,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    values: &[Value],
+    site: u32,
+) -> Stored {
+    let Some((captured, key)) = values.split_at_checked(plan.captured.len()) else {
+        return fault(ctx, "a batch started without the values it saves", site);
+    };
+    let text = match saved(batches.json, plan, captured) {
+        Ok(text) => text,
+        Err(why) => {
+            return fault(
+                ctx,
+                format!("a batch's saved values couldn't be kept: {why}"),
+                site,
+            );
+        }
+    };
+    let key = match (plan.key, key.first()) {
+        (Some(number), Some(value)) if !matches!(value, Value::None) => {
+            match batches.json.write(number, value) {
+                Ok(SqlValue::Json(text)) => SqlValue::Text(text),
+                Ok(_) => SqlValue::Null(SqlType::Text),
+                Err(why) => {
+                    return fault(ctx, format!("a batch's key couldn't be kept: {why}"), site);
+                }
+            }
+        }
+        _ => SqlValue::Null(SqlType::Text),
+    };
+    let Some(id) = ctx.new_id() else {
+        return fault(
+            ctx,
+            "a new run's identity with no randomness to make it",
+            site,
+        );
+    };
+    let now = ctx.now();
+    let params = [
+        SqlValue::Uuid(id),
+        SqlValue::Text(plan.name.clone()),
+        SqlValue::Text(shape_digest(plan)),
+        key,
+        SqlValue::Json(text),
+        at(now),
+    ];
+    let transaction = match ctx.transaction(&plan.store).await {
+        Ok(transaction) => transaction,
+        Err(error) => return refused(ctx, error, site),
+    };
+    let rows = match transaction.query(START, &params).await {
+        Ok(rows) => rows,
+        Err(error) => return refused(ctx, error, site),
+    };
+    // A start with the same key that committed after this action's
+    // snapshot is found by neither half: the action runs again and finds
+    // it.
+    let found = match rows.first().and_then(|row| row.first()) {
+        Some(SqlValue::Uuid(found)) => *found,
+        _ => return refused(ctx, StoreError::ConcurrentChange, site),
+    };
+    ctx.defer(Deferred::Batch(BatchStart {
+        store: plan.store.clone(),
+        run: found,
+    }));
+    Stored::Value(run_value(&found))
+}
+
+/// What a run's `shape` column keeps: a digest of the plan's shape, so a
+/// deploy that changes what the call saves or calls is found.
+fn shape_digest(plan: &BatchPlan) -> String {
+    blake3::hash(plan.shape.as_bytes()).to_hex().to_string()
+}
+
+/// `batches.status(run)`, at `site` of the running action: the run's
+/// `BatchProgress`, read in the action's transaction.
+pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: u32) -> Stored {
+    let (Some(id), Some(store)) = (run_id(run), batches.store()) else {
+        return fault(
+            ctx,
+            "a batch's status with no run or no store keeping it",
+            site,
+        );
+    };
+    let transaction = match ctx.transaction(store).await {
+        Ok(transaction) => transaction,
+        Err(error) => return refused(ctx, error, site),
+    };
+    let rows = match transaction.query(STATUS, &[SqlValue::Uuid(id)]).await {
+        Ok(rows) => rows,
+        Err(error) => return refused(ctx, error, site),
+    };
+    match rows.first().map(Vec::as_slice) {
+        Some(
+            [
+                SqlValue::Int8(done),
+                SqlValue::Int8(problems),
+                SqlValue::Text(state),
+            ],
+        ) => {
+            let Some(state) = BatchState::from_name(state) else {
+                return fault(ctx, "a batch run in a state the runtime doesn't keep", site);
+            };
+            Stored::Value(progress(*done, *problems, state))
+        }
+        Some(_) => fault(ctx, "a batch run's row the runtime didn't write", site),
+        None => fault(ctx, "no batch run is kept with this `BatchRun`'s id", site),
+    }
+}
+
+/// A `BatchProgress`.
+fn progress(done: i64, problems: i64, state: BatchState) -> Value {
+    let ordinal = jadpo_std::variant_ordinal(BatchState::NAME, state.name()).unwrap_or(0);
+    Value::record(
+        jadpo_std::batch::BATCH_PROGRESS,
+        vec![
+            (Rc::from("items_done"), Value::Int(done)),
+            // How many items `from:` holds is not counted yet (chosen in
+            // chunk 6.4).
+            (Rc::from("estimated_total"), Value::None),
+            (Rc::from("problems"), Value::Int(problems)),
+            (
+                Rc::from("state"),
+                Value::variant(BatchState::NAME, ordinal, state.name(), Vec::new()),
+            ),
+        ],
+    )
+}
+
+/// `batches.cancel(run)`, at `site` of the running action: asks the run
+/// to stop after the batch in hand, in the action's transaction.
+pub async fn cancel(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: u32) -> Stored {
+    let (Some(id), Some(store)) = (run_id(run), batches.store()) else {
+        return fault(
+            ctx,
+            "a batch cancelled with no run or no store keeping it",
+            site,
+        );
+    };
+    let now = ctx.now();
+    let transaction = match ctx.transaction(store).await {
+        Ok(transaction) => transaction,
+        Err(error) => return refused(ctx, error, site),
+    };
+    match transaction
+        .execute(CANCEL, &[SqlValue::Uuid(id), at(now)])
+        .await
+    {
+        Ok(_) => Stored::Value(Value::Unit),
+        Err(error) => refused(ctx, error, site),
+    }
+}
+
+/// How a runner left a run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ran {
+    /// Its last batch and `finished:` committed.
+    Finished,
+    /// `batches.cancel` stopped it after the batch in hand.
+    Cancelled,
+    /// It stopped for good, for this reason, never a value.
+    Failed(String),
+    /// Another runner holds it, or it isn't running: nothing was done.
+    NotClaimed,
+    /// It stopped for now, for this reason (a store that couldn't be
+    /// reached, changes that kept meeting its batch, its time running
+    /// out): what committed stands, and it is carried on later.
+    Paused(String),
+}
+
+/// The host's clock now, or `None` for a host with none.
+fn now_on(host: &dyn Host) -> Option<i64> {
+    host.now_ms()
+}
+
+/// Runs the run `start` names to its end, or as far as one runner goes,
+/// on `host` with `executor`'s batches: claimed with a lease, then a page
+/// of `from:` at a time, each page a transaction as the system. What the
+/// runs' actions left for after (events, other runs) is given back with
+/// how the run was left.
+pub async fn run(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    start: &BatchStart,
+) -> (Ran, Vec<Deferred>) {
+    let mut left = Vec::new();
+    let ran = run_inner(executor, host, start, &mut left).await;
+    (ran, left)
+}
+
+async fn run_inner(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    start: &BatchStart,
+    left: &mut Vec<Deferred>,
+) -> Ran {
+    let Some(batches) = executor.batches() else {
+        return Ran::Failed("the program runs no batches".into());
+    };
+    let Some(database) = host.database(&start.store) else {
+        return Ran::Paused(format!("no store called `{}`", start.store));
+    };
+    let Some(now) = now_on(host) else {
+        return Ran::Paused("the host has no clock".into());
+    };
+    let id = SqlValue::Uuid(start.run);
+    let claimed = database
+        .query_once(CLAIM, &[id.clone(), at(now + LEASE_MS), at(now)])
+        .await;
+    let row = match claimed {
+        Ok(rows) => match rows.into_iter().next() {
+            Some(row) => row,
+            None => return Ran::NotClaimed,
+        },
+        Err(error) => return Ran::Paused(format!("the store refused its claim ({error:?})")),
+    };
+    let (name, shape, captured) = match row.as_slice() {
+        [
+            SqlValue::Text(name),
+            SqlValue::Text(shape),
+            SqlValue::Json(captured),
+        ] => (name.clone(), shape.clone(), captured.clone()),
+        _ => return Ran::Failed("its row isn't one the runtime wrote".into()),
+    };
+    // A deploy that changed what the call saves or what it calls stops
+    // the run rather than reading its saved values as something else.
+    let Some(plan) = batches
+        .plan(&name)
+        .filter(|plan| shape_digest(plan) == shape)
+    else {
+        let why = "a deploy changed the `batches.each` call it was started by".to_string();
+        end(host, start, BatchState::Failed, Some(&why)).await;
+        return Ran::Failed(why);
+    };
+    let values = match read_saved(batches.json, plan, &captured) {
+        Ok(values) => values,
+        Err(why) => {
+            let why = format!("its saved values no longer read: {why}");
+            end(host, start, BatchState::Failed, Some(&why)).await;
+            return Ran::Failed(why);
+        }
+    };
+    let mut pages = 0;
+    let mut attempts = 0;
+    loop {
+        if pages >= PAGES_PER_RUN {
+            // Carried on in a run of its own, which claims it again.
+            let _ = database
+                .query_once(RELEASE, std::slice::from_ref(&id))
+                .await;
+            left.push(Deferred::Batch(start.clone()));
+            return Ran::Paused("it handed itself on after its share of pages".into());
+        }
+        let stepped = step(executor, host, batches, plan, start, &values, left).await;
+        match stepped {
+            Step::Next => {
+                pages += 1;
+                attempts = 0;
+            }
+            Step::Changed if attempts + 1 < BATCH_ATTEMPTS => attempts += 1,
+            Step::Changed => {
+                return Ran::Paused("changes by others kept meeting its batch".into());
+            }
+            Step::Ended(ran) => return ran,
+        }
+    }
+}
+
+/// How one batch went.
+enum Step {
+    /// It committed: on to the next.
+    Next,
+    /// A concurrent change undid it: try it again.
+    Changed,
+    Ended(Ran),
+}
+
+/// One transaction of the run: the next page with its items, or, once
+/// every page is read, `finished:`; or the stop a cancel asked for.
+async fn step(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    start: &BatchStart,
+    values: &[Value],
+    left: &mut Vec<Deferred>,
+) -> Step {
+    let Some(now) = now_on(host) else {
+        return Step::Ended(Ran::Paused("the host has no clock".into()));
+    };
+    // Each batch's items read the clock as the batch began.
+    let env = Env {
+        seed: None,
+        clock: Clock::fixed(now),
+    };
+    let mut ctx = Ctx::new(executor.places(), host, env);
+    let stepped = batch(executor, &mut ctx, batches, plan, start, values, now).await;
+    left.extend(ctx.take_deferred());
+    stepped
+}
+
+/// What a batch found on the run's row, which it holds locked.
+struct Held {
+    position: Option<String>,
+    read_all: bool,
+    done: i64,
+    problems: i64,
+}
+
+async fn batch(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    start: &BatchStart,
+    values: &[Value],
+    now: i64,
+) -> Step {
+    let id = SqlValue::Uuid(start.run);
+    let mut open = match Batch::open(ctx, &plan.store, plan.isolation, System::default()).await {
+        Ok(open) => open,
+        Err(StoreError::ConcurrentChange) => return Step::Changed,
+        Err(error) => {
+            return Step::Ended(Ran::Paused(format!(
+                "the store refused its batch ({error:?})"
+            )));
+        }
+    };
+    let locked = match open.transaction() {
+        Some(transaction) => transaction.query(LOCK, std::slice::from_ref(&id)).await,
+        None => Err(StoreError::Fault("a batch without its transaction".into())),
+    };
+    let held = match locked {
+        Ok(rows) => match rows.first().map(Vec::as_slice) {
+            Some(
+                [
+                    SqlValue::Text(state),
+                    position,
+                    SqlValue::Bool(read_all),
+                    SqlValue::Int8(done),
+                    SqlValue::Int8(problems),
+                    SqlValue::Bool(cancelled),
+                ],
+            ) => {
+                if state != BatchState::Running.name() {
+                    open.rollback().await;
+                    return Step::Ended(Ran::NotClaimed);
+                }
+                if *cancelled {
+                    let ended = end_in(&mut open, &id, BatchState::Cancelled, None, now).await;
+                    return finish(open, ended, Ran::Cancelled).await;
+                }
+                Held {
+                    position: match position {
+                        SqlValue::Text(cursor) => Some(cursor.clone()),
+                        _ => None,
+                    },
+                    read_all: *read_all,
+                    done: *done,
+                    problems: *problems,
+                }
+            }
+            _ => {
+                open.rollback().await;
+                return Step::Ended(Ran::NotClaimed);
+            }
+        },
+        Err(StoreError::ConcurrentChange) => {
+            open.rollback().await;
+            return Step::Changed;
+        }
+        Err(error) => {
+            open.rollback().await;
+            return Step::Ended(Ran::Paused(format!(
+                "the store refused its batch ({error:?})"
+            )));
+        }
+    };
+    if held.read_all {
+        return finished(executor, open, plan, &id, values, &held, now).await;
+    }
+    // The page after the position that committed, as the system.
+    let mut args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
+    if let Some(page) = &plan.read.page
+        && let jadpo_std::read::Source::Arg { index, path } = &page.after
+    {
+        let cursor = held.position.as_deref().map_or(Value::None, Value::text);
+        if let Some(arg) = args.get_mut(*index as usize) {
+            *arg = with_at(arg, path, cursor);
+        }
+    }
+    let read = crate::store(
+        open.ctx(),
+        StoreOp::Read(&plan.read),
+        batches.failures,
+        batches.json,
+        &args,
+        Frame::ENTRY,
+    )
+    .await;
+    let page = match read {
+        Stored::Value(page) => page,
+        _ if open.changed() => {
+            open.rollback().await;
+            return Step::Changed;
+        }
+        Stored::Failed(failure) if failure.code == "unavailable" => {
+            open.rollback().await;
+            return Step::Ended(Ran::Paused("its store couldn't be reached".into()));
+        }
+        Stored::Failed(failure) | Stored::Conflict { cause: failure, .. } => {
+            // A cursor its query no longer takes: a deploy changed the
+            // query's order.
+            let why = format!(
+                "its query refused the page it had reached (`{}`)",
+                failure.code
+            );
+            let ended = end_in(&mut open, &id, BatchState::Failed, Some(&why), now).await;
+            return finish(open, ended, Ran::Failed(why)).await;
+        }
+        Stored::Fault(fault) => {
+            open.rollback().await;
+            return Step::Ended(Ran::Paused(format!(
+                "reading its page faulted with `{}`",
+                fault.kind.classification()
+            )));
+        }
+    };
+    let (items, next) = match &page {
+        Value::Record(record) => (
+            match record.get("items") {
+                Some(Value::List(items)) => items.to_vec(),
+                _ => Vec::new(),
+            },
+            match record.get("next") {
+                Some(Value::Text(cursor)) => Some(cursor.to_string()),
+                _ => None,
+            },
+        ),
+        _ => (Vec::new(), None),
+    };
+    let calls: Vec<Vec<Value>> = items
+        .iter()
+        .map(|item| arguments(&plan.each.args, item, values))
+        .collect();
+    let mut problems: Vec<(i64, String)> = Vec::new();
+    let mut paused: Option<String> = None;
+    let base = held.done;
+    open.items(
+        executor,
+        plan.each.callable,
+        calls,
+        &mut |at, outcome| match problem(&outcome) {
+            Item::Done => ControlFlow::Continue(()),
+            Item::Problem(rule) => {
+                problems.push((base + at as i64 + 1, rule));
+                ControlFlow::Continue(())
+            }
+            Item::Pause(why) => {
+                paused = Some(why);
+                ControlFlow::Break(())
+            }
+        },
+    )
+    .await;
+    if open.changed() {
+        open.rollback().await;
+        return Step::Changed;
+    }
+    if let Some(why) = paused {
+        open.rollback().await;
+        return Step::Ended(Ran::Paused(why));
+    }
+    let done = base + items.len() as i64;
+    let had = held.problems + problems.len() as i64;
+    let Some(transaction) = open.transaction() else {
+        return Step::Ended(Ran::Paused("a batch without its transaction".into()));
+    };
+    for (row, rule) in &problems {
+        let written = transaction
+            .execute(
+                PROBLEM,
+                &[
+                    id.clone(),
+                    SqlValue::Int8(*row),
+                    SqlValue::Text(String::new()),
+                    SqlValue::Text(rule.clone()),
+                ],
+            )
+            .await;
+        if let Err(error) = written {
+            return abandoned(open, error).await;
+        }
+    }
+    let advanced = transaction
+        .execute(
+            ADVANCE,
+            &[
+                id.clone(),
+                next.clone()
+                    .map_or(SqlValue::Null(SqlType::Text), SqlValue::Text),
+                SqlValue::Bool(next.is_none()),
+                SqlValue::Int8(done),
+                SqlValue::Int8(had),
+                at(now + LEASE_MS),
+                at(now),
+            ],
+        )
+        .await;
+    if let Err(error) = advanced {
+        return abandoned(open, error).await;
+    }
+    match open.commit().await {
+        Ok(()) => Step::Next,
+        Err(StoreError::ConcurrentChange) => Step::Changed,
+        Err(error) => Step::Ended(Ran::Paused(format!(
+            "its batch couldn't commit ({error:?})"
+        ))),
+    }
+}
+
+/// A statement of the run's own the store refused: nothing of the batch
+/// is kept.
+async fn abandoned(open: Batch<'_, '_>, error: StoreError) -> Step {
+    open.rollback().await;
+    match error {
+        StoreError::ConcurrentChange => Step::Changed,
+        error => Step::Ended(Ran::Paused(format!(
+            "the store refused the run's own statement ({error:?})"
+        ))),
+    }
+}
+
+/// `finished:`, once every page is read, in a transaction of its own:
+/// its action given the run's summary, then the run finished. One that
+/// fails is undone, and the run is failed with its code.
+async fn finished(
+    executor: &dyn Executor,
+    mut open: Batch<'_, '_>,
+    plan: &BatchPlan,
+    id: &SqlValue,
+    values: &[Value],
+    held: &Held,
+    now: i64,
+) -> Step {
+    let mut failure: Option<String> = None;
+    if let Some(call) = &plan.finished {
+        let Some(transaction) = open.transaction() else {
+            return Step::Ended(Ran::Paused("a batch without its transaction".into()));
+        };
+        let rows = match transaction.query(PROBLEMS, std::slice::from_ref(id)).await {
+            Ok(rows) => rows,
+            Err(error) => return abandoned(open, error).await,
+        };
+        let summary = summary(held, &rows);
+        let args = arguments(&call.args, &summary, values);
+        let mut paused: Option<String> = None;
+        open.items(executor, call.callable, vec![args], &mut |_, outcome| {
+            match problem(&outcome) {
+                Item::Done => {}
+                Item::Problem(rule) => {
+                    failure = Some(format!("its `finished:` failed with `{rule}`"))
+                }
+                Item::Pause(why) => paused = Some(why),
+            }
+            ControlFlow::Continue(())
+        })
+        .await;
+        if open.changed() {
+            open.rollback().await;
+            return Step::Changed;
+        }
+        if let Some(why) = paused {
+            open.rollback().await;
+            return Step::Ended(Ran::Paused(why));
+        }
+    }
+    let state = if failure.is_some() {
+        BatchState::Failed
+    } else {
+        BatchState::Finished
+    };
+    let ended = end_in(&mut open, id, state, failure.as_deref(), now).await;
+    let ran = match failure {
+        Some(why) => Ran::Failed(why),
+        None => Ran::Finished,
+    };
+    finish(open, ended, ran).await
+}
+
+/// The `ImportSummary` `finished:` receives: the counts and each problem,
+/// in row order.
+fn summary(held: &Held, rows: &[Row]) -> Value {
+    let problems: Vec<Value> = rows
+        .iter()
+        .filter_map(|row| match row.as_slice() {
+            [
+                SqlValue::Int8(row),
+                SqlValue::Text(column),
+                SqlValue::Text(rule),
+            ] => Some(Value::record(
+                jadpo_std::batch::ROW_PROBLEM,
+                vec![
+                    (Rc::from("row"), Value::Int(*row)),
+                    (Rc::from("column"), Value::text(column)),
+                    (Rc::from("rule"), Value::text(rule)),
+                ],
+            )),
+            _ => None,
+        })
+        .collect();
+    Value::record(
+        jadpo_std::batch::IMPORT_SUMMARY,
+        vec![
+            (Rc::from("items"), Value::Int(held.done)),
+            (Rc::from("items_with_problems"), Value::Int(held.problems)),
+            (Rc::from("problems"), Value::list(problems)),
+        ],
+    )
+}
+
+/// Writes the run's end in the batch's transaction.
+async fn end_in(
+    open: &mut Batch<'_, '_>,
+    id: &SqlValue,
+    state: BatchState,
+    why: Option<&str>,
+    now: i64,
+) -> Result<(), StoreError> {
+    let Some(transaction) = open.transaction() else {
+        return Err(StoreError::Fault("a batch without its transaction".into()));
+    };
+    transaction
+        .execute(
+            END,
+            &[
+                id.clone(),
+                SqlValue::Text(state.name().to_string()),
+                why.map_or(SqlValue::Null(SqlType::Text), |why| {
+                    SqlValue::Text(why.to_string())
+                }),
+                at(now),
+            ],
+        )
+        .await
+        .map(|_| ())
+}
+
+/// Commits a batch that ends the run, giving `ran` once it has.
+async fn finish(open: Batch<'_, '_>, ended: Result<(), StoreError>, ran: Ran) -> Step {
+    if let Err(error) = ended {
+        return abandoned(open, error).await;
+    }
+    match open.commit().await {
+        Ok(()) => Step::Ended(ran),
+        Err(StoreError::ConcurrentChange) => Step::Changed,
+        Err(error) => Step::Ended(Ran::Paused(format!("its end couldn't commit ({error:?})"))),
+    }
+}
+
+/// Ends a run in one statement of its own: a run that can't go on.
+async fn end(host: &dyn Host, start: &BatchStart, state: BatchState, why: Option<&str>) {
+    let (Some(database), Some(now)) = (host.database(&start.store), now_on(host)) else {
+        return;
+    };
+    let _ = database
+        .query_once(
+            END,
+            &[
+                SqlValue::Uuid(start.run),
+                SqlValue::Text(state.name().to_string()),
+                why.map_or(SqlValue::Null(SqlType::Text), |why| {
+                    SqlValue::Text(why.to_string())
+                }),
+                at(now),
+            ],
+        )
+        .await;
+}
+
+/// What an item's outcome makes of it.
+enum Item {
+    Done,
+    /// A problem, by the rule's code: a failure's own code, or a fault's
+    /// classification, never a value.
+    Problem(String),
+    /// Something passing that no item caused: the batch stops for now.
+    Pause(String),
+}
+
+fn problem(outcome: &Outcome) -> Item {
+    match outcome {
+        Outcome::Value(_) => Item::Done,
+        // The store couldn't be reached, or changes kept meeting it: the
+        // batch, not the item.
+        Outcome::Failed(failure) if failure.code == "unavailable" => {
+            Item::Pause("its store couldn't be reached".into())
+        }
+        Outcome::Failed(failure) => Item::Problem(failure.code.clone()),
+        Outcome::Fault(fault) => match &fault.kind {
+            FaultKind::Store(_) | FaultKind::DeadlineExceeded => Item::Pause(format!(
+                "an item's action faulted with `{}`",
+                fault.kind.classification()
+            )),
+            kind => Item::Problem(kind.classification().to_string()),
+        },
+        Outcome::Assertion(_) => Item::Problem("internal_fault".into()),
+    }
+}
+
+/// The arguments of a batch's call for `item` (or the summary): each the
+/// item or a field inside it, or a value the run saved.
+fn arguments(args: &[BatchArg], item: &Value, values: &[Value]) -> Vec<Value> {
+    args.iter()
+        .map(|arg| match arg {
+            BatchArg::Item(path) => {
+                let mut value = item.clone();
+                for name in path {
+                    value = match &value {
+                        Value::Record(record) => record.get(name).cloned().unwrap_or(Value::None),
+                        Value::Variant(variant) => {
+                            variant.get(name).cloned().unwrap_or(Value::None)
+                        }
+                        _ => Value::None,
+                    };
+                }
+                value
+            }
+            BatchArg::Captured(at) => values.get(*at as usize).cloned().unwrap_or(Value::None),
+        })
+        .collect()
+}
+
+/// `value` with what is at `path` inside it replaced by `new`: a page's
+/// cursor in its query's argument.
+fn with_at(value: &Value, path: &[String], new: Value) -> Value {
+    let Some((first, rest)) = path.split_first() else {
+        return new;
+    };
+    let Value::Record(record) = value else {
+        return value.clone();
+    };
+    let mut record = (**record).clone();
+    let at = record.fields.iter().position(|(name, _)| &**name == first);
+    if let Some(at) = at
+        && let Some((_, slot)) = record.fields.get_mut(at)
+    {
+        *slot = with_at(slot, rest, new);
+        // Given now, not left out.
+        if let Some(omitted) = &record.omitted {
+            let kept: Vec<u32> = omitted
+                .iter()
+                .copied()
+                .filter(|place| *place as usize != at)
+                .collect();
+            record.omitted = Some(Rc::from(kept));
+        }
+    }
+    Value::Record(Rc::new(record))
+}
+
+/// The runs waiting in each store the program keeps runs in, whose
+/// runner's lease has lapsed by `now`: a crash or a deploy left them, or
+/// no host ran them after their action's response. At most a hundred
+/// from each store, oldest first.
+pub async fn waiting(executor: &dyn Executor, host: &dyn Host, now: i64) -> Vec<BatchStart> {
+    let mut out = Vec::new();
+    let Some(batches) = executor.batches() else {
+        return out;
+    };
+    let mut stores: Vec<&str> = batches
+        .plans
+        .iter()
+        .map(|plan| plan.store.as_str())
+        .collect();
+    stores.sort_unstable();
+    stores.dedup();
+    for store in stores {
+        let Some(database) = host.database(store) else {
+            continue;
+        };
+        let Ok(rows) = database
+            .query_once(WAITING, &[at(now), SqlValue::Int8(SWEEP_LIMIT)])
+            .await
+        else {
+            continue;
+        };
+        out.extend(
+            rows.into_iter()
+                .filter_map(|row| match row.into_iter().next() {
+                    Some(SqlValue::Uuid(run)) => Some(BatchStart {
+                        store: store.to_string(),
+                        run,
+                    }),
+                    _ => None,
+                }),
+        );
+    }
+    out
+}
+
+/// Picks up the runs [`waiting`] finds and runs each as [`run`] does:
+/// what area 12's resuming after crashes and deploys is. The runtime's
+/// minute tick calls it, or hands what `waiting` finds to its host to run
+/// after (chunk 6.2). How each was left, with what their actions left for
+/// after.
+pub async fn resume(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    now: i64,
+) -> (Vec<(BatchStart, Ran)>, Vec<Deferred>) {
+    let mut out = Vec::new();
+    let mut left = Vec::new();
+    for start in waiting(executor, host, now).await {
+        let (ran, more) = self::run(executor, host, &start).await;
+        left.extend(more);
+        out.push((start, ran));
+    }
+    (out, left)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_saved_array_splits_at_its_own_commas() {
+        assert_eq!(split_array("[]"), Some(Vec::new()));
+        assert_eq!(
+            split_array(r#"["a,b", {"x": [1, 2]}, null, 3]"#),
+            Some(vec![r#""a,b""#, r#" {"x": [1, 2]}"#, " null", " 3"])
+        );
+        assert_eq!(split_array(r#"["\"]", 1]"#), Some(vec![r#""\"]""#, " 1"]));
+        assert_eq!(split_array("{}"), None);
+    }
+
+    #[test]
+    fn a_cursor_goes_into_its_argument_and_counts_as_given() {
+        let input = Value::Record(Rc::new(jadpo_value::Record {
+            ty: Rc::from("RecountPage"),
+            fields: vec![
+                (Rc::from("page_size"), Value::Int(25)),
+                (Rc::from("after"), Value::None),
+            ],
+            omitted: Some(Rc::from(vec![1u32])),
+        }));
+        let moved = with_at(&input, &["after".to_string()], Value::text("abc"));
+        let Value::Record(record) = &moved else {
+            panic!("a record");
+        };
+        assert_eq!(record.get("after"), Some(&Value::text("abc")));
+        assert!(record.supplied("after"));
+        assert_eq!(with_at(&input, &[], Value::Int(1)), Value::Int(1));
+    }
+
+    #[test]
+    fn an_items_arguments_are_its_fields_and_the_saved_values() {
+        let item = Value::record("Product", vec![(Rc::from("sku"), Value::text("A-1"))]);
+        let args = arguments(
+            &[
+                BatchArg::Item(Vec::new()),
+                BatchArg::Item(vec!["sku".into()]),
+                BatchArg::Captured(1),
+            ],
+            &item,
+            &[Value::Int(0), Value::Int(7)],
+        );
+        assert_eq!(args, [item.clone(), Value::text("A-1"), Value::Int(7)]);
+    }
+
+    #[test]
+    fn a_failure_is_a_problem_and_an_outage_pauses_the_batch() {
+        let mut gone = crate::Failure::new("type Gone", "Gone", "gone");
+        gone.kind = Some("not_found".into());
+        assert!(matches!(
+            problem(&Outcome::Failed(Box::new(gone))),
+            Item::Problem(rule) if rule == "gone"
+        ));
+        assert!(matches!(
+            problem(&Outcome::Failed(Box::new(crate::unavailable()))),
+            Item::Pause(_)
+        ));
+        let overflow = crate::Fault {
+            kind: FaultKind::IntOverflow,
+            frames: Vec::new(),
+        };
+        assert!(matches!(
+            problem(&Outcome::Fault(Box::new(overflow))),
+            Item::Problem(rule) if rule == "int_overflow"
+        ));
+        let store = crate::Fault {
+            kind: FaultKind::Store("gone away".into()),
+            frames: Vec::new(),
+        };
+        assert!(matches!(
+            problem(&Outcome::Fault(Box::new(store))),
+            Item::Pause(_)
+        ));
+    }
+}

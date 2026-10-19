@@ -7,6 +7,7 @@ rules:
   - event.*
   - schedule.*
   - subscriber.*
+  - type.batch_*
 ---
 
 # Jobs and events
@@ -15,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Event records come in chunk 6.1c, and the commands that watch schedules in chunk 6.2b.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Event records come in chunk 6.1c, and the commands that watch schedules in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -229,6 +230,107 @@ Batches replace chained events for paging: an event per page would stop
 at the 16-deep chain limit ("Limits and runtime faults") after 16 pages.
 This also settles area 11's pagination, where work over many pages ran one
 page per subscriber delivery.
+
+> Built in chunk 6.4: `batches.each` over a named query's pages, with
+> `finished:` and `key:`, `batches.status` and `batches.cancel`, each page
+> one transaction committing its items' writes and the run's position,
+> and a run resumed after a crash or a deploy; what the page left open is
+> "Chosen in chunk 6.4", under "Review". The `csv`, `tsv`, `json_lines`
+> and `json` file helpers, `store.read`'s whole-read cap and the warning
+> for a `from:` ordered by a field that can be updated come in chunk
+> 6.4b, with a minimal `files` capability (area 16).
+
+A sweep that marks every item seen, a page at a time, once per sweep,
+keeping how many it went through:
+
+```jadpo check project=batches-sweep
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+entity Stocktake {
+    id: Uuid
+    shelf_run: BatchRun?
+    seen: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public, Access.system]
+    }
+}
+
+/// The items, a page at a time, in code order.
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+/// Marks one item seen.
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+/// Keeps how many items the sweep went through.
+action swept(summary: ImportSummary, stocktake_id: Stocktake.id) fails StocktakeNotFound -> Unit {
+    attempt Stocktake.update(stocktake_id) {
+        set: {
+            seen: summary.items
+        }
+    }
+}
+
+/// Starts the sweep over every item, once per sweep.
+action start_sweep(stocktake_id: Stocktake.id, page: ItemPage) -> BatchRun {
+    return batches.each(
+        from: items(page),
+        each: item -> mark_seen(item),
+        finished: summary -> swept(summary, stocktake_id),
+        key: stocktake_id
+    )
+}
+
+/// How far the sweep has got.
+action sweep_progress(shelf_run: BatchRun) -> BatchProgress {
+    return batches.status(shelf_run)
+}
+
+/// Stops the sweep after the page in hand.
+action stop_sweep(shelf_run: BatchRun) -> Unit {
+    batches.cancel(shelf_run)
+}
+```
 
 ## Declaring an event
 
@@ -1285,6 +1387,312 @@ error: `run: send_reminder` isn't a call
 check failed: 1 error, 1 file
 ```
 
+### `type.batch_capture_not_storable`
+
+What a run saves (`from:`'s query's arguments, what `each:` and
+`finished:` capture, and `key:`) is kept as its type's JSON, so the run can
+resume after a crash or a deploy; a value an entity field couldn't hold,
+such as a request's `Input`, is refused, naming it:
+
+```jadpo check project=e-batch-capture-not-storable file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-capture-not-storable expect=type.batch_capture_not_storable
+action mark_on(item: Item, page: ItemPage) -> Unit {
+    assert item.seen == item.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_on(item, page))
+}
+```
+
+```text output
+error: `batches.each` can't save `page`
+ --> main.jadpo:6:72
+  |
+6 |     return batches.each(from: items(page), each: item -> mark_on(item, page))
+  |                                                                        ^^^^ `ItemPage` has no stored form
+  reason: What `each:` captures is worked out when the run starts and saved with it, as its type's JSON, so the run can resume after a crash or a deploy; `page` is `ItemPage`, an `Input`, the shape a request arrives in, where a record keeps an `Object`.
+  next: Pass something an entity field could hold instead, such as the `id` that finds `page` (agent)
+  rule: type.batch_capture_not_storable
+  help: docs/language/12-jobs-and-events.html#type-batch-capture-not-storable
+
+check failed: 1 error, 2 files
+```
+
+### `type.batch_context`
+
+Only an action starts a run, reads its progress or cancels it, keeping
+what it does in the action's transaction:
+
+```jadpo check project=e-batch-context file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-context expect=type.batch_context
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+
+/// How far a sweep has got, for a report.
+function shelf_report(shelf_run: BatchRun) -> BatchProgress {
+    return batches.status(shelf_run)
+}
+```
+
+```text output
+error: A function can't call `batches.status`
+ --> main.jadpo:7:12
+  |
+7 |     return batches.status(shelf_run)
+  |            ^^^^^^^^^^^^^^ outside an action
+  reason: `batches.status` reads a run the runtime keeps in the store an action writes, so only an action calls it.
+  next: Call `batches.status` in an action (agent)
+  rule: type.batch_context
+  help: docs/language/12-jobs-and-events.html#type-batch-context
+
+check failed: 1 error, 2 files
+```
+
+### `type.batch_each_invalid`
+
+`each:` and `finished:` are one call of an action in the same domain,
+whose arguments are the item, a field inside it, or a value saved with
+the run; one that works something out of the item is refused:
+
+```jadpo check project=e-batch-each-invalid file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-each-invalid expect=type.batch_each_invalid
+action mark_code(code: ShelfCode) -> Unit {
+    assert code == code
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
+}
+```
+
+```text output
+error: `batches.each`'s `each:` isn't one call of an action
+ --> main.jadpo:6:68
+  |
+6 |     return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
+  |                                                                    ^^^^^^^^^^^^^^^^^^^^ the item and more
+  reason: An argument reading `item` is `item` itself or a field inside it, which the run reads from each item; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.
+  next: Write `each: item -> <action>(...)`, calling an action in this domain (agent)
+  rule: type.batch_each_invalid
+  help: docs/language/12-jobs-and-events.html#type-batch-each-invalid
+
+check failed: 1 error, 2 files
+```
+
+### `type.batch_from_invalid`
+
+A run walks `from:` a page at a time, so it is a call of a named query
+giving a `Page`; a list's query, or a page already read, is refused:
+
+```jadpo check project=e-batch-from-invalid file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-from-invalid expect=type.batch_from_invalid
+query first_items() -> List<Item> {
+    from: Item
+    order: [Item.code asc]
+    limit: 10
+}
+
+action sweep_shelf() -> BatchRun {
+    return batches.each(from: first_items(), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `batches.each`'s `from:` isn't a call of a named query giving a `Page`
+ --> main.jadpo:8:31
+  |
+8 |     return batches.each(from: first_items(), each: item -> mark_seen(item))
+  |                               ^^^^^^^^^^^^^ gives `List<Item>`
+  reason: A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run.
+  next: Write `batches.each(from: <query>(...), ...)`, with a query whose result is `Page<T>` (agent)
+  rule: type.batch_from_invalid
+  help: docs/language/12-jobs-and-events.html#type-batch-from-invalid
+
+check failed: 1 error, 2 files
+```
+
 ## Review
 
 ### Status
@@ -1304,11 +1712,12 @@ and the commands that watch schedules, the built-in purge schedule and
 schedule tests in chunk 6.2b;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
-7). Batches, several changing calls in one action, polls and `receiving`
-were decided on 2026-10-16 and are not yet roadmap chunks; their errors
-are built with them. Batches need the CSV and JSON namespaces from chunk
-5.4, and on Workers a way to start each batch in a fresh invocation
-(chunk 8.2 checks it).
+7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
+below), but for the file helpers, which come in chunk 6.4b, and on
+Workers each run's continuation in a fresh invocation, which chunk 8.2
+checks. Several changing calls in one action, polls and `receiving`
+were decided on 2026-10-16 and come with Phase 7; their errors are built
+with them.
 
 ### Chosen in chunk 6.1a
 
@@ -1496,7 +1905,97 @@ conservative reading:
   stays for an operator. Each delete takes 1,000 rows at a time, at most
   ten times a tick. Handled records stay: deleting them waits until a
   delivery can no longer repeat is worked out. Batch runs resume through
-  `schedules::HOOKS`, where chunk 6.4 adds `batches::resume`.
+  `schedules::HOOKS`, which runs chunk 6.4's `batches::resume`.
+
+### Chosen in chunk 6.4
+
+What the page leaves open about batches, each the most conservative
+reading; the file helpers wait for chunk 6.4b:
+
+- **A batch is a page.** Each transaction is one page of `from:`, at the
+  size its query's `page:` reads, so 60 items in pages of 3 commit 20
+  times. A page type allowing more than the 1,000 items of one batch
+  ("Limits and runtime faults") isn't split yet; `PageSize` stops at 100.
+- **Where a run is kept.** In the store `from:`'s query reads: one row
+  per run in `jadpo_batch_runs` (which call, the shape it was started
+  under, its `key:`, what it saved as its types' JSON, the cursor of the
+  next page, its counts, its state and its runner's lease), each problem
+  in `jadpo_batch_problems`, and each cancel asked for in
+  `jadpo_batch_cancels`; only a store some batch walks has them. Starting
+  a run writes that store, and `each:`'s and `finished:`'s actions may
+  write no other (`store.action_spans_stores`), so an item's writes and
+  the position always commit together. A run always has its query's
+  store, so it never needs `events: { store: }`.
+- **Starting.** The run's row is written in the starting action's
+  transaction, and the run is left for after the response at once
+  (`Deferred::Batch`); an action that rolls back left no row, so the
+  runner finds nothing to run. A start keyed with `key:` that finds the
+  same call's run with the same key (by its contract JSON) gives that run,
+  in whatever state, whatever else the call was given; a start without
+  one is always a new run. A start needs no outbox row: its run's row is
+  as durable, and the resume sweep below picks up a start a host
+  dropped, as the outbox sweep does a delivery (chunk 6.1b).
+- **Saved values.** `each:`'s and `finished:`'s arguments are the item
+  (or the summary), a field inside it, or a value that reads nothing of
+  it, worked out as the run starts and saved with it; anything that
+  works something out of the item is `type.batch_each_invalid`, and is
+  the action's to work out. `from:`'s query's arguments are saved as
+  what a request carries, an `Input` among them; what `each:` and
+  `finished:` capture, and `key:`, as an entity field holds a value, so
+  an `Input` there is `type.batch_capture_not_storable`. A secret is
+  never saved.
+- **Problems.** An item whose action fails is undone alone and becomes a
+  problem: its row is its place in the walk, from 1, its column empty
+  (a query's item has no columns; the file helpers fill it), its rule the
+  failure's code. One whose action faults with a defect or an overflow
+  is a problem too, its rule the fault's classification
+  (`internal_fault`, `int_overflow`), and is undone alone as a failure
+  is. A store that can't be reached, a deadline or another transaction's
+  change is no item's: the whole batch is undone; one another
+  transaction's change undid runs again, up to three times, and
+  otherwise the run waits for the sweep.
+- **Finishing.** `finished:` runs once after the last page, in a
+  transaction of its own, given the `ImportSummary` with every problem
+  in row order, and the run is `finished` in the same transaction. If
+  its action fails, what it wrote is undone and the run is `failed`
+  with the failure's code. A cancelled run doesn't run `finished:`.
+- **Cancelling.** `batches.cancel` keeps a row of its own in the calling
+  action's transaction and never touches the run's, so it never waits
+  for the batch in hand; the next batch finds it and ends the run
+  `cancelled`. Until then `batches.status` says `running`.
+- **Status.** `batches.status` reads the counts and the state in the
+  calling action's transaction; `estimated_total` is `none` until a
+  query's count is built. A `BatchRun` no store keeps is a fault. Both
+  find a run by its `id` alone, so they need the application's runs in
+  one store: with none, or more than one, they are
+  `toolchain.not_built_yet`.
+- **Resuming.** A runner holds its run by a lease of two minutes,
+  renewed with each page's commit. `batches::resume` picks up every run
+  still running whose lease has lapsed, from the position that
+  committed: the runtime's minute tick calls it (chunk 6.2). A run whose
+  call a deploy changed (its query, its actions or what it saves) ends
+  `failed` rather than reading what it saved as something else; listing
+  such runs before a deploy is area 14's `jadpo runs unfinished`. A
+  runner hands its run on after 500 pages, so one invocation stays within
+  the 15 minutes one run has.
+- **Who runs it.** Each page's read, its items and `finished:` act as the
+  system with no tenant, and read the clock as their batch began; each
+  batch begins at repeatable read when `each:`'s or `finished:`'s action
+  loads a record, read committed otherwise. *Flagged:* which tenant a run
+  an action starts is limited to isn't decided, so `batches.each` in an
+  application with a `tenant:` is `toolchain.not_built_yet`; recommended:
+  as chunk 6.1b limits a subscriber to its event's one field holding the
+  tenant's id, a run is limited to the tenant its one saved value holding
+  a tenant's id names (a `from:` argument, a capture or `key:`), and to
+  no tenant when none or several do.
+  *Flagged too:* a batch whose query or actions reach what only
+  `Access.public` grants isn't refused yet; recommended: the same compile
+  error as a schedule's or a subscriber's (area 9, 2026-10-19), with
+  6.1b's check.
+- **Names.** `batches` is a standard namespace, so, as every one, it
+  names no variable: area 19's and example 4's `batches` variables were
+  renamed. An inline function is now also a named argument's value
+  (`each: row -> ...`), as area 3 decided.
 
 ### Consistency with the rest of the language
 

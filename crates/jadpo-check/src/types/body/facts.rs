@@ -58,6 +58,9 @@ pub(crate) enum Reach {
     Caller(jadpo_std::http::PrincipalKind),
     /// `sessions.start(user_id)` or `sessions.end()` (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `batches.each(...)`, `batches.status(run)` or `batches.cancel(run)`
+    /// (area 12).
+    Batch(jadpo_std::batch::BatchOp),
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
     /// `translations.<key>(locale:, ...)` (area 10), with the number of

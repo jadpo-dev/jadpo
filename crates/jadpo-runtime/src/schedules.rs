@@ -76,10 +76,19 @@ pub const SKIPPED: &str = "skipped";
 /// the runner after it.
 pub type Hook = for<'a> fn(&'a dyn Executor, &'a dyn Host, i64) -> LocalFuture<'a, Vec<Deferred>>;
 
-/// What the tick runs after its sweeps. Batch runs plug in here (chunk
-/// 6.4): `batches::resume`, picking up runs whose runner's lease lapsed,
-/// wrapped as a [`Hook`] that hands back what they left.
-pub const HOOKS: &[Hook] = &[];
+/// What the tick runs after its sweeps: batch runs whose runner's lease
+/// lapsed are picked up from where they committed (chunk 6.4).
+pub const HOOKS: &[Hook] = &[resume_batches];
+
+/// [`crate::batches::resume`] as a [`Hook`]: what the runs it picked up
+/// left for after.
+fn resume_batches<'a>(
+    executor: &'a dyn Executor,
+    host: &'a dyn Host,
+    now: i64,
+) -> LocalFuture<'a, Vec<Deferred>> {
+    Box::pin(async move { crate::batches::resume(executor, host, now).await.1 })
+}
 
 /// A state row for each schedule that has none, its first run due one
 /// interval after this tick: names, intervals and first due times
