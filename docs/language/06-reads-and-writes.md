@@ -1854,7 +1854,7 @@ reports as a concurrent change. The runtime then rolls the transaction
 back, throws away the attempt's events, and runs the whole action again
 from its first line: its reads see the other transaction's change, and its
 new records get new identities. The budget is three attempts; the second
-bound waits for a host clock, which comes with time (chunk 5.2). A record
+bound, on time, isn't built: the boundary counts attempts only. A record
 handed to an action from outside its transaction (a test passing one an
 earlier action returned) is checked only as far as its row is still there.
 
