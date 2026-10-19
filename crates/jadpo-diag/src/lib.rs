@@ -642,6 +642,8 @@ rules! {
         "07-http.html#route-run-kind", "A `GET` route runs a query and other methods run an action";
     ROUTE_RUN_REQUIRED: "route.run_required", area 7, Error, Agent,
         "07-http.html#route-run-required", "Route does not say what it runs";
+    ROUTE_SETTLE_INVALID: "route.settle_invalid", area 7, Error, Agent,
+        "07-http.html#route-settle-invalid", "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,

@@ -80,6 +80,7 @@ pub const API: Kind = Kind {
         "input",
         "message",
         "output",
+        "settle",
         "status",
         "variant",
     ],

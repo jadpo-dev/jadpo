@@ -648,10 +648,22 @@ chunks below, taken before Phase 6.
   6.2b: area 5's built-in hourly purge schedule on the tick, recorded and
   watched like any schedule; and area 13's schedule tests
   (`schedule.run()` at the test's clock, `--kind schedule`).
-- [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
+- [x] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
-  they settle and with `202` past `within:`.
+  they settle and with `202` past `within:`. Built: `settle: { answer:
+  within: }` read and checked (`route.settle_invalid`; `output:` the
+  query's result, its failures the route's, policy checking what it
+  reaches); `runner::settle_within` running the deliveries and their
+  follow-ons inline until each succeeded or failed for good, stopping at
+  a retry, an unclaimed delivery, a batch run or `within:`, a cut-short
+  delivery given back and the rest left for after the response; the
+  answer query run as the request's caller, 202 when unsettled; an
+  `Idempotency-Key` keeping the query's arguments, so a repeat runs it
+  again; both answers in OpenAPI and a `settle within` line in the
+  record; a live test and a route test of it. Choices in area 7's
+  "Chosen in chunk 6.3"; flagged there: a route whose action starts a
+  batch always answers 202.
 - [x] **6.3b One condition lowering** `opus · xhigh`. Built: one condition
   lowering to an exact SQL form or an index search the runtime rechecks, all
   SQL text in `jadpo-sql`, and operations in `where:` with expression

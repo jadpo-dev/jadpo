@@ -109,6 +109,106 @@ pub async fn settle(
     outcomes
 }
 
+/// Whether the work a route's action set off settled before it answered
+/// (area 7, "Waiting for follow-on work"; chunk 6.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Settled {
+    /// Every delivery of what the action emitted, and of what their
+    /// subscribers emitted in turn, succeeded, failed for good or was
+    /// parked: the route answers with its own status.
+    Settled,
+    /// Some of it is still to run: a delivery waiting to retry, one
+    /// another runner holds, a batch run, or work `within:` cut short.
+    /// The route answers 202, and the rest carries on after the response.
+    Unsettled,
+}
+
+/// Runs `work`, what a route's committed action left, and the work it
+/// sets off in turn, in `ctx` before it answers, until all of it has settled or
+/// `within` (the route's `within:` timer) finishes first (area 7,
+/// "Waiting for follow-on work"; chunk 6.3). Each delivery runs as
+/// [`deliver`] runs one, as the system limited to its event's tenant, and
+/// whoever ran `ctx` runs it again after.
+///
+/// It stops waiting at the first piece that hasn't settled, since the
+/// answer is 202 from then on: a delivery left to retry after a backoff,
+/// which can't be waited for; one this runner couldn't claim; a batch run,
+/// which is long work no route waits on; or the piece running when
+/// `within` finished, which is dropped unfinished, nothing it did kept,
+/// its claim given back as it was ([`crate::outbox::RELEASE`]). Whatever
+/// is left goes on `ctx`'s deferred work, for after the response,
+/// exactly as it would without `settle:`; a delivery waiting to retry is
+/// the sweep's.
+pub async fn settle_within(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    work: Vec<Deferred>,
+    within: &mut crate::LocalFuture<'_, ()>,
+) -> Settled {
+    use crate::outbox::{FAILED, SUCCEEDED};
+    let mut queue: VecDeque<Piece> = VecDeque::new();
+    split(work, &mut queue);
+    // Work left before it, which isn't this route's to wait for.
+    let earlier = ctx.take_deferred();
+    let settled = loop {
+        let Some(piece) = queue.pop_front() else {
+            break Settled::Settled;
+        };
+        // `within:` may have passed while the last piece's statements ran.
+        let passed =
+            std::future::poll_fn(|cx| std::task::Poll::Ready(within.as_mut().poll(cx).is_ready()))
+                .await;
+        if passed {
+            queue.push_front(piece);
+            break Settled::Unsettled;
+        }
+        let done = match piece {
+            Piece::Batch(start) => {
+                queue.push_front(Piece::Batch(start));
+                false
+            }
+            Piece::Job(job) => {
+                let runner = ctx.runner();
+                match race(as_system(executor, ctx, job.clone()), &mut *within).await {
+                    // A job keeps no record: once it has run, it has settled.
+                    First::Left(_) => true,
+                    First::Right(()) => {
+                        ctx.abandon();
+                        ctx.restore_runner(runner);
+                        queue.push_front(Piece::Job(job));
+                        false
+                    }
+                }
+            }
+            Piece::Delivery(delivery) => {
+                match attempt_delivery(executor, ctx, delivery.clone(), Some(&mut *within)).await {
+                    Some((_, state)) if state == SUCCEEDED || state == FAILED => true,
+                    Some((_, CUT_SHORT)) => {
+                        queue.push_front(Piece::Delivery(delivery));
+                        false
+                    }
+                    // Left to retry after a wait: the sweep's.
+                    Some(_) => false,
+                    // Not claimed: another runner has it, or its store
+                    // couldn't be reached. Deferred work tries again.
+                    None => {
+                        queue.push_front(Piece::Delivery(delivery));
+                        false
+                    }
+                }
+            }
+        };
+        split(ctx.take_deferred(), &mut queue);
+        if !done {
+            break Settled::Unsettled;
+        }
+    };
+    let left = std::mem::replace(&mut ctx.deferred, earlier);
+    ctx.deferred.extend(left);
+    ctx.deferred.extend(unsplit(queue));
+    settled
+}
+
 /// Runs `job` in `ctx` as the system, then puts back whoever ran `ctx`.
 pub(crate) async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outcome {
     if ctx.in_action() {
@@ -146,6 +246,32 @@ enum Piece {
     Batch(crate::batches::BatchStart),
 }
 
+/// `work`'s jobs, deliveries and batch runs, each a piece of its own, at
+/// the back of `queue`.
+fn split(work: Vec<Deferred>, queue: &mut VecDeque<Piece>) {
+    for next in work {
+        match next {
+            Deferred::Run(job) => queue.push_back(Piece::Job(job)),
+            Deferred::Deliveries(deliveries) => {
+                queue.extend(deliveries.into_iter().map(Piece::Delivery));
+            }
+            Deferred::Batch(start) => queue.push_back(Piece::Batch(start)),
+        }
+    }
+}
+
+/// `queue`'s pieces as work left for after the response, in order.
+fn unsplit(queue: VecDeque<Piece>) -> Vec<Deferred> {
+    queue
+        .into_iter()
+        .map(|piece| match piece {
+            Piece::Job(job) => Deferred::Run(job),
+            Piece::Delivery(delivery) => Deferred::Deliveries(vec![delivery]),
+            Piece::Batch(start) => Deferred::Batch(start),
+        })
+        .collect()
+}
+
 /// Runs `work` as [`run_deferred`] does, at `now` when it is given and
 /// at the host's time otherwise.
 async fn drive(
@@ -155,17 +281,6 @@ async fn drive(
     now: Option<i64>,
 ) -> Vec<Outcome> {
     let mut queue: VecDeque<Piece> = VecDeque::new();
-    let split = |work: Vec<Deferred>, queue: &mut VecDeque<Piece>| {
-        for next in work {
-            match next {
-                Deferred::Run(job) => queue.push_back(Piece::Job(job)),
-                Deferred::Deliveries(deliveries) => {
-                    queue.extend(deliveries.into_iter().map(Piece::Delivery));
-                }
-                Deferred::Batch(start) => queue.push_back(Piece::Batch(start)),
-            }
-        }
-    };
     split(work, &mut queue);
     let mut outcomes = Vec::new();
     while let Some(piece) = queue.pop_front() {
@@ -243,14 +358,38 @@ pub async fn deliver(
     ctx: &mut Ctx<'_>,
     delivery: Delivery,
 ) -> Option<Outcome> {
+    attempt_delivery(executor, ctx, delivery, None)
+        .await
+        .map(|(outcome, _)| outcome)
+}
+
+/// The state [`attempt_delivery`] gives a delivery whose subscriber's run
+/// `within` cut short: given back `pending`, due at once.
+const CUT_SHORT: &str = "cut short";
+
+/// [`deliver`], with the state its record was left in: `succeeded`,
+/// `failed`, or `pending` to be tried again after a wait; or, when
+/// `within` (a route's `within:`, chunk 6.3) finishes while the
+/// subscriber's action runs, [`CUT_SHORT`]. Only the action is raced
+/// against it, never the delivery's own statements, so a claim is never
+/// left in doubt.
+async fn attempt_delivery(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    delivery: Delivery,
+    within: Option<&mut crate::LocalFuture<'_, ()>>,
+) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
         self, After, CHAIN_LIMIT, FAILED, LEASE_MS, PENDING, SUCCEEDED, failure_json, micros,
     };
     if ctx.in_action() {
-        return Some(Outcome::Fault(ctx.fault(
-            FaultKind::Defect("a delivery inside a running action".into()),
-            Frame::ENTRY,
-        )));
+        return Some((
+            Outcome::Fault(ctx.fault(
+                FaultKind::Defect("a delivery inside a running action".into()),
+                Frame::ENTRY,
+            )),
+            PENDING,
+        ));
     }
     let events = executor.events()?;
     let host = ctx.host();
@@ -286,13 +425,16 @@ pub async fn deliver(
     };
     let Some(subscriber) = events.plan.subscriber(&delivery.subscriber) else {
         settle(FAILED, None, Some(failure_json("subscriber_removed", None))).await;
-        return Some(Outcome::Fault(ctx.fault(
-            FaultKind::Defect(format!(
-                "a delivery to `{}`, which this build doesn't have",
-                delivery.subscriber
+        return Some((
+            Outcome::Fault(ctx.fault(
+                FaultKind::Defect(format!(
+                    "a delivery to `{}`, which this build doesn't have",
+                    delivery.subscriber
+                )),
+                Frame::ENTRY,
             )),
-            Frame::ENTRY,
-        )));
+            FAILED,
+        ));
     };
     if delivery.depth >= CHAIN_LIMIT {
         settle(FAILED, None, Some(failure_json("event_chain_limit", None))).await;
@@ -302,7 +444,7 @@ pub async fn deliver(
             "event_chain_limit",
         );
         failure.kind = Some("rejected".to_string());
-        return Some(Outcome::Failed(Box::new(failure)));
+        return Some((Outcome::Failed(Box::new(failure)), FAILED));
     }
     // A repeated delivery its subscriber handled already does nothing.
     if let Some(store) = &subscriber.store {
@@ -316,7 +458,7 @@ pub async fn deliver(
         match handled {
             Ok(rows) if !rows.is_empty() => {
                 settle(SUCCEEDED, None, None).await;
-                return Some(Outcome::Value(Value::Unit));
+                return Some((Outcome::Value(Value::Unit), SUCCEEDED));
             }
             Ok(_) => {}
             Err(_) => {
@@ -327,16 +469,19 @@ pub async fn deliver(
                     Some(failure_json("unavailable", Some("unavailable"))),
                 )
                 .await;
-                return Some(Outcome::Failed(Box::new(crate::unavailable())));
+                return Some((Outcome::Failed(Box::new(crate::unavailable())), PENDING));
             }
         }
     }
     let Some(args) = outbox::arguments(subscriber, &delivery.value) else {
         settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
-        return Some(Outcome::Fault(ctx.fault(
-            FaultKind::Defect("an event without the fields its subscriber reads".into()),
-            Frame::ENTRY,
-        )));
+        return Some((
+            Outcome::Fault(ctx.fault(
+                FaultKind::Defect("an event without the fields its subscriber reads".into()),
+                Frame::ENTRY,
+            )),
+            FAILED,
+        ));
     };
     let job = Job {
         callable: subscriber.callable,
@@ -356,12 +501,45 @@ pub async fn deliver(
         store,
         id: delivery.id,
     });
-    let outcome = as_system(executor, ctx, job).await;
+    let runner = ctx.runner();
+    let outcome = match within {
+        None => as_system(executor, ctx, job).await,
+        Some(within) => match race(as_system(executor, ctx, job), within).await {
+            First::Left(outcome) => outcome,
+            // A route stopped waiting (chunk 6.3): what the subscriber's
+            // action had begun is dropped, nothing it did kept, and the
+            // delivery is given back as it was, for deferred work to run.
+            First::Right(()) => {
+                ctx.abandon();
+                ctx.restore_runner(runner);
+                ctx.handled = None;
+                ctx.set_trace(trace);
+                ctx.chain = chain;
+                let _ = database
+                    .query_once(
+                        outbox::RELEASE,
+                        &[
+                            id.clone(),
+                            SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX)),
+                            micros(now),
+                        ],
+                    )
+                    .await;
+                return Some((
+                    Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
+                    CUT_SHORT,
+                ));
+            }
+        },
+    };
     ctx.handled = None;
     ctx.set_trace(trace);
     ctx.chain = chain;
-    match outbox::after(&outcome) {
-        After::Succeeded => settle(SUCCEEDED, None, None).await,
+    let state = match outbox::after(&outcome) {
+        After::Succeeded => {
+            settle(SUCCEEDED, None, None).await;
+            SUCCEEDED
+        }
         After::Retry { code, kind } => {
             let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
             let within = delivery
@@ -370,15 +548,18 @@ pub async fn deliver(
             let failure = Some(failure_json(&code, kind.as_deref()));
             if attempt < subscriber.attempts && next <= within {
                 settle(PENDING, Some(next), failure).await;
+                PENDING
             } else {
                 settle(FAILED, None, failure).await;
+                FAILED
             }
         }
         After::Fail { code, kind } => {
             settle(FAILED, None, Some(failure_json(&code, kind.as_deref()))).await;
+            FAILED
         }
-    }
-    Some(outcome)
+    };
+    Some((outcome, state))
 }
 
 /// Eight random bytes for a retry's jitter, from the host; none from a
@@ -1227,6 +1408,78 @@ mod tests {
         assert!(ctx.caller().is_some(), "the request's caller again");
         // What the jobs emitted was settled too: nothing is left over.
         assert!(ctx.take_deferred().is_empty());
+    }
+
+    /// A route waiting for its follow-on work (chunk 6.3): it runs the
+    /// work and what that sets off as the system, gives the request's
+    /// caller back for the answer, and stops at the first piece that
+    /// can't settle, or once `within:` has passed, leaving the rest for
+    /// after the response.
+    #[test]
+    fn waiting_for_follow_on_work_stops_at_what_has_not_settled() {
+        let program = Program::new(&[Does::Writes, Does::Echoes, Does::SetsOff, Does::Writes]);
+        let host = Fake::default();
+        let mut ctx = Ctx::new(&program.places, &host, Env::default());
+        signed_in(&mut ctx);
+        // Work that leaves nothing behind has settled.
+        // Work left before isn't this route's to wait for.
+        ctx.defer(job(0, "earlier", None));
+        let mut within: LocalFuture<'_, ()> = Box::pin(std::future::pending());
+        let settled = block_on(settle_within(
+            &program,
+            &mut ctx,
+            vec![job(1, "sum", None)],
+            &mut within,
+        ))
+        .expect("nothing waits");
+        assert_eq!(settled, Settled::Settled);
+        assert_eq!(ctx.take_deferred(), [job(0, "earlier", None)]);
+        // The job and the job it sets off run as the system; then the
+        // first delivery of what they emitted can't be claimed (this
+        // program has no subscribers), so the work hasn't settled, and
+        // the deliveries are left for after the response.
+        let settled = block_on(settle_within(
+            &program,
+            &mut ctx,
+            vec![job(2, "order", Some(9))],
+            &mut within,
+        ))
+        .expect("nothing waits");
+        assert_eq!(settled, Settled::Unsettled);
+        assert_eq!(
+            host.log.take(),
+            [
+                "begin repeatable_read",
+                "write order as system in 9",
+                "outbox",
+                "deliveries",
+                "commit",
+                "begin repeatable_read",
+                "write follow-on as system",
+                "outbox",
+                "deliveries",
+                "commit",
+            ]
+        );
+        assert!(ctx.caller().is_some(), "the request's caller again");
+        assert_eq!(ctx.system(), None);
+        assert_eq!(
+            deferred_events(ctx.take_deferred()),
+            ["type Wrote order", "type Wrote follow-on"]
+        );
+        // Once `within:` has passed, nothing more runs.
+        let mut passed: LocalFuture<'_, ()> = Box::pin(async {});
+        let settled = block_on(settle_within(
+            &program,
+            &mut ctx,
+            vec![job(0, "late", None)],
+            &mut passed,
+        ))
+        .expect("nothing waits");
+        assert_eq!(settled, Settled::Unsettled);
+        assert!(host.log.take().is_empty());
+        assert_eq!(ctx.take_deferred().len(), 1);
+        assert!(ctx.caller().is_some());
     }
 
     /// Deferred: the host is given the work to run once the response is

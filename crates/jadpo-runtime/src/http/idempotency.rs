@@ -121,6 +121,11 @@ pub enum Claim {
     Claimed,
     /// The key was kept with this request's response: answer with it.
     Replay(Response),
+    /// The key was kept by a route that waits for its follow-on work
+    /// (area 7, `settle:`; chunk 6.3), with the arguments of the query it
+    /// answers with, as JSON, and the status it answered: run the query
+    /// again rather than the action, showing how far the work has got.
+    Answer { status: u16, args: String },
     /// The key was kept with a different request.
     Reused,
     /// A request with the key is still running.
@@ -186,6 +191,8 @@ pub async fn claim(ctx: &mut Ctx<'_>, guard: &Guard, deadline_ms: u32) -> Claim 
         ) => {
             if *digest != guard.digest {
                 Claim::Reused
+            } else if let Some(answer) = answer(status, response) {
+                answer
             } else {
                 replay(status, response).map_or(Claim::InFlight, Claim::Replay)
             }
@@ -194,6 +201,24 @@ pub async fn claim(ctx: &mut Ctx<'_>, guard: &Guard, deadline_ms: u32) -> Claim 
         // still running, as far as this request can tell.
         _ => Claim::InFlight,
     }
+}
+
+/// A kept answer of a route that waits for its follow-on work: its
+/// status and its query's arguments; `None` for any other row.
+fn answer(status: &SqlValue, response: &SqlValue) -> Option<Claim> {
+    let status = match status {
+        SqlValue::Int2(status) => u16::try_from(*status).ok()?,
+        _ => return None,
+    };
+    let SqlValue::Json(kept) = response else {
+        return None;
+    };
+    let kept: serde_json::Value = serde_json::from_str(kept).ok()?;
+    let args = kept.get("answer").and_then(serde_json::Value::as_str)?;
+    Some(Claim::Answer {
+        status,
+        args: args.to_string(),
+    })
 }
 
 /// A kept response, or `None` while its request is still running.
@@ -248,6 +273,51 @@ pub fn store_params(guard: &Guard, response: &Response) -> Vec<SqlValue> {
         SqlValue::Json(serde_json::Value::Object(kept).to_string()),
         micros(guard.at.saturating_add(IDEMPOTENCY_KEEP_MS)),
     ]
+}
+
+/// The parameters that keep, over `guard`'s claim, what a route that
+/// waits for its follow-on work answers a repeat with (chunk 6.3): the
+/// arguments of the query it answers with, `args`, as JSON, and `status`,
+/// 202 until the work is known to have settled ([`SETTLED`]), so a
+/// process that stops between the commit and the answer never has a
+/// repeat say the work finished.
+pub fn answer_params(guard: &Guard, status: u16, args: String) -> Vec<SqlValue> {
+    let mut kept = serde_json::Map::new();
+    kept.insert("code".to_string(), serde_json::Value::Null);
+    kept.insert("body".to_string(), serde_json::Value::String(String::new()));
+    kept.insert("answer".to_string(), serde_json::Value::String(args));
+    vec![
+        SqlValue::Text(guard.scope.clone()),
+        SqlValue::Text(guard.key.clone()),
+        micros(guard.at),
+        SqlValue::Int2(i16::try_from(status).unwrap_or(i16::MAX)),
+        SqlValue::Json(serde_json::Value::Object(kept).to_string()),
+        micros(guard.at.saturating_add(IDEMPOTENCY_KEEP_MS)),
+    ]
+}
+
+/// Sets the status `$4` a kept answer repeats (chunk 6.3), once the work
+/// its request set off has settled.
+pub(crate) const SETTLED: &str = "UPDATE \"jadpo_idempotency_keys\" SET \"status\" = $4 WHERE \"scope\" = $1 AND \"key\" = $2 AND \"stored_at\" = $3 AND \"response\" -> 'answer' IS NOT NULL RETURNING \"scope\"";
+
+/// Keeps `status` as what `guard`'s answer repeats with, in one statement
+/// of its own. Best effort: a kept answer that can't be changed repeats
+/// 202, which never says the work finished when it may not have.
+pub async fn settled(ctx: &mut Ctx<'_>, guard: &Guard, status: u16) {
+    let Some(database) = ctx.host().database(&guard.store) else {
+        return;
+    };
+    let _ = database
+        .query_once(
+            SETTLED,
+            &[
+                SqlValue::Text(guard.scope.clone()),
+                SqlValue::Text(guard.key.clone()),
+                micros(guard.at),
+                SqlValue::Int2(i16::try_from(status).unwrap_or(i16::MAX)),
+            ],
+        )
+        .await;
 }
 
 /// Drops `guard`'s claim, so a retry runs the action again, in one
@@ -329,6 +399,7 @@ mod tests {
             status: SuccessStatus::NoContent,
             deadline_ms: 10_000,
             run: Run::Action(0),
+            settle: None,
             keys: Some("main".into()),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,
