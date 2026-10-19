@@ -62,6 +62,10 @@ pub(crate) fn held_secret(
         return Some(secret);
     }
     match ty {
+        // A feature's properties (area 20, chunk 5.5u7).
+        Ty::Opaque(name, args) if super::is_feature_type(name) => {
+            args.iter().find_map(|arg| held_secret(table, arg, seen))
+        }
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => held_secret(table, inner, seen),
         Ty::Map(key, value) => {
             held_secret(table, key, seen).or_else(|| held_secret(table, value, seen))

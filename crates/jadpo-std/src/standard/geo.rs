@@ -8,7 +8,7 @@
 //! 5.5u4); a `BoundingBox` and a `Circle` in named columns. What the page
 //! left open is area 19's "Chosen in chunk 5.5s".
 
-use super::across::{Check, Order, StandardRule, Verdict, in_order};
+use super::across::{Check, Order, Parts, StandardRule, Verdict, in_order};
 use super::{
     Examples, FIRST_RELEASE, FieldMatch, Format, FormatKey, Holds, Json, NO_OPTIONS, Part,
     StandardType, Storage, TextForm, Validator,
@@ -638,14 +638,15 @@ pub const LINE_STRING_ENTRY: StandardType = StandardType {
                 "(51.5072° N, 0.1276° W; 48.8566° N, 2.3522° E)",
             ),
             (
-                r#"{"type":"LineString","coordinates":[[0,0],[0.5,0.5,10],[1,0]]}"#,
-                "(0°, 0°; 0.5° N, 0.5° E, 10 m; 0°, 1° E)",
+                r#"{"type":"LineString","coordinates":[[0,0,10],[0.5,0.5,10],[1,0,12.5]]}"#,
+                "(0°, 0°, 10 m; 0.5° N, 0.5° E, 10 m; 0°, 1° E, 12.5 m)",
             ),
         ],
         &[
             // One point, none, a point out of range, a position that
-            // isn't one.
+            // isn't one, positions with and without an altitude.
             r#"{"type":"LineString","coordinates":[[0,0]]}"#,
+            r#"{"type":"LineString","coordinates":[[0,0],[0.5,0.5,10],[1,0]]}"#,
             r#"{"type":"LineString","coordinates":[]}"#,
             r#"{"type":"LineString","coordinates":[[0,0],[0,95]]}"#,
             r#"{"type":"LineString","coordinates":[[0,0],1]}"#,
@@ -667,29 +668,86 @@ pub const POLYGON_FIELDS: [(&str, Part); 2] = [("outer", POINTS), ("holes", Part
 /// no ring on one great circle, so the polygon is the smaller side, under
 /// half the globe. Checked on the sphere, exactly
 /// ([`crate::sphere::rings_broken`]).
-pub const POLYGON_RULES: &[StandardRule] = &[StandardRule {
-    name: "rings_valid",
-    written: "each ring closed and simple, no rings touching, holes inside the outer ring, every edge under half the globe",
-    label: "these rings don't make a valid polygon",
-    reason: "A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, \"Polygons are valid when built\").",
-    next: "Close each ring and move its points so no edge meets another, with each hole inside the outer ring",
-    check: Check::By(|parts| {
-        let (Some(outer), Some(holes)) = (
-            parts.rings("outer").into_value(),
-            parts.rings("holes").into_value(),
-        ) else {
-            return Verdict::Unknown;
+pub const POLYGON_RULES: &[StandardRule] = &[
+    StandardRule {
+        name: "rings_valid",
+        written: "each ring closed and simple, no rings touching, holes inside the outer ring, every edge under half the globe",
+        label: "these rings don't make a valid polygon",
+        reason: "A `Polygon`'s rings are closed with four points or more, never cross or meet themselves or each other, keep each hole inside the outer ring, and have every edge shorter than half the globe, so the polygon is the smaller side its outer ring bounds (area 20, \"Polygons are valid when built\").",
+        next: "Close each ring and move its points so no edge meets another, with each hole inside the outer ring",
+        check: Check::By(|parts| {
+            let (Some(outer), Some(holes)) = (
+                parts.rings("outer").into_value(),
+                parts.rings("holes").into_value(),
+            ) else {
+                return Verdict::Unknown;
+            };
+            let Some(outer) = outer.into_iter().next() else {
+                return Verdict::Breaks("outer");
+            };
+            match crate::sphere::rings_broken(&outer, &holes) {
+                None => Verdict::Holds,
+                Some(0) => Verdict::Breaks("outer"),
+                Some(_) => Verdict::Breaks("holes"),
+            }
+        }),
+    },
+    altitudes_agree(|parts| agree(parts, &["outer", "holes"])),
+];
+
+/// `altitudes_agree`, checked by `check`, which reads a geometry's
+/// positions part by part in order (area 20, "Altitudes are all or nothing", chunk 5.5u7): every
+/// position has an altitude or none does, since WKT can't write a mix and
+/// PostGIS can't hold one, a refusal pointing at the part holding the
+/// first position of the other size.
+const fn altitudes_agree(check: fn(&dyn Parts) -> Verdict) -> StandardRule {
+    StandardRule {
+        name: "altitudes_agree",
+        written: "every position with an altitude, or none",
+        label: "positions with and without an altitude",
+        reason: "Every position in one geometry has an altitude or none does, since WKT can't write a mix and PostGIS can't store one (area 20, \"Altitudes are all or nothing\").",
+        next: "Give every position an altitude, or none of them",
+        check: Check::By(check),
+    }
+}
+
+/// Whether the positions in `names`, in order, all have an altitude or
+/// none does: broken at the part holding the first of the other size once
+/// one with and one without are known, whatever else is unknown.
+fn agree(parts: &dyn Parts, names: &[&'static str]) -> Verdict {
+    let mut first = None;
+    let mut unknown = false;
+    for name in names {
+        let Some(positions) = parts.altitudes(name).into_value() else {
+            unknown = true;
+            continue;
         };
-        let Some(outer) = outer.into_iter().next() else {
-            return Verdict::Breaks("outer");
-        };
-        match crate::sphere::rings_broken(&outer, &holes) {
-            None => Verdict::Holds,
-            Some(0) => Verdict::Breaks("outer"),
-            Some(_) => Verdict::Breaks("holes"),
+        for position in positions {
+            match (position, first) {
+                (None, _) => unknown = true,
+                (Some(has), None) => first = Some(has),
+                (Some(has), Some(wanted)) if has != wanted => return Verdict::Breaks(name),
+                _ => {}
+            }
         }
-    }),
-}];
+    }
+    if unknown {
+        Verdict::Unknown
+    } else {
+        Verdict::Holds
+    }
+}
+
+/// `LineString`'s and `MultiPoint`'s rule: their points agree.
+pub const POINTS_RULES: &[StandardRule] = &[altitudes_agree(|parts| agree(parts, &["points"]))];
+
+/// `MultiLineString`'s rule: its lines agree with each other.
+pub const MULTI_LINE_STRING_RULES: &[StandardRule] =
+    &[altitudes_agree(|parts| agree(parts, &["lines"]))];
+
+/// `MultiPolygon`'s rule: its polygons agree with each other.
+pub const MULTI_POLYGON_RULES: &[StandardRule] =
+    &[altitudes_agree(|parts| agree(parts, &["polygons"]))];
 
 /// An area with any holes: a GeoJSON `Polygon`, each ring closed, written
 /// by RFC 7946's right-hand rule (the outer ring counterclockwise, each
@@ -723,6 +781,8 @@ pub const POLYGON_ENTRY: StandardType = StandardType {
             r#"{"type":"Polygon","coordinates":[]}"#,
             r#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,91],[0,0]]]}"#,
             r#"{"type":"Polygon","coordinates":[[0,0]]}"#,
+            // A hole at a height in an outer ring on the ground.
+            r#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]],[[0.25,0.25,5],[0.25,0.75,5],[0.75,0.75,5],[0.75,0.25,5],[0.25,0.25,5]]]}"#,
         ],
     ),
     release: FIRST_RELEASE,
@@ -753,6 +813,7 @@ pub const MULTI_POINT_ENTRY: StandardType = StandardType {
             r#"{"type":"MultiPoint","coordinates":[]}"#,
             r#"{"type":"MultiPoint","coordinates":[[0,-91]]}"#,
             r#"{"type":"MultiPoint","coordinates":[0,0]}"#,
+            r#"{"type":"MultiPoint","coordinates":[[0,0,5],[1,1]]}"#,
         ],
     ),
     release: FIRST_RELEASE,
@@ -785,6 +846,8 @@ pub const MULTI_LINE_STRING_ENTRY: StandardType = StandardType {
             r#"{"type":"MultiLineString","coordinates":[]}"#,
             r#"{"type":"MultiLineString","coordinates":[[[0,0]]]}"#,
             r#"{"type":"MultiLineString","coordinates":[[0,0],[1,1]]}"#,
+            // Each line agrees, but not with the other.
+            r#"{"type":"MultiLineString","coordinates":[[[0,0],[1,1]],[[2,2,5],[3,3,5]]]}"#,
         ],
     ),
     release: FIRST_RELEASE,
@@ -818,6 +881,7 @@ pub const MULTI_POLYGON_ENTRY: StandardType = StandardType {
             r#"{"type":"MultiPolygon","coordinates":[]}"#,
             r#"{"type":"MultiPolygon","coordinates":[[[[0,0],[1,0],[1,1],[0,1]]]]}"#,
             r#"{"type":"MultiPolygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}"#,
+            r#"{"type":"MultiPolygon","coordinates":[[[[0,0],[1,0],[1,1],[0,1],[0,0]]],[[[2,2,5],[3,2,5],[3,3,5],[2,3,5],[2,2,5]]]]}"#,
         ],
     ),
     release: FIRST_RELEASE,

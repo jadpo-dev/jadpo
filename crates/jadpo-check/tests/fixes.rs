@@ -413,7 +413,11 @@ fn a_list_of_points_swaps_to_a_line_string() {
             ),
             (
                 "domains/vans/actions/round_length_of.jadpo",
-                "use vans/types { RoundLength, VanRound }\n\n/// How far a van drives on its round.\naction round_length_of(round: VanRound) -> RoundLength {\n    return RoundLength(geo.length(LineString {\n        points: round.coordinates\n    }))\n}\n",
+                "use vans/failures { NotARound }\nuse vans/types { RoundLength, VanRound }\n\n/// How far a van drives on its round.\naction round_length_of(round: VanRound) fails NotARound -> RoundLength {\n    var line: LineString = attempt LineString {\n        points: round.coordinates\n    } {\n        altitudes_agree: NotARound\n    }\n    return RoundLength(geo.length(line))\n}\n",
+            ),
+            (
+                "domains/vans/failures/not_a_round.jadpo",
+                "/// Stops some at a height and some not.\ntype NotARound = Failure {\n    kind: FailureKind.invalid_value\n}\n",
             ),
         ],
     );
@@ -426,7 +430,7 @@ fn a_list_of_points_swaps_to_a_line_string() {
     fixed(&mut loaded, "VanRound", Fix::Swap);
     assert_eq!(
         texts(&loaded)["domains/vans/actions/round_length_of.jadpo"],
-        "use vans/types { RoundLength }\n\n/// How far a van drives on its round.\naction round_length_of(round: LineString) -> RoundLength {\n    return RoundLength(geo.length(LineString {\n        points: round.points\n    }))\n}\n"
+        "use vans/failures { NotARound }\nuse vans/types { RoundLength }\n\n/// How far a van drives on its round.\naction round_length_of(round: LineString) fails NotARound -> RoundLength {\n    var line: LineString = attempt LineString {\n        points: round.points\n    } {\n        altitudes_agree: NotARound\n    }\n    return RoundLength(geo.length(line))\n}\n"
     );
     assert_eq!(errors(&loaded), Vec::<String>::new());
 }

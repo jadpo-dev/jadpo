@@ -1751,8 +1751,12 @@ const LATER_FIELD_SETTINGS: [&str; 9] = [
 /// an option, or in a field of an object or a variant's data, however
 /// deep. An input, output or failure holding one is reported at its own
 /// declaration, so it isn't followed again.
-fn holds_principal(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
+pub(crate) fn holds_principal(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
     match ty {
+        // A feature's properties (area 20, chunk 5.5u7).
+        Ty::Opaque(name, args) if super::is_feature_type(name) => {
+            args.iter().any(|arg| holds_principal(table, arg, seen))
+        }
         Ty::Opaque(name, _) => {
             name == crate::identity::PRINCIPAL
                 || name.starts_with(&format!("{}.", crate::identity::PRINCIPAL))
@@ -1794,8 +1798,12 @@ fn holds_principal(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> boo
 /// 19): in a list, a map or an option, or in a field of an object or a
 /// variant's data. An input, output or failure holding one is reported at
 /// its own declaration, so it isn't followed again.
-fn holds_password_hash(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
+pub(crate) fn holds_password_hash(table: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) -> bool {
     match ty {
+        // A feature's properties (area 20, chunk 5.5u7).
+        Ty::Opaque(name, args) if super::is_feature_type(name) => {
+            args.iter().any(|arg| holds_password_hash(table, arg, seen))
+        }
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
             holds_password_hash(table, inner, seen)
         }

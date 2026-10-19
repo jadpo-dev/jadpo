@@ -9,7 +9,7 @@
 use crate::support;
 
 use jadpo_interp::Value;
-use support::{decimal, failure, fault, main, text, value};
+use support::{decimal, failure, main, text, value};
 
 const WKT: &str = "type Exported = Text {}
 
@@ -139,34 +139,68 @@ fn wkt_that_isn_t_a_geometry_fails_with_its_condition() {
     }
 }
 
+/// A geometry mixing positions with and without an altitude is never
+/// made (area 20, "Altitudes are all or nothing", chunk 5.5u7): built from
+/// values it breaks `altitudes_agree`, which its `attempt` maps, so
+/// `geo.to_wkt` only ever meets one it can write; WKT that mixes them is
+/// `malformed`.
 #[test]
-fn a_shape_mixing_altitudes_has_no_wkt() {
+fn a_shape_mixing_altitudes_never_reaches_wkt() {
     let program = main(
         &(WKT.to_string()
             + "
-/// A line with one corner at a height.
-function stepped() -> Exported {
-    return Exported(geo.to_wkt(LineString {
-        points: [
-            Point {
-                latitude: 0.0
-                longitude: 0.0
-                altitude: none
-            },
-            Point {
-                latitude: 1.0
-                longitude: 1.0
-                altitude: 5metre
-            }
-        ]
-    }))
+/// A line between two corners, for the planner's export.
+function stepped(from: Point, to: Point) fails Unreadable -> Exported {
+    var line: LineString = attempt LineString {
+        points: [from, to]
+    } {
+        altitudes_agree: Unreadable
+    }
+    return Exported(geo.to_wkt(line))
 }
 "),
     );
-    let found = fault(&program, "stepped", vec![]);
-    assert!(
-        format!("{:?}", found.kind).contains("mix with and without an altitude"),
-        "{found:?}"
+    let corner = |latitude: &str, altitude: Value| {
+        Value::record(
+            "Point",
+            vec![
+                ("latitude".into(), decimal(latitude)),
+                ("longitude".into(), decimal(latitude)),
+                ("altitude".into(), altitude),
+            ],
+        )
+    };
+    let height = || {
+        Value::Quantity(jadpo_value::Quantity {
+            kind: jadpo_std::QuantityKind::Length,
+            amount: 5_000_000,
+        })
+    };
+    assert_eq!(
+        failure(
+            &program,
+            "stepped",
+            vec![corner("0", Value::None), corner("1", height())]
+        )
+        .name,
+        "Unreadable"
+    );
+    assert_eq!(
+        value(
+            &program,
+            "stepped",
+            vec![corner("0", height()), corner("1", height())]
+        ),
+        text("LINESTRING Z (0 0 5,1 1 5)")
+    );
+    assert_eq!(
+        failure(
+            &program,
+            "shape_from_export",
+            vec![text("LINESTRING(0 0,1 1 5)")]
+        )
+        .name,
+        "Unreadable"
     );
 }
 
@@ -309,5 +343,112 @@ fn what_isn_t_the_layer_is_refused() {
     assert_eq!(
         value(&program, "sent", vec![layer]),
         text(r#"{"type":"FeatureCollection","features":[]}"#)
+    );
+}
+
+const PINS: &str = "/// A pin's label.
+type PinLabel = Text {
+    max_length: 80
+}
+
+/// What the map shows beside a pin.
+type PinProperties = Object {
+    label: PinLabel
+}
+
+/// The map's pins.
+action map_pins() -> FeatureCollection<Point, PinProperties> {
+    return FeatureCollection {
+        features: [
+            Feature {
+                geometry: Point {
+                    latitude: 51.5072
+                    longitude: -0.1276
+                    altitude: none
+                }
+                properties: PinProperties {
+                    label: PinLabel(\"Crumbs\")
+                }
+            }
+        ]
+    }
+}
+
+/// The map's layers.
+routes Pins {
+    prefix: /pins
+
+    /// Every pin, as the map draws them.
+    POST / {
+        authentication: RouteAuthentication.none
+        output: FeatureCollection<Point, PinProperties>
+        run: map_pins()
+    }
+}
+
+policy {
+    actions: {
+        map_pins: [Access.public]
+    }
+}
+";
+
+const PINS_TESTS: &str = "test \"the map fetches its pins as GeoJSON\" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: \"/pins\"
+    }
+    assert response.status == 200
+    assert response.code == none
+    assert response.output == map_pins()
+}
+";
+
+/// The pins as RFC 7946 GeoJSON, as a mapping library fetches them.
+const PINS_SENT: &str = r#"{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"label":"Crumbs"}}]}"#;
+
+/// A route sends a layer bare (area 7, "A map layer as output", chunk
+/// 5.5u7): its body is the `FeatureCollection` itself, which a mapping
+/// library fetches as it is, and a route test reads it back as the layer
+/// the action returned.
+#[test]
+fn a_route_s_layer_is_fetched_as_plain_geojson() {
+    let program = support::program(&[("main.jadpo", PINS), ("main.test.jadpo", PINS_TESTS)]);
+    let host = jadpo_runtime::MemoryHost::new();
+    let mut ctx = jadpo_runtime::Ctx::new(program.places(), &host, jadpo_runtime::Env::default());
+    let request = jadpo_runtime::http::Request {
+        method: "POST".to_string(),
+        path: "/pins".to_string(),
+        headers: vec![
+            ("content-type".to_string(), "application/json".to_string()),
+            (
+                "idempotency-key".to_string(),
+                "6f1d2c3b-4a59-4e7f-8d10-2b3c4d5e6f70".to_string(),
+            ),
+        ],
+        ..Default::default()
+    };
+    let response = jadpo_runtime::block_on(jadpo_runtime::http::handle(
+        &program.app(),
+        &program,
+        &mut ctx,
+        &request,
+        "req_1",
+    ))
+    .expect("nothing waits");
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    assert_eq!(String::from_utf8_lossy(&response.body), PINS_SENT);
+    assert_eq!(
+        support::run(
+            &program,
+            "test main \"the map fetches its pins as GeoJSON\"",
+            vec![]
+        ),
+        jadpo_interp::Outcome::Value(Value::Unit)
     );
 }

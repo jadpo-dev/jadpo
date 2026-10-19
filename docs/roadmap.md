@@ -1618,6 +1618,28 @@ reference only).
   What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
   of an instant, which needs a zone PostgreSQL may not see as Jadpo
   does, is left for Richard.
+- [x] **5.5u7 Altitudes all or nothing; a layer from a route** `opus ·
+  high` (areas 20 and 7, decided 2026-10-19), after 5.5u6: a geometry
+  mixing positions with and without an altitude refused as `format` when
+  read from GeoJSON or WKT and by the rule `altitudes_agree` when built
+  (area 20, "Altitudes are all or nothing"), replacing 5.5u6's
+  provisional refusal and the fault in storage and `geo.to_wkt`; a route
+  sending a `FeatureCollection<G, P>` bare, its `P` held to what an
+  `Output` may hold, in OpenAPI and the API record, and
+  `route.output_not_output`'s reason amended (area 7, "A map layer as
+  output"). Done when a mixed geometry is refused at each door with a
+  checked example, and a route's layer is fetched as plain GeoJSON in a
+  route test. Built: `altitudes_agree` on every geometry of more than one
+  position, decided while compiling where each point is written out and
+  attempted otherwise, GeoJSON refusing a mix as `format` at its first
+  position and WKT as `malformed`; the storage and `geo.to_wkt` faults
+  removed; a bare `FeatureCollection` output, its properties refused
+  what an `Output` may not hold and, where an action returns it, held to
+  field policy. Open for Richard: a `GET` runs a query, which can't build
+  a layer, so a route sending one answers `POST` for now (areas 7 and 20,
+  "Chosen in chunk 5.5u7").
+- [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
+  time, translations and the standard library, passing `--require-examples`.
 - [x] **5.7 Teaching examples for Phase 5: settings, time and words**
   `opus · high`: new numbered examples for configuration (`config.jadpo`,
   constants, the key and address settings and what `crypto` does with
@@ -1654,10 +1676,11 @@ reference only).
   percentage discount moved to `Money`, as area 19 ("Money and
   payments") says.
 - [ ] **5.7d Teaching examples: the closed lists** `opus · high`, after
-  5.7c, **needs Richard** first: the coverage test counts every value of
-  `Locale`, `Zone`, `Country` and `Currency` that a standard operation
-  takes as a feature of its own (1,383 of the 1,646), which no realistic
-  example names. He decides how the test counts them; then the examples
+  5.7c: the coverage test counts each closed list a standard operation
+  takes (`Locale`, `Zone`, `Country`, `Currency`, and the unit enums such
+  as `LengthUnit`) as one feature, used when an example names any of its
+  values, since each value is already held to its source table by the
+  crate tests (decided 2026-10-19, as 5.7 recommended); then the examples
   pass `--require-examples`.
 
 ## Phase 6 — Events and schedules (area 12)

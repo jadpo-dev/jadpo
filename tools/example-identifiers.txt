@@ -143,6 +143,7 @@ bakery_day
 bakery_id
 bakery_name
 bakery_names
+bakery_pins
 bakery_recipes
 bakery_view
 baking
@@ -440,6 +441,7 @@ container_label
 contoso
 contractor_visit
 copy_name
+corner
 cosmos
 cost_bun
 cost_recipe
@@ -1457,9 +1459,12 @@ pick_slot
 pickup_outlet
 pie
 piece_count
+pin_label
 pin_note
+pin_properties
 ping
 pinned_fingerprint
+pins
 pitches
 place_order
 place_request

@@ -473,17 +473,16 @@ fn every_standard_type_meets_the_contract() {
             } else if entry.storage == jadpo_std::standard::Storage::Geography {
                 // A PostGIS `geography` column (area 20, chunk 5.5u4),
                 // which holds a geometry whose positions all have an
-                // altitude or none do; one that mixes them is refused.
+                // altitude or none do, as every geometry is made (chunk
+                // 5.5u7).
                 assert_eq!(entry.column_type(), "geography", "{name}");
-                let mixed = jadpo_value::geo::shape(&value)
-                    .is_some_and(|shape| shape.has_altitude().is_none());
-                let stored = jadpo_runtime::to_sql(&value, jadpo_std::SqlType::Geography);
-                if mixed {
-                    assert!(stored.is_err(), "{name}: `{text}` mixes altitudes");
-                    values.push(value);
-                    continue;
-                }
-                let sql = stored.unwrap_or_else(|why| panic!("{name}: `{text}` is stored ({why})"));
+                assert!(
+                    jadpo_value::geo::shape(&value)
+                        .is_some_and(|shape| shape.has_altitude().is_some()),
+                    "{name}: `{text}` mixes altitudes"
+                );
+                let sql = jadpo_runtime::to_sql(&value, jadpo_std::SqlType::Geography)
+                    .unwrap_or_else(|why| panic!("{name}: `{text}` is stored ({why})"));
                 assert_eq!(
                     jadpo_runtime::from_sql(
                         &sql,

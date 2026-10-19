@@ -2,7 +2,7 @@
 title: Geospatial
 area: 20
 status: decided
-checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2; the interop examples are fragments until chunk 5.5u6 builds them
+checked-with: this checkout's jadpo on every gate run, from chunk 5.5u2
 rules: []
 ---
 
@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunk 5.5u5 built the query conditions, the order by distance and the derived indexes, as "Chosen in chunk 5.5u5" records; chunk 5.5u6 builds the rest, as "Building it" says. Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunk 5.5u5 built the query conditions, the order by distance and the derived indexes, as "Chosen in chunk 5.5u5" records; chunk 5.5u6 built interop, as "Chosen in chunk 5.5u6" records; chunk 5.5u7 built altitudes all or nothing and a layer sent from a route, as "Chosen in chunk 5.5u7" records. Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -162,18 +162,24 @@ test "London to Paris is measured on the ellipsoid" {
 }
 
 test "a round is its legs summed" {
-    var bakery: Point = Point {
-        latitude: 51.5072
-        longitude: -0.1276
-        altitude: none
-    }
-    var customer: Point = Point {
-        latitude: 48.8566
-        longitude: 2.3522
-        altitude: none
-    }
     var van_round: LineString = LineString {
-        points: [bakery, customer, bakery]
+        points: [
+            Point {
+                latitude: 51.5072
+                longitude: -0.1276
+                altitude: none
+            },
+            Point {
+                latitude: 48.8566
+                longitude: 2.3522
+                altitude: none
+            },
+            Point {
+                latitude: 51.5072
+                longitude: -0.1276
+                altitude: none
+            }
+        ]
     }
     assert round_length(van_round) == 687793.782534metre
 }
@@ -343,7 +349,21 @@ code breaks a named rule, `rings_valid`, mapped like any cross-field rule
 over the edges); a country's outline of 10,000 points takes about 70 ms
 (measured in chunk 5.5u3).
 
-A polygon built from values is attempted:
+### Altitudes are all or nothing
+
+Every position in one geometry has an altitude, or none does (Richard,
+2026-10-19). WKT can't write a mix and PostGIS refuses one ("can not mix
+dimensionality in a geometry", verified in chunk 5.5u4), so a geometry
+that mixes them couldn't be stored or exchanged. A mixed geometry read
+from GeoJSON or WKT is refused, `format` at the first position of the
+other size, and one built in code breaks a named rule, `altitudes_agree`,
+mapped like `rings_valid`. A `Point` has one position, so it always
+agrees; a multi-geometry's parts must agree with each other. Built in
+chunk 5.5u7: a literal whose every point is written out, each altitude
+written `none`, given, or a value that can't be `none`, is decided while
+compiling, and anything else is attempted.
+
+A polygon built from values is attempted, for both rules:
 
 ```jadpo check project=geo-shapes file=patches.jadpo
 type NotAPatch = Failure {
@@ -357,6 +377,7 @@ function patch_from(clicked: List<Point>, first: Point) fails NotAPatch -> Polyg
         holes: []
     } {
         rings_valid: NotAPatch  // edges that cross, or a corner clicked twice
+        altitudes_agree: NotAPatch  // corners at a height and on the ground
     }
 }
 ```
@@ -387,6 +408,28 @@ test "a patch whose edges cross isn't one" {
         }
     ]
     assert patch_from(bow_tie, bow_start) fails NotAPatch
+}
+
+test "a patch with one corner at a height isn't one" {
+    var corner: Point = Point {
+        latitude: 0.0
+        longitude: 0.0
+        altitude: none
+    }
+    var clicked: List<Point> = [
+        corner,
+        Point {
+            latitude: 0.0
+            longitude: 1.0
+            altitude: 35metre
+        },
+        Point {
+            latitude: 1.0
+            longitude: 1.0
+            altitude: none
+        }
+    ]
+    assert patch_from(clicked, corner) fails NotAPatch
 }
 ```
 
@@ -1018,7 +1061,7 @@ function drawn_layer(
 ) fails NotALayer -> FeatureCollection<Polygon, PatchProperties> {
     return attempt json.read(sent, as: FeatureCollection<Polygon, PatchProperties>) {
         malformed: NotALayer
-        mismatch: NotALayer  // an `id`, a missing geometry, properties of another shape
+        mismatch: NotALayer  // an `id`, a missing geometry, altitudes on some corners only
     }
 }
 ```
@@ -1040,7 +1083,83 @@ test "a feature's identity is in its properties" {
         )
     ) fails NotALayer
 }
+
+test "a patch with one corner at a height is refused" {
+    assert drawn_layer(
+        LayerJson(
+            "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[[[-0.2,51.49],[-0.05,51.49,35],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]},\"properties\":{\"name\":\"Soho\",\"bakery_id\":\"7b0c1f8e-3a52-4d7e-9a41-2f1d5c6e8b90\"}}]}"
+        )
+    ) fails NotALayer
+}
 ```
+
+A route sends a layer bare, as it sends a `List` or `Page` of an `Output`
+(area 7, "A map layer as output", built in chunk 5.5u7), so a mapping
+library fetches it as the whole response, plain RFC 7946 GeoJSON. Its
+properties hold only what an `Output` may, so only fields declared for
+clients leave the server:
+
+```jadpo check project=geo-layer-route
+type PinLabel = Text {
+    max_length: 80
+}
+
+type LayerJson = Text {}
+
+type PinProperties = Object {
+    label: PinLabel
+}
+
+/// The bakeries on the map, each pin labelled.
+action bakery_pins() -> FeatureCollection<Point, PinProperties> {
+    return FeatureCollection {
+        features: [
+            Feature {
+                geometry: Point {
+                    latitude: 51.5136
+                    longitude: -0.1365
+                    altitude: none
+                }
+                properties: PinProperties {
+                    label: PinLabel("Soho")
+                }
+            }
+        ]
+    }
+}
+
+routes Pins {
+    prefix: /pins
+
+    POST / {
+        authentication: RouteAuthentication.none
+        output: FeatureCollection<Point, PinProperties>
+        run: bakery_pins()
+    }
+}
+
+policy {
+    actions: {
+        bakery_pins: [Access.public]
+    }
+}
+
+test "the map fetches its pins as GeoJSON" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/pins"
+    }
+    assert response.status == 200
+    assert response.output == bakery_pins()
+    assert LayerJson(json.write(bakery_pins())) == LayerJson(
+        "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[-0.1365,51.5136]},\"properties\":{\"label\":\"Soho\"}}]}"
+    )
+}
+```
+
+The route answers `POST`: a `GET` runs a query, and a query can't build
+a layer yet ("Chosen in chunk 5.5u7").
+
 
 WKT, built in chunk 5.5u6, from the planner's spreadsheet, which holds
 each outline as WKT, longitude first:
@@ -1055,7 +1174,7 @@ type NotAShape = Failure {
 /// A patch's outline from the planner's spreadsheet, as WKT.
 function outline_from(sheet_text: SheetText) fails NotAShape -> Geometry {
     return attempt geo.from_wkt(sheet_text) {
-        malformed: NotAShape  // not WKT, or rings that cross
+        malformed: NotAShape  // not WKT, rings that cross, or a height on some corners only
         out_of_range: NotAShape  // past the poles, or another system
     }
 }
@@ -1085,6 +1204,7 @@ test "what isn't an outline is refused" {
     assert outline_from(SheetText("POINT(-0.1276 91)")) fails NotAShape
     assert outline_from(SheetText("SRID=4258;POINT(-0.1276 51.5072)")) fails NotAShape
     assert outline_from(SheetText("POLYGON((0 0,10 10,0 10,10 0,0 0))")) fails NotAShape
+    assert outline_from(SheetText("LINESTRING(0 0,1 1 35)")) fails NotAShape
 }
 ```
 
@@ -1113,6 +1233,7 @@ test "what isn't an outline is refused" {
 | Storage: `geography` columns and their checks, `BoundingBox` and `Circle` in named columns, PostGIS created by the first migration that needs it, `migration.extension_missing`, `kind: IndexKind.geographic` | Decided 2026-10-18; built (5.5u4) |
 | Query conditions, the box and circle filters, order by distance inside a radius, derived GiST indexes | Decided 2026-10-18; built (5.5u5) |
 | Interop: `Feature` and `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, `type.standard_exists`' shapes for `LineString` and `Polygon` | Decided 2026-10-18; built (5.5u6) |
+| Altitudes all or nothing (`format` when read, `altitudes_agree` when built); a `FeatureCollection` sent bare from a route | Decided 2026-10-19; built (5.5u7) |
 
 ### Consistency with the rest of the language
 
@@ -1158,6 +1279,8 @@ test "what isn't an outline is refused" {
 | Point-only distance | `geo.distance` and `within(distance:)` between points only for now (Richard, as recommended, question 10) | 2026-10-18 |
 | Box filter | On `Point` fields only, through an index on the column cast to `geometry` (Richard, as recommended, question 11) | 2026-10-18 |
 | The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written (Richard, as recommended) | 2026-10-18 |
+| Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built (Richard, as recommended, after chunk 5.5u4) | 2026-10-19 |
+| A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7; Richard, as recommended, after chunk 5.5u6) | 2026-10-19 |
 
 ### Chosen in chunk 5.5u2
 
@@ -1396,7 +1519,9 @@ test "what isn't an outline is refused" {
   rings of four points or more, `rings_valid`), since another program may
   have written the row; one that isn't, or a geometry of another kind
   than the field's, is a fault naming the rule, never the value.
-- **A geometry whose positions mix altitudes isn't stored.** A
+- **A geometry whose positions mix altitudes isn't stored,** *since
+  decided: no geometry mixes them ("Altitudes are all or nothing", built
+  in 5.5u7), so the fault is gone.* A
   `geography` holds every position with a third coordinate or none
   ("can not mix dimensionality in a geometry", verified), but a Jadpo
   geometry may mix them (a `LineString` with one point at a height, as
@@ -1560,8 +1685,8 @@ test "what isn't an outline is refused" {
   `encoding.from_hex`'s does; the place is for the tests and for a later
   failure that receives it.
 - **Positions with and without an altitude in one geometry,**
-  *provisional, pending Richard's answer on whether such a geometry is
-  valid at all:* WKT can't write one and PostGIS refuses it ("can not
+  *since decided: all or nothing ("Altitudes are all or nothing", built
+  in 5.5u7):* WKT can't write one and PostGIS refuses it ("can not
   mix dimensionality in a geometry", verified), so reading WKT that mixes
   them is `malformed`, at the first position of the other size, and
   `geo.to_wkt` of a geometry built in code that mixes them is a fault,
@@ -1602,7 +1727,8 @@ test "what isn't an outline is refused" {
   is area 5's structured `jsonb`, which isn't built
   (`toolchain.not_built_yet`); the application stores the geometry and
   the properties as fields of their own.
-- **Sent from a route inside an `Output`.** Area 7 sends only an
+- **Sent from a route inside an `Output`,** *since decided: a route may
+  send one bare (area 7, "A map layer as output", built in 5.5u7).* Area 7 sends only an
   `Output`, so a layer goes out as an `Output`'s field, described in
   OpenAPI as RFC 7946's object with each feature's geometry and
   properties, and in the API record as `FeatureCollection<Point,
@@ -1623,6 +1749,46 @@ test "what isn't an outline is refused" {
   0.1.0 beside the others, so 259 standard types are built; and
   `type.type_argument_count` lists them beside `List`, `Set`, `Map` and
   `Range`.
+
+### Chosen in chunk 5.5u7
+
+- **What a literal decides.** `altitudes_agree` reads each `Point`
+  written out in a geometry literal, however deep (a line's points, a
+  polygon's rings, a multi-polygon's polygons): an altitude written
+  `none` is none, one written out or of a type that can't be `none` (a
+  distance) is one, and anything else, a point or a list held in a
+  variable, is only known when the program runs. Positions known both
+  ways are `type.invalid_literal` at the part holding the first of the
+  other size, whatever else is unknown; otherwise the literal is
+  attempted, as `rings_valid`'s is. So a line from points held in
+  variables is attempted, even where each variable holds a literal: the
+  checker doesn't follow a variable's value, as it doesn't for
+  `rings_valid`.
+- **The order of a polygon's rules.** `rings_valid` first, then
+  `altitudes_agree`, so a literal or a value breaking both names
+  `rings_valid`, as GeoJSON and WKT check a ring before the positions'
+  sizes.
+- **Reading.** GeoJSON is checked once the geometry has read, every
+  position in the order written, refused `format` at the first of the
+  other size (`coordinates.1.0.2`), a multi-geometry's parts across
+  each other. WKT's reader already refused a mix at that position since
+  5.5u6, and its condition stays `malformed`, the operation's one
+  condition for text that isn't a geometry.
+- **The faults are gone.** Storage binds a geometry without asking, and
+  `geo.to_wkt` meets no geometry it can't write; one put together past
+  every door is the runtime's "value of a kind the checker would have
+  refused". The PostgreSQL driver still refuses to encode a shape that
+  mixes them, since its EWKB type flag is one for the whole geometry.
+- **A layer from a route** is checked and sent as area 7's "Chosen in
+  chunk 5.5u7" records. A `GET` runs a query, and a query gives records
+  or an `Output`, never a layer, so a route sending one runs an action,
+  with `POST`. Open for Richard: a mapping library fetches its layer
+  with `GET`, so letting a query build one would let it point at the
+  route directly.
+- **Example values.** `LineString`'s accepted example with one point at a
+  height became one with every point at a height, and each geometry's
+  refused examples gained a mix, which the per-type tests read through
+  every boundary.
 
 ### Open questions
 
@@ -1763,4 +1929,9 @@ Five chunks, each one session, placed after 5.5u on the roadmap:
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done
   when a feature collection round-trips through JSON and a WKT polygon
   through PostGIS unchanged. *Built:* as "Chosen in chunk 5.5u6" records;
-  mixing altitudes in one geometry stays provisional, pending Richard.
+  mixing altitudes in one geometry was decided afterwards (all or nothing, 5.5u7).
+- **5.5u7 Altitudes all or nothing; a layer from a route** `opus · high`,
+  after 5.5u6: `format` when read and `altitudes_agree` when built, the
+  storage and `geo.to_wkt` faults removed, and a route sending a
+  `FeatureCollection<G, P>` bare (area 7). *Built:* as "Chosen in chunk
+  5.5u7" records.
