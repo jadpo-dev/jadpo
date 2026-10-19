@@ -16,6 +16,6 @@ pub const MAX_DEPTH: usize = 1_000;
 pub const JSON_KEPT_LIMIT: usize = jadpo_std::http::BODY_LIMIT;
 
 /// The most arrays and objects a value kept as JSON nests (chunk 5.9b):
-/// as deep as a request's body is read (the JSON reader stops past 127),
-/// so a value is never kept that can't be read back.
-pub const JSON_KEPT_DEPTH: usize = 127;
+/// as deep as a request's body is read (`jadpo_value::json::parse`), so a
+/// value is never kept that can't be read back.
+pub const JSON_KEPT_DEPTH: usize = 128;

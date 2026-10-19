@@ -2679,7 +2679,7 @@ values, each the most conservative reading:
   (`type.unknown_setting`), and a part is read only by reading its field,
   so area 9's proofs hold it as they hold the field.
 - **Limits.** A stored value is at most 1 MiB of JSON, the most a
-  request's body may be (area 7), nested at most 127 arrays and objects
+  request's body may be (area 7), nested at most 128 arrays and objects
   deep, the most a request's body is read to, so whatever is kept could
   have arrived in a request and always reads back. Writing a larger or a
   deeper one is a fault naming the limit, as is reading one written

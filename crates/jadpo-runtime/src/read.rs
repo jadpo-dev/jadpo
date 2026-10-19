@@ -1238,7 +1238,7 @@ mod tests {
         let deepest = nested(JSON_KEPT_DEPTH);
         assert_eq!(kept_within_limits(&deepest), Ok(()));
         assert!(
-            serde_json::from_str::<serde_json::Value>(&deepest).is_ok(),
+            jadpo_value::json::parse(deepest.as_bytes()).is_some(),
             "read back as a request's body is"
         );
         assert_eq!(
@@ -1248,12 +1248,12 @@ mod tests {
             ))
         );
         assert!(
-            serde_json::from_str::<serde_json::Value>(&nested(JSON_KEPT_DEPTH + 1)).is_err(),
+            jadpo_value::json::parse(nested(JSON_KEPT_DEPTH + 1).as_bytes()).is_none(),
             "deeper than a request's body is read"
         );
         // Brackets inside text, escaped quotes among them, aren't nesting.
         let text = format!("[\"{}\\\"{}\"]", "[".repeat(200), "{".repeat(200));
-        assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
+        assert!(jadpo_value::json::parse(text.as_bytes()).is_some());
         assert_eq!(kept_within_limits(&text), Ok(()));
         let secret = "hunter2-correct-horse";
         let large = format!("[\"{secret}{}\"]", "x".repeat(JSON_KEPT_LIMIT));

@@ -1840,7 +1840,7 @@ chunks below, taken before Phase 6.
   PostgreSQL, its rules enforced. *Built:* chunk 5.5w2b's column path
   for any structured type, its parts with no stored form
   `data.field_without_json`; a value kept as JSON held to a request
-  body's 1 MiB and 127 levels, `none` the column's `NULL`; no query
+  body's 1 MiB and 128 levels, `none` the column's `NULL`; no query
   condition, order, unique rule, index or lifecycle value but `none` on
   one; every event type numbered in the JSON table by its identity key
   (no job takes arguments yet); live tests reading each back unchanged

@@ -322,7 +322,7 @@ table with the program's validators and shapes (`JsonCodecs`, as
 `json.read` is given them), so its `jsonb` holds what `json.write` writes
 and reads back as `json.read` reads. Since chunk 5.9b that is every field
 stored as JSON, an application's enum with data, object, list, set or map
-among them (`FieldModel::json` holds its type), within the 1 MiB and 127
+among them (`FieldModel::json` holds its type), within the 1 MiB and 128
 levels a request's body is read to (`JSON_KEPT_LIMIT`, `JSON_KEPT_DEPTH`),
 and the table numbers each event type too, by its identity key
 (`JsonTable::events`), for the outbox's payload.
