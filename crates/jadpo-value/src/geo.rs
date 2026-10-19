@@ -301,6 +301,93 @@ fn position(json: &serde_json::Value, at: &[String]) -> Result<Value, Unreadable
     Ok(point(latitude, longitude, altitude))
 }
 
+/// `geo.from_geojson(text)` (chunk 5.11): the `Geometry` GeoJSON text
+/// holds, read by [`read`], the one GeoJSON reader, with every check a
+/// geometry on the wire gets. Text that isn't one JSON document is
+/// `malformed`, as is a document that isn't one of the six geometries; a
+/// coordinate past its range, or an altitude past a `Length`'s, is
+/// `out_of_range`. The place [`read`] reports is for its tests; the
+/// failure carries the condition only, as `geo.from_wkt`'s does.
+pub fn from_geojson(text: &Value) -> Result<Value, Fault> {
+    let Value::Text(text) = text else {
+        return Err(Fault::Shape);
+    };
+    let malformed = Fault::Broke(jadpo_std::RuleKey::Malformed);
+    let json: serde_json::Value = serde_json::from_str(text).map_err(|_| malformed.clone())?;
+    read(GEOMETRY, &json).map_err(|refused| match refused.rule {
+        "min" | "max" => Fault::Broke(jadpo_std::RuleKey::OutOfRange),
+        _ => malformed,
+    })
+}
+
+/// `geo.from_lat_lng(numbers)` (chunk 5.11): the `Point` a pair gives,
+/// latitude first, or a triple, its altitude third.
+pub fn from_lat_lng(numbers: &Value) -> Result<Value, Fault> {
+    position_from(numbers, false)
+}
+
+/// `geo.from_lng_lat(numbers)` (chunk 5.11): the `Point` a pair gives,
+/// longitude first, as a GeoJSON position, or a triple, its altitude
+/// third.
+pub fn from_lng_lat(numbers: &Value) -> Result<Value, Fault> {
+    position_from(numbers, true)
+}
+
+/// A `Point` from two numbers or three, in the order named: each
+/// coordinate the shortest decimal of the nearest double, as a `Point`
+/// built in code holds it (area 20, question 2), then held to its range,
+/// as GeoJSON's are; an altitude in metres, a `Length` rounded half to
+/// even to its micrometre. Another count of numbers is `malformed`, and a
+/// coordinate or an altitude out of its range `out_of_range`.
+fn position_from(numbers: &Value, longitude_first: bool) -> Result<Value, Fault> {
+    let Value::List(items) = numbers else {
+        return Err(Fault::Shape);
+    };
+    let read = items
+        .iter()
+        .map(|item| match item {
+            Value::Int(whole) => Ok(Decimal::new(i128::from(*whole), 0)),
+            Value::Decimal(decimal) => Ok(*decimal),
+            _ => Err(Fault::Shape),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let (first, second, altitude) = match read.as_slice() {
+        [first, second] => (*first, *second, None),
+        [first, second, altitude] => (*first, *second, Some(*altitude)),
+        _ => return Err(Fault::Broke(jadpo_std::RuleKey::Malformed)),
+    };
+    let (longitude, latitude) = if longitude_first {
+        (first, second)
+    } else {
+        (second, first)
+    };
+    let out_of_range = || Fault::Broke(jadpo_std::RuleKey::OutOfRange);
+    let kept = |value: Decimal, bound: i128| -> Result<Decimal, Fault> {
+        let nearest = jadpo_std::standard::geo::nearest_double(&value.to_string())
+            .and_then(|text| Decimal::parse(&text))
+            .ok_or_else(out_of_range)?;
+        if nearest < Decimal::new(-bound, 0) || nearest > Decimal::new(bound, 0) {
+            return Err(out_of_range());
+        }
+        Ok(nearest)
+    };
+    let latitude = kept(latitude, 90)?;
+    let longitude = kept(longitude, 180)?;
+    let altitude = match altitude {
+        Some(metres) => {
+            let unit = QuantityKind::Length.base_unit();
+            let amount = jadpo_std::quantity::to_base(metres.mantissa, metres.scale, unit)
+                .ok_or_else(out_of_range)?;
+            Value::Quantity(crate::Quantity {
+                kind: QuantityKind::Length,
+                amount,
+            })
+        }
+        None => Value::None,
+    };
+    Ok(point(latitude, longitude, altitude))
+}
+
 /// A `Point` from its parts.
 pub fn point(latitude: Decimal, longitude: Decimal, altitude: Value) -> Value {
     Value::record(

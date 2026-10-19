@@ -25,9 +25,6 @@ ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 # through it is `semantic.standard_operation_moved`.
 [namespaces]
 collection:
-# The constructions from pairs and GeoJSON text, area 19's, not built
-# yet; area 20's operations are all declared in `geo.jadpo`.
-geo: from_geojson from_lng_lat from_lat_lng
 
 # Namespaces the compiler fills from the project or the platform, with the
 # members built so far; any other member is `toolchain.not_built_yet` until

@@ -220,6 +220,9 @@ pub enum Op {
     GeoCentroid,
     GeoContains,
     GeoDistance,
+    GeoFromGeojson,
+    GeoFromLatLng,
+    GeoFromLngLat,
     GeoFromWkt,
     GeoIntersects,
     GeoLength,
@@ -1550,6 +1553,42 @@ pub const OPERATIONS: &[Operation] = &[
         LENGTH_VALUE,
         "geo::distance",
     ),
+    // The constructions at an axis order's named edges (area 19, "Shared
+    // vocabulary types"; chunk 5.11): GeoJSON text, read by the one
+    // GeoJSON reader into the `Geometry` of the kind it names, and a pair
+    // of numbers, or three with an altitude in metres, in the order the
+    // name says. A coordinate out of its range is `out_of_range`, and
+    // anything else that isn't a geometry or a position `malformed`.
+    Operation {
+        conditions: &[ON_MALFORMED, ON_OUT_OF_RANGE],
+        ..geo(
+            Op::GeoFromGeojson,
+            "from_geojson",
+            &[param("text", TEXT_VALUE)],
+            Kind::Enum(crate::standard::geo::GEOMETRY),
+            "geo::from_geojson",
+        )
+    },
+    Operation {
+        conditions: &[ON_MALFORMED, ON_OUT_OF_RANGE],
+        ..geo(
+            Op::GeoFromLatLng,
+            "from_lat_lng",
+            &[param("numbers", Kind::List)],
+            POINT_VALUE,
+            "geo::from_lat_lng",
+        )
+    },
+    Operation {
+        conditions: &[ON_MALFORMED, ON_OUT_OF_RANGE],
+        ..geo(
+            Op::GeoFromLngLat,
+            "from_lng_lat",
+            &[param("numbers", Kind::List)],
+            POINT_VALUE,
+            "geo::from_lng_lat",
+        )
+    },
     // WKT and EWKT (area 20, "Interop", question 9): read by one reader,
     // longitude first, `SRID=4326;` accepted, any other SRID or a
     // coordinate out of its range `out_of_range`, anything else that isn't
@@ -2915,7 +2954,14 @@ mod tests {
                     // Whether WKT's coordinates are in range, or its SRID
                     // WGS84's, is known only when the program runs, as
                     // whether it is WKT at all is (chunk 5.5u6).
-                    None if operation.op == Op::GeoFromWkt => true,
+                    // So is a GeoJSON text's, or a pair's (chunk 5.11).
+                    None if matches!(
+                        operation.op,
+                        Op::GeoFromWkt | Op::GeoFromGeojson | Op::GeoFromLatLng | Op::GeoFromLngLat
+                    ) =>
+                    {
+                        true
+                    }
                     // `ln`'s by a value proved above 0; the money
                     // operations' by a currency the types or the call fix,
                     // and `convert`'s by a rate's currency a condition

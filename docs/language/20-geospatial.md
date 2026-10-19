@@ -1208,6 +1208,78 @@ test "what isn't an outline is refused" {
 }
 ```
 
+Pairs and GeoJSON text, built in chunk 5.11: a van's tracker sends its
+position latitude first, the map's pin longitude first, and a planner
+pastes a shape from a drawing tool. Each operation's name says which
+number comes first, so a swapped pair is a call that reads wrong, not a
+value that looks right:
+
+```jadpo check project=geo-pairs
+type TrackerReading = Decimal {
+    scale: 9
+}
+
+type PastedText = Text {}
+
+type NotAPlace = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// Where a van's tracker says it is, latitude first.
+function van_at(tracker_fix: List<TrackerReading>) fails NotAPlace -> Point {
+    return attempt geo.from_lat_lng(tracker_fix) {
+        malformed: NotAPlace  // not two numbers, or three with a height
+        out_of_range: NotAPlace  // past a pole, or past the antimeridian
+    }
+}
+
+/// Where a pin dropped on the map is, longitude first, as GeoJSON writes it.
+function pin_at(pin_dropped: List<TrackerReading>) fails NotAPlace -> Point {
+    return attempt geo.from_lng_lat(pin_dropped) {
+        malformed: NotAPlace
+        out_of_range: NotAPlace
+    }
+}
+
+/// A patch pasted from a drawing tool, as GeoJSON.
+function pasted_patch(pasted: PastedText) fails NotAPlace -> Geometry {
+    return attempt geo.from_geojson(pasted) {
+        malformed: NotAPlace  // not GeoJSON, a feature, or rings that cross
+        out_of_range: NotAPlace  // past a pole, or past the antimeridian
+    }
+}
+```
+
+```jadpo check project=geo-pairs file=main.test.jadpo
+test "each pair says which way round it is" {
+    var van_spot: Point = attempt van_at([51.5136, -0.1365])
+    var map_pin: Point = attempt pin_at([-0.1365, 51.5136])
+    assert van_spot == map_pin
+    assert geo.to_wkt(map_pin) == "POINT(-0.1365 51.5136)"
+    assert van_spot == Point {
+        latitude: 51.5136
+        longitude: -0.1365
+        altitude: none
+    }
+    assert van_at([91.0, 0.0]) fails NotAPlace
+    var far_east: Point = attempt pin_at([91.0, 0.0])
+    assert far_east.longitude == 91.0
+    assert van_at([51.5136]) fails NotAPlace
+}
+
+test "a pasted patch is read longitude first" {
+    var patch_text: PastedText = PastedText(
+        "{\"type\":\"Polygon\",\"coordinates\":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}"
+    )
+    var patch: Geometry = attempt pasted_patch(patch_text)
+    assert PastedText(json.write(patch)) == patch_text
+    assert pasted_patch(
+        PastedText("{\"type\":\"Point\",\"coordinates\":[-0.1365,91]}")
+    ) fails NotAPlace
+    assert pasted_patch(PastedText("POINT(-0.1365 51.5136)")) fails NotAPlace
+}
+```
+
 ## Left out, and why
 
 | Left out | Why | Instead |
@@ -1233,6 +1305,7 @@ test "what isn't an outline is refused" {
 | Storage: `geography` columns and their checks, `BoundingBox` and `Circle` in named columns, PostGIS created by the first migration that needs it, `migration.extension_missing`, `kind: IndexKind.geographic` | Decided 2026-10-18; built (5.5u4) |
 | Query conditions, the box and circle filters, order by distance inside a radius, derived GiST indexes | Decided 2026-10-18; built (5.5u5) |
 | Interop: `Feature` and `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, `type.standard_exists`' shapes for `LineString` and `Polygon` | Decided 2026-10-18; built (5.5u6) |
+| `geo.from_geojson`, `geo.from_lng_lat` and `geo.from_lat_lng`, each failing `malformed` or `out_of_range` | Decided (area 19); built (5.11) |
 | Altitudes all or nothing (`format` when read, `altitudes_agree` when built); a `FeatureCollection` sent bare from a route | Decided 2026-10-19; built (5.5u7) |
 
 ### Consistency with the rest of the language
@@ -1789,6 +1862,41 @@ test "what isn't an outline is refused" {
   height became one with every point at a height, and each geometry's
   refused examples gained a mix, which the per-type tests read through
   every boundary.
+
+### Chosen in chunk 5.11
+
+- **`geo.from_geojson(text)` gives a `Geometry`,** the variant of the
+  kind the text names, as `geo.from_wkt` does, read by the one GeoJSON
+  reader a geometry on the wire is: strict RFC 7946, each ring closed,
+  valid and rewound by the right-hand rule, every position's altitude
+  given or none. Only the six geometries are read; a `Feature`, a
+  `FeatureCollection` or a `GeometryCollection` is `malformed`, since a
+  layer is read with `json.read(text, as: FeatureCollection<G, P>)`.
+  Text that isn't one JSON document, or not one of the six, a ring that
+  isn't closed or valid and positions of mixed sizes included, is
+  `malformed`; a coordinate out of its range, or an altitude past a
+  `Length`'s, is `out_of_range`. The reader reports the place
+  (`coordinates.0.3`) and the rule; the operation's failure carries the
+  condition only, as `geo.from_wkt`'s does. It takes `Text` only, not
+  `Bytes`.
+- **A pair is two numbers or three.** `geo.from_lng_lat(numbers)` and
+  `geo.from_lat_lng(numbers)` take a `List` of values built on `Int` or
+  `Decimal` and give a `Point`; a third number is the altitude in
+  metres, as GeoJSON's third is, a `Length` rounded half to even to the
+  micrometre. Any other count is `malformed`. Each coordinate is first
+  held as the shortest decimal of its nearest double, as a `Point` built
+  in code is (question 2), and that value is held to its range, as
+  GeoJSON's numbers are, so `90.00000000000000001` is 90 and in range;
+  past it is `out_of_range`. The order lives only in the name: a
+  latitude of 91 is `out_of_range` from `from_lat_lng` and a longitude of
+  91 from `from_lng_lat`.
+- **Always attempted.** What a list holds, or a text, is known only when
+  the program runs, so each call maps both conditions, or `invalid:`,
+  even for a list written out, as `geo.from_wkt` does. No literal is
+  decided while compiling.
+- **No `geo.to_geojson`.** `json.write` of a geometry already writes its
+  GeoJSON, longitude first, so a pair or a text read here goes back out
+  through it or `geo.to_wkt`.
 
 ### Open questions
 
