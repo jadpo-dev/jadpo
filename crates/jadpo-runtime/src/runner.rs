@@ -309,6 +309,10 @@ pub struct Backfill<'v> {
     pub field: String,
     pub callable: u32,
     pub reads: Vec<jadpo_std::read::Column>,
+    /// The field each value read is of and its validator, in the order of
+    /// `reads`, which a value read is held to (chunk 5.9d): `None` for a
+    /// field the migration retires.
+    pub held: Vec<Option<(String, &'v Validator)>>,
     pub write: SqlType,
     /// The field's rules, its type's included: a decimal is kept at the
     /// type's places, rounded half to even, and a value its rules refuse
@@ -404,6 +408,14 @@ impl crate::Backfills for InJadpo<'_> {
                 .map(|(sql, column)| crate::from_sql(sql, column))
                 .collect::<Result<Vec<_>, String>>()
                 .map_err(|why| stopped(format!("a column it reads held {why}")))?;
+            // Each stored value read keeps its field's rules, as a query's
+            // read holds it to them (chunk 5.9d).
+            for (value, held) in values.iter().zip(&backfill.held) {
+                if let Some((field, validator)) = held {
+                    crate::kept_by(field, validator, value)
+                        .map_err(|why| stopped(format!("it read {why}")))?;
+                }
+            }
             args.push(values);
         }
         // A backfill is a function: it waits on nothing, so it runs to its
@@ -1054,6 +1066,7 @@ mod tests {
                 field: "Order.cost".into(),
                 callable: 0,
                 reads: vec![jadpo_std::read::Column::Decimal],
+                held: vec![None],
                 write: SqlType::Numeric,
                 validator: Some(&cost),
             }],
@@ -1089,6 +1102,45 @@ mod tests {
         assert_eq!(
             in_jadpo.work_out("20261019T1200_add_cost", "Order.total", &[&over]),
             Err(Unworked::Unavailable)
+        );
+    }
+
+    /// Each stored value a backfill worked out in Jadpo reads is held to
+    /// its field's rules, as a query's read is (chunk 5.9d): a row written
+    /// around Jadpo that breaks one stops it, naming the field and the
+    /// rule, never the value.
+    #[test]
+    fn a_backfill_reading_a_value_that_breaks_its_rule_stops() {
+        use crate::{Backfills, Unworked};
+        let program = Program::new(&[Does::Echoes]);
+        let price = Validator::new(
+            Some(jadpo_std::Builtin::Decimal),
+            vec![jadpo_std::Rules {
+                max: jadpo_std::Num::parse("100"),
+                ..jadpo_std::Rules::default()
+            }],
+        );
+        let in_jadpo = InJadpo::new(
+            &program,
+            vec![Backfill {
+                migration: "20261019T1200_add_cost".into(),
+                field: "Order.cost".into(),
+                callable: 0,
+                reads: vec![jadpo_std::read::Column::Decimal],
+                held: vec![Some(("Order.price".into(), &price))],
+                write: SqlType::Numeric,
+                validator: None,
+            }],
+        );
+        let kept = [SqlValue::Numeric("12.50".into())];
+        let broken = [SqlValue::Numeric("123.45".into())];
+        let stopped = in_jadpo.work_out("20261019T1200_add_cost", "Order.cost", &[&kept, &broken]);
+        assert_eq!(
+            stopped,
+            Err(Unworked::Stopped {
+                at: 1,
+                reason: "it read a stored `Order.price` that breaks `max: 100`".into()
+            })
         );
     }
 }

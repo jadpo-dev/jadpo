@@ -103,8 +103,8 @@ pub use policy::{admit, call_as};
 pub use purge::{PURGE_BATCHES, Purged, purge, purge_after};
 pub use ratelimit::{Allowed, RateLimits};
 pub use read::{
-    JsonCodecs, PAGE, cursor, field_value, from_sql, invalid_cursor, not_permitted, to_sql,
-    uuid_text,
+    JsonCodecs, PAGE, cursor, field_value, from_sql, held_to, invalid_cursor, kept_by,
+    not_permitted, stored_value, to_sql, uuid_text,
 };
 pub use report::{Detail, Location, Report, ReportRule, Sources, fields_text};
 pub use store::{StoreOp, Stored, store};

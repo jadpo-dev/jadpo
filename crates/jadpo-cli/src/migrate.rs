@@ -172,7 +172,7 @@ fn new(call: &Call) -> Reply {
         )
     } else {
         let latest_schema = set.latest_schema();
-        if next_snapshot(&latest_schema, source) == latest_schema {
+        if next_snapshot(&latest_schema, source).same_but_reasons(&latest_schema) {
             return nothing(set);
         }
         let purpose = match call.arguments.get(1) {

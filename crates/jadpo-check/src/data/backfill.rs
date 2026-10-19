@@ -97,6 +97,10 @@ pub struct Read {
     pub column: String,
     /// How its column's value is read.
     pub decode: jadpo_std::read::Column,
+    /// Its name now, whose rules each value read is held to (chunk 5.9d);
+    /// `None` for a field the migration retires, read as its built-in
+    /// type alone, whose declaration is gone.
+    pub name: Option<String>,
 }
 
 /// `body` as a function whose parameters are the stored fields it reads,

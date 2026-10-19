@@ -34,9 +34,9 @@ use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_sql::Bind;
 use jadpo_sql::statement::{self as text, After, Order};
 use jadpo_std::read::{
-    Cardinality, Column, EnvelopePart, Field, GeoCheck, GeoOp, GeoOrder, IncludeRead, IncludeShape,
-    MissingPlan, MissingValue, PageRead, Param, ReadPlan, Recheck, Record, Select, Size, Source,
-    SqlType,
+    Cardinality, Column, EnvelopePart, Field, FieldRules, GeoCheck, GeoOp, GeoOrder, IncludeRead,
+    IncludeShape, MissingPlan, MissingValue, PageRead, Param, ReadPlan, Recheck, Record, Select,
+    Size, Source, SqlType,
 };
 
 use crate::constant::Constant;
@@ -460,7 +460,7 @@ impl Planner<'_> {
         };
         let includes = self.includes(entity, &query.includes, &columns)?;
         let measured_at = u32::try_from(columns.kinds.len()).ok()?;
-        let mut kinds = columns.kinds;
+        let mut kinds = columns.kinds.clone();
         if nearest.is_some() {
             kinds.push(Column::Distance);
         }
@@ -500,12 +500,14 @@ impl Planner<'_> {
             ],
             _ => Vec::new(),
         };
+        let held = self.rules_held(entity, &columns.names, &kinds);
         let select = Select {
             sql,
             unpoliced,
             permitted,
             params: statement.params,
             columns: kinds,
+            held,
             record,
             includes,
         };
@@ -684,6 +686,7 @@ impl Planner<'_> {
                 }
             };
             let includes = self.includes(target, &include.includes, &columns)?;
+            let held = self.rules_held(target, &columns.names, &columns.kinds);
             out.push(IncludeRead {
                 shape,
                 key,
@@ -693,12 +696,49 @@ impl Planner<'_> {
                     permitted: None,
                     params: statement.params,
                     columns: columns.kinds,
+                    held,
                     record,
                     includes,
                 },
             });
         }
         Some(out)
+    }
+
+    /// The rules the field of each of `entity`'s columns `names`, read as
+    /// `kinds`, is held to when read (chunk 5.9d): a compound type's later
+    /// part has none of its own, and a JSON-held value is read by its
+    /// codec with its rules and the field's (chunk 5.9b).
+    pub(crate) fn rules_held(
+        &mut self,
+        entity: &EntityModel,
+        names: &[String],
+        kinds: &[Column],
+    ) -> Vec<Option<FieldRules>> {
+        names
+            .iter()
+            .zip(kinds)
+            .map(|(name, kind)| {
+                if matches!(kind, Column::Part | Column::Json(_)) {
+                    return None;
+                }
+                let field = field(entity, name)?;
+                Some(self.held_field(entity, field))
+            })
+            .collect()
+    }
+
+    /// The rules `entity`'s `field` is held to when read: its validator.
+    pub(crate) fn held_field(&mut self, entity: &EntityModel, field: &FieldModel) -> FieldRules {
+        let key = jadpo_check::graph::field_key(
+            self.lookup,
+            &entity.name,
+            std::slice::from_ref(&field.name),
+        );
+        FieldRules {
+            field: format!("{}.{}", entity.name, field.name),
+            validator: self.types.validator_id(&TypeRef::Field(key)),
+        }
     }
 
     /// The conditions an entity's lifecycle and policy add to every
@@ -956,6 +996,7 @@ impl Planner<'_> {
             policy,
             &|_| {},
         );
+        let held = self.rules_held(entity, &columns.names, &columns.kinds);
         let mut kinds = columns.kinds;
         if permitted.is_some() {
             kinds.push(Column::Bool);
@@ -977,6 +1018,7 @@ impl Planner<'_> {
                 permitted,
                 params: statement.params,
                 columns: kinds,
+                held,
                 record: Record {
                     ty: entity.name.clone(),
                     fields: fields.clone(),

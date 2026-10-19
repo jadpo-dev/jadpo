@@ -562,3 +562,82 @@ fn a_query_sorted_by_text_reads_its_index() {
     );
     assert!(!plan.contains("Sort"), "{plan}");
 }
+
+/// A derived index records the first query, alphabetically, that needs
+/// it, but only what defines it is compared (chunk 5.9d): a query that
+/// sorts first needs no migration, and the next migration written for
+/// another change records it as the reason with no step for the index.
+#[test]
+fn a_query_that_sorts_first_changes_no_index() {
+    let root = folder("index-reason");
+    write(&root, "app.jadpo", APP);
+    write(
+        &root,
+        "domains/planning/types/title.jadpo",
+        "type Title = Text {\n    max_length: 80\n}\n",
+    );
+    write(
+        &root,
+        TODO,
+        "use planning/types { Title }\n\nentity Todo {\n    id: Uuid\n    title: Title\n}\n",
+    );
+    let query = |name: &str| {
+        format!(
+            "use planning/entities {{ Todo }}\n\nquery {name}() -> List<Todo> {{\n    from: Todo\n    order: [Todo.title asc]\n    limit: 10\n}}\n"
+        )
+    };
+    write(
+        &root,
+        "domains/planning/queries/by_title.jadpo",
+        &query("by_title"),
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    let snapshot = |name: &str| {
+        fs::read_to_string(root.join(format!("database/migrations/{name}/snapshot.json")))
+            .expect("snapshot.json")
+    };
+    let first = migrations(&root).remove(0);
+    assert!(
+        snapshot(&first).contains("\"reason\": \"query by_title\""),
+        "{}",
+        snapshot(&first)
+    );
+    // A query that sorts first, needing the same index.
+    write(
+        &root,
+        "domains/planning/queries/a_by_title.jadpo",
+        &query("a_by_title"),
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let again = jadpo(&root, &["migrate", "new", "more_titles"]);
+    assert_eq!(again.code, 0, "{}{}", again.stdout, again.stderr);
+    assert!(
+        again.stdout.starts_with("Nothing to migrate: "),
+        "{}",
+        again.stdout
+    );
+    assert_eq!(migrations(&root).len(), 1);
+    // Another change: its migration records the new reason, with no step
+    // for the index.
+    write(
+        &root,
+        TODO,
+        "use planning/types { Title }\n\nentity Todo {\n    id: Uuid\n    title: Title\n    note: Text?\n}\n",
+    );
+    let made = jadpo(&root, &["migrate", "new", "add_note"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    let latest = migrations(&root).pop().expect("a migration");
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{latest}/postgres.sql")))
+        .expect("postgres.sql");
+    assert!(sql.contains("ADD COLUMN \"note\""), "{sql}");
+    assert!(!sql.contains("INDEX"), "{sql}");
+    assert!(!made.stdout.contains("index"), "{}", made.stdout);
+    assert!(
+        snapshot(&latest).contains("\"reason\": \"query a_by_title\""),
+        "{}",
+        snapshot(&latest)
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+}

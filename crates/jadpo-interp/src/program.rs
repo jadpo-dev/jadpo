@@ -518,6 +518,14 @@ impl Program {
                 field: plan.field.clone(),
                 callable: plan.callable,
                 reads: plan.reads.clone(),
+                held: plan
+                    .held
+                    .iter()
+                    .map(|held| {
+                        held.as_ref()
+                            .map(|held| (held.field.clone(), self.validator(held.validator)))
+                    })
+                    .collect(),
                 write: plan.write,
                 validator: Some(self.validator(plan.validator)),
             })

@@ -430,6 +430,18 @@ impl Column {
     }
 }
 
+/// The rules a stored field's value is held to when it is read (area 5,
+/// "A field's rules on read"; chunk 5.9d): its field's validator, the
+/// field's own rules then its type's along its chain, as a write checks
+/// them. A row written around Jadpo that breaks one is a defect naming
+/// the field and the rule, never the value.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldRules {
+    /// `Tool.stars`.
+    pub field: String,
+    pub validator: crate::types::ValidatorId,
+}
+
 /// Where a record's field comes from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Field {
@@ -470,6 +482,11 @@ pub struct Select {
     pub params: Vec<Param>,
     /// What each selected column becomes, in order.
     pub columns: Vec<Column>,
+    /// The rules each column's field is held to when read, by the
+    /// column's position: `None`, or past its end, for a column with none
+    /// of its own (a compound type's later part, a JSON-held value, which
+    /// its codec reads with its rules, a distance or a grant).
+    pub held: Vec<Option<FieldRules>>,
     pub record: Record,
     pub includes: Vec<IncludeRead>,
 }
