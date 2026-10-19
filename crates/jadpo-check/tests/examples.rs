@@ -1468,8 +1468,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                     .chars()
                     .take_while(|c| c.is_alphanumeric() || *c == '_')
                     .collect();
-                !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
-                    && values.iter().any(|known| *known == value)
+                !before.is_some_and(|c| c.is_alphanumeric() || c == '_') && values.contains(&value)
             })
         });
         if named {
