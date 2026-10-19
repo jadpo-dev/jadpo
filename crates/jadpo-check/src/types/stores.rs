@@ -44,19 +44,64 @@ pub enum Reach {
     Sessions(bool),
     /// A read of either: `sessions.tokens` or `Service.keys`.
     ReadsSessions(bool),
+    /// `batches.each` walking a query, by name (area 12): its run is kept
+    /// in the query's store, which its items' writes and its position
+    /// commit to together, so starting it writes that store.
+    Batch(String),
+    /// `batches.cancel`, or with `false` `batches.status`: the runs the
+    /// store holding them keeps.
+    Runs(bool),
 }
 
-/// What `fact` reaches of a store, if anything.
-fn reach_of(fact: &Fact) -> Option<Reach> {
-    Some(match fact {
+/// What `fact` reaches of a store: a `batches.each` call reaches the
+/// store its query reads and the actions its run calls, which commit
+/// there.
+fn reaches_of(fact: &Fact) -> Vec<Reach> {
+    vec![match fact {
         Fact::Writes(write) => Reach::Writes(write.entity.clone()),
         Fact::Action(callee) => Reach::Calls(callee.name().to_string()),
         Fact::Gets(entity) => Reach::Reads(entity.clone()),
         Fact::Queries(query) => Reach::Queries(query.clone()),
         Fact::Session(op) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
         Fact::Session(op) => Reach::Sessions(op.on_service()),
-        Fact::Fixture(_) | Fact::Function(_) => return None,
-    })
+        Fact::Batch(batch) => {
+            return batch
+                .query
+                .iter()
+                .map(|query| Reach::Batch(query.clone()))
+                .chain(
+                    [&batch.each, &batch.finished]
+                        .into_iter()
+                        .flatten()
+                        .map(|action| Reach::Calls(action.name().to_string())),
+                )
+                .collect();
+        }
+        Fact::Runs(op) => Reach::Runs(*op == jadpo_std::batch::BatchOp::Cancel),
+        Fact::Fixture(_) | Fact::Function(_) | Fact::Emits(_) => return Vec::new(),
+    }]
+}
+
+/// The stores that keep batch runs (area 12; chunk 6.4): each one a
+/// `batches.each` call's query reads.
+#[salsa::tracked(returns(ref))]
+pub fn batch_stores(db: &dyn Db, project: Project) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for &file in project.files(db) {
+        for callable in callables_of(db, file) {
+            for fact in &body_facts(db, project, callable).facts {
+                if let Fact::Batch(batch) = fact
+                    && let Some(query) = &batch.query
+                    && let Some(entity) =
+                        query_entity(db, project, Name::new(db, query.clone())).clone()
+                    && let Some(store) = entity_store(db, project, Name::new(db, entity)).clone()
+                {
+                    out.insert(store);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// One action's or fixture's name and what it reaches, each with its
@@ -78,7 +123,7 @@ fn reaches(db: &dyn Db, project: Project, file: File) -> Vec<Reaches> {
         };
         let found = facts_at(&checked.body)
             .into_iter()
-            .filter_map(|(fact, at)| Some((reach_of(&fact)?, at)))
+            .flat_map(|(fact, at)| reaches_of(&fact).into_iter().map(move |reach| (reach, at)))
             .collect();
         out.push((key.name().to_string(), found));
     }
@@ -101,7 +146,7 @@ pub fn store_reaches(
         };
         out.insert(
             key.name().to_string(),
-            facts.facts.iter().filter_map(reach_of).collect(),
+            facts.facts.iter().flat_map(reaches_of).collect(),
         );
     }
     out
@@ -227,8 +272,22 @@ fn store_of(db: &dyn Db, project: Project, reach: &Reach, reads: bool) -> Option
             )
         });
     }
+    // The runs live in the one store batches keep them in; with none, or
+    // more than one, nothing pins `batches.status` and `batches.cancel` to
+    // a store, which their call reports.
+    if let Reach::Runs(writes) = reach {
+        if !writes && !reads {
+            return None;
+        }
+        let stores = batch_stores(db, project);
+        let [store] = stores.iter().collect::<Vec<_>>()[..] else {
+            return None;
+        };
+        return Some((store.clone(), jadpo_std::batch::RUNS.to_string()));
+    }
     let entity = match reach {
         Reach::Writes(entity) => entity.clone(),
+        Reach::Batch(query) => query_entity(db, project, name(query)).clone()?,
         Reach::Reads(entity) if reads => entity.clone(),
         Reach::Queries(query) if reads => query_entity(db, project, name(query)).clone()?,
         _ => return None,
@@ -341,11 +400,20 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     reached(callee).written.clone(),
                     format!("calls `{callee}`, which writes"),
                 ),
-                Reach::Sessions(_) => (
+                Reach::Sessions(_) | Reach::Runs(true) => (
                     store_of(db, project, &reach, false).into_iter().collect(),
                     "writes".to_string(),
                 ),
-                Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) => continue,
+                Reach::Batch(query) => (
+                    store_of(db, project, &reach, false).into_iter().collect(),
+                    format!("starts a batch over `{query}`, whose run is kept with"),
+                ),
+                Reach::Reads(_)
+                | Reach::Queries(_)
+                | Reach::ReadsSessions(_)
+                | Reach::Runs(false) => {
+                    continue;
+                }
             };
             let Some((store, entity)) = stores
                 .iter()
@@ -381,6 +449,57 @@ pub fn store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     out
 }
 
+/// The calls of `batches.status` and `batches.cancel` in `file` that no
+/// one store pins (area 12, chunk 6.4): a run is found by its `id` alone,
+/// in the store the application keeps its runs in, so an application
+/// whose batches keep them in more than one store, or that starts none,
+/// has nowhere to look.
+#[salsa::tracked(returns(ref))]
+pub fn batch_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let stores = batch_stores(db, project);
+    if stores.len() == 1 {
+        return Vec::new();
+    }
+    let path = file.path(db);
+    let mut out = Vec::new();
+    for (_, found) in reaches(db, project, file) {
+        for (reach, (start, end)) in found {
+            let Reach::Runs(cancels) = reach else {
+                continue;
+            };
+            let written = if cancels {
+                "batches.cancel"
+            } else {
+                "batches.status"
+            };
+            let reason = if stores.is_empty() {
+                format!(
+                    "`{written}` finds a run in the store the application keeps its runs in, beside the store its query reads, and nothing in this application starts one with `batches.each`."
+                )
+            } else {
+                let listed: Vec<String> = stores.iter().map(|s| format!("`{s}`")).collect();
+                format!(
+                    "`{written}` finds a run by its `id` alone, in the store the application keeps its runs in, and this application's batches keep them in {}; this compiler doesn't look in more than one yet.",
+                    crate::and_list(&listed)
+                )
+            };
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{written}` here isn't built yet"),
+                )
+                .at(Span::new(path, start, end), "no one store keeps the runs")
+                .reason(reason)
+                .next(format!(
+                    "Start the runs with `batches.each` over queries of one store, or do without `{written}` for now"
+                ))
+                .help_at("12-jobs-and-events.html#chosen-in-chunk-6-4"),
+            );
+        }
+    }
+    out
+}
+
 /// Where action `name`, which writes at most one store, first uses
 /// another: the store it writes is its own, or, writing none, the first it
 /// uses.
@@ -407,11 +526,15 @@ fn second_store_read(
                     .collect(),
                 format!("calls `{callee}`, which uses"),
             ),
-            Reach::Writes(_) | Reach::Sessions(_) => (
+            Reach::Writes(_) | Reach::Sessions(_) | Reach::Runs(true) => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "writes".to_string(),
             ),
-            Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) => (
+            Reach::Batch(query) => (
+                store_of(db, project, reach, true).into_iter().collect(),
+                format!("starts a batch over `{query}`, whose run is kept with"),
+            ),
+            Reach::Reads(_) | Reach::Queries(_) | Reach::ReadsSessions(_) | Reach::Runs(false) => (
                 store_of(db, project, reach, true).into_iter().collect(),
                 "reads".to_string(),
             ),

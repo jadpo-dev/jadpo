@@ -94,7 +94,13 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
                         None => continue,
                     }
                 }
-                Fact::Fixture(_) | Fact::Function(_) => continue,
+                // A batch's run works as the system, after the action
+                // commits (area 12), so nothing it does is the caller's.
+                Fact::Fixture(_)
+                | Fact::Function(_)
+                | Fact::Emits(_)
+                | Fact::Batch(_)
+                | Fact::Runs(_) => continue,
             };
             found.insert(act);
         }
@@ -540,6 +546,46 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
         }
     }
     out
+}
+
+/// What background work reaches that only `Access.public` lets it in to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PublicOnly {
+    Entity {
+        entity: String,
+        effect: Effect,
+    },
+    /// The action's line under `actions:`.
+    Line {
+        written: String,
+    },
+}
+
+/// The first thing the action called `run`, run as the system, reaches
+/// whose grants name `Access.public` but not `Access.system` (area 9,
+/// "Background work and `Access.public`", decided 2026-10-19): a
+/// statement anyone at all may run tests no caller, so it would let the
+/// system in without the entity ever granting background work.
+pub fn public_only(db: &dyn Db, project: Project, run: &str) -> Option<PublicOnly> {
+    let access = &Policies::new(db, project);
+    if let Some(line) = access.root().action(run)
+        && line.who.contains(&ActionWho::Public)
+        && !line.who.contains(&ActionWho::System)
+    {
+        return Some(PublicOnly::Line {
+            written: line.written.clone(),
+        });
+    }
+    let (reached, _) = reached(db, project, access, run, false);
+    reached
+        .into_iter()
+        .find(|reach| {
+            reach.grants.contains(&Grant::Public) && !reach.grants.contains(&Grant::System)
+        })
+        .map(|reach| PublicOnly::Entity {
+            entity: reach.entity,
+            effect: reach.effect,
+        })
 }
 
 /// Whether policy may refuse the caller of the action called `run` with

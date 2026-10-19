@@ -589,27 +589,26 @@ chunks below, taken before Phase 6.
 - [x] **6.1a System caller and delivery engine** `opus · xhigh`. Built: the
   system caller (`Access.system`) and the runtime's runner, driving work
   deferred, inline and per item, with backfills worked out on it.
-- [ ] **6.1b Events** `opus · high`, after 6.1a (area 9, "Background
-  work and `Access.public`", decided 2026-10-19: a subscriber reaching a
-  statement only `Access.public` grants is a compile error; area 12, "Outbox
-  placement, settled" and "Event records", decided 2026-10-19: each
-  store an action writes keeps its outbox and delivery records, a
-  subscriber's handled record in its own store, schedule leases in
-  `schedules: { store: }`; event shapes recorded and diffed as API
-  records are):
-  outbox, subscribers, retries and trace context on 6.1a's runner and
-  system caller, and `events: { store: }`, with the compile error for an
-  action that writes no store but needs one for its outbox or idempotency
-  keys (until then such an action keeps no key, chunk 4.2). From chunk 5.1d: what a subscriber stores
-  from an event is checked against what every `emit` of it put there, as
-  area 9's stored values are (an `emit` itself stores nothing a caller
-  reads).
+- [x] **6.1b Events: outbox, delivery and retries** `opus · high`. Built:
+  subscribers read and checked, `emit` writing the outbox row and a
+  delivery record per subscriber as the action commits, and delivery after
+  the response as the system limited to its event's tenant, with retries,
+  trace context, `events: { store: }` and the outbox sweep for 6.2's tick.
+- [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
+  (area 12, "Event records", decided 2026-10-19): event shapes recorded
+  and diffed in the generated record exactly as an API's is (chunk 7.0's
+  format, a new record kind with its header, diff and `jadpo records`
+  row), acceptance waiting for area 18 as the API record's does; and from
+  chunk 5.1d, what a subscriber stores from an event checked against what
+  every `emit` of it put there, as area 9's stored values are (an `emit`
+  itself stores nothing a caller reads).
 - [ ] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
   tenants", and area 9's "Background work and `Access.public`", decided
   2026-10-19: a schedule reaches every tenant, and reaching what only
   `Access.public` grants is a compile error) leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
-  keys (area 7).
+  keys (area 7), and picking up batch runs whose lease lapsed
+  (`jadpo_runtime::batches::resume` or `waiting`, built in 6.4).
 - [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
@@ -618,16 +617,15 @@ chunks below, taken before Phase 6.
   lowering to an exact SQL form or an index search the runtime rechecks, all
   SQL text in `jadpo-sql`, and operations in `where:` with expression
   indexes.
-- [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
-  `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
-  transactions that commit their writes and position together, problems
-  collected, resuming after crashes and deploys; replacing chained events
-  for paging; then `csv.read`/`write`, `tsv`, `json_lines` and the batch
-  forms of `json.read`/`write` on it, as area 19's "Data formats" tables
-  them, and `store.read`'s
-  whole-read cap. Split by the Phase 5 review: batches, status, cancel, `key:` and
-  resuming on 6.1a's runner first; the format helpers wait for a minimal
-  `files` capability (area 16).
+- [x] **6.4 Batches** `opus · xhigh`. Built: `batches.each` over a named
+  query's pages as the system, each page committing its items' writes,
+  problems and position together, with `key:`, `batches.status`,
+  `batches.cancel`, leases and `batches::resume` for 6.2's tick.
+- [ ] **6.4c Batches with tenants and grants** `opus · high` (areas 12 and
+  9, decided 2026-10-19): `batches.each` in an application with
+  `tenant:`, a run limited to the tenant its one saved tenant id names
+  (none or several reaching no tenant's records), and a batch reaching
+  what only `Access.public` grants refused as `policy.system_grant_missing`.
 - [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
   schedules and batches, passing `--require-examples`.
 
@@ -642,6 +640,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   randomness), called by both executors instead of the interpreter's own
   dispatch, and a capability-driver seam with fakes and recordings that
   7.1's providers, 5.5v3's `ai.generate` and 8.1's native build use.
+- [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
+  moved after 7.0b from Phase 6, since it needs a minimal `files`
+  capability on that seam: a store's `put` and `read` of a `File` with a
+  fake, then `csv.read`/`write`, `tsv`, `json_lines` and the batch forms
+  of `json.read`/`write` on 6.4's runs, as area 19's "Data formats" tables
+  them, with `ExportSummary`, `CsvFormat`, a file row's `RowProblem`
+  column and line numbers, and `store.read`'s whole-read cap; and from
+  6.4, the warning for a `from:` ordered by a field that can be updated,
+  and `estimated_total` from a query's count.
 - [ ] **7.1 Packages and connections** `opus · high`: the package format
   (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
   surface rule), library and provider kinds, `packages/` installed and

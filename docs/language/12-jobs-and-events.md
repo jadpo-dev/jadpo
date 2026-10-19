@@ -4,7 +4,10 @@ area: 12
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
+  - event.*
+  - subscriber.*
   - syntax.job_*
+  - type.batch_*
   - type.job_delivery_authority_invalid
   - type.job_delivery_binding_not_implemented
   - type.job_delivery_hook_invalid
@@ -19,7 +22,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Events and subscribers come in chunk 6.1b, schedules in chunk 6.2.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Event records come in chunk 6.1c, schedules in chunk 6.2. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -235,6 +238,107 @@ at the 16-deep chain limit ("Limits and runtime faults") after 16 pages.
 This also settles area 11's pagination, where work over many pages ran one
 page per subscriber delivery.
 
+> Built in chunk 6.4: `batches.each` over a named query's pages, with
+> `finished:` and `key:`, `batches.status` and `batches.cancel`, each page
+> one transaction committing its items' writes and the run's position,
+> and a run resumed after a crash or a deploy; what the page left open is
+> "Chosen in chunk 6.4", under "Review". The `csv`, `tsv`, `json_lines`
+> and `json` file helpers, `store.read`'s whole-read cap and the warning
+> for a `from:` ordered by a field that can be updated come in chunk
+> 6.4b, with a minimal `files` capability (area 16).
+
+A sweep that marks every item seen, a page at a time, once per sweep,
+keeping how many it went through:
+
+```jadpo check project=batches-sweep
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+entity Stocktake {
+    id: Uuid
+    shelf_run: BatchRun?
+    seen: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public, Access.system]
+    }
+}
+
+/// The items, a page at a time, in code order.
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+/// Marks one item seen.
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+/// Keeps how many items the sweep went through.
+action swept(summary: ImportSummary, stocktake_id: Stocktake.id) fails StocktakeNotFound -> Unit {
+    attempt Stocktake.update(stocktake_id) {
+        set: {
+            seen: summary.items
+        }
+    }
+}
+
+/// Starts the sweep over every item, once per sweep.
+action start_sweep(stocktake_id: Stocktake.id, page: ItemPage) -> BatchRun {
+    return batches.each(
+        from: items(page),
+        each: item -> mark_seen(item),
+        finished: summary -> swept(summary, stocktake_id),
+        key: stocktake_id
+    )
+}
+
+/// How far the sweep has got.
+action sweep_progress(shelf_run: BatchRun) -> BatchProgress {
+    return batches.status(shelf_run)
+}
+
+/// Stops the sweep after the page in hand.
+action stop_sweep(shelf_run: BatchRun) -> Unit {
+    batches.cancel(shelf_run)
+}
+```
+
 ## Declaring an event
 
 An event records that something happened. It is a type with the `Event` base,
@@ -412,7 +516,7 @@ compare them.
   through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
   numbered every event type in the plan's JSON table, by its identity
   key, for the outbox to write and read its payload through (area 5,
-  "Chosen in chunk 5.9b").
+  "Structured values").
 
 ## Several changing calls in one action
 
@@ -756,9 +860,379 @@ and 6 type rules (question 2).
 
 ## Errors
 
-> These examples predate the decisions above and are rewritten or removed when the area is built (roadmap Phase 6).
+Built in chunk 6.1b: the errors of events and subscribers.
 
-Every error this area can produce, with an example that triggers it.
+### `event.emit_invalid`
+
+Only an action emits, and only an event; a function emits by calling an action:
+
+```jadpo check project=e-emit-invalid expect=event.emit_invalid
+type Note = Text {
+    max_length: 200
+}
+
+type NoteSeen = Event {
+    note: Note
+}
+
+function seen(note: Note) -> NoteSeen {
+    emit NoteSeen {
+        note: note
+    }
+    return NoteSeen {
+        note: note
+    }
+}
+```
+
+```text output
+error: A function can't emit `NoteSeen`
+ --> main.jadpo:10:5
+   |
+10 |     emit NoteSeen {
+   |     ^^^^^^^^^^^^^^^ only actions emit
+  reason: An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; a function emits by calling an action.
+  next: Move the `emit` into the action this code calls, or make this an action (agent)
+  rule: event.emit_invalid
+  help: docs/language/12-jobs-and-events.html#event-emit-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `event.settings_invalid`
+
+`events: { store: }` names a database:
+
+```jadpo check project=e-events-settings file=app.jadpo expect=event.settings_invalid
+application {
+    events: {
+        store: archive
+    }
+}
+```
+
+```text output
+error: `store: archive` isn't a database
+ --> app.jadpo:3:16
+  |
+3 |         store: archive
+  |                ^^^^^^^ not a database
+  reason: An event is kept in a database's outbox until its subscribers have it; this application's databases are `main`.
+  next: Name a database connection (agent)
+  rule: event.settings_invalid
+  help: docs/language/12-jobs-and-events.html#event-settings-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `event.store_required`
+
+An action that emits and writes no store has nowhere to keep its events until `events: { store: }` names one:
+
+```jadpo check project=e-store-required expect=event.store_required
+type Note = Text {
+    max_length: 200
+}
+
+type NoteSeen = Event {
+    note: Note
+}
+
+action glance(note: Note) -> Unit {
+    emit NoteSeen {
+        note: note
+    }
+}
+```
+
+```text output
+error: `glance` emits `NoteSeen` but writes no store to keep it in
+ --> main.jadpo:10:5
+   |
+10 |     emit NoteSeen {
+   |     ^^^^^^^^^^^^^^^ no outbox
+  reason: An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `glance` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
+  next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
+  rule: event.store_required
+  help: docs/language/12-jobs-and-events.html#event-store-required
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.argument_invalid`
+
+A subscriber passes its event or the event's fields:
+
+```jadpo check project=e-subscriber-argument expect=subscriber.argument_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(Reminder.id)
+}
+```
+
+```text output
+error: A subscriber passes its event, not `Reminder`
+ --> main.jadpo:31:24
+   |
+31 |     run: send_reminder(Reminder.id)
+   |                        ^^^^^^^^ `Reminder`
+  reason: A subscriber's `run:` passes `event` or fields read through it, as written; the action works out anything else itself.
+  next: Pass `event` or a field of it, and move the rest into the action (agent)
+  rule: subscriber.argument_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-argument-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.event_invalid`
+
+`on:` names an event, not an entity:
+
+```jadpo check project=e-subscriber-event expect=subscriber.event_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: Reminder
+    run: send_reminder(event.reminder_id)
+}
+```
+
+```text output
+error: `on: Reminder` isn't an event
+ --> main.jadpo:30:9
+   |
+30 |     on: Reminder
+   |         ^^^^^^^^ not an event
+  reason: A subscriber listens for one event, a type with the `Event` base that an action emits.
+  next: Name an event, declared as `type <Name> = Event { ... }` in a domain's `events/` folder (agent)
+  rule: subscriber.event_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-event-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.item_invalid`
+
+A subscriber holds `on:`, `run:` and `retry:` only:
+
+```jadpo check project=e-subscriber-item expect=subscriber.item_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(event.reminder_id)
+    timeout: 5m
+}
+```
+
+```text output
+error: `timeout` isn't something a subscriber holds
+ --> main.jadpo:32:5
+   |
+32 |     timeout: 5m
+   |     ^^^^^^^ not a subscriber item
+  reason: A subscriber names the event it listens for with `on:` and the action it runs with `run:`, and may change how it is retried with `retry: { attempts: within: }`; nothing else.
+  next: Write `on: <Event>` and `run: <action>(event)`, once each (agent)
+  rule: subscriber.item_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-item-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.retry_invalid`
+
+`attempts:` is from 1 to 100:
+
+```jadpo check project=e-subscriber-retry expect=subscriber.retry_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(event.reminder_id)
+    retry: {
+        attempts: 500
+    }
+}
+```
+
+```text output
+error: `attempts: 500` can't be how often it is tried
+ --> main.jadpo:33:19
+   |
+33 |         attempts: 500
+   |                   ^^^ not 1 to 100
+  reason: `retry:` holds `attempts:`, how many times a delivery is tried, from 1 to 100 (10 by default), and `within:`, a duration up to 30 days after the event was emitted (24 hours by default).
+  next: Write `retry: { attempts: 20  within: 3d }`, or leave `retry:` out for the default (agent)
+  rule: subscriber.retry_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-retry-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.run_invalid`
+
+`run:` calls the action:
+
+```jadpo check project=e-subscriber-run expect=subscriber.run_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder
+}
+```
+
+```text output
+error: `run: send_reminder` isn't a call
+ --> main.jadpo:31:10
+   |
+31 |     run: send_reminder
+   |          ^^^^^^^^^^^^^ not a call
+  reason: `run:` calls one action of the subscriber's own domain, passing the event or its fields; all the logic lives in the action.
+  next: Write `run: <action>(event)` (agent)
+  rule: subscriber.run_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-run-invalid
+
+check failed: 1 error, 1 file
+```
+
+### Errors of the archived compiler
+
+> These examples predate the decisions above and are rewritten or removed when schedules are built (roadmap chunk 6.2).
+
+The archived compiler's `job` declarations, each error with an example that triggered it.
 
 ### `syntax.job_every_required`
 
@@ -1312,6 +1786,312 @@ job overdue_reminders every 15m {
 }
 ```
 
+### `type.batch_capture_not_storable`
+
+What a run saves (`from:`'s query's arguments, what `each:` and
+`finished:` capture, and `key:`) is kept as its type's JSON, so the run can
+resume after a crash or a deploy; a value an entity field couldn't hold,
+such as a request's `Input`, is refused, naming it:
+
+```jadpo check project=e-batch-capture-not-storable file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-capture-not-storable expect=type.batch_capture_not_storable
+action mark_on(item: Item, page: ItemPage) -> Unit {
+    assert item.seen == item.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_on(item, page))
+}
+```
+
+```text output
+error: `batches.each` can't save `page`
+ --> main.jadpo:6:72
+  |
+6 |     return batches.each(from: items(page), each: item -> mark_on(item, page))
+  |                                                                        ^^^^ `ItemPage` has no stored form
+  reason: What `each:` captures is worked out when the run starts and saved with it, as its type's JSON, so the run can resume after a crash or a deploy; `page` is `ItemPage`, an `Input`, the shape a request arrives in, where a record keeps an `Object`.
+  next: Pass something an entity field could hold instead, such as the `id` that finds `page` (agent)
+  rule: type.batch_capture_not_storable
+  help: docs/language/12-jobs-and-events.html#type-batch-capture-not-storable
+
+check failed: 1 error, 2 files
+```
+
+### `type.batch_context`
+
+Only an action starts a run, reads its progress or cancels it, keeping
+what it does in the action's transaction:
+
+```jadpo check project=e-batch-context file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-context expect=type.batch_context
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+
+/// How far a sweep has got, for a report.
+function shelf_report(shelf_run: BatchRun) -> BatchProgress {
+    return batches.status(shelf_run)
+}
+```
+
+```text output
+error: A function can't call `batches.status`
+ --> main.jadpo:7:12
+  |
+7 |     return batches.status(shelf_run)
+  |            ^^^^^^^^^^^^^^ outside an action
+  reason: `batches.status` reads a run the runtime keeps in the store an action writes, so only an action calls it.
+  next: Call `batches.status` in an action (agent)
+  rule: type.batch_context
+  help: docs/language/12-jobs-and-events.html#type-batch-context
+
+check failed: 1 error, 2 files
+```
+
+### `type.batch_each_invalid`
+
+`each:` and `finished:` are one call of an action in the same domain,
+whose arguments are the item, a field inside it, or a value saved with
+the run; one that works something out of the item is refused:
+
+```jadpo check project=e-batch-each-invalid file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-each-invalid expect=type.batch_each_invalid
+action mark_code(code: ShelfCode) -> Unit {
+    assert code == code
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
+}
+```
+
+```text output
+error: `batches.each`'s `each:` isn't one call of an action
+ --> main.jadpo:6:68
+  |
+6 |     return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
+  |                                                                    ^^^^^^^^^^^^^^^^^^^^ the item and more
+  reason: An argument reading `item` is `item` itself or a field inside it, which the run reads from each item; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.
+  next: Write `each: item -> <action>(...)`, calling an action in this domain (agent)
+  rule: type.batch_each_invalid
+  help: docs/language/12-jobs-and-events.html#type-batch-each-invalid
+
+check failed: 1 error, 2 files
+```
+
+### `type.batch_from_invalid`
+
+A run walks `from:` a page at a time, so it is a call of a named query
+giving a `Page`; a list's query, or a page already read, is refused:
+
+```jadpo check project=e-batch-from-invalid file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+```
+
+```jadpo check project=e-batch-from-invalid expect=type.batch_from_invalid
+query first_items() -> List<Item> {
+    from: Item
+    order: [Item.code asc]
+    limit: 10
+}
+
+action sweep_shelf() -> BatchRun {
+    return batches.each(from: first_items(), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `batches.each`'s `from:` isn't a call of a named query giving a `Page`
+ --> main.jadpo:8:31
+  |
+8 |     return batches.each(from: first_items(), each: item -> mark_seen(item))
+  |                               ^^^^^^^^^^^^^ gives `List<Item>`
+  reason: A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run.
+  next: Write `batches.each(from: <query>(...), ...)`, with a query whose result is `Page<T>` (agent)
+  rule: type.batch_from_invalid
+  help: docs/language/12-jobs-and-events.html#type-batch-from-invalid
+
+check failed: 1 error, 2 files
+```
+
 ## Review
 
 ### Status
@@ -1319,16 +2099,21 @@ job overdue_reminders every 15m {
 Built in chunk 6.1a: the runtime's runner, which drives an executor for
 work no request waits on, as the system caller (area 9): deferred until
 after a response, inline, or once per item in batches; "Chosen in chunk
-6.1a" below. Nothing the language declares runs on it yet. Events,
-subscribers and retries come in chunk 6.1b, and schedules, their leases
-and monitoring basics in chunk 6.2;
+6.1a" below. Built in chunk 6.1b: `emit` and the outbox, subscribers,
+delivery after the response, handled records, retries, trace context,
+`events: { store: }` and the outbox sweep, with the errors below that
+name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Event
+records and what a subscriber stores from an event come in chunk 6.1c,
+and schedules, their leases, the minute tick that calls the sweep and
+monitoring basics in chunk 6.2;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
-7). Batches, several changing calls in one action, polls and `receiving`
-were decided on 2026-10-16 and are not yet roadmap chunks; their errors
-are built with them. Batches need the CSV and JSON namespaces from chunk
-5.4, and on Workers a way to start each batch in a fresh invocation
-(chunk 8.2 checks it).
+7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
+below), but for the file helpers, which come in chunk 6.4b, and on
+Workers each run's continuation in a fresh invocation, which chunk 8.2
+checks. Several changing calls in one action, polls and `receiving`
+were decided on 2026-10-16 and come with Phase 7; their errors are built
+with them.
 
 ### Chosen in chunk 6.1a
 
@@ -1362,6 +2147,180 @@ each the most conservative reading:
   the commit keeps nothing, and the run runs the batch again. A backfill
   worked out in Jadpo (area 5) runs its rows this way, each value kept
   and checked by its field's rules as any value of the field's type is.
+
+### Chosen in chunk 6.1b
+
+What the page leaves to the build about events, each the most
+conservative reading:
+
+- **Where an event is kept.** In the outbox of the store the action's
+  transaction is in, written as the action commits, with a delivery
+  record for each subscriber, `pending` and due at once, so nothing is
+  written for an action that rolls back. An action that began no
+  transaction keeps them in the store it writes, or, writing none, the
+  one `events: { store: }` names, beginning its transaction there for
+  them. An action that emits and writes no store, itself or through what
+  it calls, with no `events: { store: }`, is `event.store_required`, even
+  when it reads one, as the decision says "writes". An event nothing
+  subscribes to is still written. Its row keeps its type's key, its
+  payload as the contract's JSON, when it was emitted, the emitting
+  action's `traceparent`, the encoding and how deep in a chain it is.
+- **Emitting.** Only an action emits (`event.emit_invalid` in a function,
+  test, fixture or seed), and only an event. Past 1,000 events in one
+  action, or an event's JSON past 64 KB, is a defect as it is emitted, and
+  the action rolls back.
+- **Delivery.** Once the action commits, each delivery is the runner's,
+  after the response: it claims its record in one statement (`running`,
+  its lease the 15-minute limit of a run and a minute), so a delivery
+  another runner holds, or one not due, is left alone; runs the
+  subscriber's action as the system, in a boundary of its own; and
+  records how it ended. No order is promised. A delivery to a subscriber
+  the build no longer has fails as a defect, and an event 16 deep in a
+  chain fails with `event_chain_limit`.
+- **Handled records.** `jadpo_handled_deliveries`, keyed by the
+  delivery's `id`, in the store the subscriber's action writes, inserted
+  in its transaction when it opened one there, so it commits with the
+  writes and references nothing in another store. Before the action runs
+  the runner looks for it, and a delivery already handled is marked
+  succeeded without running again. An action that writes no store keeps
+  none, since running it again changes nothing in a database.
+- **A subscriber's tenant.** The tenant its event came from is the
+  event's one field holding the tenant's id (`household_id:
+  Household.id`). An event of an application with a tenant that holds no
+  such field, or more than one, limits its subscribers to no tenant: they
+  reach only records every tenant shares. *Flagged:* the pages say the
+  subscriber is limited to its event's tenant without saying how an event
+  knows it; reading it from the event's own field is what a reviewer
+  sees, as `by: User.id` carries who. Recommended as built; the
+  alternative, the tenant of the emitting request's records, depends on
+  data the event doesn't carry.
+- **Retries.** As "Retries and giving up" tables them: a failure of kind
+  `unavailable` or `rate_limited`, a fault reaching a store or a run out
+  of time is retried; any other failure or defect fails at once. Each
+  wait is drawn evenly from zero to a ceiling that starts at 30 seconds
+  and doubles with each attempt up to 6 hours (full jitter), and is never
+  under a second; a delivery past its attempts, or whose next attempt
+  would fall after `within:` from when the event was emitted, fails.
+  `retry:` takes `attempts:` from 1 to 100 and `within:` up to 30 days
+  (`subscriber.retry_invalid`). A record keeps the failure's code and
+  kind, never its fields. `Retry-After` comes with provider calls
+  (Phase 7).
+- **The sweep.** `runner::sweep` delivers up to 100 deliveries of one
+  store that are `pending` past their next attempt or `running` past
+  their lease, oldest first: what a crash between the commit and the
+  delivery, a host that dropped deferred work, or a worker that died
+  holding a lease left. A payload that no longer reads as its type is
+  parked as `failed` with its problem (the rule and the field, never the
+  value). The minute tick that calls it, and deleting delivered events,
+  are chunk 6.2's.
+- **Trace context.** A request continues a valid W3C `traceparent` it
+  brings, in a span of its own, or starts a trace; an event keeps the
+  context of the action that emitted it, and each delivery runs in a new
+  span of that trace, so what it emits keeps it too.
+- **Idempotency keys.** A route whose action writes no store but emits
+  keeps its `Idempotency-Key`s beside its events; one that does neither
+  still keeps none (area 7, chunk 4.2).
+- **What a subscriber holds.** `on:` an event type (another domain's
+  public one, imported), `run:` a call of an action of the subscriber's
+  own domain (`subscriber.run_invalid`) whose arguments are `event` or
+  fields read through it (`subscriber.argument_invalid`), typed against
+  its parameters, and `retry:`; anything else is
+  `subscriber.item_invalid`.
+- **Not yet.** Delivering in tests after each commit and failing a
+  subscriber with a fake (area 13), `jadpo deliveries` and the operator's
+  retry and dismiss (area 14), the circuit breaker, publishing outward,
+  and events from outside (Phase 7) are not built; event records and
+  what a subscriber stores from an event are chunk 6.1c's.
+
+### Chosen in chunk 6.4
+
+What the page leaves open about batches, each the most conservative
+reading; the file helpers wait for chunk 6.4b:
+
+- **A batch is a page.** Each transaction is one page of `from:`, at the
+  size its query's `page:` reads, so 60 items in pages of 3 commit 20
+  times. A page type allowing more than the 1,000 items of one batch
+  ("Limits and runtime faults") isn't split yet; `PageSize` stops at 100.
+- **Where a run is kept.** In the store `from:`'s query reads: one row
+  per run in `jadpo_batch_runs` (which call, the shape it was started
+  under, its `key:`, what it saved as its types' JSON, the cursor of the
+  next page, its counts, its state and its runner's lease), each problem
+  in `jadpo_batch_problems`, and each cancel asked for in
+  `jadpo_batch_cancels`; only a store some batch walks has them. Starting
+  a run writes that store, and `each:`'s and `finished:`'s actions may
+  write no other (`store.action_spans_stores`), so an item's writes and
+  the position always commit together. A run always has its query's
+  store, so it never needs `events: { store: }`.
+- **Starting.** The run's row is written in the starting action's
+  transaction, and the run is left for after the response at once
+  (`Deferred::Batch`); an action that rolls back left no row, so the
+  runner finds nothing to run. A start keyed with `key:` that finds the
+  same call's run with the same key (by its contract JSON) gives that run,
+  in whatever state, whatever else the call was given; a start without
+  one is always a new run. A start needs no outbox row: its run's row is
+  as durable, and the resume sweep below picks up a start a host
+  dropped, as the outbox sweep does a delivery (chunk 6.1b).
+- **Saved values.** `each:`'s and `finished:`'s arguments are the item
+  (or the summary), a field inside it, or a value that reads nothing of
+  it, worked out as the run starts and saved with it; anything that
+  works something out of the item is `type.batch_each_invalid`, and is
+  the action's to work out. `from:`'s query's arguments are saved as
+  what a request carries, an `Input` among them; what `each:` and
+  `finished:` capture, and `key:`, as an entity field holds a value, so
+  an `Input` there is `type.batch_capture_not_storable`. A secret is
+  never saved.
+- **Problems.** An item whose action fails is undone alone and becomes a
+  problem: its row is its place in the walk, from 1, its column empty
+  (a query's item has no columns; the file helpers fill it), its rule the
+  failure's code. One whose action faults with a defect or an overflow
+  is a problem too, its rule the fault's classification
+  (`internal_fault`, `int_overflow`), and is undone alone as a failure
+  is. A store that can't be reached, a deadline or another transaction's
+  change is no item's: the whole batch is undone; one another
+  transaction's change undid runs again, up to three times, and
+  otherwise the run waits for the sweep.
+- **Finishing.** `finished:` runs once after the last page, in a
+  transaction of its own, given the `ImportSummary` with every problem
+  in row order, and the run is `finished` in the same transaction. If
+  its action fails, what it wrote is undone and the run is `failed`
+  with the failure's code. A cancelled run doesn't run `finished:`.
+- **Cancelling.** `batches.cancel` keeps a row of its own in the calling
+  action's transaction and never touches the run's, so it never waits
+  for the batch in hand; the next batch finds it and ends the run
+  `cancelled`. Until then `batches.status` says `running`.
+- **Status.** `batches.status` reads the counts and the state in the
+  calling action's transaction; `estimated_total` is `none` until a
+  query's count is built. A `BatchRun` no store keeps is a fault. Both
+  find a run by its `id` alone, so they need the application's runs in
+  one store: with none, or more than one, they are
+  `toolchain.not_built_yet`.
+- **Resuming.** A runner holds its run by a lease of two minutes,
+  renewed with each page's commit. `batches::resume` picks up every run
+  still running whose lease has lapsed, from the position that
+  committed: the runtime's minute tick calls it (chunk 6.2). A run whose
+  call a deploy changed (its query, its actions or what it saves) ends
+  `failed` rather than reading what it saved as something else; listing
+  such runs before a deploy is area 14's `jadpo runs unfinished`. A
+  runner hands its run on after 500 pages, so one invocation stays within
+  the 15 minutes one run has.
+- **Who runs it.** Each page's read, its items and `finished:` act as the
+  system with no tenant, and read the clock as their batch began; each
+  batch begins at repeatable read when `each:`'s or `finished:`'s action
+  loads a record, read committed otherwise. *Flagged:* which tenant a run
+  an action starts is limited to isn't decided, so `batches.each` in an
+  application with a `tenant:` is `toolchain.not_built_yet`; recommended:
+  as chunk 6.1b limits a subscriber to its event's one field holding the
+  tenant's id, a run is limited to the tenant its one saved value holding
+  a tenant's id names (a `from:` argument, a capture or `key:`), and to
+  no tenant when none or several do.
+  *Flagged too:* a batch whose query or actions reach what only
+  `Access.public` grants isn't refused yet; recommended: the same compile
+  error as a schedule's or a subscriber's (area 9, 2026-10-19), with
+  6.1b's check.
+- **Names.** `batches` is a standard namespace, so, as every one, it
+  names no variable: area 19's and example 4's `batches` variables were
+  renamed. An inline function is now also a named argument's value
+  (`each: row -> ...`), as area 3 decided.
 
 ### Consistency with the rest of the language
 
@@ -1645,3 +2604,5 @@ Nothing is decided on this page yet.
 | Outbox placement, settled (Phase 5 review) | Each store an action writes keeps its outbox and the delivery records beside it, as the earlier "Outbox placement" row says; "Where events travel" and "Event transport" are read that way. A subscriber's handled record goes in the store it writes, with no reference across stores. Schedule leases go in `schedules: { store: }` (area 5), defaulting to the only store when there is one (Richard, as recommended) | 2026-10-19 |
 | Event records (Phase 5 review) | An event's shape is recorded and diffed in the generated record exactly as an API's is (chunk 7.0's format); accepting a breaking change waits for area 18's acceptances together with the API record's (Richard, as recommended) | 2026-10-19 |
 | A schedule and tenants (after chunk 6.1a) | A schedule's run, which no tenant's event starts, reaches every tenant's records, as the system caller does with no tenant; a subscriber stays limited to its event's tenant (Richard, as recommended) | 2026-10-19 |
+| An event's tenant (after chunk 6.1b) | An event belongs to the tenant its one field holding a tenant's id names (e.g. `household_id: Household.id`), so the tenant is written in the event where a reviewer sees it; an event with no such field, or more than one, reaches no tenant's records (Richard, as recommended) | 2026-10-19 |
+| A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended) | 2026-10-19 |

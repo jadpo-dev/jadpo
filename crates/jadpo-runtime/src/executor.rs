@@ -42,6 +42,20 @@ pub trait Executor {
         None
     }
 
+    /// What the program's batches run with (area 12, chunk 6.4): each
+    /// `batches.each` call's plan and the codecs its saved values are
+    /// kept in. None for a program that starts none.
+    fn batches(&self) -> Option<crate::batches::Batches<'_>> {
+        None
+    }
+
+    /// The program's subscribers and the codecs its events' payloads are
+    /// read with (area 12, chunk 6.1b): what the runner delivers an event
+    /// with. `None` for a program that has none to deliver to.
+    fn events(&self) -> Option<crate::outbox::Events<'_>> {
+        None
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

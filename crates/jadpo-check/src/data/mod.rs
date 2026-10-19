@@ -2255,7 +2255,12 @@ fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {
 /// commit with an action's own writes goes in every store that holds an
 /// entity, since any of them can be written. Their behaviour comes with
 /// areas 7 and 12; their schema is here so migrations create them.
-pub const SYSTEM_TABLES: [&str; 3] = ["outbox", "deliveries", "idempotency_keys"];
+pub const SYSTEM_TABLES: [&str; 4] = [
+    "outbox",
+    "deliveries",
+    "handled_deliveries",
+    "idempotency_keys",
+];
 
 /// The table of browser sessions and API tokens, in the store the
 /// principal's users live in when anything signs one in (area 8).
@@ -2302,6 +2307,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             store
                 .tables
                 .insert(format!("jadpo_{name}"), columns::system_table(name));
+        }
+    }
+    // Batch runs live in the store each run's query reads, beside the
+    // writes of its items (area 12; chunk 6.4).
+    for store in crate::types::batch_stores(db, project) {
+        if let Some(found) = schema.stores.get_mut(store) {
+            for name in jadpo_std::batch::TABLES {
+                found
+                    .tables
+                    .insert(format!("jadpo_{name}"), columns::system_table(name));
+            }
         }
     }
     // Sessions live beside the users they sign in, so one statement reads

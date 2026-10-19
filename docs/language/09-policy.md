@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -174,11 +174,11 @@ which gets exactly what `Access.system` grants. The system is nobody
 signed in and holds no membership, so a user field, a role and
 `Access.authenticated` never let it in; a grant list, a field's own list
 or an `actions:` line lets it in only by naming `Access.system`. An
-entity grants background work explicitly: a schedule or a subscriber that
-reaches a statement only `Access.public` grants is a compile error, as
-`policy.effect_ungranted` refuses a route, so the runtime, where such a
-statement tests no caller and runs for the system as for everyone, never
-has to tell the two apart.
+entity grants background work explicitly: a schedule, a subscriber or a
+batch that reaches a statement only `Access.public` grants is a compile
+error, as `policy.effect_ungranted` refuses a route, so the runtime, where
+such a statement tests no caller and runs for the system as for everyone,
+never has to tell the two apart.
 
 On a tenant's records, a grant naming `Access.system` lets a subscriber in
 within the tenant its event came from, and a schedule's run, which no
@@ -2175,6 +2175,60 @@ error: `Note` declares `policy:` twice
 check failed: 1 error, 1 file
 ```
 
+### `policy.system_grant_missing`
+
+A subscriber runs as the system, and the entity it changes grants that
+only to anyone at all (decided 2026-10-19):
+
+```jadpo check project=e-system-grant-missing expect=policy.system_grant_missing
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(event.reminder_id)
+}
+```
+
+```text output
+error: `send_due` runs as the system, which only `Access.public` lets update `Reminder`
+ --> main.jadpo:29:12
+   |
+29 | subscriber send_due {
+   |            ^^^^^^^^ runs as `Access.system`
+  reason: A subscriber runs as the system, which an entity grants background work by naming `Access.system`; `Reminder`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Reminder`'s `update:`, or reach `Reminder` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
+
 ### `policy.public_grant_missing`
 
 A route anyone may call reaches an entity that does not grant `Access.public`:
@@ -3258,15 +3312,13 @@ Not yet:
 
 - A restricted field read only in an event isn't an output: an event's
   subscribers (area 12) are server work, so `emit` stores nothing a caller
-  reads. What a subscriber stores from an event is checked when
-  subscribers run, in chunk 6.1. Area 15's log redaction covers what a
-  log holds.
+  reads. What a subscriber stores from an event is checked in chunk
+  6.1c. Area 15's log redaction covers what a log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
-- `Access.system` reaches nothing yet: the system caller is built
-  (chunk 6.1a), and schedules and subscribers, which run as it, and the
-  check that they reach nothing only `Access.public` grants, come in
-  chunks 6.1b and 6.2.
+- Schedules, which run as the system with no tenant, come in chunk 6.2;
+  subscribers run as it since chunk 6.1b, limited to the tenant their
+  event names (area 12, "Chosen in chunk 6.1b").
 - An acceptance for a change that widens access, and the approval review
   that shows the report's changes (areas 14 and 18).
 - Indexes for policy: every field a condition filters on is a reference
@@ -3454,4 +3506,5 @@ Not yet:
 | What fails decides what is stored (chosen in chunk 5.1d) | An action is all-or-nothing, so whatever a `reject` in its body tests decides every value it stores, before the `reject` or after it; a failure an entity operation or another action raises isn't followed, as for outputs. A `return` or `reject` inside a loop decides every turn after the one it may leave, from the top of the loop's body, for outputs and stores alike | 2026-10-16 |
 | Events and stores (chosen in chunk 5.1d) | `emit` stores nothing a caller reads: an event's subscribers are server work, as `Access.system` reading a field is, so a restricted value may go in an event's payload. What a subscriber stores from a payload is a store like any other, checked when subscribers run (chunk 6.1) against what every `emit` of the event put in it | 2026-10-16 |
 | User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |
-| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on (Richard, as recommended) | 2026-10-19 |
+| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
+| Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |

@@ -338,6 +338,12 @@ rules! {
         "03-logic.html#effect-function-persistence", "Function reads or writes stored data";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
+    EVENT_EMIT_INVALID: "event.emit_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#event-emit-invalid", "Emit is given something that isn't an event, or is used outside an action";
+    EVENT_SETTINGS_INVALID: "event.settings_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#event-settings-invalid", "Events settings in `app.jadpo` hold something other than a database's `store:`";
+    EVENT_STORE_REQUIRED: "event.store_required", area 12, Error, Human,
+        "12-jobs-and-events.html#event-store-required", "Action emits an event but writes no store to keep it in";
     FAILURE_ATTEMPT_INFALLIBLE: "failure.attempt_infallible", area 3, Error, Agent,
         "03-logic.html#failure-attempt-infallible", "Attempt is used on something that cannot fail";
     FAILURE_ATTEMPT_REQUIRED: "failure.attempt_required", area 3, Error, Agent,
@@ -502,6 +508,8 @@ rules! {
         "09-policy.html#policy-scope-missing", "Entity has no reference a role or the tenant applies through";
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
         "09-policy.html#policy-subject-duplicate", "Grant names the same caller twice";
+    POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
+        "09-policy.html#policy-system-grant-missing", "Subscriber reaches what only `Access.public` grants, not `Access.system`";
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
         "21-ai.html#prompt-free-text-in-instructions", "A free-text placeholder is written in a prompt's instructions";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,
@@ -700,6 +708,16 @@ rules! {
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
+    SUBSCRIBER_ARGUMENT_INVALID: "subscriber.argument_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#subscriber-argument-invalid", "Subscriber passes something other than its event or a field of it";
+    SUBSCRIBER_EVENT_INVALID: "subscriber.event_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#subscriber-event-invalid", "Subscriber's `on:` doesn't name an event type";
+    SUBSCRIBER_ITEM_INVALID: "subscriber.item_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#subscriber-item-invalid", "Subscriber holds an item it doesn't take, gives one twice or leaves out `on:` or `run:`";
+    SUBSCRIBER_RETRY_INVALID: "subscriber.retry_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#subscriber-retry-invalid", "Subscriber's `retry:` isn't attempts and a duration within their limits";
+    SUBSCRIBER_RUN_INVALID: "subscriber.run_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#subscriber-run-invalid", "Subscriber's `run:` isn't a call of an action in its own domain";
     SUGGEST_RECORD_INVALID: "suggest.record_invalid", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Suggestions record can't be read";
     SUGGEST_SHARE_FAILED: "suggest.share_failed", area 14, Error, Human,
@@ -922,6 +940,14 @@ rules! {
         "08-identity.html#type-auth-sessions-context", "Session, API token or service key operation outside an action, or without its sign-in method";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
+    TYPE_BATCH_CAPTURE_NOT_STORABLE: "type.batch_capture_not_storable", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-capture-not-storable", "A batch saves a value that can't be stored";
+    TYPE_BATCH_CONTEXT: "type.batch_context", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-context", "Batch operation called outside an action";
+    TYPE_BATCH_EACH_INVALID: "type.batch_each_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-each-invalid", "A batch's `each:` or `finished:` is not one call of an action in its domain";
+    TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-from-invalid", "A batch's `from:` is not a call of a named query giving a `Page`";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
         "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,

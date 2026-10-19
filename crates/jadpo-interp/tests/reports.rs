@@ -6,7 +6,7 @@
 
 use crate::support;
 
-use jadpo_interp::{Value, on_large_stack};
+use jadpo_interp::on_large_stack;
 use support::{int, main, program, report, text};
 
 const LINE_TOTAL: &str = "type Pence = Int {\n    min: 0\n}\n\ntype Quantity = Int {\n    min: 1\n    max: 1000\n}\n\nfunction line_total(price: Pence, quantity: Quantity) -> Pence {\n    var total: Pence = Pence(price * quantity)\n    return total\n}\n\naction price_line(price: Pence, quantity: Quantity) -> Pence {\n    var line: Pence = line_total(price, quantity)\n    return line\n}\n";
@@ -53,29 +53,6 @@ fault: recursion_limit in function countdown
   next: Make the recursion end sooner, or recurse over smaller values (agent)
   stack: main.jadpo:10  function countdown (999 times)
          main.jadpo:14  action start
-"
-    );
-}
-
-#[test]
-fn something_not_built_yet_names_its_rule() {
-    let program = program(&[(
-        "main.jadpo",
-        "type Note = Text {\n    max_length: 40\n}\n\naction record(note: Note) -> Unit {\n    emit note  // events come with area 12\n}\n",
-    )]);
-    assert_eq!(
-        report(&program, "record", vec![Value::text("hi")]),
-        "\
-fault: not_built_yet in action record
- --> main.jadpo:6:5
-  |
-6 |     emit note  // events come with area 12
-  |     ^^^^^^^^^ not built yet
-  reason: The language declares `emit`, but this toolchain has nothing to run it with yet, so the call stopped here.
-  next: Do without `emit` for now, or test this part once its area is built (agent)
-  stack: main.jadpo:6  action record
-  rule: toolchain.not_built_yet
-  help: docs/language/03-logic.html#toolchain-not-built-yet
 "
     );
 }

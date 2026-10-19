@@ -754,9 +754,9 @@ A parcel going by courier keeps `{"tag": "courier", "company": "Swift",
   `event` column records (`JsonTable::events`), so the outbox (chunk
   6.1b) writes and reads a payload through the one codec, with the type's
   rules applied on read (area 12, "A payload is the contract's JSON"). No
-  job takes arguments yet (a schedule's `run:` takes none), and a batch's
-  captures come with batches (chunk 6.4), so event types are all a
-  payload is kept as today.
+  job takes arguments yet (a schedule's `run:` takes none); a batch's saved
+  values are numbered in the same table by their types (area 12, "Chosen
+  in chunk 6.4").
 
 **Migrating them.** Each migration's snapshot records what a JSON column's
 type reads (its `allows` holds `json`): the value's shape (a value built
@@ -1230,8 +1230,9 @@ that holds an entity, since any of them can be written:
 
 | Table | Holds | Behaviour |
 |---|---|---|
-| `jadpo_outbox` | Each event an action emitted, with its trace context | Area 12, chunk 6.1 |
-| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, chunk 6.1 |
+| `jadpo_outbox` | Each event an action emitted, with its trace context and how deep in a chain it is | Area 12, built in chunk 6.1b |
+| `jadpo_deliveries` | Each event's delivery to each subscriber: status, attempts, next attempt, last failure | Area 12, built in chunk 6.1b |
+| `jadpo_handled_deliveries` | Each delivery a subscriber's action handled, committed with its writes in the store it writes | Area 12, built in chunk 6.1b |
 | `jadpo_idempotency_keys` | Each idempotent request's key, digest and stored response | Area 7, built in chunk 4.2 |
 
 A subscriber's record that it handled a delivery goes in the store the
@@ -2266,7 +2267,7 @@ error: No migration creates these entities' tables yet
   |
 1 | entity Note {
   |        ^^^^ no table yet
-  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for deliveries, new system table for idempotency keys and new system table for outbox.
+  reason: `jadpo check` compares the database schema the entities ask for with the migrations in `database/migrations/`, and there are none: new entity `Note`, new system table for deliveries, new system table for handled deliveries, new system table for idempotency keys and new system table for outbox.
   next: Run `jadpo migrate new initial` (agent)
   rule: migration.out_of_date
   help: docs/language/05-data.html#migration-out-of-date

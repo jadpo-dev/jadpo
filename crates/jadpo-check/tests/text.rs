@@ -33,7 +33,7 @@ const NONE: &[&str] = &[];
 
 #[test]
 fn every_text_operation_checks() {
-    let source = "function words(t: Title, s: Separator, n: Grams, reader: Locale) -> List<Words> {\n    return [Words(text.trim(t)), Words(text.lower(t)), Words(text.upper(t, locale: reader)), Words(text.replace(t, s, \"and\")), Words(text.slice(t, 1, n)), Words(text.keep_first(t, 3)), Words(text.keep_last(t, n)), Words(text.drop_first(t, 1)), Words(text.drop_last(t, n)), Words(text.pad_start(t, 6, fill: \"0\")), Words(text.slug(t)), Words(text.join(text.split(t, s), \"-\"))]\n}\n\nfunction checks(t: Title, s: Separator) -> List<Found> {\n    return [Found(text.contains(t, s)), Found(text.starts_with(t, \"R\")), Found(text.ends_with(t, s))]\n}\n\nfunction size(t: Title) -> Grams {\n    return Grams(text.length(t))\n}\n\nfunction joined(tags: List<TagName>) -> Words {\n    return Words(text.join(tags, \", \"))\n}\n\nfunction ordered(batches: List<Batch>, reader: Locale) -> List<Batch> {\n    return list.sort_by(batches, batch -> batch.name, locale: reader)\n}\n";
+    let source = "function words(t: Title, s: Separator, n: Grams, reader: Locale) -> List<Words> {\n    return [Words(text.trim(t)), Words(text.lower(t)), Words(text.upper(t, locale: reader)), Words(text.replace(t, s, \"and\")), Words(text.slice(t, 1, n)), Words(text.keep_first(t, 3)), Words(text.keep_last(t, n)), Words(text.drop_first(t, 1)), Words(text.drop_last(t, n)), Words(text.pad_start(t, 6, fill: \"0\")), Words(text.slug(t)), Words(text.join(text.split(t, s), \"-\"))]\n}\n\nfunction checks(t: Title, s: Separator) -> List<Found> {\n    return [Found(text.contains(t, s)), Found(text.starts_with(t, \"R\")), Found(text.ends_with(t, s))]\n}\n\nfunction size(t: Title) -> Grams {\n    return Grams(text.length(t))\n}\n\nfunction joined(tags: List<TagName>) -> Words {\n    return Words(text.join(tags, \", \"))\n}\n\nfunction ordered(bakings: List<Batch>, reader: Locale) -> List<Batch> {\n    return list.sort_by(bakings, batch -> batch.name, locale: reader)\n}\n";
     assert_eq!(rules(source), NONE);
 }
 
@@ -174,7 +174,7 @@ fn join_takes_a_list_of_any_text() {
 #[test]
 fn a_locale_orders_text_keys_only() {
     let found = diagnostics(
-        "function f(batches: List<Batch>, reader: Locale) -> List<Batch> {\n    return list.sort_by(batches, batch -> batch.grams, locale: reader)\n}\n",
+        "function f(bakings: List<Batch>, reader: Locale) -> List<Batch> {\n    return list.sort_by(bakings, batch -> batch.grams, locale: reader)\n}\n",
     );
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule.id, "type.temporal_option_unused");

@@ -16,6 +16,7 @@ pub mod config;
 pub mod constants;
 pub mod data;
 pub mod declines;
+pub mod events;
 mod failures;
 pub mod fixes;
 pub mod graph;
@@ -121,6 +122,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
             out.extend(types::store_problems(db, project, file).iter().cloned());
+            out.extend(
+                types::batch_store_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(graph::similar_problems(db, project, file).iter().cloned());
             out.extend(data::data_problems(db, project, file).iter().cloned());
             out.extend(
@@ -129,6 +135,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .cloned(),
             );
             out.extend(routes::route_problems(db, project, file).iter().cloned());
+            out.extend(
+                events::subscriber_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(events::emit_problems(db, project, file).iter().cloned());
             out.extend(
                 policy::reach::reach_problems(db, project, file)
                     .iter()
@@ -168,6 +180,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
+        out.extend(
+            events::events_settings(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());

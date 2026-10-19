@@ -347,6 +347,7 @@ impl Lower<'_> {
                     | Callee::Query(_)
                     | Callee::Entity { .. }
                     | Callee::Session(_)
+                    | Callee::Batch(_)
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -848,6 +849,7 @@ impl Lower<'_> {
             },
             Reach::Caller(kind) => Callee::Caller(*kind),
             Reach::Session(op) => Callee::Session(*op),
+            Reach::Batch(op) => Callee::Batch(*op),
             Reach::AdvanceClock => Callee::AdvanceClock,
             Reach::Translation { key, .. } => Callee::Translation(key.clone()),
             Reach::Prompt(key) => Callee::Prompt(key.clone()),
@@ -868,6 +870,21 @@ impl Lower<'_> {
                     let lowered = arg.expr().map(|value| self.expr(&value));
                     if let Some(slot) = slot
                         && let Some(place) = args.get_mut(slot)
+                    {
+                        *place = lowered;
+                    }
+                }
+                args
+            }
+            // `batches.each`'s named arguments in their places: `from:`,
+            // `each:`, `finished:`, `key:` (area 12).
+            (Reach::Batch(op), Some(slots)) => {
+                let mut args = vec![None; op.params().len()];
+                for (arg, slot) in arguments.iter().zip(slots) {
+                    let lowered = arg.expr().map(|value| self.expr(&value));
+                    if let Some(slot) = slot
+                        && let Some(place) = args.get_mut(slot)
+                        && place.is_none()
                     {
                         *place = lowered;
                     }
@@ -1012,6 +1029,7 @@ impl Lower<'_> {
             }
             Reach::Std(_)
             | Reach::Session(_)
+            | Reach::Batch(_)
             | Reach::AdvanceClock
             | Reach::Translation { .. }
             | Reach::Prompt(_) => {}

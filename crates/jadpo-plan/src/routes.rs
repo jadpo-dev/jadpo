@@ -190,10 +190,14 @@ pub(crate) fn table(
             let Some(id) = callable(&key) else {
                 continue;
             };
-            // Its keys go in the store it writes (area 5, "System tables").
+            // Its keys go in the store it writes (area 5, "System tables"),
+            // or, writing none, beside the events it emits (area 12, chunk
+            // 6.1b); an action that does neither keeps none, since running
+            // it again changes nothing.
             let keys = written
                 .get(key.name())
-                .and_then(|stores| stores.keys().next().cloned());
+                .and_then(|stores| stores.keys().next().cloned())
+                .or_else(|| jadpo_check::events::outbox_store(db, project, key.name()));
             (Run::Action(id), keys)
         };
         let args = route
@@ -377,6 +381,9 @@ enum Made {
     /// `IssuedToken` or `IssuedKey` (area 8), or `DecodeProblem` (area
     /// 19).
     Issued(&'static str),
+    /// A batch type (area 12, chunk 6.4): a run kept in an entity field or
+    /// saved with another run.
+    Batch(&'static str),
     /// A standard object type, `InstantRange` (area 19): its fields from
     /// its data entry.
     StdObject(&'static jadpo_std::StandardType),
@@ -612,6 +619,19 @@ impl<'t> Codecs<'t> {
                     validator: None,
                 }
             }
+            Made::Batch(name) => {
+                let shape = self.types.batch_shape(name);
+                let fields = jadpo_std::batch::object_fields(name)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|(_, part)| self.codec(&crate::types::batch_part(*part)))
+                    .collect();
+                Codec::Object {
+                    shape,
+                    fields,
+                    validator: None,
+                }
+            }
             Made::StdObject(entry) => {
                 let jadpo_std::standard::Holds::Object(fields) = entry.holds else {
                     return self.made_unknown();
@@ -775,6 +795,12 @@ impl<'t> Codecs<'t> {
                             }
                             _ => {}
                         }
+                    }
+                    if let Some(batch) = jadpo_std::batch::OBJECTS
+                        .into_iter()
+                        .find(|object| *object == name)
+                    {
+                        return Made::Batch(batch);
                     }
                     return match routes::wire::issued_name(&name) {
                         Some(issued) => Made::Issued(issued),

@@ -727,7 +727,11 @@ action announce_budget(project_id: Project.id) fails ProjectNotFound -> Project 
     emit BudgetSeen {
         budget: project.budget
     }
-    return project
+    return Project.update(project) {
+        set: {
+            spent: project.spent
+        }
+    }
 }
 "#,
     );

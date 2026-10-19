@@ -89,6 +89,9 @@ pub(crate) enum Target {
     },
     /// `sessions.start` or `sessions.end` (area 8).
     Session(jadpo_std::http::SessionOp),
+    /// `batches.each`, by the number its site decodes, or with `None`
+    /// `batches.status` and `batches.cancel` (area 12, chunk 6.4).
+    Batch(jadpo_std::batch::BatchOp, Option<u32>),
 }
 
 /// Where a run of the machine stopped.
@@ -172,6 +175,9 @@ enum Task<'p> {
     },
     Return,
     Discard,
+    /// `emit`: the event on the stack goes in the action's outbox (area
+    /// 12, chunk 6.1b).
+    Emit(SiteId),
     PushUnit,
     /// `clock.advance(...)`: the duration on the stack moves the clock.
     AdvanceClock(SiteId),
@@ -657,6 +663,54 @@ impl<'p> Machine<'p> {
     }
 
     /// Something a later chunk builds, named as written.
+    /// `emit`: `value`, the event its statement at `at` built, kept in
+    /// the running action's outbox with its payload, its type's contract
+    /// JSON, and the subscribers it is delivered to once the action
+    /// commits (area 12; chunk 6.1b).
+    fn emit(&self, ctx: &mut Ctx<'_>, value: Value, at: SiteId) -> Result<(), Stop> {
+        let plan = self.program.plan();
+        let key = match self.site(at).map(|site| &site.node) {
+            Some(Node::Stmt(Stmt::Emit { value: Some(built) })) => {
+                match self.site(*built).map(|site| &site.ty) {
+                    Some(jadpo_graph::TypeRef::Node(key)) => key.as_str().to_string(),
+                    _ => return Err(self.defect(ctx, "an event of no declared type", at)),
+                }
+            }
+            _ => return Err(self.defect(ctx, "an `emit` without its event", at)),
+        };
+        let Some(number) = plan.json().event(&key) else {
+            return Err(self.defect(ctx, "an event type the plan didn't number", at));
+        };
+        let payload = match self.program.stored_json().write(number, &value) {
+            Ok(jadpo_runtime::SqlValue::Json(text)) => text,
+            Ok(_) => return Err(self.defect(ctx, "an event with no payload", at)),
+            Err(why) => return Err(self.defect(ctx, &why, at)),
+        };
+        let subscribers = plan
+            .events()
+            .subscribers_of(&key)
+            .map(|subscriber| subscriber.key.clone())
+            .collect();
+        let event = jadpo_runtime::Event {
+            key,
+            value,
+            payload,
+            subscribers,
+        };
+        match ctx.emit(event) {
+            Ok(()) => Ok(()),
+            Err(jadpo_runtime::EmitRefused::OutsideAction) => {
+                Err(self.defect(ctx, "an `emit` outside an action", at))
+            }
+            Err(jadpo_runtime::EmitRefused::TooMany) => {
+                Err(self.defect(ctx, "more than 1,000 events emitted by one action", at))
+            }
+            Err(jadpo_runtime::EmitRefused::TooLarge) => {
+                Err(self.defect(ctx, "an event past 64 KB", at))
+            }
+        }
+    }
+
     fn not_built_yet(&self, ctx: &mut Ctx<'_>, what: impl Into<String>, at: SiteId) -> Stop {
         self.fault(ctx, FaultKind::NotBuiltYet(what.into()), at)
     }
@@ -716,6 +770,10 @@ impl<'p> Machine<'p> {
             Task::Return => return Err(Stop::Return(self.pop())),
             Task::Discard => {
                 self.pop();
+            }
+            Task::Emit(at) => {
+                let value = self.pop();
+                self.emit(ctx, value, at)?;
             }
             Task::PushUnit => self.values.push(Value::Unit),
             Task::AdvanceClock(at) => {
@@ -939,7 +997,8 @@ impl<'p> Machine<'p> {
                     | Target::Get(_)
                     | Target::Write(_)
                     | Target::Request { .. }
-                    | Target::Session(_) => {
+                    | Target::Session(_)
+                    | Target::Batch(..) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -1420,7 +1479,10 @@ impl<'p> Machine<'p> {
                 });
                 self.needed(*list, id);
             }
-            Stmt::Emit { .. } => return Err(self.not_built_yet(ctx, "emit", id)),
+            Stmt::Emit { value } => {
+                self.tasks.push(Task::Emit(id));
+                self.needed(*value, id);
+            }
             Stmt::Assert { value, fails } => return self.assert(ctx, id, *value, fails.as_ref()),
             Stmt::Expr { value } => {
                 self.tasks.push(Task::Discard);
@@ -1869,6 +1931,33 @@ impl<'p> Machine<'p> {
                     at: id,
                 });
                 self.tasks.push(Task::Expr(*arg));
+            }
+            // A batch run started, its progress read or a cancel asked for,
+            // in the action's transaction (area 12): `batches.each` works
+            // out only what its run saves, never its query or its actions,
+            // which the run calls later.
+            Callee::Batch(jadpo_std::batch::BatchOp::Each) => {
+                let Some(Decoded::Batch { number, sites }) = self.decoded(id) else {
+                    return Err(self.defect(ctx, "a batch with no plan", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Batch(jadpo_std::batch::BatchOp::Each, Some(*number)),
+                    count: sites.len(),
+                    at: id,
+                    then: None,
+                });
+                for site in sites.iter().rev() {
+                    self.tasks.push(Task::Expr(SiteId(*site)));
+                }
+            }
+            Callee::Batch(op) => {
+                self.tasks.push(Task::Invoke {
+                    target: Target::Batch(*op, None),
+                    count: args.len(),
+                    at: id,
+                    then: None,
+                });
+                self.arguments(args, id);
             }
             // A session started or ended, in the action's transaction.
             Callee::Session(op) => {
