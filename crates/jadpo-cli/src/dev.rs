@@ -108,13 +108,28 @@ struct Line {
     fault: Option<(String, Vec<String>)>,
 }
 
+/// What the session prints, as it happens: a request answered, a
+/// schedule's run or skipped tick (area 12, "Watching schedules"), or an
+/// alert that has just started.
+enum Event {
+    Request(Line),
+    Schedule {
+        name: String,
+        due: jadpo_runtime::schedules::Due,
+    },
+    Alert {
+        alert: jadpo_runtime::schedules::watch::Alert,
+        now: i64,
+    },
+}
+
 /// What every worker reads: the version being served and where its
 /// stores are.
 struct Shared {
     current: Mutex<(Arc<Prepared>, Arc<ConfigValues>)>,
     generation: AtomicU64,
     urls: BTreeMap<String, String>,
-    log: Mutex<Sender<Line>>,
+    log: Mutex<Sender<Event>>,
 }
 
 /// A worker's handler: its view of the program, rebuilt when a save
@@ -127,6 +142,11 @@ struct DevHandler {
     program: RefCell<Option<(u64, Rc<Program>)>>,
     host: Rc<NativeHost>,
     worker: Worker,
+    /// The alerts already printed, so each prints once when it starts.
+    raised: Rc<RefCell<jadpo_runtime::schedules::watch::Raised>>,
+    /// The schedules whose paused skip was printed, so a paused one prints
+    /// once, not on every tick, until it runs again.
+    paused: Rc<RefCell<std::collections::BTreeSet<String>>>,
 }
 
 impl DevHandler {
@@ -171,7 +191,7 @@ impl Handler for DevHandler {
                 std::mem::take(&mut response.deferred),
             );
             if let Ok(log) = self.shared.log.lock() {
-                let _ = log.send(Line {
+                let _ = log.send(Event::Request(Line {
                     id: response
                         .header("x-request-id")
                         .unwrap_or_default()
@@ -189,7 +209,7 @@ impl Handler for DevHandler {
                             fault.stack(program.places()),
                         )
                     }),
-                });
+                }));
             }
             response
         })
@@ -200,15 +220,69 @@ impl Handler for DevHandler {
     }
 
     /// The runtime's tick (area 12, chunk 6.2): the schedules due and the
-    /// runtime's own sweeps, on the version of the program running now.
+    /// runtime's own sweeps, on the version of the program running now;
+    /// then a line for each run, and for each alert that has just started
+    /// (chunk 6.2b).
     fn tick(&self) -> Option<LocalFuture<'static, ()>> {
         let program = self.program();
         let host = Rc::clone(&self.host);
+        let shared = Arc::clone(&self.shared);
+        let raised = Rc::clone(&self.raised);
+        let paused = Rc::clone(&self.paused);
         Some(Box::pin(async move {
             let Some(now) = host.now_ms() else {
                 return;
             };
-            jadpo_runtime::schedules::tick(program.as_ref(), host.as_ref(), now).await;
+            let ticked = jadpo_runtime::schedules::tick(program.as_ref(), host.as_ref(), now).await;
+            let Some(plan) = jadpo_runtime::Executor::schedules(program.as_ref()) else {
+                return;
+            };
+            let name = |key: &str| {
+                plan.schedule(key)
+                    .map_or_else(|| key.to_string(), |schedule| schedule.name.clone())
+            };
+            let mut events = Vec::new();
+            for due in ticked.due {
+                // A paused schedule's skipped ticks print once.
+                let skipped_paused = matches!(
+                    due.ran,
+                    jadpo_runtime::schedules::Ran::Skipped(
+                        jadpo_runtime::schedules::Skipped::Paused
+                    )
+                );
+                if skipped_paused && !paused.borrow_mut().insert(due.schedule.clone()) {
+                    continue;
+                }
+                if !skipped_paused {
+                    paused.borrow_mut().remove(&due.schedule);
+                }
+                events.push(Event::Schedule {
+                    name: name(&due.schedule),
+                    due,
+                });
+            }
+            if let Some(store) = &plan.store
+                && let Some(database) = host.database(store)
+            {
+                let declared: Vec<_> = plan
+                    .schedules
+                    .iter()
+                    .map(jadpo_runtime::schedules::watch::Declared::from)
+                    .collect();
+                let every = jadpo_runtime::schedules::tick_every_ms(Some(plan));
+                if let Ok(watched) =
+                    jadpo_runtime::schedules::watch::watch(database, &declared, every, now).await
+                {
+                    for alert in raised.borrow_mut().raised(&watched.alerts) {
+                        events.push(Event::Alert { alert, now });
+                    }
+                }
+            }
+            if let Ok(log) = shared.log.lock() {
+                for event in events {
+                    let _ = log.send(event);
+                }
+            }
         }))
     }
 
@@ -249,6 +323,66 @@ impl Out<'_> {
             Some(depth) => format!("{}{text}\x1b[0m", token.sgr(depth, self.style.theme)),
             None => text.to_string(),
         }
+    }
+
+    fn event(&mut self, event: &Event) {
+        match event {
+            Event::Request(line) => self.line(line),
+            Event::Schedule { name, due } => self.schedule(name, due),
+            Event::Alert { alert, now } => {
+                let (text, data) = crate::schedules::dev_alert(alert, *now);
+                if self.json {
+                    self.json(data, &[], &BTreeMap::new());
+                } else {
+                    self.screen(Screen::new().with(Block::Alerts(vec![text])));
+                }
+            }
+        }
+    }
+
+    /// A schedule's run: its trace's id where a request has its request
+    /// id, the schedule where a request has its method and path, its
+    /// outcome as a symbol and a word in its colour where a request has
+    /// its status, what it emitted or why it failed, then its time.
+    fn schedule(&mut self, name: &str, due: &jadpo_runtime::schedules::Due) {
+        use jadpo_runtime::schedules::Ran;
+        let (detail, data) = crate::schedules::dev_line(name, due);
+        if self.json {
+            self.json(data, &[], &BTreeMap::new());
+            return;
+        }
+        let id: String = due
+            .trace
+            .as_deref()
+            .and_then(|trace| trace.get(3..11))
+            .map_or_else(|| " ".repeat(8), str::to_string);
+        let (symbol, token, word) = match due.ran {
+            Ran::Succeeded { .. } => (jadpo_term::Symbol::Success, Token::Success, "succeeded"),
+            Ran::Failed { .. } => (jadpo_term::Symbol::Failure, Token::Failure, "failed"),
+            Ran::Skipped(_) => (jadpo_term::Symbol::Skipped, Token::Muted, "skipped"),
+        };
+        let state = if self.style.mode == jadpo_term::Mode::Rich {
+            self.paint(
+                token,
+                &format!("{} {word}", symbol.text(self.style.symbols)),
+            )
+        } else {
+            self.paint(token, word)
+        };
+        let label = format!("schedule {name}");
+        let time = match due.ran {
+            Ran::Skipped(_) => String::new(),
+            _ => format!(
+                "   {}",
+                self.paint(
+                    Token::Muted,
+                    &crate::schedules::dev_duration(due.duration_ms())
+                )
+            ),
+        };
+        let text = format!("{id}  {label:<34} {state} {detail}{time}\n");
+        let _ = self.out.write_all(text.as_bytes());
+        let _ = self.out.flush();
     }
 
     fn line(&mut self, line: &Line) {
@@ -430,7 +564,7 @@ pub fn serve_to(
     let port = listener
         .local_addr()
         .map_or(args.port, |address| address.port());
-    let (sender, receiver): (Sender<Line>, Receiver<Line>) = channel();
+    let (sender, receiver): (Sender<Event>, Receiver<Event>) = channel();
     let shared = Arc::new(Shared {
         current: Mutex::new((Arc::clone(&first.prepared), Arc::clone(&first.config))),
         generation: AtomicU64::new(0),
@@ -450,6 +584,8 @@ pub fn serve_to(
             program: RefCell::new(None),
             host: Rc::new(host),
             worker: Worker::default(),
+            raised: Rc::new(RefCell::new(Default::default())),
+            paused: Rc::new(RefCell::new(Default::default())),
         }) as Box<dyn Handler>
     });
     let workers = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
@@ -476,13 +612,23 @@ pub fn serve_to(
         (false, true, true) => Databases::Disposable,
         (false, false, _) => Databases::Configured,
     };
+    // The databases started for this session, so `jadpo schedules` and
+    // `jadpo why` in another terminal find them (chunk 6.2b).
+    if args.url.is_none() {
+        let started: BTreeMap<String, String> = urls
+            .iter()
+            .filter(|(store, _)| !first.configured.contains_key(*store))
+            .map(|(store, url)| (store.clone(), url.clone()))
+            .collect();
+        remember_stores(&root, &started);
+    }
     report_ready(&mut out, Some(&url), &first, databases);
     let mut current = first;
     // Request lines are written as they come, between looks for saves.
     loop {
         let drain = |out: &mut Out<'_>| {
-            while let Ok(line) = receiver.try_recv() {
-                out.line(&line);
+            while let Ok(event) = receiver.try_recv() {
+                out.event(&event);
             }
         };
         let edits = {
@@ -497,6 +643,7 @@ pub fn serve_to(
         drain(&mut out);
         let Some(edits) = edits else {
             server.stop();
+            forget_stores(&root);
             return 0;
         };
         let time = crate::watch::time_now();
@@ -549,6 +696,33 @@ pub fn serve_to(
     }
 }
 
+/// Writes the address of each database started for the session to
+/// [`crate::schedules::DEV_STORES`]; nothing when there are none.
+fn remember_stores(root: &Path, started: &BTreeMap<String, String>) {
+    let path = root.join(crate::schedules::DEV_STORES);
+    if started.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return;
+    }
+    let stores: serde_json::Map<String, serde_json::Value> = started
+        .iter()
+        .map(|(store, url)| (store.clone(), serde_json::Value::from(url.as_str())))
+        .collect();
+    let document = serde_json::json!({
+        "pid": std::process::id(),
+        "stores": stores,
+    });
+    if let Some(folder) = path.parent() {
+        let _ = std::fs::create_dir_all(folder);
+    }
+    let _ = std::fs::write(&path, format!("{document}\n"));
+}
+
+/// Removes what [`remember_stores`] wrote, when the session stops.
+fn forget_stores(root: &Path) {
+    let _ = std::fs::remove_file(root.join(crate::schedules::DEV_STORES));
+}
+
 /// `--no-run`: checks on every save and writes `build/`, serving nothing.
 fn watch_only(
     out: &mut Out<'_>,
@@ -576,23 +750,23 @@ fn watch_only(
 }
 
 /// A version of the project ready to serve.
-struct Ready {
-    prepared: Arc<Prepared>,
+pub(crate) struct Ready {
+    pub(crate) prepared: Arc<Prepared>,
     /// Each store's migrations.
     steps: BTreeMap<String, Vec<jadpo_std::Migration>>,
     /// The stores its entities live in.
-    stores: Vec<String>,
+    pub(crate) stores: Vec<String>,
     routes: usize,
     /// The settings it starts with (area 10).
-    config: Arc<ConfigValues>,
+    pub(crate) config: Arc<ConfigValues>,
     /// The address each database store's connection reads, where a
     /// variable gives one.
-    configured: BTreeMap<String, String>,
+    pub(crate) configured: BTreeMap<String, String>,
 }
 
 /// Loads and checks the project, writes `build/`, and prepares it to run;
 /// the problems that stop it otherwise.
-fn prepare(
+pub(crate) fn prepare(
     root: &Path,
     env: &Environment,
     run: bool,

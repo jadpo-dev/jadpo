@@ -190,7 +190,7 @@ pub(crate) fn wrap(text: &str, max: usize) -> Vec<String> {
 }
 
 /// Plain output has no symbols; rich output uses the detected set.
-fn symbols(style: &Style) -> Symbols {
+pub(crate) fn symbols(style: &Style) -> Symbols {
     if style.mode == Mode::Rich {
         style.symbols
     } else {
@@ -365,6 +365,27 @@ pub enum Block {
         label: String,
         facts: Vec<Fact>,
         keys: Vec<(String, String)>,
+    },
+    /// A table at column 2: muted lower-case headers, columns two spaces
+    /// apart, each cell a state symbol, its text and a muted rest
+    /// (`● running  12:03:10 · 40 s so far`). Under the screen's width a
+    /// cut column's muted rest is cut with `…`; narrower still, each row
+    /// becomes a block of its own, the headers as labels.
+    Table(crate::table::Table),
+    /// `▲ alert  <subject>`, one line each, in the warning colour; plain
+    /// output reads `alert: subject`.
+    Alerts(Vec<String>),
+    /// `✗ failed  <subject>` and its fields on the grid; plain output
+    /// reads `failed: subject`.
+    Failed {
+        subject: String,
+        fields: Vec<(String, String)>,
+    },
+    /// An answer (area 17's `jadpo why`): the sentence in bold, wrapped,
+    /// then its fields on the grid, the place that decided it last.
+    Answer {
+        headline: String,
+        fields: Vec<(String, String)>,
     },
 }
 
@@ -601,7 +622,7 @@ impl Screen {
     }
 }
 
-fn rich(style: &Style) -> bool {
+pub(crate) fn rich(style: &Style) -> bool {
     style.mode == Mode::Rich
 }
 
@@ -688,6 +709,34 @@ fn block_lines(block: &Block, grid: &Grid, style: &Style) -> Vec<Line> {
             plain,
         } => rule_lines(long, short, changes, plain, style),
         Block::KeyBar { label, facts, keys } => vec![key_bar(label, facts, keys, style)],
+        Block::Table(table) => table.lines(style),
+        Block::Alerts(subjects) => crate::table::alert_lines(subjects, style),
+        Block::Failed { subject, fields } => {
+            let mut lines = if rich(style) {
+                let word = format!("{} failed", Symbol::Failure.text(style.symbols));
+                vec![vec![
+                    strong(Token::Failure, word),
+                    raw("  "),
+                    bold(subject.as_str()),
+                ]]
+            } else {
+                vec![vec![raw(format!("failed: {subject}"))]]
+            };
+            for (label, value) in fields {
+                lines.extend(field(label, vec![raw(value.as_str())], style));
+            }
+            lines
+        }
+        Block::Answer { headline, fields } => {
+            let mut lines: Vec<Line> = wrap(headline, style.width)
+                .into_iter()
+                .map(|line| vec![bold(line)])
+                .collect();
+            for (label, value) in fields {
+                lines.extend(field(label, vec![raw(value.as_str())], style));
+            }
+            lines
+        }
         Block::Status {
             outcome,
             text,

@@ -627,13 +627,26 @@ chunks below, taken before Phase 6.
   Choices in area 12's "Chosen in chunk 6.2"; flagged there: when the
   first run is due, the next due time as a failed run's retry, and an
   `every:` under a minute on Workers.
-- [ ] **6.2b Watching schedules** `opus · high`, after 6.2 (area 12,
+- [x] **6.2b Watching schedules** `opus · high`, after 6.2 (area 12,
   "Watching schedules"; area 14): `jadpo schedules` with `run`, `pause`,
   `resume` and `history`, `jadpo why <schedule>`, a schedule's runs in
   `jadpo dev`'s output, the metrics and the alerts with no setup, read
-  from 6.2's run records; area 5's built-in hourly purge schedule on the
-  tick; and area 13's schedule tests (`schedule.run()`, `--kind
-  schedule`).
+  from 6.2's run records. Split on 2026-10-19: the purge schedule and
+  schedule tests are 6.2c. Built: `jadpo_runtime::schedules::watch`,
+  reading state rows and run records, the five alerts as conditions with
+  their log events, per-schedule metrics, pause, resume and a run now
+  under the lease (`last_succeeded_at` added to the state row); the
+  table, alert, failed and answer blocks; `jadpo schedules`, `history`
+  in pages, `pause`, `resume`, `run` and `jadpo why <schedule>`, with
+  `--json`; `jadpo dev` printing each run and each alert once; live
+  tests of every screen and state, and of `jadpo dev`'s lines. Choices
+  in area 12's "Chosen in chunk 6.2b"; flagged there: `run` runs in the
+  command's own process. Sending metrics and alerts on waits for
+  telemetry (area 16).
+- [ ] **6.2c The purge schedule and schedule tests** `opus · high`, after
+  6.2b: area 5's built-in hourly purge schedule on the tick, recorded and
+  watched like any schedule; and area 13's schedule tests
+  (`schedule.run()` at the test's clock, `--kind schedule`).
 - [x] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
