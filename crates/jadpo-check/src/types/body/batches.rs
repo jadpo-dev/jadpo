@@ -343,7 +343,7 @@ impl Body<'_> {
         let names: Vec<ast::Name> = lambda.names().collect();
         self.scopes.push(Vec::new());
         let item = self.facts.locals.len();
-        let item_name = names.first().and_then(tree::name_text).unwrap_or_default();
+        let inline_name = names.first().and_then(tree::name_text).unwrap_or_default();
         if let [name] = names.as_slice() {
             self.declare(
                 Some(name.clone()),
@@ -434,14 +434,14 @@ impl Body<'_> {
                 .descendants()
                 .any(|node| self.facts.reads.get(&node_key(&node)) == Some(&item));
             if reads {
-                if !item_path(&value, &item_name) {
+                if !item_path(&value, &inline_name) {
                     let at = self.span(&value);
                     refused(
                         self,
                         at,
                         "the item and more",
                         format!(
-                            "An argument reading `{item_name}` is `{item_name}` itself or a field inside it, which the run reads from each {}; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.",
+                            "An argument reading `{inline_name}` is `{inline_name}` itself or a field inside it, which the run reads from each {}; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.",
                             if which == "each" { "item" } else { "summary" }
                         ),
                     );

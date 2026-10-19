@@ -555,7 +555,7 @@ impl Plan {
                 setting: &|key: &Key| setting_ids.get(key).copied(),
                 json: &mut json_types,
                 prompt: &|key: &str| prompt_fields.get(key).cloned(),
-                owner: &key,
+                starter: &key,
                 batches: &mut batch_sites,
             }
             .body(&body, text);

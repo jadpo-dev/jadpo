@@ -680,7 +680,7 @@ pub fn system_table(name: &str) -> Table {
             add("failure", "text", true);
             add("lease_until", "timestamptz(3)", true);
             add("started_at", "timestamptz(3)", false);
-            add("updated_at", "timestamptz(3)", false);
+            add("stepped_at", "timestamptz(3)", false);
             add("finished_at", "timestamptz(3)", true);
             unique.insert(
                 object_name(&[&table, "batch", "key"], "key"),

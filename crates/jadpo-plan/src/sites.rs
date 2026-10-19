@@ -214,7 +214,7 @@ pub(crate) struct Decoder<'a> {
     pub prompt: &'a dyn Fn(&str) -> Option<PromptFields>,
     /// The callable whose body this is, and the program's `batches.each`
     /// calls so far, which its own are added to (area 12).
-    pub owner: &'a Key,
+    pub starter: &'a Key,
     pub batches: &'a mut Vec<BatchSite>,
 }
 
@@ -349,12 +349,16 @@ impl Decoder<'_> {
         let ordinal = self
             .batches
             .iter()
-            .filter(|batch| batch.name.starts_with(&format!("{}#", self.owner.as_str())))
+            .filter(|batch| {
+                batch
+                    .name
+                    .starts_with(&format!("{}#", self.starter.as_str()))
+            })
             .count()
             + 1;
         let number = self.batches.len() as u32;
         self.batches.push(BatchSite {
-            name: format!("{}#{ordinal}", self.owner.as_str()),
+            name: format!("{}#{ordinal}", self.starter.as_str()),
             shape,
             query,
             each,

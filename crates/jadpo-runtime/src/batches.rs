@@ -87,17 +87,17 @@ const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
 /// The most runs one sweep picks up.
 const SWEEP_LIMIT: i64 = 100;
 
-const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"updated_at\", \"finished_at\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
+const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
 
 const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\"";
 
 const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
 
-const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"updated_at\" = $7 WHERE \"id\" = $1";
+const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"stepped_at\" = $7 WHERE \"id\" = $1";
 
 const PROBLEM: &str = "INSERT INTO \"jadpo_batch_problems\" (\"run_id\", \"row\", \"column\", \"rule\") VALUES ($1, $2, $3, $4)";
 
-const END: &str = "UPDATE \"jadpo_batch_runs\" SET \"state\" = $2, \"failure\" = $3, \"lease_until\" = NULL, \"updated_at\" = $4, \"finished_at\" = $4 WHERE \"id\" = $1";
+const END: &str = "UPDATE \"jadpo_batch_runs\" SET \"state\" = $2, \"failure\" = $3, \"lease_until\" = NULL, \"stepped_at\" = $4, \"finished_at\" = $4 WHERE \"id\" = $1";
 
 const RELEASE: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = NULL WHERE \"id\" = $1 AND \"state\" = 'running'";
 

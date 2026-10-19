@@ -276,9 +276,9 @@ entity Item {
     }
 }
 
-entity Sweep {
+entity Stocktake {
     id: Uuid
-    run: BatchRun?
+    shelf_run: BatchRun?
     seen: Int?
 
     policy: {
@@ -299,7 +299,7 @@ query items(page: ItemPage) -> Page<Item> {
 }
 
 /// Marks one item seen.
-action see(item: Item) -> Unit {
+action mark_seen(item: Item) -> Unit {
     var seen: Item = Item.update(item) {
         set: {
             seen: true
@@ -309,8 +309,8 @@ action see(item: Item) -> Unit {
 }
 
 /// Keeps how many items the sweep went through.
-action swept(summary: ImportSummary, sweep_id: Sweep.id) fails SweepNotFound -> Unit {
-    attempt Sweep.update(sweep_id) {
+action swept(summary: ImportSummary, stocktake_id: Stocktake.id) fails StocktakeNotFound -> Unit {
+    attempt Stocktake.update(stocktake_id) {
         set: {
             seen: summary.items
         }
@@ -318,23 +318,23 @@ action swept(summary: ImportSummary, sweep_id: Sweep.id) fails SweepNotFound -> 
 }
 
 /// Starts the sweep over every item, once per sweep.
-action start_sweep(sweep_id: Sweep.id, page: ItemPage) -> BatchRun {
+action start_sweep(stocktake_id: Stocktake.id, page: ItemPage) -> BatchRun {
     return batches.each(
         from: items(page),
-        each: item -> see(item),
-        finished: summary -> swept(summary, sweep_id),
-        key: sweep_id
+        each: item -> mark_seen(item),
+        finished: summary -> swept(summary, stocktake_id),
+        key: stocktake_id
     )
 }
 
 /// How far the sweep has got.
-action sweep_progress(run: BatchRun) -> BatchProgress {
-    return batches.status(run)
+action sweep_progress(shelf_run: BatchRun) -> BatchProgress {
+    return batches.status(shelf_run)
 }
 
 /// Stops the sweep after the page in hand.
-action stop_sweep(run: BatchRun) -> Unit {
-    batches.cancel(run)
+action stop_sweep(shelf_run: BatchRun) -> Unit {
+    batches.cancel(shelf_run)
 }
 ```
 
@@ -1827,7 +1827,7 @@ query items(page: ItemPage) -> Page<Item> {
     }
 }
 
-action see(item: Item) -> Unit {
+action mark_seen(item: Item) -> Unit {
     var seen: Item = Item.update(item) {
         set: {
             seen: true
@@ -1838,21 +1838,21 @@ action see(item: Item) -> Unit {
 ```
 
 ```jadpo check project=e-batch-capture-not-storable expect=type.batch_capture_not_storable
-action see_on(item: Item, page: ItemPage) -> Unit {
+action mark_on(item: Item, page: ItemPage) -> Unit {
     assert item.seen == item.seen
 }
 
-action sweep(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> see_on(item, page))
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_on(item, page))
 }
 ```
 
 ```text output
 error: `batches.each` can't save `page`
- --> main.jadpo:6:71
+ --> main.jadpo:6:72
   |
-6 |     return batches.each(from: items(page), each: item -> see_on(item, page))
-  |                                                                       ^^^^ `ItemPage` has no stored form
+6 |     return batches.each(from: items(page), each: item -> mark_on(item, page))
+  |                                                                        ^^^^ `ItemPage` has no stored form
   reason: What `each:` captures is worked out when the run starts and saved with it, as its type's JSON, so the run can resume after a crash or a deploy; `page` is `ItemPage`, an `Input`, the shape a request arrives in, where a record keeps an `Object`.
   next: Pass something an entity field could hold instead, such as the `id` that finds `page` (agent)
   rule: type.batch_capture_not_storable
@@ -1902,7 +1902,7 @@ query items(page: ItemPage) -> Page<Item> {
     }
 }
 
-action see(item: Item) -> Unit {
+action mark_seen(item: Item) -> Unit {
     var seen: Item = Item.update(item) {
         set: {
             seen: true
@@ -1913,13 +1913,13 @@ action see(item: Item) -> Unit {
 ```
 
 ```jadpo check project=e-batch-context expect=type.batch_context
-action sweep(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> see(item))
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
 }
 
 /// How far a sweep has got, for a report.
-function progress(run: BatchRun) -> BatchProgress {
-    return batches.status(run)
+function shelf_report(shelf_run: BatchRun) -> BatchProgress {
+    return batches.status(shelf_run)
 }
 ```
 
@@ -1927,7 +1927,7 @@ function progress(run: BatchRun) -> BatchProgress {
 error: A function can't call `batches.status`
  --> main.jadpo:7:12
   |
-7 |     return batches.status(run)
+7 |     return batches.status(shelf_run)
   |            ^^^^^^^^^^^^^^ outside an action
   reason: `batches.status` reads a run the runtime keeps in the store an action writes, so only an action calls it.
   next: Call `batches.status` in an action (agent)
@@ -1979,7 +1979,7 @@ query items(page: ItemPage) -> Page<Item> {
     }
 }
 
-action see(item: Item) -> Unit {
+action mark_seen(item: Item) -> Unit {
     var seen: Item = Item.update(item) {
         set: {
             seen: true
@@ -1990,21 +1990,21 @@ action see(item: Item) -> Unit {
 ```
 
 ```jadpo check project=e-batch-each-invalid expect=type.batch_each_invalid
-action see_code(code: ShelfCode) -> Unit {
+action mark_code(code: ShelfCode) -> Unit {
     assert code == code
 }
 
-action sweep(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> see_code(ShelfCode(item.code)))
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
 }
 ```
 
 ```text output
 error: `batches.each`'s `each:` isn't one call of an action
- --> main.jadpo:6:67
+ --> main.jadpo:6:68
   |
-6 |     return batches.each(from: items(page), each: item -> see_code(ShelfCode(item.code)))
-  |                                                                   ^^^^^^^^^^^^^^^^^^^^ the item and more
+6 |     return batches.each(from: items(page), each: item -> mark_code(ShelfCode(item.code)))
+  |                                                                    ^^^^^^^^^^^^^^^^^^^^ the item and more
   reason: An argument reading `item` is `item` itself or a field inside it, which the run reads from each item; one that reads nothing of it is worked out now and saved with the run. Work the rest out in the action it calls.
   next: Write `each: item -> <action>(...)`, calling an action in this domain (agent)
   rule: type.batch_each_invalid
@@ -2054,7 +2054,7 @@ query items(page: ItemPage) -> Page<Item> {
     }
 }
 
-action see(item: Item) -> Unit {
+action mark_seen(item: Item) -> Unit {
     var seen: Item = Item.update(item) {
         set: {
             seen: true
@@ -2071,8 +2071,8 @@ query first_items() -> List<Item> {
     limit: 10
 }
 
-action sweep() -> BatchRun {
-    return batches.each(from: first_items(), each: item -> see(item))
+action sweep_shelf() -> BatchRun {
+    return batches.each(from: first_items(), each: item -> mark_seen(item))
 }
 ```
 
@@ -2080,7 +2080,7 @@ action sweep() -> BatchRun {
 error: `batches.each`'s `from:` isn't a call of a named query giving a `Page`
  --> main.jadpo:8:31
   |
-8 |     return batches.each(from: first_items(), each: item -> see(item))
+8 |     return batches.each(from: first_items(), each: item -> mark_seen(item))
   |                               ^^^^^^^^^^^^^ gives `List<Item>`
   reason: A run walks `from:` a page at a time, after the action that starts it commits: it calls a named query that gives a `Page<T>`, and each item is a `T`; the query's arguments are worked out now and saved with the run.
   next: Write `batches.each(from: <query>(...), ...)`, with a query whose result is `Page<T>` (agent)
