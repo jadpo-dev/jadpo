@@ -250,3 +250,17 @@ fn a_layer_carries_only_what_every_caller_may_read() {
         "ordered by a restricted field"
     );
 }
+
+/// A `GET` route running a layer query with a problem of its own reports
+/// only that problem, not that nobody may call the route.
+#[test]
+fn a_route_running_a_broken_layer_reports_only_the_query() {
+    let found = rules(&format!(
+        "{}\nroutes DropPoints {{\n    prefix: /drop-points\n\n    GET / {{\n        authentication: RouteAuthentication.none\n        output: FeatureCollection<Point, PinProperties>\n        run: drop_point_layer()\n    }}\n}}\n",
+        layer(
+            LAYER,
+            "    geometry: DropPoint.name\n    order: [DropPoint.name asc]\n    limit: 500\n"
+        )
+    ));
+    assert_eq!(found, ["query.geometry_field"]);
+}

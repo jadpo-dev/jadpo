@@ -968,7 +968,7 @@ error: `BakeryPin.bakery_id` isn't a field of `Bakery`
   rule: query.result_field
   help: docs/language/06-reads-and-writes.html#query-result-field
 
-check failed: 1 error, 1 file in 0.1 s
+check failed: 1 error, 1 file
 ```
 
 A property only the server may read:

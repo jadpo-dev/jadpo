@@ -140,14 +140,17 @@ baker_place
 bakeries
 bakeries_in_view
 bakeries_near
+bakeries_near_map
 bakeries_recipes
 bakeries_staff
 bakery
 bakery_card
 bakery_day
 bakery_id
+bakery_map
 bakery_name
 bakery_names
+bakery_pin
 bakery_pins
 bakery_recipes
 bakery_view
@@ -177,6 +180,7 @@ bell_loud_enough
 bell_loudness
 bench
 bench_name
+bermondsey
 best_before
 beta_release
 big_ben
@@ -560,6 +564,7 @@ deliveries_on
 delivers
 delivers_to
 delivery
+delivery_area
 delivery_cost
 delivery_day
 delivery_estimate
@@ -1257,6 +1262,7 @@ my_bakeries
 my_orders
 name_blank
 nand
+near_soho
 nearest_excerpts
 nearest_guides
 nearly
@@ -1471,6 +1477,7 @@ owed
 owner
 owner_email
 owner_id
+owner_phone
 owners
 pace_of
 pack_pannier
@@ -1573,6 +1580,7 @@ per_todo
 per_tray
 phone_code
 phone_linked
+phone_text
 phone_token_id
 phone_tokens
 phone_unreadable
@@ -2068,6 +2076,7 @@ small_order_fee
 smallest_drop
 snooze_days
 snooze_todo
+soho
 sold
 sold_out
 sort_shelf
