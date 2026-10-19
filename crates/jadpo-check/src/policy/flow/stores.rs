@@ -34,6 +34,22 @@ use crate::policy::proof::{Fact, Facts, Reached};
 use crate::policy::{Effect, Grant};
 use crate::types::{Fact as Did, TypeView, body_facts, resolve};
 
+/// Where a stored value is written: a site of the body walked, or a span
+/// elsewhere (a subscriber's argument, chunk 6.1c).
+#[derive(Clone, Copy, Debug)]
+pub(super) enum At<'s> {
+    Site(SiteId),
+    Span(&'s jadpo_diag::Span),
+}
+
+/// The [`Origin`] of a record of the event's tenant (chunk 6.1c): a value
+/// an `emit` put in an event from a record whose tenancy reference is the
+/// one the event's tenant field holds. The subscriber is limited to that
+/// tenant, so any record of a tenanted entity it stores the value in is of
+/// the same tenant; no other relation survives the event, since the record
+/// may have changed between the `emit` and the delivery.
+pub(super) const TENANT: u32 = u32::MAX;
+
 /// One value known exactly: a parameter's part, or a field of a record
 /// the body knows ([`Origin`]); a whole record stands for its `id`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -320,6 +336,20 @@ impl Walk<'_> {
     /// `dest`, the most telling first; [`Rel::Other`] always holds.
     fn relations(&self, flow: &Flow<'_>, dest: &Dest, source: &str, origin: Origin) -> Vec<Rel> {
         let mut out = Vec::new();
+        let tenancy = |entity: &str| {
+            flow.prover
+                .policies
+                .entity(entity)
+                .and_then(|policy| policy.tenancy.as_ref())
+                .filter(|tenancy| tenancy.via != "id")
+        };
+        if origin == Some(TENANT) {
+            if let (Some(theirs), Some(own)) = (tenancy(&dest.entity), tenancy(source)) {
+                out.push(Rel::Tenant(theirs.via.clone(), own.via.clone()));
+            }
+            out.push(Rel::Other);
+            return out;
+        }
         if let Some(origin) = origin {
             if dest.entity == source && self.is_dest(dest, origin) {
                 out.push(Rel::Same);
@@ -356,13 +386,6 @@ impl Walk<'_> {
                     out.push(rel);
                 }
             }
-            let tenancy = |entity: &str| {
-                flow.prover
-                    .policies
-                    .entity(entity)
-                    .and_then(|policy| policy.tenancy.as_ref())
-                    .filter(|tenancy| tenancy.via != "id")
-            };
             if let (Some(theirs), Some(own)) = (tenancy(&dest.entity), tenancy(source))
                 && dest.refs.iter().any(|(name, srcs)| {
                     *name == theirs.via
@@ -511,7 +534,7 @@ impl Walk<'_> {
         flow: &Flow<'_>,
         dest: &Dest,
         field: &str,
-        at: SiteId,
+        at: At<'_>,
         prov: &Prov,
         callee: Option<&str>,
     ) {
@@ -550,8 +573,13 @@ impl Walk<'_> {
                         continue;
                     }
                     reported = true;
-                    let problem =
-                        self.unstored(flow, dest, field, at, &entity, &from, who, decided, callee);
+                    let span = match at {
+                        At::Site(site) => self.span(site),
+                        At::Span(span) => span.clone(),
+                    };
+                    let problem = self.unstored(
+                        flow, dest, field, span, &entity, &from, who, decided, callee,
+                    );
                     self.problems.push(problem);
                 }
                 _ => {}
@@ -566,7 +594,7 @@ impl Walk<'_> {
         flow: &Flow<'_>,
         dest: &Dest,
         field: &str,
-        at: SiteId,
+        span: jadpo_diag::Span,
         entity: &str,
         from: &str,
         who: Option<String>,
@@ -589,19 +617,31 @@ impl Walk<'_> {
                 self.name
             ),
         };
-        let label = if decided {
-            format!("decided by `{entity}.{from}`")
-        } else {
-            format!("from `{entity}.{from}`")
+        let label = match (&self.event, decided) {
+            (Some(_), true) => format!("an `emit` decided this by `{entity}.{from}`"),
+            (Some(_), false) => format!("an `emit` filled this from `{entity}.{from}`"),
+            (None, true) => format!("decided by `{entity}.{from}`"),
+            (None, false) => format!("from `{entity}.{from}`"),
         };
         let among = who
             .map(|who| format!(", {who} among them,"))
             .unwrap_or_default();
         let readers = flow.prover.readers(entity, from);
-        let keeps = if decided {
-            "Which value is stored shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, is stored only where everyone who may read it may read the fields they test."
-        } else {
-            "A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value."
+        let keeps = match &self.event {
+            // What an event carries has left its record, which may change
+            // before the delivery (chunk 6.1c).
+            Some(_) => {
+                let tenant = if flow.prover.policies.root().tenant.is_some() {
+                    " of the event's tenant"
+                } else {
+                    ""
+                };
+                format!(
+                    "An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `{from}` of any `{entity}`{tenant}."
+                )
+            }
+            None if decided => "Which value is stored shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, is stored only where everyone who may read it may read the fields they test.".to_string(),
+            None => "A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.".to_string(),
         };
         let passed = callee
             .map(|callee| format!("`{callee}` stores what it is given here in {into}, and "))
@@ -611,6 +651,9 @@ impl Walk<'_> {
             if passed.is_empty() { "E" } else { "e" }
         );
         let next = match (callee, decided) {
+            (Some(callee), _) if self.event.is_some() => format!(
+                "Pass the event's ids and have `{callee}` read what it stores, or give `{field}`'s `read:` only those who may read `{from}`"
+            ),
             (Some(callee), _) => format!(
                 "Pass `{callee}` what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read `{from}`"
             ),
@@ -622,7 +665,7 @@ impl Walk<'_> {
             ),
         };
         Diagnostic::new(&rule::POLICY_OUTPUT_FIELD_UNPROVED, headline)
-            .at(self.span(at), label)
+            .at(span, label)
             .reason(reason)
             .next(next)
     }
@@ -724,7 +767,46 @@ impl Walk<'_> {
         let kept = store.dest.held.clone();
         self.hold(flow, &mut dest, site, &[], Some(&kept));
         let value = Prov::of(store.value.clone()).substitute(provs);
-        self.store(flow, &dest, &store.field, *arg, &value, Some(callee));
+        self.store(
+            flow,
+            &dest,
+            &store.field,
+            At::Site(*arg),
+            &value,
+            Some(callee),
+        );
+    }
+
+    /// A subscriber passing its event's parts, `provs` (what every `emit`
+    /// of it put there), at `spans` to `callee`, which stores a part of
+    /// one of them: checked as a call is, with what was passed (chunk
+    /// 6.1c).
+    pub(super) fn event_store(
+        &mut self,
+        flow: &Flow<'_>,
+        callee: &str,
+        store: &Store,
+        spans: &[jadpo_diag::Span],
+        provs: &[Prov],
+    ) {
+        let Some(at) = param_of(&store.value) else {
+            return;
+        };
+        let Some(span) = spans.get(at) else {
+            return;
+        };
+        let mut dest = store.dest.substitute(provs);
+        let kept = store.dest.held.clone();
+        self.hold(flow, &mut dest, SiteId(0), &[], Some(&kept));
+        let value = Prov::of(store.value.clone()).substitute(provs);
+        self.store(
+            flow,
+            &dest,
+            &store.field,
+            At::Span(span),
+            &value,
+            Some(callee),
+        );
     }
 
     /// A transition run at `site` on `dest`: each field it sets holds a
@@ -765,7 +847,7 @@ impl Walk<'_> {
         }
         let set: Vec<String> = model.set.iter().map(|(field, _)| field.clone()).collect();
         for field in set {
-            self.store(flow, dest, &field, site, &prov, None);
+            self.store(flow, dest, &field, At::Site(site), &prov, None);
         }
     }
 

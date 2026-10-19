@@ -169,6 +169,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(
+                policy::flow::subscriber_store_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
         }
         out.extend(config::config_problems(db, project).iter().cloned());
         out.extend(config::connection_problems(db, project).iter().cloned());

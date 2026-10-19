@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -3145,6 +3145,202 @@ action finish_review(note_id: Note.id) fails NoteNotFound -> Note {
             appraisal: note.draft
         }
     }
+}
+```
+
+A subscriber's action stores what its event carries, and the event carries what every `emit` of it put there (built in chunk 6.1c). Here one of the two actions that share a note puts its appraisal, which only the reviewer may read, in the event, and the bulletin the subscriber posts is read by anyone signed in:
+
+```jadpo check project=e-event-stored-unproved expect=policy.output_field_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    circulated: Bool
+    summary: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [reviewer_id]
+    }
+}
+
+entity Bulletin {
+    id: Uuid
+    blurb: NoteText
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated]
+    }
+}
+
+type NoteCirculated = Event {
+    note_id: Note.id
+    blurb: NoteText
+}
+
+action circulate_summary(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            circulated: true
+        }
+    }
+    emit NoteCirculated {
+        note_id: note.id
+        blurb: note.summary
+    }
+}
+
+action circulate_appraisal(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            circulated: true
+        }
+    }
+    emit NoteCirculated {
+        note_id: note.id
+        blurb: note.appraisal
+    }
+}
+
+action post_bulletin(blurb: NoteText) -> Unit {
+    var bulletin: Bulletin = Bulletin.create {
+        set: {
+            blurb: blurb
+        }
+    }
+    assert bulletin.blurb == blurb
+}
+
+subscriber post_circulated {
+    on: NoteCirculated
+    run: post_bulletin(event.blurb)
+}
+```
+
+```text output
+error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which stores it in `Bulletin.blurb`, though not everyone who may read `blurb` may read it
+ --> main.jadpo:91:24
+   |
+91 |     run: post_bulletin(event.blurb)
+   |                        ^^^^^^^^^^^ an `emit` filled this from `Note.appraisal`
+  reason: `post_bulletin` stores what it is given here in `Bulletin.blurb`, and everyone who may read `Bulletin.blurb`, anyone signed in among them, reads what is stored there, from any request, and only the user `reviewer_id` points at may read `appraisal`. An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `appraisal` of any `Note`.
+  next: Pass the event's ids and have `post_bulletin` read what it stores, or give `blurb`'s `read:` only those who may read `appraisal` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 1 file
+```
+
+With only the summary, which anyone signed in may read, in the event, the bulletin may hold it. A value an event carries has left its record, which may change before the delivery, so it is proved as one from any record of its entity, or from a record of the event's tenant when the event's tenant field came from that record, since the subscriber is limited to that tenant (area 12, "Chosen in chunk 6.1c"):
+
+```jadpo check project=event-stored-allowed
+type Handle = Text {
+    max_length: 40
+}
+
+entity User {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+}
+
+principal {
+    user: {
+        subject: User.handle
+    }
+}
+
+type NoteText = Text {
+    max_length: 200
+}
+
+entity Note {
+    id: Uuid
+    reviewer_id: User.id {
+        on_delete: OnDelete.cascade
+    }
+    circulated: Bool
+    summary: NoteText
+    appraisal: NoteText {
+        policy: {
+            read: [reviewer_id]
+        }
+    }
+
+    policy: {
+        read: [Access.authenticated]
+        update: [reviewer_id]
+    }
+}
+
+entity Bulletin {
+    id: Uuid
+    blurb: NoteText
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated]
+    }
+}
+
+type NoteCirculated = Event {
+    note_id: Note.id
+    blurb: NoteText
+}
+
+action circulate_summary(note_id: Note.id) fails NoteNotFound -> Unit {
+    var note: Note = attempt Note.update(note_id) {
+        set: {
+            circulated: true
+        }
+    }
+    emit NoteCirculated {
+        note_id: note.id
+        blurb: note.summary
+    }
+}
+
+action post_bulletin(blurb: NoteText) -> Unit {
+    var bulletin: Bulletin = Bulletin.create {
+        set: {
+            blurb: blurb
+        }
+    }
+    assert bulletin.blurb == blurb
+}
+
+subscriber post_circulated {
+    on: NoteCirculated
+    run: post_bulletin(event.blurb)
 }
 ```
 

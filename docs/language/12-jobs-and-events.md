@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Event records come in chunk 6.1c, and the commands that watch schedules in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. The commands that watch schedules come in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1708,9 +1708,10 @@ delivery after the response, handled records, retries, trace context,
 name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Built in
 chunk 6.2: schedules, their state and leases, the native minute tick,
 every run and skipped tick recorded, and the tick's sweeps, with the
-errors that name `schedule.`; "Chosen in chunk 6.2" below. Event
-records and what a subscriber stores from an event come in chunk 6.1c,
-and the commands that watch schedules, the built-in purge schedule and
+errors that name `schedule.`; "Chosen in chunk 6.2" below. Built in
+chunk 6.1c: each domain's event record and what a subscriber stores
+from its event; "Chosen in chunk 6.1c" below. The commands that watch
+schedules, the built-in purge schedule and
 schedule tests in chunk 6.2b;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
@@ -1838,6 +1839,55 @@ conservative reading:
   retry and dismiss (area 14), the circuit breaker, publishing outward,
   and events from outside (Phase 7) are not built; event records and
   what a subscriber stores from an event are chunk 6.1c's.
+
+### Chosen in chunk 6.1c
+
+What "Event records" (decided 2026-10-19) and area 9's "Events and
+stores" leave to the build, each the most conservative reading:
+
+- **Where an event record is kept.** One per domain that declares an
+  event, beside its events: `domains/<domain>/events/events.jadpo_record`,
+  a view in the record format (`record events 1`) whose header says it is
+  generated from "the events of domain `<domain>`". Every event is
+  recorded, not only `public` ones: what is waiting in the outbox when a
+  build ships is read with the new shape. There is no command of its own;
+  `jadpo records update` writes it, and `jadpo records` lists it under
+  that command.
+- **What it holds.** An `event <Name>` entry for each event, `public`
+  when another domain may subscribe to it, then its fields as its payload
+  carries them, in the API record's wire form (`words: Text { max_length:
+  200 }`), then an `object`, `enum`, `input` or `output` entry for each
+  type a field names, written as the API record writes them. Events,
+  fields and types sort by born name. Descriptions are left out, as the
+  API record leaves them out.
+- **How it is checked.** As the API record is (area 18, "Chosen in chunk
+  7.0"): a missing record, one whose events changed (`record.out_of_date`,
+  naming each entry added, changed or removed) and the record of a domain
+  left with no events are put right by `jadpo records update`; a hand
+  edit Jadpo could not have written is `record.edited`. While an event
+  file has errors the record isn't compared. Classifying a change as
+  breaking, and accepting one, wait for area 18's acceptances with the
+  API record's.
+- **What a subscriber stores from its event.** Each action's `emit`s, and
+  those of the actions it calls, are part of what it passes to its
+  callers, so what an event carries is the union of what every `emit` of
+  it put there, with what a request sent left out, and along chains of
+  events what a subscriber's action emits from the event it was given.
+  What the subscriber's action stores from what it is passed is checked
+  where the subscriber passes it, as a call is (area 9, "What a write
+  stores"), and refused with `policy.output_field_unproved` at the
+  argument. What decided an `emit`, and any `reject` in its action, go
+  with every field of the event.
+- **A value from an event has left its record.** The record may change or
+  move between the `emit` and the delivery, so a value an event carries is
+  proved as one from any record of its entity: of the field's readers,
+  only what holds of anyone signed in, or of a role held across the whole
+  application, carries over. The one relation kept is the tenant: when the
+  event's tenant field came from the very record a value did, that record
+  was the tenant's, and the subscriber is limited to that tenant, so the
+  value may be stored wherever that tenant's roles read it. A subscriber
+  that needs more passes the event's ids and reads the current state, as
+  "Declaring an event" advises.
 
 ### Chosen in chunk 6.2
 
