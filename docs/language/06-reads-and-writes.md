@@ -13,7 +13,7 @@ what a failed write reports, and how an action stays all-or-nothing while
 other requests change the same records. Where records are stored, and how
 caches copy them, is area 5; who may read or change them is area 9.
 
-> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"; what the page left open is "Chosen in chunk 5.6c", under "Review"). Built in chunk 5.5u8: a query giving a map layer, a `FeatureCollection<G, P>` a `GET` route sends ("A query giving a map layer"; its choices are "Chosen in chunk 5.5u8"). Built in chunk 6.3b: a standard operation with an exact SQL form in a condition, with an index on its expression ("Operations in conditions"; its choices are "Chosen in chunk 6.3b"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
+> Decided on 2026-10-12. Built in chunk 3.2: queries (filters, order, pages, includes and the columns a result needs), `Entity.get`, the rule against reads in a loop, and `jadpo sql`. Built in chunk 3.3: `create`, `update` (with `set:` or `patch:`, of a loaded record or by `id`) and `delete`, `conflict:` mappings, the not-found failure the compiler provides, counters, one store per action and the rerun after a concurrent change. The examples marked `check` compile with this checkout's `jadpo`, and the runtime runs them against PostgreSQL. Built in chunk 3.4: lifecycles, so `visible:` hides records from every read and write, transitions run as operations, and `delete` runs the lifecycle's `delete` transition. Built in chunk 3.7: each action's isolation level, read committed or repeatable read, decided from what it does. Built in chunk 5.6c: aggregate queries, `count`, `sum`, `min`, `max` and `average` grouped by a field or a time bucket, each one statement ("Counts, sums and groups"). Built in chunk 5.5u8: a query giving a map layer, a `FeatureCollection<G, P>` a `GET` route sends ("A query giving a map layer"). Built in chunk 5.8c: a result type with a rule across its fields is refused (`query.result_rule`). Built in chunk 6.3b: a standard operation with an exact SQL form in a condition, with an index on its expression ("Operations in conditions"). The archived compiler's syntax is collapsed beneath each section that changed. The query syntax is compared with other frameworks in [the query proposals](research/06-reads-and-writes-proposals.md).
 
 The examples follow the golden todo app's `planning` domain: `User`,
 `Project` and `Todo`.
@@ -36,8 +36,15 @@ come back, so there is no separate word for it:
 The element type is the entity or a type derived from it
 (`type TodoView = Output { pick: [Todo.id, Todo.title] }`, area 2); the compiler
 reads only the fields that type needs. It names no rule across its fields
-(area 2), since nothing could map a stored record that breaks one
-([`query.result_rule`](#query-result-rule); chunk 5.8c). Records hidden by the entity's
+(area 2), proved by the declared ranges or not, and neither does whatever
+else stands for its records: a `Nearest<T>`'s item, a map layer's
+properties, an aggregate's rows or the records an include brings
+([`query.result_rule`](#query-result-rule)). A rule is checked whenever a
+value is made, and a broken one is a failure an `attempt` maps; a read has
+no `attempt` around it and the database can't check the rule as it reads,
+so a stored record that broke it could only be a defect. A type with the
+same fields and no rule fills a result, and code builds the type with the
+rule from it where an `attempt` maps the failure. Records hidden by the entity's
 lifecycle are left out of every query. The generated SQL selects only the
 columns the result type needs, plus the `order:` fields a page cursor needs
 and any field a policy condition checks outside the database. A query writes nothing and calls no
@@ -431,31 +438,51 @@ test "a query keeps the books its operation keeps in code" {
 }
 ```
 
-- **Every other argument is written out.** The compiler derives an index
-  on the operation's result for each record, `CREATE INDEX ... ((form))`,
-  one for each operation of a field however many queries test it, as it
-  derives one for a field's test (area 5, "Indexes"); a value given when
-  the query runs would change what the index holds, so a parameter as
-  another argument is `query.condition_unsupported`.
+- **Every other argument is written out:** a literal, a constant, an enum
+  value, a rounding mode, `decimal.round`'s `scale:` or `text.pad_start`'s
+  `fill:`. Each is held while compiling to what code holds it to (a zero
+  divisor, a negative count, empty text to find) and written into the
+  statement's text, so the index and the statement hold the same
+  expression and PostgreSQL matches them. A value given when the query
+  runs would change what the index holds, so a parameter as another
+  argument is `query.condition_unsupported`.
 - **Only an exact form, and one an index can hold.** An operation without
   a SQL form (`text.lower`, whose result PostgreSQL's collation would
   decide) is `query.condition_unsupported`, and so is one whose form an
   index can't hold: `map.count` and `temporal.period_between` read a
-  subquery, and `hash.sha256` and `encoding.to_utf8` of text convert
-  through the database's encoding, which PostgreSQL won't index. A field
-  kept in several columns, such as an amount of money, or whole as its
-  JSON, such as a list, isn't compared in a query yet, its operations
-  included.
+  subquery, and `hash.sha256` and `encoding.to_utf8` of text call
+  `convert_to`, which PostgreSQL marks stable since it reads the
+  database's encoding. A range's operations take a range written out,
+  which a query can't write. A field of money or a range, or one kept
+  whole as its JSON (an object, a list, a set, a map or an enum with
+  data), isn't compared in a query yet, its operations included
+  (`toolchain.not_built_yet`), though `list.count` of a list would
+  otherwise have a form.
 - **The field first, once.** The field is the operation's first argument,
   given as it is; an operation of another operation's result, or with the
   field anywhere else, is `query.condition_unsupported`.
+- **Compared as a field is.** A literal the result is compared with is
+  decoded for the result's type. The `not` of an operation that gives a
+  `Bool` is written `IS FALSE`, since PostgreSQL turns `NOT (a = b)` into
+  `a <> b` before it looks for an index. `== none` is `type.incomparable`:
+  an operation gives a value whenever it is called.
 - **`none`.** A record whose field is `none` meets no condition on an
-  operation of it, `not` included, as code can't call the operation on
-  `none`.
+  operation of it, `not` included (`"field" IS NOT NULL AND ...`), as code
+  can't call the operation on `none`. `ai.distance` keeps its statement,
+  since pgvector's operators give `NULL` for `NULL`.
 - **Anywhere a comparison stands.** Under `not` and `or`, on a
   `where_present:` line, in an include's `where:` and in an aggregate
   query, since the database works the operation out exactly; `order:`
-  still takes fields only.
+  still takes fields only. A `geo.` test, which an index finds and code
+  decides, still stands on its own line or under `and`, outside includes
+  and aggregates.
+- **The index.** The compiler derives one B-tree on each expression,
+  however many queries and includes compare it, as it derives one for a
+  field's test (area 5, "Indexes"): `<table>_<column>_<operation>_idx`,
+  another expression of the same operation and field named apart by its
+  digest, and partial for `visible:` as every derived index is. The schema
+  keeps it as an index's `expression`, beside the column it reads, and a
+  migration creates it with `CREATE INDEX ... ((expression))`.
 
 The statements (`jadpo sql`) and the indexes derived for them:
 
@@ -477,6 +504,10 @@ LIMIT 100
 CREATE INDEX "book_published_on_year_idx" ON "book" (((CASE WHEN extract(year FROM "published_on") < 0 THEN extract(year FROM "published_on") + 1 ELSE extract(year FROM "published_on") END)::bigint));
 CREATE INDEX "book_title_length_idx" ON "book" ((char_length("title")::bigint));
 ```
+
+A live test (`jadpo-cli`'s `operation_conditions`) runs such queries on
+PostgreSQL, edge cases among them, and checks each gives the code's answer
+through its index.
 
 ## Order and pages
 
@@ -607,10 +638,13 @@ output TodoPage {
 
 A query can count and add up the records it finds instead of returning
 them. `aggregate:` names each total the database works out, and `group:`
-splits the records into groups, one row per group. Each row is a value of
-an `Output` (or `Object`) type whose every field is a group or an aggregate
-of the same name; nothing else of the entity is read, since the records in
-a group have no one value of any other field. An API service reports its
+splits the records into groups, one row per group. Both blocks are shaped
+like `include:`, each entry named after the result field it fills. Each
+row is a value of an `Output` (or `Object`) type whose every field is a
+group or an aggregate of the same name, and every entry a field; nothing
+else of the entity is read, since the records in a group have no one value
+of any other field. `count`, `sum`, `min`, `max` and `average` are words of
+`aggregate:` only, so they take no namespace and name nothing elsewhere. An API service reports its
 calls by month, counts them by how they were replied, and totals an
 account's calls:
 
@@ -828,33 +862,45 @@ test "a summary of no calls counts nothing" {
 `monthly_calls` gives one row for each month that has calls, and
 `reply_tallies` one for each reply that some call got, `refused` among
 them only once a call is refused. `jadpo sql monthly_calls` prints the one
-statement it sends: a `SELECT` of each group and aggregate, the
-conditions, `GROUP BY` the groups, `ORDER BY` and `LIMIT`.
+statement it sends, on two levels: a grouped subquery works out the groups
+and totals (its `SELECT` of each group and aggregate, the conditions and
+`GROUP BY` the groups), and the outer statement selects, orders and limits
+them, so an average names its sum and its count once. A `Money` sum's
+currency is the one its type fixes, sent as a parameter.
 
 - **The aggregates.** `count()` is how many records there are, an `Int`.
   `sum(F)` adds up a field built on `Int`, `Decimal` or `Duration`, a
-  quantity, or `Money` whose type fixes `currency:`; it gives what `+` gives, the field's representation (`Int`,
+  quantity, or `Money` whose type fixes `currency:` (two currencies can't
+  be added, and a sum of nothing needs a currency for its zero); a
+  percentage isn't summed. It gives what `+` gives, the field's representation (`Int`,
   `Decimal`, `Duration`, the quantity or `Money`), so Money and quantity
   sums keep their kind. `min(F)` and `max(F)` give the smallest and
-  largest value of a field a query can sort by, other than an identity
-  (numbers, times, dates, durations, quantities, percentages and text, by
-  code point), as the field's own type. `average(F, scale:, rounding:)`
+  largest value of a field a query can sort by, other than an identity,
+  since PostgreSQL has no `min` of a `uuid` (numbers, times, dates,
+  durations, quantities, percentages and text, by code point), as the
+  field's own type. `average(F, scale:, rounding:)`
   of a field built on `Int`, or on `Decimal` with at most `scale:` places,
   is a `Decimal` with exactly `scale:` places: the exact mean rounded once
   as `rounding:` says. Both are written out, a whole number from 0 to 38
-  and a `Rounding`, since an average rarely comes out exact and the
-  rounding is part of what the report says.
+  and a `Rounding`, as `decimal.round`'s are, since an average rarely
+  comes out exact and the rounding is part of what the report says. An
+  average of durations, quantities or money isn't offered until an
+  application needs one.
 - **The same as code.** Each aggregate gives exactly what code working
   from the records gives: `count()` is `list.count`; `sum` is `list.sum`,
   `+` for durations and quantities, or `money.sum` with the type's
   currency; `min` and `max` are the value `list.min_by` and `list.max_by`
   find; `average` is `decimal.divide` of the sum, at `scale:` places, by
-  the count, with `rounding:`. A sum past what its type holds, a whole
-  number past 64 bits or a decimal past 38 digits, stops the read, as it
-  is a defect in code.
+  the count, with `rounding:`, through `decimal.divide`'s SQL form, which
+  works the quotient out exactly as the runtime does, where PostgreSQL's
+  own `avg` and `/` round to places they choose. A whole number, a
+  duration and money's minor units are summed exactly and cast back to
+  `bigint`, so a sum past 64 bits stops the read, and a decimal past 38
+  digits fails as it is read: both are defects in code.
 - **`none` is left out.** `sum`, `min`, `max` and `average` skip a field's
   `none` values, as a list of the values that are there would be summed;
-  `count()` counts records, whatever their fields hold. A group whose
+  `count()` counts records, whatever their fields hold, and counting a
+  field's values is a condition (`where: ApiCall.wait != none`). A group whose
   values are all `none` sums to zero, and its `min`, `max` and `average`
   are `none`.
 - **The groups.** A group is a field, or a time bucket: `temporal.year`,
@@ -864,7 +910,14 @@ conditions, `GROUP BY` the groups, `ORDER BY` and `LIMIT`.
   `Bool`, `Int`, `Text`, `Uuid` (a reference among them), `CalendarDate`
   or a plain enum, whose stored values are equal exactly when Jadpo's are;
   a field that may be `none` puts its records without a value in a group
-  of their own, `none`.
+  of their own, `none`. Decimals, quantities and percentages aren't
+  groups, since `numeric` equality puts `1.0` and `1.00` in one group and
+  only one of them could be shown, and nor are instants, durations, money
+  and structured values. An instant has no bucket: its day needs a zone,
+  and PostgreSQL's time zone database can differ from the one built into
+  every Jadpo build (area 10), so no SQL form of `temporal.in_zone` gives
+  exactly what code gives; until that is decided, a report keeps the day
+  as a `CalendarDate` field.
 - **The result type.** Each group and aggregate fills the result's field of
   its name, which takes its type or one it widens to, as a stored value
   fills a field (`calls_made: Int`, `largest_call: ApiCall.tokens_spent`).
@@ -872,24 +925,31 @@ conditions, `GROUP BY` the groups, `ORDER BY` and `LIMIT`.
   `none`, and `min`, `max` and `average` of one, or with no `group:`.
 - **With `group:`,** the query returns `List<T>` with `order:` and
   `limit:`, one row per group that has records, so no group is empty: a
-  month without calls gives no row. `order:` names groups and aggregates
-  by their names, and the compiler adds each group it doesn't name as the
-  tie-break, ascending, since the groups tell the rows apart. A group
-  sorts in Jadpo's own order (area 2): numbers by value, text by code
-  point, days in time, `false` before `true` and an enum's variants in
-  their declared order; an aggregate sorts when its type is ordered,
-  which a `Money` sum isn't.
+  month without calls gives no row, as SQL's `GROUP BY` gives none, and
+  filling gaps is the caller's. `order:` names groups and aggregates
+  by their names, never the entity's fields, and the compiler adds each
+  group it doesn't name as the tie-break, ascending, since the groups
+  tell the rows apart. A group sorts in Jadpo's own order (area 2):
+  numbers by value, text by code point (`COLLATE "C"`), days in time,
+  `false` before `true` and an enum's variants in their declared order
+  (`array_position` of the codes it is stored as); an aggregate sorts
+  when its type is ordered, which a `Money` sum isn't. A total that may
+  be `none` sorts where PostgreSQL puts `NULL`, as a list query's
+  nullable order field does.
 - **Without `group:`,** the query returns `T`, one row over every record it
   finds, and takes no `order:`, `limit:` or `missing:`: there is always the
   row. When nothing matches, `count()` is 0, a sum is zero (in the type's
   currency for `Money`, at its scale for a `Decimal`), and `min`, `max` and
   `average` are `none`.
-- **What it doesn't take.** An aggregate query reads one entity: no
-  `include:`, no `page:` and no `nearest` order. Its conditions are a
+- **What it doesn't take.** An aggregate query returns `List<T>` or `T`,
+  never `T?` or `Page<T>`, and reads one entity: no `include:`, no
+  `page:`, no `missing:` and no `nearest` order, since a page of groups
+  would need a cursor over groups and nothing has asked for one. Its conditions are a
   query's usual `where:` and `where_present:` lines, and policy and the
   lifecycle's `visible:` limit the records it counts as they limit any
   query's. Every field a group or an aggregate reads is one every caller
-  may read, as an output's fields are (area 9).
+  may read, as an output's fields are (area 9,
+  `policy.output_field_unproved`).
 
 Aggregates are the decided exception to "a query computes nothing"
 (area 19, questions 21 and 28): a time bucket and an average are written
@@ -902,10 +962,13 @@ statement, however many records it counts.
 A query can return its records as a map layer, a
 `FeatureCollection<G, P>` ([area 20](20-geospatial.md), "Interop"), so a
 `GET` route sends the layer a mapping library fetches, as plain RFC 7946
-GeoJSON (area 7, "A map layer as output"). `geometry:` names the stored
-field each feature's geometry is, a `G` every record has; `P`, an `Object`
-type, is each feature's properties, its fields filled from the record's
-fields of the same names, as any result type's are. The query picks
+GeoJSON (area 7, "A map layer as output"). The result type names the
+properties type, as `List<Nearest<T>>` names its records. `geometry:`
+names the stored field each feature's geometry is, a `G` every record
+has, since an entity may hold several and the result type can't say
+which; `P`, an `Object` type as area 20 requires of a feature's
+properties, is each feature's properties, its fields filled from the
+record's fields of the same names, as any result type's are. The query picks
 fields and computes nothing, so it is a bounded list like any other:
 `order:` and `limit:`, with area 20's `geo.` conditions and its order by
 `geo.distance` if it needs them. A bakery map's layer, and the bakeries
@@ -1090,13 +1153,16 @@ each feature `{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.063
 `jadpo sql bakery_map` prints its one statement, a `SELECT` of the
 properties' columns and the geometry's.
 
-- **What it takes.** `geometry:` names a field of the entity read, of the
-  layer's own geometry type and never `none`: a feature always has one, so
-  a `Point?` field, or a `Polygon` field in a layer of `Point`s, is
-  `query.geometry_field`. A layer is one bounded list: `order:` and
-  `limit:` are required, and `page:`, `missing:`, `include:`, `group:`
-  and `aggregate:` are refused, since a layer's properties are each
-  record's own fields, one feature to a record.
+- **What it takes.** `geometry:` names a field of the entity read, of
+  exactly the layer's own geometry type and never `none`: a feature always
+  has one, so a `Point?` field, a `Polygon` field in a layer of `Point`s,
+  or one in a layer of `Geometry` (which would be a value built from it),
+  is `query.geometry_field`, and a field the entity hasn't is
+  `query.unknown_field`, as in a condition. A layer is one bounded list:
+  `order:` and `limit:` are required, and `page:` (a `FeatureCollection`
+  has no cursor), `missing:`, `include:`, `group:` and `aggregate:` are
+  refused, since a layer's properties are each record's own fields, one
+  feature to a record.
 - **Its properties.** Each field of `P` is the record's field of that
   name, `query.result_field` otherwise; a feature's identity goes in its
   properties, so `P` picks `id` where the map needs it.
@@ -1104,7 +1170,12 @@ properties' columns and the geometry's.
   `Output` is (area 9, "Field restrictions"): every caller who may read
   the records may read each property and the geometry, and every field
   its conditions and order test, or the query is
-  `policy.output_field_unproved`.
+  `policy.output_field_unproved`. This is proved where the query is
+  declared, so an action returning the layer carries nothing more.
+- **Only what a `GET` can ask for.** A `GET`'s input is its query string,
+  which can't hold a `BoundingBox` (area 7), so a layer of only what is in
+  view would still need a body; example 21 sends its whole drop point
+  layer with `GET /drop-points`.
 
 A property the record has no field for:
 
@@ -2658,7 +2729,7 @@ check failed: 1 error, 1 file
 ```
 
 A standard operation stands where a field does only when it has an exact
-SQL form ("Operations in conditions", chunk 6.3b). `text.lower` has none,
+SQL form ("Operations in conditions"). `text.lower` has none,
 since PostgreSQL's would follow the database's collation:
 
 ```jadpo check project=e-condition-no-form expect=query.condition_unsupported
@@ -4659,177 +4730,6 @@ database.
     checks; policy grants of simple equality on the record's own fields,
     checked after reading. Joins and `include`, ranges, other orderings,
     `matches` and other grants are compile errors naming PostgreSQL.
-
-### Chosen in chunk 6.3b
-
-What "Operations in conditions" needed that the decision (Phase 5
-review, 2026-10-19) didn't say, each the most conservative reading, and
-the one lowering it is built on:
-
-- **One lowering for every operation in a condition.** `ai.distance`, the
-  `geo.` tests and the new operations are one model, a call of an
-  operation on a field and what the condition asks of its result, decided
-  one of two ways: its SQL form compared in the statement (area 19's
-  exact forms, and `ai.distance` as pgvector works it out, which area 21
-  decided a query's distance is), or a search an index serves, a margin
-  wider than the condition, whose rows the runtime holds to the operation
-  in the code a function body's call of it runs, asking again for more
-  when that leaves the read short (the `geo.` tests, area 20). No query's
-  statement changed.
-- **Which operations.** Those area 19 gives an exact form, less those
-  PostgreSQL can't index: `map.count` and `temporal.period_between` read
-  a subquery, and `hash.sha256` and `encoding.to_utf8` of text call
-  `convert_to`, which PostgreSQL marks stable since it reads the
-  database's encoding. A range's operations take a range written out,
-  which a query can't write, and a field of money or a range isn't
-  compared in a query yet, operations included (`toolchain.not_built_yet`,
-  as before); nor is a field kept whole as its JSON (an object, a list, a
-  set, a map or an enum with data, chunk 5.9b), whose `list.count` would
-  otherwise have a form. A live test builds an index on every other form.
-- **The field first, once, and every other argument written out:** a
-  literal, a constant, an enum value, a rounding mode, `decimal.round`'s
-  `scale:`, `text.pad_start`'s `fill:`. Each is held to what code holds it
-  to while compiling (a zero divisor, a negative count, empty text to
-  find), and written into the statement's text, so the index and the
-  statement hold the same expression and PostgreSQL matches them. A
-  parameter there, an operation of another's result, or the field
-  anywhere but first is `query.condition_unsupported`.
-- **Compared as a field is.** Its result takes `==`, `!=`, `in` and, for
-  numbers, times, dates and durations, the orderings, against the values
-  a field's comparison takes; a literal is decoded for the result's type.
-  A `Bool` is the condition itself, and its `not` is written `IS FALSE`,
-  since PostgreSQL turns `NOT (a = b)` into `a <> b` before it looks for an
-  index. `== none` is `type.incomparable`: an operation gives a value
-  whenever it is called.
-- **`none`.** A record whose field is `none` meets no condition on an
-  operation of it, `not` included (`"field" IS NOT NULL AND ...`), as code
-  can't call the operation on `none`; `ai.distance` keeps its statement,
-  pgvector's operators giving `NULL` for `NULL`.
-- **Wherever a comparison stands:** under `not` and `or`, on a
-  `where_present:` line, in an include's `where:` and in an aggregate
-  query, all of which the database works out exactly. A search still
-  stands on its own line or under `and`, outside includes and aggregates.
-- **The index.** One B-tree on each expression, however many queries and
-  includes compare it, `<table>_<column>_<operation>_idx`, another
-  expression of the same operation and field named apart by its digest,
-  partial for `visible:` as every derived index is. The schema keeps it as
-  an index's `expression`, beside the column it reads, and a migration
-  creates it with `CREATE INDEX ... ((expression))`.
-- **Where it was tested.** The checker's own tests for each form and
-  refusal; the golden SQL of three queries (`jadpo-plan`'s `tests/sql`);
-  and a live test (`jadpo-cli`'s `operation_conditions`) running ten
-  queries over six hundred books, edge cases among them (code points
-  and Unicode's white space, years before 1 AD, halves rounded each way,
-  `none`), each the code's answer and each through its index (`EXPLAIN`
-  with sequential and plain index scans off), and building an index on
-  every form a condition may use.
-
-### Chosen in chunk 5.8c
-
-- **A result type names no rule across its fields**
-  (`query.result_rule`), whatever stands for its records: the records
-  themselves, a `Nearest<T>`'s item, a map layer's properties, an
-  aggregate's rows, or the records an include brings. Area 2 checks a
-  rule whenever a value is made, and a broken one is a failure an
-  `attempt` maps; a read has no `attempt` around it and nothing to fail
-  with but a defect, and the database can't check the rule as it reads.
-  Checking each row as it is read would turn a stored record into a
-  runtime failure no caller could name, so the conservative reading is to
-  refuse the type while compiling, rule proved by the declared ranges or
-  not. The type's fields without the rule fill a result as before, and
-  code builds the type with the rule from it where an `attempt` maps the
-  failure.
-
-### Chosen in chunk 5.5u8
-
-- **The syntax.** The result type names the properties type,
-  `FeatureCollection<G, P>`, as `List<Nearest<T>>` names its records; a
-  section, `geometry: Entity.field`, names the geometry field, since an
-  entity may hold several and the result type can't say which. `P` is
-  filled as any result type is, by field name, and is an `Object`, as
-  area 20 requires of a feature's properties.
-- **Exactly `G`, never `none`.** The field's type is the layer's geometry
-  type itself: a `Polygon` field doesn't fill a layer of `Geometry`, which
-  would be a value built from it, and a field that may be `none` doesn't
-  fill a feature, which always has a geometry. Both are
-  `query.geometry_field`, the one new rule; an unknown field is
-  `query.unknown_field`, as in a condition.
-- **One feature to a record.** A layer is a bounded list, as `List<T>`
-  is, so `order:` and `limit:` are required and `page:` is refused, a
-  `FeatureCollection` having no cursor. `include:`, `group:` and
-  `aggregate:` are refused too, the most conservative reading of "nothing
-  computed beyond picking fields": a property is the record's own field.
-- **Held as an `Output`.** A layer goes out as it is, so its properties
-  and its geometry are proved for every caller where the query is
-  declared, and an action returning it carries nothing more (area 9).
-- **Example 21** sends its whole drop point layer with `GET
-  /drop-points`, and its in-view action and `POST` route are gone: a
-  `GET`'s input is the query string, which can't hold a `BoundingBox`
-  (area 7), so a layer of what is in view would still need a body.
-
-### Chosen in chunk 5.6c
-
-What "Counts, sums and groups" needed that areas 6 and 19 hadn't
-decided, each the most conservative reading:
-
-- **Two blocks shaped like `include:`.** `group:` and `aggregate:` name
-  each entry after the result field it fills; `count`, `sum`, `min`, `max`
-  and `average` are words of `aggregate:` only, so they take no
-  namespace and no name elsewhere. Every field of the result is an entry
-  and every entry a field, and no other field of the entity is read.
-- **The result's shape.** With `group:` the query returns `List<T>` with
-  `order:` and `limit:`, as any list does; without it, `T`, the one row.
-  `T?` and `Page<T>` are refused, and so are `include:`, `page:`,
-  `missing:` and a `nearest` order: a page of groups would need a cursor
-  over groups, and nothing has asked for one.
-- **What each aggregate takes.** `sum` takes what `+` adds and keeps the
-  representation `+` gives, money only when the field's type fixes the
-  currency (two currencies can't be added, and a sum of nothing needs a
-  currency for its zero); percentages aren't summed. `min` and `max` take
-  what `order:` sorts by, less identities (PostgreSQL has no `min` of a
-  `uuid`). `average` takes whole numbers and decimals whose type keeps no
-  more places than `scale:`, so the mean is rounded once; an average of
-  durations, quantities or money waits for an application that needs one.
-- **An average is `decimal.divide`.** The sum at `scale:` places divided
-  by the count of values with `decimal.divide`'s SQL form, which works
-  the quotient out exactly as the runtime does; PostgreSQL's own `avg`
-  and `/` round to places they choose. `scale:` (0 to 38) and `rounding:`
-  are both written out, as `decimal.round`'s are.
-- **`none`.** A field's `none` values are left out of `sum`, `min`, `max`
-  and `average`; `count()` counts records, and counting values is a
-  condition (`where: E.f != none`). A sum of no values is zero, at the
-  field's places for a decimal, as `list.sum` starts from zero.
-- **Groups whose values compare exactly.** A group field is built on
-  `Bool`, `Int`, `Text`, `Uuid` or `CalendarDate`, or is a plain enum.
-  Decimals, quantities and percentages are left out, since `numeric`
-  equality puts `1.0` and `1.00` in one group and only one of them could
-  be shown; an instant, a duration, money and structured values too.
-- **Time buckets of dates only.** `temporal.year`, `temporal.month` and
-  `temporal.day` of a date got SQL forms (area 19). A bucket of an
-  instant needs a zone, and PostgreSQL's time zone database can differ
-  from the one built into every Jadpo build (area 10), so no SQL form of
-  `temporal.in_zone` gives exactly what code gives; until that is decided
-  a report keeps the day as a `CalendarDate` field.
-- **No row for an empty group.** A month without records gives no row,
-  as SQL's `GROUP BY` gives none; filling gaps is the caller's.
-- **The order.** `order:` names entries, never the entity's fields; the
-  groups it doesn't name are added ascending, so rows never swap places.
-  A group sorts in Jadpo's canonical order (an enum by its declared order,
-  through `array_position` of the codes it is stored as, text with
-  `COLLATE "C"`); a `Money` sum isn't sortable, as money isn't in
-  `order:`. A total that may be `none` sorts where PostgreSQL puts `NULL`,
-  as a list query's nullable order field does.
-- **One statement, two levels.** The groups and totals are worked out in
-  a grouped subquery and the outer statement selects, orders and limits
-  them, so an average names its sum and its count once. A `Money` sum's
-  currency is the one its type fixes, sent as a parameter.
-- **Past what a type holds.** A whole number, a duration and money's
-  minor units are summed exactly and cast back to `bigint`, so a sum past
-  64 bits stops the read; a decimal past 38 digits fails as it is read.
-  Both are defects in code.
-- **Policy.** Each field a group or an aggregate reads is one every
-  caller may read, as an output's field is (`policy.output_field_unproved`);
-  the conditions policy and `visible:` add limit the records counted.
 
 ### Decisions
 
