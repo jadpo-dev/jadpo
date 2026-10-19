@@ -432,7 +432,7 @@ fn offered_pgvector() -> [u32; 3] {
 
 /// Whether the run's server is too old for a nearest query's live test:
 /// skipped locally, saying so; a failure under CI, whose image has 0.8.7.
-fn pgvector_too_old() -> bool {
+pub(crate) fn pgvector_too_old() -> bool {
     let offered = offered_pgvector();
     if offered >= [0, 8, 0] {
         return false;
