@@ -478,11 +478,16 @@ fn duration(ms: i64) -> String {
     }
 }
 
-/// `8 s ago`, `3 min ago`, `2026-10-18 23:45`.
+/// `8 s ago`, `3 min ago`, `2 h ago`, or `2026-10-18 23:45` a day or
+/// more before.
 fn ago(at: i64, now: i64) -> String {
-    let past = now.saturating_sub(at);
-    if past < DAY {
-        format!("{} ago", duration(past - past % 1_000))
+    let past = now.saturating_sub(at).max(0);
+    if past < 60_000 {
+        format!("{} s ago", past / 1_000)
+    } else if past < 3_600_000 {
+        format!("{} min ago", past / 60_000)
+    } else if past < DAY {
+        format!("{} h ago", past / 3_600_000)
     } else {
         clock(at, now)
     }
@@ -1777,9 +1782,42 @@ pub(crate) fn dev_line(name: &str, due: &Due) -> (String, Json) {
     (detail, json)
 }
 
-/// An alert's line in `jadpo dev`'s output.
+/// An alert's line in `jadpo dev`'s output, its times in the local time
+/// zone as the session's own lines are, and its log event, in UTC.
 pub(crate) fn dev_alert(alert: &Alert, now: i64) -> (String, Json) {
-    (alert_text(alert, now), json_of(&alert.event()))
+    let shift = crate::watch::local_offset().saturating_mul(1000);
+    let at = |millis: i64| millis.saturating_add(shift);
+    let kind = match &alert.kind {
+        AlertKind::TicksStopped { since } => AlertKind::TicksStopped { since: at(*since) },
+        AlertKind::LeaseExpired { started, until } => AlertKind::LeaseExpired {
+            started: started.map(at),
+            until: at(*until),
+        },
+        AlertKind::LongRun {
+            started,
+            ms,
+            running,
+        } => AlertKind::LongRun {
+            started: at(*started),
+            ms: *ms,
+            running: *running,
+        },
+        AlertKind::FailedInARow { count } => AlertKind::FailedInARow { count: *count },
+        AlertKind::NoSuccess {
+            since,
+            ever,
+            every_ms,
+        } => AlertKind::NoSuccess {
+            since: at(*since),
+            ever: *ever,
+            every_ms: *every_ms,
+        },
+    };
+    let local = Alert {
+        schedule: alert.schedule.clone(),
+        kind,
+    };
+    (alert_text(&local, at(now)), json_of(&alert.event()))
 }
 
 /// `1.2 s`, as the screens write a duration.
@@ -1792,6 +1830,27 @@ mod tests {
     use super::*;
 
     const T: i64 = 1_792_404_230_000; // 2026-10-19T10:03:50Z
+
+    #[test]
+    fn a_run_in_jadpo_dev_is_one_json_event() {
+        let due = Due {
+            schedule: "schedule census".into(),
+            due_slot: T - 2_000,
+            ran: Ran::Failed {
+                code: "bell_missing".into(),
+                kind: Some("unavailable".into()),
+            },
+            started: T,
+            ended: T + 41,
+            trace: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".into()),
+        };
+        let (detail, json) = dev_line("census", &due);
+        assert_eq!(detail, "bell_missing · unavailable");
+        assert_eq!(
+            json.to_line(),
+            "{\"event\":\"schedule\",\"schedule\":\"census\",\"outcome\":\"failed\",\"detail\":\"bell_missing · unavailable\",\"dueAt\":\"2026-10-19T10:03:48Z\",\"startedAt\":\"2026-10-19T10:03:50Z\",\"ms\":41,\"lateMs\":2000,\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\"}\n"
+        );
+    }
 
     #[test]
     fn durations_and_times_read_as_the_design_language_writes_them() {

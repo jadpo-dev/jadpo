@@ -69,6 +69,7 @@ Data
 Look things up
   routes        List every route
   ai            Show what a prompt sends      show
+  why           Explain why a schedule didn't run
 
 Change safely
   api           Rewrite the API records       update
@@ -77,6 +78,9 @@ Change safely
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
   translations  Keep translations up to date
+
+Production
+  schedules     Watch and control schedules   run, pause, resume, history
 
 Set up
   config        Check and set local settings  check, move, set
@@ -134,6 +138,7 @@ Data
 Look things up
   routes        List every route
   ai            Show what a prompt sends      show
+  why           Explain why a schedule didn't run
 
 Change safely
   api           Rewrite the API records       update
@@ -142,6 +147,9 @@ Change safely
   fix           Fix a standard type's finding
   suggest       Hint where a standard type or operation fits
   translations  Keep translations up to date
+
+Production
+  schedules     Watch and control schedules   run · pause · resume · history
 
 Set up
   config        Check and set local settings  check · move · set
@@ -299,12 +307,14 @@ fn help_json_is_the_whole_command_reference() {
             "sql",
             "routes",
             "ai",
+            "why",
             "api",
             "records",
             "declines",
             "fix",
             "suggest",
             "translations",
+            "schedules",
             "config",
             "completions",
             "lsp",
@@ -312,7 +322,7 @@ fn help_json_is_the_whole_command_reference() {
             "version"
         ]
     );
-    let completions = &data["commands"][15];
+    let completions = &data["commands"][17];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -689,12 +699,14 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
             "ai\tShow what a prompt sends",
+            "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",
             "records\tList and update the records",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
             "suggest\tHint where a standard type or operation fits",
             "translations\tKeep translations up to date",
+            "schedules\tWatch and control schedules",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",

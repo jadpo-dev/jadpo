@@ -1708,8 +1708,7 @@ chunk 6.2: schedules, their state and leases, the native minute tick,
 every run and skipped tick recorded, and the tick's sweeps, with the
 errors that name `schedule.`; "Chosen in chunk 6.2" below. Event
 records and what a subscriber stores from an event come in chunk 6.1c,
-and the commands that watch schedules, the built-in purge schedule and
-schedule tests in chunk 6.2b;
+and the built-in purge schedule and schedule tests in chunk 6.2c;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
@@ -1717,7 +1716,12 @@ below), but for the file helpers, which come in chunk 6.4b, and on
 Workers each run's continuation in a fresh invocation, which chunk 8.2
 checks. Several changing calls in one action, polls and `receiving`
 were decided on 2026-10-16 and come with Phase 7; their errors are built
-with them.
+with them. Built in chunk 6.2b: watching schedules, `jadpo schedules`
+with `run`, `pause`, `resume` and `history`, `jadpo why <schedule>`, each
+run and alert in `jadpo dev`'s output, the alerts with no setup and the
+metrics, read from the run records; "Chosen in chunk 6.2b" below.
+Sending the metrics and the alerts' log events to a monitoring tool waits
+for telemetry (area 16), and the console's timeline for area 17.
 
 ### Chosen in chunk 6.1a
 
@@ -1906,6 +1910,66 @@ conservative reading:
   ten times a tick. Handled records stay: deleting them waits until a
   delivery can no longer repeat is worked out. Batch runs resume through
   `schedules::HOOKS`, which runs chunk 6.4's `batches::resume`.
+
+### Chosen in chunk 6.2b
+
+What the page leaves to the build about watching schedules, each the
+most conservative reading:
+
+- **Where the commands read.** The database the schedules' state is in:
+  the one `--url` names, else the address its connection's setting gives
+  (area 10), else the one a running `jadpo dev` started for the session,
+  which it notes in `build/dev/stores.json` and removes when it stops.
+  No `--env` flag: area 14 says commands run "against an environment
+  through its configuration" and names none, so an environment is its
+  configuration. Times are UTC, as schedules count them.
+- **The lease holder** is the run holding the lease, shown as the last
+  run `● running` with its start; instances have no names yet. **Recent
+  failures** are the failed runs since the last success, shown beside a
+  failed last run (`· 3 in a row`).
+- **`run <name>`** runs the schedule now in the command's own process,
+  as `jadpo dev` would, with the app's settings from the environment
+  over `.env.local`: under its lease (refused with `schedules.lease_held`
+  while a run holds it), paused or not, as the system with no tenant at
+  the command's time. Its record's reason is `manual` and its due time
+  is when it started; the grid isn't moved. *Flagged:* the other reading
+  marks it due so the next tick runs it, which keeps app code on the
+  app's own instances but answers only once a tick comes; recommended
+  as built, so an operator sees the outcome.
+- **`pause` and `resume`** set the state row's `paused`, making the row
+  as the first tick would when none has yet; a run under way carries on.
+  Pausing a paused schedule, or resuming one that isn't, changes
+  nothing and says so.
+- **`history`**: every record, runs and skipped ticks, newest first, 20
+  a page (`--page <n>`), grouped by UTC day; then the metrics over the
+  records kept (30 days): runs, failed runs and skipped ticks, the median
+  and longest duration, and the median and greatest lateness.
+- **The alerts**, each a condition worked out from the rows at a time:
+  ticks stopped when the last tick any schedule received is older than
+  twice the host's tick period; a lease past its end with its run never
+  ended; a run that has taken, or took, 80% of the 15-minute limit; three
+  or more failed runs since the last success; and, unless paused, no
+  success for over twice `every:`, counted from the last success's start
+  (kept on the state row as `last_succeeded_at`, so a monthly schedule
+  isn't lost with its 30-day records) or else from its first due time.
+  Each is a log event (`{"event": "schedule.alert", "alert": …}`, area
+  14's question 13), printed once by `jadpo dev` when it starts; sending
+  it on waits for the hosts' log sink and telemetry (area 16).
+- **The metrics** are each run's lateness (start minus due) and duration,
+  measured on the monotonic clock from the run's own time, carried by
+  the tick's result and `jadpo dev`'s `--json` lines, and per schedule by
+  `history`. Items per run wait for a schedule run that counts items.
+- **`jadpo why <schedule>`** answers in area 17's shape, the first that
+  holds: paused (and the due times skipped since); no tick since a time;
+  a lease held past its end; a run still holding it; a tick skipped since
+  the last run; the last run failed (its code, kind, failures before it,
+  next due time and trace); it succeeded; not due yet; or no tick has
+  seen it. The `.jadpo` place is the schedule's declaration, its doc
+  comment's line when it has one. Other alerts follow it.
+- **`jadpo schedules` succeeds whatever it lists**, a failed last run or
+  an alert included, as other listing commands do; `--json` carries the
+  alerts for a health check. A run by `run` that fails exits 1 with
+  `schedules.run_failed`.
 
 ### Chosen in chunk 6.4
 

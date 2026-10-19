@@ -1312,3 +1312,171 @@ fn a_project_with_no_schedules_says_so() {
         why.stderr
     );
 }
+
+/// A project with two schedules a second apart: `heartbeat` makes a pulse
+/// each second, `missed_beat` fails each second.
+const BEATS: &[(&str, &str)] = &[
+    ("app.jadpo", "application {}\n"),
+    (
+        "domains/beats/entities/pulse.jadpo",
+        r#"entity Pulse {
+    id: Uuid
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+        tenant: Tenancy.shared
+    }
+}
+"#,
+    ),
+    (
+        "domains/beats/actions/beat.jadpo",
+        r#"use beats/entities { Pulse }
+
+action beat() -> Pulse {
+    return Pulse.create {
+        set: {}
+    }
+}
+"#,
+    ),
+    (
+        "domains/beats/failures/skipped_beat.jadpo",
+        r#"type SkippedBeat = Failure {
+    kind: FailureKind.unavailable
+    message: "The beat was skipped."
+}
+"#,
+    ),
+    (
+        "domains/beats/actions/miss.jadpo",
+        r#"use beats/failures { SkippedBeat }
+
+action miss() fails SkippedBeat -> Unit {
+    reject SkippedBeat {}
+}
+"#,
+    ),
+    (
+        "domains/beats/schedules/heartbeat.jadpo",
+        r#"use beats/actions { beat }
+
+/// Beats every second.
+schedule heartbeat {
+    every: 1s
+    run: beat()
+}
+"#,
+    ),
+    (
+        "domains/beats/schedules/missed_beat.jadpo",
+        r#"use beats/actions { miss }
+
+/// Misses every second.
+schedule missed_beat {
+    every: 1s
+    run: miss()
+}
+"#,
+    ),
+];
+
+/// What a session writes, shared with the thread that runs it.
+#[derive(Clone, Default)]
+struct Written(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Written {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("written").extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Written {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("written")).into_owned()
+    }
+}
+
+#[test]
+fn jadpo_dev_prints_each_run_and_each_alert_once() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("schedules-6.2b-dev");
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in BEATS {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let server = jadpo_test::database::server().expect("a PostgreSQL server");
+    let url = server.create_database("dev_6_2b").expect("a database");
+    let out = Written::default();
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let args = jadpo_cli::dev::DevArgs {
+        cwd: root.clone(),
+        port: 0,
+        url: Some(url),
+        no_run: false,
+        json: false,
+        choice: jadpo_term::ColorChoice::Never,
+    };
+    let session = {
+        let mut out = out.clone();
+        let stop = std::sync::Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let mut err = Written::default();
+            jadpo_cli::dev::serve_to(&args, &Environment::empty(), &mut out, &mut err, &|| {
+                stop.load(Ordering::SeqCst)
+            })
+        })
+    };
+    let started = std::time::Instant::now();
+    let failed_alert = "alert: `missed_beat` has failed 3 times in a row";
+    let text = loop {
+        let text = out.text();
+        let beats = text.matches("schedule heartbeat").count();
+        if text.contains(failed_alert) && beats >= 5 {
+            break text;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "no runs or alerts yet:\n{text}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    stop.store(true, Ordering::SeqCst);
+    assert_eq!(session.join().expect("the session"), 0);
+    // Each run is a line: its trace's id, the schedule, its outcome, what
+    // it emitted or why it failed, and its time.
+    let beat = text
+        .lines()
+        .find(|line| line.contains("schedule heartbeat"))
+        .expect("a heartbeat");
+    let (id, rest) = beat.split_at(8);
+    assert!(id.chars().all(|c| c.is_ascii_hexdigit()), "{beat}");
+    assert!(
+        rest.starts_with("  schedule heartbeat                 succeeded 0 events   "),
+        "{beat}"
+    );
+    assert!(beat.ends_with(" ms") || beat.ends_with(" s"), "{beat}");
+    let missed = text
+        .lines()
+        .find(|line| line.contains("schedule missed_beat"))
+        .expect("a missed beat");
+    assert!(
+        missed[8..].starts_with(
+            "  schedule missed_beat               failed skipped_beat · unavailable   "
+        ),
+        "{missed}"
+    );
+    // An alert prints once, when it starts.
+    assert_eq!(text.matches(failed_alert).count(), 1, "{text}");
+}
