@@ -8,7 +8,7 @@ entity Plot {
         on_delete: OnDelete.cascade
     }
     number: PlotNumber
-    holder: HolderName?
+    plot_holder: HolderName?
     rent: Pence
     rent_due_on: RentDueDate?
     reminded_on: CalendarDate?

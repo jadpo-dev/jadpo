@@ -721,16 +721,6 @@
         },
         "plot": {
           "columns": {
-            "holder": {
-              "allows": {
-                "max_length": 80,
-                "min_length": 1
-              },
-              "field": "holder",
-              "nullable": true,
-              "position": 3,
-              "type": "text"
-            },
             "id": {
               "allows": {},
               "field": "id",
@@ -745,6 +735,16 @@
               "field": "number",
               "position": 2,
               "type": "smallint"
+            },
+            "plot_holder": {
+              "allows": {
+                "max_length": 80,
+                "min_length": 1
+              },
+              "field": "plot_holder",
+              "nullable": true,
+              "position": 3,
+              "type": "text"
             },
             "reminded_on": {
               "allows": {},
@@ -877,6 +877,15 @@
         },
         "rent_round": {
           "columns": {
+            "charge_year": {
+              "allows": {
+                "max": "2200",
+                "min": "2000"
+              },
+              "field": "charge_year",
+              "position": 2,
+              "type": "smallint"
+            },
             "id": {
               "allows": {},
               "field": "id",
@@ -901,15 +910,6 @@
               "field": "society_id",
               "position": 1,
               "type": "uuid"
-            },
-            "year": {
-              "allows": {
-                "max": "2200",
-                "min": "2000"
-              },
-              "field": "year",
-              "position": 2,
-              "type": "smallint"
             }
           },
           "entity": "RentRound",

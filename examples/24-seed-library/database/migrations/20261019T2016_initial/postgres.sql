@@ -1,4 +1,4 @@
--- 20261019T2006_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261019T2016_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "jadpo_batch_cancels" (
@@ -79,7 +79,7 @@ CREATE TABLE "seed_packet" (
 CREATE TABLE "stock_check" (
     "id" uuid NOT NULL,
     "season" smallint NOT NULL,
-    "sweep" jsonb,
+    "shelf_walk" jsonb,
     "packets_checked" bigint,
     "packets_on_loan" bigint,
     CONSTRAINT "stock_check_pkey" PRIMARY KEY ("id")

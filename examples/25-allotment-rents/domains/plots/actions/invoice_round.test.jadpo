@@ -7,21 +7,21 @@ use plots/actions { open_rent_round, round_progress }
 use plots/fixtures { two_societies }
 
 test "starting a round twice gives the same run" {
-    var sites: SocietySites = two_societies()
-    var round: RentRound = attempt open_rent_round(sites.vale_road.id, 2027)
-    var first: RentRound = invoice_round(round)
-    var again: RentRound = invoice_round(first)
+    var allotments: SocietySites = two_societies()
+    var rent_round: RentRound = attempt open_rent_round(allotments.vale_road.id, 2027)
+    var first: RentRound = invoice_round(rent_round)
+    var restarted: RentRound = invoice_round(first)
     assert first.invoices != none
-    assert again.invoices == first.invoices
+    assert restarted.invoices == first.invoices
 }
 
 test "a round starts running with nothing done yet" {
-    var sites: SocietySites = two_societies()
-    var round: RentRound = attempt open_rent_round(sites.hill_top.id, 2027)
-    var started: RentRound = invoice_round(round)
-    var running: Bool = match started.invoices {
+    var allotments: SocietySites = two_societies()
+    var rent_round: RentRound = attempt open_rent_round(allotments.hill_top.id, 2027)
+    var started: RentRound = invoice_round(rent_round)
+    var started_ok: Bool = match started.invoices {
         some(invoices) -> round_progress(invoices).state == BatchState.running
         none -> false
     }
-    assert running
+    assert started_ok
 }

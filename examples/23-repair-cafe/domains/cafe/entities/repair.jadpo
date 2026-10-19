@@ -4,13 +4,13 @@
 // `Access.public` never does, since a subscriber is nobody's request.
 
 use cafe/entities { Bench }
-use cafe/types { FaultNote, ItemKind }
+use cafe/types { RepairKind, SymptomNote }
 
 /// One thing brought in to be mended.
 entity Repair {
     id: Uuid
-    item: ItemKind
-    fault: FaultNote
+    item: RepairKind
+    symptom: SymptomNote
     bench_id: Bench.id? {
         on_delete: OnDelete.cleared
     }

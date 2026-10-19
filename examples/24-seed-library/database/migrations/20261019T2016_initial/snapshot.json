@@ -453,7 +453,7 @@
               "position": 1,
               "type": "smallint"
             },
-            "sweep": {
+            "shelf_walk": {
               "allows": {
                 "json": {
                   "shape": {
@@ -461,7 +461,7 @@
                   }
                 }
               },
-              "field": "sweep",
+              "field": "shelf_walk",
               "nullable": true,
               "position": 2,
               "type": "jsonb"

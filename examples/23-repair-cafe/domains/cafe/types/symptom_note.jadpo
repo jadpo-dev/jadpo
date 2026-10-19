@@ -1,5 +1,5 @@
 /// What the visitor says is wrong with it.
-type FaultNote = Text {
+type SymptomNote = Text {
     min_length: 3
     max_length: 300
 }

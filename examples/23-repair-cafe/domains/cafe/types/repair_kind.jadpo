@@ -1,8 +1,8 @@
 /// What a visitor brings in to be mended.
-type ItemKind = Enum {
+type RepairKind = Enum {
     bike
     lamp
-    clothing
+    knitwear
     toaster
     microwave
 }

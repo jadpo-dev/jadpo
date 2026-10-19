@@ -26,7 +26,7 @@
               "allows": {
                 "values": [
                   "bike",
-                  "clothing",
+                  "knitwear",
                   "lamp",
                   "microwave",
                   "toaster"
@@ -260,15 +260,6 @@
               "position": 5,
               "type": "timestamptz(3)"
             },
-            "fault": {
-              "allows": {
-                "max_length": 300,
-                "min_length": 3
-              },
-              "field": "fault",
-              "position": 2,
-              "type": "text"
-            },
             "id": {
               "allows": {},
               "field": "id",
@@ -279,7 +270,7 @@
               "allows": {
                 "values": [
                   "bike",
-                  "clothing",
+                  "knitwear",
                   "lamp",
                   "microwave",
                   "toaster"
@@ -287,6 +278,15 @@
               },
               "field": "item",
               "position": 1,
+              "type": "text"
+            },
+            "symptom": {
+              "allows": {
+                "max_length": 300,
+                "min_length": 3
+              },
+              "field": "symptom",
+              "position": 2,
               "type": "text"
             },
             "ticket_printed_at": {

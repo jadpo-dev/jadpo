@@ -6,7 +6,7 @@ action invoice_plot(
     plot: Plot,
     round_id: RentRound.id
 ) fails PlotUnlet, RentRoundNotFound -> Invoice {
-    if (plot.holder == none) {
+    if (plot.plot_holder == none) {
         reject PlotUnlet {}
     }
     return attempt Invoice.create {

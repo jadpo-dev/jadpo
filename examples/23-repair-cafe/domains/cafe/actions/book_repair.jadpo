@@ -13,7 +13,7 @@ action book_repair(input: RepairRequest) -> Repair {
     var repair: Repair = Repair.create {
         set: {
             item: input.item
-            fault: input.fault
+            symptom: input.symptom
             bench_id: none
             ticket_printed_at: none
         }

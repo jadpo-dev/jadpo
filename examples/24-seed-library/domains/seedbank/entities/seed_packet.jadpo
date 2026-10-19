@@ -1,4 +1,4 @@
-use library/types { DonatedDay, Season, VarietyName }
+use seedbank/types { DonatedDay, Season, VarietyName }
 
 /// A packet of saved seed a member may borrow and grow.
 entity SeedPacket {

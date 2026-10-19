@@ -6,12 +6,12 @@ use fellrace/types { DrawnShape }
 use fellrace/failures { NotLand }
 
 /// The open fell an organiser drew in a mapping tool.
-action land_from_drawing(drawn: DrawnShape) fails NotLand -> Polygon {
-    var shape: Geometry = attempt geo.from_geojson(drawn) {
+action land_from_drawing(sketch: DrawnShape) fails NotLand -> Polygon {
+    var sketched: Geometry = attempt geo.from_geojson(sketch) {
         malformed: NotLand  // not GeoJSON, a feature, or rings that cross
         out_of_range: NotLand  // past a pole, or past the antimeridian
     }
-    return match shape {
+    return match sketched {
         Geometry.polygon(outline) -> outline.polygon
         Geometry.multi_polygon -> reject NotLand
         Geometry.point -> reject NotLand

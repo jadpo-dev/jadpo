@@ -1,15 +1,15 @@
-use library/entities { SeedPacket }
-use library/failures { PacketOnLoan }
-use library/actions { add_packet }
+use seedbank/entities { SeedPacket }
+use seedbank/failures { PacketOnLoan }
+use seedbank/actions { add_packet }
 
 test "a packet saved four seasons ago is withdrawn" {
-    var old: SeedPacket = add_packet("Cherokee Trail of Tears bean", 2022, "2022-09-14", false)
-    attempt check_packet(old, 2026)
+    var cherokee: SeedPacket = add_packet("Cherokee Trail of Tears bean", 2022, "2022-09-14", false)
+    attempt check_packet(cherokee, 2026)
     var fresh: SeedPacket = add_packet("Gardener's Delight tomato", 2025, "2025-09-14", false)
     attempt check_packet(fresh, 2026)
-    var old_now: SeedPacket = attempt SeedPacket.get(old.id)
+    var cherokee_now: SeedPacket = attempt SeedPacket.get(cherokee.id)
     var fresh_now: SeedPacket = attempt SeedPacket.get(fresh.id)
-    assert old_now.withdrawn
+    assert cherokee_now.withdrawn
     assert fresh_now.withdrawn == false
 }
 

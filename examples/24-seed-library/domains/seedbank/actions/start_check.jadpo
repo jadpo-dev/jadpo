@@ -9,27 +9,27 @@
 // as a problem; problems never stop a run.
 //
 // `each:` and `finished:` are inline functions calling an action of this
-// domain. What they capture (`check.season`, `check.id`) and `key:` are
+// domain. What they capture (`stocktake.season`, `stocktake.id`) and `key:` are
 // saved with the run, so they must be values an entity field could hold.
 // `key:` makes a repeated start give the same run, so a double click
 // checks nothing twice.
 
-use library/entities { StockCheck }
-use library/types { PacketPage }
-use library/actions { check_packet, record_check }
-use library/queries { shelf_packets }
+use seedbank/entities { StockCheck }
+use seedbank/types { PacketPage }
+use seedbank/actions { check_packet, record_check }
+use seedbank/queries { shelf_packets }
 
 /// Starts checking every packet on the shelves.
-action start_check(check: StockCheck) -> StockCheck {
-    var sweep: BatchRun = batches.each(
+action start_check(stocktake: StockCheck) -> StockCheck {
+    var shelf_walk: BatchRun = batches.each(
         from: shelf_packets(PacketPage {}),
-        each: packet -> check_packet(packet, check.season),
-        finished: summary -> record_check(summary, check.id),
-        key: check.id
+        each: packet -> check_packet(packet, stocktake.season),
+        finished: summary -> record_check(summary, stocktake.id),
+        key: stocktake.id
     )
-    return StockCheck.update(check) {
+    return StockCheck.update(stocktake) {
         set: {
-            sweep: sweep
+            shelf_walk: shelf_walk
         }
     }
 }

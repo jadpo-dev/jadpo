@@ -3,6 +3,6 @@
 // `failed` or `cancelled`).
 
 /// How far a stock check has got.
-action check_progress(sweep: BatchRun) -> BatchProgress {
-    return batches.status(sweep)
+action check_progress(shelf_walk: BatchRun) -> BatchProgress {
+    return batches.status(shelf_walk)
 }

@@ -7,7 +7,7 @@ entity RentRound {
     society_id: Society.id {
         on_delete: OnDelete.cascade
     }
-    year: RoundYear
+    charge_year: RoundYear
     invoices: BatchRun?
 
     policy: {

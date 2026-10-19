@@ -5,7 +5,7 @@ use plots/types { HolderName, Pence, PlotNumber, RentDueDate }
 action add_plot(
     society_id: Society.id,
     number: PlotNumber,
-    holder: HolderName?,
+    plot_holder: HolderName?,
     rent: Pence,
     rent_due_on: RentDueDate?
 ) fails SocietyNotFound -> Plot {
@@ -13,7 +13,7 @@ action add_plot(
         set: {
             society_id: society_id
             number: number
-            holder: holder
+            plot_holder: plot_holder
             rent: rent
             rent_due_on: rent_due_on
             reminded_on: none

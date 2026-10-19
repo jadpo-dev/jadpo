@@ -1,4 +1,4 @@
--- 20261019T2011_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261019T2016_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "gardener" (
@@ -125,7 +125,7 @@ CREATE TABLE "plot" (
     "id" uuid NOT NULL,
     "society_id" uuid NOT NULL,
     "number" smallint NOT NULL,
-    "holder" text,
+    "plot_holder" text,
     "rent" integer NOT NULL,
     "rent_due_on" date,
     "reminded_on" date,
@@ -141,7 +141,7 @@ CREATE TABLE "reminder" (
 CREATE TABLE "rent_round" (
     "id" uuid NOT NULL,
     "society_id" uuid NOT NULL,
-    "year" smallint NOT NULL,
+    "charge_year" smallint NOT NULL,
     "invoices" jsonb,
     CONSTRAINT "rent_round_pkey" PRIMARY KEY ("id")
 );

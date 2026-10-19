@@ -10,13 +10,13 @@ fixture two_societies() -> SocietySites {
     var ada: Plot = attempt add_plot(hill_top.id, 1, "Ada", 4500, "2026-09-30")
     var ben: Plot = attempt add_plot(vale_road.id, 7, "Ben", 3800, "2026-10-01")
     var cy: Plot = attempt add_plot(vale_road.id, 8, "Cy", 3800, "2026-12-01")
-    var empty: Plot = attempt add_plot(vale_road.id, 9, none, 3800, none)
+    var unlet_plot: Plot = attempt add_plot(vale_road.id, 9, none, 3800, none)
     return SocietySites {
         hill_top: hill_top
         vale_road: vale_road
         ada_overdue: ada
         ben_overdue: ben
         cy_not_due: cy
-        empty_plot: empty
+        empty_plot: unlet_plot
     }
 }

@@ -2,8 +2,8 @@
 // by `id`, which never changes, keeps every packet in exactly one page
 // however the shelves change during the walk.
 
-use library/entities { SeedPacket }
-use library/types { PacketPage }
+use seedbank/entities { SeedPacket }
+use seedbank/types { PacketPage }
 
 /// Every packet not yet withdrawn, a page at a time.
 query shelf_packets(page: PacketPage) -> Page<SeedPacket> {

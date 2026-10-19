@@ -1,4 +1,4 @@
-use library/entities { SeedPacket }
+use seedbank/entities { SeedPacket }
 
 /// A packet as the donations board lists it.
 type PacketLabel = Output {

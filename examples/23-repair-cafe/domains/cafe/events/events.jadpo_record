@@ -6,16 +6,16 @@ event BenchAssigned
     repair_id: Uuid
 
 event RepairBooked
-    item: ItemKind
+    item: RepairKind
     repair_id: Uuid
 
 event ThanksLeft
     note: Text { min_length: 1, max_length: 280 }
     repair_id: Uuid
 
-enum ItemKind
+enum RepairKind
     variant bike
-    variant clothing
+    variant knitwear
     variant lamp
     variant microwave
     variant toaster

@@ -1,4 +1,4 @@
--- 20261019T1946_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261019T2016_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "bench" (
@@ -46,7 +46,7 @@ CREATE TABLE "jadpo_outbox" (
 CREATE TABLE "repair" (
     "id" uuid NOT NULL,
     "item" text NOT NULL,
-    "fault" text NOT NULL,
+    "symptom" text NOT NULL,
     "bench_id" uuid,
     "ticket_printed_at" timestamptz(3),
     "booked_at" timestamptz(3) NOT NULL,

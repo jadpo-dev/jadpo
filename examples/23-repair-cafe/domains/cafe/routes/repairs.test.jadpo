@@ -3,7 +3,7 @@
 // sees the ticket as the kiosk would.
 
 use cafe/entities { Bench, Repair }
-use cafe/types { ItemKind, RepairRequest, ThanksRequest }
+use cafe/types { RepairKind, RepairRequest, ThanksRequest }
 use cafe/actions { book_repair }
 use cafe/fixtures { saturday_benches }
 
@@ -13,8 +13,8 @@ test "a bike is sent to Priya's bench and its ticket printed" {
         method: HttpMethod.post
         path: "/repairs"
         input: RepairRequest {
-            item: ItemKind.bike
-            fault: "The back brake rubs."
+            item: RepairKind.bike
+            symptom: "The back brake rubs."
         }
     }
     assert response.status == 201
@@ -32,8 +32,8 @@ test "a toaster waits for a fixer, so the kiosk is told 202" {
         method: HttpMethod.post
         path: "/repairs"
         input: RepairRequest {
-            item: ItemKind.toaster
-            fault: "It won't pop up."
+            item: RepairKind.toaster
+            symptom: "It won't pop up."
         }
     }
     assert response.status == 202
@@ -51,8 +51,8 @@ test "a microwave is refused for good, which has settled" {
         method: HttpMethod.post
         path: "/repairs"
         input: RepairRequest {
-            item: ItemKind.microwave
-            fault: "It sparks."
+            item: RepairKind.microwave
+            symptom: "It sparks."
         }
     }
     assert response.status == 201
@@ -68,8 +68,8 @@ test "a thank-you note is accepted and pinned up after" {
     assert bikes.fixer == "Priya"
     var lamp: Repair = book_repair(
         RepairRequest {
-            item: ItemKind.lamp
-            fault: "It flickers."
+            item: RepairKind.lamp
+            symptom: "It flickers."
         }
     )
     var thanked: Response = request {

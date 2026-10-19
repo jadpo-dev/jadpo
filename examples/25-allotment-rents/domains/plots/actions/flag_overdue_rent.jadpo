@@ -14,17 +14,17 @@ use plots/events { RentOverdue }
 
 /// Marks each overdue plot and announces it.
 action flag_overdue_rent() -> Unit {
-    var today: CalendarDate = temporal.date(temporal.in_zone(clock.now, Zone.europe_london))
-    var overdue: List<Plot> = overdue_plots(RentDueDate(today))
+    var london_today: CalendarDate = temporal.date(temporal.in_zone(clock.now, Zone.europe_london))
+    var overdue: List<Plot> = overdue_plots(RentDueDate(london_today))
     for plot in overdue {
-        var marked: Plot = Plot.update(plot) {
+        var reminded_plot: Plot = Plot.update(plot) {
             set: {
-                reminded_on: today
+                reminded_on: london_today
             }
         }
         emit RentOverdue {
-            society_id: marked.society_id
-            plot_id: marked.id
+            society_id: reminded_plot.society_id
+            plot_id: reminded_plot.id
         }
     }
 }

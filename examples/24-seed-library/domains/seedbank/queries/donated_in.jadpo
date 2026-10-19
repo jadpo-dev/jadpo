@@ -2,8 +2,8 @@
 // has an exact SQL form: the database works out `temporal.year` exactly as
 // code does, and the migration adds an index on that expression.
 
-use library/entities { SeedPacket }
-use library/types { PacketLabel, Season }
+use seedbank/entities { SeedPacket }
+use seedbank/types { PacketLabel, Season }
 
 /// The packets members gave in one season, for the thank-you board.
 query donated_in(season: Season) -> List<PacketLabel> {

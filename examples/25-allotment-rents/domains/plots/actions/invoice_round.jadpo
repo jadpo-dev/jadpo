@@ -13,15 +13,15 @@ use plots/actions { invoice_plot }
 use plots/queries { society_plots }
 
 /// Charges every plot in the round's society its year's rent.
-action invoice_round(round: RentRound) -> RentRound {
-    var run: BatchRun = batches.each(
-        from: society_plots(round.society_id, PlotPage {}),
-        each: plot -> invoice_plot(plot, round.id),
-        key: round.id
+action invoice_round(rent_round: RentRound) -> RentRound {
+    var invoicing: BatchRun = batches.each(
+        from: society_plots(rent_round.society_id, PlotPage {}),
+        each: plot -> invoice_plot(plot, rent_round.id),
+        key: rent_round.id
     )
-    return RentRound.update(round) {
+    return RentRound.update(rent_round) {
         set: {
-            invoices: run
+            invoices: invoicing
         }
     }
 }

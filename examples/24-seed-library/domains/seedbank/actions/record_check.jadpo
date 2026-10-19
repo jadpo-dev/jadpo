@@ -3,7 +3,7 @@
 // through, how many had problems, and each `RowProblem`, its place in
 // the walk and the failure's code but never the item's values.
 
-use library/entities { StockCheck, StockCheckNotFound }
+use seedbank/entities { StockCheck, StockCheckNotFound }
 
 /// Keeps how a stock check went.
 action record_check(

@@ -2,13 +2,13 @@ use fellrace/types { DrawnShape }
 use fellrace/failures { NotLand }
 
 test "a drawn outline is land" {
-    var common: Polygon = attempt land_from_drawing(
+    var drawn_common: Polygon = attempt land_from_drawing(
         DrawnShape(
             "{\"type\":\"Polygon\",\"coordinates\":[[[-3.17,54.6],[-3.1,54.6],[-3.1,54.66],[-3.17,54.66],[-3.17,54.6]]]}"
         )
     )
     assert geo.contains(
-        common,
+        drawn_common,
         Point {
             latitude: 54.63
             longitude: -3.13

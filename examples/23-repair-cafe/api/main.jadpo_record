@@ -15,21 +15,21 @@ POST /repairs/{repair_id: Uuid}/thanks
     output ThanksReceipt
     status 202
 
-enum ItemKind
+enum RepairKind
     variant bike
-    variant clothing
+    variant knitwear
     variant lamp
     variant microwave
     variant toaster
 
 input RepairRequest
-    fault: Text { min_length: 3, max_length: 300 }
-    item: ItemKind
+    item: RepairKind
+    symptom: Text { min_length: 3, max_length: 300 }
 
 output RepairTicket
     bench_id: Uuid?
     id: Uuid
-    item: ItemKind
+    item: RepairKind
     ticket_printed_at: Instant?
 
 output ThanksReceipt

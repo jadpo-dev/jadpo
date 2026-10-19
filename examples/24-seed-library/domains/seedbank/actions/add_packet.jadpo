@@ -1,5 +1,5 @@
-use library/entities { SeedPacket }
-use library/types { DonatedDay, Season, VarietyName }
+use seedbank/entities { SeedPacket }
+use seedbank/types { DonatedDay, Season, VarietyName }
 
 /// Puts a packet on the shelves.
 action add_packet(

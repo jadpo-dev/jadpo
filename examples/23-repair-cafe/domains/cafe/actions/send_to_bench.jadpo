@@ -4,7 +4,7 @@
 // `NotSafeToMend` is `rejected`, so it fails for good at once.
 
 use cafe/entities { Repair, RepairNotFound }
-use cafe/types { ItemKind }
+use cafe/types { RepairKind }
 use cafe/failures { NoFixerFree, NotSafeToMend }
 use cafe/queries { staffed_bench }
 use cafe/events { BenchAssigned }
@@ -12,9 +12,9 @@ use cafe/events { BenchAssigned }
 /// Sends a repair to the bench for its kind of thing.
 action send_to_bench(
     repair_id: Repair.id,
-    item: ItemKind
+    item: RepairKind
 ) fails RepairNotFound, NoFixerFree, NotSafeToMend -> Unit {
-    if (item == ItemKind.microwave) {
+    if (item == RepairKind.microwave) {
         reject NotSafeToMend {}
     }
     var repair: Repair = attempt Repair.get(repair_id)

@@ -4,10 +4,10 @@
 // needs more reads the current state.
 
 use cafe/entities { Repair }
-use cafe/types { ItemKind }
+use cafe/types { RepairKind }
 
 /// A visitor booked a repair at the kiosk.
 type RepairBooked = Event {
     repair_id: Repair.id
-    item: ItemKind
+    item: RepairKind
 }

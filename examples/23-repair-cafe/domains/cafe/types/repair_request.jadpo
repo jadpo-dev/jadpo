@@ -1,7 +1,7 @@
-use cafe/types { FaultNote, ItemKind }
+use cafe/types { RepairKind, SymptomNote }
 
 /// What the kiosk sends to book a repair.
 type RepairRequest = Input {
-    item: ItemKind
-    fault: FaultNote
+    item: RepairKind
+    symptom: SymptomNote
 }
