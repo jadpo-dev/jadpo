@@ -94,8 +94,9 @@ pub const LEASE_EXPIRED: &str = "lease_expired";
 pub const SETTLE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = $3, \"next_attempt_at\" = $4, \"last_failure\" = $5 WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
 
 /// The deliveries due at `$1`, oldest first, at most `$2`, with what
-/// their outbox row keeps.
-pub const DUE: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscriber\", \"o\".\"event\", \"o\".\"payload\"::text, \"o\".\"emitted_at\", \"o\".\"traceparent\", \"o\".\"depth\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"status\" IN ('pending', 'running') AND \"d\".\"next_attempt_at\" <= $1 ORDER BY \"d\".\"next_attempt_at\", \"d\".\"id\" LIMIT $2";
+/// their outbox row keeps, the encoding its payload was written in last
+/// (chunk 6.8).
+pub const DUE: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscriber\", \"o\".\"event\", \"o\".\"payload\"::text, \"o\".\"emitted_at\", \"o\".\"traceparent\", \"o\".\"depth\", \"o\".\"encoding\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"status\" IN ('pending', 'running') AND \"d\".\"next_attempt_at\" <= $1 ORDER BY \"d\".\"next_attempt_at\", \"d\".\"id\" LIMIT $2";
 
 /// Gives up delivery `$1` whose payload no longer reads, with its
 /// problem `$2`: parked, never dropped (area 12, "A payload is the
@@ -250,10 +251,13 @@ pub struct Events<'a> {
 }
 
 impl Events<'_> {
-    /// The value payload `payload` of event type `event` holds, read with
-    /// its type as it is now, its rules applied; why not, by rule and
-    /// field, never the value.
-    pub fn read(&self, event: &str, payload: &str) -> Result<Value, String> {
+    /// The value payload `payload` of event type `event` holds, written
+    /// in `encoding` as its outbox row records it, read with its type as
+    /// it is now, its rules applied; why not, by rule and field, never
+    /// the value. A payload of an encoding this release doesn't read, a
+    /// later release's, is never guessed at (chunk 6.8).
+    pub fn read(&self, event: &str, payload: &str, encoding: &SqlValue) -> Result<Value, String> {
+        crate::read::kept_encoding(encoding)?;
         let number = self
             .numbers
             .iter()
@@ -321,7 +325,6 @@ pub(crate) async fn write(
         .iter()
         .map(|(_, _, payload)| SqlValue::Text(payload.clone()))
         .collect();
-    let encoding = i16::try_from(jadpo_std::standard::ENCODING).unwrap_or(i16::MAX);
     transaction
         .execute(
             INSERT_OUTBOX,
@@ -333,7 +336,7 @@ pub(crate) async fn write(
                 trace.map_or(SqlValue::Null(SqlType::Text), |trace| {
                     SqlValue::Text(trace.header())
                 }),
-                SqlValue::Int2(encoding),
+                crate::read::encoding_value(),
                 SqlValue::Int4(i32::try_from(depth).unwrap_or(i32::MAX)),
             ],
         )

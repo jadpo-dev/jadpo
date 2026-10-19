@@ -721,7 +721,9 @@ golden files by a test:
   dropped, changes no form. A type dropped from the release keeps failing
   the test, since a release keeps reading every type it wrote.
 - **Where the encoding is recorded:** a signed part's payload (`enc`);
-  `jadpo_outbox.encoding` for an event's payload; `jadpo_passkeys.encoding`
+  `jadpo_outbox.encoding` for an event's payload, which a delivery reads
+  it by (chunk 6.8); `jadpo_batch_runs.encoding` for a batch run's saved
+  values and `key:` (chunk 6.8); `jadpo_passkeys.encoding`
   for a passkey, which is `WebAuthnCredential`'s contract JSON through the
   plan's JSON table (area 8, "Encodings of signed parts and passkeys").
   A sealed value keeps its own version byte, which says how it is sealed,
@@ -733,7 +735,8 @@ golden files by a test:
   and a passkey whose `encoding` is `NULL`, by the reader it was kept
   with, its count a number or its digits. A row or a token of an encoding
   this release doesn't know, a later one's, is never guessed at: a signed
-  part opens nothing and the record is read, a passkey is refused.
+  part opens nothing and the record is read, a passkey is refused, an
+  event's delivery is parked and a batch run ends `failed` (chunk 6.8).
 - **An entity's own columns record no encoding.** A form that changes
   their columns' types shows in the migration snapshot, so `jadpo check`
   asks for a migration; one that changes what a column of the same type

@@ -124,30 +124,29 @@ pub const EACH_PARAMS: [&str; 4] = ["from", "each", "finished", "key"];
 
 /// The runs, one row each, in the store the run's items write (area 12,
 /// "How a run goes").
-pub const RUNS: &str = "jadpo_batch_runs";
+pub const RUNS: &str = crate::system::BATCH_RUNS.table;
 
 /// The problems a run's items had, one row per item, never its value.
-pub const PROBLEMS: &str = "jadpo_batch_problems";
+pub const PROBLEMS: &str = crate::system::BATCH_PROBLEMS.table;
 
 /// The runs `batches.cancel` asked to stop, each stopped after the batch
 /// in hand.
-pub const CANCELS: &str = "jadpo_batch_cancels";
-
-/// The system tables a store holding a run keeps, without their
-/// `jadpo_` prefix.
-pub const TABLES: [&str; 3] = ["batch_runs", "batch_problems", "batch_cancels"];
+pub const CANCELS: &str = crate::system::BATCH_CANCELS.table;
 
 /// What the plan says of one `batches.each` call: what the runtime needs
 /// to start its run, walk `from:` a page at a time and run `each:` per
 /// item and `finished:` once.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BatchPlan {
-    /// Which call it is, kept with each run: the starting callable's
-    /// identity key and the call's place among its batches,
-    /// `action catalogue.reindex#1`.
+    /// Which call it is, kept with each run, by identity keys that
+    /// survive a rename (chunk 6.8): the starting callable's, the query
+    /// `from:` walks and the action `each:` runs, `action reindex from
+    /// query stale_items each action reindex_item`; a second call of the
+    /// same three in one callable adds its place among them, ` #2`.
     pub name: String,
     /// What the run's saved values and the calls it makes are, written
-    /// out: a run started under one shape resumes only under the same.
+    /// out in canonical type text (chunk 6.8): a run started under one
+    /// shape resumes only under the same.
     pub shape: String,
     /// The store the run is kept in, beside the writes of its items.
     pub store: String,
@@ -221,7 +220,7 @@ mod tests {
         }
         assert_eq!(BatchOp::Each.params(), EACH_PARAMS);
         assert_eq!(
-            TABLES.map(|table| format!("jadpo_{table}")),
+            crate::system::BATCH_TABLES.map(|table| table.table),
             [RUNS, PROBLEMS, CANCELS]
         );
     }

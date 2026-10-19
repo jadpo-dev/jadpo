@@ -56,6 +56,7 @@ mod standard_storage;
 mod suggest;
 mod suggest_share;
 mod system;
+mod system_statements;
 #[path = "test.rs"]
 mod test_command;
 mod translation_exchange;

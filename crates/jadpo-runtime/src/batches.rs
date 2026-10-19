@@ -86,19 +86,19 @@ const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
 /// The most runs one sweep picks up.
 const SWEEP_LIMIT: i64 = 100;
 
-const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
+pub(crate) const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\", \"encoding\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7, $8) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
 
-const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\", \"depth\"";
+pub(crate) const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\", \"depth\", \"encoding\"";
 
-const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
+pub(crate) const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
 
-const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"stepped_at\" = $7 WHERE \"id\" = $1";
+pub(crate) const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"stepped_at\" = $7 WHERE \"id\" = $1";
 
-const PROBLEM: &str = "INSERT INTO \"jadpo_batch_problems\" (\"run_id\", \"row\", \"column\", \"rule\") VALUES ($1, $2, $3, $4)";
+pub(crate) const PROBLEM: &str = "INSERT INTO \"jadpo_batch_problems\" (\"run_id\", \"row\", \"column\", \"rule\") VALUES ($1, $2, $3, $4)";
 
-const END: &str = "UPDATE \"jadpo_batch_runs\" SET \"state\" = $2, \"failure\" = $3, \"lease_until\" = NULL, \"stepped_at\" = $4, \"finished_at\" = $4 WHERE \"id\" = $1";
+pub(crate) const END: &str = "UPDATE \"jadpo_batch_runs\" SET \"state\" = $2, \"failure\" = $3, \"lease_until\" = NULL, \"stepped_at\" = $4, \"finished_at\" = $4 WHERE \"id\" = $1";
 
-const RELEASE: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = NULL WHERE \"id\" = $1 AND \"state\" = 'running' RETURNING \"id\"";
+pub(crate) const RELEASE: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = NULL WHERE \"id\" = $1 AND \"state\" = 'running' RETURNING \"id\"";
 
 /// A batch run's row as its runner leases it ([`crate::lease`]; chunk
 /// 6.7): claimed once its lease has lapsed, renewed by each page's
@@ -118,27 +118,27 @@ impl crate::lease::Leased for Leased {
     }
 }
 
-const STATUS: &str =
+pub(crate) const STATUS: &str =
     "SELECT \"items_done\", \"problems\", \"state\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
 
-const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
+pub(crate) const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
 
-const CANCEL: &str = "INSERT INTO \"jadpo_batch_cancels\" (\"run_id\", \"requested_at\") VALUES ($1, $2) ON CONFLICT (\"run_id\") DO NOTHING";
+pub(crate) const CANCEL: &str = "INSERT INTO \"jadpo_batch_cancels\" (\"run_id\", \"requested_at\") VALUES ($1, $2) ON CONFLICT (\"run_id\") DO NOTHING";
 
 /// Runs that ended (finished, failed or cancelled) at or before `$1`, at
 /// most `$2`, with their cancels; their problems go with them.
-const ENDED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_batch_runs\" WHERE \"id\" IN (SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" <> 'running' AND \"finished_at\" <= $1 ORDER BY \"finished_at\" LIMIT $2) RETURNING \"id\"), \"asked\" AS (DELETE FROM \"jadpo_batch_cancels\" WHERE \"run_id\" IN (SELECT \"id\" FROM \"gone\")) SELECT 1 FROM \"gone\"";
+pub(crate) const ENDED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_batch_runs\" WHERE \"id\" IN (SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" <> 'running' AND \"finished_at\" <= $1 ORDER BY \"finished_at\" LIMIT $2) RETURNING \"id\"), \"asked\" AS (DELETE FROM \"jadpo_batch_cancels\" WHERE \"run_id\" IN (SELECT \"id\" FROM \"gone\")) SELECT 1 FROM \"gone\"";
 
 /// Cancels asked for at or before `$1` of runs no store keeps, at most
 /// `$2`: a run the caller held after it was deleted.
-const UNKEPT_CANCELS: &str = "DELETE FROM \"jadpo_batch_cancels\" WHERE \"run_id\" IN (SELECT \"c\".\"run_id\" FROM \"jadpo_batch_cancels\" AS \"c\" WHERE \"c\".\"requested_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_batch_runs\" AS \"r\" WHERE \"r\".\"id\" = \"c\".\"run_id\") LIMIT $2) RETURNING 1";
+pub(crate) const UNKEPT_CANCELS: &str = "DELETE FROM \"jadpo_batch_cancels\" WHERE \"run_id\" IN (SELECT \"c\".\"run_id\" FROM \"jadpo_batch_cancels\" AS \"c\" WHERE \"c\".\"requested_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_batch_runs\" AS \"r\" WHERE \"r\".\"id\" = \"c\".\"run_id\") LIMIT $2) RETURNING 1";
 
 /// How long a run that ended is kept, with its problems and its cancel,
 /// before the tick deletes it (chunk 6.6a): as long as a schedule's run
 /// records.
 pub const ENDED_KEPT_MS: i64 = crate::schedules::RUNS_KEPT_MS;
 
-const WAITING: &str = "SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $1) ORDER BY \"started_at\", \"id\" LIMIT $2";
+pub(crate) const WAITING: &str = "SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $1) ORDER BY \"started_at\", \"id\" LIMIT $2";
 
 /// A time as a `timestamptz` parameter.
 fn at(millis: i64) -> SqlValue {
@@ -162,63 +162,10 @@ fn saved(json: JsonCodecs<'_>, plan: &BatchPlan, values: &[Value]) -> Result<Str
     Ok(out)
 }
 
-/// The values a run saved, read back through their types' codecs; why
-/// not, never a value.
+/// The values a run saved, read back through their types' codecs with
+/// the standard JSON reader (chunk 6.8); why not, never a value.
 fn read_saved(json: JsonCodecs<'_>, plan: &BatchPlan, text: &str) -> Result<Vec<Value>, String> {
-    let parts =
-        split_array(text).ok_or_else(|| "its saved values aren't a JSON array".to_string())?;
-    if parts.len() != plan.captured.len() {
-        return Err(format!(
-            "it saved {} values, and its call now saves {}",
-            parts.len(),
-            plan.captured.len()
-        ));
-    }
-    parts
-        .into_iter()
-        .zip(&plan.captured)
-        .map(|(part, number)| {
-            if part.trim() == "null" {
-                Ok(Value::None)
-            } else {
-                json.read(*number, part)
-            }
-        })
-        .collect()
-}
-
-/// The elements of a JSON array, each as its own text: split at the
-/// array's own commas, outside strings and nested values.
-fn split_array(text: &str) -> Option<Vec<&str>> {
-    let inner = text.trim().strip_prefix('[')?.strip_suffix(']')?;
-    if inner.trim().is_empty() {
-        return Some(Vec::new());
-    }
-    let mut out = Vec::new();
-    let (mut depth, mut quoted, mut escaped, mut from) = (0usize, false, false, 0usize);
-    for (place, byte) in inner.bytes().enumerate() {
-        if quoted {
-            match byte {
-                _ if escaped => escaped = false,
-                b'\\' => escaped = true,
-                b'"' => quoted = false,
-                _ => {}
-            }
-            continue;
-        }
-        match byte {
-            b'"' => quoted = true,
-            b'[' | b'{' => depth += 1,
-            b']' | b'}' => depth = depth.checked_sub(1)?,
-            b',' if depth == 0 => {
-                out.push(inner.get(from..place)?);
-                from = place + 1;
-            }
-            _ => {}
-        }
-    }
-    out.push(inner.get(from..)?);
-    Some(out)
+    json.read_list(&plan.captured, text)
 }
 
 /// A run's id from the `BatchRun` a program holds.
@@ -305,6 +252,9 @@ pub async fn start(
         // How deep in a chain of events it was started, which its items
         // run at (chunk 6.6a).
         SqlValue::Int4(i32::try_from(ctx.chain).unwrap_or(i32::MAX)),
+        // The encoding its saved values and its key are written in (chunk
+        // 6.8).
+        crate::read::encoding_value(),
     ];
     let transaction = match ctx.transaction(&plan.store).await {
         Ok(transaction) => transaction,
@@ -526,13 +476,14 @@ async fn run_inner(
         Ok(None) => return Ran::NotClaimed,
         Err(error) => return Ran::Paused(format!("the store refused its claim ({error:?})")),
     };
-    let (name, shape, captured, key, depth) = match row.as_slice() {
+    let (name, shape, captured, key, depth, encoding) = match row.as_slice() {
         [
             SqlValue::Text(name),
             SqlValue::Text(shape),
             SqlValue::Json(captured),
             key,
             depth,
+            encoding,
         ] => (
             name.clone(),
             shape.clone(),
@@ -546,16 +497,31 @@ async fn run_inner(
                 SqlValue::Int4(depth) => u32::try_from(*depth).unwrap_or(0),
                 _ => 0,
             },
+            encoding.clone(),
         ),
         _ => return Ran::Failed("its row isn't one the runtime wrote".into()),
     };
+    // What a later release saved is never guessed at (chunk 6.8).
+    if let Err(why) = crate::read::kept_encoding(&encoding) {
+        let why = format!("its saved values were {why}");
+        end(host, start, BatchState::Failed, Some(&why)).await;
+        return Ran::Failed(why);
+    }
     // A deploy that changed what the call saves or what it calls stops
     // the run rather than reading its saved values as something else.
     let Some(plan) = batches
         .plan(&name)
         .filter(|plan| shape_digest(plan) == shape)
     else {
-        let why = "a deploy changed the `batches.each` call it was started by".to_string();
+        // A run kept before its call was named by a stable key and its
+        // shape written in canonical type text, which no call now has
+        // (chunk 6.8).
+        let why = if matches!(encoding, SqlValue::Null(_)) {
+            "it was started by a release that named its `batches.each` call another way"
+        } else {
+            "a deploy changed the `batches.each` call it was started by"
+        }
+        .to_string();
         end(host, start, BatchState::Failed, Some(&why)).await;
         return Ran::Failed(why);
     };
@@ -1279,15 +1245,61 @@ pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
 mod tests {
     use super::*;
 
+    /// A run's saved values are read with the standard JSON reader
+    /// (chunk 6.8): commas and brackets inside a value's text are its own,
+    /// a number keeps the digits it was written with, `null` is `none`,
+    /// and what doesn't read names its value's place and rule, never the
+    /// value.
     #[test]
-    fn a_saved_array_splits_at_its_own_commas() {
-        assert_eq!(split_array("[]"), Some(Vec::new()));
-        assert_eq!(
-            split_array(r#"["a,b", {"x": [1, 2]}, null, 3]"#),
-            Some(vec![r#""a,b""#, r#" {"x": [1, 2]}"#, " null", " 3"])
+    fn saved_values_are_read_with_the_standard_json_reader() {
+        use jadpo_std::http::{Codec, CodecId};
+        use jadpo_std::types::ValidatorId;
+        let text = jadpo_value::Validator::new(Some(jadpo_std::Builtin::Text), vec![]);
+        let count = jadpo_value::Validator::new(
+            Some(jadpo_std::Builtin::Int),
+            vec![jadpo_std::Rules {
+                max: jadpo_std::Num::parse("100"),
+                ..jadpo_std::Rules::default()
+            }],
         );
-        assert_eq!(split_array(r#"["\"]", 1]"#), Some(vec![r#""\"]""#, " 1"]));
-        assert_eq!(split_array("{}"), None);
+        let validators = [text, count];
+        let codecs = [
+            Codec::Scalar {
+                builtin: jadpo_std::Builtin::Text,
+                validator: ValidatorId(0),
+                int_as_number: false,
+            },
+            Codec::Scalar {
+                builtin: jadpo_std::Builtin::Int,
+                validator: ValidatorId(1),
+                int_as_number: true,
+            },
+        ];
+        let types = [CodecId(0), CodecId(1)];
+        let json = JsonCodecs {
+            codecs: jadpo_value::json::Codecs {
+                codecs: &codecs,
+                validators: &validators,
+                shapes: &[],
+            },
+            types: &types,
+        };
+        assert_eq!(
+            json.read_list(&[0, 1, 0], r#"["a,b]\"", 42, null]"#),
+            Ok(vec![Value::text("a,b]\""), Value::Int(42), Value::None])
+        );
+        assert_eq!(json.read_list(&[], "[]"), Ok(Vec::new()));
+        let why = json
+            .read_list(&[0, 1], r#"["kept", 777]"#)
+            .expect_err("past its max");
+        assert_eq!(why, "value 2 isn't its type (`max`)");
+        assert!(!why.contains("777"), "{why}");
+        assert!(json.read_list(&[0], r#"{"0": "a"}"#).is_err());
+        assert!(json.read_list(&[0], r#"["a"] trailing"#).is_err());
+        assert_eq!(
+            json.read_list(&[0, 0], r#"["a"]"#),
+            Err("1 values kept, where 2 are read".into())
+        );
     }
 
     #[test]
