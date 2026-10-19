@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1762,6 +1762,90 @@ error: `batches.each`'s `from:` isn't a call of a named query giving a `Page`
 check failed: 1 error, 2 files
 ```
 
+### `type.batch_input`
+
+Only the runtime builds a batch type, and `batches.status` and
+`batches.cancel` find a run by its `id` alone, so no request carries one:
+an `Input`, read from a body or a query string, and a route's placeholder
+may not hold a `BatchRun`, a `BatchProgress`, a `RowProblem` or an
+`ImportSummary`, however deep (chunk 6.6b). A run comes from
+`batches.each`, or from a field the caller may read where the
+application kept it:
+
+```jadpo check project=e-batch-input file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```jadpo check project=e-batch-input expect=type.batch_input
+type StopSweep = Input {
+    shelf_run: BatchRun
+}
+
+action stop_sweep(request: StopSweep) -> Unit {
+    batches.cancel(request.shelf_run)
+}
+```
+
+```text output
+error: `StopSweep.shelf_run` holds a `BatchRun`, which no request carries
+ --> main.jadpo:2:16
+  |
+2 |     shelf_run: BatchRun
+  |                ^^^^^^^^ a `BatchRun`
+  reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
+  next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
+  rule: type.batch_input
+  help: docs/language/12-jobs-and-events.html#type-batch-input
+
+check failed: 1 error, 2 files
+```
+
 ## Review
 
 ### Status
@@ -1784,8 +1868,9 @@ on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
 below), with tenants and their grants in chunk 6.4c ("Chosen in chunk
-6.4c" below) and what a run stores under policy in chunk 6.4d ("Chosen
-in chunk 6.4d" below), but for the file helpers, which come in chunk 6.4b, and on
+6.4c" below), what a run stores under policy in chunk 6.4d ("Chosen
+in chunk 6.4d" below) and what its status shows, and no request
+carrying a batch type, in chunk 6.6b ("Chosen in chunk 6.6b" below), but for the file helpers, which come in chunk 6.4b, and on
 Workers each run's continuation in a fresh invocation, which chunk 8.2
 checks. Several changing calls in one action, polls and `receiving`
 were decided on 2026-10-16 and come with Phase 7; their errors are built
@@ -2432,7 +2517,369 @@ conservative reading:
   failed so far, which what decides `each:`'s failures decides, and
   isn't held to it yet, since where it is read nothing says which batch
   a `BatchRun` is. Recommended: hold what it gives to what decides the
-  failures of every batch the application starts.
+  failures of every batch the application starts; built so in chunk 6.6b.
+
+### Chosen in chunk 6.6b
+
+What the Phase 6 review found the proofs of background work still left
+open, each the most conservative reading (area 9, "Background work"):
+
+- **The item, checked like any call.** Each item is one of the records
+  `from:` finds, followed into what `each:`'s action stores, whether it
+  is given the item or a field of it, as chunk 6.4d built; the review's
+  case, a diary's secret posted where anyone signed in reads it, is
+  refused, with or without a tenant.
+- **Every action a run reaches, by its own line.** What a schedule, a
+  subscriber or a batch reaches is checked against the line under
+  `actions:` of every action it reaches, not only the one it runs, and a
+  listed action's line decides its own body's writes wherever it is
+  called from, as the plan builds them (area 9, "Lines of the actions
+  background work calls"). Routes are checked the same way.
+- **No request carries a batch type.** An `Input`, read from a body or,
+  for a `GET` or a `DELETE`, from the query string, and a route's
+  placeholder may not hold a `BatchRun`, a `BatchProgress`, a
+  `RowProblem` or an `ImportSummary`: directly, in a list, a map or an
+  option, in an object, through a type built on one, or through an
+  entity's field holding one (`Sweep.run`), `type.batch_input`. A
+  `BatchState` is a plain enum a request may name. A named query's
+  parameter isn't refused: what is passed to it comes from a route's
+  placeholder or input, which are, or from an action. Area 2 gives a
+  batch type's fields to read, so one named as a type (`BatchRun.id`)
+  is `type.unknown_field`, as is a standard object's field it lacks;
+  until now either stood for nothing and let any value through. A run
+  is reached from `batches.each`, or from a field the caller may read.
+- **What `batches.status` gives.** As recommended in chunk 6.4d, a
+  run's status is held to what decides the failures of every batch the
+  application starts, since where it is read nothing says which batch a
+  `BatchRun` is: what decides whether each one's `each:` action fails,
+  and whether its `finished:` action fails, which ends it `failed`. Each
+  is held as from any record of its entity, never one of a run's tenant,
+  and with nothing of what the starting action was passed. It is read by
+  a caller of whom nothing is known but what the reading action's line
+  under `actions:` checks as it starts, since the run is found by its
+  `id` alone. A status read inside a batch's own actions goes round, and
+  is solved as calls that go round are.
+- *Flagged:* the status of a run in an application with a tenant shows
+  only what anyone at all, or a role held across the whole application,
+  may read, since no reader is known to belong to the run's tenant;
+  letting a reader through the record that keeps the run needs the
+  `BatchRun` to say which batch and tenant it is, which a later chunk
+  would decide.
+
+The review's case: `post_item` puts a diary's secret, which only its
+owner reads, on a board anyone signed in reads:
+
+```jadpo check project=e-batch-item-secret file=journal.jadpo hidden
+type Line = Text {
+    min_length: 1
+    max_length: 200
+}
+
+type DiaryPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Writer {
+    id: Uuid
+    handle: Line {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: Writer.handle
+    }
+}
+
+entity Diary {
+    id: Uuid
+    owner_id: Writer.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Line
+    secret: Line {
+        policy: {
+            read: [owner_id, Access.system]
+        }
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [Access.authenticated, Access.system]
+    }
+}
+
+query diaries(page: DiaryPage) -> Page<Diary> {
+    from: Diary
+    order: [Diary.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+entity Board {
+    id: Uuid
+    text: Line
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated, Access.system]
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "journal_session"
+    }
+}
+```
+
+```jadpo check project=e-batch-item-secret expect=policy.output_field_unproved
+action post_item(diary: Diary) -> Unit {
+    var posted: Board = Board.create {
+        set: {
+            text: diary.secret
+        }
+    }
+    assert posted.text == posted.text
+}
+
+action post_all(page: DiaryPage) -> BatchRun {
+    return batches.each(from: diaries(page), each: diary -> post_item(diary))
+}
+```
+
+```text output
+error: `post_all` passes `Diary.secret` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it
+ --> main.jadpo:11:71
+   |
+11 |     return batches.each(from: diaries(page), each: diary -> post_item(diary))
+   |                                                                       ^^^^^ from `Diary.secret`
+  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `secret`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
+  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `secret` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 2 files
+```
+
+How many diaries a run refused shows what refused them, a diary's
+secret, to anyone signed in, whom `count_drafts`'s line lets in:
+
+```jadpo check project=e-batch-status-secret file=journal.jadpo hidden
+type Line = Text {
+    min_length: 1
+    max_length: 200
+}
+
+type DiaryPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Writer {
+    id: Uuid
+    handle: Line {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: Writer.handle
+    }
+}
+
+entity Diary {
+    id: Uuid
+    owner_id: Writer.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Line
+    secret: Line {
+        policy: {
+            read: [owner_id, Access.system]
+        }
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [Access.authenticated, Access.system]
+    }
+}
+
+query diaries(page: DiaryPage) -> Page<Diary> {
+    from: Diary
+    order: [Diary.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "journal_session"
+    }
+}
+
+policy {
+    actions: {
+        count_drafts: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=e-batch-status-secret expect=policy.output_field_unproved
+type Draft = Failure {
+    kind: FailureKind.rejected
+    message: "This diary is a draft."
+}
+
+type DraftCount = Output {
+    drafts: Int
+}
+
+action check_diary(diary: Diary) fails Draft -> Unit {
+    if (diary.secret == "draft") {
+        reject Draft {}
+    }
+}
+
+action check_all(page: DiaryPage) -> BatchRun {
+    return batches.each(from: diaries(page), each: diary -> check_diary(diary))
+}
+
+action count_drafts(run: BatchRun) -> DraftCount {
+    var at: BatchProgress = batches.status(run)
+    return DraftCount {
+        drafts: at.problems
+    }
+}
+```
+
+```text output
+error: `DraftCount.drafts` carries `Diary.secret`, which not every caller of `count_drafts` may read
+ --> main.jadpo:23:17
+   |
+23 |         drafts: at.problems
+   |                 ^^^^^^^^^^^ decided by `Diary.secret`
+  reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.secret` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `secret`.
+  next: Let only those who may read `secret` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 2 files
+```
+
+A run's placeholder:
+
+```jadpo check project=e-batch-input-placeholder file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+
+action stop_sweep(shelf_run: BatchRun) -> Unit {
+    batches.cancel(shelf_run)
+}
+
+policy {
+    actions: {
+        stop_sweep: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=e-batch-input-placeholder expect=type.batch_input
+routes Sweeps {
+    prefix: /sweeps
+
+    DELETE /{shelf_run: BatchRun} {
+        authentication: RouteAuthentication.none
+        status: SuccessStatus.no_content
+        run: stop_sweep(shelf_run)
+    }
+}
+```
+
+```text output
+error: Placeholder `shelf_run` holds a `BatchRun`, which no request carries
+ --> main.jadpo:4:25
+  |
+4 |     DELETE /{shelf_run: BatchRun} {
+  |                         ^^^^^^^^ a `BatchRun`
+  reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
+  next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
+  rule: type.batch_input
+  help: docs/language/12-jobs-and-events.html#type-batch-input
+
+check failed: 1 error, 2 files
+```
 
 ### Consistency with the rest of the language
 

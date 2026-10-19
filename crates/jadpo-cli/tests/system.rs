@@ -7,7 +7,8 @@
 //!
 //! A household application: chores are read by their owner and the
 //! system, changed only by the system, deleted only by their owner; an
-//! action listed for `Access.system` alone is the system's to run.
+//! action listed for `Access.system` alone is the system's to run, and
+//! decides its own body's writes wherever it is called from.
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
@@ -75,6 +76,7 @@ policy {
     actions: {
         home.found: [Access.authenticated]
         home.tidy: [Access.system]
+        home.close_chore: [Access.system]
     }
 }
 "#,
@@ -309,6 +311,25 @@ action mark_done(chore_id: Chore.id) fails ChoreNotFound -> ChoreView {
 
 action drop_chore(chore_id: Chore.id) fails ChoreNotFound -> Unit {
     attempt Chore.delete(chore_id)
+}
+"#,
+    ),
+    (
+        "domains/home/actions/close_chore.jadpo",
+        r#"use home/entities { Chore, ChoreNotFound }
+
+action close_chore(chore_id: Chore.id) fails ChoreNotFound -> Unit {
+    attempt Chore.delete(chore_id)
+}
+"#,
+    ),
+    (
+        "domains/home/actions/settle_chore.jadpo",
+        r#"use home/actions { close_chore }
+use home/entities { Chore, ChoreNotFound }
+
+action settle_chore(chore_id: Chore.id) fails ChoreNotFound -> Unit {
+    attempt close_chore(chore_id)
 }
 "#,
     ),
@@ -601,6 +622,33 @@ fn the_system_is_let_in_exactly_where_access_system_grants_and_no_caller_is() {
         assert_eq!(field(&tidied, "ok"), Value::Bool(true));
         let refused = call(&program, &host, "tidy", vec![], Some(&ann_in)).await;
         assert_eq!(code(&refused), "not_permitted");
+
+        // A listed action's line decides its own body's delete wherever
+        // it is called from (chunk 6.6b): the system deletes through
+        // `settle_chore`, which isn't listed, and the owner, whom the
+        // chore's own `delete:` names, is refused by `close_chore`'s line.
+        let refused = call(
+            &program,
+            &host,
+            "settle_chore",
+            vec![field(&sweep, "id")],
+            Some(&ann_in),
+        )
+        .await;
+        assert_eq!(code(&refused), "not_permitted");
+        let settled = as_system(
+            &program,
+            &host,
+            "settle_chore",
+            vec![field(&mow, "id")],
+            Some(&birch),
+        )
+        .await;
+        assert!(matches!(settled, Outcome::Value(_)), "{settled:?}");
+        assert_eq!(
+            seen(as_system(&program, &host, "seen_chores", vec![], None).await),
+            ["sweep"]
+        );
 
         // Creating: the system isn't granted `create`, and holds no
         // membership, so it adds nothing.

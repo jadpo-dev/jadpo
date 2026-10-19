@@ -1932,15 +1932,22 @@ pub(crate) fn holds_batch(
 /// runtime builds (area 2), so a request that named one could read or
 /// cancel any run (chunk 6.6b).
 pub(crate) fn batch_input(what: &str, batch: &str, span: Span) -> Diagnostic {
-    Diagnostic::new(
+    let problem = Diagnostic::new(
         &rule::TYPE_BATCH_INPUT,
         format!("{what} holds a `{batch}`, which no request carries"),
     )
-    .at(span, format!("a `{batch}`"))
-    .reason(format!(
-        "Only the runtime builds a `{batch}`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run."
-    ))
-    .next("Take the `id` of the record that keeps the run, and read the `BatchRun` from its field")
+    .at(span, format!("a `{batch}`"));
+    if batch == jadpo_std::batch::BATCH_RUN {
+        problem
+            .reason("Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.")
+            .next("Take the `id` of the record that keeps the run, and read the `BatchRun` from its field")
+    } else {
+        problem
+            .reason(format!(
+                "Only the runtime builds a `{batch}`, from a run it keeps, so one a request sent would be a run's progress or problems made up by whoever sent it."
+            ))
+            .next("Take what the request says in fields of the application's own types")
+    }
 }
 
 impl Decls<'_> {

@@ -982,3 +982,99 @@ fn a_run_kept_where_the_caller_may_read_it_is_stopped() {
     let types = "type Asked = Input {\n    note: ShelfCode\n}\n";
     assert_eq!(requested(types, route), Vec::<String>::new());
 }
+
+/// The diary application with `run_count`, which tells its caller how
+/// many diaries a run couldn't check, each item's `check_item` refusing a
+/// diary whose `field` is a draft; `listed`, with a line letting in only
+/// those signed in.
+fn counted(field: &str, listed: bool) -> Vec<String> {
+    let draft = (
+        "domains/journal/failures/draft.jadpo",
+        "",
+        "type Draft = Failure {\n    kind: FailureKind.rejected\n    message: \"This diary is a draft.\"\n}\n",
+    );
+    let check_item = format!(
+        "use journal/entities {{ Diary }}\nuse journal/failures {{ Draft }}\n\naction check_item(diary: Diary) fails Draft -> Unit {{\n    if (diary.{field} == \"draft\") {{\n        reject Draft {{}}\n    }}\n}}\n"
+    );
+    let check_item = (
+        "domains/journal/actions/check_item.jadpo",
+        "",
+        check_item.as_str(),
+    );
+    let each = (
+        "domains/journal/actions/post_all.jadpo",
+        "use journal/actions { post_item }\n",
+        "use journal/actions { check_item }\n",
+    );
+    let calls = (
+        "domains/journal/actions/post_all.jadpo",
+        "each: diary -> post_item(diary)",
+        "each: diary -> check_item(diary)",
+    );
+    let run_count = (
+        "domains/journal/actions/run_count.jadpo",
+        "",
+        "use journal/types { RunTally }\n\naction run_count(run: BatchRun) -> RunTally {\n    var at: BatchProgress = batches.status(run)\n    return RunTally {\n        problems: at.problems\n    }\n}\n",
+    );
+    let output = (
+        "domains/journal/types/run_tally.jadpo",
+        "",
+        "type RunTally = Output {\n    problems: Int\n}\n",
+    );
+    let line = (
+        "policy.jadpo",
+        "",
+        "use journal\n\npolicy {\n    actions: {\n        journal.run_count: [Access.authenticated]\n    }\n}\n",
+    );
+    let mut changes = vec![draft, check_item, each, calls, run_count, output];
+    if listed {
+        changes.push(line);
+    }
+    diaries(&changes)
+}
+
+#[test]
+fn a_runs_status_is_held_to_what_decides_its_failures() {
+    // How many items a run couldn't post shows what decided they failed
+    // (chunk 6.6b): a diary's secret, which only its owner reads.
+    assert_eq!(
+        counted("secret", true),
+        [
+            "domains/journal/actions/run_count.jadpo policy.output_field_unproved: `journal.RunTally.problems` carries `Diary.secret`, which not every caller of `run_count` may read"
+        ]
+    );
+    // Its title anyone signed in reads, and `run_count`'s line lets in
+    // only those signed in.
+    assert_eq!(counted("title", true), Vec::<String>::new());
+    // A caller nothing is known of finds the run by its `id` alone, so it
+    // may read only what anyone at all may.
+    assert_eq!(
+        counted("title", false),
+        [
+            "domains/journal/actions/run_count.jadpo policy.output_field_unproved: `journal.RunTally.problems` carries `Diary.title`, which not every caller of `run_count` may read"
+        ]
+    );
+}
+
+#[test]
+fn a_status_read_by_a_runs_own_action_is_solved() {
+    // Whether `check_after` fails is decided by another run's status,
+    // which every batch's failures decide, its own among them: a cycle,
+    // solved as a summary's is.
+    let after = (
+        "domains/journal/actions/check_after.jadpo",
+        "",
+        "use journal/entities { Diary }\nuse journal/failures { Draft }\n\naction check_after(diary: Diary, earlier: BatchRun) fails Draft -> Unit {\n    var at: BatchProgress = batches.status(earlier)\n    if (at.problems > 0) {\n        reject Draft {}\n    }\n}\n",
+    );
+    let draft = (
+        "domains/journal/failures/draft.jadpo",
+        "",
+        "type Draft = Failure {\n    kind: FailureKind.rejected\n    message: \"This diary is a draft.\"\n}\n",
+    );
+    let start = (
+        "domains/journal/actions/post_all.jadpo",
+        "use journal/actions { post_item }\nuse journal/queries { diaries }\nuse journal/types { DiaryPage }\n\naction post_all(page: DiaryPage) -> BatchRun {\n    return batches.each(\n        from: diaries(page),\n        each: diary -> post_item(diary)\n    )\n}\n",
+        "use journal/actions { check_after }\nuse journal/queries { diaries }\nuse journal/types { DiaryPage }\n\naction post_all(page: DiaryPage, earlier: BatchRun) -> BatchRun {\n    return batches.each(\n        from: diaries(page),\n        each: diary -> check_after(diary, earlier)\n    )\n}\n",
+    );
+    assert_eq!(diaries(&[after, draft, start]), Vec::<String>::new());
+}
