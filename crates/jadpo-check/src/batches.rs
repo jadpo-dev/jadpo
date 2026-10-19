@@ -23,7 +23,7 @@ use crate::types::{callables_of, typed_body};
 pub fn tenant_id(db: &dyn Db, project: Project) -> Option<Key> {
     let tenant = crate::policy::root_policy(db, project).tenant.clone()?;
     Some(crate::graph::entity_field_key(
-        &crate::graph::registry(db, project),
+        crate::graph::registry(db, project),
         &tenant,
         &["id".to_string()],
     ))

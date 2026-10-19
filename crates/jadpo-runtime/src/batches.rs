@@ -529,7 +529,11 @@ async fn run_inner(
             left.push(Deferred::Batch(start.clone()));
             return Ran::Paused("it handed itself on after its share of pages".into());
         }
-        let stepped = step(executor, host, batches, plan, start, &values, system, left).await;
+        let saved = Saved {
+            values: &values,
+            system,
+        };
+        let stepped = step(executor, host, batches, plan, start, saved, left).await;
         match stepped {
             Step::Next => {
                 pages += 1;
@@ -553,6 +557,13 @@ enum Step {
     Ended(Ran),
 }
 
+/// What a run saved, read back, and the system its batches work as.
+#[derive(Clone, Copy)]
+struct Saved<'a> {
+    values: &'a [Value],
+    system: System,
+}
+
 /// One transaction of the run: the next page with its items, or, once
 /// every page is read, `finished:`; or the stop a cancel asked for.
 async fn step(
@@ -561,8 +572,7 @@ async fn step(
     batches: Batches<'_>,
     plan: &BatchPlan,
     start: &BatchStart,
-    values: &[Value],
-    system: System,
+    saved: Saved<'_>,
     left: &mut Vec<Deferred>,
 ) -> Step {
     let Some(now) = now_on(host) else {
@@ -574,10 +584,7 @@ async fn step(
         clock: Clock::fixed(now),
     };
     let mut ctx = Ctx::new(executor.places(), host, env);
-    let stepped = batch(
-        executor, &mut ctx, batches, plan, start, values, system, now,
-    )
-    .await;
+    let stepped = batch(executor, &mut ctx, batches, plan, start, saved, now).await;
     left.extend(ctx.take_deferred());
     stepped
 }
@@ -596,10 +603,10 @@ async fn batch(
     batches: Batches<'_>,
     plan: &BatchPlan,
     start: &BatchStart,
-    values: &[Value],
-    system: System,
+    saved: Saved<'_>,
     now: i64,
 ) -> Step {
+    let Saved { values, system } = saved;
     let id = SqlValue::Uuid(start.run);
     let mut open = match Batch::open(ctx, &plan.store, plan.isolation, system).await {
         Ok(open) => open,
