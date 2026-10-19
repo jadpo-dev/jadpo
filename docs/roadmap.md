@@ -1638,8 +1638,9 @@ reference only).
   field policy. Open for Richard: a `GET` runs a query, which can't build
   a layer, so a route sending one answers `POST` for now (areas 7 and 20,
   "Chosen in chunk 5.5u7").
-- [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
+- [x] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
   time, translations and the standard library, passing `--require-examples`.
+  Built as 5.7 to 5.7d, below.
 - [x] **5.7 Teaching examples for Phase 5: settings, time and words**
   `opus · high`: new numbered examples for configuration (`config.jadpo`,
   constants, the key and address settings and what `crypto` does with
@@ -1691,13 +1692,17 @@ reference only).
   every test with the runtime's debug text instead of refusing with
   `migration.extension_missing` or `_outdated`, as areas 20 and 21 say.
   1,373 features remain, all of them the closed lists' values.
-- [ ] **5.7d Teaching examples: the closed lists** `opus · high`, after
+- [x] **5.7d Teaching examples: the closed lists** `opus · high`, after
   5.7c: the coverage test counts each closed list a standard operation
   takes (`Locale`, `Zone`, `Country`, `Currency`, and the unit enums such
   as `LengthUnit`) as one feature, used when an example names any of its
   values, since each value is already held to its source table by the
   crate tests (decided 2026-10-19, as 5.7 recommended); then the examples
-  pass `--require-examples`.
+  pass `--require-examples`. Built: the 23 lists, the 19 unit enums
+  among them, are `closed list` features, found where a file names a
+  value; the rule is in the coverage test's own documentation. Example
+  17 now names a unit of every kind, listing a bike for a partner's
+  catalogue, and the gate passes with `--require-examples`.
 
 ## Phase 6 — Events and schedules (area 12)
 

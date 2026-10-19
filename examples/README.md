@@ -65,7 +65,8 @@ README saying what it teaches, how to run it and what to try next.
     people.
 17. [17-ebike-hire/](17-ebike-hire/README.md): physical quantities:
     types with bounds in units, kinds that combine, units only at the
-    edges, exact decimal maths, and quantities a person typed.
+    edges, every kind's units by name, exact decimal maths, and
+    quantities a person typed.
 18. [18-village-newsletter/](18-village-newsletter/README.md): text and
     the web: text operations, Markdown and rich text made safe, text in
     each language, links, colours, images, networks, tokens, digests and

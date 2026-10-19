@@ -102,6 +102,7 @@ asked_words
 assess_battery
 assessment
 assist_cutoff
+assist_miles_per_hour
 at_checkpoint
 at_harbour
 at_market
@@ -168,8 +169,10 @@ batch_size
 batches_baked
 battery_capacity
 battery_health
+battery_watt_hours
 bearing_out
 before_vat
+bell_decibels
 bell_loud_enough
 bell_loudness
 bench
@@ -179,6 +182,7 @@ beta_release
 big_ben
 bike_check
 bike_footprint
+bike_model
 bikes
 bill
 bill_shares
@@ -348,6 +352,7 @@ charge_plan
 charge_warming
 charged
 charger_current
+charger_milliamps
 charger_power
 charges_done
 charges_left
@@ -394,6 +399,7 @@ citation_id
 citation_view
 cited_slugs
 citizen_of
+city_bike
 clash_length
 class_count
 class_listing
@@ -619,6 +625,7 @@ draw_round
 drawn_layer
 drawn_patch
 drift
+drink_milligrams_per_decilitre
 drink_powder
 drink_strength
 driven
@@ -753,6 +760,7 @@ fitted
 fitz_park
 five_off
 flapjack
+flash_hertz
 flavour
 flavours
 fleet
@@ -764,6 +772,7 @@ flour_needed
 flour_short
 fold_days
 follow_up
+footprint_square_feet
 for_boxes
 for_delivery
 for_parking
@@ -874,6 +883,8 @@ home_zone
 honey
 host_came
 host_number
+hottest_cell
+hottest_cell_fahrenheit
 hourly_load
 hourly_rise
 house_colour
@@ -1014,6 +1025,7 @@ labelled
 lamp_bright_enough
 lamp_brightness
 lamp_flash
+lamp_lux
 land_area
 land_from_sheet
 landed
@@ -1086,6 +1098,7 @@ link_phone
 link_target
 link_unreadable
 linked
+list_for_partner
 list_ingredient
 list_limit
 list_price
@@ -1223,6 +1236,7 @@ mix_dough
 mixed_currencies
 mobile
 model_reply
+model_spec
 monday_classes
 mondays
 monitor_text
@@ -1235,6 +1249,7 @@ monthly_draw
 morning
 morning_rate
 morning_slot
+motor_kilowatts
 motor_power
 moved_checkpoints
 moved_in
@@ -1462,6 +1477,7 @@ owners
 pace_of
 pack_pannier
 pack_voltage
+pack_volts
 packed
 packer
 packing
@@ -1478,6 +1494,7 @@ paid_by_faster_payments
 paid_signature
 pale
 pannier_load
+pannier_us_gallons
 pantry
 paper_meaning
 paper_section
@@ -1492,6 +1509,7 @@ parcel_to
 parcels
 parcels_on_the_way
 paris_price
+parked_footprint
 partner
 partner_added
 partner_certificate
@@ -1502,6 +1520,7 @@ partner_key_digest
 partner_key_recognised
 partner_key_set
 partner_keys
+partner_listing
 partner_login
 partner_name
 partner_name_taken
@@ -1608,6 +1627,7 @@ poster_line
 postpone_all
 pounds_to_euros
 powder
+powder_ounces
 praised
 praised_notes
 presented
@@ -1800,6 +1820,7 @@ reply_tally
 reply_total
 report_every
 report_interval
+report_kibibytes
 reported_at
 repotting
 repotting_placed
@@ -2264,6 +2285,7 @@ touch
 town
 track_runner
 tracked_link
+tracker_rate
 tracker_report
 tracker_uplink
 tracking_page
@@ -2300,6 +2322,7 @@ typed_shelf
 typed_text
 typed_version
 tyre_pressure
+tyre_psi
 tyres
 uk_bands
 uk_rate
@@ -2318,6 +2341,7 @@ update_profile
 update_statistics
 updated_at
 uplink
+uplink_kilobits_per_second
 ups_label
 urgent_repair_due
 us_code

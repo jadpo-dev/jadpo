@@ -30,6 +30,16 @@
 //! which fails on it. The other problems below fail either way: they are
 //! this test's own lists falling out of step with the compiler's.
 //!
+//! A closed list a standard operation takes or gives counts as one
+//! feature, `closed list Locale`, used when an example names any of its
+//! values (`Locale.en_gb`) anywhere in its files: `Locale`, `Zone`,
+//! `Country` and `Currency`, and each kind's unit enum (`LengthUnit`),
+//! which `units.of`, `units.in` and `text.format` take. Their values are
+//! data held to their source tables (CLDR, the IANA zones, ISO 3166 and
+//! ISO 4217, the units table) by the standard library's own tests, so an
+//! example teaches passing the list, not each value (decided 2026-10-19,
+//! chunk 5.7d). Every other enum's values still count one by one.
+//!
 //! `JADPO_SHOW_COVERAGE=1 cargo test -p jadpo-check --test integration examples::`
 //! prints every built feature with the examples that use it.
 
@@ -269,7 +279,8 @@ fn built() -> BTreeSet<String> {
     // The standard library: every operation, every value of the enums its
     // operations take or give, and the generated namespaces' built members.
     // An enum an operation gives counts too (`locale.direction`'s
-    // `TextDirection`): a program builds or matches its values.
+    // `TextDirection`): a program builds or matches its values. A closed
+    // list counts once, as the list ([`closed_lists`]).
     for operation in OPERATIONS {
         out.insert(format!("std {}", operation.qualified()));
         let result = std::iter::once(operation.result);
@@ -279,7 +290,18 @@ fn built() -> BTreeSet<String> {
             .map(|param| param.kind)
             .chain(result)
         {
-            if let jadpo_std::Kind::Enum(name) = kind {
+            if kind == jadpo_std::Kind::QuantityUnit {
+                out.extend(
+                    jadpo_std::QuantityKind::ALL
+                        .iter()
+                        .map(|kind| format!("closed list {}", kind.unit_enum())),
+                );
+            }
+            if let jadpo_std::Kind::Enum(name) = kind
+                && closed_lists().iter().any(|(list, _)| *list == name)
+            {
+                out.insert(format!("closed list {name}"));
+            } else if let jadpo_std::Kind::Enum(name) = kind {
                 let values = jadpo_std::enums()
                     .into_iter()
                     .find(|(enum_name, _)| *enum_name == name)
@@ -421,6 +443,42 @@ const SETTINGS: [(&str, &[&str]); 9] = [
         jadpo_std::MembershipScope::NAMES,
     ),
 ];
+
+/// The closed lists, each with its values: the enums whose values are an
+/// outside authority's table, which the standard library's tests hold
+/// them to, so a feature is the list, not each value (chunk 5.7d).
+fn closed_lists() -> Vec<(String, Vec<String>)> {
+    let tables = [
+        jadpo_std::LOCALE,
+        jadpo_std::ZONE,
+        jadpo_std::standard::places::COUNTRY,
+        jadpo_std::CURRENCY,
+    ];
+    let enums = jadpo_std::enums();
+    let mut out: Vec<(String, Vec<String>)> = tables
+        .iter()
+        .map(|name| {
+            let values = enums
+                .iter()
+                .find(|(enum_name, _)| enum_name == name)
+                .map(|(_, values)| values.iter().map(|v| v.to_string()).collect())
+                .unwrap_or_default();
+            (name.to_string(), values)
+        })
+        .collect();
+    out.extend(jadpo_std::QuantityKind::ALL.iter().map(|kind| {
+        let values = kind
+            .units()
+            .iter()
+            .map(|unit| unit.name.to_string())
+            .collect();
+        (kind.unit_enum().to_string(), values)
+    }));
+    for (name, values) in &out {
+        assert!(!values.is_empty(), "closed list {name} has no values");
+    }
+    out
+}
 
 /// The members of the generated namespaces built so far, from the
 /// standard library's names list (`clock: now`).
@@ -1394,6 +1452,28 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             if named || used.remove(&format!("std {written}")) {
                 used.insert(format!("setting {written}"));
             }
+        }
+    }
+    // A closed list is used where a file names any of its values, as
+    // written: `Locale.en_gb` in a test or `currency: Currency.gbp` in a
+    // type alike.
+    for (list, values) in closed_lists() {
+        let prefix = format!("{list}.");
+        let named = project.files(db).iter().any(|file| {
+            let text = file.text(db);
+            text.match_indices(&prefix).any(|(at, _)| {
+                let before = text[..at].chars().next_back();
+                let rest = &text[at + prefix.len()..];
+                let value: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                    && values.iter().any(|known| *known == value)
+            })
+        });
+        if named {
+            used.insert(format!("closed list {list}"));
         }
     }
     // A generated member is used where a body names it, as written.

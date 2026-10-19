@@ -1,0 +1,38 @@
+use fleet/types {
+    AssistCutoff,
+    BatteryCapacity,
+    BellLoudness,
+    BikeFootprint,
+    CellTemperature,
+    ChargerCurrent,
+    DrinkPowder,
+    DrinkStrength,
+    LampBrightness,
+    LampFlash,
+    LogSize,
+    MotorPower,
+    PackVoltage,
+    PannierLoad,
+    TyrePressure
+}
+
+/// What the fleet's own catalogue says about one model of bike, each
+/// figure a quantity, whatever unit it was written in.
+type ModelSpec = Object {
+    parked_footprint: BikeFootprint
+    battery_capacity: BatteryCapacity
+    motor_power: MotorPower
+    pack_voltage: PackVoltage
+    charger_current: ChargerCurrent
+    tyre_pressure: TyrePressure
+    lamp_brightness: LampBrightness
+    lamp_flash: LampFlash
+    bell_loudness: BellLoudness
+    pannier_load: PannierLoad
+    drink_strength: DrinkStrength
+    drink_powder: DrinkPowder
+    tracker_report: LogSize
+    tracker_rate: Bitrate
+    assist_cutoff: AssistCutoff
+    hottest_cell: CellTemperature
+}

@@ -1,0 +1,20 @@
+/// One model as the American partner's catalogue prints it: bare numbers,
+/// each in the unit its column heading names.
+type PartnerListing = Output {
+    footprint_square_feet: Decimal
+    battery_watt_hours: Decimal
+    motor_kilowatts: Decimal
+    pack_volts: Decimal
+    charger_milliamps: Decimal
+    tyre_psi: Decimal
+    lamp_lux: Decimal
+    flash_hertz: Decimal
+    bell_decibels: Decimal
+    pannier_us_gallons: Decimal
+    drink_milligrams_per_decilitre: Decimal
+    powder_ounces: Decimal
+    report_kibibytes: Decimal
+    uplink_kilobits_per_second: Decimal
+    assist_miles_per_hour: Decimal
+    hottest_cell_fahrenheit: Decimal
+}

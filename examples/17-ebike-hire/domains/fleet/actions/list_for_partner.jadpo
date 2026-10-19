@@ -1,0 +1,109 @@
+// A partner's catalogue prints bare numbers under headings that name
+// their units, so each figure leaves as a number in that unit:
+// `units.in` with a unit from its kind's own list, `PressureUnit.psi` or
+// `VolumeUnit.us_gallon`. A unit from another kind's list doesn't
+// compile, so a pressure can't be printed in gallons.
+
+use fleet/types { ModelSpec, PartnerListing }
+
+/// A model of bike as the American partner's catalogue lists it.
+action list_for_partner(bike_model: ModelSpec) -> PartnerListing {
+    return PartnerListing {
+        footprint_square_feet: units.in(
+            bike_model.parked_footprint,
+            AreaUnit.square_foot,
+            scale: 1,
+            rounding: Rounding.half_even
+        )
+        battery_watt_hours: units.in(
+            bike_model.battery_capacity,
+            EnergyUnit.watt_hour,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        motor_kilowatts: units.in(
+            bike_model.motor_power,
+            PowerUnit.kilowatt,
+            scale: 2,
+            rounding: Rounding.half_even
+        )
+        pack_volts: units.in(
+            bike_model.pack_voltage,
+            VoltageUnit.volt,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        charger_milliamps: units.in(
+            bike_model.charger_current,
+            CurrentUnit.milliampere,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        tyre_psi: units.in(
+            bike_model.tyre_pressure,
+            PressureUnit.psi,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        lamp_lux: units.in(
+            bike_model.lamp_brightness,
+            IlluminanceUnit.lux,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        flash_hertz: units.in(
+            bike_model.lamp_flash,
+            FrequencyUnit.hertz,
+            scale: 1,
+            rounding: Rounding.half_even
+        )
+        bell_decibels: units.in(
+            bike_model.bell_loudness,
+            SoundLevelUnit.decibel,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        pannier_us_gallons: units.in(
+            bike_model.pannier_load,
+            VolumeUnit.us_gallon,
+            scale: 1,
+            rounding: Rounding.half_even
+        )
+        drink_milligrams_per_decilitre: units.in(
+            bike_model.drink_strength,
+            ConcentrationUnit.milligram_per_decilitre,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+        powder_ounces: units.in(
+            bike_model.drink_powder,
+            MassUnit.ounce,
+            scale: 1,
+            rounding: Rounding.half_even
+        )
+        report_kibibytes: units.in(
+            bike_model.tracker_report,
+            DataSizeUnit.kibibyte,
+            scale: 1,
+            rounding: Rounding.half_even
+        )
+        uplink_kilobits_per_second: units.in(
+            bike_model.tracker_rate,
+            BitrateUnit.kilobit_per_second,
+            scale: 2,
+            rounding: Rounding.half_even
+        )
+        assist_miles_per_hour: units.in(
+            bike_model.assist_cutoff,
+            SpeedUnit.mile_per_hour,
+            scale: 1,
+            rounding: Rounding.half_even
+        )
+        hottest_cell_fahrenheit: units.in(
+            bike_model.hottest_cell,
+            TemperatureUnit.fahrenheit,
+            scale: 0,
+            rounding: Rounding.half_even
+        )
+    }
+}
