@@ -1,4 +1,0 @@
-/// The part of the map a customer is looking at, sent by the map.
-type MapView = Input {
-    view: BoundingBox
-}

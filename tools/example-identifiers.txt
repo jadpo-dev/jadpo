@@ -632,12 +632,12 @@ driven
 drop_point
 drop_point_card
 drop_point_id
-drop_point_map
 drop_point_name
 drop_point_pin
 drop_points
 drop_points_around
 drop_points_in_view
+drop_points_layer
 drop_points_near
 due_at
 due_before
@@ -1055,7 +1055,6 @@ laurel
 lawn
 lawn_feeding
 lawn_placed
-layer
 layer_json
 layer_sent
 lead_id
@@ -1172,7 +1171,6 @@ make_shortlist
 manual
 manual_pages
 map_framing
-map_view
 market
 market_deliveries
 market_street

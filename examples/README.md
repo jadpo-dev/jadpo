@@ -80,7 +80,7 @@ README saying what it teaches, how to run it and what to try next.
     polygons valid when built, WKT and GeoJSON layers.
 21. [21-veg-box-rounds/](21-veg-box-rounds/README.md): stored places:
     PostGIS columns, queries nearest first, in a box, a circle or an
-    area, the indexes they need, a map layer from a route, counts and
+    area, the indexes they need, a map layer from a query, counts and
     sums by month, and a backfill worked out from each row.
 22. [22-plant-helpline/](22-plant-helpline/README.md): stored vectors,
     the nearest query and its tuned index, distance in code, and
