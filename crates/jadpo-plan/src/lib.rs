@@ -666,7 +666,6 @@ impl Plan {
         // read when an action it calls loads a record (area 12).
         let mut batches: Vec<jadpo_std::batch::BatchPlan> = Vec::new();
         let mut batch_numbers: Vec<Option<u32>> = Vec::new();
-        let tenant_id = jadpo_check::batches::tenant_id(db, project);
         for plan in batch_sites.into_iter().map(|site| {
             let read = queries.get(site.query? as usize)?.read.clone();
             let (_, each) = site.each.clone()?;
@@ -693,7 +692,8 @@ impl Plan {
                 finished: site.finished.map(|(_, call)| call),
                 key: site.key,
                 tenant: jadpo_check::batches::run_tenant(
-                    tenant_id.as_ref(),
+                    db,
+                    project,
                     &site.saved_types,
                     site.key_type.as_ref(),
                 ),

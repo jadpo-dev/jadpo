@@ -9,6 +9,8 @@ entity RentRound {
     }
     charge_year: RoundYear
     invoices: BatchRun?
+    invoiced: Int?
+    unlet: Int?
 
     policy: {
         create: [OfficerRole.treasurer]
