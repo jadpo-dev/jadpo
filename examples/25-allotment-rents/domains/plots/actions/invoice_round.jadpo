@@ -1,18 +1,11 @@
-// `batches.each` walks a named query's pages after this action commits,
-// calling an action per item, and gives a `BatchRun` at once. Each page
-// is one transaction holding its items' writes and the run's position,
-// so a crash or a deploy resumes at the next page and no plot is charged
-// twice. An item whose action fails is undone alone and kept as a
-// problem, its place in the walk and its failure's code but never its
-// values, and the rest carry on.
+// A batch in an application with a tenant runs within one tenant: the
+// one its saved values name. Here `from:`'s first argument is a
+// `Society.id`, so every page, and every plot's action, runs as the
+// system within that society alone, however many societies share the
+// application. A run that saves no tenant's id reaches no tenant's
+// records, only those every tenant shares.
 //
-// What `each:` and `finished:` capture, and `key:`, are saved with the
-// run. `key:` makes a repeated start give the same run, so pressing the
-// button twice charges nobody twice.
-//
-// The run is limited to one society: its saved values include a
-// `Society.id`, `from:`'s first argument, so every page, item and
-// `finished:` runs as the system within that society alone.
+// `key:` is the round, so starting a round twice charges nobody twice.
 
 use plots/entities { RentRound }
 use plots/types { PlotPage }

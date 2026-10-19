@@ -24,6 +24,7 @@ order (longitude first) exists only at the edges: GeoJSON and WKT.
 6. **A polygon built from values.** Its rings must not cross, `rings_valid`, and every corner has a height or none does, `altitudes_agree`: two rules mapped with `attempt`. See `domains/fellrace/actions/outline_land.jadpo` and [area 20, Polygons are valid when built](../../docs/language/20-geospatial.md#polygons-are-valid-when-built).
 7. **WKT.** `geo.from_wkt` reads a `Geometry`, a choice of the six shapes matched like any enum with data, and fails `malformed` or `out_of_range`; `geo.to_wkt` writes one back. See `domains/fellrace/actions/land_from_sheet.jadpo`, `domains/fellrace/actions/sheet_text_for.jadpo` and [area 20, Interop](../../docs/language/20-geospatial.md#interop).
 8. **GeoJSON layers.** A `FeatureCollection` of `Feature`s, each a geometry and its properties, written with `json.write` and read back with `json.read`. See `domains/fellrace/actions/checkpoint_layer.jadpo` and `domains/fellrace/actions/moved_checkpoints.jadpo`.
+9. **GeoJSON shapes and number pairs.** `geo.from_geojson` reads one shape from GeoJSON text, and `geo.from_lat_lng` and `geo.from_lng_lat` a position from two or three numbers, each named for the order it reads them in, so a swapped pair reads wrong in the code. See `domains/fellrace/actions/land_from_drawing.jadpo`, `domains/fellrace/actions/runner_fix.jadpo`, `domains/fellrace/actions/marshal_pin.jadpo` and [area 20, Interop](../../docs/language/20-geospatial.md#interop).
 
 ## Run it
 
@@ -38,7 +39,7 @@ target/release/jadpo fmt --check examples/20-fell-race
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
-- `test` ends with `tested: 18 passed, 18 action tests`.
+- `test` ends with `tested: 22 passed, 22 action tests`.
 
 ## Try next
 
