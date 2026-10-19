@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20), and from a `GET` running a query that gives one in chunk 5.5u8 (area 6). `settle:` comes with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20), and from a `GET` running a query that gives one in chunk 5.5u8 (area 6). `settle:`, waiting for follow-on work, in chunk 6.3 (area 12).
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -1504,6 +1504,61 @@ error: `90s` can't be a route's deadline
 check failed: 1 error, 1 file
 ```
 
+### `route.settle_invalid`
+
+`settle:` holds `answer:`, a named query given `result` or its fields,
+and `within:`, shorter than the route's deadline, on a route that runs
+an action and answers `.ok` or `.created`:
+
+```jadpo check project=e-settle-invalid expect=route.settle_invalid
+type Memo = Text {
+    max_length: 200
+}
+
+type AddMemo = Input {
+    text: Memo
+}
+
+type MemoView = Output {
+    text: Memo
+}
+
+action add_memo(input: AddMemo) -> MemoView {
+    return MemoView {
+        text: input.text
+    }
+}
+
+routes Memos {
+    prefix: /memos
+
+    POST / {
+        input: AddMemo
+        output: MemoView
+        status: SuccessStatus.created
+        run: add_memo(input)
+        settle: {
+            answer: add_memo(input)
+            within: 5s
+        }
+    }
+}
+```
+
+```text output
+error: `answer: add_memo` is an action
+ --> main.jadpo:28:21
+   |
+28 |             answer: add_memo(input)
+   |                     ^^^^^^^^ an action here
+  reason: `settle:` holds `answer:`, a named query given `result` (what the action returns) or fields read through it, and `within:`, how long the route waits for the work its action set off, a duration shorter than the route's `deadline:`.
+  next: Answer with a named query, which reads how far the work has got (agent)
+  rule: route.settle_invalid
+  help: docs/language/07-http.html#route-settle-invalid
+
+check failed: 1 error, 1 file
+```
+
 ### `route.authentication_invalid`
 
 A route says only when it differs from needing a signed-in caller, and an
@@ -2393,13 +2448,80 @@ arguments. Since chunk 5.5u8 a `GET` sends one a query gives (area 6, "A
 query giving a map layer"), held to field policy where the query is
 declared.
 
+Since chunk 6.3 a route waits for the work its action set off with
+`settle:` (area 12): the runtime delivers its events and their
+follow-ons while the request waits, then answers with `answer:`'s query
+and the route's status, or 202 past `within:` or while a delivery waits
+to retry; OpenAPI and the record show both answers, and a repeat with
+the same `Idempotency-Key` runs the query again ("Chosen in chunk 6.3"
+below, and `route.settle_invalid`).
+
 Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
 `serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
-with the importer in chunk 7.2, the served route with no chunk yet); `settle:` (6.3); a route's own `rate_limit:` and the Redis
+with the importer in chunk 7.2, the served route with no chunk yet); a route's own `rate_limit:` and the Redis
 store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
 is written.
+
+### Chosen in chunk 6.3
+
+What the page leaves to the build about waiting for follow-on work,
+each the most conservative reading:
+
+- **Settled.** The work has settled when every delivery of the events
+  the action emitted, and of the events their subscribers emit in turn,
+  has succeeded or failed for good: a failure that isn't retried, a
+  defect, a subscriber the build no longer has, or an event 16 deep in a
+  chain (`event_chain_limit`), so a loop settles too. It runs inline, in
+  the request's own invocation (chunk 6.1a's runner), each delivery as
+  6.1b delivers one, as the system limited to its event's tenant, and
+  the request's caller is given back before the answer runs.
+- **What hasn't.** A delivery left to retry after a backoff
+  (`unavailable`, `rate_limited`, a store that couldn't be reached)
+  can't be waited for inline, so the route stops waiting at once and
+  answers 202, the retry left to the sweep; so does a delivery the
+  request couldn't claim, and a batch run the action started, which is
+  long work no route waits on. Waiting stops at the first such piece,
+  and the rest is left for after the response. *Flagged:* a route whose
+  action starts a batch always answers 202; recommended as built, since
+  the batch's work hasn't finished.
+- **`within:`** counts from when the request came in, as `deadline:`
+  does, and must be shorter than the deadline, leaving the answer time
+  to run (`route.settle_invalid`). When it passes, the subscriber's
+  action that is running is dropped, nothing it did kept, and its
+  delivery given back `pending` and due at once, that attempt not
+  counted; the delivery's own statements are never cut short, so a
+  claim is never left in doubt. What is left goes to the host after the
+  response, exactly as without `settle:`, and the outbox's sweep picks
+  up what a host drops (chunk 6.1b).
+- **The answer.** `answer:` calls a named query given `result` or
+  fields read through it, and nothing else: the query reads who is
+  asking through its policy. It runs after the waiting, as the
+  request's caller and under the query's policy, as a `GET` running it
+  would, and policy checks what it reaches as it checks a route's
+  query. Its failures are the route's too, beside the action's, in
+  OpenAPI and the record; a query that fails (its `missing:`, say)
+  answers with that failure, though the action committed. The answer is
+  not held to the deadline, so a committed action is never answered
+  504.
+- **Where it applies.** Only on a route that runs an action and answers
+  `SuccessStatus.ok` or `.created`: a `GET` sets off nothing to wait
+  for, `.accepted` would make both answers 202, and `.no_content` sends
+  no answer (`route.settle_invalid`).
+- **Repeats.** An `Idempotency-Key` keeps the answer query's arguments,
+  each written by its parameter's codec, rather than a body, with 202
+  until the work is known to have settled and then the route's status.
+  A repeat runs the query again and answers with that status, so a
+  process that stops between the commit and the answer never has a
+  repeat say the work finished.
+- **OpenAPI and the record.** OpenAPI lists the route's status, "once
+  the work it set off has settled", and 202, each sending the query's
+  result, and says a repeat runs the answer again; the API record adds
+  a `settle within <duration>` line to the route.
+- **Route tests.** A route test's request waits in the same way. A test
+  host's timers never end, so `within:` never passes in a test, and a
+  follow-on left to retry gives 202.
 
 ### Consistency with the rest of the language
 

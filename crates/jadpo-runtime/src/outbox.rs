@@ -94,6 +94,12 @@ pub const DUE: &str = "SELECT \"d\".\"id\", \"d\".\"outbox_id\", \"d\".\"subscri
 /// contract's JSON").
 pub const PARK: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'failed', \"next_attempt_at\" = NULL, \"last_failure\" = $2 WHERE \"id\" = $1 AND \"status\" IN ('pending', 'running') RETURNING \"id\"";
 
+/// Gives back attempt `$2` of delivery `$1`, which a route that waits
+/// for its follow-on work stopped waiting for while its subscriber's
+/// action ran (area 7, `settle:`; chunk 6.3): `pending` and due at `$3`,
+/// the attempt not counted, for deferred work to run it again.
+pub const RELEASE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'pending', \"attempts\" = \"attempts\" - 1, \"next_attempt_at\" = $3 WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
+
 /// A W3C trace context (`traceparent`): the trace a request starts or
 /// continues, and the span of the work under way, which an emitted event
 /// carries into each subscriber's run (area 12, question 17; area 16).

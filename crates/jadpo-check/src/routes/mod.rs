@@ -61,16 +61,13 @@ pub const ROUTE_ITEMS: [&str; 8] = [
 pub const GROUP_ITEMS: [&str; 2] = ["prefix", "api"];
 
 /// The route items a later chunk builds, with what builds them.
-const LATER_ITEMS: [(&str, &str); 2] = [
-    (
-        "rate_limit",
-        "A route's own `rate_limit:` comes with the rest of area 16's rate limits; every route already has the default limits",
-    ),
-    (
-        "settle",
-        "Waiting for follow-on work comes with events (area 7, roadmap chunk 6.3)",
-    ),
-];
+const LATER_ITEMS: [(&str, &str); 1] = [(
+    "rate_limit",
+    "A route's own `rate_limit:` comes with the rest of area 16's rate limits; every route already has the default limits",
+)];
+
+/// What `settle:` holds (`route.settle_invalid`).
+const SETTLE_REASON: &str = "`settle:` holds `answer:`, a named query given `result` (what the action returns) or fields read through it, and `within:`, how long the route waits for the work its action set off, a duration shorter than the route's `deadline:`.";
 
 /// One segment of a route's full path.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -112,6 +109,9 @@ pub enum ArgRoot {
     /// `current_principal`, the signed-in caller (area 8); the variant a
     /// route selects is its [`RouteModel::caller`], left out of the path.
     Caller,
+    /// `result`, what the action returned: only in `settle:`'s `answer:`
+    /// (area 7, "Waiting for follow-on work").
+    Result,
 }
 
 /// One argument: a placeholder or the input, or a field read through them.
@@ -136,6 +136,20 @@ pub struct Run {
     pub generated: Option<jadpo_std::http::SessionOp>,
 }
 
+/// How a route waits for the work its action set off (area 7, "Waiting
+/// for follow-on work"; chunk 6.3).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Settle {
+    /// The named query `answer:` runs, each argument `result` or a field
+    /// read through it.
+    pub answer: Run,
+    /// The query's parameters' types, in order: what each argument is
+    /// kept as beside an `Idempotency-Key`, for a repeat to run it again.
+    pub params: Vec<Ty>,
+    /// How long the route waits, from when the request came in.
+    pub within_ms: u32,
+}
+
 /// One route, without positions.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RouteModel {
@@ -154,7 +168,11 @@ pub struct RouteModel {
     /// The kind of caller it passes on (`current_principal.user`).
     pub caller: Option<PrincipalKind>,
     pub run: Run,
-    /// The failures what it runs can produce, its `fails` list, in order.
+    /// What it waits for before it answers, with `settle:`; its `output:`
+    /// is then what `answer:` gives.
+    pub settle: Option<Settle>,
+    /// The failures what it runs can produce, its `fails` list, in order,
+    /// then those of `settle:`'s `answer:`.
     pub fails: Vec<String>,
     /// Its `///` description.
     pub doc: Option<String>,
@@ -333,6 +351,7 @@ pub fn group_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> Op
         names: &names,
         caller: None,
         authentication: Authentication::Required,
+        answering: None,
         apis: api_table(db, project),
         path: &symbol.path,
         out: Vec::new(),
@@ -673,6 +692,9 @@ struct Reader<'a> {
     /// whether it needs a signed-in caller.
     caller: Option<(PrincipalKind, Span)>,
     authentication: Authentication,
+    /// While `settle:`'s `answer:` is read: the type of `result`, the
+    /// only thing its arguments read.
+    answering: Option<Ty>,
     apis: &'a Apis,
     path: &'a str,
     out: Vec<Diagnostic>,
@@ -683,6 +705,8 @@ struct Reader<'a> {
 struct RunSig {
     result: Ty,
     fails: Vec<String>,
+    /// With `settle:`, the query `answer:` runs, whose result this is.
+    answer: Option<String>,
 }
 
 /// What a generated query returns: `List<IssuedToken>` or
@@ -1262,16 +1286,47 @@ impl Reader<'_> {
             Some(op) => RunSig {
                 result: generated_result(op),
                 fails: Vec::new(),
+                answer: None,
             },
             None => {
                 let sig = self.lookup.signature(&run.name)?;
                 RunSig {
                     result: sig.result.clone(),
                     fails: sig.fails.clone(),
+                    answer: None,
                 }
             }
         };
 
+        // What it waits for: then what comes out is what `answer:` gives.
+        let settle = match items.get("settle") {
+            Some(member) => {
+                Some(self.settle(member, &run, &sig.result, status, deadline_ms, &label)?)
+            }
+            None => None,
+        };
+        let sig = match &settle {
+            Some((answer, result, fails)) => {
+                let mut all = sig.fails.clone();
+                for fail in fails {
+                    if !all.contains(fail) {
+                        all.push(fail.clone());
+                    }
+                }
+                RunSig {
+                    result: result.clone(),
+                    fails: all,
+                    answer: Some(answer.answer.name.clone()),
+                }
+            }
+            None => sig,
+        };
+        let run_name = sig.answer.clone().unwrap_or_else(|| run.name.clone());
+        let mismatch_reason = if settle.is_some() {
+            "With `settle:`, a route sends what `answer:` gives, whether the work settled or not, so `output:` is exactly the query's result."
+        } else {
+            "A route's `output:` is exactly what it runs returns, so the route shows its contract and never sends a field its type doesn't declare."
+        };
         // What comes out.
         match (status, output) {
             (SuccessStatus::NoContent, Some(_)) => {
@@ -1289,7 +1344,7 @@ impl Reader<'_> {
                     self.out.push(
                         Diagnostic::new(
                             &rule::ROUTE_OUTPUT_MISMATCH,
-                            format!("`{}` returns `{}`, but `{label}` sends nothing", run.name, sig.result),
+                            format!("`{}` returns `{}`, but `{label}` sends nothing", run_name, sig.result),
                         )
                         .at(self.run_span(run_member), format!("returns `{}`", sig.result))
                         .reason("`SuccessStatus.no_content` answers 204 with no body, so what the route runs returns `Unit`; a result nobody receives is a mistake.")
@@ -1304,7 +1359,7 @@ impl Reader<'_> {
                         .at(head_span.clone(), "no `output:`")
                         .reason(format!(
                             "A route shows its contract without opening what it runs: `output:` names what it sends, exactly what `{}` returns{}.",
-                            run.name,
+                            run_name,
                             if sig.result.has_error() {
                                 String::new()
                             } else {
@@ -1329,10 +1384,13 @@ impl Reader<'_> {
                     self.out.push(
                         Diagnostic::new(
                             &rule::ROUTE_OUTPUT_MISMATCH,
-                            format!("`{label}` sends `{ty}`, but `{}` returns `{}`", run.name, sig.result),
+                            format!(
+                                "`{label}` sends `{ty}`, but `{}` returns `{}`",
+                                run_name, sig.result
+                            ),
                         )
                         .at(span.clone(), format!("not `{}`", sig.result))
-                        .reason("A route's `output:` is exactly what it runs returns, so the route shows its contract and never sends a field its type doesn't declare.")
+                        .reason(mismatch_reason)
                         .next(format!("Write `output: {}`", sig.result))
                         .edit(span, sig.result.to_string()),
                     );
@@ -1365,6 +1423,7 @@ impl Reader<'_> {
             authentication: self.authentication,
             caller: self.caller.as_ref().map(|(kind, _)| *kind),
             run,
+            settle: settle.map(|(settle, _, _)| settle),
             fails: sig.fails.clone(),
             doc: crate::graph::text::doc(entry.syntax()),
         })
@@ -1554,6 +1613,219 @@ impl Reader<'_> {
                 None
             }
         }
+    }
+
+    /// `settle: { answer: <query>(result...) within: <duration> }` (area 7,
+    /// "Waiting for follow-on work"; chunk 6.3): the query the route
+    /// answers with once the work its action set off has settled, its
+    /// result type and its failures. An action route only, answering with
+    /// a body, and waiting less than its deadline.
+    fn settle(
+        &mut self,
+        member: &ast::Member,
+        run: &Run,
+        result: &Ty,
+        status: SuccessStatus,
+        deadline_ms: u32,
+        label: &str,
+    ) -> Option<(Settle, Ty, Vec<String>)> {
+        let key_span = member
+            .member_key()
+            .map_or_else(|| self.span(member), |key| self.span(&key));
+        let invalid = |span: Span, message: String, at: &str, next: &str| {
+            Diagnostic::new(&rule::ROUTE_SETTLE_INVALID, message)
+                .at(span, at.to_string())
+                .reason(SETTLE_REASON)
+                .next(next.to_string())
+        };
+        if run.query || run.generated.is_some() {
+            self.out.push(invalid(
+                key_span,
+                format!("`{label}` runs a query, which sets off no work to wait for"),
+                "nothing to wait for",
+                "Remove `settle:`; a query answers at once",
+            ));
+            return None;
+        }
+        if matches!(status, SuccessStatus::NoContent | SuccessStatus::Accepted) {
+            self.out.push(invalid(
+                key_span,
+                format!(
+                    "`{label}` answers `SuccessStatus.{}` and waits with `settle:`",
+                    status.name()
+                ),
+                "waits for its work",
+                "Answer `SuccessStatus.ok` or `.created` once the work settles, or remove `settle:` and answer at once",
+            ));
+            return None;
+        }
+        let Some(block) = member.block() else {
+            self.out.push(invalid(
+                key_span,
+                "`settle:` holds no block".to_string(),
+                "not a block",
+                "Write `settle: { answer: <query>(result.id) within: 5s }`",
+            ));
+            return None;
+        };
+        let mut answer: Option<ast::Member> = None;
+        let mut within: Option<ast::Member> = None;
+        let mut ok = true;
+        for (setting, entry) in tree::members(Some(block)) {
+            let name = tree::name_text(&setting).unwrap_or_default();
+            let slot = match name.as_str() {
+                "answer" => &mut answer,
+                "within" => &mut within,
+                _ => {
+                    self.out.push(invalid(
+                        self.span(&setting),
+                        format!("`{name}` isn't part of `settle:`"),
+                        "not a `settle:` setting",
+                        "Leave only `answer:` and `within:`",
+                    ));
+                    ok = false;
+                    continue;
+                }
+            };
+            if slot.is_some() {
+                self.out.push(invalid(
+                    self.span(&setting),
+                    format!("`settle:` gives `{name}:` twice"),
+                    "given twice",
+                    "Keep one",
+                ));
+                ok = false;
+                continue;
+            }
+            *slot = Some(entry);
+        }
+        for (missing, what) in [(answer.is_none(), "answer"), (within.is_none(), "within")] {
+            if missing {
+                self.out.push(invalid(
+                    key_span.clone(),
+                    format!("`settle:` has no `{what}:`"),
+                    "incomplete",
+                    "Write `settle: { answer: <query>(result.id) within: 5s }`",
+                ));
+                ok = false;
+            }
+        }
+        let (Some(answer), Some(within)) = (answer, within) else {
+            return None;
+        };
+        // `within:`: above zero and short of the deadline, which leaves
+        // the answer time to run.
+        let value = within.value();
+        let written = value
+            .as_ref()
+            .map(|v| tree::written(v.syntax()))
+            .unwrap_or_default();
+        let span = value
+            .as_ref()
+            .map_or_else(|| self.span(&within), |v| self.span(v));
+        let millis = jadpo_std::Dur::parse(&written).map(|dur| dur.millis);
+        let within_ms = match millis {
+            Some(millis) if millis > 0 && millis < i128::from(deadline_ms) => {
+                u32::try_from(millis).ok()
+            }
+            Some(_) => {
+                self.out.push(invalid(
+                    span,
+                    format!(
+                        "`within: {written}` doesn't fit inside the route's {} deadline",
+                        jadpo_std::Dur {
+                            millis: i128::from(deadline_ms)
+                        }
+                    ),
+                    "not shorter than the deadline",
+                    "Wait for less than the deadline, or give the route a longer `deadline:`",
+                ));
+                None
+            }
+            None => {
+                self.out.push(invalid(
+                    span,
+                    format!("`within: {written}` isn't a duration"),
+                    "not a duration",
+                    "Write a duration such as `5s`",
+                ));
+                None
+            }
+        };
+        // `answer:`: a named query, given `result` or its fields.
+        let value = answer.value();
+        let Some(Expr::CallExpr(call)) = value.clone() else {
+            let span = value
+                .as_ref()
+                .map_or_else(|| self.span(&answer), |v| self.span(v));
+            let written = value
+                .as_ref()
+                .map(|v| tree::written(v.syntax()))
+                .unwrap_or_default();
+            self.out.push(invalid(
+                span,
+                format!("`answer: {written}` isn't a call"),
+                "not a call",
+                "Write `answer: <query>(result.id)`",
+            ));
+            return None;
+        };
+        let callee_span = self.run_span(&answer);
+        let mut problems = Vec::new();
+        self.names.callee(&call, false, &mut problems);
+        if !problems.is_empty() {
+            self.out.extend(problems);
+            return None;
+        }
+        let name = match call.expr()? {
+            Expr::NameRef(name) => tree::name_ref_text(&name)?,
+            callee @ Expr::FieldExpr(_) => {
+                let (_, rest) = tree::dotted(&callee)?;
+                tree::name_ref_text(rest.last()?)?
+            }
+            _ => return None,
+        };
+        let symbol = self.lookup.declared(&name).first()?.clone();
+        if symbol.kind != ItemKind::Query {
+            self.out.push(invalid(
+                callee_span,
+                format!("`answer: {name}` is {}", symbol.kind.with_a()),
+                &format!("{} here", symbol.kind.with_a()),
+                "Answer with a named query, which reads how far the work has got",
+            ));
+            return None;
+        }
+        let sig = self.lookup.signature(&name)?.clone();
+        self.answering = Some(result.clone());
+        let args = self.call_arguments(
+            &call,
+            &name,
+            &sig.params,
+            &[],
+            None,
+            callee_span,
+            label,
+            "is declared with",
+        );
+        self.answering = None;
+        let args = args?;
+        if !ok {
+            return None;
+        }
+        Some((
+            Settle {
+                answer: Run {
+                    query: true,
+                    name,
+                    args,
+                    generated: None,
+                },
+                params: sig.params.iter().map(|(_, ty)| ty.clone()).collect(),
+                within_ms: within_ms?,
+            },
+            sig.result.clone(),
+            sig.fails.clone(),
+        ))
     }
 
     /// `output:`: an `Output`, or a list or page of one, as a query returns
@@ -2156,6 +2428,9 @@ impl Reader<'_> {
         input: Option<&str>,
         used: &mut BTreeSet<String>,
     ) -> Option<(Arg, Ty)> {
+        if let Some(result) = self.answering.clone() {
+            return self.answer_argument(expr, result);
+        }
         let Some((first, rest)) = tree::dotted(expr) else {
             let what = match expr {
                 Expr::Literal(_) => "a literal",
@@ -2167,7 +2442,7 @@ impl Reader<'_> {
             return None;
         };
         let root = tree::name_ref_text(&first)?;
-        let (arg_root, mut ty) = if root == "input" && input.is_some() {
+        let (arg_root, ty) = if root == "input" && input.is_some() {
             (ArgRoot::Input, Ty::Named(input?.to_string()))
         } else if let Some((_, ty)) = params.iter().find(|(name, _)| *name == root) {
             (ArgRoot::Param(root.clone()), (*ty).clone())
@@ -2225,8 +2500,21 @@ impl Reader<'_> {
             return None;
         };
         used.insert(root);
+        let (path, ty) = self.through(ty, &rest)?;
+        Some((
+            Arg {
+                root: arg_root,
+                path,
+            },
+            ty,
+        ))
+    }
+
+    /// The fields `rest` read through a value of type `ty`, and the type
+    /// they reach.
+    fn through(&mut self, mut ty: Ty, rest: &[ast::NameRef]) -> Option<(Vec<String>, Ty)> {
         let mut path = Vec::new();
-        for name in &rest {
+        for name in rest {
             let field = tree::name_ref_text(name)?;
             let host = match self.lookup.structure(&ty) {
                 Ty::Named(host) if matches!(self.lookup.def(&host), Some(Def::Fields { .. })) => {
@@ -2279,9 +2567,34 @@ impl Reader<'_> {
             }
             path.push(field);
         }
+        Some((path, ty))
+    }
+
+    /// One argument of `settle:`'s `answer:`: `result`, what the action
+    /// returned (of type `result`), or a field read through it.
+    fn answer_argument(&mut self, expr: &Expr, result: Ty) -> Option<(Arg, Ty)> {
+        let dotted = tree::dotted(expr);
+        let root = dotted
+            .as_ref()
+            .and_then(|(first, _)| tree::name_ref_text(first));
+        let Some(((_, rest), "result")) = dotted.as_ref().zip(root.as_deref()) else {
+            let written = tree::written(expr.syntax());
+            self.out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_SETTLE_INVALID,
+                    format!("`answer:` passes `{written}`, not `result` or its fields"),
+                )
+                .at(self.span(expr), "not `result`")
+                .reason(SETTLE_REASON)
+                .next("Pass `result` or a field of it, such as `result.id`"),
+            );
+            return None;
+        };
+        let rest = rest.clone();
+        let (path, ty) = self.through(result, &rest)?;
         Some((
             Arg {
-                root: arg_root,
+                root: ArgRoot::Result,
                 path,
             },
             ty,
