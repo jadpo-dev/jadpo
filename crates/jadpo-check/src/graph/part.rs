@@ -460,6 +460,11 @@ impl Part<'_> {
             .filter(|(_, callee)| callee.is_callable())
             .filter_map(|(_, callee)| callee.key().cloned())
             .chain(body.requests().cloned())
+            // A test running a schedule calls the action it runs as well.
+            .chain(body.calls().filter_map(|(_, callee)| match callee {
+                jadpo_graph::body::Callee::Schedule { action, .. } => Some(action.clone()),
+                _ => None,
+            }))
             .collect();
         // An entity's `get` reads it (area 6).
         let reads: BTreeSet<Key> = body

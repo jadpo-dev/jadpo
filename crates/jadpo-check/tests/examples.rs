@@ -534,6 +534,7 @@ const BODY: &[&str] = &[
     "call caller from a record",
     "call session",
     "advance the test clock",
+    "run a schedule in a test",
     "call translation",
     "render a prompt",
     "write create",
@@ -874,6 +875,7 @@ fn body_features(
                         Callee::Session(_) => "call session",
                         Callee::Batch(_) => "call batch",
                         Callee::AdvanceClock => "advance the test clock",
+                        Callee::Schedule { .. } => "run a schedule in a test",
                         Callee::Translation(_) => "call translation",
                         Callee::Prompt(_) => "render a prompt",
                         // Objects and variants are built, below; an

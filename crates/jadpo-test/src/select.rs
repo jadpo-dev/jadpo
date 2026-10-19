@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use jadpo_db::Loaded;
 use jadpo_diag::{Diagnostic, nearest, rule};
 
-use crate::{Options, Ran, Selection, Test, TestKind};
+use crate::{Options, Ran, Selection, Test};
 
 /// Where to load and what the path argument names.
 #[derive(Clone, Debug)]
@@ -280,14 +280,6 @@ pub(crate) fn choose(
         }
     }
     Ok(chosen)
-}
-
-/// `--kind schedule`, which comes with area 12.
-pub(crate) fn kind_not_built(_kind: TestKind) -> Diagnostic {
-    Diagnostic::new(&rule::TOOLCHAIN_NOT_BUILT_YET, "Schedule tests aren't built yet")
-        .reason("A schedule test runs a schedule once (area 12), and this toolchain runs pure, action and route tests so far.")
-        .next("Run `jadpo test --kind pure`, `--kind action` or `--kind route`")
-        .help_at("13-testing.html#kinds-of-test")
 }
 
 /// A seed for a run that wasn't given one: short enough to type.

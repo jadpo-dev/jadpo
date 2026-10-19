@@ -198,6 +198,10 @@ pub struct Program {
     /// How a request's client address is chosen (area 10, "Client
     /// addresses").
     client: jadpo_runtime::http::address::ClientAddress,
+    /// How long each purge waits, in milliseconds, in the order of the
+    /// plan's purges: its `after:`, or the value of the setting it reads
+    /// (chunk 6.2c); `None` when that holds no duration.
+    purge_after: Vec<Option<i64>>,
 }
 
 /// Why a call couldn't start.
@@ -265,6 +269,7 @@ impl Program {
             .as_ref()
             .map(|values| Self::client(&prepared, values))
             .unwrap_or_default();
+        let purge_after = Self::purge_periods(&prepared, values.as_ref());
         Program {
             prepared,
             constants,
@@ -274,6 +279,7 @@ impl Program {
             keys,
             auth,
             client,
+            purge_after,
         }
     }
 
@@ -301,7 +307,26 @@ impl Program {
         self.keys = Self::key_rings(&self.prepared, values);
         self.auth = Self::auth(&self.prepared, values);
         self.client = Self::client(&self.prepared, values);
+        self.purge_after = Self::purge_periods(&self.prepared, Some(values));
         self
+    }
+
+    /// How long each of the plan's purges waits with `values` as the
+    /// settings, in milliseconds.
+    fn purge_periods(
+        prepared: &Prepared,
+        values: Option<&jadpo_runtime::config::ConfigValues>,
+    ) -> Vec<Option<i64>> {
+        prepared
+            .plan
+            .purges()
+            .iter()
+            .map(|purge| match (purge.after_setting, values) {
+                (None, _) => Some(purge.after),
+                (Some(_), Some(values)) => prepared.purge_after(values, purge),
+                (Some(_), None) => None,
+            })
+            .collect()
     }
 
     /// How the address of a client is chosen with `values` as the
@@ -639,6 +664,12 @@ impl Executor for Program {
 
     fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
         Some(self.plan().schedules())
+    }
+
+    fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
+        let purges = self.plan().purges();
+        let at = purges.iter().position(|plan| plan.entity == entity)?;
+        Some((&purges[at], self.purge_after.get(at).copied().flatten()))
     }
 
     fn run<'a, 'p: 'a>(

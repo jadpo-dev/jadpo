@@ -93,11 +93,6 @@ impl TestKind {
     pub fn from_word(word: &str) -> Option<TestKind> {
         TestKind::ALL.into_iter().find(|kind| kind.word() == word)
     }
-
-    /// Whether this toolchain can run tests of this kind yet.
-    pub fn built(self) -> bool {
-        matches!(self, TestKind::Pure | TestKind::Action | TestKind::Route)
-    }
 }
 
 /// One `test` declaration.
@@ -220,11 +215,6 @@ pub struct TestResult {
 
 /// Runs what `options` asks for.
 pub fn run(options: Options) -> Ran {
-    if let Some(kind) = options.kind
-        && !kind.built()
-    {
-        return Ran::Stopped(Box::new(select::kind_not_built(kind)));
-    }
     let target = match select::resolve(&options) {
         Ok(target) => target,
         Err(ran) => return ran,
@@ -467,13 +457,20 @@ pub fn discover(graph: &Graph) -> Vec<Test> {
             let routes = graph
                 .outgoing(id, EdgeKind::Calls)
                 .any(|callee| graph.node(callee).kind == Kind::Route);
+            // Running a schedule makes it a schedule test, whatever set up
+            // its data (chunk 6.2c).
+            let schedules = graph
+                .outgoing(id, EdgeKind::Calls)
+                .any(|callee| graph.node(callee).kind == Kind::Schedule);
             Some(Test {
                 key: node.key.as_str().to_string(),
                 name: node.name.clone(),
                 file: place.file.clone(),
                 line: place.lines.0,
                 end_line: place.lines.1,
-                kind: if routes {
+                kind: if schedules {
+                    TestKind::Schedule
+                } else if routes {
                     TestKind::Route
                 } else if acts {
                     TestKind::Action

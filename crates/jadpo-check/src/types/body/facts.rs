@@ -63,6 +63,14 @@ pub(crate) enum Reach {
     Batch(jadpo_std::batch::BatchOp),
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
+    /// `schedule.run()` in a test (area 13, "Kinds of test"; chunk 6.2c):
+    /// the schedule, the action it runs, unless it reads with problems,
+    /// and that action's `fails` list.
+    Schedule {
+        schedule: jadpo_graph::Key,
+        action: Option<jadpo_graph::Key>,
+        fails: Vec<String>,
+    },
     /// `translations.<key>(locale:, ...)` (area 10), with the number of
     /// arguments it takes: the locale and each placeholder.
     Translation {

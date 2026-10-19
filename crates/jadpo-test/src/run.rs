@@ -150,10 +150,13 @@ fn one<E: Executor>(
         env.env.clock = jadpo_runtime::Clock::fixed(start);
     }
     let places = executor.places();
-    // Only a test that calls an action, query or fixture, or sends a
-    // request through a route, can touch a store.
-    if let (Some(databases), Some(runtime), TestKind::Action | TestKind::Route) =
-        (stores.databases, stores.runtime, test.kind)
+    // Only a test that calls an action, query or fixture, sends a request
+    // through a route or runs a schedule can touch a store.
+    if let (
+        Some(databases),
+        Some(runtime),
+        TestKind::Action | TestKind::Route | TestKind::Schedule,
+    ) = (stores.databases, stores.runtime, test.kind)
     {
         env.database = TestDatabase::Copied {
             stores: databases.stores(),

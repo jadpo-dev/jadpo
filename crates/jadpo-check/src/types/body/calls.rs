@@ -309,6 +309,12 @@ impl Body<'_> {
             self.args_only(call);
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
+        if let [member] = rest.as_slice()
+            && member == "run"
+            && self.callable_kind(&head) == Some(ItemKind::Schedule)
+        {
+            return self.schedule_run(&head, call, callee, &written);
+        }
         if self.is_local(&head) {
             // Values have no methods.
             self.read(&first);
@@ -549,6 +555,107 @@ impl Body<'_> {
 
     /// The kind of the project declaration called `name`, not counting
     /// library functions.
+    /// `schedule.run()` (area 13, "Kinds of test"; chunk 6.2c): a test
+    /// runs the schedule once at its clock, its action called with nothing
+    /// as the system with no tenant, as the tick would. It gives nothing,
+    /// and fails as its action fails. Only a test runs a schedule by hand:
+    /// elsewhere the tick runs it when it is due.
+    fn schedule_run(
+        &mut self,
+        schedule: &str,
+        call: &ast::CallExpr,
+        callee: &Expr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let unit = Ty::Prim(Prim::Unit);
+        let span = self.span(callee);
+        if !self.test {
+            self.args_only(call);
+            let a_or_an = if self.word.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                "An"
+            } else {
+                "A"
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_NOT_CALLABLE,
+                    format!("{a_or_an} {} can't run schedule `{schedule}`", self.word),
+                )
+                .at(span, "runs a schedule")
+                .reason("Only a test runs a schedule by hand, with `.run()`, to prove what one run does; in the application the tick runs it when it is due, and an operator runs it now with `jadpo schedules run`.")
+                .next(format!(
+                    "Call the action `{schedule}` runs, or move this into the schedule's test"
+                )),
+            );
+            return (unit, CallKind::Effect(written.to_string()), Reach::Unknown);
+        }
+        let args = Self::arguments(call);
+        if !args.is_empty() {
+            self.args_only(call);
+            let at = self.arg_list_span(call);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes nothing"),
+                )
+                .at(at, format!("{} given", args.len()))
+                .reason(format!(
+                    "`{schedule}.run()` runs the schedule once at the test's clock, as the tick would, and a schedule passes nothing to its action."
+                ))
+                .next(format!("Write `{schedule}.run()`")),
+            );
+        }
+        let path = self
+            .symbols
+            .declared(schedule)
+            .iter()
+            .find(|symbol| symbol.kind == ItemKind::Schedule)
+            .map(|symbol| symbol.path.clone());
+        let model = crate::schedules::schedules(self.db, self.project)
+            .iter()
+            .find(|model| model.name == schedule && Some(&model.path) == path.as_ref())
+            .cloned();
+        let Some(model) = model else {
+            // A schedule that doesn't read is reported where it is
+            // declared.
+            let key = crate::graph::declaration_key(self.symbols, schedule);
+            return match key {
+                Some(schedule) => (
+                    unit,
+                    CallKind::Effect(written.to_string()),
+                    Reach::Schedule {
+                        schedule,
+                        action: None,
+                        fails: Vec::new(),
+                    },
+                ),
+                None => (unit, CallKind::Effect(written.to_string()), Reach::Unknown),
+            };
+        };
+        let action = model.run.action().cloned();
+        let fails = action
+            .as_ref()
+            .and_then(|action| {
+                crate::lookups::signature(
+                    self.db,
+                    self.project,
+                    crate::lookups::Name::new(self.db, action.name().to_string()),
+                )
+                .as_ref()
+            })
+            .map(|sig| sig.fails.clone())
+            .unwrap_or_default();
+        (
+            unit,
+            CallKind::Effect(written.to_string()),
+            Reach::Schedule {
+                schedule: model.key.clone(),
+                action,
+                fails,
+            },
+        )
+    }
+
     pub(super) fn callable_kind(&self, name: &str) -> Option<ItemKind> {
         self.symbols
             .declared(name)

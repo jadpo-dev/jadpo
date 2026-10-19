@@ -37,6 +37,7 @@ mod migrate;
 mod operation_conditions;
 mod passkeys;
 mod policy;
+mod purge_schedule;
 mod queries;
 mod records;
 mod round_trips;

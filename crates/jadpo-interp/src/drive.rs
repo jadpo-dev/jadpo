@@ -73,6 +73,10 @@ async fn body(
                     } => request(program, ctx, route, &args, keyed, signed).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
+                    Target::Schedule(action) => {
+                        let caught = machine.catching();
+                        schedule(program, ctx, action, at.0, caught).await
+                    }
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
                 step = machine.resume(ctx, result);
@@ -111,6 +115,24 @@ pub(crate) fn invoke<'a, 'p: 'a>(
     })
 }
 
+/// A test's run of a schedule (area 13, "Kinds of test"; chunk 6.2c):
+/// its action, `action`, called with nothing as the system with no tenant,
+/// as the tick runs it, at the test's clock, which stays fixed through
+/// the run; what it emits is delivered after it, as after any step of a
+/// test. It gives nothing, and fails as its action fails.
+async fn schedule(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    action: u32,
+    at: u32,
+    caught: bool,
+) -> Result<Value, Stop> {
+    let saved = jadpo_runtime::schedules::test_run(ctx);
+    let result = invoke(program, ctx, action, Vec::new(), at, caught).await;
+    jadpo_runtime::schedules::test_run_ended(ctx, saved);
+    result.map(|_| Value::Unit)
+}
+
 /// A read or a write (area 6), which the runtime runs from its plan,
 /// inside the running action's transaction or a boundary of its own: what
 /// is left here is finding the plan and dispatching a refusal to the
@@ -131,7 +153,8 @@ fn store<'a, 'p: 'a>(
             Target::Callable(_)
             | Target::Request { .. }
             | Target::Session(_)
-            | Target::Batch(..) => None,
+            | Target::Batch(..)
+            | Target::Schedule(_) => None,
         };
         let Some(op) = op else {
             let what = match target {
@@ -141,7 +164,8 @@ fn store<'a, 'p: 'a>(
                 Target::Callable(_)
                 | Target::Request { .. }
                 | Target::Session(_)
-                | Target::Batch(..) => "a call run as a read",
+                | Target::Batch(..)
+                | Target::Schedule(_) => "a call run as a read",
             };
             return Err(Stop::Fault(
                 ctx.fault(FaultKind::Defect(what.to_string()), at),

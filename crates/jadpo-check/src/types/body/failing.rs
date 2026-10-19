@@ -162,9 +162,11 @@ impl Body<'_> {
             return write.fallible.clone();
         }
         match self.facts.reaches.get(&key) {
-            Some(Reach::Callable { fails, .. } | Reach::Library { fails, .. }) => {
-                self.fails_fallible(fails)
-            }
+            Some(
+                Reach::Callable { fails, .. }
+                | Reach::Library { fails, .. }
+                | Reach::Schedule { fails, .. },
+            ) => self.fails_fallible(fails),
             // The standard library computes its results; nothing in it
             // fails with a domain failure.
             Some(Reach::Std(_)) => Fallible::Never,

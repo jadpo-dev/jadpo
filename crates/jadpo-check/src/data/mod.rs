@@ -388,6 +388,9 @@ pub struct EntitySpans {
     pub name: Span,
     /// Each field's key, in the order of [`EntityModel::fields`].
     pub fields: Vec<Span>,
+    /// Its lifecycle's `purge:` key, when it purges: where its built-in
+    /// purge schedule is declared (area 12; chunk 6.2c).
+    pub purge: Option<Span>,
 }
 
 /// One entity read from its file: its model, where its parts are, and the
@@ -445,6 +448,7 @@ pub fn entity_read<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> O
         spans: EntitySpans {
             name: Span::new(&symbol.path, 0, 0),
             fields: Vec::new(),
+            purge: None,
         },
         out: Vec::new(),
     };
@@ -715,6 +719,16 @@ impl Reader<'_> {
                 &member,
                 &mut self.out,
             );
+            if entity
+                .lifecycle
+                .as_ref()
+                .is_some_and(|lifecycle| lifecycle.purge.is_some())
+            {
+                self.spans.purge = tree::members(member.block())
+                    .into_iter()
+                    .find(|(key, _)| tree::name_text(key).as_deref() == Some("purge"))
+                    .map(|(key, _)| node_span(path, key.syntax()));
+            }
         }
         // Names the database keeps (area 5, "Storage types").
         if table.starts_with("jadpo_") {
