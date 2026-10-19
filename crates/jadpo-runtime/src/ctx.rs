@@ -909,6 +909,19 @@ impl<'p> Ctx<'p> {
     }
 }
 
+/// A new identity made at `now` from `host`'s randomness, outside any
+/// context: the run an operator asks a schedule's tick for (chunk 6.2d).
+/// None when the host can't give random bytes.
+pub(crate) fn random_id(host: &dyn Host, now: i64) -> Option<[u8; 16]> {
+    let mut random = [0u8; 16];
+    if !host.random(&mut random) {
+        return None;
+    }
+    let [a @ .., _, _, _, _, _, _, _, _] = random;
+    let [_, _, _, _, _, _, _, _, b @ ..] = random;
+    Some(uuid_v7(now, u64::from_be_bytes(a), u64::from_be_bytes(b)))
+}
+
 /// A version 7 UUID made at `millis` (milliseconds since the epoch), its
 /// 12 bits of `rand_a` from `a` and 62 of `rand_b` from `b` (RFC 9562).
 fn uuid_v7(millis: i64, a: u64, b: u64) -> [u8; 16] {

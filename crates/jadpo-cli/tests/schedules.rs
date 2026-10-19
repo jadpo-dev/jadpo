@@ -875,6 +875,13 @@ fn watching(root: &Path, url: &str, at: i64, args: &[&str]) -> Output {
     output
 }
 
+/// Notes `url` as the database a running `jadpo dev` started for the
+/// store `main`, as it does in `build/dev/stores.json`.
+fn as_jadpo_dev(root: &Path, url: &str) {
+    let document = serde_json::json!({ "pid": 1, "stores": { "main": url } });
+    write(root, "build/dev/stores.json", &format!("{document}\n"));
+}
+
 /// The screen, with a `traceparent`'s random ids written as `…`.
 fn without_trace(text: &str) -> String {
     text.lines()
@@ -1086,8 +1093,10 @@ fn schedules_are_listed_explained_paused_resumed_run_and_paged() {
         "✓ Resumed `chore_census`: its next run is at 12:30\n"
     );
 
-    // Run now, by hand, under the lease: in this process, against the
-    // same database.
+    // Run now, by hand, under the lease: against `jadpo dev`'s own
+    // database, which it notes in `build/dev/stores.json`, in this
+    // process (chunk 6.2d).
+    as_jadpo_dev(&root, &url);
     let ran = watching(
         &root,
         &url,
@@ -1485,4 +1494,233 @@ fn jadpo_dev_prints_each_run_and_each_alert_once() {
     );
     // An alert prints once, when it starts.
     assert_eq!(text.matches(failed_alert).count(), 1, "{text}");
+}
+
+// --- Running a schedule on a deployment (chunk 6.2d) -------------------------
+
+fn deployed_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("schedules-6.2d-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in files {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    root
+}
+
+/// Waits, up to a minute, until `sql`'s count is `want`.
+fn until_count(runtime: &Runtime, host: &Store, sql: &str, want: i64) {
+    let started = std::time::Instant::now();
+    while runtime.block_on(host.count(sql)) != want {
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "`{sql}` never came to {want}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
+    let files: Vec<(&str, &str)> = FILES.iter().copied().chain([BELL_CHECK]).collect();
+    let root = deployed_project("requested", &files);
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store::new(&url, 0);
+    let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
+    let runtime = Runtime::new().expect("runtime");
+    host.clock.set(at(0, 0));
+    runtime.block_on(tick(&program, &host, at(0, 0)));
+    let requested = "SELECT count(*) FROM \"jadpo_schedules\" WHERE \"run_requested\" IS NOT NULL";
+
+    // The database isn't `jadpo dev`'s: the command marks the schedule
+    // due on its state row and waits, running nothing itself.
+    let waiting = {
+        let (root, url) = (root.clone(), url.clone());
+        std::thread::spawn(move || {
+            watching(&root, &url, at(1, 0), &["schedules", "run", "chore_census"])
+        })
+    };
+    until_count(&runtime, &host, requested, 1);
+    runtime.block_on(async {
+        assert_eq!(host.censuses().await, [], "no census is taken until a tick");
+        assert_eq!(host.runs().await, []);
+    });
+    // A second request before the tick joins the first: one run answers
+    // both.
+    let declared = jadpo_runtime::schedules::watch::Declared {
+        key: "schedule chore_census".into(),
+        name: "chore_census".into(),
+        every_ms: 15 * MINUTE as u64,
+    };
+    let first = runtime.block_on(async {
+        host.rows(
+            "SELECT \"run_requested\" FROM \"jadpo_schedules\" WHERE \"run_requested\" IS NOT NULL",
+        )
+        .await
+    });
+    let again = runtime
+        .block_on(jadpo_runtime::schedules::watch::request_run(
+            &host.db,
+            &host,
+            &declared,
+            at(1, 5),
+        ))
+        .expect("a request");
+    match again {
+        jadpo_runtime::schedules::watch::Requested::Waiting { run, joined } => {
+            assert!(joined);
+            assert_eq!(first, [vec![SqlValue::Uuid(run)]]);
+        }
+        other => panic!("not a request: {other:?}"),
+    }
+    // `why` says a run is waiting for the tick; history lists records only.
+    let why = watching(&root, &url, at(1, 10), &["why", "chore_census"]);
+    assert_eq!(
+        why.stdout,
+        "`chore_census` hasn't been due yet: its first run is due at 09:15
+  request   a run by hand, waiting for the app's next tick
+  schedule  domains/home/schedules/chore_census.jadpo:3
+"
+    );
+    let history = watching(
+        &root,
+        &url,
+        at(1, 10),
+        &["schedules", "history", "chore_census"],
+    );
+    assert_eq!(
+        history.stdout,
+        "`chore_census` hasn't been due yet: its first run is due at 09:15\n"
+    );
+
+    // The application's own tick runs it, by hand, under the lease, and
+    // leaves its grid as it was.
+    host.clock.set(at(2, 0));
+    let ticked = runtime.block_on(tick(&program, &host, at(2, 0)));
+    assert_eq!(ticked.due.len(), 1, "{:?}", ticked.due);
+    assert_eq!(ticked.due[0].ran, Ran::Succeeded { events: 1 });
+    assert!(ticked.due[0].by_hand);
+    let ran = waiting.join().expect("the command");
+    assert_eq!(ran.code, 0, "{}{}", ran.stdout, ran.stderr);
+    assert_eq!(
+        ran.stdout,
+        "✓ The app's tick ran `chore_census` in 0 ms, emitting 1 event\n"
+    );
+    runtime.block_on(async {
+        assert_eq!(host.censuses().await, [(0, 2)]);
+        assert_eq!(
+            host.runs().await,
+            [("succeeded".to_string(), Some("by_hand".to_string()), 2, Some(1))]
+        );
+        assert_eq!(host.count(requested).await, 0);
+        assert_eq!(
+            host.count("SELECT ((extract(epoch FROM \"next_run_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"jadpo_schedules\" WHERE \"schedule\" = 'schedule chore_census'")
+                .await,
+            15
+        );
+    });
+    let json = watching(
+        &root,
+        &url,
+        at(2, 10),
+        &["schedules", "history", "chore_census", "--json"],
+    );
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(document["data"]["records"][0]["reason"], "by_hand");
+
+    // A request while a run holds the lease is refused, and nothing is
+    // asked of the tick.
+    runtime.block_on(async {
+        host.rows("INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_slot\", \"started_at\", \"outcome\") VALUES ('00000000-0000-7000-8000-0000000000bb', 'schedule chore_census', '2026-10-19T09:15:00Z', '2026-10-19T09:15:00Z', 'running') RETURNING 1")
+            .await;
+        host.rows("UPDATE \"jadpo_schedules\" SET \"lease_until\" = '2026-10-19T09:31:00Z', \"run_id\" = '00000000-0000-7000-8000-0000000000bb' WHERE \"schedule\" = 'schedule chore_census' RETURNING 1")
+            .await;
+    });
+    let refused = watching(
+        &root,
+        &url,
+        at(16, 0),
+        &["schedules", "run", "chore_census"],
+    );
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused
+            .stderr
+            .contains("✗ error  `chore_census` is already running"),
+        "{}",
+        refused.stderr
+    );
+    assert_eq!(runtime.block_on(host.count(requested)), 0);
+
+    drop(host);
+    databases.release(copy, false);
+}
+
+/// A project with one schedule each second, so the host ticks each
+/// second.
+const HEARTBEAT: &[(&str, &str)] = &[BEATS[0], BEATS[1], BEATS[2], BEATS[5]];
+
+#[test]
+fn a_requested_run_no_tick_picks_up_is_withdrawn() {
+    let root = deployed_project("unticked", HEARTBEAT);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store::new(&url, 0);
+    let runtime = Runtime::new().expect("runtime");
+
+    // No application is running, so no tick comes: after twice the period
+    // the app ticks at, the command gives up and withdraws its request.
+    let waited = watching(&root, &url, T0, &["schedules", "run", "heartbeat"]);
+    assert_eq!(waited.code, 1, "{}{}", waited.stdout, waited.stderr);
+    assert!(
+        waited
+            .stderr
+            .contains("✗ error  No tick picked up `heartbeat`'s run in 2 s\n"),
+        "{}",
+        waited.stderr
+    );
+    assert!(
+        waited.stderr.contains("rule      schedules.no_tick"),
+        "{}",
+        waited.stderr
+    );
+    runtime.block_on(async {
+        assert_eq!(
+            host.count(
+                "SELECT count(*) FROM \"jadpo_schedules\" WHERE \"run_requested\" IS NOT NULL"
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            host.count("SELECT count(*) FROM \"jadpo_schedule_runs\"")
+                .await,
+            0
+        );
+        assert_eq!(host.count("SELECT count(*) FROM \"pulse\"").await, 0);
+    });
+
+    drop(host);
+    databases.release(copy, false);
 }

@@ -712,11 +712,16 @@ chunks below, taken before Phase 6.
   round recording how it went with `finished:`; a live test. Choices
   in area 12's "Chosen in chunk 6.4d"; flagged there: `batches.status`'s
   count of problems isn't held to what decides them.
-- [ ] **6.2d `jadpo schedules run` against a deployment** `opus · high`
-  (area 12, decided 2026-10-19): against a deployed application the
-  command marks the schedule due and waits for the server's run record,
-  never running application code on the operator's machine; against
-  `jadpo dev` it still runs straight away.
+- [x] **6.2d `jadpo schedules run` against a deployment** `opus · high`
+  (area 12, decided 2026-10-19). Built: against any database but the one
+  a running `jadpo dev` noted, the command writes a run's id to the state
+  row's new `run_requested` column and waits for its record, running no
+  application code and reading none of its settings; the tick runs it by
+  hand under the lease when its due run left the lease free; no tick
+  within twice the tick period withdraws it with `schedules.no_tick`;
+  against `jadpo dev` it still runs straight away (area 12, "Chosen in
+  chunk 6.2d").
+
 ### Phase 6 review (2026-10-19)
 
 Two independent reviewers, soundness and architecture for the phases

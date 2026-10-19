@@ -2,7 +2,8 @@
 //! 6.2b): what `jadpo schedules`, `jadpo why` and `jadpo dev` read from a
 //! schedule's state row (`jadpo_schedules`) and its run records
 //! (`jadpo_schedule_runs`), and what an operator does to one: pause it,
-//! resume it, or run it now under its lease.
+//! resume it, run it now under its lease against `jadpo dev`, or, against
+//! a deployment, ask the application's own tick to run it (chunk 6.2d).
 //!
 //! - **The alerts with no setup**: no successful run within twice the
 //!   interval; ticks stopped arriving; a run past 80% of the 15-minute
@@ -23,7 +24,7 @@ use crate::runner::{self, RUN_LIMIT_MS};
 use crate::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, StoreError};
 
 /// Every schedule's state row.
-pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
+pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\", \"run_requested\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
 
 /// What a run record is read as: its id, schedule, due, start and end,
 /// outcome, reason, failure code and kind, events, trace and the items it
@@ -35,6 +36,11 @@ pub fn latest_runs_sql() -> String {
     format!(
         "SELECT DISTINCT ON (\"schedule\") {RUN_COLUMNS} FROM \"jadpo_schedule_runs\" WHERE \"schedule\" = ANY($1::text[]) AND \"outcome\" <> 'skipped' ORDER BY \"schedule\", \"started_at\" DESC, \"id\" DESC"
     )
+}
+
+/// The run record with id `$1`.
+pub fn run_sql() -> String {
+    format!("SELECT {RUN_COLUMNS} FROM \"jadpo_schedule_runs\" WHERE \"id\" = $1")
 }
 
 /// Schedule `$1`'s records, newest first, `$2` of them after the first
@@ -63,6 +69,15 @@ pub const SET_PAUSED: &str = "UPDATE \"jadpo_schedules\" SET \"paused\" = $2 WHE
 /// its due time and whether it is paused, while no live lease holds it;
 /// the run that held it before and that lease's end.
 pub const CLAIM_NOW: &str = "WITH \"old\" AS (SELECT \"run_id\", \"lease_until\" FROM \"jadpo_schedules\" WHERE \"schedule\" = $1 FOR UPDATE) UPDATE \"jadpo_schedules\" AS \"s\" SET \"lease_until\" = $2, \"run_id\" = $3 FROM \"old\" WHERE \"s\".\"schedule\" = $1 AND (\"old\".\"lease_until\" IS NULL OR \"old\".\"lease_until\" <= $4) RETURNING \"old\".\"run_id\", \"old\".\"lease_until\"";
+
+/// Asks schedule `$1`'s next tick for run `$2`, while no live lease holds
+/// it at `$3`; a request already standing is kept, so both wait for the
+/// same run. The run asked for.
+pub const REQUEST: &str = "UPDATE \"jadpo_schedules\" SET \"run_requested\" = COALESCE(\"run_requested\", $2) WHERE \"schedule\" = $1 AND (\"run_id\" IS NULL OR \"lease_until\" IS NULL OR \"lease_until\" <= $3) RETURNING \"run_requested\"";
+
+/// Withdraws run `$2` from schedule `$1`'s state row while no tick has
+/// taken it.
+pub const WITHDRAW: &str = "UPDATE \"jadpo_schedules\" SET \"run_requested\" = NULL WHERE \"schedule\" = $1 AND \"run_requested\" = $2 RETURNING \"schedule\"";
 
 /// A schedule as the project declares it: its identity key, its name and
 /// its `every:`.
@@ -94,6 +109,9 @@ pub struct StateRow {
     pub run_id: Option<[u8; 16]>,
     pub last_tick_at: Option<i64>,
     pub last_succeeded_at: Option<i64>,
+    /// The run an operator asked the application's tick for, still
+    /// waiting (chunk 6.2d).
+    pub requested: Option<[u8; 16]>,
 }
 
 impl StateRow {
@@ -444,6 +462,7 @@ fn read_state(row: &[SqlValue]) -> Option<StateRow> {
         run_id: uuid(row.get(5)),
         last_tick_at: millis(row.get(6)),
         last_succeeded_at: millis(row.get(7)),
+        requested: uuid(row.get(8)),
     })
 }
 
@@ -680,22 +699,7 @@ pub async fn run_now(
         )
         .await?;
     let Some(row) = claimed.first() else {
-        let state = states(database)
-            .await?
-            .into_iter()
-            .find(|state| state.schedule == schedule.key);
-        let until = state
-            .as_ref()
-            .and_then(|state| state.lease_until)
-            .unwrap_or(now);
-        let started = match state.and_then(|state| state.run_id) {
-            Some(id) => history(database, &schedule.key, 20, 0)
-                .await?
-                .into_iter()
-                .find(|run| run.id == id)
-                .map(|run| run.started),
-            None => None,
-        };
+        let (started, until) = holder(database, &schedule.key, now).await?;
         return Ok(RunNow::LeaseHeld { started, until });
     };
     let lost = uuid(row.first()).map(|lost| (lost, millis(row.get(1))));
@@ -708,6 +712,101 @@ pub async fn run_now(
     let (due, left) = run_claimed(executor, host, database, schedule, claimed, ctx, now).await;
     let deliveries = runner::run_deferred(executor, host, left).await;
     Ok(RunNow::Ran { due, deliveries })
+}
+
+/// The run holding schedule `key`'s lease: when it started, if its
+/// record says, and the lease's end.
+async fn holder(
+    database: &dyn Database,
+    key: &str,
+    now: i64,
+) -> Result<(Option<i64>, i64), StoreError> {
+    let state = states(database)
+        .await?
+        .into_iter()
+        .find(|state| state.schedule == key);
+    let until = state
+        .as_ref()
+        .and_then(|state| state.lease_until)
+        .unwrap_or(now);
+    let started = match state.and_then(|state| state.run_id) {
+        Some(id) => run(database, id).await?.map(|run| run.started),
+        None => None,
+    };
+    Ok((started, until))
+}
+
+/// The run record with id `id`, if there is one.
+pub async fn run(database: &dyn Database, id: [u8; 16]) -> Result<Option<RunRecord>, StoreError> {
+    let rows = database
+        .query_once(&run_sql(), &[SqlValue::Uuid(id)])
+        .await?;
+    Ok(rows.iter().find_map(|row| read_run(row)))
+}
+
+/// What asking a schedule's tick for a run did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Requested {
+    /// The run `run` waits for the application's next tick; `joined` when
+    /// it was asked for already and this request waits for the same run.
+    Waiting { run: [u8; 16], joined: bool },
+    /// A run that started at `started` holds the lease until `until`, so
+    /// nothing was asked.
+    LeaseHeld { started: Option<i64>, until: i64 },
+}
+
+/// Asks `schedule`'s next tick to run it by hand, as `jadpo schedules run`
+/// does against a deployment (area 12, decided 2026-10-19; chunk 6.2d):
+/// the request is kept on its state row, made if no tick has seen it yet,
+/// as the id its run's record will have, so the application's own server
+/// runs it and the operator's machine runs no application code. Refused
+/// while a run holds the lease at `now`; a request already standing is
+/// joined.
+pub async fn request_run(
+    database: &dyn Database,
+    host: &dyn Host,
+    schedule: &Declared,
+    now: i64,
+) -> Result<Requested, StoreError> {
+    ensure(database, schedule, now).await?;
+    let id = crate::ctx::random_id(host, now)
+        .ok_or_else(|| StoreError::Fault("no random bytes for a run's id".into()))?;
+    let rows = database
+        .query_once(
+            REQUEST,
+            &[
+                SqlValue::Text(schedule.key.clone()),
+                SqlValue::Uuid(id),
+                micros(now),
+            ],
+        )
+        .await?;
+    match rows.first().and_then(|row| uuid(row.first())) {
+        Some(run) => Ok(Requested::Waiting {
+            run,
+            joined: run != id,
+        }),
+        None => {
+            let (started, until) = holder(database, &schedule.key, now).await?;
+            Ok(Requested::LeaseHeld { started, until })
+        }
+    }
+}
+
+/// Withdraws the request for run `run` from schedule `key`'s state row,
+/// unless a tick has taken it: whether it was withdrawn.
+pub async fn withdraw(
+    database: &dyn Database,
+    key: &str,
+    run: [u8; 16],
+) -> Result<bool, StoreError> {
+    let rows = database
+        .query_once(
+            WITHDRAW,
+            &[SqlValue::Text(key.to_string()), SqlValue::Uuid(run)],
+        )
+        .await?;
+    Ok(!rows.is_empty())
 }
 
 #[cfg(test)]
@@ -732,6 +831,7 @@ mod tests {
                 run_id: None,
                 last_tick_at: Some(50 * MINUTE),
                 last_succeeded_at: Some(45 * MINUTE),
+                requested: None,
             }),
             last_run: None,
             failures_in_a_row: 0,
