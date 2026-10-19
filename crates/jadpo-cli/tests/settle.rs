@@ -60,7 +60,9 @@ fn project(name: &str, routes: Option<&str>) -> PathBuf {
     if routes.is_none() {
         let migrated = jadpo(&root, &["migrate", "new", "initial"]);
         assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
-        let updated = jadpo(&root, &["api", "update"]);
+        // The API record and the event record,
+        // `domains/shop/events/events.jadpo_record` (chunk 6.1c).
+        let updated = jadpo(&root, &["records", "update"]);
         assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
     }
     root
