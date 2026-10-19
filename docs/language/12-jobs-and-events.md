@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup; the purge schedule and schedule tests come in chunk 6.2c. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -63,7 +63,8 @@ schedule chore_census {
 - A failed run is logged and shown to the operator; the next tick is the
   retry. Schedules have no retry settings.
 - Entities with `purge:` in their lifecycle (area 5) get a built-in hourly
-  purge schedule from the compiler; nothing is written for it.
+  purge schedule from the compiler, `Member.purge` for `Member`; nothing is
+  written for it (built in chunk 6.2c).
 
 ## Batch work keeps its progress
 
@@ -1120,6 +1121,72 @@ error: `tidy_up` has no database named to keep its state in
 check failed: 1 error, 4 files
 ```
 
+An entity's built-in purge schedule keeps its state in the same store, so
+with several databases a lifecycle that purges needs `schedules: { store: }`
+too:
+
+```jadpo check project=e-purge-schedule-store file=app.jadpo hidden
+application {
+    connections: {
+        archive: {
+            driver: Driver.postgres
+            url: config.archive_url
+        }
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+}
+```
+
+```jadpo check project=e-purge-schedule-store file=config.jadpo hidden
+config {
+    archive_url: PostgresUrl
+    main_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-purge-schedule-store file=domains/planning/entities/todo.jadpo expect=schedule.store_required
+/// Something to do.
+entity Todo {
+    id: Uuid
+    deleted_at: Instant?
+
+    store: main
+
+    lifecycle: {
+        visible: deleted_at == none
+        transitions: {
+            delete: {
+                when: deleted_at == none
+                set: {
+                    deleted_at: clock.now
+                }
+            }
+        }
+        purge: {
+            after: 30d
+            since: deleted_at
+        }
+    }
+}
+```
+
+```text output
+error: `Todo`'s purge has no database named to keep its state in
+ --> domains/planning/entities/todo.jadpo:18:9
+   |
+18 |         purge: {
+   |         ^^^^^ a schedule with no store for its state
+  reason: Purge runs as a built-in schedule every hour, and each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has `archive` and `main`, and `app.jadpo` names none with `schedules: { store: }`.
+  next: Add `schedules: { store: main }` to `application { }` in `app.jadpo` (human)
+  rule: schedule.store_required
+  help: docs/language/12-jobs-and-events.html#schedule-store-required
+
+check failed: 1 error, 3 files
+```
+
 ### `subscriber.argument_invalid`
 
 A subscriber passes its event or the event's fields:
@@ -1710,8 +1777,9 @@ chunk 6.2: schedules, their state and leases, the native minute tick,
 every run and skipped tick recorded, and the tick's sweeps, with the
 errors that name `schedule.`; "Chosen in chunk 6.2" below. Built in
 chunk 6.1c: each domain's event record and what a subscriber stores
-from its event; "Chosen in chunk 6.1c" below. The built-in purge
-schedule and schedule tests come in chunk 6.2c;
+from its event; "Chosen in chunk 6.1c" below. Built in chunk 6.2c: each
+entity's built-in purge schedule, on the tick and in `jadpo schedules`,
+and a test's `schedule.run()`; "Chosen in chunk 6.2c" below;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
@@ -2023,6 +2091,46 @@ most conservative reading:
   an alert included, as other listing commands do; `--json` carries the
   alerts for a health check. A run by `run` that fails exits 1 with
   `schedules.run_failed`.
+
+### Chosen in chunk 6.2c
+
+What the pages leave to the build about the built-in purge schedule, each
+the most conservative reading; schedule tests' choices are in area 13's
+"Chosen in chunk 6.2c":
+
+- **One schedule per entity.** Each entity whose lifecycle has `purge:`,
+  and a store, gets its own schedule, as the decision table says ("a
+  built-in hourly schedule per entity"): named `Member.purge`, after the
+  entity and its operation as `Member.delete` is, and keyed by the
+  entity's born name (`schedule Member.purge`), so a rename keeps its
+  state and run records. Its `.jadpo` place, which `jadpo why` gives, is
+  the lifecycle's `purge:`. It runs every hour on the same grid as any
+  schedule, its first run one hour after the first tick that sees it.
+- **Recorded and watched like any schedule.** Its state row, lease and
+  run records are 6.2's (`jadpo_schedules`, `jadpo_schedule_runs`), in
+  `schedules: { store: }` or the only database; so the two tables are in
+  the migration snapshot when an entity purges, as when a schedule is
+  declared. With several databases and none named, the lifecycle's
+  `purge:` is `schedule.store_required`, suggesting the entity's own
+  store, and `migration.out_of_date` waits until it is named, since the
+  schema has nowhere to put the tables. `jadpo schedules` lists it,
+  `history`, `pause`, `resume`, `run` and `jadpo why` take its name, and
+  `jadpo dev` prints each run; the alerts and metrics read its records.
+- **A run.** The runtime's purge entry point (area 5) at the tick's time,
+  outside every action and policy, at most `PURGE_BATCHES` (20) batches
+  of 500, stopped at the 15-minute limit of a run; what it leaves the
+  next hour's run carries on. The period is its `after:`, or the value
+  the application started with for the setting it reads (the executor's
+  `purge`). It emits nothing. A store that can't be reached is a failed
+  run with `unavailable`, as for an action; anything else the store
+  refuses is `internal_fault`, the batches before it staying deleted.
+- **What it deleted.** Run records gain an `items` column, the items a
+  run processed, which only a purge counts for now: the records it
+  deleted. The screens show a purge's run as `2 records purged` where an
+  action's shows its events, and `jadpo dev`'s `--json` line carries
+  `items` and `batches`, how many each batch deleted (area 5: "each run
+  reports how many records each batch deleted, which the schedule logs").
+  Metrics of items per run still wait for batches' runs to count theirs.
 
 ### Chosen in chunk 6.4
 

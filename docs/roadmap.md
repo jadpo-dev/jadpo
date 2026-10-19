@@ -643,10 +643,23 @@ chunks below, taken before Phase 6.
   in area 12's "Chosen in chunk 6.2b"; flagged there: `run` runs in the
   command's own process. Sending metrics and alerts on waits for
   telemetry (area 16).
-- [ ] **6.2c The purge schedule and schedule tests** `opus · high`, after
+- [x] **6.2c The purge schedule and schedule tests** `opus · high`, after
   6.2b: area 5's built-in hourly purge schedule on the tick, recorded and
   watched like any schedule; and area 13's schedule tests
-  (`schedule.run()` at the test's clock, `--kind schedule`).
+  (`schedule.run()` at the test's clock, `--kind schedule`). Built: an
+  hourly `Member.purge` schedule for each entity that purges, keyed by its
+  born name, its tables in the migration snapshot (`schedule.store_required`
+  at `purge:` with several databases and none named), run on the tick and
+  by `jadpo schedules run` through the executor's `purge`, its run records
+  counting the records deleted (`items`), listed, explained and printed by
+  `jadpo schedules`, `jadpo why` and `jadpo dev`; `schedule.run()` in a
+  test, the action called as the system with no tenant at the test's
+  clock, giving nothing and failing as its action does, elsewhere
+  `semantic.not_callable`; a test that runs one is a schedule test, and
+  `--kind schedule` runs only those; example 10's tenth migration; live
+  tests of the tick, the screens and `jadpo test --kind schedule`. Choices
+  in area 12's and area 13's "Chosen in chunk 6.2c"; flagged there: no
+  test can run an entity's purge schedule.
 - [x] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when

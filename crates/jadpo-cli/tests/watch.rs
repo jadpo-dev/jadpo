@@ -1092,7 +1092,7 @@ fn the_command_starts_a_session_or_ends_on_a_mistake() {
         Some(Session::Watch(args)) => assert!(args.json),
         other => panic!("expected a watch session, got {other:?}"),
     }
-    // A path that doesn't exist, or a kind not built, ends it at once.
+    // A path that doesn't exist ends it at once.
     let missing = jadpo(&root, &["test", "elsewhere.test.jadpo", "--watch"]);
     assert_eq!((missing.code, missing.session.is_none()), (2, true));
     assert!(
@@ -1102,8 +1102,6 @@ fn the_command_starts_a_session_or_ends_on_a_mistake() {
         "{}",
         missing.stderr
     );
-    let schedule = jadpo(&root, &["test", "--watch", "--kind", "schedule"]);
-    assert_eq!((schedule.code, schedule.session.is_none()), (1, true));
     let nowhere = jadpo(&folder("command-nowhere"), &["test", "--watch"]);
     assert_eq!((nowhere.code, nowhere.session.is_none()), (1, true));
     assert!(nowhere.stdout.starts_with("error: No Jadpo project here\n"));

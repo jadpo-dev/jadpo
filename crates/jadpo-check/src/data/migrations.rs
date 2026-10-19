@@ -1059,10 +1059,16 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         .entities
         .iter()
         .any(|entity| entity.fields.iter().any(|field| field.ty.has_error()));
-    if unknown_type || !super::data_clean(db, project) {
+    // Schedules' tables have nowhere to go while no store is named for
+    // them (`schedule.store_required`, chunk 6.2c).
+    let schedules_placed = !*crate::schedules::declares_schedules(db, project)
+        || crate::schedules::schedules_settings(db, project)
+            .store
+            .is_some();
+    if unknown_type || !super::data_clean(db, project) || !schedules_placed {
         // The schema is partial until the entities and the queries, which
-        // ask for indexes, check, and while a field's type names nothing:
-        // their own errors come first.
+        // ask for indexes, check, while a field's type names nothing, and
+        // while the schedules have no store: their own errors come first.
         return out;
     }
     let source = super::schema(db, project);

@@ -45,7 +45,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::Poll;
 
-use jadpo_std::schedule::{SchedulePlan, SchedulesPlan};
+use jadpo_std::schedule::{SchedulePlan, ScheduleRun, SchedulesPlan};
 
 use crate::ctx::System;
 use crate::outbox::{failure_json, micros};
@@ -125,12 +125,14 @@ pub const SKIP: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3 WHER
 pub const RELEASE: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = NULL, \"run_id\" = NULL, \"last_succeeded_at\" = COALESCE($3, \"last_succeeded_at\") WHERE \"schedule\" = $1 AND \"run_id\" = $2 RETURNING \"schedule\"";
 
 /// A run record: its id, schedule, due, start and end, outcome, the reason
-/// a tick skipped it, its failure, its events and its trace.
+/// a tick skipped it, its failure, its events and its trace; the items it
+/// counts come when it ends.
 pub const RECORD: &str = "INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_slot\", \"started_at\", \"ended_at\", \"outcome\", \"reason\", \"failure\", \"events\", \"traceparent\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
 
-/// How run `$1` ended at `$2`: its outcome `$3`, failure `$4` and events
-/// `$5`, while it is still recorded as running.
-pub const ENDED: &str = "UPDATE \"jadpo_schedule_runs\" SET \"ended_at\" = $2, \"outcome\" = $3, \"failure\" = $4, \"events\" = $5 WHERE \"id\" = $1 AND \"outcome\" = 'running' RETURNING \"id\"";
+/// How run `$1` ended at `$2`: its outcome `$3`, failure `$4`, events
+/// `$5` and the items it processed `$6` (a purge's deleted records), while
+/// it is still recorded as running.
+pub const ENDED: &str = "UPDATE \"jadpo_schedule_runs\" SET \"ended_at\" = $2, \"outcome\" = $3, \"failure\" = $4, \"events\" = $5, \"items\" = $6 WHERE \"id\" = $1 AND \"outcome\" = 'running' RETURNING \"id\"";
 
 /// Expired idempotency keys (area 7, "Expired idempotency keys"): a batch
 /// of those past their `kept_until` at `$1`, at most `$2`.
@@ -190,6 +192,12 @@ pub struct Due {
     pub ended: i64,
     /// The run's `traceparent`; none for a skipped tick.
     pub trace: Option<String>,
+    /// The items a run that counts them processed: the records a purge
+    /// deleted (area 5; chunk 6.2c). None for an action's run.
+    pub items: Option<u64>,
+    /// How many records each of a purge's batches deleted, in order, which
+    /// its log line carries (area 5); empty for any other run.
+    pub batches: Vec<u64>,
 }
 
 impl Due {
@@ -465,6 +473,8 @@ async fn take(
                 started: now,
                 ended: now,
                 trace: None,
+                items: None,
+                batches: Vec::new(),
             },
             Vec::new(),
         ));
@@ -493,6 +503,25 @@ async fn take(
         reason: None,
     };
     Some(run_claimed(executor, host, database, schedule, claimed, ctx, now).await)
+}
+
+/// Who ran `ctx` before [`test_run`] made it the system, to put back.
+#[derive(Debug)]
+pub struct TestRun((Option<crate::Caller>, Option<System>, bool));
+
+/// Makes `ctx` the system with no tenant, as a schedule's run is, for a
+/// test's `schedule.run()` (area 13, "Kinds of test"; chunk 6.2c): the
+/// test's clock stays as it is, fixed for the run. Only a test's executor
+/// calls this; [`test_run_ended`] puts back who ran `ctx` before.
+pub fn test_run(ctx: &mut Ctx<'_>) -> TestRun {
+    let saved = ctx.runner();
+    ctx.become_system(System { tenant: None });
+    TestRun(saved)
+}
+
+/// Ends a test's run of a schedule: whoever ran `ctx` before runs it again.
+pub fn test_run_ended(ctx: &mut Ctx<'_>, saved: TestRun) {
+    ctx.restore_runner(saved.0);
 }
 
 /// A run whose lease has been taken: its id, the due time it runs for, the
@@ -538,6 +567,7 @@ pub(crate) async fn run_claimed(
                     SqlValue::Text(FAILED.into()),
                     failure_json("lease_expired", None),
                     SqlValue::Null(SqlType::Int4),
+                    SqlValue::Null(SqlType::Int4),
                 ],
             )
             .await;
@@ -564,37 +594,11 @@ pub(crate) async fn run_claimed(
         )
         .await;
     ctx.set_trace(Some(trace));
-    // Work that never waits gives the thread back as it checks this.
-    ctx.set_deadline(Some(RUN_LIMIT_MS));
-    let job = Job {
-        callable: schedule.callable,
-        args: Vec::new(),
-        system: System { tenant: None },
-    };
-    let limit = host.sleep(RUN_LIMIT_MS);
-    let outcome = match race(runner::as_system(executor, &mut ctx, job), limit).await {
-        First::Left(outcome) if !ctx.out_of_time() => outcome,
-        First::Left(_) | First::Right(()) => {
-            ctx.abandon();
-            Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY))
+    let (ran, purged) = match &schedule.run {
+        ScheduleRun::Action(callable) => {
+            (run_action(executor, host, &mut ctx, *callable).await, None)
         }
-    };
-    let ran = match &outcome {
-        Outcome::Value(_) => Ran::Succeeded {
-            events: ctx.emitted,
-        },
-        Outcome::Failed(failure) => Ran::Failed {
-            code: failure.code.clone(),
-            kind: failure.kind.clone(),
-        },
-        Outcome::Fault(fault) => Ran::Failed {
-            code: fault.kind.classification().to_string(),
-            kind: None,
-        },
-        Outcome::Assertion(_) => Ran::Failed {
-            code: "internal_fault".to_string(),
-            kind: None,
-        },
+        ScheduleRun::Purge(entity) => run_purge(executor, host, entity, now).await,
     };
     // Measured on the monotonic clock from the run's own time, so the
     // record's duration is how long it took whatever the wall clock did;
@@ -605,6 +609,7 @@ pub(crate) async fn run_claimed(
         }
         _ => host.now_ms().unwrap_or(now).max(now),
     };
+    let items = purged.as_ref().map(crate::purge::Purged::removed);
     let (status, failure, events) = match &ran {
         Ran::Succeeded { events } => (
             SUCCEEDED,
@@ -627,6 +632,9 @@ pub(crate) async fn run_claimed(
                 SqlValue::Text(status.into()),
                 failure,
                 events,
+                items.map_or(SqlValue::Null(SqlType::Int4), |items| {
+                    SqlValue::Int4(i32::try_from(items).unwrap_or(i32::MAX))
+                }),
             ],
         )
         .await;
@@ -645,9 +653,83 @@ pub(crate) async fn run_claimed(
             started: now,
             ended: ended_at,
             trace: Some(trace.header()),
+            items,
+            batches: purged.map(|purged| purged.batches).unwrap_or_default(),
         },
         ctx.take_deferred(),
     )
+}
+
+/// A schedule's action, called with nothing as the system with no tenant
+/// in `ctx`, stopped at the limit of a run: how it went.
+async fn run_action(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    ctx: &mut Ctx<'_>,
+    callable: u32,
+) -> Ran {
+    // Work that never waits gives the thread back as it checks this.
+    ctx.set_deadline(Some(RUN_LIMIT_MS));
+    let job = Job {
+        callable,
+        args: Vec::new(),
+        system: System { tenant: None },
+    };
+    let limit = host.sleep(RUN_LIMIT_MS);
+    let outcome = match race(runner::as_system(executor, ctx, job), limit).await {
+        First::Left(outcome) if !ctx.out_of_time() => outcome,
+        First::Left(_) | First::Right(()) => {
+            ctx.abandon();
+            Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY))
+        }
+    };
+    match &outcome {
+        Outcome::Value(_) => Ran::Succeeded {
+            events: ctx.emitted,
+        },
+        Outcome::Failed(failure) => Ran::Failed {
+            code: failure.code.clone(),
+            kind: failure.kind.clone(),
+        },
+        Outcome::Fault(fault) => Ran::Failed {
+            code: fault.kind.classification().to_string(),
+            kind: None,
+        },
+        Outcome::Assertion(_) => Ran::Failed {
+            code: "internal_fault".to_string(),
+            kind: None,
+        },
+    }
+}
+
+/// The built-in purge of `entity` at `now` (area 5, "Lifecycle"; chunk
+/// 6.2c): the compiler's own operation, outside every action and policy,
+/// [`crate::PURGE_BATCHES`] batches at most, stopped at the limit of a
+/// run. How it went and what it deleted. A store that can't be reached is
+/// `unavailable`, as for an action; anything else the store refuses is an
+/// `internal_fault`, the batches before it staying deleted.
+async fn run_purge(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    entity: &str,
+    now: i64,
+) -> (Ran, Option<crate::purge::Purged>) {
+    let failed = |code: &str, kind: Option<&str>| Ran::Failed {
+        code: code.to_string(),
+        kind: kind.map(str::to_string),
+    };
+    let Some((plan, after)) = executor.purge(entity) else {
+        return (failed("internal_fault", None), None);
+    };
+    let run = crate::purge::purge_after(host, plan, now, crate::PURGE_BATCHES, after.unwrap_or(0));
+    match race(run, host.sleep(RUN_LIMIT_MS)).await {
+        First::Left(Ok(purged)) => (Ran::Succeeded { events: 0 }, Some(purged)),
+        First::Left(Err(StoreError::Unavailable)) => {
+            (failed("unavailable", Some("unavailable")), None)
+        }
+        First::Left(Err(_)) => (failed("internal_fault", None), None),
+        First::Right(()) => (failed("deadline_exceeded", None), None),
+    }
 }
 
 /// Runs delete `sql` in `store` with cut-off `before`, batch after batch
@@ -720,7 +802,7 @@ mod tests {
                     key: format!("schedule s{every_ms}"),
                     name: "s".into(),
                     every_ms,
-                    callable: 0,
+                    run: ScheduleRun::Action(0),
                     file: String::new(),
                     line: 1,
                 })

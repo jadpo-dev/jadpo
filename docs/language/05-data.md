@@ -339,8 +339,8 @@ below):
   stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
-  purge schedule will call it (chunk 6.2c); until then nothing runs it on a
-  timer. Each run reports how many records each batch deleted, which the
+  purge schedule calls it (chunk 6.2c, "Chosen in chunk 6.2c" in area 12).
+  Each run reports how many records each batch deleted, which the
   schedule logs.
 
 ## Indexes
@@ -2812,8 +2812,6 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   comes with the first feature that can run without one.
 - Seeds and `jadpo seed` are not built. An entity's `policy:` and
   `membership:` are area 9's, built in chunk 4.4.
-- A lifecycle's `purge: { after: config.<setting> }` waits for configuration
-  (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2c).
 - `jadpo rename`, which writes the identity registry (area 18), comes with
   area 14's tooling; until then a field renamed by hand reads as one
   removed and one added.

@@ -88,7 +88,7 @@ fn a_schedule_reads_into_how_often_it_runs_and_the_action_it_runs() {
     };
     assert_eq!(found.name, "tidy_up");
     assert_eq!(found.every_ms, 15 * 60 * 1000);
-    assert_eq!(found.run.name(), "tidy");
+    assert_eq!(found.run.action().map(|key| key.name()), Some("tidy"));
     assert_eq!(found.path, PATH);
     // Its state goes in the only database, beside the entities.
     assert_eq!(

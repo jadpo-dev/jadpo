@@ -92,6 +92,9 @@ pub(crate) enum Target {
     /// `batches.each`, by the number its site decodes, or with `None`
     /// `batches.status` and `batches.cancel` (area 12, chunk 6.4).
     Batch(jadpo_std::batch::BatchOp, Option<u32>),
+    /// A test's run of a schedule, by the callable number of the action it
+    /// runs (area 13; chunk 6.2c).
+    Schedule(u32),
 }
 
 /// Where a run of the machine stopped.
@@ -998,7 +1001,8 @@ impl<'p> Machine<'p> {
                     | Target::Write(_)
                     | Target::Request { .. }
                     | Target::Session(_)
-                    | Target::Batch(..) => {
+                    | Target::Batch(..)
+                    | Target::Schedule(_) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -1997,6 +2001,18 @@ impl<'p> Machine<'p> {
                 self.tasks.push(Task::RenderPrompt(id));
                 self.tasks.push(Task::Expr(*arg));
             }
+            // A schedule run once by a test (area 13).
+            Callee::Schedule { .. } => {
+                let Some(Decoded::Callable(Some(target))) = self.decoded(id) else {
+                    return Err(self.defect(ctx, "a schedule run with no action", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Schedule(*target),
+                    count: 0,
+                    at: id,
+                    then: None,
+                });
+            }
             // A test's clock moved on (area 13).
             Callee::AdvanceClock => {
                 let [Some(arg)] = args else {
@@ -2052,6 +2068,20 @@ impl<'p> Machine<'p> {
                     then: Some(then),
                 });
                 self.arguments(args, subject);
+            }
+            Some(Node::Expr(Expr::Call {
+                callee: Callee::Schedule { .. },
+                ..
+            })) => {
+                let Some(Decoded::Callable(Some(target))) = self.decoded(subject) else {
+                    return Err(self.defect(ctx, "a schedule run with no action", subject));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Schedule(*target),
+                    count: 0,
+                    at: subject,
+                    then: Some(then),
+                });
             }
             Some(Node::Expr(Expr::Call {
                 callee: Callee::Query(_) | Callee::Entity { .. },

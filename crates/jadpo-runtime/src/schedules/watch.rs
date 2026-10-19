@@ -26,8 +26,9 @@ use crate::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValu
 pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
 
 /// What a run record is read as: its id, schedule, due, start and end,
-/// outcome, reason, failure code and kind, events and trace.
-const RUN_COLUMNS: &str = "\"id\", \"schedule\", \"due_slot\", \"started_at\", \"ended_at\", \"outcome\", \"reason\", \"failure\" ->> 'code', \"failure\" ->> 'kind', \"events\", \"traceparent\"";
+/// outcome, reason, failure code and kind, events, trace and the items it
+/// counted.
+const RUN_COLUMNS: &str = "\"id\", \"schedule\", \"due_slot\", \"started_at\", \"ended_at\", \"outcome\", \"reason\", \"failure\" ->> 'code', \"failure\" ->> 'kind', \"events\", \"traceparent\", \"items\"";
 
 /// The latest run of each of schedules `$1` that wasn't a skipped tick.
 pub fn latest_runs_sql() -> String {
@@ -125,6 +126,9 @@ pub struct RunRecord {
     pub kind: Option<String>,
     pub events: Option<i32>,
     pub trace: Option<String>,
+    /// The items it processed, for a run that counts them: the records a
+    /// purge deleted (chunk 6.2c).
+    pub items: Option<i64>,
 }
 
 impl RunRecord {
@@ -456,6 +460,7 @@ fn read_run(row: &[SqlValue]) -> Option<RunRecord> {
         kind: text(row.get(8)),
         events: int(row.get(9)).and_then(|n| i32::try_from(n).ok()),
         trace: text(row.get(10)),
+        items: int(row.get(11)),
     })
 }
 
@@ -800,6 +805,7 @@ mod tests {
             kind: None,
             events: None,
             trace: None,
+            items: None,
         };
         one.last_run = Some(run);
         let state = one.state.as_mut().unwrap();

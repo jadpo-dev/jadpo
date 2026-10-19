@@ -851,6 +851,15 @@ impl Lower<'_> {
             Reach::Session(op) => Callee::Session(*op),
             Reach::Batch(op) => Callee::Batch(*op),
             Reach::AdvanceClock => Callee::AdvanceClock,
+            Reach::Schedule {
+                schedule,
+                action: Some(action),
+                ..
+            } => Callee::Schedule {
+                schedule: schedule.clone(),
+                action: action.clone(),
+            },
+            Reach::Schedule { action: None, .. } => Callee::Unknown,
             Reach::Translation { key, .. } => Callee::Translation(key.clone()),
             Reach::Prompt(key) => Callee::Prompt(key.clone()),
             Reach::Unknown => Callee::Unknown,
@@ -1033,6 +1042,10 @@ impl Lower<'_> {
             | Reach::AdvanceClock
             | Reach::Translation { .. }
             | Reach::Prompt(_) => {}
+            // The schedule's name names it; `run` is its run.
+            Reach::Schedule { schedule, .. } => {
+                self.node(first.syntax(), Some(schedule.clone()), false);
+            }
             Reach::Caller(_) => {
                 self.scan(head.syntax());
             }
