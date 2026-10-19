@@ -2323,7 +2323,7 @@ type HomeRole = Enum {
     member
 }
 
-entity Person {
+entity Housemate {
     id: Uuid
     handle: Handle {
         unique: true
@@ -2337,7 +2337,7 @@ entity Person {
 
 principal {
     user: {
-        subject: Person.handle
+        subject: Housemate.handle
     }
 }
 
@@ -2355,7 +2355,7 @@ entity HomeMembership {
     household_id: Household.id {
         on_delete: OnDelete.cascade
     }
-    person_id: Person.id {
+    person_id: Housemate.id {
         on_delete: OnDelete.cascade
     }
     role: HomeRole
@@ -2438,7 +2438,7 @@ type HomeRole = Enum {
     member
 }
 
-entity Person {
+entity Housemate {
     id: Uuid
     handle: Handle {
         unique: true
@@ -2452,7 +2452,7 @@ entity Person {
 
 principal {
     user: {
-        subject: Person.handle
+        subject: Housemate.handle
     }
 }
 
@@ -2470,7 +2470,7 @@ entity HomeMembership {
     household_id: Household.id {
         on_delete: OnDelete.cascade
     }
-    person_id: Person.id {
+    person_id: Housemate.id {
         on_delete: OnDelete.cascade
     }
     role: HomeRole
@@ -2538,7 +2538,7 @@ type HomeRole = Enum {
     member
 }
 
-entity Person {
+entity Housemate {
     id: Uuid
     handle: Handle {
         unique: true
@@ -2552,7 +2552,7 @@ entity Person {
 
 principal {
     user: {
-        subject: Person.handle
+        subject: Housemate.handle
     }
 }
 
@@ -2570,7 +2570,7 @@ entity HomeMembership {
     household_id: Household.id {
         on_delete: OnDelete.cascade
     }
-    person_id: Person.id {
+    person_id: Housemate.id {
         on_delete: OnDelete.cascade
     }
     role: HomeRole
@@ -2592,7 +2592,7 @@ entity Chore {
         on_delete: OnDelete.cascade
     }
     title: Title
-    ticks: Int
+    times_done: Int
 
     policy: {
         read: [HomeRole.member, Access.system]
@@ -2622,16 +2622,16 @@ query all_chores(page: ChorePage) -> Page<Chore> {
     }
 }
 
-action tick(chore: Chore) fails ChoreNotFound -> Unit {
+action bump(chore: Chore) fails ChoreNotFound -> Unit {
     attempt Chore.update(chore.id) {
         set: {
-            ticks: Chore.ticks + 1
+            times_done: Chore.times_done + 1
         }
     }
 }
 
 action sweep_house(household_id: Household.id, page: ChorePage) -> BatchRun {
-    return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household_id)
+    return batches.each(from: all_chores(page), each: chore -> bump(chore), key: household_id)
 }
 ```
 
@@ -2639,7 +2639,7 @@ action sweep_house(household_id: Household.id, page: ChorePage) -> BatchRun {
 error: `sweep_house` starts a batch in a `Household` it never reached
  --> main.jadpo:106:82
     |
-106 |     return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household_id)
+106 |     return batches.each(from: all_chores(page), each: chore -> bump(chore), key: household_id)
     |                                                                                  ^^^^^^^^^^^^ `household_id`, whatever the caller passes
   reason: A batch's run works as the system within the `Household` its saved values of type `Household.id` name, so each must come from a `Household`, or a record of one, that `sweep_house` read or wrote under its caller's policy; one the caller passes could name a `Household` they don't belong to.
   next: Name the `Household` of a record `sweep_house` reads or writes, or read it first with `attempt Household.get(household_id)` (agent)
@@ -2664,7 +2664,7 @@ type HomeRole = Enum {
     member
 }
 
-entity Person {
+entity Housemate {
     id: Uuid
     handle: Handle {
         unique: true
@@ -2678,7 +2678,7 @@ entity Person {
 
 principal {
     user: {
-        subject: Person.handle
+        subject: Housemate.handle
     }
 }
 
@@ -2696,7 +2696,7 @@ entity HomeMembership {
     household_id: Household.id {
         on_delete: OnDelete.cascade
     }
-    person_id: Person.id {
+    person_id: Housemate.id {
         on_delete: OnDelete.cascade
     }
     role: HomeRole
@@ -2718,7 +2718,7 @@ entity Chore {
         on_delete: OnDelete.cascade
     }
     title: Title
-    ticks: Int
+    times_done: Int
 
     policy: {
         read: [HomeRole.member, Access.system]
@@ -2748,10 +2748,10 @@ query all_chores(page: ChorePage) -> Page<Chore> {
     }
 }
 
-action tick(chore: Chore) fails ChoreNotFound -> Unit {
+action bump(chore: Chore) fails ChoreNotFound -> Unit {
     attempt Chore.update(chore.id) {
         set: {
-            ticks: Chore.ticks + 1
+            times_done: Chore.times_done + 1
         }
     }
 }
@@ -2761,7 +2761,7 @@ action sweep_house(
     page: ChorePage
 ) fails HouseholdNotFound -> BatchRun {
     var household: Household = attempt Household.get(household_id)
-    return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household.id)
+    return batches.each(from: all_chores(page), each: chore -> bump(chore), key: household.id)
 }
 ```
 
