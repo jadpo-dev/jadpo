@@ -429,405 +429,81 @@ fn column(position: u32, sql_type: &str, nullable: bool) -> Column {
     }
 }
 
-/// A system table's columns and keys (area 5, "System tables"): the event
-/// outbox, the delivery records of each event to each subscriber, and the
-/// stored responses of idempotent requests, browser sessions and API
-/// tokens, and service keys. Areas 7, 8 and 12 give them their behaviour.
-pub fn system_table(name: &str) -> Table {
-    let table = format!("jadpo_{name}");
-    let mut columns = BTreeMap::new();
-    let mut primary = vec!["id".to_string()];
-    let mut unique = BTreeMap::new();
-    let mut foreign_keys = BTreeMap::new();
-    let mut indexes = BTreeMap::new();
-    let mut add = |name: &str, sql_type: &str, nullable: bool| {
-        let position = u32::try_from(columns.len()).unwrap_or(u32::MAX);
-        columns.insert(name.to_string(), column(position, sql_type, nullable));
+/// A system table as a store's schema holds it (area 5, "System
+/// tables"): its definition, made once in `jadpo-std` for the checker
+/// and the runtime alike (chunk 6.8), with its constraints and indexes
+/// named from its table and columns as an entity's are.
+pub fn system_table(system: &jadpo_std::system::SystemTable) -> Table {
+    use jadpo_graph::schema::{ForeignKey, Index, OnDelete, Unique};
+    let table = system.table;
+    let named = |columns: &[&str], suffix: &str| {
+        object_name(
+            &std::iter::once(table)
+                .chain(columns.iter().copied())
+                .collect::<Vec<_>>(),
+            suffix,
+        )
     };
-    match name {
-        "outbox" => {
-            add("id", "uuid", false);
-            // The event type's identity key, which survives a rename.
-            add("event", "text", false);
-            add("payload", "jsonb", false);
-            add("emitted_at", "timestamptz(3)", false);
-            // W3C trace context of the action that emitted it.
-            add("traceparent", "text", true);
-            // The encoding its payload was written in (area 19, "Changing
-            // a standard type's encoding"; chunk 5.9). The runtime always
-            // writes it; a migration adds it to a table that may hold rows
-            // already, so it may be `NULL`, as a passkey's may.
-            add("encoding", "smallint", true);
-            // How many events led to it from the request that set the
-            // chain off, which stops a loop at 16 (area 12, "Limits";
-            // chunk 6.1b). Added to a table that may hold rows, so it may
-            // be `NULL`, read as 0.
-            add("depth", "integer", true);
-            indexes.insert(
-                object_name(&[&table, "emitted_at"], "idx"),
-                jadpo_graph::schema::Index {
+    let strings = |columns: &[&str]| columns.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    let columns = system
+        .columns
+        .iter()
+        .enumerate()
+        .map(|(position, c)| {
+            let position = u32::try_from(position).unwrap_or(u32::MAX);
+            (c.name.to_string(), column(position, c.sql_type, c.nullable))
+        })
+        .collect();
+    let unique = system
+        .unique
+        .iter()
+        .map(|u| {
+            (
+                named(u.columns, "key"),
+                Unique {
+                    columns: strings(u.columns),
+                    rule: u.rule.to_string(),
+                },
+            )
+        })
+        .collect();
+    let foreign_keys = system
+        .foreign_keys
+        .iter()
+        .map(|f| {
+            (
+                named(f.columns, "fkey"),
+                ForeignKey {
+                    columns: strings(f.columns),
+                    table: f.table.to_string(),
+                    on_delete: OnDelete::Cascade,
+                },
+            )
+        })
+        .collect();
+    let indexes = system
+        .indexes
+        .iter()
+        .map(|i| {
+            (
+                named(i.columns, "idx"),
+                Index {
                     expression: None,
-                    columns: vec!["emitted_at".into()],
-                    reason: "system outbox".into(),
+                    columns: strings(i.columns),
+                    reason: i.reason.to_string(),
                     predicate: None,
                     collate: Vec::new(),
                     method: None,
                 },
-            );
-        }
-        "deliveries" => {
-            add("id", "uuid", false);
-            add("outbox_id", "uuid", false);
-            add("subscriber", "text", false);
-            add("status", "text", false);
-            add("attempts", "integer", false);
-            add("next_attempt_at", "timestamptz(3)", true);
-            add("last_failure", "jsonb", true);
-            // `NULL` until it is first tried (chunk 6.1b).
-            add("last_tried_at", "timestamptz(3)", true);
-            unique.insert(
-                object_name(&[&table, "outbox_id", "subscriber"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["outbox_id".into(), "subscriber".into()],
-                    rule: "system deliveries".into(),
-                },
-            );
-            foreign_keys.insert(
-                object_name(&[&table, "outbox_id"], "fkey"),
-                jadpo_graph::schema::ForeignKey {
-                    columns: vec!["outbox_id".into()],
-                    table: "jadpo_outbox".into(),
-                    on_delete: jadpo_graph::schema::OnDelete::Cascade,
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "status", "next_attempt_at"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["status".into(), "next_attempt_at".into()],
-                    reason: "system deliveries".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-        "handled_deliveries" => {
-            // A subscriber's handled record (area 12, "Outbox placement,
-            // settled"; chunk 6.1b): in the store its action writes,
-            // committed with its writes, so a repeated delivery finds it
-            // and does nothing. Keyed by the delivery's `id`, which the
-            // outbox's store holds: no reference across stores.
-            add("id", "uuid", false);
-            add("handled_at", "timestamptz(3)", false);
-        }
-        "schedules" => {
-            // Each schedule's state (area 12, "Schedules"; chunk 6.2): the
-            // interval its due times were worked out with, when it is next
-            // due, whether an operator paused it, the lease that lets one
-            // instance run it at a time and the run holding it, the last
-            // tick that reached it, and when its last successful run
-            // started, which the alerts read (chunk 6.2b). In
-            // `schedules: { store: }`.
-            add("schedule", "text", false);
-            add("every_ms", "bigint", false);
-            add("next_run_at", "timestamptz(3)", false);
-            add("paused", "boolean", false);
-            add("lease_until", "timestamptz(3)", true);
-            add("run_id", "uuid", true);
-            add("last_tick_at", "timestamptz(3)", true);
-            add("last_succeeded_at", "timestamptz(3)", true);
-            // The run an operator asked for with `jadpo schedules run`
-            // against a deployment (chunk 6.2d): the id its record will
-            // have, until the application's own tick takes it.
-            add("run_requested", "uuid", true);
-            // The alerts a tick raised that still hold, each with when it
-            // was raised (chunk 6.9), so of several instances' ticks one
-            // raises each.
-            add("alerts", "jsonb", true);
-            primary = vec!["schedule".into()];
-        }
-        "schedule_runs" => {
-            // Each run of a schedule, and each due tick it skipped and why
-            // (area 12, "Watching schedules"; chunk 6.2): when it was due,
-            // started and ended, how it ended with its failure's code and
-            // kind, never a value, how many events it emitted, its trace,
-            // and how many items it processed. Kept 30 days.
-            add("id", "uuid", false);
-            add("schedule", "text", false);
-            add("due_slot", "timestamptz(3)", false);
-            add("started_at", "timestamptz(3)", false);
-            add("ended_at", "timestamptz(3)", true);
-            add("outcome", "text", false);
-            add("reason", "text", true);
-            add("failure", "jsonb", true);
-            add("events", "integer", true);
-            add("traceparent", "text", true);
-            // The items a run processed, for a run that counts them: the
-            // records a purge deleted (area 5; chunk 6.2c).
-            add("items", "integer", true);
-            for columns in [vec!["schedule", "started_at"], vec!["started_at"]] {
-                indexes.insert(
-                    object_name(
-                        &std::iter::once(table.as_str())
-                            .chain(columns.iter().copied())
-                            .collect::<Vec<_>>(),
-                        "idx",
-                    ),
-                    jadpo_graph::schema::Index {
-                        expression: None,
-                        columns: columns.iter().map(|c| c.to_string()).collect(),
-                        reason: "system schedule runs".into(),
-                        predicate: None,
-                        collate: Vec::new(),
-                        method: None,
-                    },
-                );
-            }
-        }
-        "sessions" => {
-            // Browser sessions and API tokens (area 8): each found by its
-            // token's verifier, never the token itself, with a browser
-            // session's CSRF token's; an API token has none.
-            add("id", "uuid", false);
-            add("principal_id", "uuid", false);
-            add("verifier", "text", false);
-            add("csrf_verifier", "text", true);
-            add("started_at", "timestamptz(3)", false);
-            add("ends_at", "timestamptz(3)", false);
-            unique.insert(
-                object_name(&[&table, "verifier"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["verifier".into()],
-                    rule: "system sessions".into(),
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "principal_id"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["principal_id".into()],
-                    reason: "system sessions".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "ends_at"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["ends_at".into()],
-                    reason: "system sessions".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-        "service_keys" => {
-            // Service keys (area 8): each found by its verifier, never the
-            // key itself, with the service it signs in and when it expires.
-            add("id", "uuid", false);
-            add("principal_id", "uuid", false);
-            add("verifier", "text", false);
-            add("started_at", "timestamptz(3)", false);
-            add("ends_at", "timestamptz(3)", false);
-            unique.insert(
-                object_name(&[&table, "verifier"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["verifier".into()],
-                    rule: "system service keys".into(),
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "principal_id"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["principal_id".into()],
-                    reason: "system service keys".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-        "passkeys" => {
-            // Passkeys (area 8, "Passkeys"): each found by its credential
-            // ID, kept as the `WebAuthnCredential` it is, with its user
-            // and the user handle its device keeps. Nothing in it signs
-            // anyone in.
-            add("id", "uuid", false);
-            add("principal_id", "uuid", false);
-            add("credential_id", "bytea", false);
-            add("user_handle", "bytea", false);
-            add("credential", "jsonb", false);
-            add("registered_at", "timestamptz(3)", false);
-            // The encoding `credential` was written in (chunk 5.9); `NULL`
-            // for a passkey kept before encodings were recorded.
-            add("encoding", "smallint", true);
-            unique.insert(
-                object_name(&[&table, "credential_id"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["credential_id".into()],
-                    rule: "system passkeys".into(),
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "principal_id"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["principal_id".into()],
-                    reason: "system passkeys".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-        "passkey_challenges" => {
-            // Passkey ceremonies under way (area 8, "Passkeys"): each
-            // found by its challenge's verifier and used once, bound to
-            // the browser or session that asked, with the state
-            // `webauthn-rs` checks the answer against.
-            add("id", "uuid", false);
-            add("challenge", "text", false);
-            add("purpose", "text", false);
-            add("binding", "text", false);
-            add("principal_id", "uuid", true);
-            add("user_handle", "bytea", true);
-            add("state", "text", false);
-            add("expires_at", "timestamptz(3)", false);
-            unique.insert(
-                object_name(&[&table, "challenge"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["challenge".into()],
-                    rule: "system passkey challenges".into(),
-                },
-            );
-            unique.insert(
-                object_name(&[&table, "purpose", "binding"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["purpose".into(), "binding".into()],
-                    rule: "system passkey challenges".into(),
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "expires_at"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["expires_at".into()],
-                    reason: "system passkey challenges".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-        "batch_runs" => {
-            // Batch runs (area 12, "How a run goes"; chunk 6.4): which
-            // `batches.each` call each is and the shape it saved under,
-            // its `key:` and saved values as their types' JSON, how far
-            // it got (the cursor of the next page, or that it read them
-            // all) and its counts, its state, the lease its runner holds
-            // it by, and the depth in a chain of events it started at.
-            add("id", "uuid", false);
-            add("batch", "text", false);
-            add("shape", "text", false);
-            add("key", "text", true);
-            add("captured", "jsonb", false);
-            add("state", "text", false);
-            add("position", "text", true);
-            add("read_all", "boolean", false);
-            add("items_done", "bigint", false);
-            add("problems", "bigint", false);
-            add("failure", "text", true);
-            add("lease_until", "timestamptz(3)", true);
-            add("started_at", "timestamptz(3)", false);
-            add("stepped_at", "timestamptz(3)", false);
-            add("finished_at", "timestamptz(3)", true);
-            // How deep in a chain of events the action that started it
-            // was, which its items run at (chunk 6.6a); `NULL` in a run
-            // kept before, which counts from the start.
-            add("depth", "integer", true);
-            // The tenant the run is limited to, all zeros for none, which
-            // its `key:` is unique within (chunk 6.6c); `NULL` in a run
-            // kept before, which no later start finds.
-            add("tenant", "uuid", true);
-            unique.insert(
-                object_name(&[&table, "batch", "tenant", "key"], "key"),
-                jadpo_graph::schema::Unique {
-                    columns: vec!["batch".into(), "tenant".into(), "key".into()],
-                    rule: "system batch runs".into(),
-                },
-            );
-            indexes.insert(
-                object_name(&[&table, "state", "lease_until"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["state".into(), "lease_until".into()],
-                    reason: "system batch runs".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-        "batch_problems" => {
-            // Each item of a run that had a problem: its row, column and
-            // rule, never its value (area 12, "Problems never stop a
-            // run").
-            add("run_id", "uuid", false);
-            add("row", "bigint", false);
-            add("column", "text", false);
-            add("rule", "text", false);
-            primary = vec!["run_id".into(), "row".into()];
-            foreign_keys.insert(
-                object_name(&[&table, "run_id"], "fkey"),
-                jadpo_graph::schema::ForeignKey {
-                    columns: vec!["run_id".into()],
-                    table: jadpo_std::batch::RUNS.into(),
-                    on_delete: jadpo_graph::schema::OnDelete::Cascade,
-                },
-            );
-        }
-        "batch_cancels" => {
-            // The runs `batches.cancel` asked to stop: a row of its own, so
-            // asking never waits for the batch in hand, which stops the
-            // run once it commits.
-            add("run_id", "uuid", false);
-            add("requested_at", "timestamptz(3)", false);
-            primary = vec!["run_id".into()];
-        }
-        _ => {
-            // Idempotency keys: one stored response per key and caller.
-            add("scope", "text", false);
-            add("key", "text", false);
-            add("request_digest", "text", false);
-            add("status", "smallint", true);
-            add("response", "jsonb", true);
-            add("stored_at", "timestamptz(3)", false);
-            add("kept_until", "timestamptz(3)", false);
-            primary = vec!["scope".into(), "key".into()];
-            indexes.insert(
-                object_name(&[&table, "kept_until"], "idx"),
-                jadpo_graph::schema::Index {
-                    expression: None,
-                    columns: vec!["kept_until".into()],
-                    reason: "system idempotency keys".into(),
-                    predicate: None,
-                    collate: Vec::new(),
-                    method: None,
-                },
-            );
-        }
-    }
+            )
+        })
+        .collect();
     Table {
-        holds: Holds::System(name.to_string()),
+        holds: Holds::System(system.name().to_string()),
         columns,
         primary_key: Key {
-            name: object_name(&[&table], "pkey"),
-            columns: primary,
+            name: object_name(&[table], "pkey"),
+            columns: strings(system.primary_key),
         },
         unique,
         foreign_keys,

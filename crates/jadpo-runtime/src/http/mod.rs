@@ -45,7 +45,7 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
-mod passkeys;
+pub(crate) mod passkeys;
 pub mod signed;
 
 use std::cell::Cell;

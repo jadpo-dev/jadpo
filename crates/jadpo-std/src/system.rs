@@ -1,0 +1,524 @@
+//! The system tables (area 5, "System tables"; chunk 6.8): the tables the
+//! runtime keeps its own records in, prefixed `jadpo_`, defined once,
+//! here. The checker puts each in the stores that need it, so migrations
+//! create them and drift in them fails `jadpo check`; the runtime's
+//! statements read and write them, and a live test prepares every one of
+//! those statements against the schema these give.
+//!
+//! Each table is a constant, and [`ALL`] lists them: a name no table has
+//! is no table ([`by_name`]), never another one.
+
+/// A system table: its columns in order, its primary key, and its unique
+/// rules, foreign keys and indexes, each named from its table and columns
+/// as an entity's are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemTable {
+    /// Its name in the store: `jadpo_outbox`.
+    pub table: &'static str,
+    pub columns: &'static [SystemColumn],
+    pub primary_key: &'static [&'static str],
+    pub unique: &'static [SystemUnique],
+    pub foreign_keys: &'static [SystemForeignKey],
+    pub indexes: &'static [SystemIndex],
+}
+
+/// A column: its name, its PostgreSQL type and whether it may be `NULL`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemColumn {
+    pub name: &'static str,
+    pub sql_type: &'static str,
+    pub nullable: bool,
+}
+
+/// A unique rule over `columns`, with what it is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemUnique {
+    pub columns: &'static [&'static str],
+    pub rule: &'static str,
+}
+
+/// A foreign key from `columns` to `table`'s primary key: deleting the
+/// row it names deletes this one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemForeignKey {
+    pub columns: &'static [&'static str],
+    /// The table it names, with its prefix: `jadpo_outbox`.
+    pub table: &'static str,
+}
+
+/// An index of `columns`, ascending, with what it is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SystemIndex {
+    pub columns: &'static [&'static str],
+    pub reason: &'static str,
+}
+
+impl SystemTable {
+    /// Its name without the `jadpo_` prefix, as a schema says what a
+    /// system table holds: `outbox`, `batch_runs`.
+    pub fn name(&self) -> &'static str {
+        self.table.strip_prefix("jadpo_").unwrap_or(self.table)
+    }
+
+    /// Its column `name`.
+    pub fn column(&self, name: &str) -> Option<&'static SystemColumn> {
+        self.columns.iter().find(|column| column.name == name)
+    }
+}
+
+const fn column(name: &'static str, sql_type: &'static str, nullable: bool) -> SystemColumn {
+    SystemColumn {
+        name,
+        sql_type,
+        nullable,
+    }
+}
+
+/// The event outbox (area 12, "Emitting an event"): each event an action
+/// emitted, written with its writes.
+pub const OUTBOX: SystemTable = SystemTable {
+    table: "jadpo_outbox",
+    columns: &[
+        column("id", "uuid", false),
+        // The event type's identity key, which survives a rename.
+        column("event", "text", false),
+        column("payload", "jsonb", false),
+        column("emitted_at", "timestamptz(3)", false),
+        // W3C trace context of the action that emitted it.
+        column("traceparent", "text", true),
+        // The encoding its payload was written in (area 19, "Changing a
+        // standard type's encoding"; chunk 5.9), which a delivery reads
+        // it by (chunk 6.8). The runtime always writes it; a migration
+        // adds it to a table that may hold rows already, so it may be
+        // `NULL`, a payload written before, read as encoding 1.
+        column("encoding", "smallint", true),
+        // How many events led to it from the request that set the chain
+        // off, which stops a loop at 16 (area 12, "Limits"; chunk 6.1b).
+        // Added to a table that may hold rows, so it may be `NULL`, read
+        // as 0.
+        column("depth", "integer", true),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["emitted_at"],
+        reason: "system outbox",
+    }],
+};
+
+/// The delivery of each event to each subscriber (area 12, "Delivery: at
+/// least once, safe to repeat").
+pub const DELIVERIES: SystemTable = SystemTable {
+    table: "jadpo_deliveries",
+    columns: &[
+        column("id", "uuid", false),
+        column("outbox_id", "uuid", false),
+        column("subscriber", "text", false),
+        column("status", "text", false),
+        column("attempts", "integer", false),
+        column("next_attempt_at", "timestamptz(3)", true),
+        column("last_failure", "jsonb", true),
+        // `NULL` until it is first tried (chunk 6.1b).
+        column("last_tried_at", "timestamptz(3)", true),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["outbox_id", "subscriber"],
+        rule: "system deliveries",
+    }],
+    foreign_keys: &[SystemForeignKey {
+        columns: &["outbox_id"],
+        table: OUTBOX.table,
+    }],
+    indexes: &[SystemIndex {
+        columns: &["status", "next_attempt_at"],
+        reason: "system deliveries",
+    }],
+};
+
+/// A subscriber's handled record (area 12, "Outbox placement, settled";
+/// chunk 6.1b): in the store its action writes, committed with its
+/// writes, so a repeated delivery finds it and does nothing. Keyed by the
+/// delivery's `id`, which the outbox's store holds: no reference across
+/// stores.
+pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
+    table: "jadpo_handled_deliveries",
+    columns: &[
+        column("id", "uuid", false),
+        column("handled_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
+/// Idempotency keys (area 7): one stored response per key and caller.
+pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
+    table: "jadpo_idempotency_keys",
+    columns: &[
+        column("scope", "text", false),
+        column("key", "text", false),
+        column("request_digest", "text", false),
+        column("status", "smallint", true),
+        column("response", "jsonb", true),
+        column("stored_at", "timestamptz(3)", false),
+        column("kept_until", "timestamptz(3)", false),
+    ],
+    primary_key: &["scope", "key"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["kept_until"],
+        reason: "system idempotency keys",
+    }],
+};
+
+/// Each schedule's state (area 12, "Schedules"; chunk 6.2): the interval
+/// its due times were worked out with, when it is next due, whether an
+/// operator paused it, the lease that lets one instance run it at a time
+/// and the run holding it, the last tick that reached it, and when its
+/// last successful run started, which the alerts read (chunk 6.2b). In
+/// `schedules: { store: }`.
+pub const SCHEDULES: SystemTable = SystemTable {
+    table: "jadpo_schedules",
+    columns: &[
+        column("schedule", "text", false),
+        column("every_ms", "bigint", false),
+        column("next_run_at", "timestamptz(3)", false),
+        column("paused", "boolean", false),
+        column("lease_until", "timestamptz(3)", true),
+        column("run_id", "uuid", true),
+        column("last_tick_at", "timestamptz(3)", true),
+        column("last_succeeded_at", "timestamptz(3)", true),
+        // The run an operator asked for with `jadpo schedules run`
+        // against a deployment (chunk 6.2d): the id its record will have,
+        // until the application's own tick takes it.
+        column("run_requested", "uuid", true),
+        // The alerts a tick raised that still hold, each with when it was
+        // raised (chunk 6.9), so of several instances' ticks one raises
+        // each.
+        column("alerts", "jsonb", true),
+    ],
+    primary_key: &["schedule"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
+/// Each run of a schedule, and each due tick it skipped and why (area 12,
+/// "Watching schedules"; chunk 6.2): when it was due, started and ended,
+/// how it ended with its failure's code and kind, never a value, how many
+/// events it emitted, its trace, and how many items it processed. Kept 30
+/// days.
+pub const SCHEDULE_RUNS: SystemTable = SystemTable {
+    table: "jadpo_schedule_runs",
+    columns: &[
+        column("id", "uuid", false),
+        column("schedule", "text", false),
+        column("due_slot", "timestamptz(3)", false),
+        column("started_at", "timestamptz(3)", false),
+        column("ended_at", "timestamptz(3)", true),
+        column("outcome", "text", false),
+        column("reason", "text", true),
+        column("failure", "jsonb", true),
+        column("events", "integer", true),
+        column("traceparent", "text", true),
+        // The items a run processed, for a run that counts them: the
+        // records a purge deleted (area 5; chunk 6.2c).
+        column("items", "integer", true),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[
+        SystemIndex {
+            columns: &["schedule", "started_at"],
+            reason: "system schedule runs",
+        },
+        SystemIndex {
+            columns: &["started_at"],
+            reason: "system schedule runs",
+        },
+    ],
+};
+
+/// Browser sessions and API tokens (area 8): each found by its token's
+/// verifier, never the token itself, with a browser session's CSRF
+/// token's; an API token has none.
+pub const SESSIONS: SystemTable = SystemTable {
+    table: "jadpo_sessions",
+    columns: &[
+        column("id", "uuid", false),
+        column("principal_id", "uuid", false),
+        column("verifier", "text", false),
+        column("csrf_verifier", "text", true),
+        column("started_at", "timestamptz(3)", false),
+        column("ends_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["verifier"],
+        rule: "system sessions",
+    }],
+    foreign_keys: &[],
+    indexes: &[
+        SystemIndex {
+            columns: &["principal_id"],
+            reason: "system sessions",
+        },
+        SystemIndex {
+            columns: &["ends_at"],
+            reason: "system sessions",
+        },
+    ],
+};
+
+/// Service keys (area 8): each found by its verifier, never the key
+/// itself, with the service it signs in and when it expires.
+pub const SERVICE_KEYS: SystemTable = SystemTable {
+    table: "jadpo_service_keys",
+    columns: &[
+        column("id", "uuid", false),
+        column("principal_id", "uuid", false),
+        column("verifier", "text", false),
+        column("started_at", "timestamptz(3)", false),
+        column("ends_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["verifier"],
+        rule: "system service keys",
+    }],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["principal_id"],
+        reason: "system service keys",
+    }],
+};
+
+/// Passkeys (area 8, "Passkeys"): each found by its credential ID, kept
+/// as the `WebAuthnCredential` it is, with its user and the user handle
+/// its device keeps. Nothing in it signs anyone in.
+pub const PASSKEYS: SystemTable = SystemTable {
+    table: "jadpo_passkeys",
+    columns: &[
+        column("id", "uuid", false),
+        column("principal_id", "uuid", false),
+        column("credential_id", "bytea", false),
+        column("user_handle", "bytea", false),
+        column("credential", "jsonb", false),
+        column("registered_at", "timestamptz(3)", false),
+        // The encoding `credential` was written in (chunk 5.9); `NULL`
+        // for a passkey kept before encodings were recorded.
+        column("encoding", "smallint", true),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["credential_id"],
+        rule: "system passkeys",
+    }],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["principal_id"],
+        reason: "system passkeys",
+    }],
+};
+
+/// Passkey ceremonies under way (area 8, "Passkeys"): each found by its
+/// challenge's verifier and used once, bound to the browser or session
+/// that asked, with the state `webauthn-rs` checks the answer against.
+pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
+    table: "jadpo_passkey_challenges",
+    columns: &[
+        column("id", "uuid", false),
+        column("challenge", "text", false),
+        column("purpose", "text", false),
+        column("binding", "text", false),
+        column("principal_id", "uuid", true),
+        column("user_handle", "bytea", true),
+        column("state", "text", false),
+        column("expires_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[
+        SystemUnique {
+            columns: &["challenge"],
+            rule: "system passkey challenges",
+        },
+        SystemUnique {
+            columns: &["purpose", "binding"],
+            rule: "system passkey challenges",
+        },
+    ],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["expires_at"],
+        reason: "system passkey challenges",
+    }],
+};
+
+/// Batch runs (area 12, "How a run goes"; chunk 6.4): which `batches.each`
+/// call each is and the shape it saved under, its `key:` and saved values
+/// as their types' JSON, how far it got (the cursor of the next page, or
+/// that it read them all) and its counts, its state, the lease its runner
+/// holds it by, and the depth in a chain of events it started at.
+pub const BATCH_RUNS: SystemTable = SystemTable {
+    table: "jadpo_batch_runs",
+    columns: &[
+        column("id", "uuid", false),
+        column("batch", "text", false),
+        column("shape", "text", false),
+        column("key", "text", true),
+        column("captured", "jsonb", false),
+        column("state", "text", false),
+        column("position", "text", true),
+        column("read_all", "boolean", false),
+        column("items_done", "bigint", false),
+        column("problems", "bigint", false),
+        column("failure", "text", true),
+        column("lease_until", "timestamptz(3)", true),
+        column("started_at", "timestamptz(3)", false),
+        column("stepped_at", "timestamptz(3)", false),
+        column("finished_at", "timestamptz(3)", true),
+        // How deep in a chain of events the action that started it was,
+        // which its items run at (chunk 6.6a); `NULL` in a run kept
+        // before, which counts from the start.
+        column("depth", "integer", true),
+        // The tenant the run is limited to, all zeros for none, which its
+        // `key:` is unique within (chunk 6.6c); `NULL` in a run kept
+        // before, which no later start finds.
+        column("tenant", "uuid", true),
+        // The encoding its saved values and its `key:` were written in
+        // (area 19, "Changing a standard type's encoding"; chunk 6.8);
+        // `NULL` in a run kept before, whose values are encoding 1's.
+        column("encoding", "smallint", true),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["batch", "tenant", "key"],
+        rule: "system batch runs",
+    }],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["state", "lease_until"],
+        reason: "system batch runs",
+    }],
+};
+
+/// Each item of a run that had a problem: its row, column and rule, never
+/// its value (area 12, "Problems never stop a run").
+pub const BATCH_PROBLEMS: SystemTable = SystemTable {
+    table: "jadpo_batch_problems",
+    columns: &[
+        column("run_id", "uuid", false),
+        column("row", "bigint", false),
+        column("column", "text", false),
+        column("rule", "text", false),
+    ],
+    primary_key: &["run_id", "row"],
+    unique: &[],
+    foreign_keys: &[SystemForeignKey {
+        columns: &["run_id"],
+        table: BATCH_RUNS.table,
+    }],
+    indexes: &[],
+};
+
+/// The runs `batches.cancel` asked to stop: a row of its own, so asking
+/// never waits for the batch in hand, which stops the run once it
+/// commits.
+pub const BATCH_CANCELS: SystemTable = SystemTable {
+    table: "jadpo_batch_cancels",
+    columns: &[
+        column("run_id", "uuid", false),
+        column("requested_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["run_id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
+/// What must commit with an action's own writes, in every store that
+/// holds an entity, since any of them can be written: the outbox, its
+/// deliveries, handled records and idempotency keys.
+pub const IN_EVERY_STORE: [&SystemTable; 4] =
+    [&OUTBOX, &DELIVERIES, &HANDLED_DELIVERIES, &IDEMPOTENCY_KEYS];
+
+/// Schedules' state and runs, in `schedules: { store: }` (chunk 6.2).
+pub const SCHEDULE_TABLES: [&SystemTable; 2] = [&SCHEDULES, &SCHEDULE_RUNS];
+
+/// What a store some batch walks keeps (chunk 6.4).
+pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATCH_CANCELS];
+
+/// Every system table.
+pub const ALL: [&SystemTable; 13] = [
+    &OUTBOX,
+    &DELIVERIES,
+    &HANDLED_DELIVERIES,
+    &IDEMPOTENCY_KEYS,
+    &SCHEDULES,
+    &SCHEDULE_RUNS,
+    &SESSIONS,
+    &SERVICE_KEYS,
+    &PASSKEYS,
+    &PASSKEY_CHALLENGES,
+    &BATCH_RUNS,
+    &BATCH_PROBLEMS,
+    &BATCH_CANCELS,
+];
+
+/// The system table called `name`, without its prefix; `None` for a name
+/// no system table has.
+pub fn by_name(name: &str) -> Option<&'static SystemTable> {
+    ALL.into_iter().find(|table| table.name() == name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_table_is_listed_once_and_names_only_its_own_columns() {
+        let mut names: Vec<&str> = ALL.iter().map(|table| table.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), ALL.len());
+        for table in ALL {
+            assert!(table.table.starts_with("jadpo_"), "{}", table.table);
+            assert_eq!(by_name(table.name()), Some(table));
+            let mut columns: Vec<&str> = table.columns.iter().map(|c| c.name).collect();
+            columns.sort_unstable();
+            columns.dedup();
+            assert_eq!(columns.len(), table.columns.len(), "{}", table.table);
+            let named = table
+                .primary_key
+                .iter()
+                .chain(table.unique.iter().flat_map(|u| u.columns))
+                .chain(table.foreign_keys.iter().flat_map(|f| f.columns))
+                .chain(table.indexes.iter().flat_map(|i| i.columns));
+            for column in named {
+                assert!(table.column(column).is_some(), "{}.{column}", table.table);
+            }
+            for key in table.foreign_keys {
+                assert!(
+                    ALL.iter().any(|other| other.table == key.table),
+                    "{}",
+                    key.table
+                );
+            }
+        }
+        // A name no table has is none, never another table.
+        assert_eq!(by_name("idempotency"), None);
+        assert_eq!(by_name(""), None);
+        let grouped = IN_EVERY_STORE
+            .iter()
+            .chain(&SCHEDULE_TABLES)
+            .chain(&BATCH_TABLES);
+        for table in grouped {
+            assert!(ALL.contains(table), "{}", table.table);
+        }
+    }
+}

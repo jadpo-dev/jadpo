@@ -86,6 +86,7 @@ mod report;
 pub mod runner;
 pub mod schedules;
 pub mod serve;
+pub mod statements;
 mod store;
 mod write;
 
