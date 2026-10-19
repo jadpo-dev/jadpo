@@ -1203,9 +1203,9 @@ subscriber update_statistics {
   action that emitted the event: that action has already committed and
   returned.
 - A subscriber's action may emit further events.
-- A subscriber runs as the application, not as the user who caused the event
-  (question 8). If it needs to know who, the event carries a field such as
-  `by: User.id`.
+- A subscriber runs as the system (`Access.system`, area 9), not as the
+  user who caused the event (question 8). If it needs to know who, the
+  event carries a field such as `by: User.id`.
 - A subscriber holds `on:`, an event type (another domain's public one,
   imported); `run:`, a call of an action of the subscriber's own domain
   (`subscriber.run_invalid`) whose arguments are `event` or fields read
