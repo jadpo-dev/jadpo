@@ -18,8 +18,9 @@
 //! out of order is put right by `jadpo records update`, and two lines for
 //! one key are left for a person.
 //!
-//! New kinds join here: 6.1b's event shapes as a view beside the API
-//! record, 7.1's package surfaces as views and the lock as a ledger.
+//! New kinds join here: 6.1c's event records as a view beside the API
+//! record ([`crate::events::record`]), 7.1's package surfaces as views
+//! and the lock as a ledger.
 
 use std::collections::BTreeMap;
 
@@ -136,6 +137,7 @@ pub fn standings(db: &dyn Db, project: Project) -> Vec<Standing> {
         .collect();
     let mut out = Vec::new();
     views(db, project, &written, &mut out);
+    event_views(db, project, &written, &mut out);
     for (path, text) in &written {
         if let Some((kind, from)) = format::kind_of(path)
             && kind.shape == Shape::History
@@ -302,6 +304,100 @@ fn views(
             },
             problem: clean.then(|| old_name(old, now, "API records", &format::API)),
             fixes: vec![(old.to_string(), Fix::Remove)],
+        });
+    }
+}
+
+/// The event records: one per domain that declares an event, compared
+/// with what `jadpo records update` writes, and a record of a domain that
+/// declares none (chunk 6.1c).
+fn event_views(
+    db: &dyn Db,
+    project: Project,
+    written: &BTreeMap<&str, &Result<String, String>>,
+    out: &mut Vec<Standing>,
+) {
+    use crate::events::record as events;
+    let kind = &format::EVENTS;
+    let clean = events::events_clean(db, project);
+    let expected = events::record_texts(db, project);
+    for (domain, text) in expected {
+        let path = events::path(domain);
+        let fixes = vec![(path.clone(), Fix::Write(text.clone()))];
+        let standing = |state, problem: Option<Diagnostic>| Standing {
+            path: path.clone(),
+            kind: kind.word,
+            state,
+            problem,
+            fixes: if state == State::UpToDate {
+                Vec::new()
+            } else {
+                fixes.clone()
+            },
+        };
+        match written.get(path.as_str()) {
+            None => out.push(standing(
+                State::Missing,
+                Some(
+                    Diagnostic::new(&rule::RECORD_OUT_OF_DATE, format!("`{path}` is missing"))
+                        .at(file(&path), "no record")
+                        .reason(format!(
+                            "Each domain with events has a committed record of what each event carries, so every change to the events of domain `{domain}` shows as a diff of one file."
+                        ))
+                        .next("Run `jadpo records update`, and commit the record with the code"),
+                ),
+            )),
+            Some(Err(error)) => out.push(standing(
+                State::OutOfDate,
+                Some(unreadable(&path, error, kind)),
+            )),
+            Some(Ok(written)) => {
+                let (state, problem) = compare(
+                    &path,
+                    written,
+                    text,
+                    kind,
+                    &events::from(domain),
+                    |changes| {
+                        format!(
+                            "The record is a promise to whatever subscribes to the events of domain `{domain}`, and to the events already waiting in the outbox, and the events now say otherwise: {changes}."
+                        )
+                    },
+                );
+                out.push(standing(state, problem));
+            }
+        }
+    }
+    // Records of domains that declare no event, judged only once the
+    // events read cleanly.
+    for path in written.keys() {
+        let Some(domain) = events::domain_of(path) else {
+            continue;
+        };
+        if expected.contains_key(domain) {
+            continue;
+        }
+        let (state, problem) = if !clean {
+            (State::NotChecked, None)
+        } else {
+            (
+                State::OutOfDate,
+                Some(
+                    Diagnostic::new(&rule::RECORD_OUT_OF_DATE, format!("`{path}` records no events"))
+                        .at(file(path), "nothing to record")
+                        .reason(format!(
+                            "Domain `{domain}` declares no event any more, so its record promises events that are gone."
+                        ))
+                        .next("Run `jadpo records update`, which removes it"),
+                ),
+            )
+        };
+        out.push(Standing {
+            path: path.to_string(),
+            kind: kind.word,
+            state,
+            problem,
+            fixes: vec![(path.to_string(), Fix::Remove)],
         });
     }
 }
