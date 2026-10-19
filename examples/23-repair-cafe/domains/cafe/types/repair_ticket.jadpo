@@ -1,0 +1,7 @@
+use cafe/entities { Repair }
+
+/// A repair as the kiosk shows it: which bench it went to, if one has
+/// yet, and whether its ticket is printed.
+type RepairTicket = Output {
+    pick: [Repair.id, Repair.item, Repair.bench_id, Repair.ticket_printed_at]
+}

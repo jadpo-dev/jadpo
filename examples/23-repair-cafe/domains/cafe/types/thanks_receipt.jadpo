@@ -1,0 +1,6 @@
+use cafe/entities { Repair }
+
+/// What the kiosk is told when it leaves a note: which repair it was for.
+type ThanksReceipt = Output {
+    repair_id: Repair.id
+}

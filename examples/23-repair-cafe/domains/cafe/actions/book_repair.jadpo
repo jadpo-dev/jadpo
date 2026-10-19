@@ -1,0 +1,26 @@
+// `emit` is a statement, written like `reject`. The event is kept in the
+// outbox in the same transaction as the repair, and delivered only once
+// that transaction commits: if the action failed, no subscriber would
+// ever hear of a repair that was never booked. `emit` needs no
+// `attempt`, and the action can't wait for what subscribers do.
+
+use cafe/entities { Repair }
+use cafe/types { RepairRequest }
+use cafe/events { RepairBooked }
+
+/// Books a repair; finding it a bench follows in a subscriber.
+action book_repair(input: RepairRequest) -> Repair {
+    var repair: Repair = Repair.create {
+        set: {
+            item: input.item
+            symptom: input.symptom
+            bench_id: none
+            ticket_printed_at: none
+        }
+    }
+    emit RepairBooked {
+        repair_id: repair.id
+        item: repair.item
+    }
+    return repair
+}

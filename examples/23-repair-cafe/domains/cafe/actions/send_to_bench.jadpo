@@ -1,0 +1,37 @@
+// A subscriber's action is an ordinary action. This one ends in one of
+// three ways, and its subscriber's delivery follows each: it succeeds;
+// `NoFixerFree` is `unavailable`, so the delivery waits and tries again;
+// `NotSafeToMend` is `rejected`, so it fails for good at once.
+
+use cafe/entities { Repair, RepairNotFound }
+use cafe/types { RepairKind }
+use cafe/failures { NoFixerFree, NotSafeToMend }
+use cafe/queries { staffed_bench }
+use cafe/events { BenchAssigned }
+
+/// Sends a repair to the bench for its kind of thing.
+action send_to_bench(
+    repair_id: Repair.id,
+    item: RepairKind
+) fails RepairNotFound, NoFixerFree, NotSafeToMend -> Unit {
+    if (item == RepairKind.microwave) {
+        reject NotSafeToMend {}
+    }
+    var repair: Repair = attempt Repair.get(repair_id)
+    match staffed_bench(item) {
+        some(bench) -> {
+            var sent: Repair = Repair.update(repair) {
+                set: {
+                    bench_id: bench.id
+                }
+            }
+            emit BenchAssigned {
+                repair_id: sent.id
+                bench_id: bench.id
+            }
+        }
+        none -> {
+            reject NoFixerFree {}
+        }
+    }
+}

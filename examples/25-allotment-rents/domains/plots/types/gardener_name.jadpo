@@ -1,0 +1,5 @@
+/// A gardener's name, as the committee writes it.
+type GardenerName = Text {
+    min_length: 1
+    max_length: 80
+}

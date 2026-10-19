@@ -1,0 +1,14 @@
+use cafe/entities { Bench }
+use cafe/types { RepairKind }
+use cafe/actions { staff_bench }
+
+/// A Saturday morning: Priya on bikes, Tom on lamps, and nobody on
+/// toasters yet.
+fixture saturday_benches() -> Bench {
+    var bikes: Bench = attempt staff_bench(RepairKind.bike, "Priya")
+    var lamps: Bench = attempt staff_bench(RepairKind.lamp, "Tom")
+    var toasters: Bench = attempt staff_bench(RepairKind.toaster, none)
+    assert lamps.fixer == "Tom"
+    assert toasters.fixer == none
+    return bikes
+}

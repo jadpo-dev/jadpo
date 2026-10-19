@@ -1,0 +1,18 @@
+// Numbers alone don't say which comes first. A runner's watch sends its
+// position latitude first and the marshals' map app longitude first, as
+// GeoJSON does, so each is read by the operation that names its order: a
+// swapped pair is a call that reads wrong, not a value that looks right.
+// What a list holds is known only when the program runs, so both
+// conditions are always mapped.
+
+use fellrace/types { WatchReading }
+use fellrace/failures { NoFix }
+
+/// Where a runner's watch says they are, latitude first, maybe with a
+/// height.
+action runner_fix(watch_sent: List<WatchReading>) fails NoFix -> Point {
+    return attempt geo.from_lat_lng(watch_sent) {
+        malformed: NoFix  // not two numbers, or three with a height
+        out_of_range: NoFix  // past a pole, or past the antimeridian
+    }
+}

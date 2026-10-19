@@ -1,0 +1,18 @@
+// An action that only emits: it writes nothing, so its event has no
+// transaction of its own to join, and `app.jadpo`'s `events: { store: }`
+// says which outbox keeps it.
+
+use cafe/entities { Repair }
+use cafe/types { ThanksReceipt, ThanksRequest }
+use cafe/events { ThanksLeft }
+
+/// Leaves a thank-you note; pinning it up follows in a subscriber.
+action leave_thanks(repair_id: Repair.id, input: ThanksRequest) -> ThanksReceipt {
+    emit ThanksLeft {
+        repair_id: repair_id
+        note: input.note
+    }
+    return ThanksReceipt {
+        repair_id: repair_id
+    }
+}

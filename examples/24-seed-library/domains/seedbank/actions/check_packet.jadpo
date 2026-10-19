@@ -1,0 +1,23 @@
+// The action a batch calls for each item: an ordinary action, given the
+// item and what the run saved. It runs in its page's transaction; when
+// it fails, only its own writes are undone, and the run keeps a problem
+// in its place.
+
+use seedbank/entities { SeedPacket }
+use seedbank/types { Season }
+use seedbank/failures { PacketOnLoan }
+
+/// Withdraws a packet too old to sow this season.
+action check_packet(packet: SeedPacket, season: Season) fails PacketOnLoan -> Unit {
+    if (packet.on_loan) {
+        reject PacketOnLoan {}
+    }
+    if (season - packet.saved_in > 3) {
+        var withdrawn: SeedPacket = SeedPacket.update(packet) {
+            set: {
+                withdrawn: true
+            }
+        }
+        assert withdrawn.withdrawn
+    }
+}

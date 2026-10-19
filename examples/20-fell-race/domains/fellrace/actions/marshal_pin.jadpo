@@ -1,0 +1,10 @@
+use fellrace/types { WatchReading }
+use fellrace/failures { NoFix }
+
+/// Where a marshal dropped a pin in the map app, longitude first.
+action marshal_pin(app_sent: List<WatchReading>) fails NoFix -> Point {
+    return attempt geo.from_lng_lat(app_sent) {
+        malformed: NoFix
+        out_of_range: NoFix
+    }
+}

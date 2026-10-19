@@ -1,0 +1,10 @@
+// Leaving thanks reaches no entity, so no entity's grants can say who
+// may do it: the action is listed here, for anyone at the kiosk.
+
+use cafe
+
+policy {
+    actions: {
+        cafe.leave_thanks: [Access.public]
+    }
+}

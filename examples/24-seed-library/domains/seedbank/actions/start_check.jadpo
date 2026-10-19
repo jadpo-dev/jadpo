@@ -1,0 +1,35 @@
+// `batches.each` walks `from:`, a call of a named query returning a
+// `Page`, after this action commits, and calls `each:`'s action for every
+// item. It is only called in actions, gives a `BatchRun` at once, and
+// never starts if the action rolls back.
+//
+// Each page is one transaction holding its items' writes and the run's
+// position, so a crash or a deploy resumes at the next page and no packet
+// is checked twice. An item whose action fails is undone alone and kept
+// as a problem; problems never stop a run.
+//
+// `each:` and `finished:` are inline functions calling an action of this
+// domain. What they capture (`stocktake.season`, `stocktake.id`) and `key:` are
+// saved with the run, so they must be values an entity field could hold.
+// `key:` makes a repeated start give the same run, so a double click
+// checks nothing twice.
+
+use seedbank/entities { StockCheck }
+use seedbank/types { PacketPage }
+use seedbank/actions { check_packet, record_check }
+use seedbank/queries { shelf_packets }
+
+/// Starts checking every packet on the shelves.
+action start_check(stocktake: StockCheck) -> StockCheck {
+    var shelf_walk: BatchRun = batches.each(
+        from: shelf_packets(PacketPage {}),
+        each: packet -> check_packet(packet, stocktake.season),
+        finished: summary -> record_check(summary, stocktake.id),
+        key: stocktake.id
+    )
+    return StockCheck.update(stocktake) {
+        set: {
+            shelf_walk: shelf_walk
+        }
+    }
+}

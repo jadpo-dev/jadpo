@@ -1,0 +1,21 @@
+use plots/entities { Society }
+use plots/types { HolderName, OfficerRole, Pence, PlotNumber, RentDueDate }
+
+/// A plot on a society's site.
+entity Plot {
+    id: Uuid
+    society_id: Society.id {
+        on_delete: OnDelete.cascade
+    }
+    number: PlotNumber
+    plot_holder: HolderName?
+    rent: Pence
+    rent_due_on: RentDueDate?
+    reminded_on: CalendarDate?
+
+    policy: {
+        create: [OfficerRole.secretary]
+        read: [OfficerRole.secretary, OfficerRole.treasurer, Access.system]
+        update: [OfficerRole.secretary, Access.system]
+    }
+}

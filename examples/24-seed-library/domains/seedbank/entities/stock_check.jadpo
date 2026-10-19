@@ -1,0 +1,16 @@
+use seedbank/types { Season }
+
+/// One spring's check of every packet on the shelves.
+entity StockCheck {
+    id: Uuid
+    season: Season
+    shelf_walk: BatchRun?
+    packets_checked: Int?
+    packets_on_loan: Int?
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}

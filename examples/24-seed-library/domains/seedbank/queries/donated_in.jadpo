@@ -1,0 +1,14 @@
+// A standard operation can stand where a field does in `where:` when it
+// has an exact SQL form: the database works out `temporal.year` exactly as
+// code does, and the migration adds an index on that expression.
+
+use seedbank/entities { SeedPacket }
+use seedbank/types { PacketLabel, Season }
+
+/// The packets members gave in one season, for the thank-you board.
+query donated_in(season: Season) -> List<PacketLabel> {
+    from: SeedPacket
+    where: temporal.year(SeedPacket.donated_on) == season
+    order: [SeedPacket.donated_on asc, SeedPacket.id asc]
+    limit: 200
+}

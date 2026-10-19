@@ -1,0 +1,5 @@
+/// What a packet grows: "Crimson Flowered broad bean".
+type VarietyName = Text {
+    min_length: 1
+    max_length: 80
+}

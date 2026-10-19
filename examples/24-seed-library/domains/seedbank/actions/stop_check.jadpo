@@ -1,0 +1,8 @@
+// `batches.cancel` asks a run to stop. It never waits for the page in
+// hand: the run finds the request when that page commits, and ends
+// `cancelled` without running `finished:`. Until then it is `running`.
+
+/// Stops a stock check after the page in hand.
+action stop_check(shelf_walk: BatchRun) -> Unit {
+    batches.cancel(shelf_walk)
+}

@@ -1,0 +1,5 @@
+/// The year a rent round charges for.
+type RoundYear = Int {
+    min: 2000
+    max: 2200
+}

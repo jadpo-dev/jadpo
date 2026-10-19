@@ -1,0 +1,9 @@
+use plots/entities { Gardener }
+
+application {}
+
+principal {
+    user: {
+        subject: Gardener.email
+    }
+}

@@ -1,0 +1,9 @@
+/// Where a walk over a society's plots has got to.
+type PlotPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

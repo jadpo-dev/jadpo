@@ -1,0 +1,5 @@
+/// A volunteer fixer's first name, as the bench sign shows it.
+type FixerName = Text {
+    min_length: 1
+    max_length: 40
+}

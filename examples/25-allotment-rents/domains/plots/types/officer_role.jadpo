@@ -1,0 +1,5 @@
+/// What a gardener does for their society's committee.
+type OfficerRole = Enum {
+    secretary
+    treasurer
+}
