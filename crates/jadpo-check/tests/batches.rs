@@ -700,7 +700,7 @@ fn a_reference_to_the_tenant_names_a_runs_tenant() {
     let registry = jadpo_check::graph::registry(&db, project);
     let field = |entity: &str, name: &str| {
         jadpo_graph::TypeRef::Field(jadpo_check::graph::entity_field_key(
-            &registry,
+            registry,
             entity,
             &[name.to_string()],
         ))

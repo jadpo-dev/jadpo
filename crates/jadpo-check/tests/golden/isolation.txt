@@ -78,6 +78,7 @@
   action invoice_plot                repeatable_read: is handed a record in `plot`
   action invoice_round               repeatable_read: is handed a record in `rent_round`
   action open_rent_round             read_committed
+  action record_round                read_committed
   action remind_holder               read_committed
   action round_progress              read_committed
   fixture two_societies              read_committed
