@@ -693,16 +693,17 @@ chunks below, taken before Phase 7, in this order.
   (median 100 s), 89 and 96 s after, on a machine shared with two other
   gates; cold 219 s before, 316 s after under heavier load; CI's gate
   step a median of 280 s before, 219 s in this branch's one run.
-- [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
-  chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
-  onwards) folded into the text they amend, as 5.10 did, and the code
-  comments and roadmap lines naming them repointed; and the review's
-  list settled against the code: `compiler-runtime.md`'s stale runner
-  and host names, the Decisions rows on schedules and batches made to
-  match the code, "no tenant" given one meaning per kind of background
-  work, and every promise nothing builds (ended sessions deleted on the
-  tick, `jadpo deliveries`, the outbox's circuit breaker, delivery after
-  each commit in tests, deleting handled records) given a roadmap line.
+- [x] **5.12b Fold Phase 6's notes** `opus · high`. Built: every
+  "Chosen in chunk" note from 6.1a to 6.9 folded into the text it
+  amends, with the comments, examples and help link naming them
+  repointed; `compiler-runtime.md`'s stale trait, host and tick names
+  settled against the code; the older Decisions rows on schedules and
+  batches pointed at the 2026-10-19 rows that settled them; "no tenant"
+  given one meaning per kind of background work (area 12, "Background
+  work and tenants"); and 6.10, 6.11, 6.12, 5.13b and 7.2b for what
+  nothing builds. Areas 7 (2,852 to 2,830 lines), 9 (4,250 to 4,278),
+  12 (3,515 to 3,257) and 13 (1,980 to 1,970), `compiler-runtime.md`
+  (2,382 to 2,388) and this roadmap (1,088 to 986).
 - [ ] **6.10 The tick's remaining deletes** `opus · high` (areas 8 and
   12, "The tick"): ended browser sessions, API tokens and expired keys
   deleted on the tick, as a lookup already ignores them; and a
