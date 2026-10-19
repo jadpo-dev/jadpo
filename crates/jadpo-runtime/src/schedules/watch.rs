@@ -9,12 +9,16 @@
 //!   interval; ticks stopped arriving; a run past 80% of the 15-minute
 //!   limit; three failures in a row; a lease held past its expiry. Each
 //!   is a condition worked out from the rows at a given time, so any
-//!   reader (a command, the tick, `jadpo dev`) sees the same ones;
-//!   [`Raised`] tells a host which ones have just started, to report once.
+//!   reader (a command, the tick, `jadpo dev`) sees the same ones. The
+//!   tick raises each once ([`raise`]; chunk 6.9): which hold, and since
+//!   when, is kept on the schedule's state row (`alerts`), changed by one
+//!   instance's tick only, so several processes, or several Workers
+//!   invocations, raise an alert once between its starting to hold and
+//!   its stopping.
 //! - **The metrics**: each run's lateness and duration ([`super::Due`]),
 //!   and per schedule over the records kept ([`Metrics`]).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use jadpo_std::schedule::SchedulePlan;
 
@@ -25,7 +29,7 @@ use crate::runner::{self, RUN_LIMIT_MS};
 use crate::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, StoreError};
 
 /// Every schedule's state row.
-pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\", \"run_requested\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
+pub const STATES: &str = "SELECT \"schedule\", \"every_ms\", \"next_run_at\", \"paused\", \"lease_until\", \"run_id\", \"last_tick_at\", \"last_succeeded_at\", \"run_requested\", \"alerts\" FROM \"jadpo_schedules\" ORDER BY \"schedule\"";
 
 /// What a run record is read as: its id, schedule, due, start and end,
 /// outcome, reason, failure code and kind, events, trace and the items it
@@ -80,6 +84,11 @@ pub const REQUEST: &str = "UPDATE \"jadpo_schedules\" SET \"run_requested\" = CO
 /// taken it.
 pub const WITHDRAW: &str = "UPDATE \"jadpo_schedules\" SET \"run_requested\" = NULL WHERE \"schedule\" = $1 AND \"run_requested\" = $2 RETURNING \"schedule\"";
 
+/// Records on schedule `$1`'s state row the alerts that hold for it, `$2`,
+/// while what it records is still `$3`: of several instances' ticks, one
+/// changes it, and only that one raises what it newly holds.
+pub const RAISE: &str = "UPDATE \"jadpo_schedules\" SET \"alerts\" = $2 WHERE \"schedule\" = $1 AND \"alerts\" IS NOT DISTINCT FROM $3 RETURNING \"schedule\"";
+
 /// A schedule as the project declares it: its identity key, its name and
 /// its `every:`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,6 +122,9 @@ pub struct StateRow {
     /// The run an operator asked the application's tick for, still
     /// waiting (chunk 6.2d).
     pub requested: Option<[u8; 16]>,
+    /// The alerts a tick has raised for it that still held at the last
+    /// tick, by id, each with when it was raised (chunk 6.9).
+    pub raised: BTreeMap<String, i64>,
 }
 
 impl StateRow {
@@ -402,28 +414,6 @@ pub fn alerts(
     out
 }
 
-/// Which alerts have just started: a host keeps one, gives it each set
-/// it reads, and reports what comes back once, until it stops holding
-/// and starts again.
-#[derive(Clone, Debug, Default)]
-pub struct Raised {
-    active: BTreeSet<String>,
-}
-
-impl Raised {
-    /// The alerts in `now` that didn't hold the last time.
-    pub fn raised(&mut self, now: &[Alert]) -> Vec<Alert> {
-        let identities: BTreeSet<String> = now.iter().map(Alert::identity).collect();
-        let new = now
-            .iter()
-            .filter(|alert| !self.active.contains(&alert.identity()))
-            .cloned()
-            .collect();
-        self.active = identities;
-        new
-    }
-}
-
 fn millis(value: Option<&SqlValue>) -> Option<i64> {
     match value {
         Some(SqlValue::Timestamp(at)) => Some(at.div_euclid(1000)),
@@ -464,7 +454,100 @@ fn read_state(row: &[SqlValue]) -> Option<StateRow> {
         last_tick_at: millis(row.get(6)),
         last_succeeded_at: millis(row.get(7)),
         requested: uuid(row.get(8)),
+        raised: match row.get(9) {
+            Some(SqlValue::Json(text)) => raised_from(text),
+            _ => BTreeMap::new(),
+        },
     })
+}
+
+/// The alerts a state row records as raised: an object of each alert's id
+/// and when it was raised, in milliseconds since the epoch.
+fn raised_from(text: &str) -> BTreeMap<String, i64> {
+    match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(serde_json::Value::Object(map)) => map
+            .into_iter()
+            .filter_map(|(id, at)| Some((id, at.as_i64()?)))
+            .collect(),
+        _ => BTreeMap::new(),
+    }
+}
+
+/// What a state row keeps for `raised`: nothing when none is.
+fn raised_json(raised: &BTreeMap<String, i64>) -> SqlValue {
+    if raised.is_empty() {
+        return SqlValue::Null(SqlType::Json);
+    }
+    let object: serde_json::Map<String, serde_json::Value> = raised
+        .iter()
+        .map(|(id, at)| (id.clone(), serde_json::Value::from(*at)))
+        .collect();
+    SqlValue::Json(serde_json::Value::Object(object).to_string())
+}
+
+/// What a tick records as raised for a schedule whose row records
+/// `recorded`, given the alerts `holding` for it at `now`: each that holds,
+/// since when it was first raised, kept while it goes on holding. `None`
+/// when that is what is recorded already.
+pub fn to_record(
+    recorded: &BTreeMap<String, i64>,
+    holding: &[Alert],
+    now: i64,
+) -> Option<BTreeMap<String, i64>> {
+    let record: BTreeMap<String, i64> = holding
+        .iter()
+        .map(|alert| {
+            let id = alert.id().to_string();
+            let since = recorded.get(&id).copied().unwrap_or(now);
+            (id, since)
+        })
+        .collect();
+    (record != *recorded).then_some(record)
+}
+
+/// Raises at `now` the alerts that have started to hold for `declared`
+/// since the last tick, for a host ticking every `tick_every_ms`: each
+/// schedule's are recorded on its state row in one conditional statement
+/// ([`RAISE`]), so the tick that changed the record raises them and every
+/// other instance's, finding it changed, raises nothing. The alerts it
+/// raised, in [`alerts`]' order. Ticks stopping is never raised here: a
+/// tick arriving is the proof that they haven't.
+pub async fn raise(
+    database: &dyn Database,
+    declared: &[Declared],
+    tick_every_ms: u64,
+    now: i64,
+) -> Result<Vec<Alert>, StoreError> {
+    let read = watch(database, declared, tick_every_ms, now).await?;
+    let mut raised = Vec::new();
+    for watched in &read.schedules {
+        let Some(state) = &watched.state else {
+            continue;
+        };
+        let holding = alerts(std::slice::from_ref(watched), None, tick_every_ms, now);
+        let Some(record) = to_record(&state.raised, &holding, now) else {
+            continue;
+        };
+        let changed = database
+            .query_once(
+                RAISE,
+                &[
+                    SqlValue::Text(state.schedule.clone()),
+                    raised_json(&record),
+                    raised_json(&state.raised),
+                ],
+            )
+            .await?;
+        if changed.is_empty() {
+            continue;
+        }
+        raised.extend(
+            holding
+                .into_iter()
+                .filter(|alert| !state.raised.contains_key(alert.id())),
+        );
+    }
+    Ok(raised)
 }
 
 fn read_run(row: &[SqlValue]) -> Option<RunRecord> {
@@ -830,6 +913,7 @@ mod tests {
                 last_tick_at: Some(50 * MINUTE),
                 last_succeeded_at: Some(45 * MINUTE),
                 requested: None,
+                raised: BTreeMap::new(),
             }),
             last_run: None,
             failures_in_a_row: 0,
@@ -929,20 +1013,36 @@ mod tests {
     }
 
     #[test]
-    fn an_alert_is_raised_once_until_it_stops_holding() {
+    fn an_alert_is_recorded_once_until_it_stops_holding() {
         let alert = Alert {
             schedule: Some("census".into()),
             kind: AlertKind::FailedInARow { count: 3 },
         };
-        let mut raised = Raised::default();
-        assert_eq!(raised.raised(std::slice::from_ref(&alert)).len(), 1);
+        // Newly holding: recorded since now.
+        let none = BTreeMap::new();
+        let first = to_record(&none, std::slice::from_ref(&alert), 10).unwrap();
+        assert_eq!(first, BTreeMap::from([("failed_in_a_row".to_string(), 10)]));
+        // Still holding, its count grown: nothing to record.
         let more = Alert {
             kind: AlertKind::FailedInARow { count: 4 },
             ..alert.clone()
         };
-        assert!(raised.raised(&[more]).is_empty());
-        assert!(raised.raised(&[]).is_empty());
-        assert_eq!(raised.raised(&[alert]).len(), 1);
+        assert_eq!(to_record(&first, &[more], 20), None);
+        // Stopped holding: the record is emptied, and nothing is kept.
+        assert_eq!(to_record(&first, &[], 30), Some(BTreeMap::new()));
+        assert_eq!(to_record(&none, &[], 30), None);
+        // A record survives a row read back.
+        assert_eq!(
+            raised_from(&format!(
+                "{}",
+                match raised_json(&first) {
+                    SqlValue::Json(text) => text,
+                    other => panic!("{other:?}"),
+                }
+            )),
+            first
+        );
+        assert_eq!(raised_json(&none), SqlValue::Null(SqlType::Json));
     }
 
     #[test]

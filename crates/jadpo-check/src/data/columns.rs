@@ -541,6 +541,10 @@ pub fn system_table(name: &str) -> Table {
             // against a deployment (chunk 6.2d): the id its record will
             // have, until the application's own tick takes it.
             add("run_requested", "uuid", true);
+            // The alerts a tick raised that still hold, each with when it
+            // was raised (chunk 6.9), so of several instances' ticks one
+            // raises each.
+            add("alerts", "jsonb", true);
             primary = vec!["schedule".into()];
         }
         "schedule_runs" => {

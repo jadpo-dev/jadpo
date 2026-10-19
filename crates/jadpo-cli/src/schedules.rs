@@ -30,7 +30,7 @@ use jadpo_diag::{Diagnostic, rule};
 use jadpo_runtime::schedules::watch::{
     self, Alert, AlertKind, Declared, Metrics, Paused, Requested, RunNow, RunRecord, Watch, Watched,
 };
-use jadpo_runtime::schedules::{Due, Ran};
+use jadpo_runtime::schedules::{Due, Ran, why};
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table};
 
 use crate::run::{Call, Reply, quoted};
@@ -1662,38 +1662,26 @@ fn explain(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
         Err(reply) => return reply,
     };
     let name = project.shown(schedule);
-    let key = schedule.key.as_str().to_string();
-    let declared = vec![Declared {
-        key: key.clone(),
+    let declared = Declared {
+        key: schedule.key.as_str().to_string(),
         name: name.clone(),
         every_ms: schedule.every_ms,
-    }];
+    };
     let now = now(call);
-    let period = tick_every(&declared);
-    let read = with_database(&store, &url, |database| {
-        let declared = declared.clone();
-        let key = key.clone();
-        Box::pin(async move {
-            let watched = watch::watch(database, &declared, period, now).await?;
-            let recent = watch::history(database, &key, PAGE, 0).await?;
-            Ok((watched, recent))
-        })
-    });
-    let (watched, recent) = match read {
-        Ok(read) => read,
+    let period = tick_every(std::slice::from_ref(&declared));
+    // The answer is the runtime's, as data (chunk 6.9); this says it.
+    let why = match with_database(&store, &url, |database| {
+        Box::pin(async move { why::why(database, &declared, period, now).await })
+    }) {
+        Ok(why) => why,
         Err(reply) => return reply,
     };
     let place = format!("{}:{}", schedule.path, schedule.line);
-    let answer = answer(&watched, &recent, &name, period, now);
-    let mut fields = answer.fields.clone();
+    let said = say(&why.answer, &name, now);
+    let mut fields = said.fields;
     // A run asked of the application's tick that none has taken yet
     // (chunk 6.2d).
-    if watched
-        .schedules
-        .first()
-        .and_then(|schedule| schedule.state.as_ref())
-        .is_some_and(|state| state.requested.is_some())
-    {
+    if why.requested {
         fields.push((
             "request".to_string(),
             "a run by hand, waiting for the app's next tick".to_string(),
@@ -1701,28 +1689,24 @@ fn explain(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
     }
     fields.push(("schedule".to_string(), place.clone()));
     let mut screen = Screen::new().with(Block::Answer {
-        headline: answer.headline.clone(),
+        headline: said.headline.clone(),
         fields: fields.clone(),
     });
-    let alerts: Vec<&Alert> = watched
-        .alerts
-        .iter()
-        .filter(|alert| !answer.restates.contains(&alert.id()))
-        .collect();
+    let alerts: Vec<&Alert> = why.other_alerts().collect();
     if !alerts.is_empty() {
         screen.push(Block::Alerts(
             alerts.iter().map(|alert| alert_text(alert, now)).collect(),
         ));
     }
-    if let Some((command, reason)) = &answer.hint {
+    if let Some((command, reason)) = &said.hint {
         screen.push(Block::hint(command.as_str(), reason.as_str()));
     }
     Reply::screen(
         screen,
         Json::object([
             ("schedule", Json::from(name.as_str())),
-            ("answer", Json::from(answer.id)),
-            ("headline", Json::from(answer.headline.as_str())),
+            ("answer", Json::from(why.answer.id())),
+            ("headline", Json::from(said.headline.as_str())),
             (
                 "facts",
                 Json::object(
@@ -1733,192 +1717,168 @@ fn explain(call: &Call, project: &Project, schedule: &ScheduleModel) -> Reply {
                 ),
             ),
             ("place", Json::from(place.as_str())),
-            ("alerts", alerts_json(&watched.alerts)),
+            ("alerts", alerts_json(&why.alerts)),
         ]),
     )
 }
 
-/// `jadpo why`'s answer for a schedule.
-struct Answer {
-    id: &'static str,
+/// `jadpo why`'s answer in words: its headline, its facts and a hint.
+struct Said {
     headline: String,
     fields: Vec<(String, String)>,
-    /// The alerts the headline already says.
-    restates: Vec<&'static str>,
     hint: Option<(String, String)>,
 }
 
-fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i64) -> Answer {
+/// The runtime's answer for schedule `name` as `jadpo why` says it at
+/// `now`.
+fn say(answer: &why::Answer, name: &str, now: i64) -> Said {
+    use why::Answer;
     let field = |label: &str, value: String| (label.to_string(), value);
-    let Some(schedule) = watched.schedules.first() else {
-        return Answer {
-            id: "not_seen",
-            headline: format!("No tick has seen `{name}` yet"),
-            fields: Vec::new(),
-            restates: Vec::new(),
-            hint: None,
-        };
+    let said = |headline: String, fields: Vec<(String, String)>| Said {
+        headline,
+        fields,
+        hint: None,
     };
-    let Some(state) = &schedule.state else {
-        let (headline, id) = not_run(watched, name, now);
-        return Answer {
-            id,
-            headline,
-            fields: Vec::new(),
-            restates: Vec::new(),
-            hint: None,
-        };
-    };
-    let last_run = schedule.last_run.as_ref();
-    if state.paused {
-        let skips: Vec<&RunRecord> = recent
-            .iter()
-            .take_while(|record| record.is_skipped() && record.reason.as_deref() == Some("paused"))
-            .collect();
-        let mut fields = Vec::new();
-        if let Some(first) = skips.last() {
+    match answer {
+        Answer::NotSeen => said(
+            format!("No tick has seen `{name}` yet: the app hasn't run since it was added"),
+            Vec::new(),
+        ),
+        Answer::NotDue { first_due } => said(
+            format!(
+                "`{name}` hasn't been due yet: its first run is due at {}",
+                grid_clock(*first_due, now)
+            ),
+            Vec::new(),
+        ),
+        Answer::Paused { skipped, last_run } => {
+            let mut fields = Vec::new();
+            if let Some(skips) = skipped {
+                fields.push(field(
+                    "skipped",
+                    format!(
+                        "{} since {}",
+                        plural(skips.count, "due time", "due times"),
+                        grid_clock(skips.since, now)
+                    ),
+                ));
+            }
+            if let Some(run) = last_run {
+                fields.push(field("last run", run_words(run, now)));
+            }
+            Said {
+                headline: format!("`{name}` is paused, so its due ticks are skipped"),
+                fields,
+                hint: Some((
+                    format!("jadpo schedules resume {name}"),
+                    "starts it again".to_string(),
+                )),
+            }
+        }
+        Answer::TicksStopped {
+            since,
+            overdue,
+            tick_every_ms,
+        } => {
+            let mut fields = Vec::new();
+            if let Some(due) = overdue {
+                fields.push(field("due", format!("{}, not run", grid_clock(*due, now))));
+            }
             fields.push(field(
-                "skipped",
+                "ticks",
                 format!(
-                    "{} since {}",
-                    plural(skips.len() as u64, "due time", "due times"),
-                    grid_clock(first.due, now)
+                    "none since {}; the running app ticks every {}",
+                    clock(*since, now),
+                    duration(i64::try_from(*tick_every_ms).unwrap_or(60_000))
                 ),
             ));
+            said(
+                format!("No tick has reached `{name}` since {}", clock(*since, now)),
+                fields,
+            )
         }
-        if let Some(run) = last_run {
-            fields.push(field("last run", run_words(run, now)));
-        }
-        return Answer {
-            id: "paused",
-            headline: format!("`{name}` is paused, so its due ticks are skipped"),
-            fields,
-            restates: Vec::new(),
-            hint: Some((
-                format!("jadpo schedules resume {name}"),
-                "starts it again".to_string(),
-            )),
-        };
-    }
-    if let Some(Alert {
-        kind: AlertKind::TicksStopped { since },
-        ..
-    }) = watched
-        .alerts
-        .iter()
-        .find(|alert| matches!(alert.kind, AlertKind::TicksStopped { .. }))
-    {
-        let mut fields = Vec::new();
-        if state.next_run_at <= now {
-            fields.push(field(
-                "due",
-                format!("{}, not run", grid_clock(state.next_run_at, now)),
-            ));
-        }
-        fields.push(field(
-            "ticks",
-            format!(
-                "none since {}; the running app ticks every {}",
-                clock(*since, now),
-                duration(i64::try_from(period).unwrap_or(60_000))
-            ),
-        ));
-        return Answer {
-            id: "ticks_stopped",
-            headline: format!("No tick has reached `{name}` since {}", clock(*since, now)),
-            fields,
-            restates: vec!["ticks_stopped"],
-            hint: None,
-        };
-    }
-    if state.lease_expired(now) {
-        let until = state.lease_until.unwrap_or(now);
-        let started = last_run
-            .filter(|run| Some(run.id) == state.run_id)
-            .map(|run| run.started);
-        let headline = match started {
-            Some(started) => format!(
-                "`{name}`'s run from {} held its lease past {}: its worker was lost",
-                clock(started, now),
-                clock(until, now)
-            ),
-            None => format!(
-                "`{name}`'s lease was held past {}: its worker was lost",
-                clock(until, now)
-            ),
-        };
-        return Answer {
-            id: "lease_expired",
-            headline,
-            fields: vec![field(
-                "next",
-                format!(
-                    "{}: the next due tick records it as lease_expired and runs again",
-                    grid_clock(state.next_run_at.max(now), now)
+        Answer::LeaseExpired {
+            started,
+            until,
+            next,
+        } => {
+            let headline = match started {
+                Some(started) => format!(
+                    "`{name}`'s run from {} held its lease past {}: its worker was lost",
+                    clock(*started, now),
+                    clock(*until, now)
                 ),
-            )],
-            restates: vec!["lease_expired"],
-            hint: None,
-        };
-    }
-    if state.leased(now)
-        && let Some(run) = last_run.filter(|run| run.is_running())
-    {
-        let skipped = recent
-            .iter()
-            .take_while(|record| record.is_skipped())
-            .filter(|record| record.reason.as_deref() == Some("lease_held"))
-            .count();
-        let mut fields = vec![field(
-            "lease",
-            format!(
-                "held until {}, the 15-minute limit and a minute",
-                clock(state.lease_until.unwrap_or(now), now)
-            ),
-        )];
-        if skipped > 0 {
-            fields.push(field(
-                "skipped",
-                plural(skipped as u64, "due time so far", "due times so far"),
-            ));
+                None => format!(
+                    "`{name}`'s lease was held past {}: its worker was lost",
+                    clock(*until, now)
+                ),
+            };
+            said(
+                headline,
+                vec![field(
+                    "next",
+                    format!(
+                        "{}: the next due tick records it as lease_expired and runs again",
+                        grid_clock(*next, now)
+                    ),
+                )],
+            )
         }
-        return Answer {
-            id: "running",
-            headline: format!(
-                "`{name}`'s run from {} is still going, so its due ticks are skipped until it ends",
-                clock(run.started, now)
-            ),
-            fields,
-            restates: Vec::new(),
-            hint: None,
-        };
-    }
-    // A tick skipped since the last run started: it was still going then.
-    if let Some(skip) = recent.first().filter(|record| {
-        record.is_skipped() && last_run.is_none_or(|run| record.started > run.started)
-    }) {
-        let mut fields = Vec::new();
-        if let Some(run) = last_run {
-            fields.push(field("last run", run_words(run, now)));
+        Answer::Running {
+            started,
+            lease_until,
+            skipped,
+        } => {
+            let mut fields = vec![field(
+                "lease",
+                format!(
+                    "held until {}, the 15-minute limit and a minute",
+                    clock(*lease_until, now)
+                ),
+            )];
+            if *skipped > 0 {
+                fields.push(field(
+                    "skipped",
+                    plural(*skipped, "due time so far", "due times so far"),
+                ));
+            }
+            said(
+                format!(
+                    "`{name}`'s run from {} is still going, so its due ticks are skipped until it ends",
+                    clock(*started, now)
+                ),
+                fields,
+            )
         }
-        fields.push(field("next", grid_clock(state.next_run_at, now)));
-        return Answer {
-            id: "skipped",
-            headline: format!(
-                "`{name}` skipped its tick due at {}: {}",
-                grid_clock(skip.due, now),
-                match skip.reason.as_deref() {
-                    Some("paused") => "it was paused then",
-                    _ => "its run before was still going",
-                }
-            ),
-            fields,
-            restates: Vec::new(),
-            hint: None,
-        };
-    }
-    match last_run {
-        Some(run) if run.outcome == "failed" => {
+        Answer::Skipped {
+            due,
+            paused,
+            last_run,
+            next,
+        } => {
+            let mut fields = Vec::new();
+            if let Some(run) = last_run {
+                fields.push(field("last run", run_words(run, now)));
+            }
+            fields.push(field("next", grid_clock(*next, now)));
+            said(
+                format!(
+                    "`{name}` skipped its tick due at {}: {}",
+                    grid_clock(*due, now),
+                    if *paused {
+                        "it was paused then"
+                    } else {
+                        "its run before was still going"
+                    }
+                ),
+                fields,
+            )
+        }
+        Answer::Failed {
+            run,
+            failures_in_a_row,
+            next,
+        } => {
             let mut fields = vec![field(
                 "run",
                 format!(
@@ -1931,13 +1891,13 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
             if let Some(kind) = &run.kind {
                 fields.push(field("kind", kind.clone()));
             }
-            if schedule.failures_in_a_row > 1 {
+            if *failures_in_a_row > 1 {
                 fields.push(field(
                     "before",
                     format!(
                         "{} in a row before this one",
                         plural(
-                            u64::from(schedule.failures_in_a_row - 1),
+                            u64::from(failures_in_a_row - 1),
                             "failed run",
                             "failed runs"
                         )
@@ -1948,57 +1908,41 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                 "next",
                 format!(
                     "{}: a schedule's next run is its retry",
-                    grid_clock(state.next_run_at, now)
+                    grid_clock(*next, now)
                 ),
             ));
             if let Some(trace) = &run.trace {
                 fields.push(field("trace", trace.clone()));
             }
-            Answer {
-                id: "failed",
+            Said {
                 headline: format!(
                     "`{name}` failed at {} with {}",
                     clock(run.started, now),
                     run.code.as_deref().unwrap_or("internal_fault")
                 ),
                 fields,
-                restates: Vec::new(),
                 hint: Some((
                     format!("jadpo schedules run {name}"),
                     "runs it again now, once the cause is fixed".to_string(),
                 )),
             }
         }
-        Some(run) => {
-            let mut fields = vec![field(
-                "run",
-                format!(
-                    "due {} · took {} · {}{}",
-                    grid_clock(run.due, now),
-                    duration(run.duration_ms(now)),
-                    did(run),
-                    if run.by_hand_run() { " · by hand" } else { "" }
+        Answer::Succeeded { run, next } => said(
+            format!("`{name}` ran at {} and succeeded", clock(run.started, now)),
+            vec![
+                field(
+                    "run",
+                    format!(
+                        "due {} · took {} · {}{}",
+                        grid_clock(run.due, now),
+                        duration(run.duration_ms(now)),
+                        did(run),
+                        if run.by_hand_run() { " · by hand" } else { "" }
+                    ),
                 ),
-            )];
-            fields.push(field("next", grid_clock(state.next_run_at, now)));
-            Answer {
-                id: "succeeded",
-                headline: format!("`{name}` ran at {} and succeeded", clock(run.started, now)),
-                fields,
-                restates: Vec::new(),
-                hint: None,
-            }
-        }
-        None => {
-            let (headline, id) = not_run(watched, name, now);
-            Answer {
-                id,
-                headline,
-                fields: Vec::new(),
-                restates: Vec::new(),
-                hint: None,
-            }
-        }
+                field("next", grid_clock(*next, now)),
+            ],
+        ),
     }
 }
 

@@ -1337,6 +1337,125 @@ fn a_project_with_no_schedules_says_so() {
     );
 }
 
+// --- Alerts raised on the tick, and `why` as data (chunk 6.9) ---------------
+
+/// Two instances tick together while the bell check keeps failing: an
+/// alert that starts is raised once between them, recorded on the
+/// schedule's state row since the tick that raised it, and not again while
+/// it holds.
+#[test]
+fn two_instances_ticking_raise_an_alert_once() {
+    let root = watched_project("raised-6.9");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store::new(&url, 0);
+    let other = Store::new(&url, 1 << 40);
+    let runtime = Runtime::new().expect("runtime");
+    // Both instances' ticks together: the alerts each raised.
+    let both = |minutes: i64| {
+        let now = T0 + minutes * MINUTE;
+        host.clock.set(now);
+        other.clock.set(now);
+        runtime.block_on(async {
+            let (one, two) =
+                futures_join(tick(&program, &host, now), tick(&program, &other, now)).await;
+            assert!(one.problems.is_empty(), "{:?}", one.problems);
+            assert!(two.problems.is_empty(), "{:?}", two.problems);
+            let ids = |raised: &[jadpo_runtime::schedules::watch::Alert]| -> Vec<String> {
+                raised
+                    .iter()
+                    .map(|alert| {
+                        format!("{} {}", alert.id(), alert.schedule.as_deref().unwrap_or(""))
+                    })
+                    .collect()
+            };
+            (ids(&one.raised), ids(&two.raised))
+        })
+    };
+    // Every 15 minutes for five hours, as the census's `every:` asks.
+    let mut raised = Vec::new();
+    for minutes in (0..=300).step_by(15) {
+        let (one, two) = both(minutes);
+        assert!(
+            one.is_empty() || two.is_empty(),
+            "at {minutes}: {one:?} {two:?}"
+        );
+        for alert in one.into_iter().chain(two) {
+            raised.push((minutes, alert));
+        }
+    }
+    // The third failure in a row, at 12:00, then no success for over twice
+    // its hour since it was first due at 10:00: each raised once, by one of
+    // the two, and neither again while it holds.
+    assert_eq!(
+        raised,
+        [
+            (180, "failed_in_a_row bell_check".to_string()),
+            (195, "no_success bell_check".to_string()),
+        ]
+    );
+    // The state row keeps what holds and since when.
+    let recorded = runtime.block_on(host.rows(
+        "SELECT \"alerts\"::text FROM \"jadpo_schedules\" WHERE \"schedule\" = 'schedule bell_check'",
+    ));
+    let text = match recorded.first().and_then(|row| row.first()) {
+        Some(SqlValue::Text(text)) => text.clone(),
+        other => panic!("not recorded: {other:?}"),
+    };
+    let recorded: serde_json::Value = serde_json::from_str(&text).expect("JSON");
+    assert_eq!(
+        recorded,
+        serde_json::json!({
+            "failed_in_a_row": T0 + 180 * MINUTE,
+            "no_success": T0 + 195 * MINUTE,
+        })
+    );
+    let census = runtime.block_on(host.count(
+        "SELECT count(*) FROM \"jadpo_schedules\" WHERE \"schedule\" = 'schedule chore_census' AND \"alerts\" IS NULL",
+    ));
+    assert_eq!(census, 1, "a healthy schedule records nothing");
+
+    // `why`'s answer, decided by the runtime as data.
+    let declared = jadpo_runtime::schedules::watch::Declared {
+        key: "schedule bell_check".into(),
+        name: "bell_check".into(),
+        every_ms: 60 * MINUTE as u64,
+    };
+    let now = T0 + 300 * MINUTE + 20_000;
+    let why = runtime
+        .block_on(jadpo_runtime::schedules::why::why(
+            &host.db, &declared, 60_000, now,
+        ))
+        .expect("read");
+    match &why.answer {
+        jadpo_runtime::schedules::why::Answer::Failed {
+            run,
+            failures_in_a_row,
+            next,
+        } => {
+            assert_eq!(run.code.as_deref(), Some("bell_missing"));
+            assert_eq!(*failures_in_a_row, 5);
+            assert_eq!(*next, T0 + 360 * MINUTE);
+        }
+        other => panic!("not a failure: {other:?}"),
+    }
+    assert_eq!(why.answer.id(), "failed");
+    assert!(!why.requested);
+    let alerts: Vec<&str> = why.other_alerts().map(|alert| alert.id()).collect();
+    assert_eq!(alerts, ["failed_in_a_row", "no_success"]);
+}
+
 /// A project with two schedules a second apart: `heartbeat` makes a pulse
 /// each second, `missed_beat` fails each second.
 const BEATS: &[(&str, &str)] = &[
