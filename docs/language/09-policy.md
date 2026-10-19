@@ -167,6 +167,29 @@ entity Article {
 }
 ```
 
+## Background work
+
+Schedules and subscribers act as the system caller (area 12, question 8),
+which gets exactly what `Access.system` grants. The system is nobody
+signed in and holds no membership, so a user field, a role and
+`Access.authenticated` never let it in; a grant list, a field's own list
+or an `actions:` line lets it in only by naming `Access.system`. An
+entity grants background work explicitly: a schedule, a subscriber or a
+batch that reaches a statement only `Access.public` grants is a compile
+error, as `policy.effect_ungranted` refuses a route, so the runtime, where
+such a statement tests no caller and runs for the system as for everyone,
+never has to tell the two apart.
+
+On a tenant's records, a grant naming `Access.system` lets a subscriber in
+within the tenant its event came from, and a schedule's run, which no
+tenant's event starts, in every tenant. The system never moves a record to
+another tenant, which needs a membership there, and founds no tenant's
+first membership. A listed action's line naming `Access.system` lets the
+system in beside whoever else it names; a line naming only `Access.system`
+still lets in no request. No request is ever the system: only the
+runtime's runner makes the system caller, and every request, and every
+call a test makes with a caller or without one, runs as someone else.
+
 ## Tenancy
 
 Most business applications are shared by many customer companies, and the
@@ -3303,38 +3326,6 @@ Not yet:
   the records referring to it by their reference, which has its index, so
   it needs no index or migration of its own.
 
-### Chosen in chunk 6.1a
-
-The system caller, which schedules and subscribers act as (area 12,
-question 8), as conservatively as the pages allow:
-
-- **Exactly what `Access.system` grants.** The system is nobody signed in
-  and holds no membership, so a user field, a role and
-  `Access.authenticated` never let it in; a grant list, a field's own
-  list or an `actions:` line lets it in only by naming `Access.system`.
-  A statement anyone at all may run (`Access.public`) tests no caller,
-  so it runs for the system as for everyone. *Flagged:* the pages say
-  an entity grants background work explicitly; that a schedule or a
-  subscriber reaching what only `Access.public` grants is refused, as
-  `policy.effect_ungranted` refuses a route, is recommended for the
-  checker when schedules and subscribers are read (chunks 6.1b and 6.2),
-  which leaves nothing for the runtime to tell apart.
-- **Tenancy.** On a tenant's records a grant naming `Access.system` lets
-  it in within the tenant it is limited to, the one a subscriber's event
-  came from, and in every tenant when it is limited to none, as a
-  schedule's run is. *Flagged:* the pages limit subscribers and say
-  nothing of schedules; every tenant is the reading under which area
-  12's schedule over a due field works in an application with tenants.
-  Recommended as built.
-- **What it can't do.** It never moves a record to another tenant, which
-  needs a membership there, and founds no tenant's first membership.
-- **A listed action's gate.** A line naming `Access.system` lets the
-  system in beside whoever else it names; a line naming only
-  `Access.system` still lets in no request (chunk 4.8).
-- **No request is ever the system.** Only the runtime's runner makes
-  the system caller; every request, and every call a test makes with a
-  caller or without one, runs as someone else.
-
 ### Consistency with the rest of the language
 
 - **Fewer concepts.** The decided model removes role enums that store
@@ -3512,5 +3503,5 @@ question 8), as conservatively as the pages allow:
 | What fails decides what is stored (chosen in chunk 5.1d) | An action is all-or-nothing, so whatever a `reject` in its body tests decides every value it stores, before the `reject` or after it; a failure an entity operation or another action raises isn't followed, as for outputs. A `return` or `reject` inside a loop decides every turn after the one it may leave, from the top of the loop's body, for outputs and stores alike | 2026-10-16 |
 | Events and stores (chosen in chunk 5.1d) | `emit` stores nothing a caller reads: an event's subscribers are server work, as `Access.system` reading a field is, so a restricted value may go in an event's payload. What a subscriber stores from a payload is a store like any other, checked when subscribers run (chunk 6.1) against what every `emit` of the event put in it | 2026-10-16 |
 | User fields on creates (chosen in chunk 4.8) | The user field a create sets from the caller is set from the caller on every path: every value it may hold, whatever an `if` or `match` decided, is the caller's `id`; otherwise `policy.role_field_create_forbidden` | 2026-10-16 |
-| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Chosen in chunk 6.1a") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
+| Background work and `Access.public` (after chunk 6.1a) | A schedule or subscriber that reaches a statement only `Access.public` grants is a compile error: an entity grants background work explicitly with `Access.system`, so the runtime's leniency ("Background work") is never relied on (Richard, as recommended). Built for subscribers in chunk 6.1b as `policy.system_grant_missing`, at the subscriber: a grant list, a field's own list or the action's line under `actions:` that names `Access.public` and not `Access.system`, reached by its action or any it calls | 2026-10-19 |
 | Batches and `Access.public` (after chunk 6.4) | A batch whose query or actions reach a statement only `Access.public` grants is a compile error, as a schedule's or subscriber's is (Richard, as recommended) | 2026-10-19 |

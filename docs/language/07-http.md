@@ -143,8 +143,29 @@ POST / {
 A route may also send a map layer, a `FeatureCollection<G, P>` (area 20),
 bare, so a mapping library fetches it as the whole response, plain RFC
 7946 GeoJSON. A query gives one for a `GET` (area 6, "A query giving a
-map layer"); an action builds one behind another method. Its properties type `P` is held to what an `Output` may
-hold: never a caller, a password's hash or a secret value.
+map layer"); an action builds one behind another method.
+
+- **Only a collection, only bare.** A `List` or `Page` of layers, and a
+  lone `Feature<G, P>`, are `route.output_not_output`, since a mapping
+  library takes a collection as its source and nothing asks for the
+  others.
+- **What `P` may not hold** is what an `Output`'s fields may not: a
+  caller, a password's hash or a secret value, however deep. Since `P` is
+  an `Object`, which may hold any of them, the check is the route's: a
+  layer whose properties hold one is `route.output_not_output` at
+  `output:`, naming what and where. The same search follows a feature's
+  properties wherever it looks, so an `Output` with a layer field whose
+  properties hold a password's hash is refused at that field.
+- **Field policy.** A layer an action returns is what its caller is
+  shown, as an `Output` it builds is: every `return` of a
+  `FeatureCollection` in an action carries only fields every caller of the
+  action may read, or it is `policy.output_field_unproved` at the value
+  returned (area 9, "Field restrictions"), whichever route or action
+  calls it.
+- **Sent as GeoJSON.** The response's body is the collection as
+  `json.write` writes it, `{"type":"FeatureCollection","features":[...]}`,
+  and a route test reads it back through the same codec, so
+  `response.output` is the layer the action returned.
 
 Only the output's declared fields are sent. `IssuedToken` and `IssuedKey`
 (area 8) are built in and sent as the objects they are: an `id`,
@@ -350,6 +371,29 @@ numbers (question 9):
 | An `Idempotency-Key` is missing where the API requires one, or isn't 1 to 255 printable ASCII characters | 400 `invalid_request` |
 | An `Idempotency-Key` comes again with a different request | 422 `idempotency_key_reused` |
 | An `Idempotency-Key` comes again while its first request is running | 409 `conflict` |
+
+A request with a key that came before is the same request when its route
+(method and declared path) and what it says, decoded, are the same: each
+placeholder and the input, from the query string, the headers it reads
+and the body, written back through the route's own codecs as the
+contract's JSON. That JSON writes every secret value (`Password`,
+`BearerToken` and the rest, area 19) as its kind alone, so the digest the
+runtime keeps says nothing of a secret, whether it came in the body or the
+path, and whoever can read the key table can't test guessed passwords
+against it. So a repeat that differs only in a secret, or only in its
+JSON's spacing or member order, is the same request, answered as the first
+was; a response that starts a session or carries a credential is never
+kept. The digest isn't keyed, since a key would need a secret every
+deployment holds and Jadpo has none (area 10). A value that isn't secret,
+sent and neither stored nor answered, can still be confirmed by guessing
+by whoever reads the table, who reads the kept responses and the
+application's own tables as well.
+
+A deployable answers under its host's clock. When the clock can't be read
+(the system clock before 1970), every request, health's included, is 500
+`internal_fault` and nothing runs, its fault for the host's log saying the
+host has no clock; `jadpo dev` doesn't start (`cli.dev_start_failed`, "The
+system clock can't be read").
 
 The envelope's `message` stays fixed English. Text for people in client
 apps comes from the app's language files (area 10, decided 2026-10-16,
@@ -2356,77 +2400,6 @@ store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
 is written.
-
-### Chosen in chunk 5.8a
-
-From the Phase 5 soundness review:
-
-- **An idempotency key's digest leaves out every secret.** The digest
-  was BLAKE3 of the request's bytes, so whoever could read
-  `jadpo_idempotency_keys` could test guessed passwords against a
-  sign-up's. It now covers the route (its method and declared path),
-  then each placeholder and the input as the route decodes them, the
-  query string, the headers it reads and the body, written back through
-  the route's own codecs, the contract's JSON, which writes every secret
-  value (`Password`, `BearerToken` and the rest, area 19) as its kind
-  alone, so a stored digest says nothing of a secret, whether it came in
-  the body or the path. Rather than a keyed hash: a key would
-  need a secret every deployment holds, and Jadpo has none, since a
-  setting is only what `config { }` declares and only the places area
-  10 lists may read one; requiring a new one of every application is a
-  language change, and keying with one an application happens to have
-  would leave the rest unprotected. So a repeat that differs only in a
-  secret is the same request, answered as the first was (and a response
-  that starts a session or carries a credential is never kept), and one
-  that differs only in its JSON's spacing or member order is the same
-  request too. What it leaves: a value that isn't secret, sent and
-  neither stored nor answered, can still be confirmed by guessing by
-  whoever reads the table, who reads the kept responses and the
-  application's own tables as well.
-- **Deleting expired keys stays 6.2's** (built in chunk 6.2: the tick
-  deletes them in batches, area 12's "Chosen in chunk 6.2"). The index on `kept_until` it
-  needs is already in the system table; what runs it is the runtime's
-  minute tick, which 6.2 builds, so a statement with nothing to call it
-  waits for that chunk.
-- **A host without a clock answers nothing.** A deployable answers under
-  the host's clock; a host whose clock can't be read (the system clock
-  before 1970) answered as though it were 1970. Now every request,
-  health's included, is 500 `internal_fault`, its fault for the host's
-  log saying the host has no clock, and nothing runs; `jadpo dev`
-  doesn't start (`cli.dev_start_failed`, "The system clock can't be
-  read").
-
-### Chosen in chunk 5.5u7
-
-- **Only a collection, only bare.** `output:` may be
-  `FeatureCollection<G, P>` itself; a `List` or `Page` of them, and a lone
-  `Feature<G, P>`, stay `route.output_not_output`, since a mapping library
-  takes a collection as its source and nothing asks for the others.
-- **What `P` may not hold** is what an `Output`'s fields may not: a
-  caller, a password's hash, a secret value, however deep. A layer whose
-  properties hold one is `route.output_not_output` at `output:`, naming
-  what and where. Since `P` is an `Object`, which may hold any of them,
-  the check is the route's, not `P`'s declaration's. The same search now
-  follows a feature's properties wherever it looks, so an `Output` with
-  a layer field whose properties hold a password's hash is refused at
-  that field as before 5.5u7 it wasn't.
-- **Field policy.** A layer an action returns is what its caller is
-  shown, as an `Output` it builds is: every `return` of a
-  `FeatureCollection` in an action carries only fields every caller of
-  the action may read, or it is `policy.output_field_unproved` at the
-  value returned (area 9, "Field restrictions"). It is checked in every
-  action that returns one, whichever route or action calls it, as an
-  `Output` is checked wherever it is built.
-- **Fetched as GeoJSON.** The response's body is the collection as
-  `json.write` writes it, `{"type":"FeatureCollection","features":[...]}`,
-  and a route test reads it back through the same codec, so
-  `response.output` is the layer the action returned (area 20's
-  example).
-- **A `GET` can't send one yet.** A `GET` runs a query, which gives
-  records or an `Output`; a layer comes from an action, behind `POST`.
-  Open for Richard, with area 20's same note: a query building a layer. *Decided 2026-10-19 and built in chunk 5.5u8:* a query
-  returning a `FeatureCollection<G, P>` gives one, so a `GET` route sends
-  it (area 6, "A query giving a map layer").
 
 ### Consistency with the rest of the language
 

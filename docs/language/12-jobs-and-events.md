@@ -56,7 +56,8 @@ schedule overdue_reminders {
   counted in UTC from when the application starts.
 - Only one run of a schedule happens at a time. Ticks missed while the
   application was down, or while a run was still going, become one run, not a
-  backlog.
+  backlog. Each schedule's state and lease live in the store
+  `schedules: { store: }` names (area 5), or the only store when there is one.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
   started, so the action does not need the time passed in.
 - A failed run is logged and shown to the operator; the next tick is the
@@ -509,7 +510,7 @@ compare them.
   through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
   numbered every event type in the plan's JSON table, by its identity
   key, for the outbox to write and read its payload through (area 5,
-  "Chosen in chunk 5.9b").
+  "Structured values").
 
 ## Several changing calls in one action
 
@@ -649,8 +650,9 @@ follow chunk 7.4 and are not yet a roadmap chunk.
 ## Where events travel
 
 Events stay inside the Jadpo runtime (Richard, 2026-10-13). They are stored
-in the main store's outbox in the same transaction as the action, and the
-runtime delivers them: on a long-running server from its own workers, on
+in the outbox of the store the action writes, in the same transaction as
+the action, and the runtime delivers them: on a long-running server from
+its own workers, on
 Cloudflare Workers right after the commit (`waitUntil`) with the
 once-a-minute schedule tick sweeping anything left. One place holds every
 log and trace, a request is never slowed by delivery, and no site needs a

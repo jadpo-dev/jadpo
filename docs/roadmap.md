@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-18. This page is the only list of outstanding work: the
+**Updated:** 2026-10-19. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -62,55 +62,44 @@ optimisation) are `xhigh`.
 
 ## Phase 0 — Reset
 
-- [x] **0.1 Merge the language review.** Pull request from `language-review`
-  to `main`. **Needs Richard** to approve opening it.
-- [x] **0.2 Archive the current compiler.** Tag `archive/compiler-v0` on
-  `main`, then delete `jadpo/`, the old examples' generated output, the old
-  compile tests and tools that only serve the old compiler. Keep the golden
-  contract (`examples/golden-todo/acceptance.json`), the experiments' results
-  and the diagnostics catalogue as reference. The language pages' "today"
-  boxes stop being compiled and are marked as the archived compiler's
-  behaviour. Done when `main` builds nothing old and the docs check passes.
-- [x] **0.3 Documentation clean-up.** The language pages become the only
-  specification: older specifications move to `docs/archive/` with a pointer
-  to the area that replaced them; the decision register keeps decisions
-  outside the language and links to the area pages for the rest;
-  `AGENTS.md` and `docs/README.md` are rewritten for this roadmap. Done when
-  every live document is current and linked from `docs/README.md`.
-- [x] **0.4 Architecture plan.** One session designing what every later chunk
-  builds on: the Rust workspace and crates; the graph's node and edge kinds,
-  stable identity and canonical JSON; the incremental query engine; the
-  executor interface shared by interpreter and code generator; the runtime
-  crate's boundaries and the capability driver interface; how area-page
-  examples become tests; the gate, including the check that bans example
-  application names in compiler source. Written into
-  [compiler-runtime.md](compiler-runtime.md). **Needs Richard** to read it
-  once before Phase 1.
+- [x] **0.1 Merge the language review**. Built: the `language-review` branch
+  merged into `main` through a pull request.
+- [x] **0.2 Archive the current compiler**. Built: the v0 compiler tagged
+  `archive/compiler-v0` and removed from `main`, keeping the golden
+  contract, the experiments' results and the diagnostics catalogue as
+  reference.
+- [x] **0.3 Documentation clean-up**. Built: the language pages made the
+  only specification, older specifications moved to `docs/archive/`, and
+  `AGENTS.md` and `docs/README.md` rewritten for this roadmap.
+- [x] **0.4 Architecture plan**. Built: the architecture plan in
+  [compiler-runtime.md](compiler-runtime.md): the crates, the graph and its
+  identity, the query engine, the shared executor interface, the runtime's
+  boundaries and the gate.
 
 ## Phase 1 — Graph core (areas 1–4)
 
-- [x] **1.1 Workspace and CLI shell:** `opus · high` `jadpo` with the agreed
-  [design language](language/research/14-cli-design-language.md),
-  self-describing help, `--json`, completion skeleton.
-- [x] **1.2 Parser, syntax tree and formatter** `opus · high` for the decided grammar.
-- [x] **1.3 Project layout and domains** `opus · high` (area 1).
-- [x] **1.4 Values and types** `opus · high` (area 2).
-- [x] **1.5 Logic** `opus · high` (area 3).
-- [x] **1.6 Failures** `opus · high` (area 4).
-- [x] **1.7 The graph, identity and manifest:** `opus · xhigh` `jadpo check` writes
-  `build/manifest.json`; the language server gives diagnostics and hover.
-- [x] **1.8 Typed bodies and one resolver** `opus · xhigh`, from the Phase 1
-  review: a per-callable query giving typed bodies (site ids, types,
-  resolved callees, literal targets, fallibility, failure sets) that
-  diagnostics, graph edges, usage, cycles and the language server all derive
-  from; per-name lookups so a body depends only on what it reads; typed type
-  references in the graph; value validators and a typed standard-library
-  operation table in a leaf crate shared with the runtime; transitive
-  crate-graph and wasm32 gates; the quadratic naming check.
-- [x] **1.9 Phase 1 review fixes** `opus · high`: the review's correctness,
-  formatter, parser-depth, docs-gate and LSP findings, and area 1's
-  decided exception letting a type fold to the name of the callable in its
-  file (`CreateTodo` beside `create_todo`).
+- [x] **1.1 Workspace and CLI shell** `opus · high`. Built: the `jadpo` CLI
+  shell in the agreed
+  [design language](language/research/14-cli-design-language.md), with
+  self-describing help, `--json` and a completion skeleton.
+- [x] **1.2 Parser, syntax tree and formatter** `opus · high`. Built: the
+  parser, syntax tree and formatter for the decided grammar.
+- [x] **1.3 Project layout and domains** `opus · high`. Built: project
+  layout and domains (area 1).
+- [x] **1.4 Values and types** `opus · high`. Built: values and types (area
+  2).
+- [x] **1.5 Logic** `opus · high`. Built: logic (area 3).
+- [x] **1.6 Failures** `opus · high`. Built: failures (area 4).
+- [x] **1.7 The graph, identity and manifest** `opus · xhigh`. Built: the
+  graph, its identity and `build/manifest.json` written by `jadpo check`,
+  with diagnostics and hover in the language server.
+- [x] **1.8 Typed bodies and one resolver** `opus · xhigh`. Built: one
+  per-callable typed-body query that diagnostics, graph edges, cycles and
+  the language server all derive from, with per-name lookups and a typed
+  standard-library operation table shared with the runtime.
+- [x] **1.9 Phase 1 review fixes** `opus · high`. Built: the Phase 1
+  review's fixes, and area 1's exception letting a type fold to the name of
+  its file's callable.
 
 Done when areas 1–4's decided examples check, and each area's errors are
 listed on its page with the new compiler's real output (the v0 lists are
@@ -118,1591 +107,426 @@ reference only).
 
 ## Phase 2 — Interpreter and tests (area 13)
 
-- [x] **2.1 Interpreter** `opus · xhigh` for pure logic, with errors at `.jadpo` lines.
-  It walks 1.8's typed bodies. Also fold `resolve.rs`'s separate body walk
-  into the typed-body query (left over from 1.9), so name errors and
-  unused-variable errors come from one walk.
-- [x] **2.2 Test runner:** `opus · high` file, line, name, seed, failure reports as decided,
-  `--json`.
-- [x] **2.3 Watch mode** `opus · high` under the 1-second target on a fixture project.
-- [x] **2.4 Teaching examples** `opus · high`: commented example projects in
-  `examples/` covering every feature of areas 1–4 and 13 built so far, each
-  with its own tests run by `jadpo test` in the gate, and the coverage check
-  that fails when a built feature appears in no example
+- [x] **2.1 Interpreter** `opus · xhigh`. Built: the interpreter for pure
+  logic over the typed bodies, with errors at `.jadpo` lines and name errors
+  from one walk.
+- [x] **2.2 Test runner** `opus · high`. Built: the test runner, with file,
+  line, name, seed and failure reports and `--json`.
+- [x] **2.3 Watch mode** `opus · high`. Built: watch mode under the 1-second
+  target.
+- [x] **2.4 Teaching examples** `opus · high`. Built: commented teaching
+  examples in `examples/` tested in the gate, and the coverage check that
+  fails when a built feature appears in no example
   ([decision](decision-register.md#examples-teach-every-feature--2026-10-14)).
-  Design the examples' order and commenting style first, as a reader
-  learning the language would meet them.
-- [x] **2.5 Construction failures by rule** `opus · high`: the block form
+- [x] **2.5 Construction failures by rule** `opus · high`. Built:
+  construction failures by rule,
   `attempt CakeCount(n) { max: OrderTooLarge }` with `invalid:` as the
-  catch-all, required and unreachable arms, object literals that never fail,
-  and every page example and teaching example moved to it (area 2,
-  "Construction failures by rule", 2026-10-14).
-- [x] **2.6 Conditions as proof** `opus · xhigh`: an `if` condition narrows
-  the ranges the checker knows, so a construction it makes safe needs no
-  `attempt`, and the compiler reports the call sites that flip.
-- [x] **2.7 Phase 2 review: soundness** `opus · xhigh`. Proofs that pass
-  invalid values: a `Text` built into an `Email`, `Url` or `IpAddress` type
-  unchecked (the built-in check becomes a `format` rule, reachable from a
-  `format:` arm); decimal comparison and ordering that overflow into a
-  wrong answer; decimal `/` keeping fewer than 18 extra places on large
-  operands. Wrong results: a failure inside an outcome `match`'s
-  arguments caught by that `match`; a set literal in a named set type built
-  as a list; `include` copying fields alphabetically instead of in declared
-  order; `i64::MIN % -1`. Silent passes: `List<T>(xs)` and three-part calls
-  (`a.b.c()`) that check clean and fault at run time. A refinement that
-  loosens an inherited rule (`max_length: 50` on a 40) is an error, as
-  area 2 says a refinement only adds rules.
-- [x] **2.8 Phase 2 review: tooling and docs** `opus · high`. Rerun
-  commands and locations that work from where the command was run; a
-  callable's undeclared failures no longer give its callers wrong `next`
-  steps; `--watch` exits when its output closes and says when errors
-  clear, including after a file is removed; location paths never cut; one
-  location shape in `--json` and the `jadpo test --json` schema documented;
-  `--failed` when the failed tests are gone; decided but unbuilt flags say
-  `not_built_yet`; the smaller wording and completion findings; and
-  `visibility.public_unused` (area 1, "Unused `public`"). Gate: rich
-  snapshots stripped of the run time, the watch latency ceiling near the
-  1-second target, README "try next" outcomes checked. Docs: areas 1, 13
-  and 14 stop calling archived-compiler behaviour current.
-- [x] **2.9 Phase 2 review: teaching examples** `opus · high`. Types that
-  carry meaning, not just the right representation; business rules raised
-  with `reject` (a stock problem is a `conflict`, not an `invalid_value`),
-  with `if` checks as proof beside rule arms; a genuine `invalid:`
-  catch-all; failures handled in application code, not turned into zero in
-  tests; fixtures taught before public fixtures (08 before 07); the wrong
-  comments and README claims the review lists; sets and maps described as
-  far as they work.
-- [x] **2.10 Executor shape for Phase 3** `opus · xhigh`, from the Phase 2
-  review, before any database work. The typed body says which sites and
-  callables can pause; the interpreter walks actions, tests and fixtures
-  asynchronously and functions synchronously; `Ctx` is passed in, and the
-  runtime owns the action boundary (transaction, rerun, commit) as §2.5
-  says. `jadpo-plan` begins: type plans with declared field order,
-  validator chains, field defaults, failure shapes, the frame table and
-  callable numbering, literals decoded once, typed rule keys. Outcomes and
-  assertion recording move into the runtime behind an executor trait the
-  runner calls; the runner takes a per-test environment, and `Program`
-  splits into shared data and per-thread caches. Watch keeps the previous
-  graph and classifies every edge kind, so later edges can't be missed.
-  Bodies and the graph shared behind `Arc`; the duplicated report code
-  merged. Sets use the canonical order area 2 decides ("Set order"), from one shared comparator.
-- [x] **2.11 Named collection construction** `opus · high`: `Names(found)`
-  builds a named list, set or map type from a collection of its item type,
-  checking only the collection's own rules, with arms, `invalid:` and proof
-  as for any construction (area 2, "Named collection construction"); page
-  examples, a teaching example and its errors.
+  catch-all, and every example moved to it.
+- [x] **2.6 Conditions as proof** `opus · xhigh`. Built: `if` conditions
+  narrowing the ranges the checker knows, so a construction they make safe
+  needs no `attempt`.
+- [x] **2.7 Phase 2 review: soundness** `opus · xhigh`. Built: the Phase 2
+  soundness fixes: unchecked format types, decimal overflow and precision,
+  wrong `match`, set, `include` and `%` results, silent run-time faults, and
+  refinements that loosen a rule.
+- [x] **2.8 Phase 2 review: tooling and docs** `opus · high`. Built: the
+  Phase 2 tooling and docs fixes: rerun commands, `next` steps, watch exits,
+  one `--json` location shape, `not_built_yet` flags,
+  `visibility.public_unused` and stable gate snapshots.
+- [x] **2.9 Phase 2 review: teaching examples** `opus · high`. Built: the
+  teaching examples reworked so types carry meaning, business rules are
+  raised with `reject` and failures are handled in application code.
+- [x] **2.10 Executor shape for Phase 3** `opus · xhigh`. Built: the
+  executor shape for data work: pausing sites known from the typed bodies,
+  actions interpreted asynchronously, the runtime owning the action
+  boundary, `jadpo-plan`'s first plans, and watch classifying every edge
+  kind.
+- [x] **2.11 Named collection construction** `opus · high`. Built: named
+  collection construction, `Names(found)`, with arms, `invalid:` and proof
+  as for any construction.
 
 ## Phase 3 — Data (areas 5, 6)
 
-- [x] **3.1 Entities, migrations and PostgreSQL:** `opus · high` snapshots, system tables,
-  the test database template.
-- [x] **3.2 Queries:** `opus · high` filters, order, pages, includes, selected columns,
-  `jadpo sql`.
-- [x] **3.3 Writes:** `opus · xhigh` entity operations, conflicts, concurrent-change rerun,
-  counters.
-- [x] **3.4 Lifecycle and purge.** `opus · high`
-- [x] **3.5 Imports** `opus · xhigh` (area 1, "Imports", 2026-10-14):
-  `use <folder> { Names }` and `use <domain>`, every name not declared in
-  the file imported, built-ins never, a test file seeing its subject's
-  declarations; a declaration another file uses moved to a file of its own,
-  with the one-step fix; errors for a missing, unknown and unused import;
-  `jadpo fmt` adding, removing and sorting imports, then run over every
-  example and every page example to migrate them; go to definition from
-  every use of a name, including on a `use` line. Done when no example or
-  page example checks without its imports.
-- [x] **3.6 VS Code extension** `sonnet · high`: `editors/vscode` starts
-  `jadpo lsp`, with highlighting, so errors, hover and go to definition work
-  in the editor (area 14, "Editor support"). The archived extension is
-  reference only.
-- [x] **3.7 Isolation by what an action does** `opus · xhigh` (area 6,
-  "Counters and other one-step updates", 2026-10-15): an action that loads
-  no record, itself or through any action it calls, runs at read committed;
-  every other action at repeatable read. Done when two concurrent counters
-  that are their actions' first statements both commit with no rerun (today
-  the second reruns), and a counter after a read still reruns.
-- [x] **3.8 Habits from other languages** `opus · high`
-  ([decision](decision-register.md#errors-for-habits-from-other-languages--2026-10-15)):
-  a researched catalogue of constructs people and agents carry over from
-  other languages, each with its own error, an edit and recovery as if the
-  Jadpo form were written; no syntax error followed by a second on the same
-  line, checked over a corpus of broken files; each rule with a checked
-  example on its area page.
-- [x] **3.9 One declaration and what it uses** `opus · high` (area 1,
-  "Files and names", 2026-10-15): a supporting type, failure or helper the
-  file's primary declaration doesn't use, directly or through one another,
-  is `layout.unused_declaration`, tests not counting; `jadpo fmt` puts the
-  primary declaration first, after any opening comment, and leaves the
-  rest in order. Every example that breaks either rule is rewritten so
-  each helper does a real job for its action, starting with
-  `examples/05-logic/domains/kitchen/actions/set_oven.jadpo`, and the
-  example gate still finds every built feature. Done when the error has a
-  checked example on area 1 and no example or page example breaks either
-  rule.
-- [x] **3.10 Phase 3 review: soundness** `opus · high`. A called action
-  that fails rolls back its own writes (a savepoint per called action whose
-  failure the caller handles); purge follows self and cyclic cascades so a
-  held record never stops the batch; a patch can't send `none` to a
-  required field; joining text onto a stored field is `||` or refused;
-  structured fields, reading a second store and direct entity writes in
-  tests are each built or a check-time `not_built_yet`, never a run-time
-  fault; enum variants and validation rules are in migration snapshots so
-  changing them needs a migration; a query limit or page size can't be
-  below 1; misleading messages (a backfill's reason, faults blamed on the
-  database) fixed; text-order indexes `COLLATE "C"`.
-- [x] **3.11 Test databases that scale** `opus · high`: several copy
-  workers or reused copies; one PostgreSQL server per gate run shared
-  through `JADPO_TEST_DATABASE_URL`; the language pages run `jadpo test`
-  once; the CI PostgreSQL steps no longer take turns; `--profile quick`
-  truly needs no PostgreSQL; one integration-test binary per crate.
-- [x] **3.12 The runtime owns what both executors need** `opus · xhigh`,
-  before 4.1: failure shapes, refusals, missing plans and field and type
-  plans move into `jadpo-std` as plain data; one runtime entry point runs a
-  read or write (opening its own boundary outside an action) and returns
-  the value, failure or conflict arm, leaving the interpreter only the arm
-  dispatch. PostgreSQL text rendered by one leaf crate (conditions,
-  statements, table definitions). Production ids from host randomness;
-  purge given a time budget; the panic lints cover `indexing_slicing`,
-  `unreachable` and `unimplemented`; the duplicated migration and import
-  code merged; stale crate docs corrected.
-- [x] **3.13 Incremental data checking** `opus · xhigh`, before 4.4:
-  per-name entity and query models without positions, diagnostics per
-  file, so an edit rechecks only what reads the changed name; the plan
-  built incrementally per callable and entity (or §2.4 corrected to what is
-  built); entities, queries and writes in the scale test.
+- [x] **3.1 Entities, migrations and PostgreSQL** `opus · high`. Built:
+  entities, migrations and PostgreSQL, with snapshots, system tables and the
+  test database template.
+- [x] **3.2 Queries** `opus · high`. Built: queries with filters, order,
+  pages, includes and selected columns, and `jadpo sql`.
+- [x] **3.3 Writes** `opus · xhigh`. Built: entity writes, conflicts, the
+  concurrent-change rerun and counters.
+- [x] **3.4 Lifecycle and purge** `opus · high`. Built: lifecycle and purge.
+- [x] **3.5 Imports** `opus · xhigh`. Built: imports
+  (`use <folder> { Names }` and `use <domain>`) with their errors,
+  `jadpo fmt` adding, removing and sorting them, and go to definition, with
+  every example migrated.
+- [x] **3.6 VS Code extension** `sonnet · high`. Built: the VS Code
+  extension in `editors/vscode`, starting `jadpo lsp`, with highlighting.
+- [x] **3.7 Isolation by what an action does** `opus · xhigh`. Built:
+  isolation by what an action does: read committed for an action that loads
+  no record, repeatable read for every other.
+- [x] **3.8 Habits from other languages** `opus · high`. Built: the
+  researched catalogue of habits from other languages, each with its own
+  error, edit and recovery
+  ([decision](decision-register.md#errors-for-habits-from-other-languages--2026-10-15)).
+- [x] **3.9 One declaration and what it uses** `opus · high`. Built:
+  `layout.unused_declaration` for a supporting declaration the primary one
+  doesn't use, with every example rewritten to obey it.
+- [x] **3.10 Phase 3 review: soundness** `opus · high`. Built: the Phase 3
+  soundness fixes: savepoints for called actions, purge through cascades,
+  safe patches and text joins on stored fields, check-time `not_built_yet`
+  in place of run-time faults, rules in migration snapshots and
+  `COLLATE "C"` text indexes.
+- [x] **3.11 Test databases that scale** `opus · high`. Built: test
+  databases that scale: one PostgreSQL server per gate run through
+  `JADPO_TEST_DATABASE_URL`, parallel or reused copies, and a quick profile
+  needing no PostgreSQL.
+- [x] **3.12 The runtime owns what both executors need** `opus · xhigh`.
+  Built: failure shapes, refusals and plans moved into `jadpo-std` as plain
+  data, one runtime entry point for reads and writes, and PostgreSQL text
+  rendered by one leaf crate.
+- [x] **3.13 Incremental data checking** `opus · xhigh`. Built: incremental
+  data checking, with per-name entity and query models and diagnostics per
+  file, in the scale test.
 
 ## Phase 4 — HTTP, identity and policy (areas 7–9)
 
-- [x] **4.1 Routes:** `opus · high` groups, inputs, outputs, statuses, OpenAPI, the API
-  record, default rate limits.
-- [x] **4.2 Request guarantees:** `opus · high` idempotency (a lookup ignores
-  keys past 24 hours; deleting them comes with 6.2), deadlines, body limits,
-  health.
-- [x] **4.3 Sign-in:** `opus · high` the principal, browser sessions,
-  routes signed in by default, `current_principal`, starting and ending a
-  session, signing in from route tests. Split: API tokens and service keys
-  are 4.3b, the revocation delay 5.1b.
-- [x] **4.3b API tokens and service keys** `opus · high`: `service_key:`
-  with `Service.issue_key`, `.keys` and `.revoke_key` and a
-  `jadpo_service_keys` table, service callers (`service_disabled`,
-  `Principal.service`, a route test signing in as a service), and
-  `api_token:` with `sessions.issue_token`, `.tokens` and `.revoke_token`
-  (area 8, decided 2026-10-16).
-- [x] **4.4 Policy:** `opus · xhigh` grants compiled into queries, tenancy, the permissions
-  report, and `sessions.revoke_token` and `Service.revoke_key` gated by
-  the owning record's grants (today they revoke any id, area 8). Split:
-  field restrictions are 4.4b.
-- [x] **4.4b Field restrictions:** `opus · xhigh` a field's own
-  `policy:` and `FieldAccess.server_only`, `policy.field_widens_entity`,
-  `policy.output_field_unproved` with a field's value followed through
-  variables and other types, writes refused for a field the caller may
-  not change, `policy.role_field_create_forbidden`, proving every caller
-  who may read a record may read the parents a query includes, the
-  report's field rows, and policy's grants and scopes in the graph and
-  manifest (area 9).
-- [x] **4.4c Listing tokens and keys from a `GET`** `sonnet · high`
-  (area 8, decided 2026-10-16): a `GET` route runs `sessions.tokens` and
-  `Service.keys` as generated queries, and `IssuedToken` and `IssuedKey`
-  can be held in an `Output`, so a "signed-in devices" screen is one route.
-- [x] **4.6 Teaching examples for Phase 4** `opus · high`: bring
-  `examples/` up to date with routes, identity and policy, and pass
-  `tools/verify.py --require-examples`.
-- [x] **4.7 Phase 4 decisions** `opus · high` (Richard, 2026-10-16): a
-  reference between tenant-owned records stays inside the tenant, checked on
-  every write, so an include of a tenant-owned parent proves (area 9); a
-  condition or order on a field some caller may not read is
-  `policy.output_field_unproved` (area 9); route tests send a fresh
-  `Idempotency-Key` on every write unless they write their own (area 13),
-  with the examples' workaround in `11-cake-shop` removed.
-- [x] **4.8 Phase 4 review: policy soundness** `opus · xhigh`. Proofs and
-  gates that let data out: a scoped-role or field line under `actions:`
-  never enforced on an action that touches no entity (refuse or gate as
-  nobody); an `Output` built in a function never checked; values decided
-  by an `if`, a `match`, a filter predicate or a `count` losing where they
-  came from; a restricted value keeping its rules when stored with `set:`,
-  used as a lookup id or followed through an include's reference; the
-  record a write returns proved against its `read:`, with the flow check
-  running when no field has a policy; an update whose target may come from
-  several records proved for every one; an optional membership `role:`
-  read as every role; a caller inside a named object reaching an `Output`,
-  `Input` or failure; a field-refused transition answering 403 before its
-  `conflict:` arm; `role_field_create_forbidden` followed through
-  branches; the fallbacks that run an unpoliced statement or leave an
-  action ungated failing closed. Tenancy: a new membership makes its
-  member one only for a tenant with no members yet, so no one joins a
-  tenant as owner; a listed action moving a record to another tenant
-  needs the caller's membership there.
-- [x] **4.9 Phase 4 review: request soundness** `opus · high`. The address
-  rate limit counted before the work on routes anyone may call, even with
-  a credential header; deadlines enforced on work that never waits (the
-  interpreter checks the deadline as it runs, and a body finishing past it
-  answers 504 and commits nothing); a handled failure undoing its
-  `sessions.start` and `sessions.end`; header values that aren't visible
-  ASCII answered 400, never dropped; route tests leaving out an omitted
-  field rather than sending `null`; OpenAPI's plain variants in mixed
-  enums and `Time` as sent, and each route's responses (403 from listed
-  actions, 503, 413, 400, replay only where a response is stored) derived
-  from the plan; `Idempotency-Key` among the headers an `Input` can't read;
-  a route without `input:` refusing query keys and a body; a request body
-  read as JSON only with a JSON `Content-Type`; a concurrent change found
-  at commit rerunning the action, not answering 503; header, body and
-  connection timeouts and caps in the native host; each API's sign-in
-  methods in its record.
-- [x] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`,
-  before Phase 5, from the Phase 4 review: an action's gate checked in
-  `jadpo_runtime::action`; the caller a call runs as read from the plan,
-  not a type name; route tests' caller and `Idempotency-Key` given to the
-  runtime's test request; one `serve_request` that `jadpo dev` and every
-  deployable call; rate limits behind a host capability (memory natively,
-  and §2.6 settles Workers' default against area 16); the sign-in lookup,
-  the idempotency claim and its release each one statement, with `BEGIN`
-  sent with the first statement (area 7's "a transaction of its own"
-  becomes "one statement", the same outcomes); a policed `get` that finds
-  nothing answered without a second statement; `/health/ready` cached for
-  a second; the interpreter yielding as it checks its deadline, so a
-  route that computes without waiting doesn't hold its worker thread
-  (chunk 4.9); §2.4 and §2.6 and the stale comments brought up to date.
-- [x] **4.11 Incremental policy and route checking** `opus · xhigh`, before
-  6.1: one positionless per-callable query of what a body reads, writes,
-  calls and loads, which isolation, the store rules, policy reach and the
-  flow check all build on; the flow summary per action, with recursive
-  calls solved as a fixpoint; a test body reading the routes only when it
-  sends a request; routes, identity and policy in the scale test with
-  asserted recheck counts.
+- [x] **4.1 Routes** `opus · high`. Built: routes with groups, inputs,
+  outputs, statuses, OpenAPI, the API record and default rate limits.
+- [x] **4.2 Request guarantees** `opus · high`. Built: idempotency,
+  deadlines, body limits and health.
+- [x] **4.3 Sign-in** `opus · high`. Built: signing in: the principal,
+  browser sessions, routes signed in by default, `current_principal` and
+  signing in from route tests.
+- [x] **4.3b API tokens and service keys** `opus · high`. Built: service
+  keys and API tokens (`Service.issue_key`, `sessions.issue_token`, their
+  lists and revocation) and service callers.
+- [x] **4.4 Policy** `opus · xhigh`. Built: policy grants compiled into
+  queries, tenancy, the permissions report, and revocation gated by the
+  owning record's grants.
+- [x] **4.4b Field restrictions** `opus · xhigh`. Built: field restrictions:
+  a field's `policy:` and `FieldAccess.server_only`, the flow check behind
+  `policy.output_field_unproved`, refused writes, and fields in the report,
+  graph and manifest.
+- [x] **4.4c Listing tokens and keys from a `GET`** `sonnet · high`. Built:
+  `sessions.tokens` and `Service.keys` as generated queries on a `GET`
+  route, with `IssuedToken` and `IssuedKey` allowed in an `Output`.
+- [x] **4.6 Teaching examples for Phase 4** `opus · high`. Built: the
+  teaching examples brought up to date with routes, identity and policy,
+  passing `--require-examples`.
+- [x] **4.7 Phase 4 decisions** `opus · high`. Built: tenant-owned
+  references kept inside their tenant, conditions and orders on unreadable
+  fields refused, and route tests sending a fresh `Idempotency-Key` on every
+  write.
+- [x] **4.8 Phase 4 review: policy soundness** `opus · xhigh`. Built: the
+  Phase 4 policy soundness fixes: ungated actions, unchecked outputs, values
+  losing where they came from, proofs for updates and memberships, fallbacks
+  failing closed, and no one joining a tenant as owner.
+- [x] **4.9 Phase 4 review: request soundness** `opus · high`. Built: the
+  Phase 4 request soundness fixes: rate limits counted before the work,
+  deadlines on work that never waits, header and body handling, OpenAPI
+  responses derived from the plan, reruns at commit and the native host's
+  timeouts.
+- [x] **4.10 The runtime owns Phase 4's request path** `opus · xhigh`.
+  Built: the runtime owning the request path: action gates in
+  `jadpo_runtime::action`, one `serve_request` for `jadpo dev` and every
+  deployable, rate limits behind a host capability, and one-statement
+  sign-in lookups and idempotency claims.
+- [x] **4.11 Incremental policy and route checking** `opus · xhigh`. Built:
+  incremental policy and route checking on one positionless per-callable
+  query of what a body reads, writes, calls and loads.
 
 ## Phase 5 — Configuration, time, translations and the standard library (areas 10 and 19)
 
-- [x] **5.1 Configuration:** `sonnet · high` `config.jadpo`, environments, secrets, signing
-  keys, `jadpo config`, the check before the app starts, and a test's own
-  `config:`. The trusted proxies a client's address is read through are
-  5.1c.
-- [x] **5.1b Signed sessions** `opus · high`: area 8's
-  `revocation_delay:` once 5.1 gives signing keys: sessions and tokens
-  signed and checked without a read, expiring within the delay and
-  renewed against the record; `RouteAuthentication.fresh` reading the
-  record; `POST /auth/exchange` for service keys; a browser session's
-  `origin:` from configuration.
-- [x] **5.1c Trusted proxies** `sonnet · high` (area 10, question 12,
-  decided 2026-10-16): which
-  proxies a deployment trusts for a client's address (`X-Forwarded-For`,
-  `Forwarded`, Cloudflare's `CF-Connecting-IP`), declared once in
-  `app.jadpo` and read from the request, so the default rate limits count
-  the client and not the proxy.
-- [x] **5.1d Restricted values stored elsewhere** `opus · high` (area 9,
-  decided 2026-10-16): a create or update storing a value in a field some
-  of whose readers may not read the value is `policy.output_field_unproved`
-  at the `set:`, following the value as 4.8's flow check does; copies
-  between fields with the same readers stay allowed.
-- [x] **5.2 Time:** `opus · high` durations, instants, zones and the
-  `temporal` library, `ZonedTime` in place of the time of day, time on the
-  wire and in queries, and a test's clock. Formatting is 5.2b.
-- [x] **5.2b Time formats** `opus · high` (area 10, "Showing dates and
-  times to people"), split from 5.2: `TimeFormat` declared and built in,
-  `ComponentStyle`, `PresentationText` and
-  `type.presentation_text_persistence`, and `temporal.format` and
-  `format_relative` checked (`zone:` required for an `Instant` and refused
-  otherwise), the text they give staying `toolchain.not_built_yet` until
-  5.3; area 10's formatting errors rewritten with real output.
-- [x] **5.2c A type name is not a value** `sonnet · high`, found in 5.2b:
-  `var g: Label = Placed`, a type's or other declaration's bare name where
-  a value is expected, checks clean today; it is an error with its own
-  rule, a checked example and the one-step fix where one exists (a
-  construction, a variant), and every place a value is read is covered.
-- [x] **5.3 Locales and the text for people** `sonnet · high` (area 10,
-  "Locales" and "Showing dates and times to people"), the first half of
-  "Translations and locales": `locales { }` and its errors, `locale:`
-  checked against it, a `Locale` on the wire and in a setting limited to the
-  supported ones, and `temporal::format` and `format_relative` in
-  `jadpo-value` over ICU4X's compiled CLDR data, with the
-  `toolchain.not_built_yet` refusal removed. The second half, translations,
-  is 5.3b.
-- [x] **5.3b Translations** `sonnet · high` (area 10, "Translations"): the
-  root `translations/` folder, one JSON file per supported locale of ICU
-  MessageFormat messages (plurals through CLDR's rules, selects, numbers and
-  dates), one typed `translations.<key>(locale:, ...)` call per key of the
-  default locale's file, every other file checked for the same keys and
-  placeholders (their errors, with real output), and the interpreter and
-  runtime running them.
-- [x] **5.3c Choosing a locale from a request** `sonnet · high` (area 10,
-  "Locales"): the library call that picks a supported `Locale` from an
-  `Accept-Language` header and falls back to `default`. Named by Richard on
-  2026-10-16: `locale.from_accept_language(header)`, giving a `Locale`.
-- [x] **5.3d Names private to a domain** `opus · high` (area 1, "Files and
-  names", decided 2026-10-16): a private function or type unique only
-  within its domain in the checker's name table, resolution and imports,
-  with folded collisions in the same scope; the identity key of a function
-  or type declared in a domain carrying the domain, and promotion to
-  `shared/` writing a registry move line (area 18, question 8; reworks
-  part of chunk 1.7's registry, a new manifest `format`);
-  `semantic.duplicate_declaration` saying copy or clash and listing the
-  names in use that contain the same word, its checked example rewritten.
-  `jadpo rename` refusing a name in use comes with `rename` (after the
-  first build, item 5).
-- [x] **5.3e Constants** `opus · high` (area 3, "Constants", decided
-  2026-10-16), after 5.3d: `constant name: Type = value` at the top of a
-  file or in a library, `constant` reserved; its type named as a
-  signature's is; its value worked out and checked while compiling, with
-  calls, `config`, `clock` and cycles refused; `constant` in a body, `const`
-  and `constant mut` each one error with an edit, and a top-level `var`'s
-  `next:` pointing at `constant`; placement, promotion into a library and
-  per-domain names as for helper functions; reads in bodies, queries (as
-  literals) and updates by `id` (backfills, 5.6, take them as they come),
-  but never a setting's `default:` or `test:`, which stay literals
-  (revised 2026-10-16, Richard: a value is a constant or a setting, never
-  both); the `constant.similar_exists` warning and constants in the
-  library catalogue. Each new error with a checked example and real
-  output, and area 3's proposal examples made check blocks. Split on
-  2026-10-17: the moves are 5.3f.
-- [x] **5.3f Making a constant a setting** `opus · high` (area 10, "Making
-  a constant a setting" and "Fields in name order"), split from 5.3e:
-  `jadpo config move <constant>` and the editor's "Make this a setting"
-  code action through the same code: a `config` field of the constant's
-  name, type, value as `default:` and description, the constant deleted,
-  every read rewritten to `config.<name>`, refusing a type a setting can't
-  hold, a name a setting has and a read in a query, an update by `id`, a
-  backfill or another constant; `configuration.default_literal_required`'s
-  `next:` naming `jadpo config move` when `default:` names a constant.
-  `jadpo fmt` sorting `config { }` fields by name with their comments, and
-  `--check` failing on one out of order. Area 10's proposal examples made
-  check blocks.
-- [x] **5.4 Standard library: the plan** `opus · high`, decided 2026-10-17,
-  as recommended ([area 19](language/19-standard-library.md)). Only `collection`
-  and `temporal` are specified, piecemeal across areas 2, 3 and 10, and
-  real code keeps needing more: splitting and trimming text, formatting and
-  rounding numbers, hashing, encodings. Collect what the decided areas and
-  the example apps already call or will need, compare the standard
-  libraries of TypeScript, Rust, Go, Elixir and Python, and write one new
-  area page: the namespaces, every operation's signature and failures,
-  which have a SQL form (for queries and backfills), and what is left out
-  on purpose. **Needs Richard** to decide the page before 5.5.
-- [x] **5.4b Declinable errors** `opus · high` (area 1, question 11,
-  decided 2026-10-17): no warning severity; the generic `decline <rule>:
-  "<reason>"` line above any declaration, with `decline.unused` and
-  `decline.not_declinable`; `jadpo declines list` and `clear` (`--rule`, a
-  path, `--json`) and the editor's decline actions on the same code;
-  `jadpo approval` listing every decline once it is built;
-  `library.similar_exists` and `constant.similar_exists` turned into
-  declinable errors, each error's checked example rewritten; and the
-  time-triggered rule (judged at today's date by `check`, at the commit's
-  date by `jadpo build`) for expired flags when they are built. `warning`
-  leaves area 14's error shape and the CLI design language's headline
-  words.
-- [x] **5.4c Translations as messages** `sonnet · high` (area 10,
-  "Translations as messages", decided 2026-10-16 in the packages design
-  while 5.3b built JSON files of ICU MessageFormat; reworks 5.3b, whose
-  files, calls and `translation.*` errors it replaces). Split on
-  2026-10-17 because the whole is more than one session: this half is the
-  language itself, `5.4d` the tooling and the text Jadpo writes. Done in
-  this half: `type X = Message` and the built-in `PluralCount`; each
-  domain's and `shared/`'s `translations/` folder, with one unnamed
-  `translations { }` per locale and its mapping and checks (placeholders,
-  enum values, CLDR plural forms, every supported locale complete,
-  `in_progress:` in `locales { }` as the declared opt-out: an in-progress
-  locale falls back to its regional sibling and then the default with no
-  diagnostic); the typed calls
-  `translations.<domain>.<message>(..., locale:)` returning
-  `PresentationText`; enum wording; email subjects; and the removal of
-  5.3b's JSON files, calls and `translation.*` errors, with the section
-  of area 10 that described them.
-- [x] **5.4d Translations: failures, review and commands** `sonnet · high`
-  (area 10, "Translations as messages", the rest of 5.4c's text). Split on
-  2026-10-17 because the whole is more than one session: this half is the
-  app's own text, `5.4e` Jadpo's and `5.4f` the exchange with translation
-  services. Done in this half: failures that can reach a response worded in
-  every locale (by code, `client:` fields as placeholders formatted by the
-  client) and exported as `<api>.failures.<locale>.json` beside the OpenAPI
-  documents; stale translations through each folder's
-  `sources.jadpo_record` (the first `.jadpo_record` built),
-  `TranslationReview` and `accept`; `TextDirection` and
-  `locale.direction(value)`; `jadpo translations missing` (which also lists
-  what an in-progress locale falls back on), `unused`, `update` and
-  `accept`; go to definition from a call to its message type and its
-  wording; and the pseudo-locale `Locale.en_xa`. Email templates follow in
-  7.3, library packages' translations in 7.1.
-- [x] **5.4e Translations: Jadpo's text** `sonnet · high` (area 10,
-  "Jadpo's and packages' text" and "Tooling"), after 5.4d. Split on
-  2026-10-17 because the whole is more than one session: this half is
-  Jadpo's own words, `5.4f` the exchange with translation services. Done:
-  Jadpo's own messages as a catalogue in `jadpo-std`, shipped in `en_gb` and
-  `en_us`, gated by the features an app has on (requests, signing in, locales;
-  magic links catalogued, not on until area 8); the root folder as a place
-  (`translations/<locale>.jadpo`, `jadpo: { }`), checked as a folder's are,
-  with `translation.jadpo_missing` (one error for each locale Jadpo does not
-  ship), `translation.feature_off` and `translation.owner_unknown`; Jadpo's
-  failures in every API's failures export; `TextDirection`'s `ltr` and `rtl`
-  wording; the root folder's `sources.jadpo_record` (members
-  `jadpo.<message>`), listed by `missing` and written by `update` and
-  `accept`; and `jadpo translations builtin`.
-- [x] **5.4f Translations: the exchange** `sonnet · high` (area 10,
-  "Tooling"), after 5.4e. Done: `jadpo translations export` writes XLIFF 2.0
-  (or Chrome-style JSON) for each translated locale, or the default
-  locale's source file, with each message's description and placeholders;
-  `import` reads XLIFF 2.x or JSON, checks the result with `jadpo check`'s
-  own rules, and writes the language files and the record or refuses whole
-  with `translation.exchange_unit_unknown`, `translation.exchange_file_invalid`
-  or the language files' rule at the unit of the file; exporting then
-  importing unchanged writes nothing. Lokalise's reading of XLIFF 2.0 and of
-  the Chrome JSON shape is unverified (area 10, "Chosen in chunk 5.4f").
-- [x] **5.5a The standard type contract** `opus · high` (area 19, "Every
-  standard type meets one contract", questions 1 to 5): each standard type
-  a stub declaration in `crates/jadpo-check/std/` plus a data entry,
-  generating construction, `text.parse`, `text.format`, `text.from`, JSON,
-  storage, `==` and order; named validators; one test harness for every
-  type; `temporal.format` moved under `text.format` with its habit error;
-  `type.standard_exists` on app code, declinable through 5.4b. Done
-  when the 13 built standard types run through the contract and the
-  harness, area 10's formatting examples use `text.format`, and
-  `type.standard_exists` has a checked example with real output. Split on
-  2026-10-17 because the whole is more than one session: the clash check
-  and `jadpo fix` are 5.5a2.
-- [x] **5.5a2 Standard type clashes and `jadpo fix`** `opus · high` (area
-  19, question 4), split from 5.5a: each data entry's release; the first
-  `check` after an upgrade reporting each app type that clashes with a
-  standard type the release added, naming the type and the release, with
-  the swap (as `type.standard_exists`'s) and the rename (`jadpo rename`)
-  as its fixes; `jadpo fix` applying the chosen one through the editor's
-  quick-fix code, designed with the skills in `.agents/skills/` first;
-  release notes listing added names. Done when a clash has a checked
-  example with real output and `jadpo fix` has its CLI tests.
-- [x] **5.5a3 Editor completion** `opus · high` (area 14, "Editor
-  support", "Completion"; Richard, 2026-10-17): `jadpo lsp` answers
-  completion from the declarations and data the checker uses, never a list
-  of its own: names in scope with the `use` line a name needs, a value's
-  fields, a namespace's operations with signature, failures and docs, enum
-  variants with CLDR names, units straight after a number narrowed to the
-  type it goes into, named arguments and record fields not given yet, type
-  names, declinable rules after `decline`, `config.` settings,
-  `translations.<domain>.` messages and keywords; what fits the required
-  type first; calls with required arguments as snippets; VS Code triggers
-  on `.`, `:` and digits. Done when each context has an LSP-level test and
-  an operation added to a stub is offered with no completion code.
-- [x] **5.5b Lists** `opus · high` (area 19, "Lists", questions 6, 7 and
-  11): `collection.` renamed `list.` everywhere, with its habit error; the
-  21 new list operations that need no language change; `never_negative`,
-  the `sort_by` key's ordered kinds, results that keep a named type. Done
-  when every list operation's page example passes as a test, interpreted
-  and in the runtime, and no `collection.` call is left in the pages,
-  examples or tests. `group_by`'s page test reads its map once
-  `map.get` exists (5.5c); what the pages left open is area 19's "Chosen
-  in chunk 5.5b".
-- [x] **5.5c Sets, maps and ranges** `opus · high` (area 19, "Sets",
-  "Maps", "Ranges" and "Language gaps", question 8): the 7 `set`
-  operations, the 8 `map` operations that take no inline function, and the
-  3 `range` operations on `InstantRange`; `for` over a set in canonical
-  order, and so over a map's keys; `[]` as an empty map; `range` reserved
-  and area 10's `deliveries_in(range:)` renamed. Done when each
-  operation's example passes, interpreted and in the runtime, area 19's
-  `by_shelf` (`list.group_by`) has a test reading its map, and walking a
-  set or a map's keys checks and runs. Split on 2026-10-17 because the
-  whole is more than one session: two-parameter inline functions and
-  `Range<T>` are 5.5c2. An `InstantRange` object literal now checks and
-  runs, which the range examples needed; what the pages left open is area
-  19's "Chosen in chunk 5.5c".
-- [x] **5.5c2 Two-parameter inline functions and `Range<T>`** `opus ·
-  high` (area 19, "Lists", "Maps", "Ranges" and "Language gaps", split
-  from 5.5c): `(a, b) -> ...` for standard operations only (area 3's
-  question 13 widened), with `list.zip_with`, `map.filter` and
-  `map.map_values`; `Range<T>` on the contract, with open ends, and the 3
-  `range` operations taking it. Done when each of those operations'
-  examples passes, interpreted and in the runtime, and a two-parameter
-  inline function anywhere else is an error with a checked example. A
-  function with the wrong number of parameters is a new rule,
-  `type.inline_function_parameters`; what the pages left open is area
-  19's "Chosen in chunk 5.5c2".
-- [x] **5.5d Numbers** `opus · high` (area 19, "Numbers", question 25): the
-  8 new `integer` and `decimal` operations, `scale:` written out, and
-  `Rounding.down`. Done when each operation's example passes and every
-  rounding mode gives the same result interpreted and in the runtime.
-  `text.format` shows numbers too; what the pages left open is area 19's
-  "Chosen in chunk 5.5d".
-- [x] **5.5e Decimal maths** `opus · high` (area 19, "Numbers", question
-  18): `sqrt`, `power`, `exp`, `ln`, `sin`, `cos`, `atan2` and `pi` on
-  `Decimal`, correctly rounded to a named scale by Jadpo's own code. Done
-  when each is tested against reference values and gives the same digits
-  on native and WebAssembly.
-- [x] **5.5f Text** `opus · high` (area 19, "Text", questions 23, 26, 29
-  and 30): the 17 text operations, `locale:` on case and sorting through
-  ICU4X, NFC at the boundary, `never_empty`, `fill:` and
-  `at_most_length_of`; `text` reserved and the clashing page examples and
-  crate snippets renamed. Done when each operation's example passes,
-  including the Unicode edge cases, and `text` can't name a variable.
-  Empty text where it never is is a new rule, `type.argument_empty`;
-  what the pages left open is area 19's "Chosen in chunk 5.5f".
-- [x] **5.5g Hashing, encodings and JSON** `opus · high` (area 19,
-  "Hashing and cryptography", "Encodings" and "Data formats", questions
-  14 and 24): `hash.sha256`, the 9 `encoding` operations, `json.read` and
-  `json.write` in memory with `mismatch`'s problem path. The batch forms
-  and `csv`, `tsv` and `json_lines` come with batches (6.4b). Done when
-  each operation's example passes and `json.write` gives the same text
-  for the same value on every target. Split on 2026-10-17 because the
-  whole is more than one session: the `DecodeProblem` a failure mapped
-  from `mismatch` receives is 5.5g2. The wire's `Bytes` is now read as
-  `encoding.from_base64` reads it, padded only; what the pages left open
-  is area 19's "Chosen in chunk 5.5g".
-- [x] **5.5g2 The decode problem on a failure** `opus · high` (area 19,
-  "Data formats", `json`; split from 5.5g): the built-in `DecodeProblem`
-  (the first bad field's path, list positions as numbers, and the rule,
-  never the value), and a failure mapped from `json.read`'s `mismatch`
-  that declares a `problem: DecodeProblem` field receiving it, in the
-  failure's fields, its client JSON and its log. Done when a mapped
-  failure's `problem` names `lines.2.quantity` and `max` for that input,
-  interpreted and in the runtime, with a checked page example. Only the
-  runtime builds a `DecodeProblem` (`type.not_record`, now
-  `IssuedToken`'s too); the log is the failure's report until the hosts
-  write area 4's event; what the pages left open is area 19's "Chosen in
-  chunk 5.5g2".
-- [x] **5.5h Money** `opus · high` (area 19, "Money and payments" and "The
-  standard operator table", question 16): `Money` and `Currency`, the 7
-  `money` operations other than `convert`, the operator table's `Money`
-  rows with `currency_mismatch`, `rounding:` and `type.money_split` (the
-  rows with `Percentage` come with it, in 5.5j), the two columns, the
-  wire shape, `text.format`, and area 2's examples that declare their
-  own `Money` renamed. Done when the money examples pass, interpreted, in
-  the runtime and stored in PostgreSQL, a mismatched currency fails to
-  compile where both types fix it, and `split` and `allocate` never lose
-  a minor unit. Split on 2026-10-17; the rest is 5.5h2. Stored always in
-  two columns, with a check constraint for a fixed currency; what the
-  pages left open is area 19's "Chosen in chunk 5.5h".
-- [x] **5.5h2 Exchange rates and money in messages** `opus · high` (area
-  19, "Money and payments", question 16, split from 5.5h): `ExchangeRate`
-  and `money.convert`, applying a rate the app holds and failing
-  `currency_mismatch` for another currency's rate; `{price, number,
-  currency}` in translation messages (area 10's placeholder styles). Done
-  when `convert`'s example passes, an inverted rate is a type error, and
-  a message writes a price in two locales. Built, with
-  `translation.placeholder_style`; what the pages left open is area 19's
-  "Chosen in chunk 5.5h2".
-- [x] **5.5h3 Definition before use** `sonnet · high` (area 1, "Files and
-  names"; Richard, 2026-10-17): `jadpo fmt` orders each file as decided:
-  opening comment, `use` lines, then every declaration before the first
-  one that uses it, the primary declaration last, ties by kind (constants,
-  types, failures, helpers) then by the order the primary first reaches
-  them, mutual references in written order; `jadpo fmt --check` failing on
-  a file out of order; chunk 3.9's "primary first" move removed; every page
-  example, example app and test fixture reformatted. Done when the
-  ordering has tests for each tie rule and a cycle, and the gate's docs and
-  examples steps pass on the reordered sources.
-- [x] **5.5i Payment and identity numbers** `opus · high` (area 19, "Groups
-  with the baseline only"): the 17 of the money group and the tax and
-  identity numbers that are text, each a pattern or check digit (mod-97,
-  Luhn, mod-11) on the contract: `PaymentCardNumber`, `CardBin`,
-  `PaymentReference`, `InvoiceNumber`, `Iban`, `Bic`, `UkSortCode`,
-  `UkAccountNumber`, `AbaRoutingNumber`, `Lei`, `Isin`, `UkUtr`,
-  `UkCompanyNumber`, `UkNationalInsuranceNumber`, `UsSsn`, `UsEin` and
-  `NhsNumber`. Done when every type passes the contract's harness with
-  valid and invalid examples per rule. Split on 2026-10-18; the rest is
-  5.5i2. What the pages left open is area 19's "Chosen in chunk 5.5i".
-- [x] **5.5j Quantities** `opus · high` (area 19, "Physical quantities",
-  question 17): the 17 physical quantities with `DataSize` and `Bitrate`,
-  each with its unit enum; SI storage at each kind's scale in one
-  `numeric` column; the wire's `{ "value": ..., "unit": ... }`; suffixed
-  literals; the product and quotient table; `type.unit_required`; the 3
-  `units` operations and `text.format` in a chosen unit through the
-  locale. Done when the quantity examples pass, interpreted, in the
-  runtime and stored in PostgreSQL, `1km == 1000metre`, `2metre + 45cm +
-  3inch` gives the right metres and is shown in centimetres in two
-  locales, and a bare number or a mixed kind is a compile error with a
-  checked example. Split on 2026-10-18; the rest is 5.5j2. Built, with
-  `type.unit_unknown` and quantities compared and ordered in queries;
-  what the pages left open is area 19's "Chosen in chunk 5.5j".
-- [x] **5.5j2 Percentages, ratios and fractions** `opus · high` (area 19,
-  "The standard operator table", questions 16 and 17; split from 5.5j):
-  `Percentage`, `Ratio` and `Fraction` on the contract; the `%` literal,
-  with remainder keeping its spaced `%` and `20%3` an error; the operator
-  table's `Percentage` rows, with `Money * Percentage`, the refused
-  `Money + Percentage` (5.5h built `Money` by a number) and a number or
-  quantity times a `Percentage` keeping its kind; `Percentage(ratio)`,
-  0.25 → 25%; `{n, number, percent}` in messages. Done when the
-  percentage examples pass and the showcase `var total: Length = 2metre
-  + 45cm + 3inch` then `var trim: Length = total * 15%` gives the right
-  metres, shown in centimetres in two locales. Built, with
-  `syntax.percent_ambiguous`, a `Mass` held to the microgram so `1mcg` is
-  exact (a correction by the lead session), and a percentage stored as
-  its fraction and sent as `"20%"`; what the pages left open is area 19's
-  "Chosen in chunk 5.5j2".
-- [x] **5.5k Time and calendar** `opus · high` (area 19, "Time and
-  calendar additions"): ten of the 13 new time types (`LocalTime`,
-  `LocalDateTime`, `Month`, `YearMonth`, `Year`, `Quarter`, `IsoWeek`,
-  `UtcOffset`, `DateRange`, `CalendarPeriod`), `CalendarPeriod`'s
-  operator rows, `temporal.period_between`, and `DateRange` taken by the
-  `range` operations. Done when each of the ten passes the harness and
-  `period_between`'s example passes across a daylight-saving change.
-  Split on 2026-10-17; the rest is 5.5k2.
-- [x] **5.5k2 Recurrence and opening hours** `opus · high` (area 19,
-  "Time and calendar additions"): `RecurrenceRule` (RFC 5545) with its
-  expansion, `temporal.occurrences`; `OpeningHours` with
-  `temporal.open_at`. Done when each passes the harness and the two
-  operations' examples pass across spring forward and fall back in
-  Europe/London and America/New_York, interpreted and in the runtime.
-  Split on 2026-10-18; `CalendarEvent` is 5.5k3. Both held as their
-  standard text; what the pages left open is area 19's "Chosen in chunk
-  5.5k2".
-- [x] **5.5k3 Calendar events** `opus · high` (area 19, "Time and
-  calendar additions", split from 5.5k2): `CalendarEvent` as an object
-  whose parts code reads, with parts that may be `none` (`Part::Optional`,
-  built in 5.5l), and an all-day event's dates beside a timed one's
-  local times and zone; its canonical text an RFC 5545 `VEVENT` (an
-  all-day end exclusive, as the RFC writes it), its JSON its parts, its
-  recurrence a `RecurrenceRule`. Done when it passes the harness and an
-  all-day event's text, JSON and storage round-trip without moving a
-  day. Built, its rules across parts (days or times, a recurrence only
-  on a timed event and from its start) proved for a literal and checked
-  as text and JSON are read, and stored a column per part (checked in
-  PostgreSQL); what the pages left open is area 19's "Chosen in chunk
-  5.5k3".
-- [x] **5.5k4 Local times to instants, and all-day recurrence** `opus ·
-  high` (areas 10 and 19; decided by the lead session, 2026-10-18, from
-  5.5k3's findings): `temporal.resolve` taking a `LocalDateTime` (and a
-  `CalendarDate` with a `LocalTime`) with a zone, under area 10's existing
-  `dst:` choice, so a timed `CalendarEvent`'s start becomes an `Instant`;
-  and `RecurrenceRule` accepting a date-only start, so an all-day event
-  recurs (birthdays, anniversaries) without a zone. Done when an event's
-  start resolves across both clock changes with each `dst:` choice, and a
-  yearly all-day event on 29 February follows RFC 5545's skipping rule.
-  Built, with `DTSTART;VALUE=DATE:` rules, `temporal.occurrences` giving
-  days from a date, and all-day events recurring from their first day;
-  what the pages left open is area 19's "Chosen in chunk 5.5k4".
-- [x] **5.5l People and places** `opus · high` (area 19, question 22): 15
-  of the 19 new types: the closed lists (`Country`, `CountrySubdivision`,
-  `Continent`, `Language`, `WritingScript`, `TextDirection`,
-  `Nationality`) as built-in enums with `form:`, `.all` and retired codes
-  (`type.variant_retired`, with the currencies 5.5h left out); `GivenName`,
-  `FamilyName`, `Username`, `PhoneExtension` and `Uprn`; and `PersonName`,
-  `EmailWithName` and `PostalAddress` as objects with optional parts,
-  stored in named columns, `PostalAddress` and `PersonName` in each
-  locale's order. Done when every type passes the harness and
-  `text.format` writes an address in two locales' orders and a name in
-  two orders. Split on 2026-10-18; the rest is 5.5l2. Built, with
-  `type.variant_retired` and `type.reserved_variant_name`, the lists from
-  CLDR 48.2, ISO 639 and ISO 15924, names by CLDR's person-name patterns
-  and addresses by libaddressinput's formats, an object stored in a column
-  per part (checked in PostgreSQL); what the pages left open is area 19's
-  "Chosen in chunk 5.5l".
-- [x] **5.5l2 Phone numbers and postal codes** `opus · high` (area 19,
-  "Groups with the baseline only", split from 5.5l): `PhoneNumber` with
-  libphonenumber's E.164 metadata, `CallingCode` against the assigned
-  codes, `PostalCode` per country (and `PostalAddress`'s postal code
-  checked by its country), and `UnLocode` against its list. Done when
-  each passes the harness with valid and invalid examples per country
-  rule. Built, with libphonenumber v9.0.41's metadata (valid, not only
-  possible), libaddressinput's patterns and `country:` on `text.parse`;
-  `UnLocode` is checked by pattern and country only, since the
-  UN/LOCODE list's terms are unclear and **needs Richard** to say whether
-  it ships. What the pages left open is area 19's "Chosen in chunk
-  5.5l2".
-- [x] **5.5h4 Exchange rate types that fix their currencies** `opus ·
-  high` (area 19, "Money and payments"; decided by the lead session,
-  2026-10-18, following decision 16), after 5.5h2: a type built on
-  `ExchangeRate` may fix its currencies, `type PoundsToEuros =
-  ExchangeRate { from: Currency.gbp, to: Currency.eur }`, as a `Money`
-  type fixes its currency, so `money.convert` with an inverted or wrong
-  rate is a compile error across function boundaries, not only after a
-  condition; a rate read at the boundary is checked against them. Purely
-  additive. Done when an inverted typed rate passed through a function
-  fails to compile with a checked example, and a fixed-currency rate needs
-  no `attempt`. Built, with a type built on an object now built from that
-  object, `from` and `to` as construction failures, and JSON, text and
-  OpenAPI checking them, and a currency a parent type fixes kept by the
-  types built on it; storing one waits with `ExchangeRate`. What the
-  pages left open is area 19's "Chosen in chunk 5.5h4".
-- [x] **5.5i2 Cards and identity documents** `opus · high` (area 19,
-  "The standard types", split from 5.5i), after 5.5l: `CardBrand`,
-  `MaskedCardNumber` with its conversion from a `PaymentCardNumber`, and
-  `CardExpiry`; `VatNumber`, `TaxId`, `PassportNumber`,
-  `DrivingLicenceNumber` and `IdentityDocument`, on `Country` (5.5l), each
-  checked by its country's published format (at least GB, DE, FR, IE, US
-  and one country outside Europe), by length where none is published.
-  Done when every type passes the harness with valid and invalid
-  examples per rule. Split on 2026-10-18; the rest is 5.5i3. Built, with
-  `money.mask` for the conversion and `IdentityDocumentKind` as the
-  document's kind; forms from VIES, HMRC, the OECD's and the EU's TIN
-  pages and each issuer's own, by length where a country publishes none.
-  What the pages left open is area 19's "Chosen in chunk 5.5i2".
-- [x] **5.5i3 Prices, discounts and rates** `opus · high` (area 19, "The
-  standard types", split from 5.5i2), after 5.5j2: `Price`, `UnitPrice`,
-  `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`, on `Money`,
-  `Percentage` and the quantities. `Discount` is the first standard type
-  that is a choice of other types: the choice goes into the contract
-  generically (a stub and a data entry, no per-type code path), for
-  `BankAccount` and later choices to reuse. Done when every type passes
-  the harness with valid and invalid examples per rule, and a `Discount`
-  applied to a `Price` gives the right result for both kinds, interpreted
-  and in the runtime. Split on 2026-10-18; `BankAccount` is 5.5i4.
-  Built, with `money.apply_discount` for applying a discount,
-  `InterestRateBasis` as an interest rate's basis, `UnitPrice` a choice by
-  the quantity's kind and `BasisPoints` one of 5.5n's whole numbers;
-  storing the four records waits on area 5's structured storage, as an
-  `ExchangeRate`'s does. What the pages left open is area 19's "Chosen in
-  chunk 5.5i3".
-- [x] **5.5i4 Bank accounts** `opus · high` (area 19, "The standard
-  types", split from 5.5i3), after 5.5i3: `BankAccount`, a choice of a UK
-  sort code and account number, an IBAN, or another country's account,
-  on 5.5i3's choice; the UK modulus check across a sort code and an
-  account number by Vocalink's published specification (version 9.10, 5
-  Sept 2026), with all 34 of its Chapter 3 test cases, cited; masked as
-  financial personal data (area 15), as 5.5i did. Done when it passes the
-  harness with valid and invalid examples per rule and all 34 Vocalink
-  cases pass.
-  Built, the check passing all 34 cases; Vocalink publishes its weight
-  and substitution tables with all rights reserved, so no release ships
-  them and no `BankAccount` runs the check yet, which the specification's
-  own rule for a sort code its table doesn't cover allows. Whether they
-  ship is Richard's question. What the pages left open is area 19's
-  "Chosen in chunk 5.5i4".
+- [x] **5.1 Configuration** `sonnet · high`. Built: configuration:
+  `config.jadpo`, environments, secrets, signing keys, `jadpo config`, the
+  check before the app starts and a test's own `config:`.
+- [x] **5.1b Signed sessions** `opus · high`. Built: sessions and tokens
+  signed and checked without a read within area 8's `revocation_delay:`,
+  `POST /auth/exchange` for service keys, and a browser session's `origin:`
+  from configuration.
+- [x] **5.1c Trusted proxies** `sonnet · high`. Built: trusted proxies
+  declared in `app.jadpo`, so the default rate limits count the client's
+  address read from `X-Forwarded-For`, `Forwarded` or `CF-Connecting-IP`.
+- [x] **5.1d Restricted values stored elsewhere** `opus · high`. Built:
+  `policy.output_field_unproved` at the `set:` that stores a restricted
+  value where readers who may not read it can.
+- [x] **5.2 Time** `opus · high`. Built: durations, instants, zones and the
+  `temporal` library, `ZonedTime`, time on the wire and in queries, and a
+  test's clock.
+- [x] **5.2b Time formats** `opus · high`. Built: `TimeFormat`,
+  `ComponentStyle`, `PresentationText` and checked `temporal.format` and
+  `format_relative`.
+- [x] **5.2c A type name is not a value** `sonnet · high`. Built: an error,
+  with its one-step fix, for a type's or declaration's bare name where a
+  value is expected.
+- [x] **5.3 Locales and the text for people** `sonnet · high`. Built:
+  `locales { }`, `locale:` and `Locale` checked against it, and date and
+  time formatting over ICU4X's compiled CLDR data.
+- [x] **5.3b Translations** `sonnet · high`. Built: translations as ICU
+  MessageFormat JSON files with typed calls, since replaced by 5.4c.
+- [x] **5.3c Choosing a locale from a request** `sonnet · high`. Built:
+  `locale.from_accept_language(header)`, picking a supported `Locale` and
+  falling back to `default`.
+- [x] **5.3d Names private to a domain** `opus · high`. Built: names private
+  to a domain in the name table, resolution, imports and identity keys, with
+  promotion to `shared/` writing a registry move line.
+- [x] **5.3e Constants** `opus · high`. Built:
+  `constant name: Type = value`, worked out and checked while compiling and
+  read in bodies, queries and updates by `id`, with its errors and
+  `constant.similar_exists`.
+- [x] **5.3f Making a constant a setting** `opus · high`. Built:
+  `jadpo config move <constant>` and the editor's "Make this a setting", and
+  `jadpo fmt` sorting `config { }` fields by name.
+- [x] **5.4 Standard library: the plan** `opus · high`. Built: the standard
+  library plan, decided by Richard as
+  [area 19](language/19-standard-library.md).
+- [x] **5.4b Declinable errors** `opus · high`. Built: declinable errors in
+  place of warnings: `decline <rule>: "<reason>"`, `jadpo declines list` and
+  `clear`, and the editor's decline actions.
+- [x] **5.4c Translations as messages** `sonnet · high`. Built: translations
+  as messages: `type X = Message`, `PluralCount`, one `translations { }` per
+  locale in each domain and `shared/` with their checks, and typed
+  `translations.<domain>.<message>(..., locale:)` calls, replacing 5.3b's
+  JSON files.
+- [x] **5.4d Translations: failures, review and commands** `sonnet · high`.
+  Built: failures worded in every locale and exported beside OpenAPI, stale
+  translations through `sources.jadpo_record`, `TextDirection`, the
+  `jadpo translations` commands and the pseudo-locale `Locale.en_xa`.
+- [x] **5.4e Translations: Jadpo's text** `sonnet · high`. Built: Jadpo's
+  own messages as a catalogue shipped in `en_gb` and `en_us`, the root
+  `translations/` folder with its errors, and `jadpo translations builtin`.
+- [x] **5.4f Translations: the exchange** `sonnet · high`. Built:
+  `jadpo translations export` and `import` in XLIFF 2.0 or Chrome-style
+  JSON, checked by `jadpo check`'s own rules.
+- [x] **5.5a The standard type contract** `opus · high`. Built: the standard
+  type contract: a stub and a data entry per type generating construction,
+  text, JSON, storage, `==` and order, one harness for every type, and
+  `type.standard_exists`.
+- [x] **5.5a2 Standard type clashes and `jadpo fix`** `opus · high`. Built:
+  each data entry's release, the clash report after an upgrade, and
+  `jadpo fix` applying the swap or the rename.
+- [x] **5.5a3 Editor completion** `opus · high`. Built: editor completion
+  from the checker's own declarations and data, with snippets and VS Code's
+  triggers.
+- [x] **5.5b Lists** `opus · high`. Built: the 21 `list` operations that
+  need no language change, `collection.` renamed to `list.` with its
+  moved-namespace error.
+- [x] **5.5c Sets, maps and ranges** `opus · high`. Built: the 7 `set`
+  operations, the 8 `map` operations without inline functions and the 3
+  `range` operations, `for` over a set and a map's keys, and `range`
+  reserved.
+- [x] **5.5c2 Two-parameter inline functions and `Range<T>`** `opus · high`.
+  Built: two-parameter inline functions for standard operations
+  (`list.zip_with`, `map.filter`, `map.map_values`) and `Range<T>` with open
+  ends.
+- [x] **5.5d Numbers** `opus · high`. Built: the 8 new `integer` and
+  `decimal` operations, `scale:` and `Rounding.down`, alike on both
+  executors.
+- [x] **5.5e Decimal maths** `opus · high`. Built: correctly rounded `sqrt`,
+  `power`, `exp`, `ln`, `sin`, `cos`, `atan2` and `pi` on `Decimal`, with
+  the same digits on native and WebAssembly.
+- [x] **5.5f Text** `opus · high`. Built: the 17 text operations, case and
+  sorting by locale through ICU4X, NFC at the boundary, and `text` reserved.
+- [x] **5.5g Hashing, encodings and JSON** `opus · high`. Built:
+  `hash.sha256`, the 9 `encoding` operations, and `json.read` and
+  `json.write` in memory.
+- [x] **5.5g2 The decode problem on a failure** `opus · high`. Built: the
+  built-in `DecodeProblem` received by a failure mapped from `json.read`'s
+  `mismatch`.
+- [x] **5.5h Money** `opus · high`. Built: `Money` and `Currency`, 7 `money`
+  operations, the operator table's `Money` rows with `currency_mismatch`,
+  and storage in two columns.
+- [x] **5.5h2 Exchange rates and money in messages** `opus · high`. Built:
+  `ExchangeRate`, `money.convert`, and prices in translation messages.
+- [x] **5.5h3 Definition before use** `sonnet · high`. Built: `jadpo fmt`
+  ordering every file definition before use with the primary declaration
+  last, and every source reformatted.
+- [x] **5.5i Payment and identity numbers** `opus · high`. Built: the 17
+  payment, tax and identity number types, each checked by a pattern or a
+  check digit.
+- [x] **5.5j Quantities** `opus · high`. Built: the 17 physical quantities
+  with `DataSize` and `Bitrate`, their unit enums, SI storage, suffixed
+  literals, the product and quotient table and the `units` operations.
+- [x] **5.5j2 Percentages, ratios and fractions** `opus · high`. Built:
+  `Percentage`, `Ratio` and `Fraction`, the `%` literal, the operator
+  table's `Percentage` rows and percentages in messages.
+- [x] **5.5k Time and calendar** `opus · high`. Built: ten new time types,
+  `CalendarPeriod`'s operators, `temporal.period_between` and `DateRange` in
+  the `range` operations.
+- [x] **5.5k2 Recurrence and opening hours** `opus · high`. Built:
+  `RecurrenceRule` (RFC 5545) with `temporal.occurrences`, and
+  `OpeningHours` with `temporal.open_at`.
+- [x] **5.5k3 Calendar events** `opus · high`. Built: `CalendarEvent`, an
+  object of optional parts whose text is an RFC 5545 `VEVENT`, stored a
+  column per part.
+- [x] **5.5k4 Local times to instants, and all-day recurrence**
+  `opus · high`. Built: `temporal.resolve` turning local times into instants
+  under `dst:`, and date-only `RecurrenceRule` starts for all-day events.
+- [x] **5.5l People and places** `opus · high`. Built: 15 people and places
+  types: the CLDR and ISO closed lists as built-in enums with retired codes,
+  the name types, and `PersonName`, `EmailWithName` and `PostalAddress`
+  written in each locale's order.
+- [x] **5.5l2 Phone numbers and postal codes** `opus · high`. Built:
+  `PhoneNumber` on libphonenumber's metadata, `CallingCode`, `PostalCode`
+  per country, and `UnLocode` by pattern and country only, since whether the
+  UN/LOCODE list ships **needs Richard**.
+- [x] **5.5h4 Exchange rate types that fix their currencies** `opus · high`.
+  Built: exchange rate types that fix their currencies, so an inverted rate
+  is a compile error across function boundaries.
+- [x] **5.5i2 Cards and identity documents** `opus · high`. Built:
+  `CardBrand`, `MaskedCardNumber` with `money.mask`, `CardExpiry`, and the
+  tax and identity documents checked by their countries' published formats.
+- [x] **5.5i3 Prices, discounts and rates** `opus · high`. Built: `Price`,
+  `UnitPrice`, `TaxRate`, `Discount`, `BasisPoints` and `InterestRate`,
+  choice types in the contract, and `money.apply_discount`.
+- [x] **5.5i4 Bank accounts** `opus · high`. Built: `BankAccount` and the UK
+  modulus check passing all 34 of Vocalink's cases, run by no `BankAccount`
+  until Richard says whether Vocalink's tables, published with all rights
+  reserved, may ship.
 - [x] **5.5m Commerce, health, travel and the rest: codes and lists**
-  `opus · high` (area 19, "Groups with the baseline only"): the 29 of the
-  45 that are codes or closed lists. Held as text with a pattern and,
-  where the page names one, a check digit: `Sku`, `Ean13`, `UpcA`,
-  `Isbn`, `Sscc`, `HsCode`, `Carrier`, `ContainerNumber`, `LotNumber`,
-  `SerialNumber`, `Vin`, `Icd10Code`, `SnomedConcept`, `IataAirport`,
-  `IcaoAirport`, `IataAirline`, `BookingReference`, `UnNumber`, `Orcid`,
-  `Mpan` and `Mprn`; and the closed lists `Incoterm`, `BloodType`,
-  `Allergen`, `CabinClass`, `CefrLevel`, `EpcRating`, `Tenure` and
-  `LawfulBasis` as built-in enums. Done when every type passes the
-  harness with valid and invalid examples per rule. Split on 2026-10-18;
-  the records and measures are 5.5m2. Built, the check digits GS1's,
-  ISO 6346's, ISO 7064's, Verhoeff's, an MPAN's and, for North American
-  manufacturers, a VIN's; IATA's and ICAO's codes and ICD-10 are checked
-  by pattern only, since their lists can't be shipped, and a list CLDR
-  doesn't name is shown by its authority's English wording; the ISBN-10
-  conversion came with 5.5m2. What the pages left open is area 19's
-  "Chosen in chunk 5.5m".
-- [x] **5.5m2 Commerce, health, travel and the rest: records and
-  measures** `opus · high` (area 19, "Groups with the baseline only",
-  split from 5.5m): the other 16, each a record of other types or a
-  measure: `Barcode`, `UnitQuantity`, `Rating`, `ClothingSize`,
-  `ShoeSize`, `Dimensions`, `TrackingNumber` (on 5.5m's `Carrier`),
-  `VehicleRegistration`, `Dose`, `DosageInstruction`, `HeartRate`,
-  `BloodPressure`, `BloodGlucose`, `FlightNumber` (on 5.5m's
-  `IataAirline`), `Jurisdiction` and `ModelId`; and the contract's ISBN-10
-  conversion, `text.parse(raw, as: Isbn, form: CodeForm.isbn10)`, reading
-  only, consistent with `Country`'s `form:` (decided by the lead session,
-  2026-10-18). Done when every type passes the harness and an ISBN-10
-  reads as its `Isbn`, a bad check digit `malformed`. Built, with the
-  measures on `Frequency`, `Pressure` and `Concentration` and shown in
-  the clinician's units, from four new units with no literal suffix
-  (millimetres of mercury, beats a minute, milligrams a decilitre and
-  millimoles of glucose a litre, by CLDR's conversions); `Dose` by mass or
-  volume, `DosageInstruction` as FHIR `Dosage`'s commonest form, the size
-  systems the UK's, Europe's and the US's, and `ClothingSizeSystem`,
-  `ShoeSizeSystem` and `RouteOfAdministration` beside the 16, for the lead
-  session to accept. What the pages left open is area 19's "Chosen in
-  chunk 5.5m2".
-- [x] **5.5n Web and network** `opus · high` (area 19, "Web and
-  software"): the 20 new web and network types (`UrlPath`, `RelativeUrl`,
-  `Slug`, `DomainName`, `Hostname`, `WebOrigin`, `HttpMethod`,
-  `HttpStatus`, `HttpHeaderName`, `UserAgent`, `ProblemDetails`,
-  `JsonPointer`, `Cookie`, `UtmParameters`, `Cidr`, `NetworkPort`,
-  `MacAddress`, `Imei`, `Emoji`, `PushToken`) and `web`'s 3 operations.
-  Done when every type passes the harness and the three operations'
-  examples pass, interpreted and in the runtime. Split on 2026-10-18; the
-  software group is 5.5n2. Built, with UTS 46 by Servo's `idna` 1.1.0 on
-  the pinned ICU4X, Emoji 18.0's list, `HttpStatus` and `NetworkPort` held
-  as whole numbers, and `ProblemDetails` sent as RFC 9457 sends it
-  (`type_` in code); `HttpMethod` keeps the five route methods (decided
-  by the lead session, 2026-10-18). What the pages left open is area
-  19's "Chosen in chunk 5.5n".
-- [x] **5.5n2 Software** `opus · high` (area 19, "Web and software",
-  split from 5.5n): the 18 software types (`SemanticVersion`,
-  `VersionRange`, `GitRef`, `PackageUrl`, `Cve`, `SpdxLicence`, `TraceId`,
-  `SpanId`, `TraceParent`, `LogLevel`, `FilePath`, `FileName`,
-  `RegularExpression` on area 2's linear-time engine, `ContainerImage`,
-  `Digest`, `Ulid`, `IdempotencyKey`, `Doi`) and `semver.satisfies`. Done
-  when every type passes the harness and `satisfies`' examples pass,
-  SemVer 2.0.0's pre-release rules included, interpreted and in the
-  runtime. Built, with `SemanticVersion` an object ordered
-  by SemVer's precedence, `VersionRange` npm's range grammar in one
-  spelling with node-semver's pre-release rule, and the SPDX License List
-  3.29.0 from Embark's `spdx` crate 0.13.6; `LogLevel` is OpenTelemetry's
-  six severities, and area 10's own `LogLevel` example is `Verbosity`.
-  What the pages left open is area 19's "Chosen in chunk 5.5n2".
-- [x] **5.5o Text formats** `opus · high` (area 19, "Text formats"):
-  `Html` (whose construction is the sanitiser, a security boundary) and
-  `Markdown`, with `markup.to_html` and `markup.to_plain_text`. Done when
-  the examples pass, interpreted and in the runtime, and a sanitiser test
-  suite of script, event-handler, link and mutation attacks comes out
-  safe. Split on 2026-10-18; `RichText` and `LocalisedText` are 5.5o2.
-  Built on ammonia 4.2.4 over html5ever, with a conservative allow-list
-  (links only to `https:` and `mailto:`, no images), output that is a
-  fixed point and a nesting limit of 512; every way in sanitises and none
-  fails, and an `Html` literal must already be safe. Markdown is
-  CommonMark by pulldown-cmark. ammonia brings `cssparser` (MPL-2.0), the
-  build's first MPL code, accepted by the lead session (2026-10-18).
-  What the pages left open is area 19's "Chosen in chunk 5.5o".
-- [x] **5.5o2 Rich and localised text** `opus · high` (area 19, "Text
-  formats", split from 5.5o), after 5.5o: `RichText`, a structured
-  document of blocks and marks, with `markup.rich_to_html` through 5.5o's
-  sanitiser; and `LocalisedText`, locales mapped to text, with
-  `text.pick` taking the locale's entry, else its language's, else the
-  default, as area 10's fallback chain does. Done when both pass the
-  harness and `rich_to_html`'s and `pick`'s examples pass, interpreted and
-  in the runtime. Built: `RichText` is Portable Text's flat shape with its
-  default schema, a named list of blocks whose parts `RichTextBlock`,
-  `RichTextSpan` and `RichTextMark` are standard types beside the 247
-  (accepted by the lead session), links only to what the sanitiser keeps, so `rich_to_html` writes
-  nothing it would change; `LocalisedText` is a named `Map<Locale, Text>`
-  sent as a JSON-LD language map, its keys `Locale`s like any other.
-  What the pages left open is area 19's "Chosen in chunk 5.5o2".
-- [x] **5.5p Media and colour** `opus · high` (area 19, "Colour" and
-  "Media", question 13): the 15 types, `colour`'s 5 operations and
-  `media.fit`. Done when each operation's example passes and `contrast`
-  matches WCAG 2's reference ratios. Built, with CSS Color 4's conversions
-  and CSS Color 5's `color-mix()` in Jadpo's own fixed point, `contrast`
-  rounded down to 2 places, `media.fit` as `object-fit: scale-down`, and
-  `ContentRatingScheme` (BBFC, MPA, PEGI, ESRB) beside the 15, accepted by
-  the lead session (2026-10-18). What the pages left open is area 19's "Chosen in
-  chunk 5.5p".
-- [x] **5.5q Randomness** `opus · high` (area 19, "Randomness",
-  question 19): the generated `random` namespace's 5 operations, actions
-  only, seeded per test and recorded for replay, reading the operating
-  system's generator outside tests. Done when the examples pass,
-  interpreted and in the runtime, and a test's random values repeat on a
-  rerun. Split on 2026-10-18; cryptography is 5.5q2. Built, with
-  `type.random_context`, a test's seed from the test alone (identities
-  included; `--seed` orders only), uniform draws by rejection, one source
-  of random bytes per invocation that records and replays, and the native
-  host on `getrandom` 0.4.3. What the pages left open is area 19's "Chosen
-  in chunk 5.5q".
-- [x] **5.5q2 Cryptography** `opus · high` (area 19, "Hashing and
-  cryptography", question 9; split from 5.5q), after 5.5q: `crypto`'s 8
-  operations that need no keys held as data; `EncryptionKey`,
-  `PasswordHash`, `PasswordCheck`, `PrivateKey`, `PublicKey` and `key:`
-  as a compiler-owned place, on audited crates with the standards'
-  known-answer tests, built for wasm32. Done when the examples pass, a
-  tampered or wrongly keyed ciphertext fails to decrypt, and reading a
-  key anywhere but `key:` is `configuration.secret_flow`. Decided by the
-  lead session (2026-10-18): an `EncryptionKey` or `PrivateKey` in an
-  environment variable is 32 bytes as unpadded Base64url, anything else
-  refused at startup by the pre-start check; `crypto.hmac` with a
-  `SigningKey` uses the key's text bytes directly, so outside systems that
-  share the secret can verify. Built, on `chacha20poly1305` 0.11,
-  `argon2` 0.6, `hmac` 0.13 and `ed25519-dalek` 3.0 with the standards'
-  known-answer tests (RFC 8439, the XChaCha draft, RFC 4231, RFC 9106 and
-  OpenSSL's Argon2id, RFC 8032): a sealed value carries a version, an
-  algorithm and the key's identity and binds its context; Argon2id at
-  OWASP's parameters as a PHC string; code never makes or reads a key,
-  which an executor hands the operation from its setting. What the pages
-  left open is area 19's "Chosen in chunk 5.5q2".
-- [x] **5.5r Tokens and `verify_jwt`** `opus · high` (area 19, "The
-  standard types" and "Hashing and cryptography"): `Jwt`, `JwtClaims`,
-  `Jwk`, `OAuthScope` and `OidcClaims`, and `crypto.verify_jwt`. Done when
-  every type passes the harness and `verify_jwt` refuses `none`, a
-  token-chosen algorithm, an expired token, a wrong audience and a
-  tampered payload. Split on 2026-10-18; the secret values are 5.5r2 and
-  the security records 5.5r3. Built, on 5.5q2's strict Ed25519 with no
-  new crate: a `Jwk` is an Ed25519 public key and never a secret, so a
-  token is checked with `EdDSA` alone and any other `alg` is
-  `invalid_signature`; `issuer:` and `audience:` are optional, the
-  audience always checked (`wrong_audience`, and `wrong_issuer` when an
-  issuer is named); `exp` is required, with 30 seconds' leeway; it reads
-  the clock, so actions call it. RS256 and ES256 are 5.5r4's. What the
-  pages left open is area 19's "Chosen in chunk 5.5r".
-- [x] **5.5r2 Secret values** `opus · high` (area 19, "The standard
-  types"; split from 5.5r), after 5.5r: `Password`, `ApiKey`,
-  `BearerToken`, `TotpSecret`, `SecretText` and `Jwt` (a credential,
-  decided by the lead session, 2026-10-18), never printed, logged or
-  sent: refused in an `Output`, a failure's fields and `json.write` as a
-  `PasswordHash` is, compared in constant time and redacted in reports.
-  Done when every type passes the harness and each refusal has a checked
-  example. Built: the runtime holds each as a secret written only as
-  `<redacted ApiKey>` and compared in constant time; `type.secret_exposed`
-  refuses one in an `Output`, a failure, an event, an email, a message or
-  an entity, and given to any operation but the one made for it, so
-  `crypto.hash_password` and `verify_password` now take a `Password`; a
-  password, key, token or JWT is kept only as a hash, and storing a
-  `TotpSecret` or `SecretText` is `toolchain.not_built_yet` until keys held
-  as data; the bytes of credentials the runtime makes never go on a replay
-  recording. What the pages left open is area 19's "Chosen in chunk
-  5.5r2".
-- [x] **5.5r4 JWTs from identity providers** `opus · high` (area 19,
-  "Hashing and cryptography"; decided by the lead session, 2026-10-18),
-  after 5.5r: RS256 and ES256 verification on RustCrypto's `rsa` and
-  `p256` (verification only, pinned, built for wasm32, with the RFCs'
-  test vectors and 5.5r's attack suite), so Google's, Microsoft's and
-  Auth0's tokens verify; and typed custom claims, `verify_jwt(token,
-  keys:, as: MyClaims)` decoding the claims beyond the registered seven
-  into an application's `Object` through `json.read(as:)`'s decoding and
-  typed failures, `JwtClaims` still giving the registered ones; and
-  `crypto.read_certificate(der)` giving a `Certificate`, failing
-  `malformed`, on 5.5r5's reader, which a key set's `x5c` needs (decided
-  by the lead session, 2026-10-18). HS256 still waits for keys held as
-  data. Done when an RS256 and an ES256
-  token verify against the RFCs' vectors, the attack suite refuses each
-  attack under both, and a token's custom claims decode as a declared
-  type or fail `mismatch`. Built, on `rsa` 0.9.10 and `p256` 0.14.0,
-  verification only: a `Jwk` holds an Ed25519, an RSA (2,048 to 4,096
-  bits) or a P-256 key (a point on the curve), each used with its one
-  algorithm and held to its parts by three rules; a key set's members a
-  `Jwk` doesn't hold are ignored, as RFC 7517 requires, but a private
-  key's; a key with an `x5c` is tried only when its first certificate
-  holds the same key. RFC 7515's and RFC 7520's examples verify and the
-  attack suite is refused under both algorithms. `as:` takes an
-  application's `Object`, reads the claims it names and ignores the
-  others; a registered claim it names is the checked value as `JwtClaims`
-  holds it, so one call gives `sub` and `email` (decided by the lead
-  session), and one declared as another type is `type.mismatch`. What the pages left open is area 19's "Chosen in chunk
-  5.5r4".
-- [x] **5.5r3 Security records** `opus · high` (area 19, "The standard
-  types"; split from 5.5r), after 5.5r2: `Hash`, `Hmac`, `Certificate`,
-  `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` (shaped to what
-  `webauthn-rs` stores, for 5.5z) and `EncryptedValue`; `verify_totp`
-  follows keys held as data. Done when every type passes the harness.
-  Split on 2026-10-18: `Certificate`, which needs an X.509 crate and parts
-  read from what it parses, is 5.5r5. Built, with no new crate: `Hash`,
-  `Hmac` and `EncryptedValue` are types built on `Bytes`, sent and stored
-  as `Bytes` is (Base64, `bytea`), each built with no arm from the call
-  that makes it (`Hash(hash.sha256(x))`), and every `Bytes` now compares
-  in constant time; `OneTimeCode` is a secret value of six to eight digits;
-  `PasswordPolicy` is NIST SP 800-63B's lengths and a breach-check flag,
-  the check itself not built; `WebAuthnCredential` maps part by part to
-  `webauthn-rs` 0.5.2's stored `Credential`, its key a COSE_Key in CBOR,
-  what it doesn't hold filled by 5.5z as it loads one. What the pages left
-  open is area 19's "Chosen in chunk 5.5r3".
-- [x] **5.5r5 Certificates** `opus · high` (area 19, "The standard
-  types"; split from 5.5r3), after 5.5r3: `Certificate`, an X.509
-  certificate (RFC 5280) read from PEM or DER on an audited crate built for
-  wasm32, its subject, issuer, validity and SHA-256 fingerprint (a `Hash`)
-  read-only, never set by code. Chain validation is out of scope unless
-  the page says otherwise. Done when the type passes the harness. Built on
-  `x509-parser` 0.16.0, already in the lock, so no crate was added: a
-  standard object read only from its PEM (one `CERTIFICATE` block, strict
-  DER, a positive serial of at most 20 octets), its subject and issuer
-  in RFC 4514's text, its serial in hexadecimal, its validity as two
-  instants, its fingerprint a `Hash` and its DER; sent and stored as the
-  PEM, and an object literal of one refused. Reading DER bytes is 5.5r4's
-  `crypto.read_certificate(der)`, built. What the page left open is area 19's
-  "Chosen in chunk 5.5r5".
-- [x] **5.5z Passkeys** `opus · high` (area 8, "Passkeys"; decided by
-  Richard, 2026-10-18), after 5.5q2 and 5.5r3: passkeys (WebAuthn, FIDO2)
-  as the third built-in way to check a person. First finish area 8's
-  section (the `sign_in:` option, routes, events, errors, test helpers,
-  following magic links), then build registration and sign-in on
-  `webauthn-rs` (challenge, expiry, origin and relying party, counter, no
-  attestation), credentials as `WebAuthnCredential`, several per person,
-  recovery by magic link. Done when a test registers and signs in with a
-  virtual authenticator, a replayed or wrong-origin assertion is refused,
-  and a removed passkey can't sign in. Split on 2026-10-18: magic links
-  are 7.3b and events area 12, both later, so recovery, the check that
-  magic links are on, the route-test helpers and the events are 5.5z2.
-  Built, on `webauthn-rs` 0.5.5 through the host's `Passkeys` capability
-  (its OpenSSL doesn't build for wasm32, so Workers waits for a pure-Rust
-  release): seven routes under `path:`, registering, signing in with a
-  discoverable passkey, listing, renaming and removing; challenges kept
-  server-side, used once, expiring and bound to the browser or session;
-  the strict counter check; a stored credential's extensions are never
-  read, so `WebAuthnCredential` gains no part. What the pages left open is
-  area 8's "Chosen in chunk 5.5z".
-- [x] **5.5s Geospatial types' baselines** `opus · high` (area 19,
-  "The standard types"): the 17 geospatial types, with construction, text
-  and JSON from the contract, GeoJSON (RFC 7946) on the wire and
-  `latitude` and `longitude` by name everywhere else, and
-  `type.standard_exists`' shape for `Point`; storage and operations come
-  with the geospatial area (5.5u). Done when every type passes the
-  harness's construction, text and JSON cases, a point round-trips
-  through GeoJSON with its axes unswapped, and the `Point` shape has a
-  checked example. Split on 2026-10-18; the AI types are 5.5s2. Built:
-  a geometry has no single text form, since every one is positional;
-  GeoJSON is read strictly (ranges, closed rings, no foreign members, no
-  empty multi-geometries), a ring wound either way rewound and every ring
-  written by the right-hand rule; `Latitude` and `Longitude` are decimals
-  held as written; storing a geometry is `toolchain.not_built_yet` until
-  5.5u. What the pages left open is area 19's "Chosen in chunk 5.5s".
-- [x] **5.5s2 AI types' baselines** `opus · high` (area 19, "The
-  standard types"; split from 5.5s), after 5.5s: `Vector`, `Embedding`,
-  `TokenCount`, `TokenUsage` and `ChatMessage`, with construction, text
-  and JSON from the contract; storage and operations come with the AI
-  area (5.5v). Done when every type passes the harness's construction,
-  text and JSON cases. Built: a vector's items are single-precision
-  floats, held as decimals and sent as JSON numbers; a vector type fixes
-  its length with `dimensions:`; `ChatRole` names a message's role;
-  `TokenUsage`'s cached tokens are within its input, its total not kept;
-  a message is sensitive personal data (`health`); storing a vector is
-  `toolchain.not_built_yet` until 5.5v. What the pages left open is area
-  19's "Chosen in chunk 5.5s2".
-- [x] **5.5t Cross-field rules** `opus · high` (area 2, decided by area 19,
-  question 15): named rules across an object type's fields (`rule
-  ends_after_start: ends > starts`), proved or attempted like any rule.
-  Design the syntax and errors on area 2's page first. Done when a
-  booking whose end is before its start fails construction with the
-  rule's name, a proved one needs no arm, and each new error has a
-  checked example. Split (2026-10-18): this chunk builds the language
-  feature; the standard types' rules are 5.5t2. Built: `rule name:
-  condition` in an `Object`, `Input` or `Output`, a `Bool` over the type's
-  own fields only (literals, variants, operators, `match`, pure standard
-  operations; no constant, function, setting or clock); an object literal
-  that may break one is mapped by the rule's name or `invalid:`, and one
-  the declared ranges, its literals or a comparison around it prove takes
-  no arm; JSON and requests report a broken rule by name at the object's
-  path; OpenAPI lists the rules in the schema's description; `include`
-  and `pick` don't copy rules. A rule on an entity is refused, left for
-  Richard to decide. What the chunk chose is area 2's "Chosen in chunk
-  5.5t".
-- [x] **5.5t2 Cross-field rules: the standard types** `opus · high` (area
-  19; split from 5.5t), after 5.5t and 5.5r3: the cross-part rules the
-  standard object types check only for literals and decoded JSON become
-  named rules, so a value built in code is proved or attempted like a
-  declared type's: `InstantRange` and `Range<T>` (start not after end,
-  5.5c2), `IsoWeek` (week 53 in a 52-week year, 5.5k), `CalendarEvent`'s
-  parts (5.5k3), `PostalAddress`'s postal code by country (5.5l2), an
-  identity document's number by kind and country (5.5l2), `Timecode` and
-  `SubtitleCue` (5.5p), a rating's and a blood pressure's parts (5.5n),
-  `MapTile` (5.5s), `TokenUsage`'s `cached` within `input` (5.5s2) and
-  `PasswordPolicy`'s lengths (5.5r3). Each rule's name is decided on area
-  19 and listed in the type's OpenAPI description. Done when each type's
-  literal, code-built value and JSON reading break the same named rule. Built:
-  each check is one named rule in `jadpo_std::standard::across`, run
-  through the plan's validator as an application's rule is, with the
-  orderings proved as a condition comparing two fields; `DateRange`,
-  `ContentRating`, the tax and document numbers and `BoundingBox` came
-  along, and `text.parse` breaks the rules by name too. The names and what
-  the chunk chose are area 19's "Chosen in chunk 5.5t2".
-- [x] **5.5u Geospatial: the plan** `opus · high` (area 19, question 12):
-  write the geospatial area page from area 19's scope (the types in
-  WGS84, GeoJSON on the wire, `geo.` construction and operations, PostGIS
-  `geography` storage, query conditions and GiST indexes), and place its
-  build on this roadmap. **Needs Richard** to decide the page. Decided
-  2026-10-18 (Richard), as recommended, with PostGIS needed only once an
-  app has a geometry column or index: [area 20](language/20-geospatial.md).
-- [x] **5.5u2 Geospatial measures** `opus · xhigh` (area 20, "Operations"
-  and "Precision and determinism"):
-  `geo.distance`, `geo.length`, `geo.bearing` and `geo.area` by Karney's
-  methods in Jadpo's decimal code, and coordinates held as doubles'
-  shortest decimals. Done when each matches a sample of GeographicLib's
-  `GeodTest` set to the micrometre, gives the same digits on native and
-  wasm32, and is benchmarked. Built: GeographicLib's inverse problem and
-  polygon area ported to whole-number fixed point (256 bits, 136 after
-  the point), its series to order 8; every distance within 75
-  femtometres of the test set before rounding, and all 10,000 lines of
-  `GeodTest-short` passing, of which a 500-line sample, written by
-  `tools/geodtest_sample.py`, is checked natively and under wasm32 with
-  one digest of every answer; 30 to 65 µs a distance natively, about
-  2.8 times that under wasm32. `same_point` is settled only by
-  `attempt`; a line's length sums its edges' rounded distances and an
-  area rounds once; a coordinate is rounded to the nearest double as it
-  is built. What the chunk chose is area 20's "Chosen in chunk 5.5u2".
-- [x] **5.5u3 Geospatial predicates and shapes** `opus · xhigh` (area 20,
-  "Operations"), after 5.5u2:
-  `geo.intersects`, `contains` and `within` (with `distance:`, a
-  `BoundingBox` and a `Circle`), `centroid`, `bounding_box`, and
-  `rings_valid` on the sphere. Done when each agrees with PostGIS on cases
-  away from a boundary and every validity case reads and builds as the
-  page says. Built: an exact great-circle geometry in `jadpo-std`
-  (`sphere`), points as whole-number directions and every predicate a
-  sign worked out in whole numbers, ties broken as S2 breaks them, so a
-  point on an edge is found on it; 5.5u2's fixed-point maths moved to
-  `jadpo-std` so the checker reads a polygon literal by it. 169 cases
-  from PostGIS 3.4.2, written by `tools/geo_cases.py`, agree natively and
-  under wasm32 with one digest, but four where `ST_Covers` misses a hole
-  or a multi-part `a`, which keep the page's meaning and are recorded for
-  5.5u5; centroids within 4 × 10⁻¹² of a degree. `rings_valid` is read
-  from literals, attempted on values and `format` in GeoJSON, each
-  validity case tested; rings may not touch at all; a 10,000-point
-  outline checks in 70 ms. What the chunk chose is area 20's "Chosen in
-  chunk 5.5u3".
-- [x] **5.5u4 Geospatial storage and indexes** `opus · high` (area 20,
-  "Storage"): `geography` columns
-  with their checks, `BoundingBox` and `Circle` as named columns, `CREATE
-  EXTENSION` in migrations and `migration.extension_missing`, GiST indexes
-  declared with `kind: IndexKind.geographic`, geometries in
-  Redis as GeoJSON, and CI's image with PostGIS (`tools/postgres`, chunk
-  5.5v1). Done when an
-  entity stores and reads back every geometry, with and without altitude,
-  unchanged. Built: every geometry, with and without altitude, a
-  `Geometry` of each kind, a box and a circle stored and read back equal
-  on PostGIS (CI's 3.6.4 and Postgres.app's 3.4.2), sent as EWKB with
-  rings kept as given; each column's check refusing a line in a point's
-  column and a point in ETRS89; PostGIS created by the first migration
-  with a `geography` column, and `jadpo migrate apply` refusing a server
-  without it or a role that can't create it (tried in a savepoint) before
-  anything runs; the declared GiST index, which `ST_DWithin` uses. Derived
-  GiST indexes moved to 5.5u5 with the conditions that need them; Redis
-  entities aren't built, so only the GeoJSON round trip is tested; a
-  geometry mixing altitudes can't be stored (a fault), open for Richard.
-  What the chunk chose is area 20's "Chosen in chunk 5.5u4".
-- [x] **5.5u5 Geospatial query conditions** `opus · high` (area 20,
-  "Queries"; area 6), after 5.5u3
-  and 5.5u4: the `geo.` conditions, the box and circle filters and order
-  by distance within a radius, with area 6 amended and golden SQL for
-  each, and the GiST indexes they need derived (moved from 5.5u4). Done
-  when each of the page's queries runs on PostGIS through its index and
-  agrees with the code's answer on the page's examples. Built: the index
-  finds, the code decides: each condition is a GiST search a millimetre
-  wider than it (`ST_DWithin`, or a box's envelopes on the point cast to
-  `geometry`), and the runtime holds every row found to the same `geo.`
-  operation a body runs, so a query gives the code's answer, the four
-  `ST_Covers` cases of 5.5u3 included; nearest first is sorted by
-  `geo.distance`, then `id`; the statement asks for what the read keeps
-  and again for four times as many while the recheck leaves it short.
-  The page's queries over two thousand bakeries and three hundred
-  patches, and every case of 5.5u3's file as a query, give the code's
-  answer on PostGIS through their indexes (`EXPLAIN`), and the page's
-  examples are checked and run. A condition stands on its own line or in
-  an `and`; one in an include isn't built yet. What the chunk chose is
-  area 20's "Chosen in chunk 5.5u5".
-- [x] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
-  after 5.5u4: `Feature` and
-  `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
-  `type.standard_exists`' shapes for `LineString` and `Polygon`. Done when
-  a feature collection round-trips through JSON and a WKT polygon through
-  PostGIS unchanged. Built: `Feature<G, P>` and `FeatureCollection<G, P>`
-  as standard types with two type arguments, read strictly through the one
-  JSON codec and described in OpenAPI; WKT and EWKT by one reader that
-  refuses at the character, written as `ST_AsText` writes it and held to
-  PostGIS live; a list of points named as `LineString` or `Polygon`, swapped
-  to `LineString`. Open for Richard: whether a geometry mixing altitudes is
-  valid (WKT mixing them is refused as `malformed`, provisionally), and
-  whether a route may send a `FeatureCollection` bare (area 20, "Chosen in
-  chunk 5.5u6").
-- [x] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
-  AI area page from area 19's scope (the `ai` capability, typed
-  `ai.generate`, streaming, embeddings with pgvector, checked prompt
-  files, a fake for tests, limits, area 15's report), and place its build
-  on this roadmap. Written as area 21 and decided by Richard on
-  2026-10-18, all fifteen questions as recommended; built in 5.5v1 to
-  5.5v7.
-- [x] **5.5v1 Vectors in PostgreSQL: storage** `opus · high` (area 21,
-  "Embeddings and search"). Split (2026-10-18): this chunk stores vectors
-  and compares them in code; 5.5v1b takes the nearest-neighbour query and
-  its index. A vector type with `dimensions:` stored in a pgvector
-  `vector(n)` column (the 5.5s2 `toolchain.not_built_yet` lifted), an
-  `Embedding` in columns for its model and one for its vector,
-  `distance:` on the type, `ai.distance` in code computed as pgvector
-  computes each metric, `CREATE EXTENSION` in the first migration with a
-  vector column, `jadpo migrate apply`, `jadpo dev`, `jadpo test` and the
-  start-up check refusing a store without pgvector
-  (`migration.extension_missing`, shared with 5.5u4),
-  `data.vector_store_unsupported`, and CI's PostgreSQL on an image with
-  both pgvector and PostGIS. Design the errors on area 21 first. Done when
-  an entity stores and reads back vectors of every metric unchanged on
-  PostgreSQL, `ai.distance` gives pgvector's own distance for each metric
-  on the same inputs, a store without pgvector is refused before anything
-  runs, and each new error has a checked example. Built: storage through
-  the shared storage codec and pgvector's binary format, `ai.distance`
-  agreeing with pgvector to the bit on exact inputs (within a float's
-  rounding elsewhere, since pgvector's compiler orders its sums), a zero
-  vector's cosine a fault, and CI on `tools/postgres/Dockerfile`
-  (PostgreSQL 16.14, pgvector 0.8.7, PostGIS 3.6.4, since every
-  `postgis/postgis` 16 tag is on Debian bullseye). What the chunk chose is
-  area 21's "Chosen in chunk 5.5v1".
-- [x] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`
-  (area 21, "The nearest-neighbour query" and "The index"), after 5.5v1:
-  `order: [F nearest v]` returning `Nearest<T>`, `ai.distance` as a SQL
-  form in `where:`, a derived HNSW index with the type's operator class
-  for a type of up to 2,000 dimensions, `hnsw.ef_search` and strict
-  iterative scans per query (pgvector 0.8.0 or later: the chunk decides
-  how a store with an older pgvector is refused), and
-  `query.nearest_unindexed`, `query.nearest_type` and
-  `query.nearest_page`. Done when a filtered nearest query of five
-  returns the same five records interpreted and on PostgreSQL, its plan
-  uses the index, and each new error has a checked example. Split on
-  2026-10-18: longer vectors and tuning are 5.5v1c. Built: the query
-  orders by distance alone inside and by its `id` tie-break outside,
-  since PostgreSQL reads no HNSW index for a second key (verified); a
-  thousand-record filtered query of five, called by an action the
-  interpreter runs on PostgreSQL, returns the five records and the
-  distances `ai.distance` gives, through the index (`EXPLAIN`), in a live
-  test that skips on a server older than pgvector 0.8.0 and fails so
-  under CI; `migration.extension_outdated` refuses an older pgvector
-  wherever a migration builds an HNSW index; and the three
-  `query.nearest_` errors have checked examples. What the chunk chose is
-  area 21's "Chosen in chunk 5.5v1b".
-- [x] **5.5v1c Vector indexes: longer vectors and tuning** `opus · high`
-  (area 21, "The index"), after 5.5v1b: a type of 2,001 to 4,000
-  dimensions indexed through a half-precision expression, the query
-  comparing the same expression; one over 4,000 searched exactly, with
-  the cost named as area 1's declinable error; and `kind: IndexKind.hnsw`
-  with `m:` and `ef_construction:` in an `indexes:` entry. Done when a
-  3,072-dimension type's nearest query uses its half-precision index, a
-  5,000-dimension one's error has a checked example, and a tuned index's
-  migration sets both. Built: a 3,072-dimension nearest query, called by
-  an action the interpreter runs on PostgreSQL, returns the five records
-  and the full-precision distances `ai.distance` gives, and its plan
-  reads its `halfvec` expression index (`EXPLAIN`), in a live test that
-  skips below pgvector 0.8.0 and fails so under CI; over 4,000 dimensions
-  `query.nearest_exact`, declinable, has a checked example, and declined
-  the query reads every record in one statement (live, on any pgvector);
-  a tuned index's migration writes `WITH (m = 24, ef_construction =
-  128)`, which PostgreSQL keeps; and out-of-range tuning is
-  `type.setting_value`. What the chunk chose is area 21's "Chosen in
-  chunk 5.5v1c".
-- [x] **5.5v2 Prompt files** `opus · high` (area 21, "Prompts as
-  files"): the `Prompt` type base, `prompts/` in a domain,
-  `<name>.prompt` with `# Instructions` and `# Request`, placeholders
-  checked as translations' are, free text only as tagged data blocks
-  with their closing tag escaped, a `List<ChatMessage>` field as the
-  turns, `prompts.render` and `jadpo ai show`, and each prompt's digest
-  in the manifest. Done when a rendered prompt matches the page's
-  example byte for byte, an injected closing tag can't end its block,
-  and each `prompt.` error has a checked example. Built: the page's
-  request renders byte for byte (a test reads it from the page); every
-  closing tag in a block is escaped, in any case, spaced, with HTML
-  references, percent and backslash encodings and Unicode lookalikes,
-  and nested, in text and in JSON, which stays the same document; the
-  five `prompt.` errors have checked examples; `prompts.render` gives a
-  `List<ChatMessage>`, and `jadpo ai show` prints a prompt unfilled. What
-  the page left open is area 21's "Chosen in chunk 5.5v2".
-- [x] **5.5w Every boundary through the contract: storage** `opus · high`
-  (area 19, "Every standard type meets one contract"; Richard,
-  2026-10-17), after the standard type groups. Split (2026-10-18) after a
-  re-audit of the 2026-10-17 audit's findings: this chunk stores every
-  standard type through its contract and decides every boundary's
-  encoding on its owning page; 5.5w2 takes the JSON-held values and the
-  other built boundaries, 5.5w3 the single encoders. Every standard
-  object and choice type (`Price`, `Discount`, `UnitPrice`,
-  `InterestRate`, `ExchangeRate`, `BankAccount`, `CalendarPeriod` and the
-  rest, which storing failed with `toolchain.not_built_yet`) is stored in
-  named columns laid out from its parts (an amount of money in two,
-  another standard object in its own, a choice's variant first), a
-  `ZonedTime` as its instant and zone, ranges in PostgreSQL's range types,
-  a `LocalTime` in `time` and a `LocalDateTime` in `timestamp` without a
-  zone; every standard enum is stored by its code; a quantity's column
-  carries a comment naming its SI unit; a rate type's fixed currencies get
-  a check constraint, as a `Money` type's does. Geometries and vectors
-  stay `toolchain.not_built_yet`: their storage is 5.5u's and 5.5v's,
-  which await Richard. Done when an entity stores and reads back one of
-  each standard object and choice type (but `RichTextBlock`, a choice of
-  lists, which 5.5w2 stores as JSON with the collections), each column is
-  as its entry lays it out, and the boundaries the audit left undecided
-  (event, job and batch payloads, CSV cells, a personal value's log hash,
-  developer reports, integration fields without `wire:`) are decided on
-  areas 12, 15, 17, 11 and 19. Built: each entry's columns are held to a
-  layout made from its parts (`jadpo_std::standard::storage`), and one
-  codec turns every compound value into them and back; a range that
-  holds nothing is refused, since PostgreSQL keeps it without its ends,
-  and `CalendarPeriod` is three `integer` columns rather than an
-  `interval`, which would turn `P12M` into `P1Y`; the plan reads a part
-  that is a built-in type held as a standard type (`OidcClaims`' `email`)
-  as that type. What the chunk chose is area 19's "Chosen in chunk 5.5w",
-  the encodings its "Every boundary through the contract".
+  `opus · high`. Built: the 29 commerce, health and travel codes and closed
+  lists, each checked by a pattern and, where one exists, a check digit.
+- [x] **5.5m2 Commerce, health, travel and the rest: records and measures**
+  `opus · high`. Built: the 16 commerce, health and travel records and
+  measures, four clinical units, and reading an ISBN-10 as an `Isbn`.
+- [x] **5.5n Web and network** `opus · high`. Built: the 20 web and network
+  types and `web`'s 3 operations, with domain names by UTS 46.
+- [x] **5.5n2 Software** `opus · high`. Built: the 18 software types,
+  `SemanticVersion` ordered by SemVer's precedence, and `semver.satisfies`.
+- [x] **5.5o Text formats** `opus · high`. Built: `Html`, whose construction
+  is ammonia's sanitiser, `Markdown`, and `markup.to_html` and
+  `to_plain_text`.
+- [x] **5.5o2 Rich and localised text** `opus · high`. Built: `RichText` in
+  Portable Text's shape with `markup.rich_to_html`, and `LocalisedText` with
+  `text.pick`.
+- [x] **5.5p Media and colour** `opus · high`. Built: the 15 media and
+  colour types, `colour`'s 5 operations with WCAG 2's `contrast`, and
+  `media.fit`.
+- [x] **5.5q Randomness** `opus · high`. Built: the `random` namespace for
+  actions, seeded per test and recorded for replay.
+- [x] **5.5q2 Cryptography** `opus · high`. Built: `crypto`'s 8 operations
+  that need no keys held as data, and the key types read only through
+  `key:`, on audited crates with the standards' known-answer tests.
+- [x] **5.5r Tokens and `verify_jwt`** `opus · high`. Built: `Jwt`,
+  `JwtClaims`, `Jwk`, `OAuthScope` and `OidcClaims`, and an EdDSA
+  `crypto.verify_jwt` that refuses the known attacks.
+- [x] **5.5r2 Secret values** `opus · high`. Built: `Password`, `ApiKey`,
+  `BearerToken`, `TotpSecret`, `SecretText` and `Jwt` as secret values,
+  redacted, compared in constant time and refused by `type.secret_exposed`
+  wherever they would leave.
+- [x] **5.5r4 JWTs from identity providers** `opus · high`. Built: RS256 and
+  ES256 verification, typed custom claims through `as:`, and
+  `crypto.read_certificate(der)`.
+- [x] **5.5r3 Security records** `opus · high`. Built: `Hash`, `Hmac`,
+  `OneTimeCode`, `PasswordPolicy`, `WebAuthnCredential` and
+  `EncryptedValue`.
+- [x] **5.5r5 Certificates** `opus · high`. Built: `Certificate`, an X.509
+  certificate read from PEM on `x509-parser`.
+- [x] **5.5z Passkeys** `opus · high`. Built: passkey registration and
+  sign-in on `webauthn-rs` through the host's `Passkeys` capability, native
+  only until a pure-Rust release builds for wasm32.
+- [x] **5.5s Geospatial types' baselines** `opus · high`. Built: the 17
+  geospatial types' construction, text and JSON, with GeoJSON read strictly
+  on the wire.
+- [x] **5.5s2 AI types' baselines** `opus · high`. Built: `Vector`,
+  `Embedding`, `TokenCount`, `TokenUsage` and `ChatMessage`, with
+  construction, text and JSON.
+- [x] **5.5t Cross-field rules** `opus · high`. Built:
+  `rule name: condition` across an object type's fields, proved or attempted
+  like any rule, with a rule on an entity refused until Richard decides it.
+- [x] **5.5t2 Cross-field rules: the standard types** `opus · high`. Built:
+  the standard object types' cross-part checks as named rules in
+  `jadpo_std::standard::across`, broken alike by literals, code and JSON.
+- [x] **5.5u Geospatial: the plan** `opus · high`. Built: the geospatial
+  plan, decided by Richard as [area 20](language/20-geospatial.md).
+- [x] **5.5u2 Geospatial measures** `opus · xhigh`. Built: `geo.distance`,
+  `length`, `bearing` and `area` by Karney's methods in fixed point,
+  matching GeographicLib's `GeodTest` alike on native and wasm32.
+- [x] **5.5u3 Geospatial predicates and shapes** `opus · xhigh`. Built:
+  `geo.intersects`, `contains`, `within`, `centroid`, `bounding_box` and
+  `rings_valid` on an exact great-circle geometry, agreeing with PostGIS.
+- [x] **5.5u4 Geospatial storage and indexes** `opus · high`. Built: PostGIS
+  `geography` columns with their checks, the extension created by migrations
+  with `migration.extension_missing`, and declared GiST indexes.
+- [x] **5.5u5 Geospatial query conditions** `opus · high`. Built: the `geo.`
+  query conditions, box and circle filters and nearest-first order, each a
+  GiST search the runtime rechecks, with the indexes they need derived.
+- [x] **5.5u6 Geospatial interop** `opus · high`. Built: `Feature` and
+  `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and the `LineString`
+  and `Polygon` shapes for `type.standard_exists`.
+- [x] **5.5v AI: the plan** `opus · high`. Built: the AI plan, decided by
+  Richard as [area 21](language/21-ai.md).
+- [x] **5.5v1 Vectors in PostgreSQL: storage** `opus · high`. Built: vector
+  types stored in pgvector columns, `ai.distance` computed as pgvector
+  computes it, and CI on `tools/postgres/Dockerfile` with pgvector and
+  PostGIS.
+- [x] **5.5v1b Vectors in PostgreSQL: nearest queries** `opus · high`.
+  Built: `order: [F nearest v]` giving `Nearest<T>` through a derived HNSW
+  index, with `migration.extension_outdated` and the `query.nearest_`
+  errors.
+- [x] **5.5v1c Vector indexes: longer vectors and tuning** `opus · high`.
+  Built: half-precision indexes for 2,001 to 4,000 dimensions, the
+  declinable `query.nearest_exact` beyond, and tuned HNSW indexes.
+- [x] **5.5v2 Prompt files** `opus · high`. Built: prompt files
+  (`<name>.prompt`) with checked placeholders and escaped data blocks,
+  `prompts.render`, `jadpo ai show`, and each prompt's digest in the
+  manifest.
+- [x] **5.5w Every boundary through the contract: storage** `opus · high`.
+  Built: every standard object, choice and enum type stored in columns laid
+  out from its parts by one codec, and every boundary's encoding decided on
+  its owning page.
 - [x] **5.5w2 Every boundary through the contract: JSON and the built
-  boundaries** `opus · high` (area 19; split from 5.5w), after 5.5w.
-  First, a privacy fix (lead session, 2026-10-18): a value that a column
-  can't hold is written into the fault's text (`jadpo-runtime/src/read.rs`
-  `to_sql`), and so possibly into a log; error text names the field and
-  the rule, never the value, as a `DecodeProblem` does. Then the
-  re-audit's other gaps on the boundaries that are built: `json.write` writes a
-  map key that isn't text, a UUID, a number or an enum by `Display`
-  (`jadpo-value/src/json.rs` `key_text`), so a date, an instant, a
-  duration, money, a quantity or a standard object as a key doesn't read
-  back; reading is looser than `text.parse` (JSON, query strings and
-  settings take an `Instant` with an offset, as do a `ZonedTime`'s instant
-  and `text.parse` of an `InstantRange`; an `Int` with `+`; a `Decimal`
-  as `1_000`, `.5` or `--5`); a `Duration` setting takes `5m` but not its
-  canonical `PT5M`. Done when a test per built boundary (a request and a
-  response, OpenAPI's shape, `json.read` and `json.write` with the value
-  as a map key, settings, a query string, `text.parse` and `text.from`)
-  round-trips one value of every standard type but geometries and
-  vectors that the boundary carries, and refuses the rest while
-  compiling; storage's is 5.5w's and 5.5w2b's. The boundaries not built
-  yet (caches, events, jobs and batches, CSV, TSV and JSON Lines, logs
-  and traces, email, outbound provider calls, files) take their
-  round-trip test with the chunk that builds each, by the encoding 5.5w
-  decided. Split on 2026-10-18: the `jsonb` storage of the JSON-held
-  values is 5.5w2b. Built: one reader per built-in type's text
-  (`jadpo_value::standard::builtin_text`) behind every boundary; map keys
-  as canonical text, a key type with none `type.mismatch`; money,
-  quantities and zoned times refused in a URL; OpenAPI's `Range<T>`; the
-  boundary test generated from the entries
-  (`jadpo-cli/tests/standard_boundaries.rs`, with settings in the
-  runtime harness). What it chose, and what clients see change, is area
-  19's "Chosen in chunk 5.5w2".
-- [x] **5.5w2b Every boundary through the contract: the JSON-held values
-  in storage** `opus · high` (area 19; split from 5.5w2), after 5.5w2:
-  `RichText`, `RichTextBlock` and `LocalisedText` are stored as area 5's
-  `jsonb`, written and read by the route codec, which structured fields
-  don't have yet: the plan numbers each stored type's codec in the JSON
-  table, a column reads it (`Column::Json`) and a write's parameter
-  writes it, the runtime's store operations given the JSON codecs as
-  `json.read` is. Done when 5.5w's storage test stores and reads back
-  each of the three's examples. Built: `FieldModel::json` marks the
-  three, `Column::Json` and `WriteSource::Json` number their codecs in
-  the JSON table, and `jadpo_runtime::store` takes `JsonCodecs`; a query
-  comparing one is `toolchain.not_built_yet`, and an application's own
-  structured fields stay refused. What it chose is area 19's "Chosen in
-  chunk 5.5w2b".
+  boundaries** `opus · high`. Built: one text reader per built-in type
+  behind every built boundary, map keys as canonical text, and a boundary
+  test generated from the entries.
+- [x] **5.5w2b Every boundary through the contract: the JSON-held values in
+  storage** `opus · high`. Built: `RichText`, `RichTextBlock` and
+  `LocalisedText` stored as `jsonb` through the route codec.
 - [x] **5.5w3 Every boundary through the contract: one encoder**
-  `opus · high` (area 19; split from 5.5w), after 5.5w2: the JSON reader
-  and writer (`scalar_from_text`, `write_scalar`, the `ZonedTime`, `Money`
-  and quantity arms) and OpenAPI's `scalar_schema` read each type's entry
-  rather than matching on built-in types; the per-type harness builds its
-  codecs with the plan's builder rather than a copy of it; OpenAPI's
-  schema of a part that is a built-in type held as a standard type
-  (`OidcClaims`' `email`) is that type's. Done when neither the JSON
-  boundary nor OpenAPI has an encoder of its own: each calls the
-  contract's JSON or text for a standard type, and a test fails if one
-  names a standard type held by a built-in type. Split on 2026-10-18: the
-  SQL literals are 5.5w3b.
-  Built: `Money`, `ZonedTime` and the quantities are sent as their
-  entry's members (`Json::Parts`), which one contract module reads and
-  writes (`jadpo_value::standard::json`) and OpenAPI describes
-  (`routes::wire::standard_schema`); standard types are looked up in
-  tables rather than by scanning every entry; the harness, moved to
-  `jadpo-interp`, builds its codecs with `jadpo_plan::standard_codecs`;
-  `no_boundary_has_an_encoder_of_its_own` in
-  `jadpo-cli/tests/standard_boundaries.rs` holds the JSON boundary and
-  OpenAPI to it. What clients see change is area 19's "Chosen in chunk
-  5.5w3".
+  `opus · high`. Built: the JSON boundary and OpenAPI calling the contract
+  for every standard type, held to it by
+  `no_boundary_has_an_encoder_of_its_own`.
 - [x] **5.5w3b Every boundary through the contract: SQL literals**
-  `opus · high` (area 19; split from 5.5w3), after 5.5w3: the
-  compile-time SQL literals (`jadpo-sql`'s conditions, backfills in
-  `jadpo-check`'s migrations) share the runtime's storage codec, so a
-  literal is written into a statement as the runtime would bind it. Done
-  when no boundary has an encoder of its own: each calls the contract's
-  JSON, storage or text for a standard type, and 5.5w3's test covers the
-  SQL literals too.
-  Built: the storage codec and `SqlValue` moved to the shared leaf
-  (`jadpo_std::standard::storage::bind`), which the runtime's `to_sql`
-  calls and every literal is made with, decoded for its field by
-  `jadpo_std::constant::literal`; statements bind a literal as a
-  parameter (`Source::Stored`, `WriteSource::Stored`,
-  `PurgeSource::Stored`), and a partial index's predicate, a backfill and
-  the fixed identity statements write it with `jadpo_sql::literal`;
-  backfills take every literal a field's type has; the guard test holds
-  the SQL literals too, and `jadpo-cli/tests/sql_literals.rs` holds each
-  standard type's literal to what the runtime binds, live. What it chose
-  is area 19's "Chosen in chunk 5.5w3b".
-- [x] **5.5x `jadpo suggest`** `opus · high` (area 14; decided by Richard,
-  2026-10-17): first write the command's section on area 14 from this
-  design, then build it. A command that hints, never edits, where code
-  could use a standard type or operation; edits stay with the agent and,
-  for type clashes only, `jadpo fix`. `jadpo suggest` formats, then scans
-  the program graph with signals held as data on each standard type's
-  contract entry (shape, conversion constants, name hints, format literals,
-  validation patterns), matched through canonicalised graph fragments with
-  hashes as the index and a matcher to confirm; it reports numbered
-  findings (S1, S2…) and ends with a broad instruction to the agent:
-  review the rest of the code against `jadpo suggest --catalogue`
-  (generated from the contract), run `jadpo suggest found` before
-  changing anything it finds, and when done run `jadpo suggest share`. A snippet is the smallest statement or expression at the place, in
-  canonical form: the structure normalised (operand order for commutative
-  operations, comparison direction, grouping, constant spellings and named
-  constants followed to their values, temporaries followed through the
-  graph, exactly equivalent forms such as `x / 0.01` and `x * 100`) and the
-  names kept, so `total_price * 100` and `100 * total_price` are one
-  pattern. Signals match its structure and the words in its names, and an
-  ignore holds the canonical form's hash, so every variant stays quiet.
-  What is shared is simpler: a plain hash of the snippet's text after
-  `jadpo fmt`, comments removed, so it never depends on the canonicaliser's
-  version and only lines written the same way in many projects reach the
-  threshold; Jadpo HQ canonicalises the texts it receives and merges the
-  variants itself.
-  - A finding that disappears after a fix is recorded as accepted, from
-    the scan's own note of its last findings (local, untracked).
-  - `jadpo suggest ignore S3 "<why>"` writes the hash, the signal and the
-    reason to `ignored_suggestions.jadpo_record` at the project root
-    (committed, shared by the team; area 1's root list gains it); the
-    snippet stays quiet until its code changes, and stale entries drop out.
-    It also adds the snippet's text, hash, signal and reason to the pending
-    file as an `ignored` entry. It sends nothing.
-  - `jadpo suggest found <file>:<line> <Type or operation> "<why>"`, run
-    before the code is changed, captures the snippet's text, hash,
-    canonical form, the suggestion and the reason, and teaches it as a
-    project signal so the next scan finds the same pattern itself.
-  - Every entry to share goes to `.jadpo/suggest_pending` (local,
-    untracked) with its kind, `found`, `accepted` or `ignored`, so HQ can
-    tell a signal that was right from one that fired wrongly.
-  Done when every signal kind has a finding and a non-finding test, an
-  ignored snippet stays quiet until edited, a found snippet's text survives
-  the fix, and a taught miss is found by the next scan.
-- [x] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus ·
-  high` (area 14; decided by Richard, 2026-10-17), after 5.5x: opt-in
-  sharing, built in full against a local fake of Jadpo HQ that speaks the
-  same protocol, since HQ doesn't exist yet. Sharing is on unless turned
-  off (Richard, 2026-10-17): nothing is ever sent unless someone runs
-  `share`, and snippet text always needs a person's approval. Creating a
-  project writes `suggestions { project_token: "…" }` to `app.jadpo`, the
-  token random and tied to nothing (no repo, user or machine), committed so
-  a team counts as one project and HQ counts distinct projects without
-  knowing them; `share` recreates it when it is missing, and `share
-  --new-token` rotates it (a fork shares its parent's token until it does).
-  `suggestions { share: false }` in `app.jadpo`, or `JADPO_SUGGEST_SHARE=off`
-  in the environment for a whole machine or organisation, makes `share`
-  stop at once saying sharing is turned off and where, and drops the
-  report's instruction to share. `share` sends every hash in `.jadpo/suggest_pending` with its kind
-  (`found`, `accepted` or `ignored`) and the token; HQ replies with the
-  hashes whose text it wants (those seen from enough distinct projects).
-  The hashes go at once, with no prompt; the agent runs `share` itself
-  at the end of a suggest session, as the report's instruction says. The
-  command then shows the snippets HQ wants and stops: a person approves,
-  directly or through the agent asking them in its conversation, and only
-  then does `share --approve` send the snippets, each with its kind and,
-  for an ignored one, its reason (HQ recomputes their hashes). In an unattended run nobody approves, so only hashes go and the
-  request is skipped; HQ asks the next project that sends that hash. The
-  pending file is then wiped, wanted or not. The first time hashes are
-  sent, `share` says so in one line and how to turn sharing off. The protocol is written on area 14 so the real HQ, after the
-  first build with the registry, implements it unchanged, including its
-  agent that turns shared patterns into signal data (thresholds, generated
-  tests, release notes), reassesses a signal whose ignore rate across
-  distinct projects is high, reading the ignored snippets and reasons
-  beside the accepted ones, and narrows or removes it (tested against the
-  accepted snippets so it keeps catching what it got right), and proposes,
-  never builds, language features.
-  Taught patterns from `found` move to a committed
-  `taught_suggestions.jadpo_record` at the project root (area 1's root list
-  gains it), so a teammate's scan finds what another taught;
-  `.jadpo/suggest_signals` stays only as a cache (lead session,
-  2026-10-18).
-  No HQ address is set by default until HQ runs (lead decision,
-  2026-10-18): the release that launches HQ, with the registry after the
-  first build, sets the real address and flips the default.
-  Done when the whole exchange runs against the fake in tests, nothing is
-  sent when sharing is off, no snippet text is sent without approval, a
-  hash below the threshold never has its text requested, and an ignored
-  snippet's text can be shared once approved.
-- [x] **5.6 SQL forms** `opus · high` (area 19, "SQL forms", decided
-  2026-10-17), the first half of computed backfills: the SQL form of each
-  standard operation the operation tables give one, rendered in one place
-  (`jadpo-sql`) from its arguments' SQL, and each tested against the
-  runtime on the same inputs against live PostgreSQL, so the database and
-  Jadpo agree exactly, rounding, text in code points, Unicode white space
-  and `none` included. A form that can't match the runtime exactly is
-  rewritten until it does or dropped, and the page's table says so (the
-  caveats earlier chunks flagged: `temporal.period_between` against
-  `age`, `web.cidr_contains`). The page's SQL form column and the
-  renderer agree, by a test. Split on 2026-10-18 because the whole chunk
-  is more than a session: the backfills themselves are 5.6b. Built: all
-  38 operations' forms in `jadpo_sql::form`, agreeing with the runtime on
-  over a hundred thousand inputs (`live PostgreSQL: SQL forms` in the
-  gate); none dropped, three rewritten (`decimal.round` keeps fewer
-  places, `period_between` without `age`, whole numbers widened to
-  `bigint`), area 19's "Chosen in chunk 5.6".
-- [x] **5.6b Computed backfills** `opus · high` (area 5, "Computed
-  backfills", 2026-10-15), after 5.6: `backfill:` as an expression over
-  each row's own fields, constants and pure functions, typed against the
-  field it fills; filled in batches, one `UPDATE` each where every
-  operation in it has a SQL form (5.6's, and the operators' and
-  conditionals' forms, each tested the same way), then made required. The
-  batch size, locking (each batch its own transaction, never a long table
-  lock), resuming after a crash and progress output chosen and recorded on
-  area 5; a failure midway leaves the column consistent and the migration
-  resumable; an expression that can fail is refused unless area 5 says
-  what a failing row gets. A backfill without a full SQL form is refused
-  as not built yet, naming 5.6b2. (Split 2026-10-18: the backfills worked
-  out in Jadpo are 5.6b2.) Built: a computed backfill checked as a body
-  of its own (`migration.backfill_can_fail`, `migration.backfill_outside_row`),
-  written as SQL from its typed body with functions in place and `if` and
-  `match` as `CASE`; batches of 1000 rows by `UPDATE`, each its own
-  transaction, resumed from `jadpo_migration_steps` after a stop, then a
-  last step that locks the table against writes, fills what was written
-  meanwhile and makes the column required; the operators' and
-  conditionals' forms agree with the runtime on live PostgreSQL beside
-  the operations'; area 5's "Chosen in chunk 5.6b".
-- [x] **5.6b2 Backfills worked out in Jadpo** `opus · high` (area 5,
-  "Computed backfills"), after 5.6b: a backfill with an operation that has
-  no SQL form runs through `jadpo migrate apply`, which reads each batch,
-  works the values out in the runtime and writes them back, in 5.6b's
-  batches, transactions and resume marker; `jadpo migrate apply` says when
-  a backfill runs in Jadpo and is slower, and the generated SQL says which. Built: the
-  latest migration's backfill with no SQL form planned as a callable of
-  the stored fields it reads; each batch read `FOR NO KEY UPDATE`, worked
-  out in the interpreter and written back through the storage codec in
-  one `UPDATE … FROM unnest`, resumed from `jadpo_migration_steps`, and the
-  rows written meanwhile read and filled in the write-locked last step;
-  the SQL's marker says `in Jadpo` with a digest of the code it runs, so a
-  change to it asks for the migration again; `jadpo migrate apply` says
-  `in Jadpo (slower than SQL)`; an earlier migration's waits for the
-  build that wrote it; `jadpo dev` applies with the same interpreter;
-  area 5's "Chosen in chunk 5.6b2".
-- [x] **5.6c Aggregate queries** `opus · high` (area 6, decided by area 19,
-  questions 21 and 28): `count`, `sum`, `min`, `max` and `average` in
-  queries, grouped by a field or a time bucket, using the standard
-  operations' SQL forms. Design the syntax and errors on area 6's page
-  first. Done when a usage-per-month and a counts-by-status query each
-  run as one SQL statement and give the same result as the interpreter.
-  Built: `group:` and `aggregate:` blocks shaped like `include:` (area 6,
-  "Counts, sums and groups"), `List<T>` with groups and `T` without, an
-  average as `decimal.divide`'s form, time buckets as new SQL forms of
-  `temporal.year`, `month` and `day` of a date, and four new errors. On
-  live PostgreSQL both queries send one statement each and give, value
-  for value and place for place, what the interpreter works out in code
-  from the same three thousand records (`live PostgreSQL: queries`).
-  What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
-  of an instant, which needs a zone PostgreSQL may not see as Jadpo
-  does, is left for Richard.
-- [x] **5.5u7 Altitudes all or nothing; a layer from a route** `opus ·
-  high` (areas 20 and 7, decided 2026-10-19), after 5.5u6: a geometry
-  mixing positions with and without an altitude refused as `format` when
-  read from GeoJSON or WKT and by the rule `altitudes_agree` when built
-  (area 20, "Altitudes are all or nothing"), replacing 5.5u6's
-  provisional refusal and the fault in storage and `geo.to_wkt`; a route
-  sending a `FeatureCollection<G, P>` bare, its `P` held to what an
-  `Output` may hold, in OpenAPI and the API record, and
-  `route.output_not_output`'s reason amended (area 7, "A map layer as
-  output"). Done when a mixed geometry is refused at each door with a
-  checked example, and a route's layer is fetched as plain GeoJSON in a
-  route test. Built: `altitudes_agree` on every geometry of more than one
-  position, decided while compiling where each point is written out and
-  attempted otherwise, GeoJSON refusing a mix as `format` at its first
-  position and WKT as `malformed`; the storage and `geo.to_wkt` faults
-  removed; a bare `FeatureCollection` output, its properties refused
-  what an `Output` may not hold and, where an action returns it, held to
-  field policy. Open for Richard: a `GET` runs a query, which can't build
-  a layer, so a route sending one answers `POST` for now (areas 7 and 20,
-  "Chosen in chunk 5.5u7").
-- [x] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
-  time, translations and the standard library, passing `--require-examples`.
-  Built as 5.7 to 5.7d, below.
+  `opus · high`. Built: compile-time SQL literals made by the runtime's
+  storage codec, `jadpo_std::standard::storage::bind`.
+- [x] **5.5x `jadpo suggest`** `opus · high`. Built: `jadpo suggest`,
+  hinting where code could use a standard type or operation from signals on
+  the contract, with `ignore`, `found` and `--catalogue`.
+- [x] **5.5y `jadpo suggest share`, against a fake Jadpo HQ** `opus · high`.
+  Built: `jadpo suggest share` against a local fake of Jadpo HQ, sending
+  hashes and only approved snippets, with no HQ address set until HQ runs.
+- [x] **5.6 SQL forms** `opus · high`. Built: the SQL forms of all 38
+  standard operations in `jadpo_sql::form`, agreeing with the runtime on
+  live PostgreSQL.
+- [x] **5.6b Computed backfills** `opus · high`. Built: computed backfills
+  as SQL in resumable batches of 1000 rows, then a write-locked last step
+  making the column required.
+- [x] **5.6b2 Backfills worked out in Jadpo** `opus · high`. Built:
+  backfills with no SQL form worked out in Jadpo in the same batches, marked
+  `in Jadpo` with a digest of the code they run.
+- [x] **5.6c Aggregate queries** `opus · high`. Built: `group:` and
+  `aggregate:` queries (`count`, `sum`, `min`, `max`, `average`) by a field
+  or a time bucket, each one SQL statement, with a bucket of an instant left
+  for Richard.
+- [x] **5.5u7 Altitudes all or nothing; a layer from a route**
+  `opus · high`. Built: mixed altitudes refused at every door by
+  `altitudes_agree`, and a route sending a bare `FeatureCollection`.
+- [x] **5.7 Teaching examples for Phase 5** `opus · high`. Built: the Phase
+  5 teaching examples, split into 5.7 to 5.7d below.
 - [x] **5.7 Teaching examples for Phase 5: settings, time and words**
-  `opus · high`: new numbered examples for configuration (`config.jadpo`,
-  constants, the key and address settings and what `crypto` does with
-  them), time (dates, instants, zones, periods and recurring times) and
-  translations and locales. Split on 2026-10-19 because the phase left
-  1,646 built features no example uses, more than a session: the rest are
-  5.7b to 5.7d. Built: `13-lettings-office` (settings, constants,
-  connection addresses, test values, and every `crypto` operation with
-  its key), `14-studio-timetable` (every `temporal` operation, ranges of
-  time, `TimeFormat`, the clock-change night) and `15-parcel-tracker`
-  (messages, plural forms, enums with wording, shared and Jadpo's own
-  wording, an in-progress locale). The coverage test now reads the types
-  settings declare, a declared format's base, the enums operations give
-  and std enum values matched; 1,569 features remain, 1,377 of them the
-  closed lists' values.
+  `opus · high`. Built: examples 13 to 15 for settings, constants, keys,
+  time, translations and locales, and a coverage test that reads more kinds
+  of use.
 - [x] **5.7b Teaching examples: money, quantities and the standard
-  vocabulary** `opus · high`, after 5.7: money and discounts, physical
-  quantities and percentages, and the standard types (identifiers,
-  contact, web, colour, text formats) with text, collections, numbers,
-  encodings, JSON and randomness, each in a realistic app. Built:
-  `16-market-hall` (money), `17-ebike-hire` (quantities and exact
-  decimal maths), `18-village-newsletter` (text, text formats, colour,
-  links, digests and encodings) and `19-book-club` (lists, sets, maps,
-  randomness, code forms, versions, a rule across fields, a declined
-  standard type). Two compiler bugs the examples found are fixed: a
-  named collection built from `map.with([], ...)` skipped its rules,
-  and a text literal of a standard object type (`SemanticVersion`,
-  `CardExpiry`, `Colour`) stayed text at runtime. 1,410 features
-  remain, 1,373 of them the closed lists' values.
-- [x] **5.7c Teaching examples: geography and stored data** `opus · high`,
-  after 5.7b: points, shapes and queries by distance, aggregate queries
-  with time buckets, stored vectors and the nearest query (without the
-  `ai` capability), and prompts; and example 09's `Pence` and its
-  percentage discount moved to `Money`, as area 19 ("Money and
-  payments") says. Built: `20-fell-race` (every `geo.` operation, both
-  polygon rules attempted, WKT matched over `Geometry`'s six shapes,
-  GeoJSON layers), `21-veg-box-rounds` (PostGIS columns, queries by
-  distance, box, circle, `contains` and `intersects` with their indexes,
-  a bare `FeatureCollection` sent from a `POST` route, an aggregate
-  query by month and a computed backfill) and `22-plant-helpline`
-  (vectors, `ai.distance`, the nearest query with a declared HNSW index,
-  prompts in a domain and in `shared/`, rendering); example 09 now
-  prices in `Sterling`, built on `Money`, with the standard `Discount`.
-  `22`'s tests need pgvector 0.8.0, so `tools/examples.py` reports them
-  skipped where the server is older, failing under CI, as the live tests
-  do. Two compiler bugs the examples found are fixed: a percentage
-  written out had no range, so `Sterling(full * 90%)` needed an
-  `attempt`, and `jadpo test` on a server missing an extension faulted
-  every test with the runtime's debug text instead of refusing with
-  `migration.extension_missing` or `_outdated`, as areas 20 and 21 say.
-  1,373 features remain, all of them the closed lists' values.
-- [x] **5.7d Teaching examples: the closed lists** `opus · high`, after
-  5.7c: the coverage test counts each closed list a standard operation
-  takes (`Locale`, `Zone`, `Country`, `Currency`, and the unit enums such
-  as `LengthUnit`) as one feature, used when an example names any of its
-  values, since each value is already held to its source table by the
-  crate tests (decided 2026-10-19, as 5.7 recommended); then the examples
-  pass `--require-examples`. Built: the 23 lists, the 19 unit enums
-  among them, are `closed list` features, found where a file names a
-  value; the rule is in the coverage test's own documentation. Example
-  17 now names a unit of every kind, listing a bike for a partner's
-  catalogue, and the gate passes with `--require-examples`.
+  vocabulary** `opus · high`. Built: examples 16 to 19 for money,
+  quantities, text and the standard vocabulary, and two compiler bugs they
+  found fixed.
+- [x] **5.7c Teaching examples: geography and stored data** `opus · high`.
+  Built: examples 20 to 22 for geography, stored data, vectors and prompts,
+  example 09 moved to `Money`, and two compiler bugs they found fixed.
+- [x] **5.7d Teaching examples: the closed lists** `opus · high`. Built:
+  each closed list counted as one coverage feature, so the examples pass
+  `--require-examples`.
 
 ### Phase 5 review (2026-10-19)
 
@@ -1710,252 +534,73 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 5 built. Their confirmed findings are the
 chunks below, taken before Phase 6.
 
-- [x] **5.8 Gate honesty** `opus · high`: every test file's live
-  PostgreSQL tests run in the full profile and in CI, through one shared
-  `live()` helper replacing the per-file `skipped()` copies (today
-  `standard_storage`, `sql_literals`, `backfills`, `passkeys` and `config`
-  skip on every run, CI included), and a full run or CI fails on any
-  `skipped:` line; the "one encoder" guard denies across every crate with
-  an allow-list instead of grepping five files; `example-identifiers.txt`
-  generated at check time, with only the allow-list committed. Done when
-  removing a file from the old list can't make its live tests skip
-  silently, and the guard catches a JSON writer added in a new crate.
-  Built: `jadpo_test::live()` and `skip_for_version` replace the 19
-  `skipped()` copies; `tools/verify.py` finds every test file that calls
-  `live()` and gives it the server (a step of its own if `POSTGRES` leaves
-  it out), sets `JADPO_REQUIRE_LIVE` on the full profile's compiler tests,
-  fails any `skipped:` line under CI, and checks all of that itself before
-  it runs; the five files now run live in three new steps. The guard scans
-  every crate's `src/` against `MAY_ENCODE`, the boundaries checked even
-  inside it, and refuses a stale entry. The example-name lists are worked
-  out at check time; only the allow-lists are committed.
-- [x] **5.8a Phase 5 review fixes: secrets and privacy** `opus · xhigh`:
-  the idempotency digest keyed with a deployment secret (or taken over
-  the decoded input without its secret fields), so a stored digest can't
-  be used to guess a sign-up password, and the sweep that deletes old
-  keys; a `nearest` order held to the same field policy as any order
-  (`policy.output_field_unproved`); `Secret` compared with `Text` inside
-  lists and other containers, in constant time; a map key never in a
-  `DecodeProblem`'s `field` (named by position or as `<key>`);
-  `crypto.encrypt`'s nonce from secret randomness, never recorded or
-  replayed; a host without a clock refused at start rather than running
-  at 1970. Each a failing test first, from the review's reproductions.
-  Built: the digest is over the route and the decoded placeholders and
-  input with every secret value left out but its kind, not keyed, since
-  Jadpo has no secret every deployment holds (area 7, "Chosen in chunk
-  5.8a"); deleting expired keys stays with 6.2's tick, whose index
-  exists. `nearest` and `geo.distance` orders are checked as orders (area
-  9); `Secret` equals `Text` in every container and sorts with it; a map's
-  entry is `<key>` in a problem's path; `crypto.encrypt`'s nonce is
-  secret randomness (area 19); a host without a clock answers 500 and
-  `jadpo dev` won't start.
-- [x] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
-  xhigh`: a scaled construction in a backfill run by `UPDATE` rounded as
-  the runtime rounds; the backfill digest covering every type its bodies
-  reach and the toolchain version, so a resumed backfill can't mix values;
-  every backfill on a table filled before any column becomes required,
-  then one last step for all of them; config reads and key-taking
-  `crypto` refused where a backfill reaches (`migration.backfill_outside_row`),
-  as is a field the same migration adds; the last step locking writes and
-  never reads (`CHECK … NOT VALID`, `VALIDATE`, then `SET NOT NULL`), as
-  area 5 says; a constant's `scale:` rounding as area 2 says. Done when
-  each review reproduction passes on live PostgreSQL. Built: a
-  construction by `UPDATE` keeps a fixed scale through one shared form
-  (`form::kept_at_scale`, half to even, then `numeric(38, scale)`), and a
-  constant's construction rounds before its rules; the digest adds every
-  type reached, with its chain, fields, variants and rules, and the
-  toolchain version; a setting reached through a function, a `crypto`
-  key included, and a field the migration adds are
-  `migration.backfill_outside_row`, with examples; a section with batches
-  fills every backfill first, then one step locks writes, fills the rows
-  written meanwhile and adds `NOT VALID` checks, a `-- step:` proves them,
-  and a last requires each column without a scan and drops its check.
-  `backfills.rs` has a live test per finding; reads in Jadpo share
-  `Column::of_builtin` with queries, so a percentage can be filled. The
-  choices are area 5's and area 2's "Chosen in chunk 5.8b".
-- [x] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
-  query result type with cross-field rules checked row by row as it is
-  read, or refused; `ai.distance` in `where:` never keeping a NaN or
-  infinite distance and comparing against the bound's exact double, and a
-  zero vector refused where a cosine type is built; vector types of 2,001
-  to 4,000 dimensions holding items to ±65,504 so their `halfvec` index
-  takes every value; JSON reading a vector item's own text as a float and
-  refusing a repeated object or map member; `hnsw.max_scan_tuples` set so
-  a filtered nearest query fills its limit, as area 21 says. Then the
-  slice the review couldn't cover, as tests: cross-field rules on every
-  way a value is made (JSON, query strings, `text.parse`, settings,
-  storage reads), standard types' named rules, `altitudes_agree`, and
-  `prompts.render` with restricted fields.
-  Built: a result type with rules is refused (`query.result_rule`, area 6,
-  "Chosen in chunk 5.8c"); a cosine vector of zeros breaks `distance`, a
-  type indexed at half precision holds its items within ±65,504 (`min`,
-  `max`), `where:` distances never meet `NaN` or an infinity and compare
-  against the double that agrees with code's decimal, and nearest queries
-  set `hnsw.max_scan_tuples` to pgvector's most (area 21); JSON is read by
-  Jadpo's own reader, refusing a member named twice as malformed and
-  rounding a vector's item from its own text (area 19). The slice found
-  text literals of standard objects kept unchecked (a backwards range,
-  WKT with mixed altitudes, any number where a `Rating` goes), now
-  `type.invalid_literal` or `type.mismatch`, and standard objects read
-  from the store unchecked, now a defect naming the rule (areas 2 and
-  19); query strings, `text.parse`, settings and `prompts.render` with
-  restricted fields already held.
-- [x] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
-  query giving a map layer", decided 2026-10-19): a query returning its
-  records as a `FeatureCollection<G, P>`, naming the geometry field and
-  the properties type, held to field policy as any query, so a `GET`
-  route sends a layer; example 21's layer route moved to `GET`. Done when
-  a mapping library's `GET` of the layer gets plain GeoJSON in a route
-  test, on PostGIS, with the page's example checked. *Built:*
-  `geometry: Entity.field` beside a `FeatureCollection<G, P>` result,
-  the field exactly `G` and never `none` (`query.geometry_field`), a
-  bounded list without includes, groups or pages, held to field policy
-  as an `Output`; example 21's whole layer behind `GET /drop-points`, as
-  area 6's "Chosen in chunk 5.5u8" records.
-- [x] **5.9 Durable values** `opus · xhigh` (area 19, "Changing a
-  standard type's encoding", decided 2026-10-19: only with a reader for
-  the old form and a release note, enforced by a golden file): a golden file per standard type, from its
-  examples, pinning its text, JSON, storage columns and SQL literal; an
-  encoding version on every durable row and token (session tokens, the
-  outbox row, the stored passkey credential, now `WebAuthnCredential`'s
-  standard JSON), with a reader for each form written before versions.
-  Split on 2026-10-19: the JSON columns are 5.9b. *Built:* 259 golden
-  files in `crates/jadpo-interp/tests/goldens/standard/`, made by the
-  codecs a program gets, rewritten by `JADPO_BLESS=1` only past the
-  encoding each records; one release encoding,
-  `jadpo_std::standard::ENCODING`, with area 19's "Encodings each release
-  writes" held to the files; a signed part's `enc`, and `encoding` on
-  `jadpo_outbox` and `jadpo_passkeys`; a passkey kept as
-  `WebAuthnCredential`'s contract JSON through the plan's JSON table;
-  parts and passkeys kept before encodings read as they were written, as
-  area 19's "Chosen in chunk 5.9" records.
-- [x] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
-  split from 5.9), after 5.9: JSON columns for any type the route codec
-  handles, so an application's objects, lists, maps and enums with data
-  can be stored as `jsonb` (today `toolchain.not_built_yet`), read
-  through the one JSON codec with the field's rules applied on read; and
-  event and job types numbered in the plan's JSON table, so 6.1b writes
-  the outbox's payload through it. Done when an entity storing an object,
-  a list, a map and an enum with data reads each back unchanged on live
-  PostgreSQL, its rules enforced. *Built:* chunk 5.5w2b's column path
-  for any structured type, its parts with no stored form
-  `data.field_without_json`; a value kept as JSON held to a request
-  body's 1 MiB and 128 levels, `none` the column's `NULL`; no query
-  condition, order, unique rule, index or lifecycle value but `none` on
-  one; every event type numbered in the JSON table by its identity key
-  (no job takes arguments yet); live tests reading each back unchanged
-  and faulting on rows edited to break a rule. Changing a stored type
-  isn't migrated yet. Choices in area 5's "Chosen in chunk 5.9b".
-- [x] **5.9c Migrating stored structured values** `opus · high` (area 5),
-  after 5.9b: the migration snapshot records what a JSON column's type
-  allows, so changing the stored type or the field's rules makes a
-  migration that rewrites or refuses stored values the new type can't
-  read, rather than a fault on read; and a required structured field
-  added to a table with rows taking a `backfill:` as any other field does.
-  Built: the snapshot records each JSON column's shape and rules; a
-  change that only widens runs nothing, one that may read less checks
-  every stored value in batches first and is refused while any doesn't
-  read (by count and rule, never a value), or rewrites them with an
-  optional `backfill:`; a structured backfill is worked out in Jadpo and
-  written through the codec, as area 5's "Chosen in chunk 5.9c" records.
-- [x] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
-  "A field's rules on read", decided 2026-10-19): every stored field
-  checked against its type's rules when read, a broken one a defect naming
-  the rule and never the value, on both executors and on live PostgreSQL;
-  and a derived index's recorded reason no longer part of what the
-  migration diff compares, so adding a query that sorts first never drops
-  and recreates an identical index (found in chunk 5.5u8). Built: each
-  selected column carries its field's validator in the plan, and the
-  runtime's one read path checks every stored value with it (queries,
-  `get`, includes, aggregate groups and `min`/`max`, nearest and layer
-  queries, the record a write gives back, backfill reads), a defect naming
-  the field and the rule; the diff and the out-of-date check compare an
-  index by what builds it, its reason recorded by the next migration.
-  Choices in area 5's "Chosen in chunk 5.9d".
-- [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
-  note folded into the text it amends and what it supersedes deleted
-  (they contradict each other and the code: area 19's `ai.embed` and
-  `ai.generate` failures against area 21, "stored as its JSON" for types
-  now stored in columns, `ZonedTime`'s storage, mixed altitudes in
-  `compiler-runtime.md`, a quantity's JSON); `compiler-runtime.md` §2.1
-  cut to the crate table; finished roadmap chunks collapsed to one line
-  each. Area 12's outbox and schedule-state text brought in line with
-  its 2026-10-19 decision.
-- [x] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
-  `geo.from_lng_lat` and `geo.from_lat_lng`, decided and used by area 20's
-  pages but marked not built. Built: all three in `jadpo-value`'s `geo`,
-  GeoJSON text through the one GeoJSON reader into a `Geometry`, a pair or
-  a triple with an altitude into a `Point`, each failing `malformed` or
-  `out_of_range`; the not-built markers gone, and area 20's example of
-  them checked and tested, as its "Chosen in chunk 5.11" records.
+- [x] **5.8 Gate honesty** `opus · high`. Built: one shared
+  `jadpo_test::live()` so no live PostgreSQL test skips silently, a
+  crate-wide "one encoder" guard, and the example-name lists worked out at
+  check time.
+- [x] **5.8a Phase 5 review fixes: secrets and privacy** `opus · xhigh`.
+  Built: the Phase 5 secrets and privacy fixes: an idempotency digest
+  without secret values, `nearest` orders under field policy, `Secret`
+  compared in every container, map keys kept out of problem paths, secret
+  nonces, and no start without a clock.
+- [x] **5.8b Phase 5 review fixes: migrations and backfills**
+  `opus · xhigh`. Built: the Phase 5 migration and backfill fixes: scale
+  kept by `UPDATE`, a digest over every type reached and the toolchain
+  version, and every backfill filled before one lock-free step makes the
+  columns required.
+- [x] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`. Built:
+  query result types with rules refused, vector distances and half-precision
+  items held safe, Jadpo's own JSON reader, and standard-object literals and
+  stored values checked.
+- [x] **5.5u8 A query giving a map layer** `opus · high`. Built: a query
+  returning a `FeatureCollection<G, P>` through `geometry:`, so a `GET`
+  route sends a map layer.
+- [x] **5.9 Durable values** `opus · xhigh`. Built: 259 golden files pinning
+  each standard type's encodings, and an encoding version on every durable
+  row and token.
+- [x] **5.9b JSON columns** `opus · xhigh`. Built: JSON columns for any
+  structured type the route codec handles, with the field's rules applied on
+  read and event types in the JSON table.
+- [x] **5.9c Migrating stored structured values** `opus · high`. Built:
+  migrations that check, refuse or rewrite stored JSON values when their
+  type or rules change.
+- [x] **5.9d Field rules on read; index reasons** `opus · high`. Built:
+  every stored field checked against its rules on read, and derived indexes
+  compared by what builds them.
+- [x] **5.10 Docs consolidation** `opus · high`. Built: every "Chosen in
+  chunk" note to 5.9d, 7.0, 6.1a (but area 12's) and 6.3b folded into the
+  text it amends, its contradictions settled against the code and area 12's
+  outbox and schedule state put where its 2026-10-19 decision does, so
+  areas 1 (2,652 to 2,644 lines), 2 (3,662 to 3,613), 3 (3,952 to 3,939),
+  5 (3,055 to 2,981), 6 (4,885 to 4,785), 7 (2,667 to 2,642), 9 (3,465 to
+  3,457), 10 (5,988 to 5,855), 12 (1,645 to 1,647), 14 (1,404 to 1,364), 18
+  (898 to 893), 19 (11,963 to 11,229), 20 (2,051 to 1,910) and 21 (2,052 to
+  1,904), `compiler-runtime.md` (2,873 to 2,185, §2.1 812 to 124) and this
+  roadmap (2,201 to 854, finished chunks one line each).
+- [x] **5.11 Geo constructions** `opus · high`. Built: `geo.from_geojson`,
+  `geo.from_lng_lat` and `geo.from_lat_lng`.
+
+- [ ] **5.12 Leftovers from consolidation** `opus · high`: `Bic`'s
+  country checked against `Country` as decided; the code comments that
+  name deleted "Chosen in chunk" notes repointed to their sections; area
+  14's two record examples shown in format 2; area 12's open question 16
+  marked superseded by its 2026-10-19 decision; and the notes Phase 6
+  added (6.1a onwards) folded once Phase 6's chunks have merged.
 
 ## Phase 6 — Events and schedules (area 12)
 
-- [x] **7.0 Generated records** `opus · high` (area 18, decided
-  2026-10-16), moved before Phase 6 by the Phase 5 review. Built: the
+- [x] **7.0 Generated records** `opus · high`. Built: the
   [record format](language/research/jadpo-record-format.md) for every
-  record (a kind, its header and closed lists, an outline writer and
-  reader, and an entry differ 6.1b's event shapes reuse); the API record
-  as `api/<api>.jadpo_record` with no `version:`, the OpenAPI version a
-  hash of it; the identity registry as `database/identities.jadpo_record`;
-  the suggestion records on the shared header; `jadpo.lock` as a ledger;
-  `record.out_of_date`, `record.edited` and `record.format_newer` in
-  `jadpo check`; `jadpo records` and `jadpo records update`, which moves
-  records from their old names; every example's record regenerated.
-  Choices in area 18's "Chosen in chunk 7.0".
-- [x] **6.1a System caller and delivery engine** `opus · xhigh`: from the
-  Phase 4 and Phase 5 reviews, a system caller (`Grant::System`, a
-  `CallerPart` for it), so `Access.system` grants schedules and
-  subscribers; one runtime-owned runner that drives an executor deferred
-  (a new `Host::defer`, Workers' `waitUntil`, after the response is sent),
-  inline (for 6.3's `settle:`) and per item (for 6.4); and 5.6b2's
-  backfill row loop moved from the CLI into the runtime on that runner,
-  writing through each field's validator. Built: `CallerPart::System`
-  and `SystemTenant`, `Access.system` compiled into every statement and
-  a listed action's gate (`Gate::system`), the system limited to its
-  tenant or, for a schedule's run, none, and cleared for every request;
-  `jadpo_runtime::runner` with `Job`, `Deferred`, `settle`,
-  `run_deferred`, `after_response`, `items` and `Batch`; `Host::defer`
-  replacing `Host::deliver`, committed events left on the context and
-  carried on `Response::deferred`, the native HTTP worker running them
-  as tasks after the response; `runner::InJadpo` working out backfills
-  through the `Executor` and each field's validator, which `jadpo
-  migrate apply` and `jadpo dev` just call. Choices in area 9's and area
-  12's "Chosen in chunk 6.1a"; flagged there: what only `Access.public`
-  grants is left to 6.1b's and 6.2's checks, and a schedule's run
-  reaches every tenant.
-- [x] **6.1b Events: outbox, delivery and retries** `opus · high`, after
-  6.1a (area 9, "Background work and `Access.public`", decided
-  2026-10-19: a subscriber reaching a statement only `Access.public`
-  grants is a compile error; area 12, "Outbox placement, settled",
-  decided 2026-10-19: each store an action writes keeps its outbox and
-  delivery records, a subscriber's handled record in its own store,
-  schedule leases in `schedules: { store: }`): subscribers read and
-  checked; `emit` writing the outbox row in the same transaction as the
-  action's writes; delivery after the response on 6.1a's runner, each
-  subscriber as the system limited to its event's tenant, with a handled
-  record in the store it writes and no reference across stores; retries
-  with area 12's backoff and `retry:`; trace context carried from the
-  emitting request; `events: { store: }`, with the compile error for an
-  action that writes no store but needs one for its outbox or idempotency
-  keys (until then such an action keeps no key, chunk 4.2); and the
-  outbox sweep that picks up what deferred work dropped (its minute tick
-  is 6.2's). Split from 6.1b on 2026-10-19 because it doesn't fit one
-  session. Built: subscribers read and checked (`subscriber.` errors),
-  `emit` only in actions and only of events (`event.emit_invalid`), the
-  outbox row and a delivery record per subscriber written as the action
-  commits, in the store its transaction is in or `events: { store: }`
-  (`event.store_required`, `event.settings_invalid`); `runner::deliver`
-  claiming each delivery after the response, running the subscriber as
-  the system limited to the tenant its event's field names, its handled
-  record (`jadpo_handled_deliveries`) committing with its writes, and
-  recording success, a retry after a full-jitter backoff within `retry:`,
-  or failure; `runner::sweep` for 6.2's tick; `traceparent` honoured and
-  carried into each delivery; 1,000 events, 64 KB and 16 deep;
-  `policy.system_grant_missing`; idempotency keys beside an emitting
-  action's events; a live test of all of it and a migration for every
-  example. Choices in area 12's "Chosen in chunk 6.1b"; flagged there:
-  how an event names its tenant.
+  generated record, the API and identity records, `jadpo.lock` as a ledger,
+  the `record.` errors, and `jadpo records update`.
+- [x] **6.1a System caller and delivery engine** `opus · xhigh`. Built: the
+  system caller (`Access.system`) and the runtime's runner, driving work
+  deferred, inline and per item, with backfills worked out on it.
+- [x] **6.1b Events: outbox, delivery and retries** `opus · high`. Built:
+  subscribers read and checked, `emit` writing the outbox row and a
+  delivery record per subscriber as the action commits, and delivery after
+  the response as the system limited to its event's tenant, with retries,
+  trace context, `events: { store: }` and the outbox sweep for 6.2's tick.
 - [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
   (area 12, "Event records", decided 2026-10-19): event shapes recorded
   and diffed in the generated record exactly as an API's is (chunk 7.0's
@@ -1997,43 +642,14 @@ chunks below, taken before Phase 6.
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
   they settle and with `202` past `within:`.
-- [x] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
-  review: a query condition is either an exact SQL form or an index
-  prefilter with a check the runtime runs on each row, one path for
-  standard operations, `geo.` and `ai.distance`; all SQL text written in
-  `jadpo-sql` (today `jadpo-plan` writes the vector, `ST_Distance` and
-  `SET LOCAL hnsw.*` SQL itself); `data/queries.rs` split along the way.
-  Then standard operations with an exact SQL form allowed in `where:`,
-  with a derived expression index (area 6, decided 2026-10-19). Built:
-  `Condition::Call` lowered by `jadpo_sql::condition::lowering` to an
-  exact form or an index search, the read plan's recheck a generic
-  `Check` run by `jadpo_value::run`; every SQL text `jadpo-plan` wrote
-  moved to `jadpo-sql`, held there by a test; the checker's query reader
-  split into ten modules; operations in `where:` with an index on their
-  expression, area 6's "Operations in conditions" and its refusal
-  example checked, and a live test of the code's answer and each index.
-  Choices in area 6's "Chosen in chunk 6.3b".
-- [x] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
-  `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
-  transactions that commit their writes and position together, problems
-  collected, resuming after crashes and deploys; replacing chained events
-  for paging. Split by the Phase 5 review: the file helpers are 6.4b,
-  after a minimal `files` capability (area 16). Built: `batches.each(from:,
-  each:, finished:, key:)` in actions, `from:` a named query's `Page`
-  walked a page per transaction as the system, `each:` and `finished:`
-  one call of an action in the domain with the item, its fields or saved
-  values (`type.batch_context`, `type.batch_from_invalid`,
-  `type.batch_each_invalid`, `type.batch_capture_not_storable`); the
-  batch types and `BatchState`; runs, problems and cancels in system
-  tables beside the query's store, each page committing its items'
-  writes, problems and position together, a failed or faulted item
-  undone alone; `key:`, `batches.status`, `batches.cancel`; leases and
-  `batches::resume` for 6.2's minute tick, a run a deploy changed ending
-  `failed`; inline functions as named arguments; `batches` reserved.
-  Live tests over 20 pages, a crash mid-batch, a key, a cancel and a
-  deploy. Choices in area 12's "Chosen in chunk 6.4"; flagged there:
-  tenancy (`batches.each` refused where `policy` names a `tenant:`) and
-  the `Access.public` check for a batch's reach.
+- [x] **6.3b One condition lowering** `opus · xhigh`. Built: one condition
+  lowering to an exact SQL form or an index search the runtime rechecks, all
+  SQL text in `jadpo-sql`, and operations in `where:` with expression
+  indexes.
+- [x] **6.4 Batches** `opus · xhigh`. Built: `batches.each` over a named
+  query's pages as the system, each page committing its items' writes,
+  problems and position together, with `key:`, `batches.status`,
+  `batches.cancel`, leases and `batches::resume` for 6.2's tick.
 - [ ] **6.4c Batches with tenants and grants** `opus · high` (areas 12 and
   9, decided 2026-10-19): `batches.each` in an application with
   `tenant:`, a run limited to the tenant its one saved tenant id names

@@ -108,7 +108,12 @@ match today but differ on purpose, two constants that share a value by
 coincidence. These rules are *declinable* (question 11, decided
 2026-10-17, built in chunk 5.4b): the author fixes the finding, or
 declines it on the declaration itself with a reason, in a line directly
-above the declaration or member, after its `///` comments.
+above the declaration or member, after its `///` comments. A decline is
+the first child of the declaration or member below it: `///` comments,
+then `decline` lines, then the declaration. The rule is written
+`area.name` with no spaces, and either part may be a reserved word. A
+decline with nothing under it is `syntax.expected_declaration`; one
+inside a body is `syntax.expected_statement`.
 
 ```jadpo check project=e-declined
 type Pence = Int {
@@ -135,24 +140,43 @@ function cap_total(total: Pence) -> Pence {
 }
 ```
 
-A decline covers its one rule on its one declaration, and its reason is
-required (`decline.no_reason`). An agent or a person may decline;
-each declinable error's `next:` offers the line. Declinable today:
-[`library.similar_exists`](#library-similar-exists), area 3's
-[`constant.similar_exists`](03-logic.md#constant-similar-exists) and area
-21's [`query.nearest_exact`](21-ai.md#query-nearest-exact) (chunk 5.5v1c);
-the other judgement calls question 11 lists join as their rules are built.
-Naming any other rule is [`decline.not_declinable`](#decline-not-declinable),
-and a decline whose rule no longer fires there is
+A decline covers its one rule on its one declaration: the innermost
+declaration or member around the finding's location, so a decline on a
+type covers a finding on the type, not one on its field. Its reason is
+required: a missing or blank one is `decline.no_reason`, and the finding
+stays declined meanwhile, so one error shows, not two. An agent or a
+person may decline; every declinable error's `next:` ends with ``, or
+write `decline <rule>: "<why>"` above it if this is deliberate``.
+Declinable today: [`library.similar_exists`](#library-similar-exists),
+area 3's [`constant.similar_exists`](03-logic.md#constant-similar-exists)
+and area 21's [`query.nearest_exact`](21-ai.md#query-nearest-exact)
+(chunk 5.5v1c); the other judgement calls question 11 lists join as
+their rules are built. Naming any other rule, or one Jadpo doesn't have,
+is [`decline.not_declinable`](#decline-not-declinable), which names the
+nearest declinable rule.
+
+A decline whose rule no longer fires there is
 [`decline.unused`](#decline-unused), so declines don't outlive their
-reason.
+reason. It is judged only once every other finding is answered (no
+syntax errors, and every other error is itself declinable or about a
+decline), since another error can stop a rule from firing. A second
+decline of the same rule on one declaration is unused.
+
+A declined finding is still an error. In JSON a diagnostic keeps
+`"severity": "error"` and gains `"declinable"`, `jadpo help --json`
+gives each rule's `declinable`, and `jadpo check --json` and
+`jadpo test --json` have no `warnings` counts.
 
 `jadpo declines list` shows every decline with its rule, place and
 reason, and `jadpo declines clear` removes them, so each finding comes
 back to be fixed or declined again; both take `--rule <id>`, a path and
-`--json` (area 14). In the editor, "Decline with a reason" on a
-declinable finding and "Remove decline" on a decline line run the same
-code. `jadpo approval` will list every decline a change adds or edits
+`--json` (area 14). `clear` stops on syntax errors, as every command
+that writes source does; `list` lists regardless. When a reason doesn't
+fit beside its row, every reason goes on the lines under its row,
+wrapped. In the editor, "Decline with a reason" on a declinable finding
+writes the line with an empty reason for the author to fill in, and
+"Remove decline" on a decline line removes it; both run the same code as
+the commands. `jadpo approval` will list every decline a change adds or edits
 when it is built (area 18). A rule triggered by time passing (area 16's
 expired flag, not built yet) is judged at today's date by `check` and at
 the commit's date by `jadpo build`, and isn't declinable.
@@ -172,38 +196,6 @@ $ jadpo declines clear --rule library.similar_exists
 
 → jadpo check  shows each finding again, to fix or decline
 ```
-
-### Chosen in chunk 5.4b
-
-- **Where it goes.** A decline is the first child of the declaration or
-  member below it: `///` comments, then `decline` lines, then the
-  declaration. The rule is written `area.name` with no spaces, and either
-  part may be a reserved word. A decline with nothing under it is
-  `syntax.expected_declaration`; one inside a body is
-  `syntax.expected_statement`.
-- **Which declaration a finding is on.** The innermost declaration or
-  member around the error's location: a decline on a type covers a
-  finding on the type, not one on its field.
-- **The reason.** A missing or blank reason is `decline.no_reason`;
-  the finding stays declined meanwhile, so one error shows, not two.
-  "Decline with a reason" in the editor writes an empty reason for the
-  author to fill in.
-- **Unknown rules.** A rule id Jadpo doesn't have is
-  `decline.not_declinable` too, naming the nearest declinable rule.
-- **When a decline is unused.** Only once every other finding is
-  answered (no syntax errors, and every other error is itself declinable
-  or about a decline), since another error can stop a rule from firing.
-  A second decline of the same rule on one declaration is unused.
-- **The offer.** Every declinable error's `next:` ends with ``, or write
-  `decline <rule>: "<why>"` above it if this is deliberate``.
-- **JSON.** A diagnostic keeps `"severity": "error"` and gains
-  `"declinable"`; `jadpo help --json` gives each rule's `declinable`; the
-  `warnings` counts of `jadpo check --json` and `jadpo test --json` are
-  gone.
-- **The commands.** `jadpo declines clear` stops on syntax errors, as
-  every command that writes source does; `list` lists regardless. When a
-  reason doesn't fit beside its row, every reason goes on the lines under
-  its row, wrapped.
 
 ## Errors
 
@@ -1812,7 +1804,7 @@ rule's real output under [Errors](#errors).
 | Domains, `public` and calls | Built: owner-qualified calls and per-declaration `public`, with `visibility.private_cross_domain`, `visibility.public_not_allowed` and `visibility.public_unused` (chunk 2.8). |
 | Reserved words | Built: a reserved word can't name anything. |
 | Comments | Built: `//` and `///` documentation comments. |
-| Similar helpers | Built (chunk 1.7): `library.similar_exists`, a declinable error since chunk 5.4b. |
+| Similar helpers | Built (chunk 1.7): `library.similar_exists`, a declinable error (chunk 5.4b). |
 | Declinable errors | Built (chunk 5.4b): no warning severity; the `decline <rule>: "<reason>"` line with `decline.unused`, `decline.not_declinable` and `decline.no_reason`; `jadpo declines list` and `clear`; the editor's "Decline with a reason" and "Remove decline". `jadpo approval` listing declines comes with records (area 18), and the date rule with expired flags (area 16). |
 | Constants | Built (chunk 5.3e): `constant` as a reserved word and a declaration placed and shared as helper functions are, a private one unique within its domain, `constant.similar_exists`, and a top-level `var` pointed at `constant` (area 3). |
 | Imports | Built (chunk 3.5): `use <folder> { Names }` and `use <domain>`, with `import.missing`, `import.unknown`, `import.unused`, `import.unneeded` and `import.duplicate`; `jadpo fmt` adds, removes and sorts imports, `jadpo fmt --layout` makes promotion moves, and go to definition works from every use of a name, a `use` line's included. |
