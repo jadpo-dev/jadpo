@@ -1969,7 +1969,16 @@ chunks below, taken before Phase 6.
   2026-10-19: a schedule reaches every tenant, and reaching what only
   `Access.public` grants is a compile error) leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
-  keys (area 7).
+  keys (area 7). Split on 2026-10-19 because it doesn't fit one session:
+  schedules, their leases, the tick, its sweeps and run records here;
+  the commands that watch them are 6.2b.
+- [ ] **6.2b Watching schedules** `opus · high`, after 6.2 (area 12,
+  "Watching schedules"; area 14): `jadpo schedules` with `run`, `pause`,
+  `resume` and `history`, `jadpo why <schedule>`, a schedule's runs in
+  `jadpo dev`'s output, the metrics and the alerts with no setup, read
+  from 6.2's run records; area 5's built-in hourly purge schedule on the
+  tick; and area 13's schedule tests (`schedule.run()`, `--kind
+  schedule`).
 - [ ] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
