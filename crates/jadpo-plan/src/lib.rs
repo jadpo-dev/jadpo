@@ -205,6 +205,21 @@ pub struct Plan {
     /// The latest migration's backfills `jadpo migrate apply` works out in
     /// Jadpo (chunk 5.6b2), in a plan built for it.
     backfills: Vec<BackfillPlan>,
+    /// The structured fields the latest migration reads or writes as JSON
+    /// in Jadpo (chunk 5.9c), in a plan built for it.
+    migration_json: Vec<MigrationJson>,
+}
+
+/// A structured field the latest migration checks, rewrites or fills as
+/// JSON in Jadpo (area 5, "Storage types"; chunk 5.9c): its type's number
+/// in the plan's JSON table, whose codec reads and writes its values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationJson {
+    /// The migration's folder name.
+    pub migration: String,
+    /// `Parcel.label`, as the migration's SQL names it.
+    pub field: String,
+    pub number: u32,
 }
 
 /// A backfill `jadpo migrate apply` works out in Jadpo (area 5, "Computed
@@ -499,6 +514,31 @@ impl Plan {
                 }
             })
             .collect();
+        // Each structured field the latest migration reads or writes as
+        // JSON, by its field's type, as a query reads it (chunk 5.9c).
+        let mut migration_json = Vec::new();
+        if with_backfills {
+            for stored in jadpo_check::data::migrations::stored_json_fields(db, project) {
+                let Some(id) =
+                    graph.named(Kind::Field, &format!("{}.{}", stored.entity, stored.name))
+                else {
+                    continue;
+                };
+                let ty = TypeRef::Field(graph.node(id).key.clone());
+                let number = match json_types.iter().position(|known| *known == ty) {
+                    Some(at) => at,
+                    None => {
+                        json_types.push(ty);
+                        json_types.len() - 1
+                    }
+                };
+                migration_json.push(MigrationJson {
+                    migration: stored.migration,
+                    field: stored.field,
+                    number: u32::try_from(number).unwrap_or(u32::MAX),
+                });
+            }
+        }
         let mut json = routes::json_table(db, project, &mut types, &json_types);
         json.events = events;
         let mut routes = routes::table(
@@ -529,7 +569,18 @@ impl Plan {
             json,
             prompts,
             backfills,
+            migration_json,
         }
+    }
+
+    /// The JSON-table number of the structured field `field` (`Parcel.label`)
+    /// the latest migration `migration` reads or writes as JSON, in a plan
+    /// built [`Plan::with_backfills`] (chunk 5.9c).
+    pub fn migration_json(&self, migration: &str, field: &str) -> Option<u32> {
+        self.migration_json
+            .iter()
+            .find(|json| json.migration == migration && json.field == field)
+            .map(|json| json.number)
     }
 
     /// The latest migration's backfills worked out in Jadpo, in a plan

@@ -24,6 +24,7 @@ mod geo_queries;
 mod geography;
 mod http;
 mod json_columns;
+mod json_migrations;
 mod lifecycle;
 mod locales;
 mod lsp;

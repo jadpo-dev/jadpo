@@ -499,7 +499,7 @@ impl Program {
 
     /// The codecs a JSON-held column is written and read with (chunk
     /// 5.5w2b): `json.read`'s, numbered by the plan's JSON table.
-    pub(crate) fn stored_json(&self) -> jadpo_runtime::JsonCodecs<'_> {
+    pub fn stored_json(&self) -> jadpo_runtime::JsonCodecs<'_> {
         jadpo_runtime::JsonCodecs {
             codecs: self.json_codecs(),
             types: &self.plan().json().types,
