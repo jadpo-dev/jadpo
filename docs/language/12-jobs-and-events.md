@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. The commands that watch schedules come in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. The commands that watch schedules come in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1716,7 +1716,8 @@ schedule tests in chunk 6.2b;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
-below), but for the file helpers, which come in chunk 6.4b, and on
+below), with tenants and their grants in chunk 6.4c ("Chosen in chunk
+6.4c" below), but for the file helpers, which come in chunk 6.4b, and on
 Workers each run's continuation in a fresh invocation, which chunk 8.2
 checks. Several changing calls in one action, polls and `receiving`
 were decided on 2026-10-16 and come with Phase 7; their errors are built
@@ -2048,6 +2049,170 @@ reading; the file helpers wait for chunk 6.4b:
   names no variable: area 19's and example 4's `batches` variables were
   renamed. An inline function is now also a named argument's value
   (`each: row -> ...`), as area 3 decided.
+
+### Chosen in chunk 6.4c
+
+What the decisions of 2026-10-19 on a batch's tenant and its grants
+leave to the build, each the most conservative reading:
+
+- **A run's tenant.** In an application with a `tenant:`, each page's
+  read, its items and `finished:` act as the system limited to the
+  tenant the run's saved values holding a tenant's id name: a `from:`
+  argument, a value `each:` or `finished:` captures, or `key:`, whose
+  own type is the tenant's `id` (`Household.id`, or one that may be
+  `none`), as chunk 6.1b reads an event's own field. A tenant's id held
+  inside a saved record doesn't count. The run reads them from what it
+  saved, so it has the same tenant each time it resumes. A run that
+  saves no such value, or one that is `none`, reaches no tenant's
+  records, only those every tenant shares. An application without a
+  `tenant:` runs batches as before, reaching every record the system
+  is granted.
+- **Several saved tenant ids.** Read as several tenants: values that all
+  name the same tenant (`key: household_id` beside an `each:` capturing
+  `household_id`) limit the run to it, and values naming different
+  tenants reach no tenant's records. *Flagged:* the decision says "none
+  or several"; counting the values instead, so any two reach no tenant,
+  would make the usual `key:` beside a capture of the same id reach
+  nothing at all. Recommended as built.
+- **Batches and `Access.public`.** As for a schedule or a subscriber:
+  what `from:`'s query reads, or the action `each:` or `finished:` calls
+  reaches, itself or through what it calls, where a grant list, a
+  field's own list or the action's line under `actions:` names
+  `Access.public` and not `Access.system`, is
+  `policy.system_grant_missing`, at that query's or action's call. Each
+  call is checked, so one batch may be refused at more than one.
+
+A batch's query that only `Access.public` may read:
+
+```jadpo check project=e-batch-system-grant-query expect=policy.system_grant_missing
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `items` runs as the system, which only `Access.public` lets read `Item`
+ --> main.jadpo:46:31
+   |
+46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
+   |                               ^^^^^^^^^^^ runs as `Access.system`
+  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `read:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Item`'s `read:`, or reach `Item` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
+
+A batch's action changing what only `Access.public` may change:
+
+```jadpo check project=e-batch-system-grant-action expect=policy.system_grant_missing
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public, Access.system]
+        update: [Access.public]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `mark_seen` runs as the system, which only `Access.public` lets update `Item`
+ --> main.jadpo:46:58
+   |
+46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
+   |                                                          ^^^^^^^^^^^^^^^ runs as `Access.system`
+  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Item`'s `update:`, or reach `Item` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
 
 ### Consistency with the rest of the language
 

@@ -276,17 +276,80 @@ fn only_the_runtime_builds_a_batch_type() {
 }
 
 #[test]
-fn an_application_with_tenants_waits_for_batches() {
+fn an_application_with_tenants_runs_batches() {
+    // A run is limited to the tenant its saved tenant id names (chunk
+    // 6.4c), so a tenant no longer refuses `batches.each`.
     let tenancy = [(
         "policy.jadpo",
         "use shop/entities { Sweep }\n\npolicy {\n    tenant: Sweep\n}\n",
     )];
     let found = rules(GOOD, &tenancy);
     assert!(
-        found
+        !found
             .iter()
-            .any(|r| r == "toolchain.not_built_yet declared, not built"),
+            .any(|r| r.starts_with("toolchain.not_built_yet")),
         "{found:?}"
+    );
+}
+
+/// The rules the base project gives with `start` as [`GOOD`], with
+/// `entity`'s file replaced by `text`.
+fn with_entity(entity: &str, text: &str) -> Vec<String> {
+    let path = format!("domains/shop/entities/{entity}.jadpo");
+    let mut files: Vec<(&str, &str)> = BASE.iter().filter(|(at, _)| *at != path).copied().collect();
+    files.push((&path, text));
+    let start = format!("{IMPORTS}{GOOD}");
+    files.push(("domains/shop/actions/start.jadpo", &start));
+    files.push(SEE_PAGE);
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    jadpo_check::check(&db, project)
+        .iter()
+        .filter(|d| d.rule.id != "import.unused")
+        .map(|d| {
+            format!(
+                "{} {} ({})",
+                d.rule.id,
+                d.message,
+                d.primary
+                    .as_ref()
+                    .map(|l| l.text.as_str())
+                    .unwrap_or_default()
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_batch_reading_what_only_the_public_may_read_is_refused() {
+    // The run reads `items` as the system (area 9, "Batches and
+    // `Access.public`"; chunk 6.4c).
+    let item = "use shop/types { ShelfCode }\n\nentity Item {\n    id: Uuid\n    code: ShelfCode\n    seen: Bool\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public]\n        update: [Access.system]\n    }\n}\n";
+    assert_eq!(
+        with_entity("item", item),
+        [
+            "policy.system_grant_missing `items` runs as the system, which only `Access.public` lets read `Item` (runs as `Access.system`)"
+        ]
+    );
+}
+
+#[test]
+fn a_batch_whose_actions_reach_what_only_the_public_may_change_is_refused() {
+    // `each:`'s `see` updates an `Item`, and `finished:`'s `swept` a
+    // `Sweep`, each granted only to anyone at all.
+    let item = "use shop/types { ShelfCode }\n\nentity Item {\n    id: Uuid\n    code: ShelfCode\n    seen: Bool\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public, Access.system]\n        update: [Access.public]\n    }\n}\n";
+    assert_eq!(
+        with_entity("item", item),
+        [
+            "policy.system_grant_missing `see` runs as the system, which only `Access.public` lets update `Item` (runs as `Access.system`)"
+        ]
+    );
+    let sweep = "entity Sweep {\n    id: Uuid\n    run: BatchRun?\n    seen: Int?\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public, Access.system]\n        update: [Access.public]\n    }\n}\n";
+    assert_eq!(
+        with_entity("sweep", sweep),
+        [
+            "policy.system_grant_missing `swept` runs as the system, which only `Access.public` lets update `Sweep` (runs as `Access.system`)"
+        ]
     );
 }
 

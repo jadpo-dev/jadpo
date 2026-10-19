@@ -647,11 +647,11 @@ chunks below, taken before Phase 6.
   query's pages as the system, each page committing its items' writes,
   problems and position together, with `key:`, `batches.status`,
   `batches.cancel`, leases and `batches::resume` for 6.2's tick.
-- [ ] **6.4c Batches with tenants and grants** `opus · high` (areas 12 and
-  9, decided 2026-10-19): `batches.each` in an application with
-  `tenant:`, a run limited to the tenant its one saved tenant id names
-  (none or several reaching no tenant's records), and a batch reaching
-  what only `Access.public` grants refused as `policy.system_grant_missing`.
+- [x] **6.4c Batches with tenants and grants** `opus · high`. Built:
+  `batches.each` in an application with a tenant, each run limited to
+  the tenant its saved tenant ids name (none, or different ones, reaching
+  no tenant's records), and a batch's query or actions reaching what only
+  `Access.public` grants refused as `policy.system_grant_missing`.
 - [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
   schedules and batches, passing `--require-examples`.
 
