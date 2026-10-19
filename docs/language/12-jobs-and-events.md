@@ -2927,8 +2927,9 @@ Not yet:
 - Deleting handled records once a delivery can no longer repeat, and
   area 8's ended sessions, tokens and expired keys, on the tick: roadmap
   6.10.
-- Delivering events in tests after each commit, in a shuffled order, and
-  a fake failing a subscriber (area 13): roadmap 6.11.
+- Delivering events in tests after each commit, in a shuffled order
+  (area 13): roadmap 6.11, and a fake failing a subscriber with 7.0c's
+  fakes.
 - `jadpo deliveries` and the operator's retry, dismiss, cancel and
   resolve (area 14): roadmap 6.12.
 - The circuit breaker (question 18): roadmap 7.2b. `Retry-After`, several

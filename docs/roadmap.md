@@ -603,79 +603,21 @@ chunks below, taken before Phase 6.
 - [x] **6.1c Event records and stored values** `opus · high`. Built: a
   domain's event shapes in `events/events.jadpo_record`, checked and
   updated as the API record is, and what a subscriber stores from its
-  event held to what every `emit` put there (area 12, "Chosen in chunk
-  6.1c").
-- [x] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
-  tenants", and area 9's "Background work and `Access.public`", decided
-  2026-10-19: a schedule reaches every tenant, and reaching what only
-  `Access.public` grants is a compile error) leases, the native tick, schedule monitoring basics,
-  and the runtime's own sweeps, starting with deleting expired idempotency
-  keys (area 7). Split on 2026-10-19 because it doesn't fit one session:
-  schedules, their leases, the tick, its sweeps and run records here;
-  the commands that watch them are 6.2b. Built: schedules read and
-  checked (`schedule.` errors), `schedules: { store: }` defaulting to the
-  only database (`schedule.store_required` with several),
-  `policy.system_grant_missing` for schedules; `jadpo_schedules` and
-  `jadpo_schedule_runs`; `jadpo_runtime::schedules::tick`, taking each
-  due schedule's lease in one statement, catching up missed ticks as one
-  run on the same grid, skipping and recording a leased or paused one,
-  running it as the system with no tenant under the tick's clock in a
-  new trace, recording every run; the native timer on the server's
-  first worker, which `jadpo dev` ticks with; the sweeps on each tick
-  (`runner::sweep`, expired idempotency keys, delivered events) and
-  `schedules::HOOKS`, which runs 6.4's `batches::resume`; a live test of all of it.
-  Choices in area 12's "Chosen in chunk 6.2"; flagged there: when the
-  first run is due, the next due time as a failed run's retry, and an
-  `every:` under a minute on Workers.
-- [x] **6.2b Watching schedules** `opus · high`, after 6.2 (area 12,
-  "Watching schedules"; area 14): `jadpo schedules` with `run`, `pause`,
-  `resume` and `history`, `jadpo why <schedule>`, a schedule's runs in
-  `jadpo dev`'s output, the metrics and the alerts with no setup, read
-  from 6.2's run records. Split on 2026-10-19: the purge schedule and
-  schedule tests are 6.2c. Built: `jadpo_runtime::schedules::watch`,
-  reading state rows and run records, the five alerts as conditions with
-  their log events, per-schedule metrics, pause, resume and a run now
-  under the lease (`last_succeeded_at` added to the state row); the
-  table, alert, failed and answer blocks; `jadpo schedules`, `history`
-  in pages, `pause`, `resume`, `run` and `jadpo why <schedule>`, with
-  `--json`; `jadpo dev` printing each run and each alert once; live
-  tests of every screen and state, and of `jadpo dev`'s lines. Choices
-  in area 12's "Chosen in chunk 6.2b"; flagged there: `run` runs in the
-  command's own process. Sending metrics and alerts on waits for
-  telemetry (area 16).
-- [x] **6.2c The purge schedule and schedule tests** `opus · high`, after
-  6.2b: area 5's built-in hourly purge schedule on the tick, recorded and
-  watched like any schedule; and area 13's schedule tests
-  (`schedule.run()` at the test's clock, `--kind schedule`). Built: an
-  hourly `Member.purge` schedule for each entity that purges, keyed by its
-  born name, its tables in the migration snapshot (`schedule.store_required`
-  at `purge:` with several databases and none named), run on the tick and
-  by `jadpo schedules run` through the executor's `purge`, its run records
-  counting the records deleted (`items`), listed, explained and printed by
-  `jadpo schedules`, `jadpo why` and `jadpo dev`; `schedule.run()` in a
-  test, the action called as the system with no tenant at the test's
-  clock, giving nothing and failing as its action does, elsewhere
-  `semantic.not_callable`; a test that runs one is a schedule test, and
-  `--kind schedule` runs only those; example 10's tenth migration; live
-  tests of the tick, the screens and `jadpo test --kind schedule`. Choices
-  in area 12's and area 13's "Chosen in chunk 6.2c"; flagged there: no
-  test can run an entity's purge schedule.
-- [x] **6.3 Routes that wait for follow-on work** `opus · high` (area 7,
-  "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
-  events and their follow-ons at once, answers with the named query when
-  they settle and with `202` past `within:`. Built: `settle: { answer:
-  within: }` read and checked (`route.settle_invalid`; `output:` the
-  query's result, its failures the route's, policy checking what it
-  reaches); `runner::settle_within` running the deliveries and their
-  follow-ons inline until each succeeded or failed for good, stopping at
-  a retry, an unclaimed delivery, a batch run or `within:`, a cut-short
-  delivery given back and the rest left for after the response; the
-  answer query run as the request's caller, 202 when unsettled; an
-  `Idempotency-Key` keeping the query's arguments, so a repeat runs it
-  again; both answers in OpenAPI and a `settle within` line in the
-  record; a live test and a route test of it. Choices in area 7's
-  "Chosen in chunk 6.3"; flagged there: a route whose action starts a
-  batch always answers 202.
+  event held to what every `emit` put there.
+- [x] **6.2 Schedules** `opus · high`. Built: schedules, their state,
+  leases and run records, `schedules: { store: }`, the native tick and
+  its sweeps, a schedule reaching every tenant and refused what only
+  `Access.public` grants.
+- [x] **6.2b Watching schedules** `opus · high`. Built: `jadpo schedules`
+  with `run`, `pause`, `resume` and `history`, `jadpo why <schedule>`,
+  each run and alert in `jadpo dev`, the alerts with no setup and the
+  metrics.
+- [x] **6.2c The purge schedule and schedule tests** `opus · high`.
+  Built: each purging entity's hourly `Member.purge` schedule on the tick,
+  recorded and watched like any, and `schedule.run()` in tests.
+- [x] **6.3 Routes that wait for follow-on work** `opus · high`. Built:
+  `settle: { answer: within: }`, delivering an action's events inline and
+  answering with its query, or 202 past `within:`.
 - [x] **6.3b One condition lowering** `opus · xhigh`. Built: one condition
   lowering to an exact SQL form or an index search the runtime rechecks, all
   SQL text in `jadpo-sql`, and operations in `where:` with expression
@@ -689,38 +631,18 @@ chunks below, taken before Phase 6.
   the tenant its saved tenant ids name (none, or different ones, reaching
   no tenant's records), and a batch's query or actions reaching what only
   `Access.public` grants refused as `policy.system_grant_missing`.
-- [x] **6.5 Teaching examples for Phase 6** `opus · high`: events,
-  schedules and batches, passing `--require-examples`. Built: examples
-  23-repair-cafe (events, subscribers and retries, a chain, the outbox,
-  `events: { store: }`, the event record, `settle:` answering 201 or 202,
-  and `SuccessStatus.accepted`), 24-seed-library (`batches.each` with
-  `finished:` and `key:`, problems, `batches.status` and `cancel`, and an
-  operation in `where:`) and 25-allotment-rents (a schedule reaching
-  every tenant, watched with 6.2b's commands, and a subscriber and a
-  batch limited to one); 20-fell-race reads GeoJSON and coordinate
-  pairs; the coverage test counts area 12's features, and a map layer's
-  `geometry:`. Found: 6.2c's schedule tests need an example when it is
-  built.
-- [x] **6.4d A batch's summary under policy** `opus · xhigh` (found in
-  chunk 6.5). Built: a batch's `ImportSummary` holding counts and
-  problems only, decided by what decides whether `each:`'s action
-  fails; each item followed into what that action stores, as a record
-  of the run's tenant; a saved value proved as one that has left its
-  record but for the record a saved tenant id was read from; a field
-  declared with the tenant's `id` type naming a run's tenant, which
-  6.4c missed, so example 25's run reached no society; example 25's
-  round recording how it went with `finished:`; a live test. Choices
-  in area 12's "Chosen in chunk 6.4d"; flagged there: `batches.status`'s
-  count of problems isn't held to what decides them.
-- [x] **6.2d `jadpo schedules run` against a deployment** `opus · high`
-  (area 12, decided 2026-10-19). Built: against any database but the one
-  a running `jadpo dev` noted, the command writes a run's id to the state
-  row's new `run_requested` column and waits for its record, running no
-  application code and reading none of its settings; the tick runs it by
-  hand under the lease when its due run left the lease free; no tick
-  within twice the tick period withdraws it with `schedules.no_tick`;
-  against `jadpo dev` it still runs straight away (area 12, "Chosen in
-  chunk 6.2d").
+- [x] **6.5 Teaching examples for Phase 6** `opus · high`. Built: examples
+  23-repair-cafe (events and `settle:`), 24-seed-library (batches) and
+  25-allotment-rents (schedules and tenants), passing
+  `--require-examples`.
+- [x] **6.4d A batch's summary under policy** `opus · xhigh`. Built: a
+  batch's summary holding counts and problems only, each item followed
+  into what its action stores, and what a run saves proved by the tenant
+  it is limited to.
+- [x] **6.2d `jadpo schedules run` against a deployment** `opus · high`.
+  Built: against a deployment the command asks the app's own tick to run
+  the schedule and waits for its record (`schedules.no_tick`); against
+  `jadpo dev` it runs it straight away.
 
 ### Phase 6 review (2026-10-19)
 
@@ -729,81 +651,31 @@ ahead, read everything Phase 6 built; their confirmed findings are the
 chunks below, taken before Phase 7, in this order.
 
 - [x] **6.6a Phase 6 review fixes: exactly-once and limits** `opus ·
-  xhigh`. Built: a subscriber's handled record written after its outbox
-  rows, in its outbox store when its action only emits, so a repeat sets
-  nothing off twice; the sweep running each piece at the host's time and
-  leasing from the claim; a batch run keeping its chain depth
-  (`jadpo_batch_runs.depth`, with a migration in examples 24 and 25), so
-  a loop through a batch stops at 16; 1,000 events per item's action; a
-  delivery claimed over its budget or past `within:` failing unrun
-  (`lease_expired` for a lost attempt), the run limit settling against
-  the budget; `settle:`'s `within:` and the run limit racing the body
-  only; and the tick deleting batch runs 30 days after they ended. Each
-  from a failing live test of the review's reproduction.
+  xhigh`. Built: a handled record beside an emitting action's outbox, the
+  sweep at the host's time, a batch run's chain depth, 1,000 events per
+  item, deliveries given up at the claim, the run limit racing the body
+  only, and batch runs deleted 30 days after they ended.
 - [x] **6.6b Phase 6 review fixes: policy proofs** `opus · xhigh`.
-  Built: the review's batch-item case a test, refused with or without a
-  tenant, as 6.4d's following of each item already did; every action
-  background work reaches checked against its own `actions:` line, and a
-  listed action's line deciding its own body's writes wherever it is
-  called from, routes included, as the plan does, with a live test;
-  `type.batch_input` for a batch type in an `Input` (body or query
-  string) or a placeholder, and a batch type's field named as a type
-  refused rather than standing for nothing; `batches.status` held to
-  what decides every batch's failures, read by a caller known only by
-  its line; `route.output_required` suggesting
-  `SuccessStatus.no_content` for an action returning `Unit`. Choices in
-  area 12's "Chosen in chunk 6.6b" and area 9's Decisions; flagged
-  there: a tenanted run's status shows only what anyone, or a role held
-  across the whole application, may read.
+  Built: every action background work reaches checked against its own
+  `actions:` line, `type.batch_input`, and `batches.status` held to what
+  decides every batch's failures.
 - [x] **6.6d A placeholder naming a missing field** `opus · high`. Built:
   a route placeholder typed with a field its type doesn't declare
   (`{x: Note.nope}`) is `type.unknown_field` at its type, with the
   nearest field offered, rather than dropping its route silently; a
   checked example in area 7.
-- [x] **6.6c Tenancy of background work** `opus · high`. Built: an
-  event's tenant field and each value a batch's run saves of the tenant's
-  `id` type proved to name a tenant the action read or wrote under its
-  caller's policy (the tenant's id or a record's tenancy reference it
-  reached, a record it was handed whole, or what a create that always
-  runs set), else `policy.event_tenant_unproved`; a batch's `key:` unique
-  per call, tenant and key (`jadpo_batch_runs.tenant`, with a migration
-  in examples 24 and 25); live tests of Bob reaching nothing of Ash's
-  through an event or a batch, and of two households sharing a key.
-  Choices in area 12's "Chosen in chunk 6.6c"; flagged there: a
-  subscriber's action passing its event's tenant on reads it first, and a
-  keyed run from before the migration isn't found again.
+- [x] **6.6c Tenancy of background work** `opus · high`. Built: the
+  tenant an event or a batch's run names proved to be one its action
+  reached (`policy.event_tenant_unproved`), and a batch's `key:` unique
+  per call, tenant and key.
 - [x] **6.7 Background work within a host's budget** `opus · xhigh`.
-  Built: each invocation of background work given a budget by its host
-  (`Host::budget_ms`: the whole 15-minute run limit natively and by
-  default, a test's smaller), the runner taking no piece once it is
-  spent and running every action within it through one helper
-  (`runner::within_budget`, `Budget::run` for a purge or a page); every
-  lease, a delivery's, a schedule's and a batch run's, what is left of
-  the budget and a minute, through one lease helper (`lease`); a batch
-  run handed on by time into a fresh invocation (`Host::hand_on`), in
-  place of 500 pages; the tick within its budget, schedules' run path
-  folded in; the native server draining on SIGTERM, and on ctrl-c under
-  `jadpo dev`, giving back what its background work holds;
-  `Deferred::Run` and `runner::settle` removed. Live tests: a 2 s budget
-  ends a stalled delivery and takes nothing more, a batch carries on in a
-  second invocation, stopping `jadpo dev` gives back the delivery it was
-  running, and `jadpo dev` exits 0 on SIGTERM. Choices in area 12's
-  "Chosen in chunk 6.7".
-- [x] **6.8 Durable background records** `opus · high`. Built: a
-  delivery reads its outbox row's payload by the `encoding` it records,
-  a later release's parked `payload_unreadable`; a batch run's call
-  named by identity keys (`action check_stock from query
-  products_to_check each action check_product`), its shape canonical
-  type text (`TypeRef::canonical`), and its saved values kept with a new
-  `jadpo_batch_runs.encoding` and read by the standard JSON reader
-  (`JsonCodecs::read_list`), a run a later release kept or one kept
-  before this chunk ending `failed` with why; the system tables defined
-  once in `jadpo_std::system`, with no catch-all, which the checker
-  turns into each store's tables; `jadpo_runtime::statements` listing
-  every runtime statement on them, a source scan failing on one left
-  out, and a live test preparing each against the migrated tables.
-  Examples 24 and 25 take the column's migration. Choices in area 12's
-  "Chosen in chunk 6.8".
+  Built: a budget for each invocation of background work, every lease the
+  budget and a minute, a batch run carried on by time in a fresh
+  invocation, and a native server draining on SIGTERM.
+- [x] **6.8 Durable background records** `opus · high`. Built: an outbox
+  row read by the encoding it records, a batch's call named by identity
+  keys with its shape in canonical type text and its saved values'
+  encoding, and the system tables defined once in `jadpo_std::system`.
 - [ ] **6.9 Serving, alerts and `why` in the runtime** `opus · high`: a
   server handler in the runtime or `jadpo-host-native` that `jadpo dev`
   only wraps to print; alerts raised in `schedules::tick` and kept once
@@ -831,6 +703,33 @@ chunks below, taken before Phase 7, in this order.
   work, and every promise nothing builds (ended sessions deleted on the
   tick, `jadpo deliveries`, the outbox's circuit breaker, delivery after
   each commit in tests, deleting handled records) given a roadmap line.
+- [ ] **6.10 The tick's remaining deletes** `opus · high` (areas 8 and
+  12, "The tick"): ended browser sessions, API tokens and expired keys
+  deleted on the tick, as a lookup already ignores them; and a
+  subscriber's handled records deleted once their delivery can no longer
+  repeat, which the chunk works out from the delivery's own record (with
+  its event gone, nothing redelivers it), the store each is in, and
+  1,000 rows at a time, ten times a tick, as the tick's other deletes.
+- [ ] **6.11 Events in tests** `opus · high` (area 13, "Caches and
+  events"; area 12, question 15): what each step of a test emits
+  delivered after it commits and before the next statement, at the
+  test's clock, until none are left, in an order shuffled by the
+  printed seed, a subscriber that fails failing the test; a fake failing
+  a subscriber, to test retries, follows with 7.0c's fakes.
+- [ ] **6.12 `jadpo deliveries`** `opus · high` (area 14, question 13;
+  area 12, "What an operator sees"): list, retry, dismiss, cancel and
+  resolve deliveries and schedule runs against an environment, each
+  logged with who did it, on the screens of the CLI design language;
+  `show`, `retry --not-done` and `abandon` come with multi-step calls
+  (7.5), and batch runs and parked queue messages with 6.4b and 7.7.
+- [ ] **5.13b `jadpo dev` and half-written files** `opus · high` (from
+  chunk 5.13): an editor's truncate-then-write leaves an empty routes
+  file that checks cleanly with no routes, and `jadpo dev` reloads it,
+  serving 404s until the next save. Guard the reload: wait until a
+  changed file's content is stable (unchanged across a short settle
+  after the last event), or treat a file emptied mid-session as not yet
+  saved. `crates/jadpo-cli/tests/config.rs` writes `.env.local` without
+  an atomic rename and may flake the same way; write it atomically.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
@@ -883,6 +782,12 @@ The design is area 11 as revised on 2026-10-16, with its research in
   decoded at the edge, declinable findings with `(agent)` steps, one review
   instruction scoped to the types the app's operations reach and tracked per
   type in `jadpo check` and `jadpo approval`, and the import's summary.
+- [ ] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
+  question 18), after 7.2: per connection, after a run of `unavailable`
+  failures from one provider, deliveries that call it are held rather
+  than attempted, one probe delivery is tried after a pause, and success
+  releases the rest; held deliveries keep their retry budget, are shown
+  in `jadpo deliveries` and alerted.
 - [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
   Jadpo-rendered, attachments), the SMTP driver and a mail package as a
   second connection proving the swap, `emails/` templates and the shared

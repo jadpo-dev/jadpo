@@ -1030,8 +1030,8 @@ In a test (question 8 for the database, question 9 for these):
   reminder in `requests`. A subscriber that fails fails the test; retries are
   area 12.
   Not built yet: what a step emits waits in its database, delivered by
-  no one, until roadmap chunk 6.10 delivers it, with a fake failing a
-  subscriber and the shuffled order (area 12, question 15).
+  no one, until roadmap 6.11 delivers it in the shuffled order (area 12,
+  question 15); a fake failing a subscriber follows with 7.0c's fakes.
 - **Caches** are on and start empty for each test, in the application's real
   cache store, so a route test sees the same invalidation as production.
   Tests cannot read, fill or clear a cache directly. Actions never read
