@@ -712,6 +712,11 @@ chunks below, taken before Phase 6.
   round recording how it went with `finished:`; a live test. Choices
   in area 12's "Chosen in chunk 6.4d"; flagged there: `batches.status`'s
   count of problems isn't held to what decides them.
+- [ ] **6.2d `jadpo schedules run` against a deployment** `opus · high`
+  (area 12, decided 2026-10-19): against a deployed application the
+  command marks the schedule due and waits for the server's run record,
+  never running application code on the operator's machine; against
+  `jadpo dev` it still runs straight away.
 - [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
   chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
   onwards) folded into the text they amend, as 5.10 did, and the code
