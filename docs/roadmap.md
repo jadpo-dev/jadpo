@@ -1917,21 +1917,32 @@ chunks below, taken before Phase 6.
   12's "Chosen in chunk 6.1a"; flagged there: what only `Access.public`
   grants is left to 6.1b's and 6.2's checks, and a schedule's run
   reaches every tenant.
-- [ ] **6.1b Events** `opus · high`, after 6.1a (area 9, "Background
-  work and `Access.public`", decided 2026-10-19: a subscriber reaching a
-  statement only `Access.public` grants is a compile error; area 12, "Outbox
-  placement, settled" and "Event records", decided 2026-10-19: each
-  store an action writes keeps its outbox and delivery records, a
-  subscriber's handled record in its own store, schedule leases in
-  `schedules: { store: }`; event shapes recorded and diffed as API
-  records are):
-  outbox, subscribers, retries and trace context on 6.1a's runner and
-  system caller, and `events: { store: }`, with the compile error for an
+- [ ] **6.1b Events: outbox, delivery and retries** `opus · high`, after
+  6.1a (area 9, "Background work and `Access.public`", decided
+  2026-10-19: a subscriber reaching a statement only `Access.public`
+  grants is a compile error; area 12, "Outbox placement, settled",
+  decided 2026-10-19: each store an action writes keeps its outbox and
+  delivery records, a subscriber's handled record in its own store,
+  schedule leases in `schedules: { store: }`): subscribers read and
+  checked; `emit` writing the outbox row in the same transaction as the
+  action's writes; delivery after the response on 6.1a's runner, each
+  subscriber as the system limited to its event's tenant, with a handled
+  record in the store it writes and no reference across stores; retries
+  with area 12's backoff and `retry:`; trace context carried from the
+  emitting request; `events: { store: }`, with the compile error for an
   action that writes no store but needs one for its outbox or idempotency
-  keys (until then such an action keeps no key, chunk 4.2). From chunk 5.1d: what a subscriber stores
-  from an event is checked against what every `emit` of it put there, as
-  area 9's stored values are (an `emit` itself stores nothing a caller
-  reads).
+  keys (until then such an action keeps no key, chunk 4.2); and the
+  outbox sweep that picks up what deferred work dropped (its minute tick
+  is 6.2's). Split from 6.1b on 2026-10-19 because it doesn't fit one
+  session.
+- [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
+  (area 12, "Event records", decided 2026-10-19): event shapes recorded
+  and diffed in the generated record exactly as an API's is (chunk 7.0's
+  format, a new record kind with its header, diff and `jadpo records`
+  row), acceptance waiting for area 18 as the API record's does; and from
+  chunk 5.1d, what a subscriber stores from an event checked against what
+  every `emit` of it put there, as area 9's stored values are (an `emit`
+  itself stores nothing a caller reads).
 - [ ] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
   tenants", and area 9's "Background work and `Access.public`", decided
   2026-10-19: a schedule reaches every tenant, and reaching what only
