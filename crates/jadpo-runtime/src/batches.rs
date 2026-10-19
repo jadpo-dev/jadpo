@@ -32,7 +32,7 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use jadpo_std::BatchState;
-use jadpo_std::batch::{BatchArg, BatchPlan, LEASE_MS};
+use jadpo_std::batch::{BatchArg, BatchPlan, BatchTenant, LEASE_MS};
 use jadpo_std::types::FailurePlan;
 use jadpo_value::Value;
 
@@ -89,7 +89,7 @@ const SWEEP_LIMIT: i64 = 100;
 
 const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
 
-const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\"";
+const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\"";
 
 const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
 
@@ -295,6 +295,38 @@ pub async fn start(
     Stored::Value(run_value(&found))
 }
 
+/// The system a run works as (area 12, "A batch's tenant"; chunk 6.4c):
+/// in an application with a tenant, limited to the one tenant its saved
+/// values holding a tenant's id name, `values` and its `key:` as kept,
+/// and otherwise to none.
+fn run_system(
+    json: JsonCodecs<'_>,
+    plan: &BatchPlan,
+    values: &[Value],
+    key: Option<&str>,
+) -> Result<System, String> {
+    let BatchTenant::Saved {
+        captured,
+        key: by_key,
+    } = &plan.tenant
+    else {
+        return Ok(System { tenant: None });
+    };
+    let mut held: Vec<Value> = captured
+        .iter()
+        .map(|at| values.get(*at as usize).cloned().unwrap_or(Value::None))
+        .collect();
+    if *by_key {
+        held.push(match (plan.key, key) {
+            (Some(number), Some(text)) => json.read(number, text)?,
+            _ => Value::None,
+        });
+    }
+    Ok(System {
+        tenant: Some(crate::outbox::named_tenant(held.iter())),
+    })
+}
+
 /// What a run's `shape` column keeps: a digest of the plan's shape, so a
 /// deploy that changes what the call saves or calls is found.
 fn shape_digest(plan: &BatchPlan) -> String {
@@ -443,12 +475,21 @@ async fn run_inner(
         },
         Err(error) => return Ran::Paused(format!("the store refused its claim ({error:?})")),
     };
-    let (name, shape, captured) = match row.as_slice() {
+    let (name, shape, captured, key) = match row.as_slice() {
         [
             SqlValue::Text(name),
             SqlValue::Text(shape),
             SqlValue::Json(captured),
-        ] => (name.clone(), shape.clone(), captured.clone()),
+            key,
+        ] => (
+            name.clone(),
+            shape.clone(),
+            captured.clone(),
+            match key {
+                SqlValue::Text(key) => Some(key.clone()),
+                _ => None,
+            },
+        ),
         _ => return Ran::Failed("its row isn't one the runtime wrote".into()),
     };
     // A deploy that changed what the call saves or what it calls stops
@@ -469,6 +510,14 @@ async fn run_inner(
             return Ran::Failed(why);
         }
     };
+    let system = match run_system(batches.json, plan, &values, key.as_deref()) {
+        Ok(system) => system,
+        Err(why) => {
+            let why = format!("its key no longer reads: {why}");
+            end(host, start, BatchState::Failed, Some(&why)).await;
+            return Ran::Failed(why);
+        }
+    };
     let mut pages = 0;
     let mut attempts = 0;
     loop {
@@ -480,7 +529,7 @@ async fn run_inner(
             left.push(Deferred::Batch(start.clone()));
             return Ran::Paused("it handed itself on after its share of pages".into());
         }
-        let stepped = step(executor, host, batches, plan, start, &values, left).await;
+        let stepped = step(executor, host, batches, plan, start, &values, system, left).await;
         match stepped {
             Step::Next => {
                 pages += 1;
@@ -513,6 +562,7 @@ async fn step(
     plan: &BatchPlan,
     start: &BatchStart,
     values: &[Value],
+    system: System,
     left: &mut Vec<Deferred>,
 ) -> Step {
     let Some(now) = now_on(host) else {
@@ -524,7 +574,10 @@ async fn step(
         clock: Clock::fixed(now),
     };
     let mut ctx = Ctx::new(executor.places(), host, env);
-    let stepped = batch(executor, &mut ctx, batches, plan, start, values, now).await;
+    let stepped = batch(
+        executor, &mut ctx, batches, plan, start, values, system, now,
+    )
+    .await;
     left.extend(ctx.take_deferred());
     stepped
 }
@@ -544,10 +597,11 @@ async fn batch(
     plan: &BatchPlan,
     start: &BatchStart,
     values: &[Value],
+    system: System,
     now: i64,
 ) -> Step {
     let id = SqlValue::Uuid(start.run);
-    let mut open = match Batch::open(ctx, &plan.store, plan.isolation, System::default()).await {
+    let mut open = match Batch::open(ctx, &plan.store, plan.isolation, system).await {
         Ok(open) => open,
         Err(StoreError::ConcurrentChange) => return Step::Changed,
         Err(error) => {

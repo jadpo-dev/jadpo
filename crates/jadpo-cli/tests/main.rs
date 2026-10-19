@@ -9,6 +9,7 @@ mod across;
 mod aggregates;
 mod ai;
 mod backfills;
+mod batch_tenants;
 mod batches;
 mod binary;
 mod check;
