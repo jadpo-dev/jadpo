@@ -1618,8 +1618,28 @@ reference only).
   What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
   of an instant, which needs a zone PostgreSQL may not see as Jadpo
   does, is left for Richard.
-- [ ] **5.7 Teaching examples for Phase 5** `opus · high`: configuration,
-  time, translations and the standard library, passing `--require-examples`.
+- [ ] **5.7 Teaching examples for Phase 5: settings, time and words**
+  `opus · high`: new numbered examples for configuration (`config.jadpo`,
+  constants, the key and address settings and what `crypto` does with
+  them), time (dates, instants, zones, periods and recurring times) and
+  translations and locales. Split on 2026-10-19 because the phase left
+  1,646 built features no example uses, more than a session: the rest are
+  5.7b to 5.7d.
+- [ ] **5.7b Teaching examples: money, quantities and the standard
+  vocabulary** `opus · high`, after 5.7: money and discounts, physical
+  quantities and percentages, and the standard types (identifiers,
+  contact, web, colour, text formats) with text, collections, numbers,
+  encodings, JSON and randomness, each in a realistic app.
+- [ ] **5.7c Teaching examples: geography and stored data** `opus · high`,
+  after 5.7b: points, shapes and queries by distance, aggregate queries
+  with time buckets, stored vectors and the nearest query (without the
+  `ai` capability), and prompts.
+- [ ] **5.7d Teaching examples: the closed lists** `opus · high`, after
+  5.7c, **needs Richard** first: the coverage test counts every value of
+  `Locale`, `Zone`, `Country` and `Currency` that a standard operation
+  takes as a feature of its own (1,383 of the 1,646), which no realistic
+  example names. He decides how the test counts them; then the examples
+  pass `--require-examples`.
 
 ## Phase 6 — Events and schedules (area 12)
 
