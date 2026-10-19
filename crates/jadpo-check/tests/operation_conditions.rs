@@ -209,3 +209,33 @@ fn each_operation_derives_an_index_on_its_expression() {
         "one index for each expression, however many queries test it"
     );
 }
+
+#[test]
+fn an_operation_stands_in_an_include_and_an_aggregate_query() {
+    // An include's list, whose records the database decides exactly.
+    assert_eq!(
+        support::rules(
+            Layout::Loose,
+            &[(
+                "main.jadpo",
+                &format!(
+                    "{BOOK}entity Chapter {{\n    id: Uuid\n    book_id: Book.id {{\n        on_delete: OnDelete.cascade\n    }}\n    heading: Title\n}}\n\ntype ChapterView = Output {{\n    pick: [Chapter.id, Chapter.heading]\n}}\n\ntype BookChapters = Output {{\n    pick: [Book.id]\n    chapters: List<ChapterView>\n}}\n\n/// A book's short chapters.\nquery short_chapters(book_id: Book.id) -> BookChapters? {{\n    from: Book\n    where: Book.id == book_id\n    include: {{\n        chapters: {{\n            via: Chapter.book_id\n            where: text.length(Chapter.heading) <= 12\n            order: [Chapter.id asc]\n            limit: 10\n        }}\n    }}\n}}\n"
+                ),
+            )]
+        ),
+        NONE
+    );
+    // An aggregate query, whose totals the database works out.
+    assert_eq!(
+        support::rules(
+            Layout::Loose,
+            &[(
+                "main.jadpo",
+                &format!(
+                    "{BOOK}type ShortTitles = Output {{\n    books: Int\n}}\n\n/// How many titles fit on a spine.\nquery spine_count() -> ShortTitles {{\n    from: Book\n    where: text.length(Book.title) <= 24\n    aggregate: {{\n        books: count()\n    }}\n}}\n"
+                ),
+            )]
+        ),
+        NONE
+    );
+}

@@ -844,7 +844,7 @@ test "a voucher keeps its discount as it was issued" {
 ## SQL forms
 
 A **SQL form** is a PostgreSQL 16 expression that gives exactly the result
-the runtime gives, for every argument. It matters in two places. A
+the runtime gives, for every argument. It matters in three places. A
 computed backfill whose every operation has a SQL form runs as one
 `UPDATE` per batch, and any other runs through `jadpo migrate apply`,
 reading and writing each batch ([area 5](05-data.md#computed-backfills));
@@ -852,8 +852,11 @@ both are correct, and the SQL form is only faster. An aggregate query
 ([area 6](06-reads-and-writes.md#counts-sums-and-groups), question 28) is
 always one statement, and writes its time buckets (`temporal.year`,
 `temporal.month` and `temporal.day` of a date) and its averages
-(`decimal.divide`) with their SQL forms; it is the one place a query works
-a value out. Otherwise a query's conditions still compute nothing, and a
+(`decimal.divide`) with their SQL forms. And a query's condition may
+compare an operation of a field that has one, its other arguments
+written out, through an index on its form
+([area 6](06-reads-and-writes.md#operations-in-conditions), built in
+chunk 6.3b); otherwise a query's conditions compute nothing, and a
 one-step update's `set:` still works a stored field out only with `+` and
 `-` (area 6).
 
