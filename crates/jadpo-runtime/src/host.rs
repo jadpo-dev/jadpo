@@ -11,7 +11,10 @@
 //! gives random bytes for a deployable's new identities; since chunk 4.10
 //! its wall clock and rate limits are capabilities too; since chunk 6.1a
 //! it runs work after a response is sent ([`Host::defer`]), which
-//! replaced delivering a committed action's events in the request.
+//! replaced delivering a committed action's events in the request; since
+//! chunk 6.7 it gives each invocation of background work its budget
+//! ([`Host::budget_ms`]), says when it is shutting down
+//! ([`Host::stopping`]), and runs work handed on ([`Host::hand_on`]).
 
 use std::future::Future;
 use std::pin::Pin;

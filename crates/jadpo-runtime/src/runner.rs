@@ -226,7 +226,7 @@ pub(crate) async fn within_budget(
 /// race, so work that committed is never taken for work that didn't. A
 /// concurrent change found at that commit runs the body again, as the
 /// boundary would, up to [`crate::RERUN_ATTEMPTS`] times. What `stop`
-/// gave when it finished first, or `late` when the body ended past
+/// gave when it finished first, or `overran` when the body ended past
 /// `ctx`'s deadline: what the body had begun is dropped, nothing it did
 /// kept, and whoever ran `ctx` runs it again.
 async fn held<S: Copy>(
@@ -234,7 +234,7 @@ async fn held<S: Copy>(
     ctx: &mut Ctx<'_>,
     job: Job,
     stop: &mut crate::LocalFuture<'_, S>,
-    late: S,
+    overran: S,
 ) -> Result<Outcome, S> {
     let runner = ctx.runner();
     let mut attempt = 1;
@@ -250,7 +250,7 @@ async fn held<S: Copy>(
         };
         if ctx.out_of_time() {
             ctx.abandon();
-            return Err(late);
+            return Err(overran);
         }
         let Some(open) = ctx.take_held() else {
             return Ok(outcome);
@@ -316,7 +316,7 @@ fn unsplit(queue: VecDeque<Piece>) -> Vec<Deferred> {
 }
 
 /// What one invocation's run of work did.
-struct Driven {
+struct Worked {
     /// The outcome of each piece that ran, in order.
     outcomes: Vec<Outcome>,
     /// What it didn't reach once its budget was spent, a batch run it
@@ -335,7 +335,7 @@ async fn drive(
     budget: &Budget<'_>,
     work: Vec<Deferred>,
     now: Option<i64>,
-) -> Driven {
+) -> Worked {
     let mut queue: VecDeque<Piece> = VecDeque::new();
     split(work, &mut queue);
     let mut outcomes = Vec::new();
@@ -379,7 +379,7 @@ async fn drive(
         split(ctx.take_deferred(), &mut queue);
         outcomes.extend(outcome);
     }
-    Driven {
+    Worked {
         outcomes,
         left: unsplit(queue),
         ran,
@@ -731,7 +731,7 @@ pub(crate) async fn sweep_within(
             }
         }
     }
-    let driven = drive(
+    let worked = drive(
         executor,
         host,
         budget,
@@ -739,7 +739,7 @@ pub(crate) async fn sweep_within(
         Some(now),
     )
     .await;
-    Ok(driven.outcomes)
+    Ok(worked.outcomes)
 }
 
 /// Runs `work` and what it sets off within `budget`, as the tick runs
@@ -783,17 +783,17 @@ fn invocation(
 ) -> LocalFuture<'static, ()> {
     Box::pin(async move {
         let budget = Budget::start(host.as_ref(), kind);
-        let driven = drive(executor.as_ref(), host.as_ref(), &budget, work, None).await;
+        let worked = drive(executor.as_ref(), host.as_ref(), &budget, work, None).await;
         let stopping = budget.stopping();
         drop(budget);
-        if stopping || !driven.ran || driven.left.is_empty() {
+        if stopping || !worked.ran || worked.left.is_empty() {
             return;
         }
         let fresh = Rc::clone(&host);
         host.hand_on(invocation(
             executor,
             fresh,
-            driven.left,
+            worked.left,
             Invocation::HandedOn,
         ));
     })

@@ -1997,7 +1997,10 @@ the same traits.
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in
-  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule.
+  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule,
+  each within the budget the host gives it (30 seconds after a response,
+  15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2),
+  and what one leaves goes on in a fresh invocation (`Host::hand_on`).
 - PostgreSQL goes through Hyperdrive over `connect()` sockets with
   tokio-postgres, as in workers-rs's
   [example](https://raw.githubusercontent.com/cloudflare/workers-rs/main/examples/tokio-postgres/src/lib.rs),

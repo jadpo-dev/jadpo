@@ -171,6 +171,8 @@ pub const DRAIN_GRACE: Duration = Duration::from_secs(10);
 /// handed on), and whether it is shutting down (chunk 6.7).
 struct Background {
     stop: tokio::sync::watch::Sender<bool>,
+    /// What each budget's look at the shutdown is cloned from.
+    stopping: tokio::sync::watch::Receiver<bool>,
     running: Cell<usize>,
     /// Who waits for the last of it to end: a drain.
     idle: RefCell<Vec<Waker>>,
@@ -178,8 +180,10 @@ struct Background {
 
 impl Default for Background {
     fn default() -> Background {
+        let (stop, stopping) = tokio::sync::watch::channel(false);
         Background {
-            stop: tokio::sync::watch::channel(false).0,
+            stop,
+            stopping,
             running: Cell::new(0),
             idle: RefCell::new(Vec::new()),
         }
@@ -307,7 +311,7 @@ impl Host for NativeHost {
 
     /// Finishes once [`NativeHost::drain`] begins.
     fn stopping(&self) -> LocalFuture<'_, ()> {
-        let mut stop = self.background.stop.subscribe();
+        let mut stop = self.background.stopping.clone();
         Box::pin(async move {
             let _ = stop.wait_for(|stopping| *stopping).await;
         })

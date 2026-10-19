@@ -3044,8 +3044,10 @@ be replaced), each the most conservative reading:
   schedule's lease and a batch run's lease last what is left of the
   claimer's budget and a minute, rather than a fixed 16 or 2 minutes, so
   a Worker that is ended loses what it held at most 90 seconds after it
-  began, and natively it is 16 minutes at most, as before. A batch run
-  renews its lease with each page it commits. A claim taken while a
+  began. Natively, with the whole run limit as its budget, a lease lasts
+  at most 16 minutes, as a delivery's and a schedule's did; a batch
+  run's, 2 minutes before, is now as long, since a stopped server gives
+  it back. A batch run renews its lease with each page it commits. A claim taken while a
   route waits for its follow-on work lasts the longest deadline a route
   has, 60 seconds, and the minute. `jadpo schedules run` against a
   deployment waits for the longest lease, 16 minutes, since it can't
