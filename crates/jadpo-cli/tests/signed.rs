@@ -31,7 +31,7 @@ use jadpo_drivers::{Endpoint, Stream, Transport};
 use jadpo_host_native::{NativeHost, NativeTransport, Postgres, Runtime};
 use jadpo_interp::{Prepared, Program};
 use jadpo_runtime::http::{Request, Response, Worker, serve_request};
-use jadpo_runtime::{Database, Event, Host, LocalFuture};
+use jadpo_runtime::{Database, Host, LocalFuture};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 // --- counting round trips ----------------------------------------------------------
@@ -143,8 +143,8 @@ impl Host for Clocked {
         self.inner.database(store)
     }
 
-    fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()> {
-        self.inner.deliver(events)
+    fn defer(&self, work: LocalFuture<'static, ()>) {
+        self.inner.defer(work)
     }
 
     fn random(&self, bytes: &mut [u8]) -> bool {

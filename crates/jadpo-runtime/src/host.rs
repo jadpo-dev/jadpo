@@ -4,14 +4,14 @@
 //! the same way, and drivers classify their own errors into one fixed set.
 //!
 //! Built so far: the seams the action boundary needs, a store's
-//! transactions and delivering an action's events after it commits, with
-//! [`MemoryHost`], which holds no store (chunk 2.10); since chunk 3.1 a
-//! transaction runs SQL with [`SqlValue`] parameters and rows, and a host
-//! gives each store by its connection's name, so the PostgreSQL driver in
-//! `jadpo-drivers` plugs in; since chunk 3.12 a host gives random bytes
-//! for a deployable's new identities; since chunk 4.10 its wall clock and
-//! rate limits are capabilities too. Delivery to subscribers comes with
-//! area 12.
+//! transactions, with [`MemoryHost`], which holds no store (chunk 2.10);
+//! since chunk 3.1 a transaction runs SQL with [`SqlValue`] parameters and
+//! rows, and a host gives each store by its connection's name, so the
+//! PostgreSQL driver in `jadpo-drivers` plugs in; since chunk 3.12 a host
+//! gives random bytes for a deployable's new identities; since chunk 4.10
+//! its wall clock and rate limits are capabilities too; since chunk 6.1a
+//! it runs work after a response is sent ([`Host::defer`]), which
+//! replaced delivering a committed action's events in the request.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -267,9 +267,17 @@ pub trait Host {
     /// `None` when the host has none by that name.
     fn database(&self, store: &str) -> Option<&dyn Database>;
 
-    /// Delivers what a committed action emitted, in the order it emitted
-    /// it. Never called for an action that rolled back.
-    fn deliver(&self, events: Vec<Event>) -> LocalFuture<'_, ()>;
+    /// Runs `work` once the response being answered has been handed back,
+    /// without holding that response up: what the runner gives it to run
+    /// a committed action's follow-on work in the background (area 12,
+    /// "Where events travel"; chunk 6.1a, [`crate::runner::after_response`]).
+    /// Workers' `waitUntil`, natively a task on the worker's own thread.
+    /// A host with nothing to run it on, as a test's or a tool's, drops it:
+    /// what an event sets off is kept in the outbox, which the minute
+    /// tick sweeps (chunk 6.1b).
+    fn defer(&self, work: LocalFuture<'static, ()>) {
+        drop(work);
+    }
 
     /// The value of the environment variable `name` (area 10): the
     /// platform's environment, or on Workers a binding. `None` when it
@@ -391,9 +399,9 @@ impl Database for NoStore {
     }
 }
 
-/// A host with no store and no subscribers, in memory: what `jadpo test`
-/// and the interpreter run on until the test database and events come
-/// with their phases.
+/// A host with no store, in memory, that runs nothing in the background:
+/// what the interpreter runs a function on, and `jadpo test` a test that
+/// uses no store.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MemoryHost {
     store: NoStore,
@@ -408,10 +416,6 @@ impl MemoryHost {
 impl Host for MemoryHost {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(&self.store)
-    }
-
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
     }
 
     /// None: what runs on it runs under a seed.

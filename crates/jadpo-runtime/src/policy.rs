@@ -5,7 +5,7 @@
 //! statement by the plan, so only this check runs on its own. And who a
 //! test's, fixture's or seed's call runs as ([`call_as`]).
 
-use jadpo_std::policy::Gate;
+use jadpo_std::policy::{Callers, Gate};
 use jadpo_std::read::Source;
 use jadpo_value::Value;
 
@@ -46,15 +46,18 @@ pub fn call_as(ctx: &mut Ctx<'_>, caller: Option<&Value>) {
 
 /// Whether the caller may call the action `gate` guards, from site `site`:
 /// `Stored::Value(Unit)` when they may, `not_permitted` when they may not.
-/// A call a test makes without a caller isn't checked (area 13).
+/// The system may when the action's line names `Access.system`, and only
+/// then (chunk 6.1a). A call a test makes without a caller isn't checked
+/// (area 13).
 pub async fn admit(ctx: &mut Ctx<'_>, gate: &Gate, site: u32) -> Stored {
     if ctx.unpoliced() {
         return Stored::Value(Value::Unit);
     }
-    let admitted = match gate {
-        Gate::Signed => ctx.caller().is_some(),
-        Gate::Nobody => false,
-        Gate::Roles { store, sql, params } => {
+    let admitted = match &gate.callers {
+        _ if ctx.system().is_some() => gate.system,
+        Callers::Signed => ctx.caller().is_some(),
+        Callers::Nobody => false,
+        Callers::Roles { store, sql, params } => {
             let values: Vec<SqlValue> = params
                 .iter()
                 .map(|param| match &param.source {

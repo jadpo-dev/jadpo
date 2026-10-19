@@ -81,6 +81,9 @@ pub struct InJadpo {
     pub sql_type: String,
     /// The places a decimal is stored at, rounded half to even.
     pub scale: Option<u32>,
+    /// The field it fills, by its entity's name and its own as they are
+    /// now: whose rules each value is kept and checked by (chunk 6.1a).
+    pub fills: (String, String),
     /// The digest of the code it runs.
     pub code: String,
 }

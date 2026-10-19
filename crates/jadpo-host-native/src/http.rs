@@ -7,7 +7,10 @@
 //! and writes HTTP/1.1; the runtime's HTTP component
 //! (`jadpo_runtime::http`) answers each request. A client has 10 seconds
 //! to send a request's headers and 30 its body, and the server holds at
-//! most [`MAX_CONNECTIONS`] connections open.
+//! most [`MAX_CONNECTIONS`] connections open. The work a response leaves
+//! for after it is sent ([`Handler::take_deferred`]) runs as tasks of
+//! their own on the worker's thread, which start only once the response
+//! has been handed to hyper and never hold it up (chunk 6.1a).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -34,6 +37,14 @@ use crate::Runtime;
 /// so it may hold the runtime's `Rc` values and its stores.
 pub trait Handler {
     fn handle(&self, request: Request) -> LocalFuture<'_, Response>;
+
+    /// The work the response it just gave left for after it is sent:
+    /// what its host was given ([`crate::NativeHost::take_deferred`]),
+    /// taken as the response is handed back, so it holds only that
+    /// response's work.
+    fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
+        Vec::new()
+    }
 }
 
 /// Makes each worker's handler, on the worker's own thread.
@@ -168,6 +179,12 @@ fn worker(
                             return Err(Unread);
                         };
                         let response = handler.handle(request).await;
+                        // Started as tasks of their own, which run only once
+                        // this one, the connection's, has handed the response
+                        // on and waits: after the response, never before it.
+                        for work in handler.take_deferred() {
+                            tokio::task::spawn_local(work);
+                        }
                         Ok::<_, Unread>(write(response))
                     }
                 });
@@ -284,4 +301,87 @@ fn write(response: Response) -> hyper::Response<Full<Bytes>> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Read, Write};
+    use std::sync::Mutex;
+    use std::sync::mpsc;
+
+    use jadpo_runtime::Host;
+
+    use super::*;
+    use crate::NativeHost;
+
+    /// Answers every request at once, giving its host work for after the
+    /// response that waits for the test to let it go.
+    struct Deferring {
+        host: NativeHost,
+        gate: Arc<Mutex<Option<tokio::sync::oneshot::Receiver<()>>>>,
+        said: Arc<Mutex<mpsc::Sender<&'static str>>>,
+    }
+
+    impl Handler for Deferring {
+        fn handle(&self, _request: Request) -> LocalFuture<'_, Response> {
+            let gate = self.gate.lock().unwrap().take();
+            let said = Arc::clone(&self.said);
+            self.host.defer(Box::pin(async move {
+                let _ = said.lock().unwrap().send("started");
+                if let Some(gate) = gate {
+                    let _ = gate.await;
+                }
+                let _ = said.lock().unwrap().send("finished");
+            }));
+            Box::pin(async {
+                Response {
+                    status: 200,
+                    body: b"answered".to_vec(),
+                    ..Response::default()
+                }
+            })
+        }
+
+        fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
+            self.host.take_deferred()
+        }
+    }
+
+    /// The work a response leaves runs on the worker's thread after the
+    /// response is sent, and never holds it up: the client has its whole
+    /// answer while that work is still waiting, and the work then finishes
+    /// on its own (chunk 6.1a).
+    #[test]
+    fn work_left_for_after_a_response_runs_without_holding_it_up() {
+        let (release, gate) = tokio::sync::oneshot::channel::<()>();
+        let gate = Arc::new(Mutex::new(Some(gate)));
+        let (said, heard) = mpsc::channel();
+        let said = Arc::new(Mutex::new(said));
+        let make: MakeHandler = Arc::new(move || {
+            Box::new(Deferring {
+                host: NativeHost::new(),
+                gate: Arc::clone(&gate),
+                said: Arc::clone(&said),
+            }) as Box<dyn Handler>
+        });
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = serve(listener, 1, make).unwrap();
+        let mut stream = std::net::TcpStream::connect(server.address()).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        stream
+            .write_all(b"GET / HTTP/1.1\r\nHost: jadpo\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer).unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+        assert!(answer.ends_with("answered"), "{answer}");
+        // The work started after the response, and is still waiting.
+        assert_eq!(heard.recv_timeout(Duration::from_secs(10)), Ok("started"));
+        assert!(heard.try_recv().is_err(), "it hasn't finished");
+        release.send(()).unwrap();
+        assert_eq!(heard.recv_timeout(Duration::from_secs(10)), Ok("finished"));
+        server.stop();
+    }
 }

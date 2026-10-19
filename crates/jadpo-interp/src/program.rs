@@ -506,6 +506,24 @@ impl Program {
         }
     }
 
+    /// The latest migration's backfills worked out in Jadpo, in a program
+    /// prepared [`Prepared::with_backfills`], as the runtime runs them
+    /// (chunk 6.1a): each with its callable and its field's validator.
+    pub fn backfills(&self) -> Vec<jadpo_runtime::runner::Backfill<'_>> {
+        self.plan()
+            .backfills()
+            .iter()
+            .map(|plan| jadpo_runtime::runner::Backfill {
+                migration: plan.migration.clone(),
+                field: plan.field.clone(),
+                callable: plan.callable,
+                reads: plan.reads.clone(),
+                write: plan.write,
+                validator: Some(self.validator(plan.validator)),
+            })
+            .collect()
+    }
+
     /// The report a person reads for an outcome that isn't a value.
     pub fn report(&self, outcome: &Outcome) -> Option<Report> {
         Report::of(outcome, self.places(), self.plan().files())

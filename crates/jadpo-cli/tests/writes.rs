@@ -30,8 +30,8 @@ use jadpo_cli::{Output, run};
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Event, Executor, Host, Isolation, LocalFuture, Outcome, Row,
-    SqlValue, StoreError, Transaction,
+    Clock, Ctx, Database, Env, Executor, Host, Isolation, LocalFuture, Outcome, Row, SqlValue,
+    StoreError, Transaction,
 };
 use jadpo_term::Environment;
 use jadpo_value::Value;
@@ -279,10 +279,6 @@ struct Interfering(Rc<State>);
 impl Host for Interfering {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(self)
-    }
-
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
     }
 
     fn random(&self, _bytes: &mut [u8]) -> bool {
@@ -561,10 +557,6 @@ struct Racer {
 impl Host for Racer {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(self)
-    }
-
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
     }
 
     fn random(&self, _bytes: &mut [u8]) -> bool {

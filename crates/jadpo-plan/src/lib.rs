@@ -223,8 +223,10 @@ pub struct BackfillPlan {
     pub reads: Vec<jadpo_std::read::Column>,
     /// The column type its value is written as.
     pub write: jadpo_std::SqlType,
-    /// The places a decimal is stored at, rounded half to even.
-    pub scale: Option<u32>,
+    /// Its field's rules, its type's included, which each value is kept
+    /// and checked by, as a value of the field's type is (chunk 6.1a): a
+    /// decimal at the type's places, rounded half to even.
+    pub validator: ValidatorId,
 }
 
 impl Plan {
@@ -278,6 +280,8 @@ impl Plan {
         // Each backfill worked out in Jadpo, numbered after every callable
         // the project declares, keyed by its migration and field.
         let mut backfills = Vec::new();
+        // The field each fills, by its entity's and its own name.
+        let mut backfill_fields: Vec<(String, String)> = Vec::new();
         let mut backfill_lines: HashMap<Key, (String, u32)> = HashMap::new();
         if with_backfills {
             for backfill in jadpo_check::data::migrations::jadpo_backfills(db, project) {
@@ -296,8 +300,9 @@ impl Plan {
                         .map(|read| read.decode.clone())
                         .collect(),
                     write: backfill.plan.write,
-                    scale: backfill.plan.scale,
+                    validator: ValidatorId(0),
                 });
+                backfill_fields.push(backfill.plan.fills.clone());
                 backfill_lines.insert(key.clone(), (backfill.field.clone(), backfill.line));
                 found.push((
                     key,
@@ -324,6 +329,14 @@ impl Plan {
             }
         }
         let mut types = Types::new(Arc::clone(&graph), rule_bodies);
+        if !backfills.is_empty() {
+            let lookup = jadpo_check::lookups::Lookup::new(db, project);
+            for (backfill, (entity, field)) in backfills.iter_mut().zip(&backfill_fields) {
+                let key =
+                    jadpo_check::graph::field_key(&lookup, entity, std::slice::from_ref(field));
+                backfill.validator = types.validator_id(&TypeRef::Field(key));
+            }
+        }
         // The types the JSON table numbers: each JSON-held field's, which
         // its column reads and its writes write (chunk 5.5w2b), then each
         // `json.read` and `json.write` call's.
