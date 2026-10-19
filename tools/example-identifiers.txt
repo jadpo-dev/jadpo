@@ -2301,6 +2301,5 @@ wrong_currency
 wrong_rate
 wrong_total
 yamada
-years_on
 yes_no
 zopf
