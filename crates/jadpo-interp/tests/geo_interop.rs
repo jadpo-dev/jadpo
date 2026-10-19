@@ -9,7 +9,7 @@
 use crate::support;
 
 use jadpo_interp::Value;
-use support::{decimal, failure, main, text, value};
+use support::{decimal, failure, int, main, text, value};
 
 const WKT: &str = "type Exported = Text {}
 
@@ -450,5 +450,351 @@ fn a_route_s_layer_is_fetched_as_plain_geojson() {
             vec![]
         ),
         jadpo_interp::Outcome::Value(Value::Unit)
+    );
+}
+
+/// The constructions at an axis order's named edges (area 19, "Shared
+/// vocabulary types"; chunk 5.11): GeoJSON text, longitude first, and a
+/// pair of numbers in the order the operation's name says.
+const PAIRS: &str = "type Exported = Text {}
+
+type Reading = Decimal {
+    scale: 15
+}
+
+type WholeReading = Int {}
+
+type Unreadable = Failure {
+    kind: FailureKind.invalid_value
+}
+
+type OutOfReach = Failure {
+    kind: FailureKind.invalid_value
+}
+
+/// A shape a mapping tool sent, as GeoJSON.
+function shape_from_geojson(cell: Exported) fails Unreadable, OutOfReach -> Geometry {
+    return attempt geo.from_geojson(cell) {
+        malformed: Unreadable
+        out_of_range: OutOfReach
+    }
+}
+
+/// A shape as GeoJSON again.
+function geojson_of(shape: Geometry) -> Exported {
+    return Exported(json.write(shape))
+}
+
+/// A shape as WKT.
+function wkt_of(shape: Geometry) -> Exported {
+    return Exported(geo.to_wkt(shape))
+}
+
+/// A position a tracker sends longitude first.
+function spot_lng_lat(pair: List<Reading>) fails Unreadable, OutOfReach -> Point {
+    return attempt geo.from_lng_lat(pair) {
+        malformed: Unreadable
+        out_of_range: OutOfReach
+    }
+}
+
+/// A position a tracker sends latitude first.
+function spot_lat_lng(pair: List<Reading>) fails Unreadable, OutOfReach -> Point {
+    return attempt geo.from_lat_lng(pair) {
+        malformed: Unreadable
+        out_of_range: OutOfReach
+    }
+}
+
+/// A position in whole degrees, latitude first.
+function spot_whole(pair: List<WholeReading>) fails Unreadable, OutOfReach -> Point {
+    return attempt geo.from_lat_lng(pair) {
+        malformed: Unreadable
+        out_of_range: OutOfReach
+    }
+}
+
+/// A position as WKT.
+function spot_wkt(spot: Point) -> Exported {
+    return Exported(geo.to_wkt(spot))
+}
+
+/// A position as GeoJSON.
+function spot_geojson(spot: Point) -> Exported {
+    return Exported(json.write(spot))
+}
+";
+
+fn numbers(items: &[&str]) -> Value {
+    support::list(items.iter().map(|item| decimal(item)).collect())
+}
+
+fn spot(latitude: &str, longitude: &str, altitude: Value) -> Value {
+    jadpo_value::geo::point(
+        jadpo_value::Decimal::parse(latitude).expect("a latitude"),
+        jadpo_value::Decimal::parse(longitude).expect("a longitude"),
+        altitude,
+    )
+}
+
+/// The shape a `Geometry` holds.
+fn held(shape: &Value) -> Value {
+    let Value::Variant(variant) = shape else {
+        panic!("a geometry: {shape:?}");
+    };
+    variant.fields.first().expect("its shape").1.clone()
+}
+
+#[test]
+fn geojson_text_round_trips_as_its_geometry_with_its_axes_unswapped() {
+    let program = main(PAIRS).with_proof_checks();
+    for geojson in [
+        r#"{"type":"Point","coordinates":[-0.1276,51.5072]}"#,
+        r#"{"type":"LineString","coordinates":[[0,0],[1,1]]}"#,
+        r#"{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]],[[-0.15,51.5],[-0.15,51.52],[-0.1,51.52],[-0.1,51.5],[-0.15,51.5]]]}"#,
+        r#"{"type":"MultiPoint","coordinates":[[1,2],[3,4]]}"#,
+        r#"{"type":"MultiLineString","coordinates":[[[0,0],[1,1]],[[2,2],[3,3]]]}"#,
+        r#"{"type":"MultiPolygon","coordinates":[[[[0,0],[1,0],[1,1],[0,0]]],[[[2,2],[3,2],[3,3],[2,2]]]]}"#,
+    ] {
+        let shape = value(&program, "shape_from_geojson", vec![text(geojson)]);
+        assert_eq!(
+            value(&program, "geojson_of", vec![shape]),
+            text(geojson),
+            "{geojson}"
+        );
+    }
+    // Longitude first, so the depot is at 51.5072° N.
+    let depot = value(
+        &program,
+        "shape_from_geojson",
+        vec![text(
+            r#"{"type":"Point","coordinates":[-0.1276,51.5072,35]}"#,
+        )],
+    );
+    assert_eq!(
+        value(&program, "wkt_of", vec![depot.clone()]),
+        text("POINT Z (-0.1276 51.5072 35)")
+    );
+    assert_eq!(
+        held(&depot),
+        value(
+            &program,
+            "spot_lat_lng",
+            vec![numbers(&["51.5072", "-0.1276", "35"])]
+        )
+    );
+    // A patch read as GeoJSON is the patch read as WKT.
+    let patch = value(
+        &program,
+        "shape_from_geojson",
+        vec![text(
+            r#"{"type":"Polygon","coordinates":[[[-0.2,51.49],[-0.05,51.49],[-0.05,51.54],[-0.2,51.54],[-0.2,51.49]]]}"#,
+        )],
+    );
+    assert_eq!(
+        value(&program, "wkt_of", vec![patch]),
+        text("POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.54,-0.2 51.49))")
+    );
+    // A ring wound the other way is rewound, as RFC 7946 asks of a reader.
+    let clockwise = value(
+        &program,
+        "shape_from_geojson",
+        vec![text(
+            r#"{"type":"Polygon","coordinates":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}"#,
+        )],
+    );
+    assert_eq!(
+        value(&program, "geojson_of", vec![clockwise]),
+        text(r#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}"#)
+    );
+}
+
+#[test]
+fn geojson_text_that_isn_t_a_geometry_fails_with_its_condition() {
+    let program = main(PAIRS).with_proof_checks();
+    for (cell, failed) in [
+        // Not one JSON document, or not one of the six geometries.
+        ("", "Unreadable"),
+        ("POINT(-0.1276 51.5072)", "Unreadable"),
+        (r#"{"type":"Point","coordinates":[0,0]} {}"#, "Unreadable"),
+        ("[-0.1276,51.5072]", "Unreadable"),
+        (r#"{"type":"Point"}"#, "Unreadable"),
+        (r#"{"type":"Circle","coordinates":[0,0]}"#, "Unreadable"),
+        (
+            r#"{"type":"GeometryCollection","geometries":[{"type":"Point","coordinates":[0,0]}]}"#,
+            "Unreadable",
+        ),
+        (
+            r#"{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{}}"#,
+            "Unreadable",
+        ),
+        // A member RFC 7946 doesn't have, a reference system included.
+        (
+            r#"{"type":"Point","coordinates":[0,0],"crs":{"type":"name"}}"#,
+            "Unreadable",
+        ),
+        // Positions that aren't two or three numbers, of one size.
+        (r#"{"type":"Point","coordinates":[0]}"#, "Unreadable"),
+        (r#"{"type":"Point","coordinates":["0","0"]}"#, "Unreadable"),
+        (r#"{"type":"Point","coordinates":[0,0,0,0]}"#, "Unreadable"),
+        (
+            r#"{"type":"LineString","coordinates":[[0,0]]}"#,
+            "Unreadable",
+        ),
+        (
+            r#"{"type":"LineString","coordinates":[[0,0],[1,1,5]]}"#,
+            "Unreadable",
+        ),
+        // Rings not closed, or not valid.
+        (
+            r#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1]]]}"#,
+            "Unreadable",
+        ),
+        (
+            r#"{"type":"Polygon","coordinates":[[[0,0],[10,10],[0,10],[10,0],[0,0]]]}"#,
+            "Unreadable",
+        ),
+        // A coordinate past its range.
+        (r#"{"type":"Point","coordinates":[0,91]}"#, "OutOfReach"),
+        (r#"{"type":"Point","coordinates":[0,-90.5]}"#, "OutOfReach"),
+        (r#"{"type":"Point","coordinates":[181,0]}"#, "OutOfReach"),
+        (
+            r#"{"type":"LineString","coordinates":[[0,0],[-180.25,1]]}"#,
+            "OutOfReach",
+        ),
+    ] {
+        assert_eq!(
+            failure(&program, "shape_from_geojson", vec![text(cell)]).name,
+            failed,
+            "{cell}"
+        );
+    }
+    // The poles and the antimeridian are in range.
+    for cell in [
+        r#"{"type":"Point","coordinates":[180,90]}"#,
+        r#"{"type":"Point","coordinates":[-180,-90]}"#,
+    ] {
+        value(&program, "shape_from_geojson", vec![text(cell)]);
+    }
+}
+
+#[test]
+fn a_pair_s_order_is_the_one_its_operation_names() {
+    let program = main(PAIRS).with_proof_checks();
+    let depot = spot("51.5072", "-0.1276", Value::None);
+    assert_eq!(
+        value(
+            &program,
+            "spot_lng_lat",
+            vec![numbers(&["-0.1276", "51.5072"])]
+        ),
+        depot
+    );
+    assert_eq!(
+        value(
+            &program,
+            "spot_lat_lng",
+            vec![numbers(&["51.5072", "-0.1276"])]
+        ),
+        depot
+    );
+    // Out to WKT and GeoJSON, longitude first, and back.
+    assert_eq!(
+        value(&program, "spot_wkt", vec![depot.clone()]),
+        text("POINT(-0.1276 51.5072)")
+    );
+    let sent = value(&program, "spot_geojson", vec![depot.clone()]);
+    assert_eq!(
+        sent,
+        text(r#"{"type":"Point","coordinates":[-0.1276,51.5072]}"#)
+    );
+    assert_eq!(
+        held(&value(&program, "shape_from_geojson", vec![sent])),
+        depot
+    );
+    // The same two numbers are another place the other way round.
+    assert_eq!(
+        value(
+            &program,
+            "spot_lng_lat",
+            vec![numbers(&["51.5072", "-0.1276"])]
+        ),
+        spot("-0.1276", "51.5072", Value::None)
+    );
+    // A third number is the altitude, in metres.
+    let high = value(
+        &program,
+        "spot_lng_lat",
+        vec![numbers(&["-0.1276", "51.5072", "35"])],
+    );
+    assert_eq!(
+        value(&program, "spot_wkt", vec![high.clone()]),
+        text("POINT Z (-0.1276 51.5072 35)")
+    );
+    assert_eq!(
+        value(
+            &program,
+            "spot_lat_lng",
+            vec![numbers(&["51.5072", "-0.1276", "35"])]
+        ),
+        high
+    );
+    // Whole degrees, and the edges of each range.
+    assert_eq!(
+        value(
+            &program,
+            "spot_whole",
+            vec![support::list(vec![int(51), int(0)])]
+        ),
+        spot("51", "0", Value::None)
+    );
+    assert_eq!(
+        value(&program, "spot_lat_lng", vec![numbers(&["90", "180"])]),
+        spot("90", "180", Value::None)
+    );
+    assert_eq!(
+        value(&program, "spot_lng_lat", vec![numbers(&["-180", "-90"])]),
+        spot("-90", "-180", Value::None)
+    );
+    // Each coordinate held as the shortest decimal of the nearest double,
+    // as a `Point` built in code is (area 20, question 2).
+    assert_eq!(
+        value(
+            &program,
+            "spot_lat_lng",
+            vec![numbers(&["51.50720000001234567", "-0.1276"])]
+        ),
+        spot("51.50720000001235", "-0.1276", Value::None)
+    );
+}
+
+#[test]
+fn a_pair_that_isn_t_a_position_fails_with_its_condition() {
+    let program = main(PAIRS).with_proof_checks();
+    for (name, pair, failed) in [
+        // Two numbers or three.
+        ("spot_lng_lat", &[][..], "Unreadable"),
+        ("spot_lat_lng", &["51.5072"][..], "Unreadable"),
+        (
+            "spot_lat_lng",
+            &["51.5072", "-0.1276", "35", "1"][..],
+            "Unreadable",
+        ),
+        // 91 is a longitude, never a latitude.
+        ("spot_lat_lng", &["91", "0"][..], "OutOfReach"),
+        ("spot_lat_lng", &["-90.5", "0"][..], "OutOfReach"),
+        ("spot_lat_lng", &["0", "180.5"][..], "OutOfReach"),
+        ("spot_lng_lat", &["0", "91"][..], "OutOfReach"),
+        ("spot_lng_lat", &["-181", "0"][..], "OutOfReach"),
+    ] {
+        assert_eq!(
+            failure(&program, name, vec![numbers(pair)]).name,
+            failed,
+            "{name} {pair:?}"
+        );
+    }
+    assert_eq!(
+        value(&program, "spot_lng_lat", vec![numbers(&["91", "0"])]),
+        spot("0", "91", Value::None)
     );
 }

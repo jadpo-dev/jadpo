@@ -1817,9 +1817,13 @@ chunks below, taken before Phase 6.
   cut to the crate table; finished roadmap chunks collapsed to one line
   each. Area 12's outbox and schedule-state text brought in line with
   its 2026-10-19 decision.
-- [ ] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
+- [x] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
   `geo.from_lng_lat` and `geo.from_lat_lng`, decided and used by area 20's
-  pages but marked not built.
+  pages but marked not built. Built: all three in `jadpo-value`'s `geo`,
+  GeoJSON text through the one GeoJSON reader into a `Geometry`, a pair or
+  a triple with an altitude into a `Point`, each failing `malformed` or
+  `out_of_range`; the not-built markers gone, and area 20's example of
+  them checked and tested, as its "Chosen in chunk 5.11" records.
 
 ## Phase 6 — Events and schedules (area 12)
 
