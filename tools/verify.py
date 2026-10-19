@@ -43,11 +43,13 @@ GROUPS = ('lint', 'docs', 'tests', 'wasm32')
 # Each test binary is a process of its own and runs its tests on threads;
 # this many run at once.
 JOBS = os.cpu_count() or 4
-# Each runs its tests on this many threads (RUST_TEST_THREADS), so the
-# binaries running at once keep about two runnable test threads per core
-# rather than one per core each (chunk 5.13). The timing test, which runs
-# alone, keeps libtest's default.
-TEST_THREADS = str(max(2, 2 * (os.cpu_count() or 4) // JOBS))
+# The live PostgreSQL steps, twenty-odd processes of one binary, each run
+# their tests on this many threads (RUST_TEST_THREADS) rather than one per
+# core, so together they keep about two per core (chunk 5.13). Every other
+# binary keeps libtest's default: `compiler tests` is the gate's longest
+# step and mostly waits on the processes its tests start, and capping it
+# too made the gate slower.
+LIVE_THREADS = str(max(2, 2 * (os.cpu_count() or 4) // JOBS))
 # Each crate's integration tests are one binary, each test file a module of
 # it (crates/*/tests/main.rs).
 INTEGRATION = 'integration'
@@ -484,7 +486,7 @@ def test_jobs(step: Step, binaries: list[TestBinary]):
         label = ' '.join([f'cargo test -p {binary.package} {selector}',
                           *(filters if step.tests != 'everything' else [])])
         env = {**step.env, 'CARGO_MANIFEST_DIR': binary.manifest_dir, 'CARGO_PKG_NAME': binary.package,
-               **({} if step.alone else {'RUST_TEST_THREADS': os.environ.get('RUST_TEST_THREADS', TEST_THREADS)})}
+               **({'RUST_TEST_THREADS': os.environ.get('RUST_TEST_THREADS', LIVE_THREADS)} if step.postgres else {})}
         yield label, [binary.executable, *filters, *step.args], binary.manifest_dir, env
 
 

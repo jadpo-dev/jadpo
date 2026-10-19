@@ -787,10 +787,18 @@ chunks below, taken before Phase 7, in this order.
   only wraps to print; alerts raised in `schedules::tick` and kept once
   on the schedule's state row; the `why` answer decided in the runtime,
   as data the CLI shows.
-- [ ] **5.13 Gate time** `opus · high`: test threads capped per gate
+- [x] **5.13 Gate time** `opus · high`: test threads capped per gate
   step; the HTTP worker test's 150 ms ordering made deterministic;
   `tools/verify.py` honouring `CARGO_TARGET_DIR`; §2.7's timings
-  measured again.
+  measured again. Built: the live PostgreSQL steps on two test threads
+  each (capping every binary made `compiler tests` the bottleneck, 126
+  to 168 s); the worker test sending its quick request once
+  `pg_stat_activity` shows the slow one computing; the reload test
+  saving atomically (its 404 reproduced from a split write); the gate
+  finding builds where cargo says. Full gate warm 86 to 107 s before
+  (median 100 s), 89 and 96 s after, on a machine shared with two other
+  gates; cold 219 s before, 316 s after under heavier load; CI's gate
+  step a median of 280 s.
 - [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
   chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
   onwards) folded into the text they amend, as 5.10 did, and the code
