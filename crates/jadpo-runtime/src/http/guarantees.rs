@@ -779,7 +779,13 @@ fn a_repeat_while_the_first_runs_is_a_conflict() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Writes);
     let host = Fake::default();
-    let digest = super::idempotency::digest(&table.routes[0].key, &[Some(Value::text("a"))], None);
+    let codecs = Codecs {
+        codecs: &CODECS,
+        validators: &[],
+        shapes: &[],
+    };
+    let digest =
+        super::idempotency::digest(&codecs, &table.routes[0], &[Some(Value::text("a"))], None);
     host.store.keep(
         "k1",
         (digest, None, None, NOW * 1000, (NOW + 15_000) * 1000),

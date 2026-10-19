@@ -832,7 +832,7 @@ async fn run_with_caller(
                 store: store.clone(),
                 scope,
                 key,
-                digest: idempotency::digest(&route.key, &params, input.as_ref()),
+                digest: idempotency::digest(codecs, route, &params, input.as_ref()),
                 at: ctx.now(),
             });
         }

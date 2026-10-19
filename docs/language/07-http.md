@@ -2441,10 +2441,11 @@ From the Phase 5 soundness review:
   `jadpo_idempotency_keys` could test guessed passwords against a
   sign-up's. It now covers the route (its method and declared path),
   then each placeholder and the input as the route decodes them, the
-  query string, the headers it reads and the body, with every secret
-  value (`Password`, `BearerToken` and the rest, area 19) left out but
-  for its kind, so a stored digest says nothing of a secret, whether it
-  came in the body or the path. Rather than a keyed hash: a key would
+  query string, the headers it reads and the body, written back through
+  the route's own codecs, the contract's JSON, which writes every secret
+  value (`Password`, `BearerToken` and the rest, area 19) as its kind
+  alone, so a stored digest says nothing of a secret, whether it came in
+  the body or the path. Rather than a keyed hash: a key would
   need a secret every deployment holds, and Jadpo has none, since a
   setting is only what `config { }` declares and only the places area
   10 lists may read one; requiring a new one of every application is a
