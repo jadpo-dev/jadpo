@@ -24,14 +24,6 @@ use jadpo_value::{Quantity, Value};
 
 use crate::support;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -166,7 +158,7 @@ fn a_get_route_sends_a_query_s_layer_as_plain_geojson() {
         "{}",
         sql.stdout
     );
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));

@@ -31,14 +31,6 @@ use jadpo_std::standard::{STANDARD_TYPES, StandardType, Storage};
 use jadpo_term::Environment;
 use jadpo_value::Value;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -295,7 +287,7 @@ fn every_standard_literal_is_bound_and_written_as_the_runtime_binds_it() {
         "a backslash makes an escape string: {note}"
     );
 
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     // Live: the backfill stores what the runtime's parameter compares
@@ -377,7 +369,7 @@ fn text_written_into_sql_stays_one_value_in_any_session() {
         jadpo_sql::literal::sql(&SqlValue::Text("a\0b".into())),
         None
     );
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().expect("a PostgreSQL server");

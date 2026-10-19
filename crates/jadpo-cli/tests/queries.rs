@@ -12,14 +12,6 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_term::Environment;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -134,7 +126,7 @@ fn project(name: &str) -> PathBuf {
 
 #[test]
 fn queries_read_what_area_6_says() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("semantics");
@@ -152,7 +144,7 @@ fn queries_read_what_area_6_says() {
 
 #[test]
 fn a_cursor_from_another_query_is_invalid_input() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("cursor");

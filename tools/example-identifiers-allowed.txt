@@ -1,5 +1,5 @@
 # Generic words the compiler may use although an example also declares them.
-# tools/example_names.py leaves these out of tools/example-identifiers.txt.
+# tools/example_names.py leaves these out of the names it bans.
 # Add a word only when it is genuinely generic: ordinary English or programming
 # vocabulary, or a word the language itself defines. Never add an example
 # application's own nouns (todo, invoice, customer) to make a check pass.

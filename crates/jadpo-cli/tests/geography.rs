@@ -21,14 +21,6 @@ use jadpo_term::Environment;
 
 use crate::support;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -251,7 +243,7 @@ fn every_geometry_is_stored_and_read_back_unchanged() {
     ] {
         assert!(sql.contains(expected), "`{expected}` in:\n{sql}");
     }
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let tested = jadpo(&root, &["test", "--seed", "1"]);
@@ -297,7 +289,7 @@ fn rows(url: &str, sql: &str, params: &[SqlValue]) -> Result<Vec<Vec<SqlValue>>,
 
 #[test]
 fn each_column_s_check_holds_it_to_its_type_and_wgs84() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -346,7 +338,7 @@ fn each_column_s_check_holds_it_to_its_type_and_wgs84() {
 
 #[test]
 fn a_database_without_postgis_is_refused_before_anything_runs() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -402,7 +394,7 @@ fn as_role(url: &str, role: &str, password: &str) -> String {
 
 #[test]
 fn a_role_that_can_t_create_postgis_is_refused_before_anything_runs() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -453,7 +445,7 @@ fn a_role_that_can_t_create_postgis_is_refused_before_anything_runs() {
 /// given, every coordinate the double it was.
 #[test]
 fn a_wkt_polygon_round_trips_through_postgis_unchanged() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));

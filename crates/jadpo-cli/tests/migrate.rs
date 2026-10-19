@@ -298,14 +298,9 @@ fn apply_and_status_need_a_database() {
 
 // --- against a live database --------------------------------------------------
 
-fn skipped() -> bool {
-    std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1")
-}
-
 #[test]
 fn apply_runs_pending_migrations_once_and_status_shows_them() {
-    if skipped() {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -383,8 +378,7 @@ fn rows(url: &str, sql: &str) -> Vec<Vec<String>> {
 
 #[test]
 fn allowing_less_replaces_the_stored_values_no_longer_allowed() {
-    if skipped() {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -511,8 +505,7 @@ fn a_decision_that_doesnt_fit_says_why_and_stays_open() {
 
 #[test]
 fn a_query_sorted_by_text_reads_its_index() {
-    if skipped() {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
