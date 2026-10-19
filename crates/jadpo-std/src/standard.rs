@@ -1800,7 +1800,7 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     records::FLIGHT_NUMBER_ENTRY,
     // An exact rational number as written (chunk 5.5j2): `1/2` and `2/4`
     // are two values, as any object's fields are, and unordered. Sent as
-    // its canonical text and stored as that JSON, as the time objects are.
+    // its canonical text and stored in a column per part.
     StandardType {
         name: FRACTION,
         holds: Holds::Object(&FRACTION_FIELDS),
@@ -2354,8 +2354,8 @@ pub const STANDARD_TYPES: &[StandardType] = &[
     },
     records::RATING_ENTRY,
     // One number to another as written (chunk 5.5j2): `16:9` and `32:18`
-    // are two values, unordered. Sent as its canonical text and stored as
-    // that JSON, as the time objects are.
+    // are two values, unordered. Sent as its canonical text and stored in a
+    // column per part.
     StandardType {
         name: RATIO,
         holds: Holds::Object(&RATIO_FIELDS),
