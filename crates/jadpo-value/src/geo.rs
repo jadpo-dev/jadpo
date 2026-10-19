@@ -94,6 +94,11 @@ pub fn read(ty: &str, json: &serde_json::Value) -> Result<Value, Unreadable> {
         return refused(&step(&at, "coordinates"), "required");
     };
     let value = geometry(wanted, coordinates, &step(&at, "coordinates"))?;
+    // Every position with an altitude or none (area 20, "Altitudes are all
+    // or nothing"), or refused at the first of the other size.
+    if let Some(other) = other_size(coordinates, &step(&at, "coordinates"), &mut None) {
+        return refused(&other, "format");
+    }
     let listed =
         variant.and_then(|ordinal| GEOJSON_TYPES.get(ordinal).map(|(name, _)| (ordinal, *name)));
     match (ty == GEOMETRY, listed) {
@@ -141,6 +146,31 @@ fn geometry(ty: &str, json: &serde_json::Value, at: &[String]) -> Result<Value, 
         }
         _ => return refused(at, "type"),
     })
+}
+
+/// Where the first position whose size differs from the first one's is,
+/// in the order written: a position with an altitude among positions
+/// without, or the other way round. `first` is the first one's size.
+fn other_size(
+    json: &serde_json::Value,
+    at: &[String],
+    first: &mut Option<usize>,
+) -> Option<Vec<String>> {
+    let items = json.as_array()?;
+    if items.first().is_some_and(serde_json::Value::is_number) {
+        return match *first {
+            None => {
+                *first = Some(items.len());
+                None
+            }
+            Some(size) if size != items.len() => Some(at.to_vec()),
+            Some(_) => None,
+        };
+    }
+    items
+        .iter()
+        .enumerate()
+        .find_map(|(n, item)| other_size(item, &step(at, n), first))
 }
 
 /// A JSON array of at least `least` items.
@@ -1120,27 +1150,66 @@ mod tests {
         assert!(from_shape(POINT, &beyond).is_err());
     }
 
+    /// Every position with an altitude or none (area 20, "Altitudes are
+    /// all or nothing", chunk 5.5u7): a mix is refused as `format` at the
+    /// first position of the other size, in the order written, at any
+    /// depth and across a multi-geometry's parts.
     #[test]
-    fn a_geometry_mixing_altitudes_isn_t_bound() {
-        let mixed = Shape::MultiPoint(vec![
-            Coordinates::new(0.0, 0.0, None),
-            Coordinates::new(1.0, 1.0, Some(5.0)),
-        ]);
-        let stored = jadpo_std::standard::storage::Stored::Shape(mixed);
-        assert!(
-            jadpo_std::standard::storage::bind(&stored, jadpo_std::SqlType::Geography).is_err()
-        );
-        let value = read_text(POINT, r#"{"type":"Point","coordinates":[1,2]}"#).expect("point");
-        let bound = jadpo_std::standard::storage::bind(
-            &value.stored().expect("stored"),
-            jadpo_std::SqlType::Geography,
+    fn a_geometry_mixing_altitudes_is_refused_at_the_first_position_of_the_other_size() {
+        let at = |ty: &str, text: &str| {
+            let refused = read_text(ty, text).expect_err(text);
+            assert_eq!(refused.rule, "format", "{text}");
+            refused.at.join(".")
+        };
+        assert_eq!(
+            at(
+                LINE_STRING,
+                r#"{"type":"LineString","coordinates":[[0,0],[1,1],[2,2,5]]}"#
+            ),
+            "coordinates.2"
         );
         assert_eq!(
-            bound,
-            Ok(jadpo_std::SqlValue::Geography(Shape::Point(
-                Coordinates::new(1.0, 2.0, None)
-            )))
+            at(
+                MULTI_POINT,
+                r#"{"type":"MultiPoint","coordinates":[[0,0,5],[1,1]]}"#
+            ),
+            "coordinates.1"
         );
+        assert_eq!(
+            at(
+                POLYGON,
+                r#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]],[[0.25,0.25,5],[0.25,0.75,5],[0.75,0.75,5],[0.75,0.25,5],[0.25,0.25,5]]]}"#
+            ),
+            "coordinates.1.0"
+        );
+        assert_eq!(
+            at(
+                MULTI_LINE_STRING,
+                r#"{"type":"MultiLineString","coordinates":[[[0,0],[1,1]],[[2,2,5],[3,3,5]]]}"#
+            ),
+            "coordinates.1.0"
+        );
+        assert_eq!(
+            at(
+                MULTI_POLYGON,
+                r#"{"type":"MultiPolygon","coordinates":[[[[0,0],[1,0],[1,1],[0,1],[0,0]]],[[[2,2],[3,2],[3,3,5],[2,3],[2,2]]]]}"#
+            ),
+            "coordinates.1.0.2"
+        );
+        assert_eq!(
+            at(
+                GEOMETRY,
+                r#"{"type":"LineString","coordinates":[[0,0,1],[1,1]]}"#
+            ),
+            "coordinates.1"
+        );
+        // Each agreeing, with or without, is read.
+        for text in [
+            r#"{"type":"LineString","coordinates":[[0,0,1],[1,1,2]]}"#,
+            r#"{"type":"MultiLineString","coordinates":[[[0,0],[1,1]],[[2,2],[3,3]]]}"#,
+        ] {
+            assert!(read_text(GEOMETRY, text).is_ok(), "{text}");
+        }
     }
 
     /// A geometry kept in a Redis entity's JSON is its GeoJSON (area 20,

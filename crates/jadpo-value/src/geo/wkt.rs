@@ -68,9 +68,10 @@ pub fn from_wkt(text: &Value) -> Result<Value, Fault> {
     })
 }
 
-/// `geo.to_wkt(shape)`: the shape as `ST_AsText` writes it. A geometry
-/// whose points mix with and without an altitude has no WKT, as PostGIS
-/// can't hold one either (area 20, "Chosen in chunk 5.5u4").
+/// `geo.to_wkt(shape)`: the shape as `ST_AsText` writes it. Every
+/// geometry's positions all have an altitude or none does, by the rule
+/// `altitudes_agree` every geometry is made by (area 20, "Altitudes are all
+/// or nothing", chunk 5.5u7), so every geometry has its WKT.
 pub fn to_wkt(shape: &Value) -> Result<Value, Fault> {
     write(shape).map(|text| Value::text(&text))
 }
@@ -95,7 +96,8 @@ pub fn write(shape: &Value) -> Result<String, Fault> {
     let z = match with {
         0 => false,
         n if n == points.len() => true,
-        _ => return Err(Fault::MixedAltitudes),
+        // Unreachable: no geometry is made that breaks `altitudes_agree`.
+        _ => return Err(Fault::Shape),
     };
     let keyword = match &*record.ty {
         POINT => "POINT",
@@ -745,25 +747,46 @@ mod tests {
             refused("POLYGON((0 0,10 10,0 10,10 0,0 0))"),
             at(8, MALFORMED)
         );
-        // Positions of different sizes (provisional: area 20, "Chosen in
-        // chunk 5.5u6"), and fewer than `Z` says.
+        // Positions of different sizes, at the first of the other size
+        // (area 20, "Altitudes are all or nothing"), across a
+        // multi-geometry's parts too, and fewer than `Z` says.
         assert_eq!(refused("LINESTRING(0 0,1 1 5)"), at(15, MALFORMED));
         assert_eq!(refused("LINESTRING Z (0 0 1,1 1)"), at(20, MALFORMED));
+        assert_eq!(
+            refused("MULTILINESTRING((0 0,1 1),(2 2 5,3 3 5))"),
+            at(27, MALFORMED)
+        );
+        assert_eq!(
+            refused(
+                "POLYGON((0 0,1 0,1 1,0 1,0 0),(0.25 0.25 5,0.25 0.75 5,0.75 0.75 5,0.75 0.25 5,0.25 0.25 5))"
+            ),
+            at(31, MALFORMED)
+        );
     }
 
+    /// No geometry is made that mixes altitudes (`altitudes_agree`), so
+    /// one put together by hand, past every door, is a value of a kind the
+    /// checker would have refused.
     #[test]
-    fn a_geometry_mixing_altitudes_has_no_wkt() {
-        let mixed = read("MULTIPOINT(0 0 5,1 1 5)").expect("points");
-        let Value::Variant(variant) = &mixed else {
-            panic!("a geometry");
-        };
-        let Value::Record(points) = &variant.fields[0].1 else {
-            panic!("a multi-point");
-        };
-        let mut items = listed(points, "points").expect("points").to_vec();
-        items[1] = point(Decimal::new(1, 0), Decimal::new(1, 0), Value::None);
-        let mixed = Value::record(MULTI_POINT, vec![("points".into(), Value::list(items))]);
-        assert_eq!(write(&mixed), Err(Fault::MixedAltitudes));
+    fn a_geometry_mixing_altitudes_is_never_made() {
+        let mixed = Value::record(
+            MULTI_POINT,
+            vec![(
+                "points".into(),
+                Value::list(vec![
+                    point(Decimal::new(0, 0), Decimal::new(0, 0), Value::None),
+                    point(
+                        Decimal::new(1, 0),
+                        Decimal::new(1, 0),
+                        Value::Quantity(crate::Quantity {
+                            kind: QuantityKind::Length,
+                            amount: 5,
+                        }),
+                    ),
+                ]),
+            )],
+        );
+        assert_eq!(write(&mixed), Err(Fault::Shape));
     }
 
     #[test]

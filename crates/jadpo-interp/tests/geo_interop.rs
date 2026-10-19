@@ -9,7 +9,7 @@
 use crate::support;
 
 use jadpo_interp::Value;
-use support::{decimal, failure, fault, main, text, value};
+use support::{decimal, failure, main, text, value};
 
 const WKT: &str = "type Exported = Text {}
 
@@ -139,34 +139,68 @@ fn wkt_that_isn_t_a_geometry_fails_with_its_condition() {
     }
 }
 
+/// A geometry mixing positions with and without an altitude is never
+/// made (area 20, "Altitudes are all or nothing", chunk 5.5u7): built from
+/// values it breaks `altitudes_agree`, which its `attempt` maps, so
+/// `geo.to_wkt` only ever meets one it can write; WKT that mixes them is
+/// `malformed`.
 #[test]
-fn a_shape_mixing_altitudes_has_no_wkt() {
+fn a_shape_mixing_altitudes_never_reaches_wkt() {
     let program = main(
         &(WKT.to_string()
             + "
-/// A line with one corner at a height.
-function stepped() -> Exported {
-    return Exported(geo.to_wkt(LineString {
-        points: [
-            Point {
-                latitude: 0.0
-                longitude: 0.0
-                altitude: none
-            },
-            Point {
-                latitude: 1.0
-                longitude: 1.0
-                altitude: 5metre
-            }
-        ]
-    }))
+/// A line between two corners, for the planner's export.
+function stepped(from: Point, to: Point) fails Unreadable -> Exported {
+    var line: LineString = attempt LineString {
+        points: [from, to]
+    } {
+        altitudes_agree: Unreadable
+    }
+    return Exported(geo.to_wkt(line))
 }
 "),
     );
-    let found = fault(&program, "stepped", vec![]);
-    assert!(
-        format!("{:?}", found.kind).contains("mix with and without an altitude"),
-        "{found:?}"
+    let corner = |latitude: &str, altitude: Value| {
+        Value::record(
+            "Point",
+            vec![
+                ("latitude".into(), decimal(latitude)),
+                ("longitude".into(), decimal(latitude)),
+                ("altitude".into(), altitude),
+            ],
+        )
+    };
+    let height = || {
+        Value::Quantity(jadpo_value::Quantity {
+            kind: jadpo_std::QuantityKind::Length,
+            amount: 5_000_000,
+        })
+    };
+    assert_eq!(
+        failure(
+            &program,
+            "stepped",
+            vec![corner("0", Value::None), corner("1", height())]
+        )
+        .name,
+        "Unreadable"
+    );
+    assert_eq!(
+        value(
+            &program,
+            "stepped",
+            vec![corner("0", height()), corner("1", height())]
+        ),
+        text("LINESTRING Z (0 0 5,1 1 5)")
+    );
+    assert_eq!(
+        failure(
+            &program,
+            "shape_from_export",
+            vec![text("LINESTRING(0 0,1 1 5)")]
+        )
+        .name,
+        "Unreadable"
     );
 }
 

@@ -48,10 +48,6 @@ pub enum Fault {
     /// `ai.distance` by cosine from a vector of zeros, which has no
     /// direction, so no angle to another (area 21, chunk 5.5v1).
     ZeroVector,
-    /// `geo.to_wkt` of a geometry whose points mix with and without an
-    /// altitude, which WKT can't write, as PostGIS can't hold one (area
-    /// 20, "Chosen in chunk 5.5u6").
-    MixedAltitudes,
 }
 
 pub fn int_add(a: i64, b: i64) -> Result<i64, Fault> {

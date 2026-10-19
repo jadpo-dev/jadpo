@@ -11,7 +11,7 @@
 use std::cmp::Ordering;
 
 use jadpo_std::across::{CrossRule, RuleExpr, RuleOp, RulePattern};
-use jadpo_std::standard::across::{Given, Known, Parts, Rings};
+use jadpo_std::standard::across::{Altitudes, Given, Known, Parts, Rings};
 
 use crate::{Fault, Record, Value, ops};
 
@@ -174,6 +174,14 @@ impl Parts for Fields<'_> {
             .and_then(|at| self.values.get(at))
             .map_or(Known::Unknown, |value| rings_of(self.ty, name, value))
     }
+
+    fn altitudes(&self, name: &str) -> Known<Altitudes> {
+        self.names
+            .iter()
+            .position(|listed| *listed == name)
+            .and_then(|at| self.values.get(at))
+            .map_or(Known::Unknown, |value| altitudes_of(self.ty, name, value))
+    }
 }
 
 impl Parts for Record {
@@ -187,6 +195,47 @@ impl Parts for Record {
         self.get(name)
             .map_or(Known::Unknown, |value| rings_of(&self.ty, name, value))
     }
+
+    fn altitudes(&self, name: &str) -> Known<Altitudes> {
+        self.get(name)
+            .map_or(Known::Unknown, |value| altitudes_of(&self.ty, name, value))
+    }
+}
+
+/// A geometry's part holding positions as `altitudes_agree` reads it (area
+/// 20): whether each position it holds, however deep, has an altitude, in
+/// order; given with no value for a part of another shape, which counts as
+/// broken.
+fn altitudes_of(ty: &str, name: &str, value: &Value) -> Known<Altitudes> {
+    if !jadpo_std::standard::across::holds_positions(ty, name) {
+        return Known::Unknown;
+    }
+    let mut out = Vec::new();
+    Known::Given(positions_in(value, &mut out).map(|()| out))
+}
+
+/// Whether each position in `value`, a point, a line, a polygon or a list
+/// of them, has an altitude, onto `out`; `None` for anything else.
+fn positions_in(value: &Value, out: &mut Altitudes) -> Option<()> {
+    use jadpo_std::standard::geo::{LINE_STRING, POINT, POLYGON};
+    match value {
+        Value::Record(record) if &*record.ty == POINT => {
+            out.push(Some(!matches!(record.get("altitude")?, Value::None)));
+        }
+        Value::Record(record) if &*record.ty == LINE_STRING => {
+            positions_in(record.get("points")?, out)?;
+        }
+        Value::Record(record) if &*record.ty == POLYGON => {
+            positions_in(record.get("outer")?, out)?;
+            positions_in(record.get("holes")?, out)?;
+        }
+        other => {
+            for item in other.items()? {
+                positions_in(item, out)?;
+            }
+        }
+    }
+    Some(())
 }
 
 /// A polygon's ring part as `rings_valid` reads it (area 20): its points'

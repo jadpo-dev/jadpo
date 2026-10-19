@@ -4,7 +4,9 @@
 //! `Circle` measure between points only (question 10); a distance is never
 //! negative. A polygon literal breaking `rings_valid` is refused while
 //! compiling, in each way the page lists, and one built from values maps
-//! the rule.
+//! the rule. A geometry literal mixing positions with and without an
+//! altitude breaks `altitudes_agree` while compiling, and one built from
+//! values maps it (chunk 5.5u7).
 
 use crate::support;
 
@@ -233,9 +235,132 @@ fn a_polygon_built_from_values_maps_rings_valid() {
     );
     assert_eq!(
         check(
-            "function triangle(a: Point, b: Point, c: Point) fails NotAPatch -> Polygon {\n    return attempt Polygon {\n        outer: [a, b, c, a]\n        holes: []\n    } {\n        rings_valid: NotAPatch\n    }\n}\n",
+            "function triangle(a: Point, b: Point, c: Point) fails NotAPatch -> Polygon {\n    return attempt Polygon {\n        outer: [a, b, c, a]\n        holes: []\n    } {\n        rings_valid: NotAPatch\n        altitudes_agree: NotAPatch\n    }\n}\n",
             false
         ),
         NONE
     );
+}
+
+/// A point literal at `latitude longitude`, with `altitude` written as
+/// given (`none`, `35metre`, or a name).
+fn at(corner: &str, altitude: &str) -> String {
+    let (latitude, longitude) = corner.split_once(' ').expect("a pair");
+    format!(
+        "Point {{\n            latitude: {}\n            longitude: {}\n            altitude: {altitude}\n        }}",
+        coordinate(latitude),
+        coordinate(longitude)
+    )
+}
+
+/// Every position with an altitude or none (area 20, "Altitudes are all
+/// or nothing", chunk 5.5u7): a literal that mixes them is refused while
+/// compiling, at the part holding the first position of the other size,
+/// in each geometry with more than one position; a multi-geometry's parts
+/// must agree with each other.
+#[test]
+fn a_literal_mixing_altitudes_breaks_altitudes_agree() {
+    let ground = |corner: &str| at(corner, "none");
+    let high = |corner: &str| at(corner, "35metre");
+    let ring = |point: &dyn Fn(&str) -> String| {
+        format!(
+            "[{}]",
+            ["0 0", "0 1", "1 1", "1 0", "0 0"]
+                .iter()
+                .map(|corner| point(corner))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let hole = |point: &dyn Fn(&str) -> String| {
+        format!(
+            "[{}]",
+            ["0.25 0.25", "0.75 0.25", "0.75 0.75", "0.25 0.75", "0.25 0.25"]
+                .iter()
+                .map(|corner| point(corner))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let line = |a: String, b: String| format!("LineString {{\n        points: [{a}, {b}]\n    }}");
+    let polygon = |outer: String, holes: String| {
+        format!("Polygon {{\n        outer: {outer}\n        holes: [{holes}]\n    }}")
+    };
+    let cases: Vec<(&str, &str, String)> = vec![
+        ("LineString", "a line", line(ground("0 0"), high("1 1"))),
+        (
+            "MultiPoint",
+            "points",
+            format!("MultiPoint {{\n        points: [{}, {}]\n    }}", high("0 0"), ground("1 1")),
+        ),
+        ("Polygon", "a hole", polygon(ring(&ground), hole(&high))),
+        (
+            "MultiLineString",
+            "lines",
+            format!(
+                "MultiLineString {{\n        lines: [{}, {}]\n    }}",
+                line(ground("0 0"), ground("1 1")),
+                line(high("2 2"), high("3 3"))
+            ),
+        ),
+        (
+            "MultiPolygon",
+            "polygons",
+            format!(
+                "MultiPolygon {{\n        polygons: [{}, {}]\n    }}",
+                polygon(ring(&ground), String::new()),
+                polygon(ring(&high), String::new())
+            ),
+        ),
+    ];
+    for (ty, why, literal) in cases {
+        let source = format!("function shape() -> {ty} {{\n    return {literal}\n}}\n");
+        let problems = check(&source, true);
+        assert_eq!(problems.len(), 1, "{why}: {problems:?}");
+        assert!(
+            problems[0].starts_with(&format!(
+                "type.invalid_literal: This `{ty}` breaks its rule `altitudes_agree`"
+            )) && problems[0].contains("Altitudes are all or nothing"),
+            "{why}: {problems:?}"
+        );
+        // All on the ground, or all at a height, checks.
+        let agreeing = source.replace("35metre", "none");
+        assert_eq!(check(&agreeing, false), NONE, "{why}: {agreeing}");
+        let high_up = source.replace("altitude: none", "altitude: 35metre");
+        assert_eq!(check(&high_up, false), NONE, "{why}: {high_up}");
+    }
+}
+
+/// A geometry built from values may mix them, so it is attempted and
+/// `altitudes_agree` mapped, as `rings_valid` is; an altitude of a type
+/// that can't be `none` (a distance) is one, so a literal with them is
+/// decided.
+#[test]
+fn a_geometry_built_from_values_maps_altitudes_agree() {
+    let unhandled = check(
+        "function round(a: Point, b: Point) -> LineString {\n    return LineString {\n        points: [a, b]\n    }\n}\n",
+        true,
+    );
+    assert_eq!(unhandled.len(), 1, "{unhandled:?}");
+    assert!(
+        unhandled[0].starts_with("failure.attempt_required")
+            && unhandled[0].contains("altitudes_agree"),
+        "{unhandled:?}"
+    );
+    assert_eq!(
+        check(
+            "function round(a: Point, b: Point) fails NotAPatch -> LineString {\n    return attempt LineString {\n        points: [a, b]\n    } {\n        altitudes_agree: NotAPatch\n    }\n}\n\nfunction lines(a: LineString, b: LineString) fails NotAPatch -> MultiLineString {\n    return attempt MultiLineString {\n        lines: [a, b]\n    } {\n        altitudes_agree: NotAPatch\n    }\n}\n",
+            false
+        ),
+        NONE
+    );
+    let decided = format!(
+        "function climb(from: Point, to: Point) -> LineString {{\n    return LineString {{\n        points: [{}, {}]\n    }}\n}}\n",
+        at("0 0", "geo.distance(from, to)"),
+        at("1 1", "35metre")
+    );
+    assert_eq!(check(&decided, true), NONE);
+    let mixed = decided.replace("35metre", "none");
+    let refused = check(&mixed, false);
+    assert_eq!(refused, ["type.invalid_literal"], "{mixed}");
 }

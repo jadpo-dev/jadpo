@@ -434,18 +434,10 @@ pub fn bind(value: &Stored<'_>, ty: crate::SqlType) -> Result<crate::SqlValue, S
                 })
                 .collect::<Result<Vec<u32>, _>>()?,
         ),
-        // A geometry, all its positions with an altitude or none of them,
-        // since a `geography` holds one or the other (area 20, chunk
-        // 5.5u4).
-        (Stored::Shape(shape), SqlType::Geography) => {
-            if shape.has_altitude().is_none() {
-                return Err(
-                    "a geometry whose points mix with and without an altitude, which PostGIS can't hold"
-                        .into(),
-                );
-            }
-            SqlValue::Geography(shape.clone())
-        }
+        // A geometry, its positions all with an altitude or none, as a
+        // `geography` holds them and every geometry is made (area 20,
+        // "Altitudes are all or nothing", chunk 5.5u7).
+        (Stored::Shape(shape), SqlType::Geography) => SqlValue::Geography(shape.clone()),
         (Stored::List(items) | Stored::Set(items), SqlType::Array(inner)) => SqlValue::Array(
             *inner,
             items
