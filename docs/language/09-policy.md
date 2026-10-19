@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -3240,8 +3240,9 @@ Not yet:
   log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
-- `Access.system`: no schedule or subscriber runs yet (area 12), so it
-  grants nobody today.
+- `Access.system` reaches nothing yet: the system caller is built
+  (chunk 6.1a, "Chosen in chunk 6.1a" below), and schedules and
+  subscribers, which run as it, come in chunks 6.1b and 6.2.
 - An acceptance for a change that widens access, and the approval review
   that shows the report's changes (areas 14 and 18).
 - Indexes for policy: every field a condition filters on is a reference
@@ -3251,6 +3252,38 @@ Not yet:
   points at by `id`, its primary key, and a move to another tenant finds
   the records referring to it by their reference, which has its index, so
   it needs no index or migration of its own.
+
+### Chosen in chunk 6.1a
+
+The system caller, which schedules and subscribers act as (area 12,
+question 8), as conservatively as the pages allow:
+
+- **Exactly what `Access.system` grants.** The system is nobody signed in
+  and holds no membership, so a user field, a role and
+  `Access.authenticated` never let it in; a grant list, a field's own
+  list or an `actions:` line lets it in only by naming `Access.system`.
+  A statement anyone at all may run (`Access.public`) tests no caller,
+  so it runs for the system as for everyone. *Flagged:* the pages say
+  an entity grants background work explicitly; that a schedule or a
+  subscriber reaching what only `Access.public` grants is refused, as
+  `policy.effect_ungranted` refuses a route, is recommended for the
+  checker when schedules and subscribers are read (chunks 6.1b and 6.2),
+  which leaves nothing for the runtime to tell apart.
+- **Tenancy.** On a tenant's records a grant naming `Access.system` lets
+  it in within the tenant it is limited to, the one a subscriber's event
+  came from, and in every tenant when it is limited to none, as a
+  schedule's run is. *Flagged:* the pages limit subscribers and say
+  nothing of schedules; every tenant is the reading under which area
+  12's schedule over a due field works in an application with tenants.
+  Recommended as built.
+- **What it can't do.** It never moves a record to another tenant, which
+  needs a membership there, and founds no tenant's first membership.
+- **A listed action's gate.** A line naming `Access.system` lets the
+  system in beside whoever else it names; a line naming only
+  `Access.system` still lets in no request (chunk 4.8).
+- **No request is ever the system.** Only the runtime's runner makes
+  the system caller; every request, and every call a test makes with a
+  caller or without one, runs as someone else.
 
 ### Consistency with the rest of the language
 

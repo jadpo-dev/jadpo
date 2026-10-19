@@ -22,8 +22,7 @@ use jadpo_cli::{Output, run};
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Event, Executor, Host, LocalFuture, Outcome, PURGE_BATCHES, Row,
-    SqlValue,
+    Clock, Ctx, Database, Env, Executor, Host, Outcome, PURGE_BATCHES, Row, SqlValue,
 };
 use jadpo_term::Environment;
 use jadpo_value::Value;
@@ -295,10 +294,6 @@ struct Store(Postgres, std::cell::Cell<u64>);
 impl Host for Store {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(&self.0)
-    }
-
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
     }
 
     fn random(&self, _bytes: &mut [u8]) -> bool {

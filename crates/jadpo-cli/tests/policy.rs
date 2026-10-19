@@ -872,9 +872,7 @@ fn policy_decides_what_each_caller_reads_writes_and_revokes() {
 
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
-use jadpo_runtime::{
-    Caller, Clock, Ctx, Database, Env, Event, Executor, Host, LocalFuture, Outcome,
-};
+use jadpo_runtime::{Caller, Clock, Ctx, Database, Env, Executor, Host, Outcome};
 use jadpo_std::http::PrincipalKind;
 use jadpo_value::Value;
 
@@ -883,10 +881,6 @@ struct Store(Postgres, std::cell::Cell<u64>);
 impl Host for Store {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(&self.0)
-    }
-
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
     }
 
     fn random(&self, _bytes: &mut [u8]) -> bool {

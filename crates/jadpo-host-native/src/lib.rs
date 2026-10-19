@@ -11,14 +11,17 @@
 //! - [`NativeHost`]: the runtime's `Host` for a deployable or `jadpo dev`:
 //!   each store by its connection's name, the operating system's
 //!   randomness, tokio's timer and the monotonic clock for deadlines
-//!   (chunks 4.2 and 4.9), the system clock, and rate limits counted in
-//!   the worker's own bounded memory (chunk 4.10).
+//!   (chunks 4.2 and 4.9), the system clock, rate limits counted in the
+//!   worker's own bounded memory (chunk 4.10), and the work a response
+//!   leaves, run as a task on the worker's thread once the response is
+//!   handed back (chunk 6.1a).
 //! - [`http`]: the listener and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1).
 //!
 //! Built so far: the runtime and the transport the PostgreSQL driver needs
-//! (chunk 3.1), and serving HTTP (chunk 4.1). Delivery workers, local disk
-//! and inbox come with their areas.
+//! (chunk 3.1), serving HTTP (chunk 4.1), and running a response's
+//! follow-on work in the background (chunk 6.1a). Schedule ticks, local
+//! disk and inbox come with their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -40,13 +43,14 @@ pub mod passkeys;
 #[cfg(feature = "test-authenticator")]
 pub mod test_authenticator;
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::io;
 use std::rc::Rc;
 
 use jadpo_drivers::{Endpoint, Stream, Transport};
-use jadpo_runtime::{Allowed, Database, Event, Host, LocalFuture, RateLimits, StoreError};
+use jadpo_runtime::{Allowed, Database, Host, LocalFuture, RateLimits, StoreError};
 use jadpo_std::http::RateLimit;
 use tokio::task::LocalSet;
 
@@ -131,14 +135,27 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
 
 /// The runtime's host natively, one per worker thread: each store by its
 /// connection's name, the operating system's randomness for new identities
-/// and request ids, the system clock, and the worker's rate-limit counters
-/// in bounded memory, the native default until a Redis connection is
-/// named (area 16). Events are delivered by area 12's workers; until then
-/// a committed action's events go nowhere.
+/// and request ids, the system clock, the worker's rate-limit counters in
+/// bounded memory, the native default until a Redis connection is named
+/// (area 16), and the work responses leave for after they are sent
+/// ([`Host::defer`]), which the HTTP worker takes as each response is
+/// handed back ([`NativeHost::take_deferred`]) and runs as tasks of its
+/// own on the worker's thread (chunk 6.1a).
 #[derive(Debug, Default)]
 pub struct NativeHost {
     stores: BTreeMap<String, Postgres>,
     limits: RateLimits,
+    deferred: Deferred,
+}
+
+/// Work given to run after a response, until the worker takes it.
+#[derive(Default)]
+struct Deferred(RefCell<Vec<LocalFuture<'static, ()>>>);
+
+impl std::fmt::Debug for Deferred {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Deferred({})", self.0.borrow().len())
+    }
 }
 
 impl NativeHost {
@@ -150,6 +167,13 @@ impl NativeHost {
     pub fn with_store(mut self, name: impl Into<String>, store: Postgres) -> NativeHost {
         self.stores.insert(name.into(), store);
         self
+    }
+
+    /// The work it was given to run after the response being answered,
+    /// for whoever sends that response to run once it has been handed
+    /// back: the HTTP worker, as a task on its thread.
+    pub fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
+        std::mem::take(&mut *self.deferred.0.borrow_mut())
     }
 }
 
@@ -166,8 +190,10 @@ impl Host for NativeHost {
         self.stores.get(store).map(|store| store as &dyn Database)
     }
 
-    fn deliver(&self, _events: Vec<Event>) -> LocalFuture<'_, ()> {
-        Box::pin(async {})
+    /// Kept for the HTTP worker, which runs it once the response is handed
+    /// back ([`NativeHost::take_deferred`]).
+    fn defer(&self, work: LocalFuture<'static, ()>) {
+        self.deferred.0.borrow_mut().push(work);
     }
 
     /// The process's environment.

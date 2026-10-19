@@ -4,8 +4,9 @@
 //! raises what a statement policy refused means.
 //!
 //! - A statement's caller parameters ([`CallerPart`]): the signed-in
-//!   user's or service's `id`, `NULL` for anyone else, and whether anyone
-//!   is signed in.
+//!   user's or service's `id`, `NULL` for anyone else, whether anyone
+//!   is signed in, and whether the system runs it (`Access.system`:
+//!   schedules and subscribers, area 12) and in which tenant.
 //! - Each statement policy limits also comes without its policy
 //!   (`unpoliced`), which a call a test makes without a caller runs: what
 //!   it proves is behaviour and data, and the route test proves policy
@@ -27,14 +28,22 @@ pub enum CallerPart {
     Service,
     /// Whether anyone is signed in: `Access.authenticated`.
     Signed,
+    /// Whether the system runs the statement: `Access.system`, the caller
+    /// of a schedule's run and a subscriber's delivery (area 12), which no
+    /// request ever is (chunk 6.1a).
+    System,
+    /// The tenant the system is limited to, the one a subscriber's event
+    /// came from; `NULL` for a schedule's run, which every tenant's
+    /// records it is granted are open to, and for every other caller.
+    SystemTenant,
 }
 
 impl CallerPart {
     /// The type it is sent as.
     pub fn ty(self) -> SqlType {
         match self {
-            CallerPart::User | CallerPart::Service => SqlType::Uuid,
-            CallerPart::Signed => SqlType::Bool,
+            CallerPart::User | CallerPart::Service | CallerPart::SystemTenant => SqlType::Uuid,
+            CallerPart::Signed | CallerPart::System => SqlType::Bool,
         }
     }
 }
@@ -42,7 +51,28 @@ impl CallerPart {
 /// Who may call an action that reaches no entity (area 9, "Actions"):
 /// checked as it starts, wherever it is called from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Gate {
+pub struct Gate {
+    /// Which signed-in callers its line lets in.
+    pub callers: Callers,
+    /// Whether its line names `Access.system`, so a schedule's run or a
+    /// subscriber's delivery may call it (area 12; chunk 6.1a). Nothing a
+    /// request runs is the system.
+    pub system: bool,
+}
+
+impl Gate {
+    /// A line's callers, without the system.
+    pub fn of(callers: Callers) -> Gate {
+        Gate {
+            callers,
+            system: false,
+        }
+    }
+}
+
+/// The callers a [`Gate`] lets in besides the system.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Callers {
     /// Anyone signed in.
     Signed,
     /// A caller holding one of the roles its line names: `SELECT 1` of
@@ -52,8 +82,9 @@ pub enum Gate {
         sql: String,
         params: Vec<Param>,
     },
-    /// Nobody: the line names only schedules and subscribers
-    /// (`Access.system`, area 12), which no request is.
+    /// Nobody a request signs in as: the line names only schedules and
+    /// subscribers (`Access.system`, area 12), or callers that only a
+    /// record the action never writes could name.
     Nobody,
 }
 
