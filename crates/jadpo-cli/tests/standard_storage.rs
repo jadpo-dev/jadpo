@@ -24,14 +24,6 @@ use jadpo_cli::{Output, run};
 use jadpo_std::standard::{Holds, STANDARD_TYPES, StandardType, Storage};
 use jadpo_term::Environment;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -354,7 +346,7 @@ fn every_standard_object_and_choice_is_stored_and_read_back() {
     // A standard enum is stored by its code.
     assert!(snapshot.contains("\"Europe/London\""), "{snapshot}");
     assert!(snapshot.contains("\"GET\""), "{snapshot}");
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let tested = jadpo(&root, &["test", "--seed", "1"]);

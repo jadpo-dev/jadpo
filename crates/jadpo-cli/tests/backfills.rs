@@ -38,10 +38,6 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     output
 }
 
-fn skipped() -> bool {
-    std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1")
-}
-
 const TODO: &str = "domains/planning/entities/todo.jadpo";
 
 /// A project whose first migration made `Todo` with a `legacy_flag`.
@@ -228,7 +224,7 @@ fn a_backfill_with_sql_forms_runs_in_batches_of_update_and_is_then_required() {
         "{sql}"
     );
     assert_eq!(jadpo(&root, &["check"]).code, 0);
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -282,7 +278,7 @@ fn a_backfill_with_sql_forms_runs_in_batches_of_update_and_is_then_required() {
 
 #[test]
 fn a_run_stopped_between_batches_leaves_the_column_consistent_and_the_next_carries_on() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("resume");
@@ -522,7 +518,7 @@ fn a_backfill_without_a_sql_form_is_worked_out_in_jadpo_with_the_runtimes_values
     );
     assert!(!sql.contains("SET \"shouted\" = upper"), "{sql}");
     assert_eq!(jadpo(&root, &["check"]).code, 0);
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -593,7 +589,7 @@ fn a_backfill_in_jadpo_resumes_after_a_stop_and_fills_rows_written_meanwhile() {
         sql.contains("-- backfill Todo.priority: in Jadpo, "),
         "{sql}"
     );
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -704,7 +700,7 @@ fn a_backfill_in_jadpo_follows_the_code_it_runs() {
 
 #[test]
 fn an_earlier_migrations_backfill_in_jadpo_waits_for_the_build_it_was_written_in() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("in-jadpo-earlier");

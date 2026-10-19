@@ -13,14 +13,6 @@ use jadpo_runtime::{
 };
 use jadpo_test::postgres::Server;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn server() -> &'static Server {
     static SERVER: OnceLock<Server> = OnceLock::new();
     SERVER.get_or_init(|| Server::start().unwrap_or_else(|error| panic!("{error}")))
@@ -28,7 +20,7 @@ fn server() -> &'static Server {
 
 /// A runtime and a store on a new, empty database; `None` when skipped.
 fn fresh(name: &str) -> Option<(Runtime, Postgres)> {
-    if skipped() {
+    if !jadpo_test::live() {
         return None;
     }
     let url = server().create_database(name).unwrap();
@@ -500,7 +492,7 @@ fn a_row_changed_since_the_snapshot_is_a_concurrent_change() {
 
 #[test]
 fn a_server_that_cant_be_reached_is_unavailable() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let runtime = Runtime::new().unwrap();
@@ -628,7 +620,7 @@ async fn add_note(host: &TestHost<'_>, table: &str, body: &str) -> Result<(), St
 
 #[test]
 fn each_test_gets_its_own_copy_of_the_migrated_template() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let started = std::time::Instant::now();
@@ -666,7 +658,7 @@ fn each_test_gets_its_own_copy_of_the_migrated_template() {
 
 #[test]
 fn a_failed_tests_database_is_kept_when_asked() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let databases = TestDatabases::new(note_steps("kept_note"), true);
@@ -730,7 +722,7 @@ async fn database_name(host: &TestHost<'_>) -> String {
 
 #[test]
 fn a_copy_given_back_is_emptied_and_used_again() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let databases = TestDatabases::new(note_steps("reused_note"), false);
@@ -755,7 +747,7 @@ fn a_copy_given_back_is_emptied_and_used_again() {
 
 #[test]
 fn a_reused_copy_starts_its_sequences_again() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let databases = TestDatabases::new(
@@ -783,7 +775,7 @@ fn a_reused_copy_starts_its_sequences_again() {
 
 #[test]
 fn copies_of_a_template_with_rows_start_with_those_rows() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let databases = TestDatabases::new(
@@ -809,7 +801,7 @@ fn copies_of_a_template_with_rows_start_with_those_rows() {
 
 #[test]
 fn copies_keep_up_with_tests_on_many_threads() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let databases = TestDatabases::new(note_steps("busy_note"), false);
@@ -862,7 +854,7 @@ fn database_ids(runtime: &Runtime, prefix: &str) -> Vec<SqlValue> {
 
 #[test]
 fn copies_left_by_one_run_are_used_by_the_next() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let runtime = Runtime::new().unwrap();
@@ -893,7 +885,7 @@ fn copies_left_by_one_run_are_used_by_the_next() {
 
 #[test]
 fn a_run_makes_no_more_copies_than_its_tests_can_use() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let runtime = Runtime::new().unwrap();

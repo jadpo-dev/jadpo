@@ -28,14 +28,6 @@ use jadpo_runtime::{
 use jadpo_term::Environment;
 use jadpo_value::Value;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -286,7 +278,7 @@ fn project(name: &str) -> PathBuf {
 
 #[test]
 fn lifecycles_hide_records_and_run_transitions() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("semantics");
@@ -374,7 +366,7 @@ const DAY: i64 = 86_400_000;
 
 #[test]
 fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("purge");
@@ -476,7 +468,7 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
 
 #[test]
 fn purge_waits_as_long_as_a_setting_says() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("purge-setting");
@@ -574,7 +566,7 @@ fn purge_waits_as_long_as_a_setting_says() {
 
 #[test]
 fn purge_works_in_batches() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("batches");
@@ -680,7 +672,7 @@ entity Folder {
 
 #[test]
 fn purge_follows_a_cascade_back_to_its_own_entity() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lifecycle-folders");

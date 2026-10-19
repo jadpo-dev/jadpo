@@ -2557,7 +2557,7 @@ connections, and stops it and removes the folder when dropped or, failing
 that, once the process that started it ends. The driver's live tests
 (`crates/jadpo-test/tests/postgres.rs`) share one server per process and
 create a database each; `JADPO_SKIP_POSTGRES=1` skips them, as the
-gate's `compiler tests` step does, and the `live PostgreSQL` step runs
+quick gate's `compiler tests` step does, and the `live PostgreSQL` step runs
 them. Migrations build one template per migration digest; per-test copies
 (`CREATE DATABASE … TEMPLATE`) are prepared in the background (area 13).
 Built in chunk 3.1 (`jadpo_test::database`), made to scale in chunk 3.11:
@@ -2603,6 +2603,22 @@ usual, and print `skipped: jadpo test for …` instead of running its
 tests (today only `examples/10-library-loans`), which the gate shows under
 the step.
 
+**No live test skips unseen** (chunk 5.8). Every Rust test with a live
+PostgreSQL part asks one helper whether it runs, `jadpo_test::live()`
+(`crates/jadpo-test/src/live.rs`), and the gate finds those test files by
+that call: each gets the run's server, in a step of the `POSTGRES` table
+in `tools/verify.py` or, if the table leaves it out, a step of its own, so
+no list can be forgotten. `JADPO_SKIP_POSTGRES=1` skips a live part with a
+`skipped:` line; the full profile's `compiler tests` step also sets
+`JADPO_REQUIRE_LIVE=1`, so a live test that reaches it, one the gate failed
+to give a server, fails rather than skipping. A server too old for one
+test (Postgres.app's pgvector 0.7.0 for a nearest query) is
+`jadpo_test::skip_for_version`: skipped and shown under its step on a
+developer's machine. Under CI (`CI` set) both panic, and any step whose
+output has a `skipped:` line fails, since CI's image has every extension
+and version the tests need. `tools/verify.py` checks these promises
+itself before it runs (`self_test`).
+
 **Teaching examples and pages with migrations.** A teaching example
 commits its migrations like any project. A language page's `check`
 project can carry `migrate=<purpose>` on a block: once the blocks up to it
@@ -2612,12 +2628,13 @@ which `jadpo migrate new` names folders by), so a page shows projects with
 migrations without holding their generated files.
 
 **Example-name ban.** `tools/example_names.py` extracts every declared name
-from the language pages' code blocks and from `examples/` into the
-committed `tools/example-identifiers.txt`, minus an allowlist of generic
-words (`id`, `status`). The gate fails if the list is stale, or if a listed
-name appears in any case style as an identifier or string in
-`crates/*/src/`. An example entity whose name is an allowed word (`Order`,
-`Session`) goes to `tools/example-type-names.txt` instead, and may not stand
+from the language pages' code blocks and from `examples/` each time it
+runs, minus the committed allowlist of generic words
+(`tools/example-identifiers-allowed.txt`: `id`, `status`); the extracted
+lists are never committed (chunk 5.8), and `--list` prints them. The gate
+fails if a banned name appears in any case style as an identifier or string
+in `crates/*/src/`. An example entity whose name is an allowed word (`Order`,
+`Session`) is banned as a type name instead, and may not stand
 as a name in a string literal without spaces (`"Order"`), the sign of
 special-casing, while the word stays usable in identifiers and prose
 (Richard, 2026-10-13). Since chunk 1.9 that holds for every example type,

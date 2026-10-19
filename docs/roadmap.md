@@ -1710,7 +1710,7 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 5 built. Their confirmed findings are the
 chunks below, taken before Phase 6.
 
-- [ ] **5.8 Gate honesty** `opus · high`: every test file's live
+- [x] **5.8 Gate honesty** `opus · high`: every test file's live
   PostgreSQL tests run in the full profile and in CI, through one shared
   `live()` helper replacing the per-file `skipped()` copies (today
   `standard_storage`, `sql_literals`, `backfills`, `passkeys` and `config`
@@ -1720,6 +1720,15 @@ chunks below, taken before Phase 6.
   generated at check time, with only the allow-list committed. Done when
   removing a file from the old list can't make its live tests skip
   silently, and the guard catches a JSON writer added in a new crate.
+  Built: `jadpo_test::live()` and `skip_for_version` replace the 19
+  `skipped()` copies; `tools/verify.py` finds every test file that calls
+  `live()` and gives it the server (a step of its own if `POSTGRES` leaves
+  it out), sets `JADPO_REQUIRE_LIVE` on the full profile's compiler tests,
+  fails any `skipped:` line under CI, and checks all of that itself before
+  it runs; the five files now run live in three new steps. The guard scans
+  every crate's `src/` against `MAY_ENCODE`, the boundaries checked even
+  inside it, and refuses a stale entry. The example-name lists are worked
+  out at check time; only the allow-lists are committed.
 - [ ] **5.8a Phase 5 review fixes: secrets and privacy** `opus · xhigh`:
   the idempotency digest keyed with a deployment secret (or taken over
   the decoded input without its secret fields), so a stored digest can't

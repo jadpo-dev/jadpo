@@ -680,14 +680,6 @@ fn a_secret_is_made_for_a_run_and_never_written_in_a_test() {
 
 // --- a connection's address ---------------------------------------------------------
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 /// A connection the test server gives, as the URL a `PostgresUrl` holds: the
 /// disposable server answers with `host=… dbname=…` pairs, an external one
 /// with a URL.
@@ -713,7 +705,7 @@ fn as_url(connection: &str) -> String {
 
 #[test]
 fn a_connection_opens_at_the_address_its_setting_holds() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = folder("connection");

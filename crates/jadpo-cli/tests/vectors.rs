@@ -35,14 +35,6 @@ use jadpo_value::Value;
 
 use crate::support;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -138,7 +130,7 @@ fn vectors_of_every_metric_are_stored_and_read_back_unchanged() {
     ] {
         assert!(sql.contains(expected), "`{expected}` in:\n{sql}");
     }
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let tested = jadpo(&root, &["test", "--seed", "1"]);
@@ -197,7 +189,7 @@ fn both(url: &str, a: &[f32], b: &[f32], metric: jadpo_std::VectorDistance) -> (
 
 #[test]
 fn a_distance_in_code_is_pgvector_s_for_each_metric() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let url = database("vector_distances");
@@ -251,7 +243,7 @@ fn a_distance_in_code_is_pgvector_s_for_each_metric() {
 
 #[test]
 fn a_database_without_an_extension_is_refused_before_anything_runs() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -297,7 +289,7 @@ fn a_database_without_an_extension_is_refused_before_anything_runs() {
 /// each test faulting on the database it couldn't be given (chunk 5.7c).
 #[test]
 fn jadpo_test_refuses_a_server_without_an_extension_before_any_test_runs() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("test-missing");
@@ -335,7 +327,7 @@ fn jadpo_test_refuses_a_server_without_an_extension_before_any_test_runs() {
 
 #[test]
 fn the_start_up_check_refuses_a_store_that_lost_its_extension() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
@@ -447,11 +439,9 @@ fn pgvector_too_old() -> bool {
         return false;
     }
     let shown = jadpo_std::migration::version_text(offered);
-    assert!(
-        std::env::var_os("CI").is_none(),
-        "CI's PostgreSQL offers pgvector {shown}; nearest queries need 0.8.0 (tools/postgres/Dockerfile)"
-    );
-    println!("skipped: the server offers pgvector {shown}, and nearest queries need 0.8.0");
+    jadpo_test::skip_for_version(format_args!(
+        "the server offers pgvector {shown}, and nearest queries need 0.8.0"
+    ));
     true
 }
 
@@ -486,7 +476,7 @@ impl Host for Store {
 
 #[test]
 fn a_filtered_nearest_query_returns_the_five_code_works_out_through_its_index() {
-    if skipped() || pgvector_too_old() {
+    if !jadpo_test::live() || pgvector_too_old() {
         return;
     }
     let root = nearest_project("nearest-five");
@@ -639,7 +629,7 @@ fn a_filtered_nearest_query_returns_the_five_code_works_out_through_its_index() 
 
 #[test]
 fn an_older_pgvector_is_refused_before_a_nearest_query_s_index_is_built() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = nearest_project("nearest-version");
@@ -926,7 +916,7 @@ fn a_longer_vector_s_migration_indexes_it_at_half_precision() {
 
 #[test]
 fn a_3072_dimension_nearest_query_reads_its_half_precision_index() {
-    if skipped() || pgvector_too_old() {
+    if !jadpo_test::live() || pgvector_too_old() {
         return;
     }
     let root = search_project("half-nearest", 3072, "", "");
@@ -957,7 +947,7 @@ fn a_vector_too_long_to_index_is_searched_exactly_once_declined() {
     let root = search_project("exact", 5000, "", decline);
     let (sql, _) = migration_sql(&root);
     assert!(!sql.contains("USING hnsw"), "no index: {sql}");
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     // No index, so any pgvector serves it.
@@ -992,7 +982,7 @@ fn a_tuned_hnsw_index_s_migration_sets_m_and_ef_construction() {
         1,
         "the declared index serves the query: {sql}"
     );
-    if skipped() || pgvector_too_old() {
+    if !jadpo_test::live() || pgvector_too_old() {
         return;
     }
     let (question, articles) = planted(8, 200);
