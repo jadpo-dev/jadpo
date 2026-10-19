@@ -213,7 +213,8 @@ async fn sealed(ctx: &mut Ctx<'_>, outbox: Option<&str>, outcome: Outcome) -> Ou
 /// and for a subscriber's delivery, its handled record in the store its
 /// action wrote.
 pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), StoreError> {
-    let handled = ctx.handled.take();
+    // Kept for a rerun after a concurrent change; the runner clears it.
+    let handled = ctx.handled.clone();
     let Some(boundary) = ctx.boundary.as_mut() else {
         return Ok(());
     };
