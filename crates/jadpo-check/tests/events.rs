@@ -450,7 +450,7 @@ action add(team_id: Team.id) -> Todo {
 /// A household application whose `log_chore` subscriber copies the title
 /// of each chore `remind` emits into a digest of its household (chunk
 /// 6.1c).
-fn household<'a>(add: &'a str) -> Vec<(&'a str, &'a str)> {
+fn household(add: &str) -> Vec<(&str, &str)> {
     vec![
         ("app.jadpo", APP),
         (
