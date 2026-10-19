@@ -515,6 +515,56 @@ pub fn system_table(name: &str) -> Table {
             add("id", "uuid", false);
             add("handled_at", "timestamptz(3)", false);
         }
+        "schedules" => {
+            // Each schedule's state (area 12, "Schedules"; chunk 6.2): the
+            // interval its due times were worked out with, when it is next
+            // due, whether an operator paused it, the lease that lets one
+            // instance run it at a time and the run holding it, and the last
+            // tick that reached it. In `schedules: { store: }`.
+            add("schedule", "text", false);
+            add("every_ms", "bigint", false);
+            add("next_due_at", "timestamptz(3)", false);
+            add("paused", "boolean", false);
+            add("lease_until", "timestamptz(3)", true);
+            add("run_id", "uuid", true);
+            add("last_tick_at", "timestamptz(3)", true);
+            primary = vec!["schedule".into()];
+        }
+        "schedule_runs" => {
+            // Each run of a schedule, and each due tick it skipped and why
+            // (area 12, "Watching schedules"; chunk 6.2): when it was due,
+            // started and ended, how it ended with its failure's code and
+            // kind, never a value, how many events it emitted, and its
+            // trace. Kept 30 days.
+            add("id", "uuid", false);
+            add("schedule", "text", false);
+            add("due_at", "timestamptz(3)", false);
+            add("started_at", "timestamptz(3)", false);
+            add("ended_at", "timestamptz(3)", true);
+            add("outcome", "text", false);
+            add("reason", "text", true);
+            add("failure", "jsonb", true);
+            add("events", "integer", true);
+            add("traceparent", "text", true);
+            for columns in [vec!["schedule", "started_at"], vec!["started_at"]] {
+                indexes.insert(
+                    object_name(
+                        &std::iter::once(table.as_str())
+                            .chain(columns.iter().copied())
+                            .collect::<Vec<_>>(),
+                        "idx",
+                    ),
+                    jadpo_graph::schema::Index {
+                        expression: None,
+                        columns: columns.iter().map(|c| c.to_string()).collect(),
+                        reason: "system schedule runs".into(),
+                        predicate: None,
+                        collate: Vec::new(),
+                        method: None,
+                    },
+                );
+            }
+        }
         "sessions" => {
             // Browser sessions and API tokens (area 8): each found by its
             // token's verifier, never the token itself, with a browser

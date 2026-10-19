@@ -72,6 +72,7 @@ pub mod prompt;
 pub mod quantity;
 pub mod read;
 mod rules;
+pub mod schedule;
 pub mod sphere;
 pub mod standard;
 pub mod subscriber;

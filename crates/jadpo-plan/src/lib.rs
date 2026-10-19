@@ -215,6 +215,48 @@ fn events_plan(
     }
 }
 
+/// The schedule table (area 12, chunk 6.2): each schedule that reads
+/// cleanly, with the callable it runs, where their state is kept, and the
+/// stores holding the runtime's own tables, which the tick sweeps.
+fn schedules_plan(
+    db: &dyn Db,
+    project: Project,
+    by_key: &HashMap<Key, u32>,
+) -> jadpo_std::schedule::SchedulesPlan {
+    use jadpo_std::schedule::{SchedulePlan, SchedulesPlan};
+    let schedules: Vec<SchedulePlan> = jadpo_check::schedules::schedules(db, project)
+        .iter()
+        .filter_map(|model| {
+            Some(SchedulePlan {
+                key: model.key.as_str().to_string(),
+                name: model.name.clone(),
+                every_ms: model.every_ms,
+                callable: *by_key.get(&model.run)?,
+                file: model.path.clone(),
+                line: model.line,
+            })
+        })
+        .collect();
+    let store = (!schedules.is_empty())
+        .then(|| {
+            jadpo_check::schedules::schedules_settings(db, project)
+                .store
+                .clone()
+        })
+        .flatten();
+    let stores = jadpo_check::data::schema(db, project)
+        .stores
+        .iter()
+        .filter(|(_, store)| store.tables.contains_key("jadpo_idempotency_keys"))
+        .map(|(name, _)| name.clone())
+        .collect();
+    SchedulesPlan {
+        schedules,
+        store,
+        stores,
+    }
+}
+
 /// A checked project's plan.
 #[derive(Debug)]
 pub struct Plan {
@@ -253,6 +295,9 @@ pub struct Plan {
     /// Every subscriber, and the store an action that writes none keeps
     /// its events in (area 12, chunk 6.1b).
     events: jadpo_std::subscriber::EventsPlan,
+    /// Every schedule, where their state is kept and the stores the tick
+    /// sweeps (area 12, chunk 6.2).
+    schedules: jadpo_std::schedule::SchedulesPlan,
     /// The latest migration's backfills `jadpo migrate apply` works out in
     /// Jadpo (chunk 5.6b2), in a plan built for it.
     backfills: Vec<BackfillPlan>,
@@ -653,6 +698,7 @@ impl Plan {
         );
         routes.identity = identity;
         let events = events_plan(db, project, &by_key);
+        let schedules = schedules_plan(db, project, &by_key);
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();
@@ -673,6 +719,7 @@ impl Plan {
             json,
             prompts,
             events,
+            schedules,
             backfills,
             migration_json,
         }
@@ -682,6 +729,12 @@ impl Plan {
     /// its events (area 12, chunk 6.1b).
     pub fn events(&self) -> &jadpo_std::subscriber::EventsPlan {
         &self.events
+    }
+
+    /// Every schedule, where their state is kept, and the stores the tick
+    /// sweeps (area 12, chunk 6.2).
+    pub fn schedules(&self) -> &jadpo_std::schedule::SchedulesPlan {
+        &self.schedules
     }
 
     /// The structured fields the latest migration reads or writes as JSON

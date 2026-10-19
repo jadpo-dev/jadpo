@@ -32,6 +32,7 @@ pub mod prompts;
 pub mod records;
 mod resolve;
 pub mod routes;
+pub mod schedules;
 pub mod setting_move;
 mod std_lib;
 pub mod suggest;
@@ -137,6 +138,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(events::emit_problems(db, project, file).iter().cloned());
             out.extend(
+                schedules::schedule_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
                 policy::reach::reach_problems(db, project, file)
                     .iter()
                     .cloned(),
@@ -177,6 +183,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(
             events::events_settings(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
+        out.extend(
+            schedules::schedules_settings(db, project)
                 .problems
                 .iter()
                 .cloned(),

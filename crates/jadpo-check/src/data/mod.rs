@@ -2262,6 +2262,10 @@ pub const SYSTEM_TABLES: [&str; 4] = [
     "idempotency_keys",
 ];
 
+/// The tables of schedules' state and runs, in `schedules: { store: }`
+/// (area 12, chunk 6.2).
+pub const SCHEDULE_TABLES: [&str; 2] = ["schedules", "schedule_runs"];
+
 /// The table of browser sessions and API tokens, in the store the
 /// principal's users live in when anything signs one in (area 8).
 pub const SESSIONS: &str = "jadpo_sessions";
@@ -2337,6 +2341,24 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             SERVICE_KEYS.to_string(),
             columns::system_table("service_keys"),
         );
+    }
+    // Schedules' state, leases and run records go in `schedules: {
+    // store: }`, or the only database (area 12; chunk 6.2).
+    if *crate::schedules::declares_schedules(db, project)
+        && let Some(store) = &crate::schedules::schedules_settings(db, project).store
+    {
+        let found = schema
+            .stores
+            .entry(store.clone())
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            });
+        for name in SCHEDULE_TABLES {
+            found
+                .tables
+                .insert(format!("jadpo_{name}"), columns::system_table(name));
+        }
     }
     Arc::new(schema)
 }

@@ -628,6 +628,10 @@ impl Executor for Program {
         })
     }
 
+    fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
+        Some(self.plan().schedules())
+    }
+
     fn run<'a, 'p: 'a>(
         &'a self,
         ctx: &'a mut Ctx<'p>,

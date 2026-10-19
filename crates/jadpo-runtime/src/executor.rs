@@ -49,6 +49,13 @@ pub trait Executor {
         None
     }
 
+    /// The program's schedules, where their state is kept, and the stores
+    /// the tick sweeps (area 12, chunk 6.2). `None` for a program the tick
+    /// has nothing to do for.
+    fn schedules(&self) -> Option<&jadpo_std::schedule::SchedulesPlan> {
+        None
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.
