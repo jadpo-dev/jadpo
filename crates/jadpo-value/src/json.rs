@@ -59,9 +59,14 @@ pub struct Codecs<'a> {
     pub shapes: &'a [Shape],
 }
 
-/// Where in the input a value is: field names and list positions.
+/// Where in the input a value is: field names, list positions and
+/// [`MAP_ENTRY`] for a map's entry.
 #[derive(Clone, Debug, Default)]
 pub struct Path(Vec<String>);
+
+/// What names a map's entry in a problem's path, in place of its key
+/// (chunk 5.8a).
+pub const MAP_ENTRY: &str = "<key>";
 
 impl Path {
     fn with(&self, part: impl Into<String>) -> Path {
@@ -306,8 +311,12 @@ impl Codecs<'_> {
                 };
                 let before = problems.len();
                 let mut map = BTreeMap::new();
+                // An entry is `<key>` in a problem's path, whether its key
+                // or its value broke the rule: a key is a value, an email
+                // address as often as not, and a problem never holds one
+                // (chunk 5.8a).
+                let at = path.with(MAP_ENTRY);
                 for (name, entry) in entries {
-                    let at = path.with(name.clone());
                     let Some(k) = self.read_text(*key, name, &at, problems) else {
                         continue;
                     };
@@ -1117,6 +1126,84 @@ mod tests {
                 ("quantity".to_string(), "required".to_string()),
                 ("total".to_string(), "type".to_string())
             ]
+        );
+    }
+
+    /// A map's key is a value, an email address as often as not, so a
+    /// problem in an entry names it `<key>`, never by its text, whether
+    /// the key or its value broke the rule, at any depth (chunk 5.8a).
+    #[test]
+    fn a_problem_in_a_map_names_its_entry_never_its_key() {
+        use jadpo_std::types::ValidatorId;
+        use jadpo_std::{Num, Rules};
+        let score = Validator::new(
+            Some(Builtin::Int),
+            vec![Rules {
+                max: Num::parse("100"),
+                ..Rules::default()
+            }],
+        );
+        let short = Validator::new(
+            Some(Builtin::Text),
+            vec![Rules {
+                max_length: Some(10),
+                ..Rules::default()
+            }],
+        );
+        let codecs = [
+            Codec::Scalar {
+                builtin: Builtin::Int,
+                validator: ValidatorId(0),
+                int_as_number: true,
+            },
+            Codec::Scalar {
+                builtin: Builtin::Text,
+                validator: ValidatorId(1),
+                int_as_number: true,
+            },
+            // No validator of its own: the map has no rules.
+            Codec::Map {
+                key: CodecId(1),
+                value: CodecId(0),
+                validator: ValidatorId(9),
+            },
+            Codec::Map {
+                key: CodecId(1),
+                value: CodecId(2),
+                validator: ValidatorId(9),
+            },
+        ];
+        let validators = [score, short];
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        let read = |id: u32, text: &str| {
+            let mut problems = Vec::new();
+            let json: serde_json::Value = serde_json::from_str(text).unwrap();
+            let value = codecs.read(CodecId(id), &json, &Path::field("scores"), &mut problems);
+            assert!(value.is_none(), "{text}");
+            problems
+                .into_iter()
+                .map(|p| (p.field, p.rule))
+                .collect::<Vec<_>>()
+        };
+        let pair = |field: &str, rule: &str| (field.to_string(), rule.to_string());
+        assert_eq!(
+            read(2, r#"{"ann@ex.io": 101, "bo@ex.io": 5}"#),
+            [pair("scores.<key>", "max")],
+            "a value's rule"
+        );
+        assert_eq!(
+            read(2, r#"{"alice@example.com": 5}"#),
+            [pair("scores.<key>", "max_length")],
+            "a key's rule"
+        );
+        assert_eq!(
+            read(3, r#"{"ann": {"bo": "x"}}"#),
+            [pair("scores.<key>.<key>", "type")],
+            "a map in a map"
         );
     }
 
