@@ -1,0 +1,27 @@
+// Inside a program a quantity has no unit: legs in kilometres and miles
+// add up as lengths. A unit is chosen only to show one or to give a
+// number in it. `HeartRate` is a standard type, a `Frequency` in beats
+// a minute.
+
+use fleet/types { RideDistance, RideSummary, RideTime }
+
+/// A finished hire for the rider's receipt, in `reader_locale`.
+action summarise_ride(
+    legs: List<RideDistance>,
+    moving: RideTime,
+    peak_heart_rate: HeartRate,
+    reader_locale: Locale
+) -> RideSummary {
+    var total: Length = units.sum(legs)
+    var mean_speed: Speed = total / moving
+    return RideSummary {
+        road_distance: text.format(total, locale: reader_locale, unit: LengthUnit.kilometre)
+        miles: units.in(total, LengthUnit.mile, scale: 1, rounding: Rounding.half_even)
+        average_speed: text.format(
+            mean_speed,
+            locale: reader_locale,
+            unit: SpeedUnit.kilometre_per_hour
+        )
+        hard_effort: peak_heart_rate >= 160bpm
+    }
+}

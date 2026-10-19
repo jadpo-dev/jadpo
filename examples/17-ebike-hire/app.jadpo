@@ -1,0 +1,7 @@
+// Quantities are shown to riders in their locale's units and digits.
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.de_de]
+}

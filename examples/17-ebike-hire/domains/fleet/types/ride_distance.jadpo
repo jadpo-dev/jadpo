@@ -1,0 +1,2 @@
+/// How far a ride went.
+type RideDistance = Length {}

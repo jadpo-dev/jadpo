@@ -1,0 +1,7 @@
+/// A finished hire, as the rider's receipt shows it.
+type RideSummary = Output {
+    road_distance: PresentationText
+    miles: Decimal
+    average_speed: PresentationText
+    hard_effort: Bool
+}

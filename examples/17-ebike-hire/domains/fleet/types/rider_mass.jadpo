@@ -1,0 +1,4 @@
+/// A rider's weight with their luggage.
+type RiderMass = Mass {
+    max: 150kg
+}

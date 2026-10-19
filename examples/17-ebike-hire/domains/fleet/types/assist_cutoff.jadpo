@@ -1,0 +1,4 @@
+/// The speed a motor stops helping at: the law sets 15.5 mph.
+type AssistCutoff = Speed {
+    max: 25kmh
+}

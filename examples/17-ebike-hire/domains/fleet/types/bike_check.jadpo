@@ -1,0 +1,8 @@
+/// A bike's checks before it goes out.
+type BikeCheck = Output {
+    lamp_bright_enough: Bool
+    bell_loud_enough: Bool
+    carries_rider: Bool
+    road_legal: Bool
+    rollout: Length
+}

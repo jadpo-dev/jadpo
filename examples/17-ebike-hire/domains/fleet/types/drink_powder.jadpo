@@ -1,0 +1,4 @@
+/// Powder for a sports drink.
+type DrinkPowder = Mass {
+    max: 100g
+}

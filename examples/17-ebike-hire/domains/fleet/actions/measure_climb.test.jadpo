@@ -1,0 +1,8 @@
+use fleet/types { Climb }
+
+test "a kilometre up a 5° hill climbs 87 metres" {
+    var climb: Climb = measure_climb(1km, 5deg)
+    assert climb.height == 87.156metre
+    assert climb.along_the_map == 996.195metre
+    assert measure_climb(1km, 0deg).height == 0metre
+}

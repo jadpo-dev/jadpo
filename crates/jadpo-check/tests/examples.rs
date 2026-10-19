@@ -1479,8 +1479,18 @@ fn the_examples_use_every_built_feature() {
             ));
         }
     }
+    // A standard enum no operation takes or gives (`CardBrand`, a unit
+    // enum such as `LengthUnit`, which `units.of` takes as a unit of any
+    // kind) has values that are data, not features of their own, so an
+    // example naming one isn't asked to list it.
+    let std_enum_value = |feature: &str| {
+        feature
+            .strip_prefix("std ")
+            .and_then(|rest| rest.split_once('.'))
+            .is_some_and(|(owner, _)| jadpo_std::enums().iter().any(|(name, _)| *name == owner))
+    };
     for feature in used.keys() {
-        if !built.contains(feature) && !feature.starts_with("graph ") {
+        if !built.contains(feature) && !feature.starts_with("graph ") && !std_enum_value(feature) {
             problems.push(format!(
                 "{feature}: an example uses it, but the built features don't list it; add it to the list in crates/jadpo-check/tests/examples.rs"
             ));

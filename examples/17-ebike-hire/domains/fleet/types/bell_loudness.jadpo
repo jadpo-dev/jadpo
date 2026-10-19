@@ -1,0 +1,2 @@
+/// How loud a bell is at two metres.
+type BellLoudness = SoundLevel {}

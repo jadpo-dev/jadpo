@@ -1,0 +1,8 @@
+/// What a charge takes: the charger's power, the energy still to go in,
+/// and how much the first hour puts back.
+type ChargePlan = Output {
+    charger_power: Power
+    still_to_go: Energy
+    first_hour: Energy
+    safe_to_charge: Bool
+}

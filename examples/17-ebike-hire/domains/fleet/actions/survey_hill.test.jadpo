@@ -1,0 +1,8 @@
+use fleet/types { Gradient }
+use fleet/failures { TooSteep }
+
+test "a rise over a run is a gradient" {
+    var hill_gradient: Gradient = attempt survey_hill(10metre, 100metre)
+    assert units.in(hill_gradient, AngleUnit.degree, scale: 2, rounding: Rounding.half_even) == 5.71
+    assert survey_hill(100metre, 100metre) fails TooSteep
+}

@@ -63,6 +63,9 @@ README saying what it teaches, how to run it and what to try next.
     units, currencies fixed by a type, rounding, prices and deals,
     percentages, sharing to the penny, rates, cards and amounts shown to
     people.
+17. [17-ebike-hire/](17-ebike-hire/README.md): physical quantities:
+    types with bounds in units, kinds that combine, units only at the
+    edges, exact decimal maths, and quantities a person typed.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

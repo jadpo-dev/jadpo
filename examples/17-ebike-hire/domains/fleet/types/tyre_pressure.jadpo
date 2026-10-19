@@ -1,0 +1,5 @@
+/// A tyre's pressure, as the pump reads it.
+type TyrePressure = Pressure {
+    min: 2bar
+    max: 5bar
+}

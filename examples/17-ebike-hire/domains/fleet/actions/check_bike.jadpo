@@ -1,0 +1,52 @@
+// A quantity typed by a person is read with its unit, any unit of its
+// kind, and checked against its type's rules: `45 psi` and `3.1 bar` are
+// both pressures, and `45 kg` isn't one.
+
+use fleet/types {
+    AssistCutoff,
+    BellLoudness,
+    BikeCheck,
+    LampBrightness,
+    LampFlash,
+    MotorPower,
+    PressureText,
+    RiderMass,
+    TyrePressure,
+    WheelSize
+}
+use fleet/failures { PressureUnreadable }
+
+/// A tyre's pressure as a mechanic typed it.
+function read_pressure(typed_pressure: PressureText) fails PressureUnreadable -> TyrePressure {
+    return attempt text.parse(typed_pressure, as: TyrePressure) {
+        malformed: PressureUnreadable
+        unknown_unit: PressureUnreadable
+        min: PressureUnreadable
+        max: PressureUnreadable
+    }
+}
+
+/// A bike's checks before it goes out: a lamp of at least 10 lux that
+/// flashes 1 to 4 times a second, a bell
+/// of at least 80 dB, a rider the frame carries, a motor and its cut-off
+/// speed the law allows, and how far
+/// the bike rolls for one turn of its wheels, π times their diameter.
+action check_bike(
+    pressure: PressureText,
+    lamp: LampBrightness,
+    flash: LampFlash,
+    motor: MotorPower,
+    cutoff: AssistCutoff,
+    bell: BellLoudness,
+    rider: RiderMass,
+    wheel: WheelSize
+) fails PressureUnreadable -> BikeCheck {
+    var tyres: TyrePressure = attempt read_pressure(pressure)
+    return BikeCheck {
+        lamp_bright_enough: lamp >= 10lx and flash >= 1Hz and flash <= 4Hz
+        bell_loud_enough: bell >= 80dB
+        carries_rider: rider <= 130kg and tyres >= 2.5bar
+        road_legal: motor <= 250W and cutoff <= 15.5mph
+        rollout: wheel * decimal.pi(scale: 6, rounding: Rounding.half_even)
+    }
+}

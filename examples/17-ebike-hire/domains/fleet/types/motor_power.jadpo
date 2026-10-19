@@ -1,0 +1,4 @@
+/// A motor's rated power: the law caps an e-bike's at 250 W.
+type MotorPower = Power {
+    max: 250W
+}

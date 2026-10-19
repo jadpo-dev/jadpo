@@ -1,0 +1,4 @@
+/// A pressure as a mechanic types it, with its unit: `45 psi`, `3.2 bar`.
+type PressureText = Text {
+    max_length: 20
+}

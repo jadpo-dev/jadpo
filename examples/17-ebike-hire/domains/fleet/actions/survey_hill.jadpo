@@ -1,0 +1,23 @@
+// From a rise and a run back to an angle: `decimal.atan2` gives radians,
+// and `units.of` makes them an `Angle`, checked against what the fleet's
+// bikes climb.
+
+use fleet/types { Gradient, RideDistance }
+use fleet/failures { TooSteep }
+
+/// A hill's gradient from how far it `rise`s over how far it `runs` on
+/// the map. The bikes climb up to 30°; a steeper hill is refused.
+action survey_hill(rise: RideDistance, run_length: RideDistance) fails TooSteep -> Gradient {
+    var up: Decimal = units.in(rise, LengthUnit.metre, scale: 3, rounding: Rounding.half_even)
+    var along_m: Decimal = units.in(
+        run_length,
+        LengthUnit.metre,
+        scale: 3,
+        rounding: Rounding.half_even
+    )
+    var angle_radians: Decimal = decimal.atan2(up, along_m, scale: 9, rounding: Rounding.half_even)
+    return attempt Gradient(units.of(angle_radians, AngleUnit.radian)) {
+        min: TooSteep
+        max: TooSteep
+    }
+}

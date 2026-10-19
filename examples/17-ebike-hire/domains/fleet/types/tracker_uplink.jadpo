@@ -1,0 +1,5 @@
+/// What a tracker's reports cost the fleet's data plan.
+type TrackerUplink = Output {
+    rate: Bitrate
+    daily_data: DataSize
+}

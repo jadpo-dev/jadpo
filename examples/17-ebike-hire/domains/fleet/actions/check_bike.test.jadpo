@@ -1,0 +1,42 @@
+use fleet/types { BikeCheck }
+use fleet/failures { PressureUnreadable }
+
+test "a bike that passes its checks" {
+    var checked: BikeCheck = attempt check_bike(
+        "45 psi",
+        15lx,
+        2Hz,
+        250W,
+        15.5mph,
+        85dB,
+        90kg,
+        70cm
+    )
+    assert checked.lamp_bright_enough
+    assert checked.bell_loud_enough
+    assert checked.carries_rider
+    assert checked.road_legal
+    // π times 70 cm, to the micrometre.
+    assert checked.rollout == 2.199115metre
+}
+
+test "a quiet bell and a steady lamp fail their checks" {
+    var checked: BikeCheck = attempt check_bike(
+        "3.2 bar",
+        15lx,
+        0Hz,
+        250W,
+        15.5mph,
+        70dB,
+        90kg,
+        70cm
+    )
+    assert not checked.lamp_bright_enough
+    assert not checked.bell_loud_enough
+}
+
+test "a pressure is read with its unit, within what the tyres take" {
+    assert check_bike("45 kg", 15lx, 2Hz, 250W, 15.5mph, 85dB, 90kg, 70cm) fails PressureUnreadable
+    assert check_bike("45", 15lx, 2Hz, 250W, 15.5mph, 85dB, 90kg, 70cm) fails PressureUnreadable
+    assert check_bike("6 bar", 15lx, 2Hz, 250W, 15.5mph, 85dB, 90kg, 70cm) fails PressureUnreadable
+}

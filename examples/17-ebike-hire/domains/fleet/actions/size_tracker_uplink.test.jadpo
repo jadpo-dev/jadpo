@@ -1,0 +1,7 @@
+use fleet/types { TrackerUplink }
+
+test "a tracker's reports are a rate, and a day of them a size" {
+    var uplink: TrackerUplink = size_tracker_uplink(2kB, 10s)
+    assert uplink.rate == 1.6kbps
+    assert uplink.daily_data == 17.28MB
+}

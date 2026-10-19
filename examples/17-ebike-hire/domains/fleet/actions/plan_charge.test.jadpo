@@ -1,0 +1,16 @@
+use fleet/types { ChargePlan }
+
+test "volts times amps is the charger's power" {
+    var charging: ChargePlan = plan_charge(500Wh, 20%, 36V, 4A, 20degC)
+    assert charging.charger_power == 144W
+    assert charging.still_to_go == 400Wh
+    assert charging.first_hour == 144Wh
+    assert charging.safe_to_charge
+}
+
+test "cells too cold or too warm don't charge" {
+    assert not plan_charge(500Wh, 20%, 36V, 4A, -2degC).safe_to_charge
+    // 40 °C, and charging warms the cells by 8 °C, past 45 °C.
+    assert not plan_charge(500Wh, 20%, 36V, 4A, 40degC).safe_to_charge
+    assert plan_charge(500Wh, 20%, 36V, 4A, 98.6degF).safe_to_charge
+}

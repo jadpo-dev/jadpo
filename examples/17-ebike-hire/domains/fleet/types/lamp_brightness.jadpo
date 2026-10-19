@@ -1,0 +1,2 @@
+/// How bright a front lamp is at ten metres.
+type LampBrightness = Illuminance {}
