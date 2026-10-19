@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and to the limits of background work. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type. Built in chunk 6.7: background work within the budget its host gives each invocation, every lease that budget and a minute, a batch run carried on by time in a fresh invocation, and a native server draining when it is stopped. Built in chunk 6.6c: the tenant an event or a batch's run names proved to be one its action reached, and a batch's `key:` unique per call, tenant and key.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in Phase 6, chunks 6.1a to 6.8; what is built and what isn't is under "Review", "Status".
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -52,19 +52,119 @@ schedule chore_census {
 }
 ```
 
-- `every:` takes seconds, minutes, hours or days (`30s`, `15m`, `1h`, `1d`),
-  counted in UTC from when the application starts.
+- `every:` takes a whole number of seconds, minutes, hours or days above
+  zero (`30s`, `15m`, `1h`, `1d`; `schedule.every_invalid`). `run:` is a
+  call of an action of the schedule's own domain, with no arguments,
+  taking no parameters (`schedule.run_invalid`). Anything else in a
+  schedule is `schedule.item_invalid`.
+- Runs fall on a grid in UTC that starts at the first tick that sees the
+  schedule: its first run is due one `every:` later, and each after that
+  one `every:` on. The grid is kept in the schedule's state row, so a
+  restart or a deploy neither moves it nor adds a run (decided
+  2026-10-19). A changed `every:` takes effect from the earlier of the
+  kept due time and one new interval after the tick.
 - Only one run of a schedule happens at a time. Ticks missed while the
-  application was down, or while a run was still going, become one run, not a
-  backlog. Each schedule's state and lease live in the store
-  `schedules: { store: }` names (area 5), or the only store when there is one.
+  application was down, or while a run was still going, become one run,
+  not a backlog: a tick at or past the due time runs it once and moves its
+  next due time to the first grid time after the tick, and a due tick
+  that finds the schedule paused, or leased by a run still going, is
+  skipped, not queued, recorded with its reason, its due time moving on
+  the same way.
+- Each schedule's state and lease live in the store
+  `schedules: { store: }` names (area 5), or the only database when there
+  is one; with several and none named, or none at all, each schedule is
+  `schedule.store_required`. `schedules:` holds only `store:` until the
+  `trigger:` adapter (question 16) comes with Workers (roadmap 8.2). The
+  state and run tables are in the migration snapshot only when a schedule
+  is declared or an entity purges.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
-  started, so the action does not need the time passed in.
-- A failed run is logged and shown to the operator; the next tick is the
-  retry. Schedules have no retry settings.
+  started, the tick's, so the action does not need the time passed in.
+- A failed run is logged and shown to the operator, and retried at its
+  next due time, not at every minute's tick (decided 2026-10-19).
+  Schedules have no retry settings.
 - Entities with `purge:` in their lifecycle (area 5) get a built-in hourly
   purge schedule from the compiler, `Member.purge` for `Member`; nothing is
-  written for it (built in chunk 6.2c).
+  written for it ("The purge schedule", below).
+
+### How a schedule runs
+
+- **The lease.** Taken in one conditional statement on the state row (the
+  due time unchanged, not paused, no live lease), so of two instances
+  ticking at once one runs it and the other does nothing. It lasts what
+  is left of the tick's budget and a minute ("Running background work"),
+  at most 16 minutes natively; a run that held it past then was lost with
+  its worker, and its record ends `failed` with `lease_expired`.
+- **A run.** The action, called with nothing, as the system reaching
+  every tenant ("Background work and tenants"), in a context of its own
+  whose `clock.now` is the tick's time throughout, in a new trace. It
+  runs within the 15-minute limit of a run and its tick's budget; a run
+  so stopped is recorded failed with `deadline_exceeded`, its lease given
+  back. What it emits is delivered after it. A failure is recorded with
+  its code and kind. Due schedules run side by side, so a long run holds
+  no other up.
+- **Grants.** A schedule reaching what only `Access.public` grants is
+  `policy.system_grant_missing`, as a subscriber or a batch is (area 9,
+  "Background work").
+
+### The tick
+
+`jadpo_runtime::schedules::tick` is the one entry point every host calls:
+once a minute, or as often as the shortest `every:` when that is shorter,
+at least once a second. Natively it is the server's timer on its first
+worker's thread, at each whole period of UTC; `jadpo dev` ticks, and a
+test's or a tool's host doesn't. On Workers it is the cron trigger
+(roadmap 8.2), where an `every:` under a minute is an error naming the
+schedule, since a minute's cron can't run it (decided 2026-10-19). Each
+state row keeps the last tick that reached it. Then, each step starting
+only while the tick's budget lasts, the tick:
+
+- runs the schedules due, and any run asked for by hand ("Running a
+  schedule by hand"), and delivers what they emit;
+- in every store holding the runtime's tables, delivers what is left to
+  deliver (the outbox's sweep: up to 100 deliveries `pending` past their
+  next attempt or `running` past their lease, oldest first, which a
+  crash between the commit and the delivery, a host that dropped work,
+  or a worker that died holding a lease left);
+- deletes expired idempotency keys (area 7); an event with its delivery
+  records once every delivery succeeded, 24 hours after it was emitted
+  (one nothing subscribes to too), so a failed delivery's event stays for
+  an operator; schedule run records and ended batch runs 30 days old
+  ("How a run is kept");
+- picks up batch runs whose lease lapsed.
+
+Each delete takes 1,000 rows at a time, at most ten times a tick. The
+tick hands nothing on: what it doesn't reach, the next tick carries on.
+Not built yet: deleting a subscriber's handled records once its delivery
+can no longer repeat, and ended sessions, tokens and expired keys (area
+8), both roadmap 6.10.
+
+### The purge schedule
+
+Each entity whose lifecycle has `purge:`, and a store, gets its own
+schedule, as the decision table says ("a built-in hourly schedule per
+entity"): named after the entity and its operation (`Member.purge`, as
+`Member.delete` is) and keyed by the entity's born name, so a rename keeps
+its state and run records. Its `.jadpo` place, which `jadpo why` gives,
+is the lifecycle's `purge:`. It runs every hour on any schedule's grid,
+and is recorded and watched like any schedule: its state row, lease and
+run records are a schedule's, in `schedules: { store: }` or the only
+database; with several databases and none named, the lifecycle's
+`purge:` is `schedule.store_required`, suggesting the entity's own store,
+and `migration.out_of_date` waits until it is named. `jadpo schedules`
+lists it, `history`, `pause`, `resume`, `run` and `jadpo why` take its
+name, and `jadpo dev` prints each run.
+
+A run is the runtime's purge entry point (area 5) at the tick's time,
+outside every action and policy: at most 20 batches of 500, within the
+run's limit, what it leaves carried on by the next hour's run. The period
+is its `after:`, or the value the application started with for the
+setting it reads. It emits nothing. A store that can't be reached is a
+failed run with `unavailable`, as for an action; anything else the store
+refuses is `internal_fault`, the batches before it staying deleted. Its
+run records count the records it deleted (`items`): the screens show
+`2 records purged` where an action's run shows its events, and
+`jadpo dev`'s `--json` line carries `items` and `batches`, how many each
+batch deleted. No test runs it (area 13).
 
 ## Batch work keeps its progress
 
@@ -181,8 +281,8 @@ action export_products(request: ProductExport) -> BatchRun {
 transaction that commits its writes and the run's position together, so a
 crash or a deploy resumes at the next item and nothing is written twice.
 A file's order is kept, and a run's batches go one after another; separate
-runs proceed side by side. The run's state lives beside the outbox, in the
-store the action writes, or the one `events: { store: }` names. Each item's
+runs proceed side by side. The run's state lives in the store `from:`'s
+query reads (decided 2026-10-19, "How a run is kept"). Each item's
 action runs inside its batch's transaction, under area 6's rule for a
 handled failure, so an item whose action fails is undone alone and becomes
 a problem while the rest carry on. `batches.each` is also the one way to
@@ -237,11 +337,11 @@ page per subscriber delivery.
 > Built in chunk 6.4: `batches.each` over a named query's pages, with
 > `finished:` and `key:`, `batches.status` and `batches.cancel`, each page
 > one transaction committing its items' writes and the run's position,
-> and a run resumed after a crash or a deploy; what the page left open is
-> "Chosen in chunk 6.4", under "Review". The `csv`, `tsv`, `json_lines`
-> and `json` file helpers, `store.read`'s whole-read cap and the warning
-> for a `from:` ordered by a field that can be updated come in chunk
-> 6.4b, with a minimal `files` capability (area 16).
+> and a run resumed after a crash or a deploy ("How a run is kept",
+> below). The `csv`, `tsv`, `json_lines` and `json` file helpers,
+> `store.read`'s whole-read cap and the warning for a `from:` ordered by
+> a field that can be updated come in roadmap 6.4b, with a minimal
+> `files` capability (area 16).
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -335,6 +435,656 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 }
 ```
 
+### How a run is kept
+
+- **A batch is a page.** Each transaction is one page of `from:`, at the
+  size its query's `page:` reads, so 60 items in pages of 3 commit 20
+  times. A page type allowing more than the 1,000 items of one batch
+  ("Limits and runtime faults") isn't split yet; `PageSize` stops at 100.
+- **Where a run is kept.** In the store `from:`'s query reads (decided
+  2026-10-19): one row per run in `jadpo_batch_runs` (which call, the
+  shape it was started under, its `key:`, what it saved, the tenant it is
+  limited to, how deep in a chain of events it started, the cursor of the
+  next page, its counts, its state and its runner's lease), each problem
+  in `jadpo_batch_problems`, and each cancel asked for in
+  `jadpo_batch_cancels`; only a store some batch walks has them. Starting
+  a run writes that store, and `each:`'s and `finished:`'s actions may
+  write no other (`store.action_spans_stores`), so an item's writes and
+  the position always commit together. A run always has its query's
+  store, so it never needs `events: { store: }`.
+- **Starting.** The run's row is written in the starting action's
+  transaction, and the run left for after the response at once; an action
+  that rolls back left no row, so nothing runs. A start needs no outbox
+  row: its run's row is as durable, and the tick picks up a start a host
+  dropped, as the outbox's sweep does a delivery. A start keyed with
+  `key:` that finds the same call's run with the same key (by its
+  contract JSON), in the same tenant, gives that run, in whatever state,
+  whatever else the call was given; a start without one is always a new
+  run. In an application with a tenant, `key:` is unique per call, the
+  run's tenant and the key, so two tenants' runs with the same key never
+  meet (decided 2026-10-19); the row keeps the tenant (all zeros when it
+  reaches no tenant's records or the application has none). A run kept
+  before the tenant was kept has none, and no later start finds it, since
+  nothing says which tenant its key was given in: a keyed run still going
+  when that migration is deployed may be started again by a retry, rather
+  than one tenant being handed another's run.
+- **Saved values.** `each:`'s and `finished:`'s arguments are the item
+  (or the summary), a field inside it, or a value that reads nothing of
+  it, worked out as the run starts and saved with it; anything that works
+  something out of the item is `type.batch_each_invalid`, and is the
+  action's to work out. `from:`'s query's arguments are saved as what a
+  request carries, an `Input` among them; what `each:` and `finished:`
+  capture, and `key:`, as an entity field holds a value, so an `Input`
+  there is `type.batch_capture_not_storable`. A secret is never saved.
+  The values are a JSON array of each value's own JSON (its type's
+  contract JSON), `null` for none, kept with the encoding they were
+  written in (`jadpo_batch_runs.encoding`) and read with the standard JSON
+  reader, a number keeping the digits it was written with.
+- **Which call, by a stable name.** A run names the `batches.each` call
+  that started it by what the call is, in identity keys that survive a
+  rename: the action starting it, the query `from:` walks and the action
+  `each:` runs (`action check_stock from query products_to_check each
+  action check_product`), so adding or moving another call leaves its
+  name as it was; a second call of the same three in one action adds its
+  place among those alone (` #2`). Its shape, what it saves and calls, is
+  kept as canonical type text, naming declared types by their identity
+  keys, with a digest, so a release that changes the compiler's own
+  internals leaves every running batch's shape as it was.
+- **Problems.** An item whose action fails is undone alone and becomes a
+  problem: its row is its place in the walk, from 1, its column empty (a
+  query's item has no columns; the file helpers fill it), its rule the
+  failure's code. One whose action faults with a defect or an overflow is
+  a problem too, its rule the fault's classification (`internal_fault`,
+  `int_overflow`), and is undone alone as a failure is. A store that
+  can't be reached, a deadline or another transaction's change is no
+  item's: the whole page is undone; one another transaction's change
+  undid runs again, up to three times, and otherwise the run waits for
+  the tick.
+- **Who runs it.** Each page's read, its items and `finished:` act as the
+  system ("Background work and tenants"), and read the clock as their page
+  began; each page begins at repeatable read when `each:`'s or
+  `finished:`'s action loads a record, read committed otherwise. A run
+  keeps how deep in a chain of events the action that started it was, and
+  its items run at that depth, so what they emit is one deeper than the
+  event that started the run, and a loop through a batch stops at 16 as
+  any loop does. Each item's action, and `finished:`'s, has the allowance
+  of one action's events to itself, 1,000, however many the items before
+  it in the page emitted.
+- **Finishing.** `finished:` runs once after the last page, in a
+  transaction of its own, given the `ImportSummary` with every problem in
+  row order, and the run is `finished` in the same transaction. If its
+  action fails, what it wrote is undone and the run is `failed` with the
+  failure's code. A cancelled run doesn't run `finished:`.
+- **Cancelling.** `batches.cancel` keeps a row of its own in the calling
+  action's transaction and never touches the run's, so it never waits for
+  the page in hand; the next page finds it and ends the run `cancelled`.
+  Until then `batches.status` says `running`.
+- **Status.** `batches.status` reads the counts and the state in the
+  calling action's transaction; `estimated_total` is `none` until a
+  query's count is built (roadmap 6.4b). A `BatchRun` no store keeps is a
+  fault. Both find a run by its `id` alone, so they need the
+  application's runs in one store: with none, or more than one, they are
+  `toolchain.not_built_yet`.
+- **Carried on by time.** A runner holds its run by a lease of what is
+  left of its budget and a minute ("Running background work"), renewed
+  with each page it commits, and goes page after page while its budget
+  lasts, then gives its lease back and is carried on in a fresh
+  invocation from the position that committed; the budget ending mid-page
+  drops that page, nothing it did kept. A run that couldn't commit a page
+  in a whole budget gives its lease back and waits for the tick, which
+  picks up every run still running whose lease has lapsed.
+- **What a deploy changes.** A run whose call a deploy changed (its query,
+  its actions or what it saves), or whose saved values are in an encoding
+  this release doesn't read, a later release's after a rollback, ends
+  `failed` with why ("its saved values were written in encoding 2, which
+  this release doesn't read") rather than reading what it saved as
+  something else. A run with no encoding whose call and shape match is
+  read, its values as encoding 1's; one kept before calls were named by
+  identity has a name no call now gives, and ends `failed` because "it was
+  started by a release that named its `batches.each` call another way".
+  Listing such runs before a deploy is area 14's `jadpo runs unfinished`.
+- **Kept 30 days.** On each tick, in every store that keeps batch runs, a
+  run that ended (finished, failed or cancelled) 30 days or more ago is
+  deleted with its problems and its cancel, as are cancels as old of runs
+  no store keeps (asked of a `BatchRun` a field held after its run was
+  deleted). A run still going is never deleted, however old.
+- **Names.** `batches` is a standard namespace, so, as every one, it names
+  no variable.
+
+### Batches, tenants and grants
+
+In an application with a `tenant:`, each page's read, its items and
+`finished:` act as the system limited to the tenant the run's saved values
+of the tenant's `id` type name ("Background work and tenants"): a `from:`
+argument, a value `each:` or `finished:` captures, or `key:`, whose own
+type is the tenant's `id` (`Household.id`, or one that may be `none`), or
+a field declared with it, as a reference to the tenant is
+(`rent_round.society_id`). A tenant's id held inside a saved record
+doesn't count. The run reads them from what it saved, so it has the same
+tenant each time it resumes. Values that all name the same tenant
+(`key: household_id` beside an `each:` capturing `household_id`) limit
+the run to it (decided 2026-10-19); a run that saves no such value, one
+that is `none`, or values naming different tenants, reaches no tenant's
+records, only those every tenant shares. An application without a
+`tenant:` runs batches reaching every record the system is granted.
+
+As for a schedule or a subscriber, what `from:`'s query reads, or the
+action `each:` or `finished:` calls reaches, itself or through what it
+calls, where a grant list, a field's own list or the action's line under
+`actions:` names `Access.public` and not `Access.system`, is
+`policy.system_grant_missing`, at that query's or action's call. Each
+call is checked, so one batch may be refused at more than one.
+
+A batch's query that only `Access.public` may read:
+
+
+```jadpo check project=e-batch-system-grant-query expect=policy.system_grant_missing
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `items` runs as the system, which only `Access.public` lets read `Item`
+ --> main.jadpo:46:31
+   |
+46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
+   |                               ^^^^^^^^^^^ runs as `Access.system`
+  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `read:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Item`'s `read:`, or reach `Item` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
+
+A batch's action changing what only `Access.public` may change:
+
+```jadpo check project=e-batch-system-grant-action expect=policy.system_grant_missing
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.public, Access.system]
+        update: [Access.public]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+```
+
+```text output
+error: `mark_seen` runs as the system, which only `Access.public` lets update `Item`
+ --> main.jadpo:46:58
+   |
+46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
+   |                                                          ^^^^^^^^^^^^^^^ runs as `Access.system`
+  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
+  next: Add `Access.system` to `Item`'s `update:`, or reach `Item` from a route instead (human)
+  rule: policy.system_grant_missing
+  help: docs/language/09-policy.html#policy-system-grant-missing
+
+check failed: 1 error, 1 file
+```
+
+### What a run reaches under policy
+
+- **What the summary carries.** An `ImportSummary` holds counts and
+  problems, never a record's fields. `items` shows nothing of the items
+  the run walked, as a count of a query's records doesn't.
+  `items_with_problems` and `problems` count the items whose action
+  failed and say which and why, so they carry what decides whether
+  `each:`'s action fails: what decided each `reject` and `attempt` it
+  runs, and whether an action it calls fails, read of the item and of
+  what the run saved. What decided that the run starts goes with all
+  three.
+- **The item, checked like any call.** Each item is one of the records
+  `from:` finds, the same record all through `each:`'s action, so what
+  that action stores from it, given the item or a field of it, is checked
+  where `each:` calls it, as a call's arguments are.
+- **What a run saves has left its record**, as a value an event carries
+  has ("Subscribers"): it is proved as one from any record of its entity,
+  but for a record a saved tenant id was read from, which is of the
+  tenant the run is limited to. One the starting action was passed is
+  checked where that action is called, the same way.
+- **The run's tenant proves what it reaches.** Every record a run reads is
+  of the tenant it is limited to, so the item, and what decided its
+  action's failures, may be stored wherever that tenant's roles may read
+  them, as a record of an event's tenant may. A record every tenant
+  shares (`Tenancy.shared`) isn't the tenant's.
+- **Every action a run reaches, by its own line.** What a schedule, a
+  subscriber or a batch reaches is checked against the line under
+  `actions:` of every action it reaches, not only the one it runs, and a
+  listed action's line decides its own body's writes wherever it is
+  called from (area 9's Decisions, "Lines of the actions background work
+  calls"). Routes are checked the same way.
+- **What the run's actions show.** Nothing reaches whoever started the
+  run: a failure's fields and a record found by a value are shown to
+  nobody, and a problem keeps only the failure's code.
+- **What `batches.status` gives** is held to what decides the failures of
+  every batch the application starts, since where it is read nothing says
+  which batch a `BatchRun` is: whether each one's `each:` action fails,
+  and whether its `finished:` action fails, which ends it `failed`. Each
+  is held as from any record of its entity, never one of a run's tenant,
+  and with nothing of what the starting action was passed. It is read by
+  a caller of whom nothing is known but what the reading action's line
+  under `actions:` checks as it starts, since the run is found by its
+  `id` alone. A status read inside a batch's own actions goes round, and
+  is solved as calls that go round are. So in an application with a
+  tenant, a run's status shows only what anyone at all, or a role held
+  across the whole application, may read: letting a reader through the
+  record that keeps the run would need the `BatchRun` to say which batch
+  and tenant it is.
+- **No request carries a batch type.** An `Input`, read from a body or,
+  for a `GET` or a `DELETE`, from the query string, and a route's
+  placeholder may not hold a `BatchRun`, a `BatchProgress`, a `RowProblem`
+  or an `ImportSummary`: directly, in a list, a map or an option, in an
+  object, through a type built on one, or through an entity's field
+  holding one (`Sweep.run`), `type.batch_input`. A `BatchState` is a plain
+  enum a request may name. A named query's parameter isn't refused: what
+  is passed to it comes from a route's placeholder or input, which are,
+  or from an action. Area 2 gives a batch type's fields to read, so one
+  named as a type (`BatchRun.id`) is `type.unknown_field`, as is a
+  standard object's field it lacks. A run is reached from `batches.each`,
+  or from a field the caller may read.
+
+An item followed into what its action stores: `post_item` puts a diary's
+confession, which only its owner reads, on a board anyone signed in
+reads:
+
+```jadpo check project=e-batch-item-confession file=journal.jadpo hidden
+type Line = Text {
+    min_length: 1
+    max_length: 200
+}
+
+type DiaryPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Diarist {
+    id: Uuid
+    handle: Line {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: Diarist.handle
+    }
+}
+
+entity Diary {
+    id: Uuid
+    owner_id: Diarist.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Line
+    confession: Line {
+        policy: {
+            read: [owner_id, Access.system]
+        }
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [Access.authenticated, Access.system]
+    }
+}
+
+query diaries(page: DiaryPage) -> Page<Diary> {
+    from: Diary
+    order: [Diary.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+entity Board {
+    id: Uuid
+    text: Line
+
+    policy: {
+        create: [Access.system]
+        read: [Access.authenticated, Access.system]
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "journal_session"
+    }
+}
+```
+
+```jadpo check project=e-batch-item-confession expect=policy.output_field_unproved
+action post_item(diary: Diary) -> Unit {
+    var board_post: Board = Board.create {
+        set: {
+            text: diary.confession
+        }
+    }
+    assert board_post.text == board_post.text
+}
+
+action post_all(page: DiaryPage) -> BatchRun {
+    return batches.each(from: diaries(page), each: diary -> post_item(diary))
+}
+```
+
+```text output
+error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it
+ --> main.jadpo:11:71
+   |
+11 |     return batches.each(from: diaries(page), each: diary -> post_item(diary))
+   |                                                                       ^^^^^ from `Diary.confession`
+  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
+  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 2 files
+```
+
+How many diaries a run refused shows what refused them, a diary's
+confession, to anyone signed in, whom `count_drafts`'s line lets in:
+
+```jadpo check project=e-batch-status-confession file=journal.jadpo hidden
+type Line = Text {
+    min_length: 1
+    max_length: 200
+}
+
+type DiaryPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Diarist {
+    id: Uuid
+    handle: Line {
+        unique: true
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+    }
+}
+
+principal {
+    user: {
+        subject: Diarist.handle
+    }
+}
+
+entity Diary {
+    id: Uuid
+    owner_id: Diarist.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Line
+    confession: Line {
+        policy: {
+            read: [owner_id, Access.system]
+        }
+    }
+
+    policy: {
+        create: [owner_id]
+        read: [Access.authenticated, Access.system]
+    }
+}
+
+query diaries(page: DiaryPage) -> Page<Diary> {
+    from: Diary
+    order: [Diary.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "journal_session"
+    }
+}
+
+policy {
+    actions: {
+        count_drafts: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=e-batch-status-confession expect=policy.output_field_unproved
+type Draft = Failure {
+    kind: FailureKind.rejected
+    message: "This diary is a draft."
+}
+
+type DraftCount = Output {
+    drafts: Int
+}
+
+action check_diary(diary: Diary) fails Draft -> Unit {
+    if (diary.confession == "draft") {
+        reject Draft {}
+    }
+}
+
+action check_all(page: DiaryPage) -> BatchRun {
+    return batches.each(from: diaries(page), each: diary -> check_diary(diary))
+}
+
+action count_drafts(draft_walk: BatchRun) -> DraftCount {
+    var at: BatchProgress = batches.status(draft_walk)
+    return DraftCount {
+        drafts: at.problems
+    }
+}
+```
+
+```text output
+error: `DraftCount.drafts` carries `Diary.confession`, which not every caller of `count_drafts` may read
+ --> main.jadpo:23:17
+   |
+23 |         drafts: at.problems
+   |                 ^^^^^^^^^^^ decided by `Diary.confession`
+  reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.confession` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `confession`.
+  next: Let only those who may read `confession` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
+  rule: policy.output_field_unproved
+  help: docs/language/09-policy.html#policy-output-field-unproved
+
+check failed: 1 error, 2 files
+```
+
+A run's placeholder:
+
+```jadpo check project=e-batch-input-placeholder file=stock.jadpo hidden
+type ShelfCode = Text {
+    min_length: 1
+    max_length: 40
+}
+
+type ItemPage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+entity Item {
+    id: Uuid
+    code: ShelfCode
+    seen: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}
+
+query items(page: ItemPage) -> Page<Item> {
+    from: Item
+    order: [Item.code asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action mark_seen(item: Item) -> Unit {
+    var seen: Item = Item.update(item) {
+        set: {
+            seen: true
+        }
+    }
+    assert seen.seen
+}
+
+action sweep_shelf(page: ItemPage) -> BatchRun {
+    return batches.each(from: items(page), each: item -> mark_seen(item))
+}
+
+action stop_sweep(shelf_run: BatchRun) -> Unit {
+    batches.cancel(shelf_run)
+}
+
+policy {
+    actions: {
+        stop_sweep: [Access.authenticated]
+    }
+}
+```
+
+```jadpo check project=e-batch-input-placeholder expect=type.batch_input
+routes Sweeps {
+    prefix: /sweeps
+
+    DELETE /{shelf_run: BatchRun} {
+        authentication: RouteAuthentication.none
+        status: SuccessStatus.no_content
+        run: stop_sweep(shelf_run)
+    }
+}
+```
+
+```text output
+error: Placeholder `shelf_run` holds a `BatchRun`, which no request carries
+ --> main.jadpo:4:25
+  |
+4 |     DELETE /{shelf_run: BatchRun} {
+  |                         ^^^^^^^^ a `BatchRun`
+  reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
+  next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
+  rule: type.batch_input
+  help: docs/language/12-jobs-and-events.html#type-batch-input
+
+check failed: 1 error, 2 files
+```
+
 ## Declaring an event
 
 An event records that something happened. It is a type with the `Event` base,
@@ -361,6 +1111,33 @@ public type TodoCompleted = Event {
 - An event nothing subscribes to is reported like any unused declaration
   (area 1).
 
+### The event record
+
+An event's shape is recorded, and a change to it shown as a diff, as an
+API's is (decided 2026-10-19). Each domain that declares an event keeps
+one record beside its events, `domains/<domain>/events/events.jadpo_record`,
+a view in the record format (`record events 1`) whose header says it is
+generated from "the events of domain `<domain>`". Every event is
+recorded, not only `public` ones: what is waiting in the outbox when a
+build ships is read with the new shape. There is no command of its own:
+`jadpo records update` writes it, and `jadpo records` lists it.
+
+- **What it holds.** An `event <Name>` entry for each event, `public` when
+  another domain may subscribe to it, then its fields as its payload
+  carries them, in the API record's wire form (`words: Text { max_length:
+  200 }`), then an `object`, `enum`, `input` or `output` entry for each
+  type a field names, written as the API record writes them. Events,
+  fields and types sort by born name. Descriptions are left out, as the
+  API record leaves them out.
+- **How it is checked.** As the API record is (area 18, "Checking a
+  record"): a missing record, one whose events changed
+  (`record.out_of_date`, naming each entry added, changed or removed) and
+  the record of a domain left with no events are put right by
+  `jadpo records update`; a hand edit Jadpo could not have written is
+  `record.edited`. While an event file has errors the record isn't
+  compared. Classifying a change as breaking, and accepting one, wait for
+  area 18's acceptances with the API record's.
+
 ## Emitting an event
 
 `emit` is a statement, written like `reject` (question 4).
@@ -377,14 +1154,31 @@ action complete_todo(todo_id: Todo.id) fails TodoNotFound -> Todo {
 }
 ```
 
-- Only actions emit. Functions and queries cannot, and routes, schedules and
-  subscribers emit by calling an action.
+- Only actions emit, and only events. Functions and queries cannot, nor a
+  test, a fixture or a seed (`event.emit_invalid`), and routes, schedules
+  and subscribers emit by calling an action.
 - The event is saved in the same database transaction as the action's writes
   and delivered only after that transaction commits. If the action fails or
   rolls back, the event is discarded and no subscriber ever sees it. This is
   the transactional outbox pattern, which Laravel (`afterCommit`), Oban
   (insert inside the transaction) and Rails 8
   (`enqueue_after_transaction_commit`) also use.
+- **Where it is kept.** In the outbox of the store the action's
+  transaction is in, written as the action commits, with a delivery
+  record for each subscriber, `pending` and due at once. An action that
+  began no transaction keeps them in the store it writes, or, writing
+  none, the one `events: { store: }` names, beginning its transaction
+  there for them. An action that emits and writes no store, itself or
+  through what it calls, with no `events: { store: }`, is
+  `event.store_required`, even when it reads one, as the decision says
+  "writes". An event nothing subscribes to is still written. Its row
+  keeps its type's key, its payload as the contract's JSON, when it was
+  emitted, the emitting action's `traceparent`, the encoding its payload
+  was written in, and how deep in a chain it is. A route whose action
+  writes no store but emits keeps its `Idempotency-Key`s beside its
+  events (area 7).
+- Past 1,000 events in one action, or an event's JSON past 64 KB, is a
+  defect as it is emitted, and the action rolls back.
 - `emit` needs no `attempt`: it cannot fail with a domain failure, and a
   storage problem is a fault that fails the whole action (areas 3 and 4).
 - `emit` returns nothing. The caller cannot wait for or read what
@@ -412,6 +1206,54 @@ subscriber update_statistics {
 - A subscriber runs as the application, not as the user who caused the event
   (question 8). If it needs to know who, the event carries a field such as
   `by: User.id`.
+- A subscriber holds `on:`, an event type (another domain's public one,
+  imported); `run:`, a call of an action of the subscriber's own domain
+  (`subscriber.run_invalid`) whose arguments are `event` or fields read
+  through it (`subscriber.argument_invalid`), typed against its
+  parameters; and `retry:`. Anything else is `subscriber.item_invalid`.
+
+**What a subscriber stores from its event.** Each action's `emit`s, and
+those of the actions it calls, are part of what it passes to its callers,
+so what an event carries is the union of what every `emit` of it put
+there, with what a request sent left out, and along chains of events what
+a subscriber's action emits from the event it was given. What the
+subscriber's action stores from what it is passed is checked where the
+subscriber passes it, as a call is (area 9, "What a write stores"), and
+refused with `policy.output_field_unproved` at the argument. What decided
+an `emit`, and any `reject` in its action, go with every field of the
+event.
+
+A value from an event has left its record: the record may change or move
+between the `emit` and the delivery, so a value an event carries is
+proved as one from any record of its entity. Of the field's readers, only
+what holds of anyone signed in, or of a role held across the whole
+application, carries over. The one relation kept is the tenant: when the
+event's tenant field came from the very record a value did, that record
+was the tenant's, and the subscriber is limited to that tenant, so the
+value may be stored wherever that tenant's roles read it. A subscriber
+that needs more passes the event's ids and reads the current state, as
+"Declaring an event" advises.
+
+## Background work and tenants
+
+In an application with a `tenant:`, each kind of background work reaches
+one stated set of tenants, and "no tenant" means one thing for each
+(Richard, 2026-10-19; area 9, "Background work"):
+
+| Work | Reaches |
+|---|---|
+| A schedule's run | Every tenant's records: no tenant's event starts it. A run by hand, and a test's `.run()`, too |
+| A subscriber's delivery | The tenant its event's one field of the tenant's `id` type names (`household_id: Household.id`), so the tenant is written in the event where a reviewer sees it. With no such field, more than one, or `none` in it: no tenant's records, only those every tenant shares |
+| A batch's run | The tenant its saved values of the tenant's `id` type name, values naming the same tenant counting as that one ("Batches, tenants and grants"). With none, `none`, or values naming different tenants: no tenant's records, only those every tenant shares |
+
+A schedule names no tenant by design, so it reaches every one; a
+subscriber and a batch name theirs by a value, and a value that names no
+tenant never widens what they reach. In an application without a
+`tenant:`, each reaches every record the system is granted. The value
+naming a subscriber's or a batch's tenant must come from a record of that
+tenant its action reached under its caller's policy, or it is
+`policy.event_tenant_unproved` (area 9, "Background work"), so a caller
+can never aim background work at a tenant they don't belong to.
 
 ## Reacting in another domain
 
@@ -480,7 +1322,14 @@ compare them.
   least once. A crash can deliver it again.
 - **Database work happens once.** The subscriber's writes commit together
   with a record that this delivery was handled, so a repeated delivery finds
-  the record and does nothing.
+  the record and does nothing. The record (`jadpo_handled_deliveries`,
+  keyed by the delivery's `id`) is written after the action's outbox rows,
+  in the store its transaction is in by then: the store it writes, or,
+  writing none, the one `events: { store: }` names, where its events are.
+  So an action that only emits keeps one, and a repeat emits nothing
+  twice; one that neither writes nor emits keeps none, since running it
+  again changes nothing in a database. It references nothing in another
+  store.
 - **Outside calls can repeat.** A provider call cannot join the
   transaction. Each delivery has a stable key (event and subscriber), from
   which the runtime derives the idempotency key each provider operation
@@ -512,7 +1361,31 @@ compare them.
   through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
   numbered every event type in the plan's JSON table, by its identity
   key, for the outbox to write and read its payload through (area 5,
-  "Structured values").
+  "Structured values"). A delivery reads the payload by the encoding its
+  outbox row records (area 19, "Changing a standard type's encoding"):
+  this release's, or none, a payload kept before encodings were recorded,
+  read as encoding 1's. A payload of an encoding this release doesn't
+  read, a later release's after a rollback, is never guessed at: its
+  delivery is parked, `failed` with `payload_unreadable` and why, as a
+  payload that no longer reads as its type is, with its problem (the rule
+  and the field, never the value).
+
+### How a delivery runs
+
+Once the action commits, each delivery is the runner's, after the
+response ("Running background work"). It claims its record in one
+statement (`running`, its lease what is left of the invocation's budget
+and a minute), at the host's time, so a delivery another runner holds, or
+one not due, is left alone. It looks for its handled record, and a
+delivery already handled is marked `succeeded` without running again;
+otherwise it runs the subscriber's action as the system limited to its
+event's tenant ("Background work and tenants"), in a boundary of its own
+and a new span of the event's trace, and records how it ended. A request
+continues a valid W3C `traceparent` it brings, in a span of its own, or
+starts a trace; an event keeps the context of the action that emitted it,
+so what a delivery emits keeps it too. A delivery to a subscriber the
+build no longer has fails as a defect, and an event 16 deep in a chain
+fails with `event_chain_limit`.
 
 ## Several changing calls in one action
 
@@ -669,6 +1542,73 @@ queue the other way, through `receiving`, turns each message into one of
 the app's events in its own outbox ("Events from outside", below), so
 delivery to subscribers stays the runtime's.
 
+### Running background work
+
+The runtime drives one runner for all background work, so the
+interpreter and compiled code run it alike: an action called with its
+arguments as the system, in a boundary of its own, and what it sets off
+run after it. Every piece of deferred work has a record of its own in the
+store, a delivery or a batch run, so none is lost when an invocation
+stops short.
+
+- **After the response, never in it.** A committed action's deliveries,
+  and the batch runs it started, are left for the runner, not run while
+  the request waits (but under `settle:`, area 7). A deployable hands them
+  to its host, which runs them once the response has been handed back:
+  natively a task on the worker thread that answered, with that worker's
+  program, so no thread needs a program of its own; on Workers
+  `waitUntil` (roadmap 8.2). Each piece gets a context of its own, under
+  the host's clock as it starts and with no seed. A host with nothing to
+  run it on, a test's or a tool's, drops it, and the tick picks up what a
+  dropped piece left.
+- **A budget for each invocation.** Every invocation that runs background
+  work (after a response, the tick, or work handed on) is given a budget
+  by its host, at most the 15-minute limit of a run: natively and under
+  `jadpo dev` that limit; a test's host may give less, and Workers' (30
+  seconds after a response, 15 minutes for the cron) are set in roadmap
+  8.2. A tenth of it, at most 5 seconds, is kept back for giving claims
+  back: once no more than that is left, the runner takes no more work.
+- **A run's limit within the budget.** A subscriber's or a schedule's
+  action runs until the 15-minute limit or what is left of the budget
+  before the time kept back, whichever is sooner. Its body is raced,
+  never its commit: the transaction is held open until the body has its
+  value, then committed outside the race, so work that committed is never
+  given back as though it hadn't run, and a body that ends past its limit
+  keeps nothing. A delivery so stopped is settled against its `retry:`
+  budget ("Retries and giving up"); a schedule's run is recorded failed
+  with `deadline_exceeded`. The purge schedule's run is held to the same
+  limit.
+- **Every lease the budget and a minute.** A delivery's claim, a
+  schedule's lease and a batch run's lease last what is left of the
+  claimer's budget and a minute, so a Worker that is ended loses what it
+  held at most 90 seconds after it began; natively, with the whole run
+  limit as its budget, a lease lasts at most 16 minutes. A claim taken
+  while a route waits for its follow-on work lasts the longest deadline a
+  route has, 60 seconds, and the minute.
+- **Work not reached waits in the store.** A delivery an invocation didn't
+  reach stays `pending`, and a batch run waits on its row. What an
+  invocation after a response left goes on in a fresh invocation with a
+  budget of its own (natively a task of its own), once the invocation ran
+  something; one that could run nothing leaves it for the tick rather than
+  hand it on for ever. The tick finds what is due at its time, then runs
+  each piece under the host's clock as that piece starts, so work that
+  takes time never claims with a lease already past.
+- **Stopping gives back as it was.** A native server asked to stop
+  (SIGTERM, or ctrl-c under `jadpo dev`) accepts nothing more, starts no
+  more ticks, and ends every budget at once: the action running stops,
+  nothing it did kept; a delivery is given back `pending`, its attempt not
+  counted, as a route's `within:` gives one back; a batch run's lease is
+  given back; a schedule's run is recorded `deadline_exceeded`, its lease
+  given back. A route waiting for its follow-on work stops waiting, as
+  when `within:` passes. The server waits at most 10 seconds for this,
+  then ends, and `jadpo dev` exits 0; a second signal ends the process at
+  once (143 for SIGTERM, 130 for SIGINT). If the signals can't be
+  watched, `jadpo dev` runs as before, a signal ending it at once:
+  `cli.signal_handler_failed`, in area 14's list, stays unbuilt.
+- A backfill worked out in Jadpo (area 5) runs its rows on the same
+  runner, a batch at a time, each value kept and checked by its field's
+  rules as any value of the field's type is.
+
 ## Events from outside
 
 Decided 2026-10-16 (Richard). Besides events the app's actions emit, four
@@ -757,10 +1697,34 @@ from area 4 (question 7):
 | A defect (`internal_fault`, overflow) | Failed; not retried until someone fixes the code |
 
 - Retries wait longer each time, with full random jitter, so many failures do
-  not retry together; a `Retry-After` from a provider is honoured. By default a subscriber gets 10 attempts within 24 hours,
-  then fails.
-- A subscriber can change its budget; schedules cannot, since the next tick
-  is their retry.
+  not retry together: each wait is drawn evenly from zero to a ceiling
+  that starts at 30 seconds and doubles with each attempt up to 6 hours,
+  and is never under a second. A `Retry-After` from a provider is
+  honoured, once provider calls come (Phase 7). By default a subscriber
+  gets 10 attempts within 24 hours, then fails: a delivery past its
+  attempts, or whose next attempt would fall after `within:` from when
+  the event was emitted, fails.
+- A subscriber can change its budget; schedules cannot, since their next
+  due time is their retry. `retry:` takes `attempts:` from 1 to 100 and
+  `within:` up to 30 days (`subscriber.retry_invalid`).
+- A fault reaching a store, and a run out of time, are retried like
+  `unavailable`. A delivery's record keeps the failure's code and kind,
+  never its fields.
+- **The run limit.** A delivery whose action the run's limit stops
+  ("Running background work") is an attempt that ran out of time
+  (`deadline_exceeded`), settled at once against its budget: tried again
+  after a wait while the budget lasts and failed after, nothing it did
+  kept. So a subscriber that never ends fails after its attempts rather
+  than taking every invocation's budget.
+- **Given up at the claim.** A delivery claimed again over its `retry:`
+  attempts, or later than `within:` after its event was emitted, fails
+  without running. Claiming one a worker held past its lease marks its
+  last failure `lease_expired`, as a schedule's run lost with its worker
+  ends. The claim that gives up isn't counted as an attempt, and the
+  record keeps the last attempt's failure, or `deadline_exceeded` for one
+  never tried in time. A handled record found first still makes it
+  `succeeded`, and a store that can't be reached while looking for one is
+  retried within the same budget.
 
 ```jadpo fragment
 subscriber record_payment_webhook {
@@ -810,34 +1774,122 @@ Schedules fail quietly in most frameworks: a job that stops running produces
 no error at all. Jadpo records and checks every part of a schedule's life
 (Richard, 2026-10-13):
 
-- **Every run is recorded** in a system table: due time, start, end,
-  duration, lateness (start minus due), outcome with its failure, items
-  processed, events emitted, and the trace id, so a run opens as one trace
-  (question 17).
-- **Every tick is recorded too,** including skipped ones and why (lease held,
-  paused), and the last tick received from an external adapter.
-- **`jadpo schedules`** lists each schedule with its last run, next due time,
-  lease holder, recent failures and the adapter's last tick; `run <name>`
-  starts one now (still respecting the lease), `pause` and `resume` stop and
-  start it, and `history <name>` shows past runs.
-- **`jadpo why <schedule>`** answers "why didn't it run?": paused, lease held
-  by a run started at a given time, adapter not ticking since a given time,
-  or the run failed.
-- **Metrics** (area 16's telemetry): run duration, lateness, skipped ticks,
-  failures and items per run, per schedule.
-- **Alerts with no setup:** no successful run within twice the interval;
-  ticks stopped arriving from an external adapter; a run past 80% of the
-  15-minute limit; three failures in a row; a lease held past its expiry.
+- **Every run is recorded** in a system table (`jadpo_schedule_runs`): due
+  time, start, end, outcome (`running`, `succeeded`, `failed`, or
+  `skipped` with `paused` or `lease_held`) with its failure's code and
+  kind, never a value, the records a purge deleted, the events the run
+  kept once it committed, and its `traceparent`, so a run opens as one
+  trace (question 17). Records are kept 30 days.
+- **Every tick is recorded too,** including skipped ones and why (lease
+  held, paused); each state row keeps the last tick that reached it.
+- **`jadpo schedules`** lists each schedule with its last run and next due
+  time (or `‖ paused`), the alerts that hold and a footer. The lease
+  holder is the run holding the lease, shown as the last run `● running`
+  with its start (instances have no names yet), and recent failures are
+  the failed runs since the last success, beside a failed last run
+  (`· 3 in a row`). It succeeds whatever it lists, a failed last run or an
+  alert included, as other listing commands do, and `--json` carries the
+  alerts for a health check.
+- **`pause` and `resume`** set the state row's `paused`, making the row as
+  the first tick would when none has yet; a run under way carries on.
+  Pausing a paused schedule, or resuming one that isn't, changes nothing
+  and says so.
+- **`history <name>`** gives every record, runs and skipped ticks, newest
+  first, 20 a page (`--page <n>`), grouped by UTC day; then the metrics
+  over the records kept: runs, failed runs and skipped ticks, the median
+  and longest duration, and the median and greatest delay (lateness).
+- **The commands read** the database the schedules' state is in: the one
+  `--url` names, else the address its connection's setting gives (area
+  10), else the one a running `jadpo dev` started for the session, which
+  it notes in `build/dev/stores.json` and removes when it stops. There is
+  no `--env` flag: an environment is its configuration. Times are UTC, as
+  schedules count them.
+- **`jadpo why <schedule>`** answers "why didn't it run?" in area 17's
+  shape, the first that holds: paused (and the due times skipped since);
+  no tick since a time; a lease held past its end; a run still holding
+  it; a tick skipped since the last run; the last run failed (its code,
+  kind, failures before it, next due time and trace); it succeeded; not
+  due yet; or no tick has seen it. Its `.jadpo` place is the schedule's
+  declaration, its doc comment's line when it has one. Other alerts
+  follow it.
+- **Metrics** (area 16's telemetry): each run's lateness (start minus due)
+  and duration, measured on the monotonic clock from the run's own time,
+  carried by the tick's result and `jadpo dev`'s `--json` lines, and per
+  schedule by `history`; skipped ticks and failures per schedule. Items
+  per run wait for a schedule run that counts them, as a purge does.
+- **Alerts with no setup,** each a condition worked out from the rows at
+  a time: ticks stopped, when the last tick any schedule received is
+  older than twice the host's tick period; a lease past its end with its
+  run never ended; a run that has taken, or took, 80% of the 15-minute
+  limit; three or more failed runs since the last success; and, unless
+  paused, no success for over twice `every:`, counted from the last
+  success's start (kept on the state row as `last_succeeded_at`, so a
+  monthly schedule isn't lost with its 30-day records) or else from its
+  first due time. Each is a log event (`{"event": "schedule.alert",
+  "alert": …}`, area 14's question 13), printed once by `jadpo dev`;
+  sending it on waits for the hosts' log sink and telemetry (area 16).
 - The console (area 17) shows each schedule's timeline of runs and ticks.
+
+### Running a schedule by hand
+
+`jadpo schedules run <name>` runs a schedule now, paused or not, under
+its lease: refused with `schedules.lease_held`, and nothing done, while a
+run holds it. Its record's reason is `by_hand`, and the grid isn't moved.
+Where it runs depends on the database (Richard, 2026-10-19):
+
+- **Against `jadpo dev`**, the database a running `jadpo dev` noted for
+  that store in `build/dev/stores.json`, it runs the schedule straight
+  away in the command's own process, with the app's settings from the
+  environment over `.env.local`, as the system reaching every tenant at
+  the command's time, its due time when it started, and shows the
+  outcome.
+- **Against a deployment**, any other database, including one
+  `jadpo dev --url` was given, it reads nothing of the application's
+  settings and builds none of its code, so a deployment's settings and
+  secrets never leave its servers. It writes a new run's id to the state
+  row's `run_requested` column (made as the first tick would when none
+  has), and waits for the record with that id. A request while another
+  stands joins it, so several requests before a tick make one run. The
+  tick reads `run_requested` with each state row: a schedule's due run
+  goes first, and a request is run on the same tick only when that left
+  the lease free (the due tick skipped as paused, or none due) and no
+  live lease holds it, so a tick runs a schedule once at most. It takes
+  the lease in one conditional statement that also clears the request,
+  so of two instances one runs it; its record's id is the one requested,
+  its due time the tick's, and what it emits is delivered after it.
+- **The wait.** The command reads the record every 200 ms, timing the
+  wait on its own clock so the two machines' clocks never have to agree.
+  A tick has to take the request within twice the period the application
+  ticks at (the ticks-stopped alert's limit: 2 minutes for a minute's
+  tick), or longer while another run holds the lease, up to the longest
+  lease, 16 minutes, and that again, since it can't know the deployment's
+  budget; otherwise it withdraws the request, unless a tick took it
+  meanwhile, and fails with `schedules.no_tick`: "No tick picked up
+  `<name>`'s run in 2 min", its next step to check the app is running
+  and run it again. Withdrawing keeps a request from running whenever the
+  application next starts, perhaps much later. Once taken, it waits for
+  the run to end; a run still going past the lease's length was lost with
+  its worker (`schedules.run_failed`). A command interrupted while it
+  waits leaves the request, which the next tick runs.
+- **What it shows.** The run's outcome from its record, on the screens
+  above: ``✓ The app's tick ran `<name>` in 12 ms, emitting 1 event``, or
+  the failed run's block; a run that fails exits 1 with
+  `schedules.run_failed`. `--json` carries `"requested": true`, and while
+  it waits the live line says so. `history` lists a requested run once a
+  tick has started it, as a run by hand (due `–`, `· by hand`), and
+  `jadpo dev` prints it with `· by hand`. While a request waits,
+  `jadpo why` adds `request  a run by hand, waiting for the app's next
+  tick`, and `jadpo schedules --json` gives each schedule's
+  `runRequested`.
 
 ## Limits and runtime faults
 
 | Limit | Proposed value | When it is exceeded |
 |---|---|---|
-| Events emitted by one action | 1,000 | Defect: the action fails and rolls back |
+| Events emitted by one action | 1,000, and as many for each item's action of a batch | Defect: the action fails and rolls back |
 | Size of one event | 64 KB | Defect: the action fails and rolls back |
 | Events causing events, from one request | 16 deep | The delivery fails with `event_chain_limit`, stopping loops; paging uses batches, not chains |
-| One run of a subscriber or schedule | The time limit of the route or integration it calls, at most 15 minutes | Treated as a timeout: retried if nothing outside was called, otherwise `outcome_unknown` |
+| One run of a subscriber or schedule | The time limit of the route or integration it calls, at most 15 minutes and what is left of its invocation's budget ("Running background work") | Treated as a timeout: retried if nothing outside was called, otherwise `outcome_unknown` |
 | Changing calls in one action | 8, on its longest path, package actions' calls included | Compile error |
 | One batch of a batch run | 1,000 items or 4 MiB of file, whichever comes first | The batch ends and the next begins |
 
@@ -1851,1341 +2903,43 @@ check failed: 1 error, 2 files
 
 ### Status
 
-Built in chunk 6.1a: the runtime's runner, which drives an executor for
-work no request waits on, as the system caller (area 9): deferred until
-after a response, inline, or once per item in batches; "Chosen in chunk
-6.1a" below. Built in chunk 6.1b: `emit` and the outbox, subscribers,
-delivery after the response, handled records, retries, trace context,
-`events: { store: }` and the outbox sweep, with the errors below that
-name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Built in
-chunk 6.2: schedules, their state and leases, the native minute tick,
-every run and skipped tick recorded, and the tick's sweeps, with the
-errors that name `schedule.`; "Chosen in chunk 6.2" below. Built in
-chunk 6.1c: each domain's event record and what a subscriber stores
-from its event; "Chosen in chunk 6.1c" below. Built in chunk 6.2c: each
-entity's built-in purge schedule, on the tick and in `jadpo schedules`,
-and a test's `schedule.run()`; "Chosen in chunk 6.2c" below;
-on Cloudflare Workers, the cron tick and outbox delivery after commit come in
-chunk 8.2. Webhooks and a package's own events come with packages (Phase
-7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
-below), with tenants and their grants in chunk 6.4c ("Chosen in chunk
-6.4c" below), what a run stores under policy in chunk 6.4d ("Chosen
-in chunk 6.4d" below) and what its status shows, and no request
-carrying a batch type, in chunk 6.6b ("Chosen in chunk 6.6b" below), but for the file helpers, which come in chunk 6.4b, and on
-Workers each run's continuation in a fresh invocation, which chunk 8.2
-checks. Several changing calls in one action, polls and `receiving`
-were decided on 2026-10-16 and come with Phase 7; their errors are built
-with them. Built in chunk 6.2b: watching schedules, `jadpo schedules`
-with `run`, `pause`, `resume` and `history`, `jadpo why <schedule>`, each
-run and alert in `jadpo dev`'s output, the alerts with no setup and the
-metrics, read from the run records; "Chosen in chunk 6.2b" below.
-Built in chunk 6.2d: `jadpo schedules run` against a deployment, which
-asks the application's own tick to run the schedule and waits for its
-record, running it in the command's process only against `jadpo dev`;
-"Chosen in chunk 6.2d" below.
-Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and
-to the limits of background work; "Chosen in chunk 6.6a" below.
-Built in chunk 6.7: background work within its host's budget, every
-lease the budget and a minute, a batch run carried on by time in a
-fresh invocation, and a native server draining as it stops; "Chosen in
-chunk 6.7" below.
-Built in chunk 6.8: background records a later release still reads,
-an outbox row read by the encoding it records, and a batch run named by
-a stable key, its shape canonical type text and its saved values kept
-with their encoding; "Chosen in chunk 6.8" below.
-Sending the metrics and the alerts' log events to a monitoring tool waits
-for telemetry (area 16), and the console's timeline for area 17.
-
-### Chosen in chunk 6.1a
-
-What the page leaves to the runtime about running background work,
-each the most conservative reading:
-
-- **One runner.** The runtime drives an executor for all of it, so the
-  interpreter and compiled code run it the same way: a job is a call of
-  an action with its arguments as the system, in a boundary of its own,
-  and what a job sets off runs after it.
-- **After the response, never in it.** A committed action's events are
-  left for the runner, not delivered while the request waits. A
-  deployable hands what a response left to its host, which runs it once
-  the response has been handed back: Workers' `waitUntil` (chunk 8.2),
-  natively a task on the worker thread that answered, with that worker's
-  program, so no thread needs a program of its own. Each run has a
-  context of its own under the host's clock and no seed, stops at the
-  15-minute limit of one run, and gives the thread back as it checks
-  that limit. A host with nothing to run it on, a test's or a tool's,
-  drops it; the outbox (chunk 6.1b) is what keeps an event, and the
-  minute tick sweeps what a dropped run left. Until subscribers run,
-  nothing receives an event, and a run's outcome is kept nowhere;
-  delivery records keep it from chunk 6.1b.
-- **Inline.** A route that waits for its follow-on work (`settle:`, chunk
-  6.3) runs it in its own invocation, then answers as the caller it was.
-- **Per item.** Each item's action joins its batch's transaction and is
-  undone alone when it fails, as a call whose failure its caller handles
-  is (area 6); the run writes its position in the same transaction, so
-  the items' writes and the position commit together, and the batch's
-  events wait for its commit. A concurrent change found by an item or at
-  the commit keeps nothing, and the run runs the batch again. A backfill
-  worked out in Jadpo (area 5) runs its rows this way, each value kept
-  and checked by its field's rules as any value of the field's type is.
-
-### Chosen in chunk 6.1b
-
-What the page leaves to the build about events, each the most
-conservative reading:
-
-- **Where an event is kept.** In the outbox of the store the action's
-  transaction is in, written as the action commits, with a delivery
-  record for each subscriber, `pending` and due at once, so nothing is
-  written for an action that rolls back. An action that began no
-  transaction keeps them in the store it writes, or, writing none, the
-  one `events: { store: }` names, beginning its transaction there for
-  them. An action that emits and writes no store, itself or through what
-  it calls, with no `events: { store: }`, is `event.store_required`, even
-  when it reads one, as the decision says "writes". An event nothing
-  subscribes to is still written. Its row keeps its type's key, its
-  payload as the contract's JSON, when it was emitted, the emitting
-  action's `traceparent`, the encoding and how deep in a chain it is.
-- **Emitting.** Only an action emits (`event.emit_invalid` in a function,
-  test, fixture or seed), and only an event. Past 1,000 events in one
-  action, or an event's JSON past 64 KB, is a defect as it is emitted, and
-  the action rolls back.
-- **Delivery.** Once the action commits, each delivery is the runner's,
-  after the response: it claims its record in one statement (`running`,
-  its lease the 15-minute limit of a run and a minute), so a delivery
-  another runner holds, or one not due, is left alone; runs the
-  subscriber's action as the system, in a boundary of its own; and
-  records how it ended. No order is promised. A delivery to a subscriber
-  the build no longer has fails as a defect, and an event 16 deep in a
-  chain fails with `event_chain_limit`.
-- **Handled records.** `jadpo_handled_deliveries`, keyed by the
-  delivery's `id`, in the store the subscriber's action writes, inserted
-  in its transaction when it opened one there, so it commits with the
-  writes and references nothing in another store. Before the action runs
-  the runner looks for it, and a delivery already handled is marked
-  succeeded without running again. An action that writes no store keeps
-  none, since running it again changes nothing in a database.
-  *Amended in chunk 6.6a:* one that emits keeps one beside its events.
-- **A subscriber's tenant.** The tenant its event came from is the
-  event's one field holding the tenant's id (`household_id:
-  Household.id`). An event of an application with a tenant that holds no
-  such field, or more than one, limits its subscribers to no tenant: they
-  reach only records every tenant shares. *Flagged:* the pages say the
-  subscriber is limited to its event's tenant without saying how an event
-  knows it; reading it from the event's own field is what a reviewer
-  sees, as `by: User.id` carries who. Recommended as built; the
-  alternative, the tenant of the emitting request's records, depends on
-  data the event doesn't carry.
-- **Retries.** As "Retries and giving up" tables them: a failure of kind
-  `unavailable` or `rate_limited`, a fault reaching a store or a run out
-  of time is retried; any other failure or defect fails at once. Each
-  wait is drawn evenly from zero to a ceiling that starts at 30 seconds
-  and doubles with each attempt up to 6 hours (full jitter), and is never
-  under a second; a delivery past its attempts, or whose next attempt
-  would fall after `within:` from when the event was emitted, fails.
-  `retry:` takes `attempts:` from 1 to 100 and `within:` up to 30 days
-  (`subscriber.retry_invalid`). A record keeps the failure's code and
-  kind, never its fields. `Retry-After` comes with provider calls
-  (Phase 7).
-- **The sweep.** `runner::sweep` delivers up to 100 deliveries of one
-  store that are `pending` past their next attempt or `running` past
-  their lease, oldest first: what a crash between the commit and the
-  delivery, a host that dropped deferred work, or a worker that died
-  holding a lease left. A payload that no longer reads as its type is
-  parked as `failed` with its problem (the rule and the field, never the
-  value). The minute tick that calls it, and deleting delivered events,
-  are chunk 6.2's.
-- **Trace context.** A request continues a valid W3C `traceparent` it
-  brings, in a span of its own, or starts a trace; an event keeps the
-  context of the action that emitted it, and each delivery runs in a new
-  span of that trace, so what it emits keeps it too.
-- **Idempotency keys.** A route whose action writes no store but emits
-  keeps its `Idempotency-Key`s beside its events; one that does neither
-  still keeps none (area 7, chunk 4.2).
-- **What a subscriber holds.** `on:` an event type (another domain's
-  public one, imported), `run:` a call of an action of the subscriber's
-  own domain (`subscriber.run_invalid`) whose arguments are `event` or
-  fields read through it (`subscriber.argument_invalid`), typed against
-  its parameters, and `retry:`; anything else is
-  `subscriber.item_invalid`.
-- **Not yet.** Delivering in tests after each commit and failing a
-  subscriber with a fake (area 13), `jadpo deliveries` and the operator's
-  retry and dismiss (area 14), the circuit breaker, publishing outward,
-  and events from outside (Phase 7) are not built; event records and
-  what a subscriber stores from an event are chunk 6.1c's.
-
-### Chosen in chunk 6.1c
-
-What "Event records" (decided 2026-10-19) and area 9's "Events and
-stores" leave to the build, each the most conservative reading:
-
-- **Where an event record is kept.** One per domain that declares an
-  event, beside its events: `domains/<domain>/events/events.jadpo_record`,
-  a view in the record format (`record events 1`) whose header says it is
-  generated from "the events of domain `<domain>`". Every event is
-  recorded, not only `public` ones: what is waiting in the outbox when a
-  build ships is read with the new shape. There is no command of its own;
-  `jadpo records update` writes it, and `jadpo records` lists it under
-  that command.
-- **What it holds.** An `event <Name>` entry for each event, `public`
-  when another domain may subscribe to it, then its fields as its payload
-  carries them, in the API record's wire form (`words: Text { max_length:
-  200 }`), then an `object`, `enum`, `input` or `output` entry for each
-  type a field names, written as the API record writes them. Events,
-  fields and types sort by born name. Descriptions are left out, as the
-  API record leaves them out.
-- **How it is checked.** As the API record is (area 18, "Checking a
-  record"): a missing record, one whose events changed (`record.out_of_date`,
-  naming each entry added, changed or removed) and the record of a domain
-  left with no events are put right by `jadpo records update`; a hand
-  edit Jadpo could not have written is `record.edited`. While an event
-  file has errors the record isn't compared. Classifying a change as
-  breaking, and accepting one, wait for area 18's acceptances with the
-  API record's.
-- **What a subscriber stores from its event.** Each action's `emit`s, and
-  those of the actions it calls, are part of what it passes to its
-  callers, so what an event carries is the union of what every `emit` of
-  it put there, with what a request sent left out, and along chains of
-  events what a subscriber's action emits from the event it was given.
-  What the subscriber's action stores from what it is passed is checked
-  where the subscriber passes it, as a call is (area 9, "What a write
-  stores"), and refused with `policy.output_field_unproved` at the
-  argument. What decided an `emit`, and any `reject` in its action, go
-  with every field of the event.
-- **A value from an event has left its record.** The record may change or
-  move between the `emit` and the delivery, so a value an event carries is
-  proved as one from any record of its entity: of the field's readers,
-  only what holds of anyone signed in, or of a role held across the whole
-  application, carries over. The one relation kept is the tenant: when the
-  event's tenant field came from the very record a value did, that record
-  was the tenant's, and the subscriber is limited to that tenant, so the
-  value may be stored wherever that tenant's roles read it. A subscriber
-  that needs more passes the event's ids and reads the current state, as
-  "Declaring an event" advises.
-
-### Chosen in chunk 6.2
-
-What the page leaves to the build about schedules, each the most
-conservative reading:
-
-- **When a schedule runs.** Its state row (`jadpo_schedules`) is made by
-  the first tick that sees it, its first run due one `every:` later, and
-  each after that one `every:` on, on the same grid in UTC. The row
-  outlives a restart or a deploy, so neither moves the grid nor adds a
-  run. *Flagged:* "counted in UTC from when the application starts" could
-  mean each start counts afresh; that would add a run, or delay one, on
-  every deploy. Recommended as built.
-- **Missed ticks.** A tick at or past the due time runs it once and moves
-  its next due time to the first grid time after the tick, so ticks missed
-  while the application was down become one run. A due tick that finds
-  the schedule paused, or leased by a run still going, is skipped, not
-  queued: recorded with its reason, and its due time moves on the same
-  way. A changed `every:` takes effect from the earlier of the kept due
-  time and one new interval after the tick.
-- **The lease.** Taken in one conditional statement on the state row (the
-  due time unchanged, not paused, no live lease), so of two instances
-  ticking at once one runs it and the other does nothing. It lasts the
-  15-minute limit of a run and a minute; a run that held it past then was
-  lost with its worker, and its record ends `failed` with `lease_expired`.
-- **A run.** The action, called with nothing, as the system with no
-  tenant (Richard, 2026-10-19), in a context of its own whose `clock.now`
-  is the tick's time throughout, in a new trace, stopped at 15 minutes.
-  Its events are delivered after it on the runner. A failure is recorded
-  with its code and kind and not retried. *Flagged:* "the next tick is the
-  retry" is read as the next due time; the other reading reruns a failing
-  schedule at every minute's tick, which a schedule over a due field
-  doesn't need. Recommended as built. Due schedules run side by side, so a
-  long run holds no other up.
-- **Run records.** `jadpo_schedule_runs`: due, started and ended, outcome
-  (`running`, `succeeded`, `failed` or `skipped` with `paused` or
-  `lease_held`), the failure's code and kind, never a value, the events
-  the run kept once it committed and its `traceparent`. Each state row
-  keeps the last tick that reached it. Records are kept 30 days. Items
-  processed come with batches (chunk 6.4); a log event and the alerts
-  with telemetry and chunk 6.2b.
-- **Where the state is.** `schedules: { store: }`, or the only database
-  (Richard, 2026-10-19); with several and none named, or none at all,
-  each schedule is `schedule.store_required`. `schedules:` holds only
-  `store:` for now: a `trigger:` adapter (question 16) comes with the
-  Workers cron of chunk 8.2. The two tables are in the migration snapshot
-  only when a schedule is declared.
-- **`run:` and `every:`.** `run:` is a call of an action of the
-  schedule's own domain, with no arguments, taking no parameters
-  (`schedule.run_invalid`); `every:` a whole number of seconds, minutes,
-  hours or days above zero (`schedule.every_invalid`); anything else in a
-  schedule is `schedule.item_invalid`. A schedule reaching what only
-  `Access.public` grants is `policy.system_grant_missing`, as a
-  subscriber is (area 9, decided 2026-10-19).
-- **The tick.** `jadpo_runtime::schedules::tick`, which a host calls once
-  a minute, or as often as the shortest `every:` when that is shorter, at
-  least once a second: natively the server's timer on its first worker's
-  thread at each whole period of UTC (`jadpo dev` ticks; a test's or a
-  tool's host doesn't). On Workers the cron trigger is chunk 8.2's and
-  calls the same function. *Flagged:* a minute's cron can't run an
-  `every:` under a minute more than once a minute; recommended for 8.2: a
-  warning on Workers for such a schedule.
-- **The runtime's sweeps.** On each tick, in every store holding the
-  runtime's tables: `runner::sweep` for deliveries left behind; expired
-  idempotency keys deleted (area 7); and an event deleted with its
-  delivery records once every delivery succeeded, 24 hours after it was
-  emitted (one nothing subscribes to too), so a failed delivery's event
-  stays for an operator. Each delete takes 1,000 rows at a time, at most
-  ten times a tick. Handled records stay: deleting them waits until a
-  delivery can no longer repeat is worked out. Batch runs resume through
-  `schedules::HOOKS`, which runs chunk 6.4's `batches::resume`.
-
-### Chosen in chunk 6.2b
-
-What the page leaves to the build about watching schedules, each the
-most conservative reading:
-
-- **Where the commands read.** The database the schedules' state is in:
-  the one `--url` names, else the address its connection's setting gives
-  (area 10), else the one a running `jadpo dev` started for the session,
-  which it notes in `build/dev/stores.json` and removes when it stops.
-  No `--env` flag: area 14 says commands run "against an environment
-  through its configuration" and names none, so an environment is its
-  configuration. Times are UTC, as schedules count them.
-- **The lease holder** is the run holding the lease, shown as the last
-  run `● running` with its start; instances have no names yet. **Recent
-  failures** are the failed runs since the last success, shown beside a
-  failed last run (`· 3 in a row`).
-- **`run <name>`** runs the schedule now in the command's own process,
-  as `jadpo dev` would, with the app's settings from the environment
-  over `.env.local`: under its lease (refused with `schedules.lease_held`
-  while a run holds it), paused or not, as the system with no tenant at
-  the command's time. Its record's reason is `by_hand` and its due time
-  is when it started; the grid isn't moved. *Flagged:* the other reading
-  marks it due so the next tick runs it, which keeps app code on the
-  app's own instances but answers only once a tick comes; recommended
-  as built, so an operator sees the outcome. *Superseded* on 2026-10-19
-  (Richard): only against `jadpo dev` does it run in the command's
-  process; against a deployment the tick runs it ("Chosen in chunk 6.2d"
-  below).
-- **`pause` and `resume`** set the state row's `paused`, making the row
-  as the first tick would when none has yet; a run under way carries on.
-  Pausing a paused schedule, or resuming one that isn't, changes
-  nothing and says so.
-- **`history`**: every record, runs and skipped ticks, newest first, 20
-  a page (`--page <n>`), grouped by UTC day; then the metrics over the
-  records kept (30 days): runs, failed runs and skipped ticks, the median
-  and longest duration, and the median and greatest delay (lateness).
-- **The alerts**, each a condition worked out from the rows at a time:
-  ticks stopped when the last tick any schedule received is older than
-  twice the host's tick period; a lease past its end with its run never
-  ended; a run that has taken, or took, 80% of the 15-minute limit; three
-  or more failed runs since the last success; and, unless paused, no
-  success for over twice `every:`, counted from the last success's start
-  (kept on the state row as `last_succeeded_at`, so a monthly schedule
-  isn't lost with its 30-day records) or else from its first due time.
-  Each is a log event (`{"event": "schedule.alert", "alert": …}`, area
-  14's question 13), printed once by `jadpo dev` when it starts; sending
-  it on waits for the hosts' log sink and telemetry (area 16).
-- **The metrics** are each run's lateness (start minus due) and duration,
-  measured on the monotonic clock from the run's own time, carried by
-  the tick's result and `jadpo dev`'s `--json` lines, and per schedule by
-  `history`. Items per run wait for a schedule run that counts items.
-- **`jadpo why <schedule>`** answers in area 17's shape, the first that
-  holds: paused (and the due times skipped since); no tick since a time;
-  a lease held past its end; a run still holding it; a tick skipped since
-  the last run; the last run failed (its code, kind, failures before it,
-  next due time and trace); it succeeded; not due yet; or no tick has
-  seen it. The `.jadpo` place is the schedule's declaration, its doc
-  comment's line when it has one. Other alerts follow it.
-- **`jadpo schedules` succeeds whatever it lists**, a failed last run or
-  an alert included, as other listing commands do; `--json` carries the
-  alerts for a health check. A run by `run` that fails exits 1 with
-  `schedules.run_failed`.
-
-### Chosen in chunk 6.2c
-
-What the pages leave to the build about the built-in purge schedule, each
-the most conservative reading; schedule tests' choices are in area 13's
-"Chosen in chunk 6.2c":
-
-- **One schedule per entity.** Each entity whose lifecycle has `purge:`,
-  and a store, gets its own schedule, as the decision table says ("a
-  built-in hourly schedule per entity"): named `Member.purge`, after the
-  entity and its operation as `Member.delete` is, and keyed by the
-  entity's born name (`schedule Member.purge`), so a rename keeps its
-  state and run records. Its `.jadpo` place, which `jadpo why` gives, is
-  the lifecycle's `purge:`. It runs every hour on the same grid as any
-  schedule, its first run one hour after the first tick that sees it.
-- **Recorded and watched like any schedule.** Its state row, lease and
-  run records are 6.2's (`jadpo_schedules`, `jadpo_schedule_runs`), in
-  `schedules: { store: }` or the only database; so the two tables are in
-  the migration snapshot when an entity purges, as when a schedule is
-  declared. With several databases and none named, the lifecycle's
-  `purge:` is `schedule.store_required`, suggesting the entity's own
-  store, and `migration.out_of_date` waits until it is named, since the
-  schema has nowhere to put the tables. `jadpo schedules` lists it,
-  `history`, `pause`, `resume`, `run` and `jadpo why` take its name, and
-  `jadpo dev` prints each run; the alerts and metrics read its records.
-- **A run.** The runtime's purge entry point (area 5) at the tick's time,
-  outside every action and policy, at most `PURGE_BATCHES` (20) batches
-  of 500, stopped at the 15-minute limit of a run; what it leaves the
-  next hour's run carries on. The period is its `after:`, or the value
-  the application started with for the setting it reads (the executor's
-  `purge`). It emits nothing. A store that can't be reached is a failed
-  run with `unavailable`, as for an action; anything else the store
-  refuses is `internal_fault`, the batches before it staying deleted.
-- **What it deleted.** Run records gain an `items` column, the items a
-  run processed, which only a purge counts for now: the records it
-  deleted. The screens show a purge's run as `2 records purged` where an
-  action's shows its events, and `jadpo dev`'s `--json` line carries
-  `items` and `batches`, how many each batch deleted (area 5: "each run
-  reports how many records each batch deleted, which the schedule logs").
-  Metrics of items per run still wait for batches' runs to count theirs.
-
-### Chosen in chunk 6.2d
-
-What Richard's decision on `jadpo schedules run` (2026-10-19, "Decisions"
-below) leaves to the build, each the most conservative reading:
-
-- **Which is `jadpo dev`.** The database the schedules' state is in
-  (found as in 6.2b) is `jadpo dev`'s when it is the address a running
-  `jadpo dev` noted for that store in `build/dev/stores.json`, the
-  databases it started for the session. There the command runs the
-  schedule in its own process as 6.2b built it. Any other database,
-  including one `jadpo dev --url` was given, which it doesn't note, is a
-  deployment's.
-- **The request.** Against a deployment the command reads nothing of the
-  application's settings and builds none of its code: it writes a new
-  run's id to the state row's `run_requested` column (made as the first
-  tick would when none has), and waits for the record with that id. A
-  request while a run holds the lease is refused with
-  `schedules.lease_held`, as on `jadpo dev`, and nothing is written. A
-  request while another stands joins it: both wait for the same run, so
-  several requests before a tick make one run.
-- **How the tick picks it up.** `schedules::tick` reads `run_requested`
-  with each state row. A schedule's due run goes first; a request is run
-  on the same tick only when that left the lease free (the due tick
-  skipped as paused, or none due) and no live lease holds it, so a tick
-  runs a schedule once at most and a request otherwise waits for the
-  next. It takes the lease in one conditional statement that also
-  clears the request, so of two instances one runs it, paused or not, as
-  6.2b's `run` is. The run is 6.2b's run by hand: its record's id is the
-  one requested, its reason `by_hand`, its due time the tick's, and the
-  grid isn't moved; what it emits is delivered after it on the runner,
-  and `jadpo dev` prints it with `· by hand`.
-- **The wait and its time limit.** The command reads the record every
-  200 ms, timing the wait on its own clock so the two machines' clocks
-  never have to agree. A tick has to take the request within twice the
-  period the application ticks at (the ticks-stopped alert's limit: 2
-  minutes for a minute's tick), or longer while another run holds the
-  lease, up to the lease's 16 minutes and that again; otherwise the
-  command withdraws the request, unless a tick took it meanwhile, and
-  fails with `schedules.no_tick`: "No tick picked up `<name>`'s run in
-  2 min", its reason that the app's own server runs it on its next tick,
-  that none came, and that the request was taken back and nothing ran,
-  and its next step to check the app is running and run it again. Once
-  taken, it waits for the run to end; a run still going past the lease's
-  length was lost with its worker (`schedules.run_failed`). A command
-  interrupted while it waits leaves the request, which the next tick
-  runs. *Flagged:* leaving the request on a timeout would run it
-  whenever the application next starts, perhaps much later; withdrawing
-  is recommended as built.
-- **What it shows.** The run's outcome on 6.2b's screens, from its
-  record: ``✓ The app's tick ran `<name>` in 12 ms, emitting 1 event``, or
-  the failed run's block with `schedules.run_failed`; `--json` carries
-  `"requested": true`. While it waits, the live line says so.
-- **`history` and `why`.** `history` lists records only, so a requested
-  run appears once a tick has started it, as a run by hand (due `–`,
-  `· by hand`), as on `jadpo dev`. `jadpo why` answers as before and,
-  while a request waits, adds `request  a run by hand, waiting for the
-  app's next tick`; `jadpo schedules --json` gives each schedule's
-  `runRequested`.
-- **The column.** `run_requested uuid` on `jadpo_schedules`, in the
-  migration snapshot with the state table; examples 10 and 25 gain a
-  migration adding it.
-
-### Chosen in chunk 6.4
-
-What the page leaves open about batches, each the most conservative
-reading; the file helpers wait for chunk 6.4b:
-
-- **A batch is a page.** Each transaction is one page of `from:`, at the
-  size its query's `page:` reads, so 60 items in pages of 3 commit 20
-  times. A page type allowing more than the 1,000 items of one batch
-  ("Limits and runtime faults") isn't split yet; `PageSize` stops at 100.
-- **Where a run is kept.** In the store `from:`'s query reads: one row
-  per run in `jadpo_batch_runs` (which call, the shape it was started
-  under, its `key:`, what it saved as its types' JSON, the cursor of the
-  next page, its counts, its state and its runner's lease), each problem
-  in `jadpo_batch_problems`, and each cancel asked for in
-  `jadpo_batch_cancels`; only a store some batch walks has them. Starting
-  a run writes that store, and `each:`'s and `finished:`'s actions may
-  write no other (`store.action_spans_stores`), so an item's writes and
-  the position always commit together. A run always has its query's
-  store, so it never needs `events: { store: }`.
-- **Starting.** The run's row is written in the starting action's
-  transaction, and the run is left for after the response at once
-  (`Deferred::Batch`); an action that rolls back left no row, so the
-  runner finds nothing to run. A start keyed with `key:` that finds the
-  same call's run with the same key (by its contract JSON), in the same
-  tenant (chunk 6.6c), gives that run,
-  in whatever state, whatever else the call was given; a start without
-  one is always a new run. A start needs no outbox row: its run's row is
-  as durable, and the resume sweep below picks up a start a host
-  dropped, as the outbox sweep does a delivery (chunk 6.1b).
-- **Saved values.** `each:`'s and `finished:`'s arguments are the item
-  (or the summary), a field inside it, or a value that reads nothing of
-  it, worked out as the run starts and saved with it; anything that
-  works something out of the item is `type.batch_each_invalid`, and is
-  the action's to work out. `from:`'s query's arguments are saved as
-  what a request carries, an `Input` among them; what `each:` and
-  `finished:` capture, and `key:`, as an entity field holds a value, so
-  an `Input` there is `type.batch_capture_not_storable`. A secret is
-  never saved.
-- **Problems.** An item whose action fails is undone alone and becomes a
-  problem: its row is its place in the walk, from 1, its column empty
-  (a query's item has no columns; the file helpers fill it), its rule the
-  failure's code. One whose action faults with a defect or an overflow
-  is a problem too, its rule the fault's classification
-  (`internal_fault`, `int_overflow`), and is undone alone as a failure
-  is. A store that can't be reached, a deadline or another transaction's
-  change is no item's: the whole batch is undone; one another
-  transaction's change undid runs again, up to three times, and
-  otherwise the run waits for the sweep.
-- **Finishing.** `finished:` runs once after the last page, in a
-  transaction of its own, given the `ImportSummary` with every problem
-  in row order, and the run is `finished` in the same transaction. If
-  its action fails, what it wrote is undone and the run is `failed`
-  with the failure's code. A cancelled run doesn't run `finished:`.
-- **Cancelling.** `batches.cancel` keeps a row of its own in the calling
-  action's transaction and never touches the run's, so it never waits
-  for the batch in hand; the next batch finds it and ends the run
-  `cancelled`. Until then `batches.status` says `running`.
-- **Status.** `batches.status` reads the counts and the state in the
-  calling action's transaction; `estimated_total` is `none` until a
-  query's count is built. A `BatchRun` no store keeps is a fault. Both
-  find a run by its `id` alone, so they need the application's runs in
-  one store: with none, or more than one, they are
-  `toolchain.not_built_yet`.
-- **Resuming.** A runner holds its run by a lease of two minutes,
-  renewed with each page's commit. `batches::resume` picks up every run
-  still running whose lease has lapsed, from the position that
-  committed: the runtime's minute tick calls it (chunk 6.2). A run whose
-  call a deploy changed (its query, its actions or what it saves) ends
-  `failed` rather than reading what it saved as something else; listing
-  such runs before a deploy is area 14's `jadpo runs unfinished`. A
-  runner hands its run on after 500 pages, so one invocation stays within
-  the 15 minutes one run has.
-- **Who runs it.** Each page's read, its items and `finished:` act as the
-  system with no tenant, and read the clock as their batch began; each
-  batch begins at repeatable read when `each:`'s or `finished:`'s action
-  loads a record, read committed otherwise. *Flagged:* which tenant a run
-  an action starts is limited to isn't decided, so `batches.each` in an
-  application with a `tenant:` is `toolchain.not_built_yet`; recommended:
-  as chunk 6.1b limits a subscriber to its event's one field holding the
-  tenant's id, a run is limited to the tenant its one saved value holding
-  a tenant's id names (a `from:` argument, a capture or `key:`), and to
-  no tenant when none or several do.
-  *Flagged too:* a batch whose query or actions reach what only
-  `Access.public` grants isn't refused yet; recommended: the same compile
-  error as a schedule's or a subscriber's (area 9, 2026-10-19), with
-  6.1b's check.
-- **Names.** `batches` is a standard namespace, so, as every one, it
-  names no variable: area 19's and example 4's `batches` variables were
-  renamed. An inline function is now also a named argument's value
-  (`each: row -> ...`), as area 3 decided.
-
-### Chosen in chunk 6.4c
-
-What the decisions of 2026-10-19 on a batch's tenant and its grants
-leave to the build, each the most conservative reading:
-
-- **A run's tenant.** In an application with a `tenant:`, each page's
-  read, its items and `finished:` act as the system limited to the
-  tenant the run's saved values holding a tenant's id name: a `from:`
-  argument, a value `each:` or `finished:` captures, or `key:`, whose
-  own type is the tenant's `id` (`Household.id`, or one that may be
-  `none`), as chunk 6.1b reads an event's own field. A tenant's id held
-  inside a saved record doesn't count. The run reads them from what it
-  saved, so it has the same tenant each time it resumes. A run that
-  saves no such value, or one that is `none`, reaches no tenant's
-  records, only those every tenant shares. An application without a
-  `tenant:` runs batches as before, reaching every record the system
-  is granted.
-- **Several saved tenant ids.** Read as several tenants: values that all
-  name the same tenant (`key: household_id` beside an `each:` capturing
-  `household_id`) limit the run to it, and values naming different
-  tenants reach no tenant's records. *Flagged:* the decision says "none
-  or several"; counting the values instead, so any two reach no tenant,
-  would make the usual `key:` beside a capture of the same id reach
-  nothing at all. Recommended as built.
-- **Batches and `Access.public`.** As for a schedule or a subscriber:
-  what `from:`'s query reads, or the action `each:` or `finished:` calls
-  reaches, itself or through what it calls, where a grant list, a
-  field's own list or the action's line under `actions:` names
-  `Access.public` and not `Access.system`, is
-  `policy.system_grant_missing`, at that query's or action's call. Each
-  call is checked, so one batch may be refused at more than one.
-
-A batch's query that only `Access.public` may read:
-
-```jadpo check project=e-batch-system-grant-query expect=policy.system_grant_missing
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.public]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.code asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_seen(item))
-}
-```
-
-```text output
-error: `items` runs as the system, which only `Access.public` lets read `Item`
- --> main.jadpo:46:31
-   |
-46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
-   |                               ^^^^^^^^^^^ runs as `Access.system`
-  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `read:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
-  next: Add `Access.system` to `Item`'s `read:`, or reach `Item` from a route instead (human)
-  rule: policy.system_grant_missing
-  help: docs/language/09-policy.html#policy-system-grant-missing
-
-check failed: 1 error, 1 file
-```
-
-A batch's action changing what only `Access.public` may change:
-
-```jadpo check project=e-batch-system-grant-action expect=policy.system_grant_missing
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.authenticated]
-        read: [Access.public, Access.system]
-        update: [Access.public]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.code asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_seen(item))
-}
-```
-
-```text output
-error: `mark_seen` runs as the system, which only `Access.public` lets update `Item`
- --> main.jadpo:46:58
-   |
-46 |     return batches.each(from: items(page), each: item -> mark_seen(item))
-   |                                                          ^^^^^^^^^^^^^^^ runs as `Access.system`
-  reason: A batch runs as the system, which an entity grants background work by naming `Access.system`; `Item`'s `update:` names `Access.public` and not `Access.system`, and anyone at all is never how background work is let in.
-  next: Add `Access.system` to `Item`'s `update:`, or reach `Item` from a route instead (human)
-  rule: policy.system_grant_missing
-  help: docs/language/09-policy.html#policy-system-grant-missing
-
-check failed: 1 error, 1 file
-```
-
-### Chosen in chunk 6.4d
-
-What area 9's "What a write stores" and "What decides a value" leave
-to the build for a batch's run (found in chunk 6.5), each the most
-conservative reading:
-
-- **What the summary carries.** An `ImportSummary` holds counts and
-  problems, never a record's fields. `items` shows nothing of the items
-  the run walked, as a count of a query's records doesn't.
-  `items_with_problems` and `problems` count the items whose action
-  failed and say which and why, so they carry what decides whether
-  `each:`'s action fails: what decided each `reject` and `attempt` it
-  runs, and whether an action it calls fails, read of the item and of
-  what the run saved. What decided that the run starts goes with all
-  three. Until now the summary was given the walked records and each
-  item's result, so an application with a tenant could store nothing
-  of it, and the error named fields no record has.
-- **The item.** Each item is one of the records `from:` finds, the same
-  record all through `each:`'s action, so what that action stores from
-  it is checked where `each:` calls it, as a call's arguments are.
-  Until now the item carried nothing, and what it stored went
-  unchecked.
-- **What a run saves.** A value `from:`, `each:`, `finished:` or `key:`
-  saves has left its record, as a value an event carries has (chunk
-  6.1c): it is proved as one from any record of its entity, but for a
-  record a saved tenant id was read from, which is of the tenant the run
-  is limited to. One the starting action was passed is checked where
-  that action is called, the same way.
-- **The run's tenant proves what it reaches.** Every record a run reads
-  is of the tenant it is limited to, so the item, and what decided its
-  action's failures, may be stored wherever that tenant's roles may read
-  them, as a record of an event's tenant may (chunk 6.1c). A record
-  every tenant shares (`Tenancy.shared`) isn't the tenant's.
-- **A reference names the tenant.** A saved value of a field declared
-  with the tenant's `id` type, as a reference to the tenant is
-  (`rent_round.society_id`), names the run's tenant as a `Society.id`
-  does. Chunk 6.4c read only the latter, so example 25's run reached no
-  society.
-- **What the run's actions show.** Nothing reaches whoever started the
-  run: a failure's fields and a record found by a value are shown to
-  nobody, and a problem keeps only the failure's code.
-- *Flagged:* `batches.status` shows its caller how many items have
-  failed so far, which what decides `each:`'s failures decides, and
-  isn't held to it yet, since where it is read nothing says which batch
-  a `BatchRun` is. Recommended: hold what it gives to what decides the
-  failures of every batch the application starts; built so in chunk 6.6b.
-
-### Chosen in chunk 6.6b
-
-What the Phase 6 review found the proofs of background work still left
-open, each the most conservative reading (area 9, "Background work"):
-
-- **The item, checked like any call.** Each item is one of the records
-  `from:` finds, followed into what `each:`'s action stores, whether it
-  is given the item or a field of it, as chunk 6.4d built; the review's
-  case, a diary's confession posted where anyone signed in reads it, is
-  refused, with or without a tenant.
-- **Every action a run reaches, by its own line.** What a schedule, a
-  subscriber or a batch reaches is checked against the line under
-  `actions:` of every action it reaches, not only the one it runs, and a
-  listed action's line decides its own body's writes wherever it is
-  called from, as the plan builds them (area 9, "Lines of the actions
-  background work calls"). Routes are checked the same way.
-- **No request carries a batch type.** An `Input`, read from a body or,
-  for a `GET` or a `DELETE`, from the query string, and a route's
-  placeholder may not hold a `BatchRun`, a `BatchProgress`, a
-  `RowProblem` or an `ImportSummary`: directly, in a list, a map or an
-  option, in an object, through a type built on one, or through an
-  entity's field holding one (`Sweep.run`), `type.batch_input`. A
-  `BatchState` is a plain enum a request may name. A named query's
-  parameter isn't refused: what is passed to it comes from a route's
-  placeholder or input, which are, or from an action. Area 2 gives a
-  batch type's fields to read, so one named as a type (`BatchRun.id`)
-  is `type.unknown_field`, as is a standard object's field it lacks;
-  until now either stood for nothing and let any value through. A run
-  is reached from `batches.each`, or from a field the caller may read.
-- **What `batches.status` gives.** As recommended in chunk 6.4d, a
-  run's status is held to what decides the failures of every batch the
-  application starts, since where it is read nothing says which batch a
-  `BatchRun` is: what decides whether each one's `each:` action fails,
-  and whether its `finished:` action fails, which ends it `failed`. Each
-  is held as from any record of its entity, never one of a run's tenant,
-  and with nothing of what the starting action was passed. It is read by
-  a caller of whom nothing is known but what the reading action's line
-  under `actions:` checks as it starts, since the run is found by its
-  `id` alone. A status read inside a batch's own actions goes round, and
-  is solved as calls that go round are.
-- *Flagged:* the status of a run in an application with a tenant shows
-  only what anyone at all, or a role held across the whole application,
-  may read, since no reader is known to belong to the run's tenant;
-  letting a reader through the record that keeps the run needs the
-  `BatchRun` to say which batch and tenant it is, which a later chunk
-  would decide.
-
-The review's case: `post_item` puts a diary's confession, which only its
-owner reads, on a board anyone signed in reads:
-
-```jadpo check project=e-batch-item-confession file=journal.jadpo hidden
-type Line = Text {
-    min_length: 1
-    max_length: 200
-}
-
-type DiaryPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Diarist {
-    id: Uuid
-    handle: Line {
-        unique: true
-    }
-
-    policy: {
-        create: [Access.public]
-        read: [id]
-    }
-}
-
-principal {
-    user: {
-        subject: Diarist.handle
-    }
-}
-
-entity Diary {
-    id: Uuid
-    owner_id: Diarist.id {
-        on_delete: OnDelete.cascade
-    }
-    title: Line
-    confession: Line {
-        policy: {
-            read: [owner_id, Access.system]
-        }
-    }
-
-    policy: {
-        create: [owner_id]
-        read: [Access.authenticated, Access.system]
-    }
-}
-
-query diaries(page: DiaryPage) -> Page<Diary> {
-    from: Diary
-    order: [Diary.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-entity Board {
-    id: Uuid
-    text: Line
-
-    policy: {
-        create: [Access.system]
-        read: [Access.authenticated, Access.system]
-    }
-}
-
-authentication {
-    browser_session: {
-        cookie: "journal_session"
-    }
-}
-```
-
-```jadpo check project=e-batch-item-confession expect=policy.output_field_unproved
-action post_item(diary: Diary) -> Unit {
-    var board_post: Board = Board.create {
-        set: {
-            text: diary.confession
-        }
-    }
-    assert board_post.text == board_post.text
-}
-
-action post_all(page: DiaryPage) -> BatchRun {
-    return batches.each(from: diaries(page), each: diary -> post_item(diary))
-}
-```
-
-```text output
-error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it
- --> main.jadpo:11:71
-   |
-11 |     return batches.each(from: diaries(page), each: diary -> post_item(diary))
-   |                                                                       ^^^^^ from `Diary.confession`
-  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
-  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
-  rule: policy.output_field_unproved
-  help: docs/language/09-policy.html#policy-output-field-unproved
-
-check failed: 1 error, 2 files
-```
-
-How many diaries a run refused shows what refused them, a diary's
-confession, to anyone signed in, whom `count_drafts`'s line lets in:
-
-```jadpo check project=e-batch-status-confession file=journal.jadpo hidden
-type Line = Text {
-    min_length: 1
-    max_length: 200
-}
-
-type DiaryPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Diarist {
-    id: Uuid
-    handle: Line {
-        unique: true
-    }
-
-    policy: {
-        create: [Access.public]
-        read: [id]
-    }
-}
-
-principal {
-    user: {
-        subject: Diarist.handle
-    }
-}
-
-entity Diary {
-    id: Uuid
-    owner_id: Diarist.id {
-        on_delete: OnDelete.cascade
-    }
-    title: Line
-    confession: Line {
-        policy: {
-            read: [owner_id, Access.system]
-        }
-    }
-
-    policy: {
-        create: [owner_id]
-        read: [Access.authenticated, Access.system]
-    }
-}
-
-query diaries(page: DiaryPage) -> Page<Diary> {
-    from: Diary
-    order: [Diary.id asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-authentication {
-    browser_session: {
-        cookie: "journal_session"
-    }
-}
-
-policy {
-    actions: {
-        count_drafts: [Access.authenticated]
-    }
-}
-```
-
-```jadpo check project=e-batch-status-confession expect=policy.output_field_unproved
-type Draft = Failure {
-    kind: FailureKind.rejected
-    message: "This diary is a draft."
-}
-
-type DraftCount = Output {
-    drafts: Int
-}
-
-action check_diary(diary: Diary) fails Draft -> Unit {
-    if (diary.confession == "draft") {
-        reject Draft {}
-    }
-}
-
-action check_all(page: DiaryPage) -> BatchRun {
-    return batches.each(from: diaries(page), each: diary -> check_diary(diary))
-}
-
-action count_drafts(draft_walk: BatchRun) -> DraftCount {
-    var at: BatchProgress = batches.status(draft_walk)
-    return DraftCount {
-        drafts: at.problems
-    }
-}
-```
-
-```text output
-error: `DraftCount.drafts` carries `Diary.confession`, which not every caller of `count_drafts` may read
- --> main.jadpo:23:17
-   |
-23 |         drafts: at.problems
-   |                 ^^^^^^^^^^^ decided by `Diary.confession`
-  reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.confession` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `confession`.
-  next: Let only those who may read `confession` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
-  rule: policy.output_field_unproved
-  help: docs/language/09-policy.html#policy-output-field-unproved
-
-check failed: 1 error, 2 files
-```
-
-A run's placeholder:
-
-```jadpo check project=e-batch-input-placeholder file=stock.jadpo hidden
-type ShelfCode = Text {
-    min_length: 1
-    max_length: 40
-}
-
-type ItemPage = Input {
-    page_size: PageSize {
-        default: 25
-    }
-    after: PageCursor {
-        optional: true
-    }
-}
-
-entity Item {
-    id: Uuid
-    code: ShelfCode
-    seen: Bool
-
-    policy: {
-        create: [Access.public]
-        read: [Access.public, Access.system]
-        update: [Access.system]
-    }
-}
-
-query items(page: ItemPage) -> Page<Item> {
-    from: Item
-    order: [Item.code asc]
-    page: {
-        size: page.page_size
-        after: page.after
-    }
-}
-
-action mark_seen(item: Item) -> Unit {
-    var seen: Item = Item.update(item) {
-        set: {
-            seen: true
-        }
-    }
-    assert seen.seen
-}
-
-action sweep_shelf(page: ItemPage) -> BatchRun {
-    return batches.each(from: items(page), each: item -> mark_seen(item))
-}
-
-action stop_sweep(shelf_run: BatchRun) -> Unit {
-    batches.cancel(shelf_run)
-}
-
-policy {
-    actions: {
-        stop_sweep: [Access.authenticated]
-    }
-}
-```
-
-```jadpo check project=e-batch-input-placeholder expect=type.batch_input
-routes Sweeps {
-    prefix: /sweeps
-
-    DELETE /{shelf_run: BatchRun} {
-        authentication: RouteAuthentication.none
-        status: SuccessStatus.no_content
-        run: stop_sweep(shelf_run)
-    }
-}
-```
-
-```text output
-error: Placeholder `shelf_run` holds a `BatchRun`, which no request carries
- --> main.jadpo:4:25
-  |
-4 |     DELETE /{shelf_run: BatchRun} {
-  |                         ^^^^^^^^ a `BatchRun`
-  reason: Only the runtime builds a `BatchRun`: a run comes from `batches.each`, or from a field the caller may read where the application kept it, and `batches.status` and `batches.cancel` find it by its `id` alone. A request that named one could read or stop any run.
-  next: Take the `id` of the record that keeps the run, and read the `BatchRun` from its field (agent)
-  rule: type.batch_input
-  help: docs/language/12-jobs-and-events.html#type-batch-input
-
-check failed: 1 error, 2 files
-```
-
-### Chosen in chunk 6.6a
-
-What the Phase 6 soundness review found the build left open about
-delivering once and the limits of background work, each the most
-conservative reading:
-
-- **A handled record wherever the action's transaction is.** A
-  subscriber's handled record is written after its action's outbox
-  rows, in the store its transaction is in by then: the store it writes,
-  or, writing none, the one `events: { store: }` names, where its events
-  are. So an action that only emits keeps one, and a repeated delivery
-  finds it and emits nothing twice. One that neither writes nor emits on
-  a run still keeps none: running it again changes nothing.
-- **Each piece at the host's time.** The sweep finds what is due at the
-  tick's time, then runs each delivery, and what it sets off, under the
-  host's clock as that piece starts. A delivery's claim, its lease and
-  its next attempt count from the host's time at the claim, so work
-  that takes time never claims with a lease already past. A host with no
-  clock, a test's, uses the tick's time or the context's.
-- **A batch run keeps its chain's depth.** A run's row keeps how deep in
-  a chain of events the action that started it was
-  (`jadpo_batch_runs.depth`), and its items run at that depth, so what
-  they emit is one deeper than the event that started the run, and a
-  loop through a batch stops at 16 as any loop does. A run kept before
-  the column existed counts from 0. The two examples with batches gained
-  a migration adding the column.
-- **1,000 events per item.** Each item's action, and `finished:`'s, has
-  the allowance of one action's events to itself, however many the
-  items before it in the page emitted; the page's transaction may keep
-  more than 1,000.
-- **Over budget or past `within:` at the claim.** A delivery claimed
-  again over its `retry:` attempts, or later than `within:` after its
-  event was emitted, fails without running. Claiming one a worker held
-  past its lease marks its last failure `lease_expired`, as a schedule's
-  run lost with its worker ends. The claim that gives up isn't counted
-  as an attempt, and the record keeps the last attempt's failure, or
-  `deadline_exceeded` for one never tried in time. A handled record
-  found first still makes it `succeeded`, and a store that can't be
-  reached while looking for one is retried within the same budget.
-- **The run limit.** A delivery whose action the 15-minute limit of a
-  run stops is an attempt that ran out of time (`deadline_exceeded`),
-  settled at once against its budget: tried again after a wait while
-  the budget lasts and failed after, nothing it did kept. It no longer
-  keeps its claim until its lease passes.
-- **`within:` races the body, never the commit.** As a route holds its
-  action's commit until its deadline can no longer interrupt it (area
-  7), `settle:` races only a subscriber's body against `within:`: the
-  transaction is held open until the body has its value, then committed
-  outside the race, so a delivery whose work committed is never given
-  back as though it hadn't run. A concurrent change found at that
-  commit runs the body again, up to three times, as the boundary does.
-- **Batch runs kept 30 days.** On each tick, in every store that keeps
-  batch runs, a run that ended (finished, failed or cancelled) 30 days
-  or more ago is deleted with its problems and its cancel, as are
-  cancels as old of runs no store keeps (asked of a `BatchRun` a field
-  held after its run was deleted): a thousand rows at a time, at most
-  ten times a tick, as the tick's other deletes. A run still going is
-  never deleted, however old.
-
-### Chosen in chunk 6.6c
-
-What "The tenant background work names" (area 9's Decisions) and "A
-batch's `key:` with tenants" (below) leave to the build, each the most
-conservative reading:
-
-- **What proves a tenant.** An event's one field of the tenant's `id`
-  type, which its subscribers are limited to (chunk 6.1b), and each value
-  a batch's run saves of that type (chunk 6.4c) hold only values naming a
-  tenant the action reached under its caller's policy: the tenant's own
-  `id`, or the tenancy reference of a record of it, that the action, or an
-  action or query it calls, read, created or changed; the same of a record
-  the action is handed whole; or what a create that runs whenever the
-  action does set a record's tenancy reference from, since the create
-  needs the caller's membership there and the action fails with it. A
-  create inside an `if`, a `match`, a loop or after a `return` that may
-  leave first proves nothing. Anything else, a parameter holding an id
-  among them, is `policy.event_tenant_unproved` at the value; what decided
-  the value is no part of it.
-- **A record handed whole counts as read.** A route passes placeholders,
-  `input` and the caller, and a subscriber its event's fields, so only a
-  body that read a record, with the same caller, or a run limited to its
-  tenant, can hand one to an action. Example 25's
-  `invoice_round(rent_round: RentRound)` names its run's society from
-  `rent_round.society_id` as before.
-- **Checked where it is emitted or started.** In the action whose `emit`
-  or `batches.each` it is, never at its callers: an action that emits from
-  a parameter is refused even when every action calling it passes a proved
-  id, since a route may call it too. Pass it the record instead. A
-  subscriber's action passing its event's tenant on, to another `emit` or
-  a batch, reads a record of it first, as "Declaring an event" advises for
-  anything more than ids. *Flagged:* knowing which actions only background
-  work calls would let such an action pass its event's tenant on unread;
-  recommended as built, one rule for every action.
-- **A batch's key.** A run's row keeps the tenant it is limited to
-  (`jadpo_batch_runs.tenant`: all zeros when it reaches no tenant's
-  records or the application has none), and its unique constraint is the
-  call, the tenant and the key, with a migration in examples 24 and 25. A
-  start finds the run of the same call with the same key in its own
-  tenant. A run kept before the migration has no tenant and no later
-  start finds it, since nothing says which tenant its key was given in.
-  *Flagged:* a keyed run still going when the migration is deployed may
-  be started again by a retry after it; recommended as built, since
-  finding it could hand one tenant another's run, the fault this
-  decision fixes.
-
-### Chosen in chunk 6.7
-
-What the Phase 6 architecture review found about background work
-outliving its host's limits (Workers ends a `waitUntil` 30 seconds after
-its response and a cron after 15 minutes; a native server is stopped to
-be replaced), each the most conservative reading:
-
-- **A budget for each invocation.** Every invocation that runs
-  background work (after a response, the minute tick, or work handed
-  on) is given a budget by its host, at most the 15-minute limit of a
-  run: natively and under `jadpo dev` that limit, a test's host may give
-  less, and Workers' are set in chunk 8.2. A tenth of it, at most 5
-  seconds, is kept back for giving claims back: once no more than that
-  is left, the runner takes no more work.
-- **A run's limit within the budget.** A subscriber's or a schedule's
-  action runs until the 15-minute limit or what is left of the budget
-  before the time kept back, whichever is sooner; its body is raced,
-  never its commit (chunk 6.6a), and a body that ends past its limit
-  keeps nothing. A delivery so stopped is an attempt that ran out of
-  time (`deadline_exceeded`), settled against its `retry:` budget, so a
-  subscriber that never ends fails after its attempts rather than
-  taking every invocation's budget; a schedule's run so stopped is
-  recorded failed with `deadline_exceeded`, its lease given back. The
-  purge schedule's run is held to the same limit.
-- **Every lease the budget and a minute.** A delivery's claim, a
-  schedule's lease and a batch run's lease last what is left of the
-  claimer's budget and a minute, rather than a fixed 16 or 2 minutes, so
-  a Worker that is ended loses what it held at most 90 seconds after it
-  began. Natively, with the whole run limit as its budget, a lease lasts
-  at most 16 minutes, as a delivery's and a schedule's did; a batch
-  run's, 2 minutes before, is now as long, since a stopped server gives
-  it back. A batch run renews its lease with each page it commits. A claim taken while a
-  route waits for its follow-on work lasts the longest deadline a route
-  has, 60 seconds, and the minute. `jadpo schedules run` against a
-  deployment waits for the longest lease, 16 minutes, since it can't
-  know the deployment's budget.
-- **Work not reached waits in the store.** A delivery an invocation
-  didn't reach stays `pending`, and a batch run waits on its row. What an
-  invocation after a response left goes on in a fresh invocation, with a
-  budget of its own (natively a task of its own), once the invocation
-  ran something; one that could run nothing leaves it for the minute
-  tick rather than hand it on for ever. The tick hands nothing on: the
-  next tick carries on, each of its steps (the schedules due, what they
-  set off, each store's sweep and deletes, resuming batch runs) starting
-  only while its budget lasts.
-- **A batch run carried on by time.** A batch run goes page after page
-  while its budget lasts, in place of a fixed 500 pages, then gives its
-  lease back and is carried on in a fresh invocation from the position
-  that committed; the budget ending mid-page drops that page, nothing it
-  did kept. A run that couldn't commit a page in a whole budget gives
-  its lease back and waits for the tick.
-- **Stopping gives back as it was.** A native server asked to stop
-  (SIGTERM, or ctrl-c under `jadpo dev`) accepts nothing more, starts no
-  more ticks, and ends every budget at once: the action running stops,
-  nothing it did kept, and a delivery is given back `pending` with its
-  attempt not counted, as a route's `within:` gives one back (chunk
-  6.3); a batch run's lease is given back; a schedule's run is recorded
-  `deadline_exceeded`, its lease given back. A route waiting for its
-  follow-on work stops waiting, as when `within:` passes. The server
-  waits at most 10 seconds for this, then ends, and `jadpo dev` exits 0;
-  a second signal ends the process at once (143 for SIGTERM, 130 for
-  SIGINT). If the signals can't be watched, `jadpo dev` runs as before,
-  a signal ending it at once: `cli.signal_handler_failed`, in area 14's
-  list from the first compiler, stays unbuilt.
-- **Only work with a record of its own is deferred.** The runner's job
-  left for after a response, and its inline mode, were only ever made
-  by tests, and are removed: every piece of deferred work is a delivery
-  or a batch run, kept in the store, so none is lost when an invocation
-  stops short. A test runs an action as the system through the runner's
-  `as_system`.
-
-### Chosen in chunk 6.8
-
-What the Phase 6 architecture review found about records a release
-keeps for a later one to read, each the most conservative reading:
-
-- **An outbox row read by its encoding.** A delivery reads its event's
-  payload by the encoding its outbox row records (area 19, "Changing a
-  standard type's encoding"): this release's, or none, a payload kept
-  before encodings were recorded, whose forms are encoding 1's. A
-  payload of an encoding this release doesn't read, a later release's
-  after a rollback, is never guessed at: its delivery is parked,
-  `failed` with `payload_unreadable` and why, as a payload that no
-  longer reads as its type is (chunk 6.1b).
-- **A batch's call named by a stable key.** A run keeps which
-  `batches.each` call started it by what the call is, in identity keys
-  that survive a rename: the action starting it, the query `from:`
-  walks and the action `each:` runs (`action check_stock from query
-  products_to_check each action check_product`), in place of its place
-  among the action's calls (`action check_stock#1`), so adding or moving
-  another call leaves its name as it was. A second call of the same
-  three in one action adds its place among those alone (` #2`).
-- **Its shape in canonical type text.** What the run saves and calls is
-  written with each type as Jadpo writes it, naming declared types by
-  their identity keys, never a compiler's `Debug` output, so a release
-  that changes its own internals leaves every running batch's shape as
-  it was; its digest is kept as before.
-- **Saved values with their encoding.** `jadpo_batch_runs` gains an
-  `encoding` column, the encoding its saved values and its `key:` were
-  written in, `NULL` in a run kept before. The saved values stay a JSON
-  array of each value's own JSON, `null` for none, and are read with the
-  standard JSON reader, a number keeping the digits it was written with,
-  in place of a hand-written scanner splitting the array's text.
-- **What an earlier or later release kept.** A run whose encoding this
-  release doesn't read ends `failed` with why ("its saved values were
-  written in encoding 2, which this release doesn't read"), as a run
-  whose call a deploy changed does, rather than being read as something
-  else. A run kept before this release has no encoding and a call name
-  no call now gives, and its shape can't be worked out again, so it ends
-  `failed` with "it was started by a release that named its
-  `batches.each` call another way": a run still going across this
-  upgrade is started again, which `jadpo runs unfinished` will list
-  before a deploy (area 14). A run with no encoding whose call and
-  shape match is read, its values as encoding 1's.
-- **System tables defined once.** Area 5's "System tables" note: one
-  definition in `jadpo_std::system` for the checker and the runtime,
-  with every runtime statement on them prepared against the migrated
-  tables on live PostgreSQL.
+Built in Phase 6 (chunks 6.1a to 6.8): the runner and the system caller
+(area 9); `emit`, the outbox, subscribers, delivery after the response,
+handled records, retries, trace context and `events: { store: }`, with the
+errors that name `event.` and `subscriber.`; each domain's event record
+and what a subscriber stores from its event; schedules, their state and
+leases, the native tick and its sweeps, every run and skipped tick
+recorded, with the errors that name `schedule.`; watching schedules,
+`jadpo schedules` with `run` (against `jadpo dev` or a deployment),
+`pause`, `resume` and `history`, `jadpo why <schedule>`, each run and
+alert in `jadpo dev`'s output, the alerts with no setup and the metrics;
+each entity's purge schedule and a test's `schedule.run()`;
+`batches.each`, `batches.status`, `batches.cancel` and `key:`, with
+tenants, grants, what a run stores under policy and no request carrying
+a batch type; background work within its host's budget and a native
+server draining as it stops; and records a later release still reads.
+
+Not yet:
+
+- The file helpers (`csv`, `tsv`, `json_lines`, `json`), `store.read`'s
+  whole-read cap, `estimated_total` and the warning for a `from:` ordered
+  by a field that can be updated: roadmap 6.4b.
+- Deleting handled records once a delivery can no longer repeat, and
+  area 8's ended sessions, tokens and expired keys, on the tick: roadmap
+  6.10.
+- Delivering events in tests after each commit, in a shuffled order, and
+  a fake failing a subscriber (area 13): roadmap 6.11.
+- `jadpo deliveries` and the operator's retry, dismiss, cancel and
+  resolve (area 14): roadmap 6.12.
+- The circuit breaker (question 18): roadmap 7.2b. `Retry-After`, several
+  changing calls in one action, polls, `receiving`, publishing outward,
+  webhooks and a package's own events come with Phase 7; their errors are
+  built with them.
+- On Cloudflare Workers, the cron tick, outbox delivery after commit, the
+  `trigger:` adapter, a batch run carried on in a fresh invocation and
+  the budgets: roadmap 8.2.
+- Sending the metrics and the alerts' log events to a monitoring tool
+  waits for telemetry (area 16), and the console's timeline for area 17.
 
 ### Consistency with the rest of the language
 
@@ -3434,8 +3188,6 @@ keeps for a later one to read, each the most conservative reading:
 
 ### Decisions
 
-Nothing is decided on this page yet.
-
 | Topic | Decision | Date |
 |---|---|---|
 | Triggers | Carried from area 1: routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |
@@ -3443,7 +3195,7 @@ Nothing is decided on this page yet.
 | Cross-domain changes | Carried from area 1: public actions inside the caller's transaction, or events for reactions that need not be all-or-nothing | 2026-10-12 |
 | Actions | Carried from area 3: every action is all-or-nothing and has no settings; `attempt` only on calls that can fail | 2026-10-12 |
 | Faults | Carried from area 4: faults are never listed in `fails` or matched; integrations map provider problems to declared failures | 2026-10-12 |
-| Schedule form | `schedule name { every: 15m  run: action() }`; runs never overlap, a busy tick is skipped; the next tick retries; calendar times later | 2026-10-13 |
+| Schedule form | `schedule name { every: 15m  run: action() }`; runs never overlap, a busy tick is skipped; the next tick retries (read as the next due time: "Schedule and batch defaults", 2026-10-19); calendar times later | 2026-10-13 |
 | Delivery descriptor | Deleted with its 14 syntax and 6 type rules | 2026-10-13 |
 | Event declaration | `type X = Event { ... }`, one per file in `events/` | 2026-10-13 |
 | Emitting | `emit X { ... }` in actions only, delivered after commit, no `attempt` | 2026-10-13 |
@@ -3459,13 +3211,13 @@ Nothing is decided on this page yet.
 | Snapshot reads for exports | None; keyset pages; area 15's export reads in one transaction | 2026-10-13 |
 | Work after an accepted response | An event and subscriber; the client reads a record with a status field | 2026-10-13 |
 | Schedules and subscribers in tests | `schedule.run()`, delivery after commit, fakes fail subscribers, shuffled order with a printed seed | 2026-10-13 |
-| Schedule ticks on every host | Schedule adapters, many and chosen in `app.jadpo`: an adapter supplies the tick and may supply the lease (default: main database); a schedule or event with no store for its state is a compile error; system tables (`jadpo_` prefix) are in migration snapshots (Richard) | 2026-10-13 |
+| Schedule ticks on every host | Schedule adapters, many and chosen in `app.jadpo`: an adapter supplies the tick and may supply the lease (default: main database, superseded 2026-10-19 by "Outbox placement, settled": `schedules: { store: }`, or the only database); a schedule or event with no store for its state is a compile error; system tables (`jadpo_` prefix) are in migration snapshots (Richard) | 2026-10-13 |
 | Tracing through events | Always on: events carry the emitting action's trace context; subscriber runs continue it; `jadpo trace <request id>` | 2026-10-13 |
 | Schedule monitoring | Every run and tick recorded; `jadpo schedules` (list, run, pause, resume, history); `jadpo why <schedule>`; metrics; alerts with no setup (no success in twice the interval, ticks stopped, near the time limit, three failures, stuck lease); console timeline (Richard) | 2026-10-13 |
 | Circuit breaker | Per connection: after repeated `unavailable` failures, deliveries calling the provider are held, one probe after a pause, success releases the rest; held deliveries keep their retry budget; shown and alerted | 2026-10-13 |
-| Event transport | Internal only: the main store's outbox delivered by the runtime (on Workers after commit via `waitUntil`, swept by the minute tick); external queues only receive published copies of chosen public events (Richard) | 2026-10-13 |
+| Event transport | Internal only: the main store's outbox (each written store's, read as "Outbox placement, settled" says, 2026-10-19) delivered by the runtime (on Workers after commit via `waitUntil`, swept by the minute tick); external queues only receive published copies of chosen public events (Richard) | 2026-10-13 |
 | Outbox placement | No default store: the outbox, delivery records and idempotency keys go in each store an action writes; an action writing no store needs `events: { store: <connection> }`, or it is a compile error (Richard, from the architecture plan) | 2026-10-13 |
-| Batches | The one way to work over many items: `csv.read`/`write`, `tsv`, `json_lines`, `json.read(file, items_at:, as:)`/`write` and `batches.each(from:, each:, finished:, key:)`; inline `->` for `each:` and `finished:`; started after commit, returning a run with `batches.status` and `batches.cancel`; `key:` for repeated starts; batches committing writes and position together; file order kept; problems without values; only storable captures; replaces chained events for paging (Richard) | 2026-10-16 |
+| Batches | The one way to work over many items: `csv.read`/`write`, `tsv`, `json_lines`, `json.read(file, items_at:, as:)`/`write` and `batches.each(from:, each:, finished:, key:)`; inline `->` for `each:` and `finished:`; started after commit, returning a run with `batches.status` and `batches.cancel`; `key:` for repeated starts (unique per call, tenant and key: "A batch's `key:` with tenants", 2026-10-19); batches committing writes and position together; file order kept; problems without values; only storable captures; replaces chained events for paging (Richard) | 2026-10-16 |
 | Rows and formats | Rows read are `Input`s and written `Output`s with `column:` and `wire:`; `CsvFormat.spreadsheet` or `.standard` required on write; UTF-8, UTF-16 with a mark and declared legacy encodings read, UTF-8 written; gzip only with `max_unpacked_size:`; no loop over rows and no whole-file parse (Richard) | 2026-10-16 |
 | Several changing calls | Up to 8 keyed changing calls per action, only from subscribers and routes requiring `Idempotency-Key`; no outside call inside `for` in any action, a loop of calls being `batches.each`; each step recorded before sending (operation, request fingerprint, time) and its answer after, encrypted, a fault over 1 MB (`large_output: true` operations refused); `store.put` a keyed step; reruns replay and check the whole path, stopping as `diverged` for an operator; `clock.now` fixed per record; keys hashed from app, environment, connection, caller scope, action key, step and generation; steps in doubt resent only within the provider's window; one runner per record; the "ends for good after an effect" warning; unfinished records become operator items with retry and abandon, kept 30 days; records deleted in the commit, listed in the personal-data report; `jadpo runs unfinished --build <build id>` lists, before a deploy, unfinished runs whose path the new build changes (Richard, from the multi-step calls review) | 2026-10-16 |
 | Events from outside | Webhooks, a package's `public` events and polls, and queue messages through `receiving`, each written to the outbox and delivered like the app's own; unlisted queue message types and repeatedly failing messages parked, never dropped (Richard) | 2026-10-16 |
@@ -3474,7 +3226,7 @@ Nothing is decided on this page yet.
 | Event records (Phase 5 review) | An event's shape is recorded and diffed in the generated record exactly as an API's is (chunk 7.0's format); accepting a breaking change waits for area 18's acceptances together with the API record's (Richard, as recommended) | 2026-10-19 |
 | A schedule and tenants (after chunk 6.1a) | A schedule's run, which no tenant's event starts, reaches every tenant's records, as the system caller does with no tenant; a subscriber stays limited to its event's tenant (Richard, as recommended) | 2026-10-19 |
 | An event's tenant (after chunk 6.1b) | An event belongs to the tenant its one field holding a tenant's id names (e.g. `household_id: Household.id`), so the tenant is written in the event where a reviewer sees it; an event with no such field, or more than one, reaches no tenant's records (Richard, as recommended) | 2026-10-19 |
-| A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended) | 2026-10-19 |
+| A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended; several naming the same tenant count as that one: "Schedule and batch defaults") | 2026-10-19 |
 | `jadpo schedules run` (after chunk 6.2b) | Against `jadpo dev` it runs the schedule straight away and shows the outcome; against a deployed application it marks the schedule due, so the application's own server runs it on its next tick under the lease, and the command waits for that run's record and shows it, so a deployment's settings and secrets never leave its servers (Richard, as recommended) | 2026-10-19 |
 | An `every:` under a minute on Workers (Phase 6 review) | An error naming the schedule when a Workers deployable reaches it, since a minute's cron can't run it and Jadpo has no warnings (Richard, as recommended) | 2026-10-19 |
 | Schedule and batch defaults (Phase 6 review) | What the code does is decided: a schedule's first run is due one `every:` after the first tick that sees it; a failed run is retried at its next due time; schedule state defaults to the only database; batch runs are kept in the store the `from:` query reads; several saved values naming the same tenant count as that tenant; a route whose action starts a batch answers `202` (Richard, as recommended) | 2026-10-19 |
