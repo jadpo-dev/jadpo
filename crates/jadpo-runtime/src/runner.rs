@@ -323,6 +323,21 @@ pub struct Backfill<'v> {
 pub struct InJadpo<'e> {
     executor: &'e dyn Executor,
     backfills: Vec<Backfill<'e>>,
+    /// The codecs a structured field's stored JSON is read and written
+    /// with, and each such field the latest migration reads or writes, by
+    /// migration and field, with its type's number (chunk 5.9c).
+    json: Option<crate::JsonCodecs<'e>>,
+    stored: Vec<StoredJson>,
+}
+
+/// A structured field the latest migration checks, rewrites or fills as
+/// JSON (chunk 5.9c): its type's number in the JSON table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredJson {
+    pub migration: String,
+    /// `Parcel.label`.
+    pub field: String,
+    pub number: u32,
 }
 
 impl std::fmt::Debug for InJadpo<'_> {
@@ -338,7 +353,29 @@ impl<'e> InJadpo<'e> {
         InJadpo {
             executor,
             backfills,
+            json: None,
+            stored: Vec::new(),
         }
+    }
+
+    /// With the codecs a structured field's stored JSON is read and
+    /// written with, and the fields the latest migration reads or writes
+    /// so (chunk 5.9c).
+    pub fn with_json(mut self, codecs: crate::JsonCodecs<'e>, stored: Vec<StoredJson>) -> Self {
+        self.json = Some(codecs);
+        self.stored = stored;
+        self
+    }
+
+    /// The codecs and the number a structured field's JSON is read and
+    /// written with in `migration`.
+    fn json_of(&self, migration: &str, field: &str) -> Option<(crate::JsonCodecs<'e>, u32)> {
+        let number = self
+            .stored
+            .iter()
+            .find(|stored| stored.migration == migration && stored.field == field)?
+            .number;
+        Some((self.json?, number))
     }
 }
 
@@ -371,6 +408,15 @@ impl crate::Backfills for InJadpo<'_> {
         }
         // A backfill is a function: it waits on nothing, so it runs to its
         // end here, on a host with no store.
+        // A structured value is written through its type's route codec
+        // (chunk 5.9c).
+        let json = match backfill.write {
+            SqlType::Json => Some(
+                self.json_of(migration, field)
+                    .ok_or(Unworked::Unavailable)?,
+            ),
+            _ => None,
+        };
         let host = MemoryHost::new();
         let mut ctx = Ctx::new(self.executor.places(), &host, Env::default());
         let mut out: Vec<SqlValue> = Vec::with_capacity(rows.len());
@@ -381,7 +427,7 @@ impl crate::Backfills for InJadpo<'_> {
             &mut ctx,
             backfill.callable,
             args,
-            &mut |at, outcome| match written(backfill, outcome, places) {
+            &mut |at, outcome| match written(backfill, outcome, places, json) {
                 Ok(value) => {
                     out.push(value);
                     ControlFlow::Continue(())
@@ -403,14 +449,34 @@ impl crate::Backfills for InJadpo<'_> {
         }
         Ok(out)
     }
+
+    fn unreadable(
+        &self,
+        migration: &str,
+        field: &str,
+        values: &[&SqlValue],
+    ) -> Result<Vec<Option<String>>, crate::Unworked> {
+        let (codecs, number) = self
+            .json_of(migration, field)
+            .ok_or(crate::Unworked::Unavailable)?;
+        Ok(values
+            .iter()
+            .map(|value| match value {
+                SqlValue::Json(stored) => codecs.unread(number, stored),
+                other => Some(format!("a `{:?}` column read as JSON", other.ty())),
+            })
+            .collect())
+    }
 }
 
 /// The value a backfill's run gave, kept and checked as its field keeps
-/// a value, bound for its column; why not, never the value.
+/// a value, bound for its column, through `json`'s codec for a structured
+/// value (chunk 5.9c); why not, never the value.
 fn written(
     backfill: &Backfill<'_>,
     outcome: Outcome,
     places: &crate::Places,
+    json: Option<(crate::JsonCodecs<'_>, u32)>,
 ) -> Result<SqlValue, String> {
     let value = match outcome {
         Outcome::Value(value) => value,
@@ -448,7 +514,10 @@ fn written(
         }
         None => value,
     };
-    crate::to_sql(&value, backfill.write)
+    match json {
+        Some((codecs, number)) => codecs.write(number, &value),
+        None => crate::to_sql(&value, backfill.write),
+    }
 }
 
 #[cfg(test)]

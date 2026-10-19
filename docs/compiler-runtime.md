@@ -2019,7 +2019,17 @@ codec. Since chunk 6.1a that `Backfills` is the runtime's own
 run on the runner's per-item mode through the `Executor`, and each value
 is kept and checked by its field's validator (`BackfillPlan::validator`)
 rather than rounded by the command, so compiled code will run them the
-same way.
+same way. Since chunk 5.9c a JSON column's `Allows::json` records what its
+type reads (`jadpo_graph::stored_json::Reads`, built by
+`data::columns::json_reads`), and `stored_json::reads_every` decides
+whether a change only widens it; one that may not is
+`NeededKind::Unreadable`, a decision that may be left out:
+`migration_sql` writes a `-- check` step first in the section, or, with
+a backfill, a `-- rewrite` step (`jadpo_std::Work`). The plan numbers
+each such field's type (`Plan::migration_json`), and `Backfills::unreadable`
+reads each stored value with its codec; a refused check is
+`MigrateError::Unreadable`. A structured field's backfill is always
+`Decided::InJadpo`, its value written through the codec.
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
