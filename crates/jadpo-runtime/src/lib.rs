@@ -43,6 +43,8 @@
 //!   after a response, while a route waits for it, or once per item of a
 //!   batch, each invocation within the [`budget`] its host gives it and
 //!   each claim it takes a [`lease`] of the same length (chunk 6.7).
+//! - [`serve`]: what every host does with a request and a tick (chunk
+//!   6.9), which a host's server handler wraps.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -88,6 +90,7 @@ mod read;
 mod report;
 pub mod runner;
 pub mod schedules;
+pub mod serve;
 pub mod statements;
 mod store;
 mod write;

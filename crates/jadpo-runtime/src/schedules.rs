@@ -48,10 +48,16 @@
 //! budget its host gives a tick (chunk 6.7): once that is spent it starts
 //! nothing more, and the next tick carries on.
 //!
-//! What an operator reads and does with them, `jadpo schedules` and
-//! `jadpo why`, is [`watch`] (chunk 6.2b).
+//! - **Alerts are raised on the tick** (chunk 6.9): once its schedules
+//!   have run, it works out the alerts that hold for each and raises those
+//!   that have just started, recorded once on the schedule's state row
+//!   ([`watch::raise`]), so of several instances' ticks one raises each.
+//!
+//! What an operator reads and does with them, `jadpo schedules`, is
+//! [`watch`] (chunk 6.2b); `jadpo why`'s answer is [`why`] (chunk 6.9).
 
 pub mod watch;
+pub mod why;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -268,6 +274,10 @@ pub struct Ticked {
     /// Each store the tick couldn't do its work in, with why: it carries
     /// on with the rest, and the next tick tries again.
     pub problems: Vec<(String, StoreError)>,
+    /// The alerts this tick raised: those that have started to hold since
+    /// the last tick, which no other instance's tick raised first (chunk
+    /// 6.9). A host reports each, once.
+    pub raised: Vec<watch::Alert>,
 }
 
 /// How many rows a tick deleted.
@@ -305,6 +315,12 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
                     left.extend(more);
                 }
                 ticked.deliveries = runner::run_within(executor, host, &budget, left).await;
+                if !budget.spent() {
+                    match raise(plan, host, store, now).await {
+                        Ok(raised) => ticked.raised = raised,
+                        Err(error) => ticked.problems.push((store.clone(), error)),
+                    }
+                }
             }
             Err(error) => ticked.problems.push((store.clone(), error)),
         }
@@ -343,6 +359,21 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             .extend(runner::run_within(executor, host, &budget, left).await);
     }
     ticked
+}
+
+/// Raises at `now` the alerts that have started to hold for `plan`'s
+/// schedules, whose state is in `store` ([`watch::raise`]).
+async fn raise(
+    plan: &SchedulesPlan,
+    host: &dyn Host,
+    store: &str,
+    now: i64,
+) -> Result<Vec<watch::Alert>, StoreError> {
+    let database = host
+        .database(store)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+    let declared: Vec<watch::Declared> = plan.schedules.iter().map(watch::Declared::from).collect();
+    watch::raise(database, &declared, tick_every_ms(Some(plan)), now).await
 }
 
 /// How often a host's own timer ticks for `plan`: once a minute, or as

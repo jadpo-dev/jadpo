@@ -1480,8 +1480,17 @@ hands each connection to a worker chosen by the client's address, and one
 current-thread tokio runtime per worker, each with its own handler, stores
 and rate-limit counters, so an address is always counted on one thread;
 hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name,
-the operating system's randomness and tokio's timer. `jadpo dev` runs the
-interpreter on it, swapping in each save that checks cleanly. Since chunk
+the operating system's randomness and tokio's timer. Since chunk 6.9
+what a host does with a request and a tick is the runtime's
+(`jadpo_runtime::serve::Serving`, over an `Application`, an executor
+that gives its route table and codecs): it answers with `serve_request`,
+hands what the response left to `runner::after_response`, runs the tick,
+and tells an `Observer` of each request and tick. The native server's
+handler that serves an application is `jadpo_host_native::http::AppHandler`,
+`Serving` on a `NativeHost` with that host's deferred work, tracked ticks
+and drain; Workers' fetch and scheduled events call the same `Serving`
+(chunk 8.2). `jadpo dev` runs the interpreter on it, swapping in each
+save that checks cleanly, and only observes it to print its lines. Since chunk
 6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
 its timer starts no more ticks, and each worker waits, at most
 `DRAIN_GRACE` (10 seconds), for its handler's background work
@@ -1965,7 +1974,16 @@ each step starting only while it isn't spent, its runs' actions through
 `runner::within_budget`. Natively the HTTP server's first
 worker runs a timer that starts the tick at each whole minute of UTC, or
 each shortest `every:` (`Handler::tick`, `schedules::tick_every_ms`);
-`jadpo dev` ticks. On Workers the cron trigger calls the same function
+`jadpo dev` ticks. Since chunk 6.9 the tick raises the alerts too
+(`watch::raise`): once its schedules have run, it works out which hold
+for each schedule and records them on its state row (`alerts`, each id
+with when it was raised) in one conditional statement, so of several
+instances' ticks, or Workers invocations, the one that changed the
+record raises what newly holds (`Ticked::raised`), once until it stops
+holding. Readers (`jadpo schedules`, `jadpo why`) still work the alerts
+out from the rows when they read, since a stopped application raises
+nothing; `jadpo why`'s answer is decided by the runtime as data
+(`schedules::why`), which the CLI says in words. On Workers the cron trigger calls the same function
 (chunk 8.2).
 
 **Batch runs** (chunk 6.4, area 12's "Chosen in chunk 6.4"). The

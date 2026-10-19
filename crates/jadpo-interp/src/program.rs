@@ -613,6 +613,13 @@ impl Program {
     }
 }
 
+/// What a host serves (chunk 6.9): the interpreter's route table and codecs.
+impl jadpo_runtime::serve::Application for Program {
+    fn app(&self) -> jadpo_runtime::http::App<'_> {
+        Program::app(self)
+    }
+}
+
 impl Executor for Program {
     fn places(&self) -> &Places {
         Program::places(self)

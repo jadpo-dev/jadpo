@@ -32,15 +32,15 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_host_native::http::{Handler, MakeHandler, Server};
+use jadpo_host_native::http::{AppHandler, Handler, MakeHandler, Server};
 use jadpo_host_native::{NativeHost, Runtime, postgres};
 use jadpo_interp::{Prepared, Program};
+use jadpo_runtime::Host;
 use jadpo_runtime::config::{ConfigValues, Mode, Variables};
-use jadpo_runtime::http::{Request, Response, Worker, serve_request};
-use jadpo_runtime::{Host, LocalFuture};
+use jadpo_runtime::schedules::Ticked;
+use jadpo_runtime::serve::{Answered, Application, Observer};
 use jadpo_term::{
     Block, ColorChoice, Environment, Fact, Json, Outcome, Screen, Stream, Style, Token, envelope,
 };
@@ -132,24 +132,14 @@ struct Shared {
     log: Mutex<Sender<Event>>,
 }
 
-/// A worker's handler: its view of the program, rebuilt when a save
-/// swaps in a new version, its host (its stores and rate-limit counters,
-/// and the work each response leaves for after it is sent, which runs on
-/// the version that left it) and what the runtime keeps between its
-/// requests.
-struct DevHandler {
+/// A worker's view of the program: the version it last served, rebuilt
+/// when a save swaps in a new one.
+struct Current {
     shared: Arc<Shared>,
     program: RefCell<Option<(u64, Rc<Program>)>>,
-    host: Rc<NativeHost>,
-    worker: Worker,
-    /// The alerts already printed, so each prints once when it starts.
-    raised: Rc<RefCell<jadpo_runtime::schedules::watch::Raised>>,
-    /// The schedules whose paused skip was printed, so a paused one prints
-    /// once, not on every tick, until it runs again.
-    paused: Rc<RefCell<std::collections::BTreeSet<String>>>,
 }
 
-impl DevHandler {
+impl Current {
     fn program(&self) -> Rc<Program> {
         let generation = self.shared.generation.load(Ordering::SeqCst);
         if let Some((seen, program)) = &*self.program.borrow()
@@ -170,133 +160,86 @@ impl DevHandler {
     }
 }
 
-impl Handler for DevHandler {
-    fn handle(&self, request: Request) -> LocalFuture<'_, Response> {
-        Box::pin(async move {
-            let started = Instant::now();
-            let program = self.program();
-            let app = program.app();
-            let mut response = serve_request(
-                &app,
-                program.as_ref(),
-                self.host.as_ref(),
-                &self.worker,
-                &request,
-            )
-            .await;
-            // What the response left runs after it is sent (chunk 6.1a).
-            jadpo_runtime::runner::after_response(
-                Rc::clone(&program) as Rc<dyn jadpo_runtime::Executor>,
-                Rc::clone(&self.host) as Rc<dyn Host>,
-                std::mem::take(&mut response.deferred),
+/// What `jadpo dev` hears from the runtime's server handler (chunk 6.9),
+/// which serves the application as a deployable does: a line for each
+/// request it answers, each schedule's run or skipped tick, and each alert
+/// the tick raised.
+struct Lines {
+    shared: Arc<Shared>,
+    /// The schedules whose paused skip was printed, so a paused one prints
+    /// once, not on every tick, until it runs again.
+    paused: RefCell<std::collections::BTreeSet<String>>,
+}
+
+impl Lines {
+    fn send(&self, events: Vec<Event>) {
+        if let Ok(log) = self.shared.log.lock() {
+            for event in events {
+                let _ = log.send(event);
+            }
+        }
+    }
+}
+
+impl Observer for Lines {
+    fn answered(&self, answered: &Answered<'_>) {
+        let (request, response) = (answered.request, answered.response);
+        self.send(vec![Event::Request(Line {
+            id: response
+                .header("x-request-id")
+                .unwrap_or_default()
+                .to_string(),
+            method: request.method.clone(),
+            path: request.path.clone(),
+            status: response.status,
+            code: response.code.clone(),
+            route: response.route.clone(),
+            millis: u128::from(answered.ms),
+            address: response.client.clone(),
+            fault: response.fault.as_ref().map(|fault| {
+                (
+                    fault.kind.classification().to_string(),
+                    fault.stack(answered.program.places()),
+                )
+            }),
+        })]);
+    }
+
+    /// A line for each run, and for each alert the tick raised (chunk
+    /// 6.2b; raised by the tick since chunk 6.9).
+    fn ticked(&self, program: &dyn Application, ticked: &Ticked, now: i64) {
+        let Some(plan) = program.schedules() else {
+            return;
+        };
+        let name = |key: &str| {
+            plan.schedule(key)
+                .map_or_else(|| key.to_string(), |schedule| schedule.name.clone())
+        };
+        let mut events = Vec::new();
+        for due in &ticked.due {
+            // A paused schedule's skipped ticks print once.
+            let skipped_paused = matches!(
+                due.ran,
+                jadpo_runtime::schedules::Ran::Skipped(jadpo_runtime::schedules::Skipped::Paused)
             );
-            if let Ok(log) = self.shared.log.lock() {
-                let _ = log.send(Event::Request(Line {
-                    id: response
-                        .header("x-request-id")
-                        .unwrap_or_default()
-                        .to_string(),
-                    method: request.method.clone(),
-                    path: request.path.clone(),
-                    status: response.status,
-                    code: response.code.clone(),
-                    route: response.route.clone(),
-                    millis: started.elapsed().as_millis(),
-                    address: response.client.clone(),
-                    fault: response.fault.as_ref().map(|fault| {
-                        (
-                            fault.kind.classification().to_string(),
-                            fault.stack(program.places()),
-                        )
-                    }),
-                }));
+            if skipped_paused && !self.paused.borrow_mut().insert(due.schedule.clone()) {
+                continue;
             }
-            response
-        })
-    }
-
-    fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
-        self.host.take_deferred()
-    }
-
-    /// The runtime's tick (area 12, chunk 6.2): the schedules due and the
-    /// runtime's own sweeps, on the version of the program running now;
-    /// then a line for each run, and for each alert that has just started
-    /// (chunk 6.2b).
-    fn tick(&self) -> Option<LocalFuture<'static, ()>> {
-        let program = self.program();
-        let host = Rc::clone(&self.host);
-        let shared = Arc::clone(&self.shared);
-        let raised = Rc::clone(&self.raised);
-        let paused = Rc::clone(&self.paused);
-        // Counted as the host's background work, so stopping waits for it
-        // to give back what it holds (chunk 6.7).
-        Some(self.host.track(Box::pin(async move {
-            let Some(now) = host.now_ms() else {
-                return;
-            };
-            let ticked = jadpo_runtime::schedules::tick(program.as_ref(), host.as_ref(), now).await;
-            let Some(plan) = jadpo_runtime::Executor::schedules(program.as_ref()) else {
-                return;
-            };
-            let name = |key: &str| {
-                plan.schedule(key)
-                    .map_or_else(|| key.to_string(), |schedule| schedule.name.clone())
-            };
-            let mut events = Vec::new();
-            for due in ticked.due {
-                // A paused schedule's skipped ticks print once.
-                let skipped_paused = matches!(
-                    due.ran,
-                    jadpo_runtime::schedules::Ran::Skipped(
-                        jadpo_runtime::schedules::Skipped::Paused
-                    )
-                );
-                if skipped_paused && !paused.borrow_mut().insert(due.schedule.clone()) {
-                    continue;
-                }
-                if !skipped_paused {
-                    paused.borrow_mut().remove(&due.schedule);
-                }
-                events.push(Event::Schedule {
-                    name: name(&due.schedule),
-                    due,
-                });
+            if !skipped_paused {
+                self.paused.borrow_mut().remove(&due.schedule);
             }
-            if let Some(store) = &plan.store
-                && let Some(database) = host.database(store)
-            {
-                let declared: Vec<_> = plan
-                    .schedules
-                    .iter()
-                    .map(jadpo_runtime::schedules::watch::Declared::from)
-                    .collect();
-                let every = jadpo_runtime::schedules::tick_every_ms(Some(plan));
-                if let Ok(watched) =
-                    jadpo_runtime::schedules::watch::watch(database, &declared, every, now).await
-                {
-                    for alert in raised.borrow_mut().raised(&watched.alerts) {
-                        events.push(Event::Alert { alert, now });
-                    }
-                }
-            }
-            if let Ok(log) = shared.log.lock() {
-                for event in events {
-                    let _ = log.send(event);
-                }
-            }
-        })))
-    }
-
-    fn drain(&self) -> LocalFuture<'static, ()> {
-        self.host.drain()
-    }
-
-    fn tick_every_ms(&self) -> u64 {
-        let program = self.program();
-        jadpo_runtime::schedules::tick_every_ms(jadpo_runtime::Executor::schedules(
-            program.as_ref(),
-        ))
+            events.push(Event::Schedule {
+                name: name(&due.schedule),
+                due: due.clone(),
+            });
+        }
+        for alert in &ticked.raised {
+            events.push(Event::Alert {
+                alert: alert.clone(),
+                now,
+            });
+        }
+        self.send(events);
     }
 }
 
@@ -591,14 +534,18 @@ pub fn serve_to(
                 host = host.with_store(store.clone(), database);
             }
         }
-        Box::new(DevHandler {
+        let current = Current {
             shared: Arc::clone(&make_shared),
             program: RefCell::new(None),
-            host: Rc::new(host),
-            worker: Worker::default(),
-            raised: Rc::new(RefCell::new(Default::default())),
-            paused: Rc::new(RefCell::new(Default::default())),
-        }) as Box<dyn Handler>
+        };
+        let lines = Lines {
+            shared: Arc::clone(&make_shared),
+            paused: RefCell::new(Default::default()),
+        };
+        Box::new(
+            AppHandler::new(host, move || current.program() as Rc<dyn Application>)
+                .observed_by(Rc::new(lines)),
+        ) as Box<dyn Handler>
     });
     let workers = std::thread::available_parallelism().map_or(2, |n| n.get().min(8));
     let server: Server = match jadpo_host_native::http::serve(listener, workers, make) {
