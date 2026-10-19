@@ -32,19 +32,19 @@ pub const LEGACY_IDENTITIES: &str = "database/identities.json";
 /// What the registry's header says it is generated from.
 const FROM: &str = "renames and moves";
 
-/// The kinds whose name is their owner's and their own (`Todo.priority`),
+/// The kinds whose name is their outer's and their own (`Todo.priority`),
 /// so a line gives only their own new name.
 const MEMBERS: &[&str] = &["field", "variant", "rule"];
 
 /// The born name a name now resolves to through the registry's lines for
 /// things other than members: `Todo` to `Task` once `entity Todo -> Task`
 /// is a line, a member of something renamed following it.
-fn resolve(owners: &BTreeMap<&str, &str>, born: &str) -> String {
-    if let Some(now) = owners.get(born) {
+fn resolve(outers: &BTreeMap<&str, &str>, born: &str) -> String {
+    if let Some(now) = outers.get(born) {
         return (*now).to_string();
     }
     match born.rsplit_once('.') {
-        Some((owner, own)) => format!("{}.{own}", resolve(owners, owner)),
+        Some((outer, own)) => format!("{}.{own}", resolve(outers, outer)),
         None => born.to_string(),
     }
 }
@@ -78,7 +78,7 @@ pub fn parse_identities(text: &str) -> Result<BTreeMap<String, String>, (usize, 
         lines.push((at, kind, born, now));
     }
     debug_assert_eq!(lines.len(), entries.len());
-    let owners: BTreeMap<&str, &str> = lines
+    let outers: BTreeMap<&str, &str> = lines
         .iter()
         .filter(|(_, kind, ..)| !MEMBERS.contains(kind))
         .map(|(_, _, born, now)| (*born, *now))
@@ -104,7 +104,7 @@ pub fn parse_identities(text: &str) -> Result<BTreeMap<String, String>, (usize, 
             }
             format!(
                 "{}.{now}",
-                resolve(&owners, &parts[..parts.len() - own].join("."))
+                resolve(&outers, &parts[..parts.len() - own].join("."))
             )
         } else {
             (*now).to_string()
@@ -129,7 +129,7 @@ pub fn write_identities(lines: &BTreeMap<String, String>) -> String {
             Some((kind, now, born.as_str()))
         })
         .collect();
-    let owners: BTreeMap<&str, &str> = split
+    let outers: BTreeMap<&str, &str> = split
         .iter()
         .filter(|(kind, ..)| !MEMBERS.contains(kind))
         .map(|(_, now, born)| (*born, *now))
@@ -138,7 +138,7 @@ pub fn write_identities(lines: &BTreeMap<String, String>) -> String {
         .iter()
         .map(|(kind, now, born)| {
             let shown = if MEMBERS.contains(kind) {
-                own_name(&owners, now, born)
+                own_name(&outers, now, born)
             } else {
                 (*now).to_string()
             };
@@ -154,14 +154,14 @@ pub fn write_identities(lines: &BTreeMap<String, String>) -> String {
 }
 
 /// A member's own new name: the shortest end of its name now that, put
-/// after what its owner is called now, gives that name.
-fn own_name(owners: &BTreeMap<&str, &str>, now: &str, born: &str) -> String {
+/// after what its outer is called now, gives that name.
+fn own_name(outers: &BTreeMap<&str, &str>, now: &str, born: &str) -> String {
     let now_parts: Vec<&str> = now.split('.').collect();
     let born_parts: Vec<&str> = born.split('.').collect();
     for own in 1..born_parts.len().min(now_parts.len() + 1) {
-        let owner = born_parts[..born_parts.len() - own].join(".");
+        let outer = born_parts[..born_parts.len() - own].join(".");
         let tail = now_parts[now_parts.len() - own..].join(".");
-        if format!("{}.{tail}", resolve(owners, &owner)) == now {
+        if format!("{}.{tail}", resolve(outers, &outer)) == now {
             return tail;
         }
     }
@@ -331,7 +331,7 @@ mod tests {
             .filter(|(a, b)| a != b)
             .collect();
         assert_eq!(changed, vec![("entity Todo -> Task", "entity Todo -> Job")]);
-        // A member renamed under an owner that kept its name, and one of
+        // A member renamed under an outer that kept its name, and one of
         // a type in a domain.
         let kept = lines(&[
             ("field Todo.importance", "Todo.priority"),

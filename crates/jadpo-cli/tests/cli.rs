@@ -312,7 +312,7 @@ fn help_json_is_the_whole_command_reference() {
             "version"
         ]
     );
-    let completions = &data["commands"][14];
+    let completions = &data["commands"][15];
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");

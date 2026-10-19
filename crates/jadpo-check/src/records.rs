@@ -118,7 +118,7 @@ impl Standing {
         }
         Some(match self.kind().shape {
             Shape::View => self.kind().command,
-            Shape::Ledger => "jadpo records update",
+            Shape::History => "jadpo records update",
         })
     }
 }
@@ -138,9 +138,9 @@ pub fn standings(db: &dyn Db, project: Project) -> Vec<Standing> {
     views(db, project, &written, &mut out);
     for (path, text) in &written {
         if let Some((kind, from)) = format::kind_of(path)
-            && kind.shape == Shape::Ledger
+            && kind.shape == Shape::History
         {
-            out.push(ledger(path, kind, &from, text));
+            out.push(history(path, kind, &from, text));
         }
     }
     if let Some(text) = written.get(jadpo_db::LEGACY_IDENTITIES) {
@@ -468,13 +468,13 @@ fn edited(
 ) -> Diagnostic {
     let command = match kind.shape {
         Shape::View => kind.command,
-        Shape::Ledger => "jadpo records update",
+        Shape::History => "jadpo records update",
     };
     let next = if rewritable {
         format!("Run `{command}`, which writes it again")
     } else {
         format!(
-            "Put line {} back as Jadpo wrote it, with `git checkout -- {path}` or by hand",
+            "Put line {} back as Jadpo wrote it, with `git restore {path}` or by hand",
             line + 1
         )
     };
@@ -495,7 +495,7 @@ fn edited(
 fn old_name(old: &str, now: &str, what: &str, kind: &Kind) -> Diagnostic {
     let command = match kind.shape {
         Shape::View => kind.command,
-        Shape::Ledger => "jadpo records update",
+        Shape::History => "jadpo records update",
     };
     Diagnostic::new(
         &rule::RECORD_OUT_OF_DATE,
@@ -517,7 +517,7 @@ fn unreadable(path: &str, error: &str, kind: &Kind) -> Diagnostic {
 
 /// A ledger's standing: its header, then each line, then whether it is in
 /// the order and layout Jadpo writes.
-fn ledger(path: &str, kind: &'static Kind, from: &str, text: &Result<String, String>) -> Standing {
+fn history(path: &str, kind: &'static Kind, from: &str, text: &Result<String, String>) -> Standing {
     let standing = |state, problem, fixes| Standing {
         path: path.to_string(),
         kind: kind.word,
@@ -534,7 +534,7 @@ fn ledger(path: &str, kind: &'static Kind, from: &str, text: &Result<String, Str
                     Diagnostic::new(&rule::RECORD_EDITED, format!("`{path}` can't be read"))
                         .at(file(path), "unreadable")
                         .reason(format!("Reading it failed: {error}."))
-                        .next(format!("Restore it with `git checkout -- {path}`")),
+                        .next(format!("Restore it with `git restore {path}`")),
                 ),
                 Vec::new(),
             );

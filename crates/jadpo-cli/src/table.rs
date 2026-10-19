@@ -684,11 +684,11 @@ pub static COMMANDS: &[Command] = &[
         summary: "List and update the records",
         description: "Every file Jadpo generates and the project commits is a record (area 18): each \
                       API's api/<api>.jadpo_record, the identity registry, each translations \
-                      folder's sources, the suggestions a team ignored or taught, and jadpo.lock. \
+                      folder's sources, the suggestions the project ignored or taught, and jadpo.lock. \
                       `jadpo records` lists them by the command that writes them, each with whether \
                       it is up to date, and fails while one is not, naming the command to run. \
                       `update` brings every record up to date at once: each API record written from \
-                      the routes, each ledger rewritten sorted and in the newest format, and a record \
+                      the routes, each other record rewritten sorted and in the newest format, and a record \
                       under its old name moved.",
         arguments: &[Argument {
             name: "action",

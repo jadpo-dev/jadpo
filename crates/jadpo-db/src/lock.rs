@@ -152,7 +152,7 @@ fn parse_line(line: &str) -> Result<Locked, String> {
     };
     if split_package(package).is_none() {
         return Err(format!(
-            "`{package}` isn't a package and major version, such as `Postcodes.v2`"
+            "`{package}` isn't a package and major version, `<Name>.v<major>`"
         ));
     }
     let source = match rest {
