@@ -49,6 +49,7 @@ pub struct ScheduleModel {
 /// One schedule as read, with its problems.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScheduleRead {
+    pub name: String,
     pub model: Option<Arc<ScheduleModel>>,
     /// Where its declaration's name is, for a problem found later.
     pub span: Span,
@@ -103,6 +104,7 @@ pub fn schedules_in(db: &dyn Db, project: Project, file: File) -> Vec<ScheduleRe
             |name| node_span(path, name.syntax()),
         );
         out.push(ScheduleRead {
+            name: item.name.clone(),
             model: model.map(Arc::new),
             span,
             problems: reader.out,
@@ -146,7 +148,7 @@ pub fn schedule_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
     for read in schedules_in(db, project, file) {
         out.extend(read.problems.iter().cloned());
         if settings.store.is_none() && settings.problems.is_empty() {
-            out.push(store_required(db, project, &read.span));
+            out.push(store_required(db, project, &read.name, &read.span));
         }
         let Some(model) = &read.model else { continue };
         if !crate::policy::policy_clean(db, project) {
@@ -166,7 +168,7 @@ pub fn schedule_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
 
 /// `schedule.store_required`: no database is named to keep a schedule's
 /// state and lease in, and there isn't exactly one to default to.
-fn store_required(db: &dyn Db, project: Project, span: &Span) -> Diagnostic {
+fn store_required(db: &dyn Db, project: Project, name: &str, span: &Span) -> Diagnostic {
     let databases = crate::data::connections(db, project).databases();
     let listed = crate::and_list(
         &databases
@@ -176,14 +178,14 @@ fn store_required(db: &dyn Db, project: Project, span: &Span) -> Diagnostic {
     );
     let (message, reason, next) = match databases.first() {
         Some(first) => (
-            "There are several databases and none is named for schedules".to_string(),
+            format!("`{name}` has no database named to keep its state in"),
             format!(
                 "Each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has {listed}, and `app.jadpo` names none with `schedules: {{ store: }}`."
             ),
             format!("Add `schedules: {{ store: {first} }}` to `application {{ }}` in `app.jadpo`"),
         ),
         None => (
-            "There is no database to keep schedules in".to_string(),
+            format!("`{name}` has no database to keep its state in"),
             "Each schedule keeps its next due time and the lease that lets one instance run it at a time in a database, and this application has none.".to_string(),
             "Add a PostgreSQL connection under `connections:` in `app.jadpo`".to_string(),
         ),

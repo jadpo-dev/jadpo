@@ -1964,14 +1964,28 @@ chunks below, taken before Phase 6.
   chunk 5.1d, what a subscriber stores from an event checked against what
   every `emit` of it put there, as area 9's stored values are (an `emit`
   itself stores nothing a caller reads).
-- [ ] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
+- [x] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
   tenants", and area 9's "Background work and `Access.public`", decided
   2026-10-19: a schedule reaches every tenant, and reaching what only
   `Access.public` grants is a compile error) leases, the native tick, schedule monitoring basics,
   and the runtime's own sweeps, starting with deleting expired idempotency
   keys (area 7). Split on 2026-10-19 because it doesn't fit one session:
   schedules, their leases, the tick, its sweeps and run records here;
-  the commands that watch them are 6.2b.
+  the commands that watch them are 6.2b. Built: schedules read and
+  checked (`schedule.` errors), `schedules: { store: }` defaulting to the
+  only database (`schedule.store_required` with several),
+  `policy.system_grant_missing` for schedules; `jadpo_schedules` and
+  `jadpo_schedule_runs`; `jadpo_runtime::schedules::tick`, taking each
+  due schedule's lease in one statement, catching up missed ticks as one
+  run on the same grid, skipping and recording a leased or paused one,
+  running it as the system with no tenant under the tick's clock in a
+  new trace, recording every run; the native timer on the server's
+  first worker, which `jadpo dev` ticks with; the sweeps on each tick
+  (`runner::sweep`, expired idempotency keys, delivered events) and
+  `schedules::HOOKS` for 6.4's batch resume; a live test of all of it.
+  Choices in area 12's "Chosen in chunk 6.2"; flagged there: when the
+  first run is due, the next due time as a failed run's retry, and an
+  `every:` under a minute on Workers.
 - [ ] **6.2b Watching schedules** `opus · high`, after 6.2 (area 12,
   "Watching schedules"; area 14): `jadpo schedules` with `run`, `pause`,
   `resume` and `history`, `jadpo why <schedule>`, a schedule's runs in

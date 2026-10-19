@@ -235,7 +235,7 @@ fn several_databases_need_schedules_store_named() {
     assert_eq!(
         problems(&[("app.jadpo", unnamed.as_str()), ("config.jadpo", config)]),
         [format!(
-            "{PATH} schedule.store_required: There are several databases and none is named for schedules"
+            "{PATH} schedule.store_required: `tidy_up` has no database named to keep its state in"
         )]
     );
     let named = two("    schedules: {\n        store: archive\n    }\n");
