@@ -1,0 +1,5 @@
+/// Who rents a plot.
+type HolderName = Text {
+    min_length: 1
+    max_length: 80
+}

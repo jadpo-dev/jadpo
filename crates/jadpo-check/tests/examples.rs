@@ -60,14 +60,15 @@ use jadpo_graph::body::{
     UnaryOp,
 };
 use jadpo_graph::{Base, Detail, EdgeKind, Kind, Status, TypeRef};
+use jadpo_std::batch::BatchOp;
 use jadpo_std::write::WriteOp;
 use jadpo_std::{Builtin, FieldChange, Generated, OPERATIONS, OnDelete, Rules};
 use jadpo_syntax::SyntaxKind;
 use jadpo_syntax::ast::{self, AstNode};
 
-/// The areas built so far (roadmap Phases 1 to 4). A graph kind these
+/// The areas built so far (roadmap Phases 1 to 6). A graph kind these
 /// areas decide counts once nodes of it are declared.
-const BUILT_AREAS: [u8; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13];
+const BUILT_AREAS: [u8; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13];
 
 /// Features no valid, runnable example can use yet, and why.
 const EXEMPT: &[(&str, &str)] = &[
@@ -145,7 +146,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "syntax PROVIDE_DECL",
         "not built: provider packages (area 11)",
     ),
-    ("syntax SCHEDULE_DECL", "not built: schedules (area 12)"),
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
     // Bases later areas define.
@@ -183,7 +183,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     // Layout places later areas fill.
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("domain folder schedules", "not built: schedules (area 12)"),
     ("domain folder emails", "not built: emails (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
@@ -395,6 +394,21 @@ fn built() -> BTreeSet<String> {
             .map(move |value| format!("setting {name}.{value}"))
     }));
     out.insert("data migration decision backfill".to_string());
+    // Area 12: what a subscriber and a schedule hold, a subscriber limited
+    // to its event's tenant, the outbox's store, the event record, a
+    // route that waits for follow-on work, and a batch limited to a
+    // tenant (chunks 6.1b to 6.4c).
+    out.extend(
+        jadpo_check::events::SUBSCRIBER_ITEMS
+            .iter()
+            .map(|item| format!("subscriber item {item}")),
+    );
+    out.extend(
+        jadpo_check::schedules::SCHEDULE_ITEMS
+            .iter()
+            .map(|item| format!("schedule item {item}")),
+    );
+    out.extend(AREA_12.iter().map(|feature| feature.to_string()));
     out.extend(
         FieldChange::NAMES
             .iter()
@@ -402,6 +416,16 @@ fn built() -> BTreeSet<String> {
     );
     out
 }
+
+/// Area 12's features that no table lists: each is named where
+/// [`used_by`] finds it.
+const AREA_12: &[&str] = &[
+    "subscriber limited to its event's tenant",
+    "events store",
+    "record events",
+    "route settle",
+    "batch limited to a tenant",
+];
 
 /// The enums whose values a route, an API, `authentication`, a grant or a
 /// membership names (areas 7 to 9), or a route test's `method:` takes.
@@ -533,6 +557,11 @@ const BODY: &[&str] = &[
     "call entity operation",
     "call caller from a record",
     "call session",
+    "call batch each",
+    "call batch each with finished",
+    "call batch each with key",
+    "call batch status",
+    "call batch cancel",
     "advance the test clock",
     "call translation",
     "render a prompt",
@@ -872,7 +901,21 @@ fn body_features(
                         Callee::Entity { .. } => "call entity operation",
                         Callee::Caller(_) => "call caller from a record",
                         Callee::Session(_) => "call session",
-                        Callee::Batch(_) => "call batch",
+                        Callee::Batch(op) => match op {
+                            BatchOp::Each => {
+                                // `each`'s arguments: `from:`, `each:`,
+                                // `finished:` and `key:`, in that order.
+                                if args.get(2).is_some_and(Option::is_some) {
+                                    out.insert("call batch each with finished");
+                                }
+                                if args.get(3).is_some_and(Option::is_some) {
+                                    out.insert("call batch each with key");
+                                }
+                                "call batch each"
+                            }
+                            BatchOp::Status => "call batch status",
+                            BatchOp::Cancel => "call batch cancel",
+                        },
                         Callee::AdvanceClock => "advance the test clock",
                         Callee::Translation(_) => "call translation",
                         Callee::Prompt(_) => "render a prompt",
@@ -1332,6 +1375,10 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
         if query.missing.is_some() {
             used.insert("query section missing".to_string());
         }
+        // A map layer's `geometry:` (chunk 5.5u8).
+        if query.geometry.is_some() {
+            used.insert("query section geometry".to_string());
+        }
         fn conditions(all: &[Condition], used: &mut BTreeSet<String>) {
             for condition in all {
                 let word = match condition {
@@ -1418,6 +1465,49 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
     }
     for edge in graph.edges() {
         used.insert(format!("graph edge {}", edge.kind.word()));
+    }
+    // Area 12: what each subscriber and schedule holds, as read.
+    for subscriber in jadpo_check::events::subscribers(db, project).iter() {
+        used.insert("subscriber item on".to_string());
+        used.insert("subscriber item run".to_string());
+        if subscriber.retry != jadpo_check::events::DEFAULT_RETRY {
+            used.insert("subscriber item retry".to_string());
+        }
+        if matches!(subscriber.tenant, jadpo_check::events::Tenant::Field(_)) {
+            used.insert("subscriber limited to its event's tenant".to_string());
+        }
+    }
+    if !jadpo_check::schedules::schedules(db, project).is_empty() {
+        used.insert("schedule item every".to_string());
+        used.insert("schedule item run".to_string());
+    }
+    if jadpo_check::events::events_settings(db, project)
+        .store
+        .is_some()
+    {
+        used.insert("events store".to_string());
+    }
+    if std::fs::read_dir(project_dir.join("domains")).is_ok_and(|domains| {
+        domains
+            .filter_map(Result::ok)
+            .any(|domain| domain.path().join("events/events.jadpo_record").is_file())
+    }) {
+        used.insert("record events".to_string());
+    }
+    if jadpo_check::routes::groups(db, project)
+        .groups
+        .iter()
+        .flat_map(|group| &group.routes)
+        .any(|route| route.settle.is_some())
+    {
+        used.insert("route settle".to_string());
+    }
+    // A batch in an application with a tenant is limited to the tenant
+    // its saved values name (chunk 6.4c).
+    if used.contains("body call batch each")
+        && jadpo_check::batches::tenant_id(db, project).is_some()
+    {
+        used.insert("batch limited to a tenant".to_string());
     }
     // An isolation level counts on an action or fixture that writes: one
     // that reaches no store teaches nothing about either.

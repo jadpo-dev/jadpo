@@ -1,0 +1,15 @@
+use plots/entities { Plot, PlotNotFound, Reminder, Society, SocietyNotFound }
+
+/// Records a reminder for a plot whose rent is overdue.
+action remind_holder(
+    society_id: Society.id,
+    plot_id: Plot.id
+) fails SocietyNotFound, PlotNotFound -> Reminder {
+    return attempt Reminder.create {
+        set: {
+            society_id: society_id
+            plot_id: plot_id
+            sent_on: temporal.date(temporal.in_zone(clock.now, Zone.europe_london))
+        }
+    }
+}

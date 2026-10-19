@@ -1,0 +1,12 @@
+use cafe/entities { Repair, RepairNotFound, ThankYouNote }
+use cafe/types { ThanksText }
+
+/// Pins a note to the board.
+action pin_note(repair_id: Repair.id, note: ThanksText) fails RepairNotFound -> ThankYouNote {
+    return attempt ThankYouNote.create {
+        set: {
+            repair_id: repair_id
+            note: note
+        }
+    }
+}

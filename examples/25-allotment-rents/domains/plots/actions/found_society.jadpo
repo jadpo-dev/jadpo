@@ -1,0 +1,11 @@
+use plots/entities { Society }
+use plots/types { SocietyName }
+
+/// Adds a society.
+action found_society(name: SocietyName) -> Society {
+    return Society.create {
+        set: {
+            name: name
+        }
+    }
+}

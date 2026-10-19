@@ -1,0 +1,13 @@
+use plots/types { OfficerRole, SocietyName }
+
+/// An allotment society that keeps its plots here.
+entity Society {
+    id: Uuid
+    name: SocietyName
+
+    policy: {
+        create: [Access.authenticated]
+        read: [OfficerRole.secretary, OfficerRole.treasurer, Access.system]
+        update: [OfficerRole.secretary]
+    }
+}

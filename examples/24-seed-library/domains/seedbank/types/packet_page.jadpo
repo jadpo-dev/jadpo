@@ -1,0 +1,9 @@
+/// Where a walk over the packets has got to.
+type PacketPage = Input {
+    page_size: PageSize {
+        default: 50
+    }
+    after: PageCursor {
+        optional: true
+    }
+}

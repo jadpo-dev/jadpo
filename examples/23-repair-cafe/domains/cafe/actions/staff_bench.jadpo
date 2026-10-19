@@ -1,0 +1,16 @@
+use cafe/entities { Bench }
+use cafe/types { FixerName, RepairKind }
+use cafe/failures { BenchTaken }
+
+/// Sets up a bench, with its fixer if someone covers it today.
+action staff_bench(item: RepairKind, fixer: FixerName?) fails BenchTaken -> Bench {
+    return attempt Bench.create {
+        set: {
+            item: item
+            fixer: fixer
+        }
+        conflict: {
+            Bench.item: BenchTaken
+        }
+    }
+}

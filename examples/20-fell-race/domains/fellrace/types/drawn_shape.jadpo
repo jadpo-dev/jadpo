@@ -1,0 +1,2 @@
+/// A shape drawn in a mapping tool and pasted in, as GeoJSON text.
+type DrawnShape = Text {}

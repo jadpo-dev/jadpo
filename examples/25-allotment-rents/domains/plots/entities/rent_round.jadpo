@@ -1,0 +1,18 @@
+use plots/entities { Society }
+use plots/types { OfficerRole, RoundYear }
+
+/// One year's invoicing of every plot in a society.
+entity RentRound {
+    id: Uuid
+    society_id: Society.id {
+        on_delete: OnDelete.cascade
+    }
+    charge_year: RoundYear
+    invoices: BatchRun?
+
+    policy: {
+        create: [OfficerRole.treasurer]
+        read: [OfficerRole.treasurer, Access.system]
+        update: [OfficerRole.treasurer, Access.system]
+    }
+}

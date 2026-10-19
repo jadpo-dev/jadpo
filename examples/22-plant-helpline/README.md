@@ -59,4 +59,4 @@ cd examples/22-plant-helpline && ../../target/release/jadpo ai show answer_plant
   <!-- try {"file": "domains/helpline/prompts/answer_plant_question.prompt", "replace": "The gardener is asking in {asked_in}, so give the advice for that month.\n", "with": "", "check": ["prompt.placeholder_unused"]} -->
 - In `closest_guides.jadpo`, take the `limit:` away. `jadpo check` reports `query.section_required`: a nearest search always says how many it wants.
   <!-- try {"file": "domains/helpline/queries/closest_guides.jadpo", "replace": "    limit: 3\n", "with": "", "check": ["query.section_required"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Then read [23-repair-cafe](../23-repair-cafe/README.md), where work carries on after an action, in subscribers.

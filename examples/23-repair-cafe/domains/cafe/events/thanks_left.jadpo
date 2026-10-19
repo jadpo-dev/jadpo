@@ -1,0 +1,8 @@
+use cafe/entities { Repair }
+use cafe/types { ThanksText }
+
+/// A visitor left a note for whoever mended their repair.
+type ThanksLeft = Event {
+    repair_id: Repair.id
+    note: ThanksText
+}

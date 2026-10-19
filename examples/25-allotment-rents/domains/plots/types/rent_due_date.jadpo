@@ -1,0 +1,2 @@
+/// The day a plot's rent falls due, on the society's own calendar.
+type RentDueDate = CalendarDate {}

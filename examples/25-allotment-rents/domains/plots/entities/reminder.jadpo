@@ -1,0 +1,19 @@
+use plots/entities { Plot, Society }
+use plots/types { OfficerRole }
+
+/// A reminder that a plot's rent is overdue.
+entity Reminder {
+    id: Uuid
+    society_id: Society.id {
+        on_delete: OnDelete.cascade
+    }
+    plot_id: Plot.id {
+        on_delete: OnDelete.cascade
+    }
+    sent_on: CalendarDate
+
+    policy: {
+        create: [Access.system]
+        read: [OfficerRole.secretary, OfficerRole.treasurer, Access.system]
+    }
+}

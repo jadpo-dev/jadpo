@@ -1,0 +1,5 @@
+/// A visitor's thank-you note to the fixer.
+type ThanksText = Text {
+    min_length: 1
+    max_length: 280
+}

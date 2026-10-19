@@ -1,0 +1,10 @@
+// `events: { store: }` names the database whose outbox keeps an event
+// until its subscribers have it. An event is normally kept in the store
+// its action writes, in the same transaction, so this is only needed for
+// an action that emits and writes nothing: `leave_thanks`.
+
+application {
+    events: {
+        store: main
+    }
+}

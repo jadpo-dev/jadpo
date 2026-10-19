@@ -1,0 +1,8 @@
+use cafe/actions { pin_note }
+use cafe/events { ThanksLeft }
+
+/// Pins up every note left.
+subscriber pin_up_thanks {
+    on: ThanksLeft
+    run: pin_note(event.repair_id, event.note)
+}

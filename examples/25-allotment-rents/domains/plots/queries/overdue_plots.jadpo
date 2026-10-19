@@ -1,0 +1,12 @@
+use plots/entities { Plot }
+use plots/types { RentDueDate }
+
+/// Plots whose rent is overdue and that haven't been reminded yet, a
+/// run's worth at a time.
+query overdue_plots(london_today: RentDueDate) -> List<Plot> {
+    from: Plot
+    where: Plot.rent_due_on < london_today
+    where: Plot.reminded_on == none
+    order: [Plot.rent_due_on asc]
+    limit: 200
+}

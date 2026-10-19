@@ -1,0 +1,22 @@
+use plots/entities { Plot, Society }
+use plots/types { SocietySites }
+use plots/actions { add_plot, found_society }
+
+/// Hill Top and Vale Road, each with a plot whose rent is overdue on
+/// 19 October 2026, Vale Road with one not yet due and one nobody rents.
+fixture two_societies() -> SocietySites {
+    var hill_top: Society = found_society("Hill Top Allotments")
+    var vale_road: Society = found_society("Vale Road Gardens")
+    var ada: Plot = attempt add_plot(hill_top.id, 1, "Ada", 4500, "2026-09-30")
+    var ben: Plot = attempt add_plot(vale_road.id, 7, "Ben", 3800, "2026-10-01")
+    var cy: Plot = attempt add_plot(vale_road.id, 8, "Cy", 3800, "2026-12-01")
+    var unlet_plot: Plot = attempt add_plot(vale_road.id, 9, none, 3800, none)
+    return SocietySites {
+        hill_top: hill_top
+        vale_road: vale_road
+        ada_overdue: ada
+        ben_overdue: ben
+        cy_not_due: cy
+        empty_plot: unlet_plot
+    }
+}

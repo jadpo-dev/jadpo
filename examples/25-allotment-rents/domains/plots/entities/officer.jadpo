@@ -1,0 +1,26 @@
+use plots/entities { Gardener, Society }
+use plots/types { OfficerRole }
+
+/// A gardener's place on a society's committee.
+entity Officer {
+    id: Uuid
+    society_id: Society.id {
+        on_delete: OnDelete.cascade
+    }
+    gardener_id: Gardener.id {
+        on_delete: OnDelete.cascade
+    }
+    role: OfficerRole
+
+    membership: {
+        scope: society_id
+        member: gardener_id
+        role: role
+    }
+
+    policy: {
+        create: [OfficerRole.secretary]
+        read: [OfficerRole.secretary, OfficerRole.treasurer]
+        delete: [OfficerRole.secretary]
+    }
+}

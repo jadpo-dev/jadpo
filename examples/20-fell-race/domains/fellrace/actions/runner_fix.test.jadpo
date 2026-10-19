@@ -1,0 +1,12 @@
+use fellrace/failures { NoFix }
+
+test "a watch's fix is read latitude first" {
+    var on_the_top: Point = attempt runner_fix([54.6511, -3.1478, 931.0])
+    assert on_the_top == Point {
+        latitude: 54.6511
+        longitude: -3.1478
+        altitude: 931metre
+    }
+    assert runner_fix([91.0, -3.1478]) fails NoFix
+    assert runner_fix([54.6511]) fails NoFix
+}

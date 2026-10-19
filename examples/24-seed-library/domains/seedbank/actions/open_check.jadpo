@@ -1,0 +1,14 @@
+use seedbank/entities { StockCheck }
+use seedbank/types { Season }
+
+/// Opens a spring's stock check, before any packet is looked at.
+action open_check(season: Season) -> StockCheck {
+    return StockCheck.create {
+        set: {
+            season: season
+            shelf_walk: none
+            packets_checked: none
+            packets_on_loan: none
+        }
+    }
+}

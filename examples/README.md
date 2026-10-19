@@ -86,6 +86,18 @@ README saying what it teaches, how to run it and what to try next.
     the nearest query and its tuned index, distance in code, and
     prompts: checked prompt files, rendering, a shared prompt and a
     conversation.
+23. [23-repair-cafe/](23-repair-cafe/README.md): events: declaring and
+    emitting them, the outbox, subscribers and their retries, events
+    that cause events, the event record, an action that only emits, and
+    routes that answer 202 or wait for the follow-on work with
+    `settle:`.
+24. [24-seed-library/](24-seed-library/README.md): batches: work over
+    many items a page at a time, an action per item, problems, the
+    summary at the end, `key:`, a run's status and cancelling it, and a
+    standard operation in a query's condition.
+25. [25-allotment-rents/](25-allotment-rents/README.md): schedules, and
+    background work in an application with tenants: a schedule reaching
+    every tenant, a subscriber and a batch reaching one.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

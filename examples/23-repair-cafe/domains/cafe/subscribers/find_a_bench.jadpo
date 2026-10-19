@@ -1,0 +1,21 @@
+// A subscriber names one event (`on:`) and the action it runs (`run:`),
+// passing the event or its fields. It runs as the application, after the
+// booking commits, and each subscriber of an event gets its own delivery.
+//
+// `retry:` changes its budget from the default 10 attempts within 24
+// hours: a repair café closes for the day, so trying for longer is no use.
+// Each wait is longer than the last, with random jitter, so many waiting
+// deliveries don't all try again together.
+
+use cafe/actions { send_to_bench }
+use cafe/events { RepairBooked }
+
+/// Finds each booked repair a bench.
+subscriber find_a_bench {
+    on: RepairBooked
+    run: send_to_bench(event.repair_id, event.item)
+    retry: {
+        attempts: 6
+        within: 4h
+    }
+}

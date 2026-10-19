@@ -1,0 +1,5 @@
+/// One number a runner's watch or the marshals' map app sends for a
+/// position: a latitude, a longitude or a height in metres.
+type WatchReading = Decimal {
+    scale: 9
+}

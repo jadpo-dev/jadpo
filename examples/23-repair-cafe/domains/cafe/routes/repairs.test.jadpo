@@ -1,0 +1,86 @@
+// A route test sends its request through the real boundary, `settle:`
+// included: the follow-on work runs while the test waits, so each test
+// sees the ticket as the kiosk would.
+
+use cafe/entities { Bench, Repair }
+use cafe/types { RepairKind, RepairRequest, ThanksRequest }
+use cafe/actions { book_repair }
+use cafe/fixtures { saturday_benches }
+
+test "a bike is sent to Priya's bench and its ticket printed" {
+    var bikes: Bench = saturday_benches()
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/repairs"
+        input: RepairRequest {
+            item: RepairKind.bike
+            symptom: "The back brake rubs."
+        }
+    }
+    assert response.status == 201
+    var at_priyas: Bool = match response.output {
+        some(ticket) -> ticket.bench_id == bikes.id and ticket.ticket_printed_at != none
+        none -> false
+    }
+    assert at_priyas
+}
+
+test "a toaster waits for a fixer, so the kiosk is told 202" {
+    var bikes: Bench = saturday_benches()
+    assert bikes.fixer == "Priya"
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/repairs"
+        input: RepairRequest {
+            item: RepairKind.toaster
+            symptom: "It won't pop up."
+        }
+    }
+    assert response.status == 202
+    var waiting: Bool = match response.output {
+        some(ticket) -> ticket.bench_id == none
+        none -> false
+    }
+    assert waiting
+}
+
+test "a microwave is refused for good, which has settled" {
+    var bikes: Bench = saturday_benches()
+    assert bikes.fixer == "Priya"
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/repairs"
+        input: RepairRequest {
+            item: RepairKind.microwave
+            symptom: "It sparks."
+        }
+    }
+    assert response.status == 201
+    var no_bench: Bool = match response.output {
+        some(ticket) -> ticket.bench_id == none and ticket.ticket_printed_at == none
+        none -> false
+    }
+    assert no_bench
+}
+
+test "a thank-you note is accepted and pinned up after" {
+    var bikes: Bench = saturday_benches()
+    assert bikes.fixer == "Priya"
+    var lamp: Repair = book_repair(
+        RepairRequest {
+            item: RepairKind.lamp
+            symptom: "It flickers."
+        }
+    )
+    var thanked: Response = request {
+        method: HttpMethod.post
+        path: "/repairs/{repair_id}/thanks"
+        params: {
+            repair_id: lamp.id
+        }
+        input: ThanksRequest {
+            note: "Tom found the loose wire in a minute. Thank you!"
+        }
+    }
+    assert thanked.status == 202
+}

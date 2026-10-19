@@ -1,0 +1,10 @@
+use cafe/entities { Repair, RepairNotFound }
+
+/// Prints the ticket the visitor takes to the bench.
+action print_ticket(repair_id: Repair.id) fails RepairNotFound -> Unit {
+    attempt Repair.update(repair_id) {
+        set: {
+            ticket_printed_at: clock.now
+        }
+    }
+}

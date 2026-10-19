@@ -1,0 +1,22 @@
+use plots/entities { Plot, Society, SocietyNotFound }
+use plots/types { HolderName, Pence, PlotNumber, RentDueDate }
+
+/// Adds a plot to a society's site.
+action add_plot(
+    society_id: Society.id,
+    number: PlotNumber,
+    plot_holder: HolderName?,
+    rent: Pence,
+    rent_due_on: RentDueDate?
+) fails SocietyNotFound -> Plot {
+    return attempt Plot.create {
+        set: {
+            society_id: society_id
+            number: number
+            plot_holder: plot_holder
+            rent: rent
+            rent_due_on: rent_due_on
+            reminded_on: none
+        }
+    }
+}
