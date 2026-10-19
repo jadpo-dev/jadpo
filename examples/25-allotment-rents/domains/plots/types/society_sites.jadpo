@@ -1,0 +1,11 @@
+use plots/entities { Plot, Society }
+
+/// Two societies' plots for a run to find.
+type SocietySites = Object {
+    hill_top: Society
+    vale_road: Society
+    ada_overdue: Plot
+    ben_overdue: Plot
+    cy_not_due: Plot
+    empty_plot: Plot
+}

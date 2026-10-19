@@ -1,0 +1,13 @@
+// An event records that something happened: a type with the `Event`
+// base, named in the past tense, one per file in `events/`. It carries
+// ids and the facts of the moment, not whole records; a subscriber that
+// needs more reads the current state.
+
+use cafe/entities { Repair }
+use cafe/types { ItemKind }
+
+/// A visitor booked a repair at the kiosk.
+type RepairBooked = Event {
+    repair_id: Repair.id
+    item: ItemKind
+}

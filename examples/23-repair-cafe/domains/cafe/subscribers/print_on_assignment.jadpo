@@ -1,0 +1,11 @@
+// A subscriber's action may emit in turn: `send_to_bench` emits
+// `BenchAssigned`, which this one prints the ticket for.
+
+use cafe/actions { print_ticket }
+use cafe/events { BenchAssigned }
+
+/// Prints a ticket once a repair has its bench.
+subscriber print_on_assignment {
+    on: BenchAssigned
+    run: print_ticket(event.repair_id)
+}

@@ -1,0 +1,9 @@
+// `FailureKind.unavailable` says the same call may work later, so a
+// subscriber whose action fails with it is retried; any other kind fails
+// its delivery for good, since the same input fails the same way.
+
+/// Nobody is at the bench for this kind of thing yet.
+type NoFixerFree = Failure {
+    kind: FailureKind.unavailable
+    message: "Nobody can look at this yet."
+}

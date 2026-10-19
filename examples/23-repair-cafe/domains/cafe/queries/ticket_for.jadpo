@@ -1,0 +1,9 @@
+use cafe/entities { Repair, RepairNotFound }
+use cafe/types { RepairTicket }
+
+/// One repair's ticket.
+query ticket_for(repair_id: Repair.id) fails RepairNotFound -> RepairTicket {
+    from: Repair
+    where: Repair.id == repair_id
+    missing: RepairNotFound
+}

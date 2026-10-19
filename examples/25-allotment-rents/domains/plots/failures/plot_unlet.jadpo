@@ -1,0 +1,5 @@
+/// Nobody holds the plot, so there is nobody to charge.
+type PlotUnlet = Failure {
+    kind: FailureKind.rejected
+    message: "Nobody rents this plot."
+}

@@ -1,0 +1,5 @@
+/// The growing year seeds were saved in, or a check is for.
+type Season = Int {
+    min: 2000
+    max: 2200
+}

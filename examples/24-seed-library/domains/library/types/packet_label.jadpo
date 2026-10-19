@@ -1,0 +1,6 @@
+use library/entities { SeedPacket }
+
+/// A packet as the donations board lists it.
+type PacketLabel = Output {
+    pick: [SeedPacket.id, SeedPacket.variety, SeedPacket.donated_on]
+}

@@ -1,0 +1,5 @@
+/// That kind of thing already has a bench.
+type BenchTaken = Failure {
+    kind: FailureKind.conflict
+    message: "There is already a bench for that."
+}

@@ -1,0 +1,27 @@
+// Anyone at the kiosk books a repair, but nobody at it changes one: the
+// bench and the ticket are written by subscribers, which run as the
+// system. `Access.system` is how an entity lets background work in;
+// `Access.public` never does, since a subscriber is nobody's request.
+
+use cafe/entities { Bench }
+use cafe/types { FaultNote, ItemKind }
+
+/// One thing brought in to be mended.
+entity Repair {
+    id: Uuid
+    item: ItemKind
+    fault: FaultNote
+    bench_id: Bench.id? {
+        on_delete: OnDelete.cleared
+    }
+    ticket_printed_at: Instant?
+    booked_at: Instant {
+        generated: Generated.on_create
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}

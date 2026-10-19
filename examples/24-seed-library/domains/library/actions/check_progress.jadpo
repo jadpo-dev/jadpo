@@ -1,0 +1,8 @@
+// `batches.status` gives a run's `BatchProgress`: items done, its
+// estimated total, problems so far and its state (`running`, `finished`,
+// `failed` or `cancelled`).
+
+/// How far a stock check has got.
+action check_progress(sweep: BatchRun) -> BatchProgress {
+    return batches.status(sweep)
+}

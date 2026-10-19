@@ -1,0 +1,30 @@
+// The action a schedule runs. A schedule passes nothing: `clock.now` is
+// fixed for the whole run, so the action reads the date from it.
+//
+// It runs as the system with no tenant, and reaches every society: one
+// run finds the overdue plots of all of them. It does no slow work
+// itself. Each plot is marked in this run's transaction, so the next run
+// can't find it twice, and gets an event, so each reminder is its own
+// delivery, retried on its own, limited to its society.
+
+use plots/entities { Plot }
+use plots/types { RentDueDate }
+use plots/queries { overdue_plots }
+use plots/events { RentOverdue }
+
+/// Marks each overdue plot and announces it.
+action flag_overdue_rent() -> Unit {
+    var today: CalendarDate = temporal.date(temporal.in_zone(clock.now, Zone.europe_london))
+    var overdue: List<Plot> = overdue_plots(RentDueDate(today))
+    for plot in overdue {
+        var marked: Plot = Plot.update(plot) {
+            set: {
+                reminded_on: today
+            }
+        }
+        emit RentOverdue {
+            society_id: marked.society_id
+            plot_id: marked.id
+        }
+    }
+}

@@ -1,0 +1,5 @@
+/// A plot's number on the site map.
+type PlotNumber = Int {
+    min: 1
+    max: 999
+}

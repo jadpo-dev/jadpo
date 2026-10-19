@@ -1,0 +1,30 @@
+use fellrace/types { DrawnShape }
+use fellrace/failures { NotLand }
+
+test "a drawn outline is land" {
+    var common: Polygon = attempt land_from_drawing(
+        DrawnShape(
+            "{\"type\":\"Polygon\",\"coordinates\":[[[-3.17,54.6],[-3.1,54.6],[-3.1,54.66],[-3.17,54.66],[-3.17,54.6]]]}"
+        )
+    )
+    assert geo.contains(
+        common,
+        Point {
+            latitude: 54.63
+            longitude: -3.13
+            altitude: none
+        }
+    )
+}
+
+test "a drawn line, a feature and WKT aren't" {
+    assert land_from_drawing(
+        DrawnShape("{\"type\":\"LineString\",\"coordinates\":[[-3.131,54.6035],[-3.1206,54.617]]}")
+    ) fails NotLand
+    assert land_from_drawing(
+        DrawnShape(
+            "{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[-3.1,54.6]},\"properties\":{}}"
+        )
+    ) fails NotLand
+    assert land_from_drawing(DrawnShape("POINT(-3.1478 54.6511)")) fails NotLand
+}

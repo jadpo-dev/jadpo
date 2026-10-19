@@ -1,0 +1,17 @@
+use plots/types { GardenerName }
+
+/// Someone who signs in to help run a society.
+entity Gardener {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    name: GardenerName
+
+    policy: {
+        create: [Access.public]
+        read: [id]
+        update: [id]
+        tenant: Tenancy.shared
+    }
+}

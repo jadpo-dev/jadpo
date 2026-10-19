@@ -1,0 +1,14 @@
+// A schedule runs one action of its domain on a timer. `every:` takes
+// seconds, minutes, hours or days, counted in UTC on a grid that a
+// restart or a deploy doesn't move. Only one run happens at a time; ticks
+// missed while the application was down, or while a run was still
+// going, become one run, not a backlog. A failed run is recorded, and the
+// next due time is its retry.
+
+use plots/actions { flag_overdue_rent }
+
+/// Looks for overdue rent once a day.
+schedule overdue_rent {
+    every: 1d
+    run: flag_overdue_rent()
+}

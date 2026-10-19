@@ -1,0 +1,5 @@
+/// The café doesn't open this kind of thing.
+type NotSafeToMend = Failure {
+    kind: FailureKind.rejected
+    message: "We can't open this safely."
+}

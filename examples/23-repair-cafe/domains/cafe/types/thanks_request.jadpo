@@ -1,0 +1,6 @@
+use cafe/types { ThanksText }
+
+/// What the kiosk sends to thank a fixer.
+type ThanksRequest = Input {
+    note: ThanksText
+}

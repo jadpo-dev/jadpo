@@ -1,0 +1,7 @@
+use cafe/entities { Bench, Repair }
+
+/// A repair was sent to a bench.
+type BenchAssigned = Event {
+    repair_id: Repair.id
+    bench_id: Bench.id
+}

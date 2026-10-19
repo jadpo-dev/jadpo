@@ -1,0 +1,7 @@
+// `batches.status` gives how far a run has got: items done, problems so
+// far (here, plots nobody rents) and its state.
+
+/// How far a round's invoicing has got.
+action round_progress(invoices: BatchRun) -> BatchProgress {
+    return batches.status(invoices)
+}

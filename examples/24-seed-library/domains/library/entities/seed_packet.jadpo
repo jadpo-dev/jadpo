@@ -1,0 +1,17 @@
+use library/types { DonatedDay, Season, VarietyName }
+
+/// A packet of saved seed a member may borrow and grow.
+entity SeedPacket {
+    id: Uuid
+    variety: VarietyName
+    saved_in: Season
+    donated_on: DonatedDay
+    on_loan: Bool
+    withdrawn: Bool
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}

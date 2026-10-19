@@ -1,0 +1,9 @@
+use cafe/entities { Bench }
+use cafe/types { ItemKind }
+
+/// The bench for this kind of thing, while someone is at it.
+query staffed_bench(item: ItemKind) -> Bench? {
+    from: Bench
+    where: Bench.item == item
+    where: Bench.fixer != none
+}

@@ -1,0 +1,16 @@
+use cafe/entities { Repair }
+use cafe/types { ThanksText }
+
+/// A note pinned to the board by the bench that mended something.
+entity ThankYouNote {
+    id: Uuid
+    repair_id: Repair.id {
+        on_delete: OnDelete.cascade
+    }
+    note: ThanksText
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+    }
+}

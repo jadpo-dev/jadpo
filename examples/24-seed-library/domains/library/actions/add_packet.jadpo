@@ -1,0 +1,20 @@
+use library/entities { SeedPacket }
+use library/types { DonatedDay, Season, VarietyName }
+
+/// Puts a packet on the shelves.
+action add_packet(
+    variety: VarietyName,
+    saved_in: Season,
+    donated_on: DonatedDay,
+    on_loan: SeedPacket.on_loan
+) -> SeedPacket {
+    return SeedPacket.create {
+        set: {
+            variety: variety
+            saved_in: saved_in
+            donated_on: donated_on
+            on_loan: on_loan
+            withdrawn: false
+        }
+    }
+}

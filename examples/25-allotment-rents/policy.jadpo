@@ -1,0 +1,8 @@
+// Each allotment society is a tenant: every plot, round and reminder
+// belongs to one, and no work done for one society reaches another's.
+
+use plots/entities { Society }
+
+policy {
+    tenant: Society
+}

@@ -1,0 +1,11 @@
+// The event carries the society's id in a field of the tenant's own id
+// type, `Society.id`. That is how a subscriber knows which tenant it
+// works for: its delivery is limited to the society the field names.
+
+use plots/entities { Plot, Society }
+
+/// A plot's rent went unpaid past its due date.
+type RentOverdue = Event {
+    society_id: Society.id
+    plot_id: Plot.id
+}

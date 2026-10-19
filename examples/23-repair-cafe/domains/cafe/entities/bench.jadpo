@@ -1,0 +1,17 @@
+use cafe/types { FixerName, ItemKind }
+
+/// A table where one volunteer mends one kind of thing; `fixer` is
+/// `none` on a day nobody covers it.
+entity Bench {
+    id: Uuid
+    item: ItemKind {
+        unique: true
+    }
+    fixer: FixerName?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public]
+    }
+}

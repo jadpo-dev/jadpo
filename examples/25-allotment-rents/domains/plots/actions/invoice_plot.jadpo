@@ -1,0 +1,20 @@
+use plots/entities { Invoice, Plot, RentRound, RentRoundNotFound }
+use plots/failures { PlotUnlet }
+
+/// Charges one plot its year's rent.
+action invoice_plot(
+    plot: Plot,
+    round_id: RentRound.id
+) fails PlotUnlet, RentRoundNotFound -> Invoice {
+    if (plot.holder == none) {
+        reject PlotUnlet {}
+    }
+    return attempt Invoice.create {
+        set: {
+            society_id: plot.society_id
+            plot_id: plot.id
+            round_id: round_id
+            amount: plot.rent
+        }
+    }
+}

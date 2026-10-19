@@ -1,0 +1,5 @@
+/// What the visitor says is wrong with it.
+type FaultNote = Text {
+    min_length: 3
+    max_length: 300
+}

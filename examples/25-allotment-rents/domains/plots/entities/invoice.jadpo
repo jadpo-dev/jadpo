@@ -1,0 +1,22 @@
+use plots/entities { Plot, RentRound, Society }
+use plots/types { OfficerRole, Pence }
+
+/// A year's rent charged for one plot.
+entity Invoice {
+    id: Uuid
+    society_id: Society.id {
+        on_delete: OnDelete.cascade
+    }
+    plot_id: Plot.id {
+        on_delete: OnDelete.cascade
+    }
+    round_id: RentRound.id {
+        on_delete: OnDelete.cascade
+    }
+    amount: Pence
+
+    policy: {
+        create: [Access.system]
+        read: [OfficerRole.treasurer, Access.system]
+    }
+}

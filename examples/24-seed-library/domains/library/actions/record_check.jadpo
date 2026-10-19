@@ -1,0 +1,19 @@
+// `finished:` runs once, after the last page, in a transaction of its
+// own. It is given an `ImportSummary`: how many items the run went
+// through, how many had problems, and each `RowProblem`, its place in
+// the walk and the failure's code but never the item's values.
+
+use library/entities { StockCheck, StockCheckNotFound }
+
+/// Keeps how a stock check went.
+action record_check(
+    summary: ImportSummary,
+    check_id: StockCheck.id
+) fails StockCheckNotFound -> Unit {
+    attempt StockCheck.update(check_id) {
+        set: {
+            packets_checked: summary.items
+            packets_on_loan: summary.items_with_problems
+        }
+    }
+}

@@ -1,0 +1,8 @@
+use plots/actions { remind_holder }
+use plots/events { RentOverdue }
+
+/// Reminds the holder of each plot whose rent is overdue.
+subscriber remind_overdue {
+    on: RentOverdue
+    run: remind_holder(event.society_id, event.plot_id)
+}

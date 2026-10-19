@@ -1,0 +1,46 @@
+// The kiosk needs no sign-in.
+//
+// Booking waits for its follow-on work with `settle:`. After the action
+// commits, the runtime delivers what it emitted at once, and what those
+// subscribers emit in turn, while the request waits. Once every delivery
+// has succeeded or failed for good, the route runs `answer:`, a named
+// query given `result` (what the action returned), and answers with the
+// route's status. If `within:` passes first, or a delivery is waiting to
+// retry, it runs the same query and answers 202, and the work carries on.
+// Either way the kiosk gets a `RepairTicket`, and the status says whether
+// it is finished.
+//
+// Thanking answers `SuccessStatus.accepted` at once: 202, with the
+// pinning left to happen after the response.
+
+use cafe/entities { Repair }
+use cafe/types { RepairRequest, RepairTicket, ThanksReceipt, ThanksRequest }
+use cafe/actions { book_repair, leave_thanks }
+use cafe/queries { ticket_for }
+
+/// The kiosk by the door.
+routes Repairs {
+    prefix: /repairs
+
+    /// Books a repair and answers once it has a bench and a ticket.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: RepairRequest
+        output: RepairTicket
+        status: SuccessStatus.created
+        run: book_repair(input)
+        settle: {
+            answer: ticket_for(result.id)
+            within: 3s
+        }
+    }
+
+    /// Leaves a thank-you note for whoever mended a repair.
+    POST /{repair_id: Repair.id}/thanks {
+        authentication: RouteAuthentication.none
+        input: ThanksRequest
+        output: ThanksReceipt
+        status: SuccessStatus.accepted
+        run: leave_thanks(repair_id, input)
+    }
+}

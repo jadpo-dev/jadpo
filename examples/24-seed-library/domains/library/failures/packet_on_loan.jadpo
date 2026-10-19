@@ -1,0 +1,5 @@
+/// The packet is out with a member, so it can't be checked on the shelf.
+type PacketOnLoan = Failure {
+    kind: FailureKind.rejected
+    message: "That packet is out on loan."
+}

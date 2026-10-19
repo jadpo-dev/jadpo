@@ -1,0 +1,5 @@
+/// An allotment society's name.
+type SocietyName = Text {
+    min_length: 1
+    max_length: 80
+}

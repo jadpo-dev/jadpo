@@ -1,0 +1,9 @@
+use fellrace/failures { NoFix }
+use fellrace/actions { runner_fix }
+
+test "a marshal's pin is read longitude first" {
+    var pin: Point = attempt marshal_pin([-3.1478, 54.6511])
+    var fix: Point = attempt runner_fix([54.6511, -3.1478])
+    assert pin == fix
+    assert marshal_pin([-3.1478, 91.0]) fails NoFix
+}

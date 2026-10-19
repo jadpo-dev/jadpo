@@ -1,0 +1,13 @@
+use plots/entities { RentRound, Society, SocietyNotFound }
+use plots/types { RoundYear }
+
+/// Opens a society's rent round for a year, before anyone is charged.
+action open_rent_round(society_id: Society.id, year: RoundYear) fails SocietyNotFound -> RentRound {
+    return attempt RentRound.create {
+        set: {
+            society_id: society_id
+            year: year
+            invoices: none
+        }
+    }
+}

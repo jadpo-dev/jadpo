@@ -1,0 +1,8 @@
+/// What a visitor brings in to be mended.
+type ItemKind = Enum {
+    bike
+    lamp
+    clothing
+    toaster
+    microwave
+}
