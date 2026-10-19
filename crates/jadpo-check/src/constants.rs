@@ -656,6 +656,18 @@ impl<'db> Eval<'db> {
         match literal::check(&cx.lookup, &target, &value.to_const()) {
             Ok(()) => Ok(value),
             Err(Problem::Kind { .. } | Problem::PercentRequired(_)) => Err(Stop::Unknown),
+            Err(problem @ Problem::Unread(_)) => {
+                let span = cx.span(expr.syntax());
+                cx.problems.push(literal::diagnostic(
+                    &cx.lookup,
+                    problem,
+                    &value.written(),
+                    &target,
+                    span,
+                    false,
+                ));
+                Err(Stop::Unknown)
+            }
             Err(Problem::UnitRequired(kind)) => {
                 let span = cx.span(expr.syntax());
                 cx.problems.push(literal::unit_required(

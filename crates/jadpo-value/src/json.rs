@@ -100,7 +100,7 @@ impl Path {
     }
 
     /// The text of the number here as the document wrote it.
-    fn number_text(&self) -> Option<&str> {
+    fn written_number(&self) -> Option<&str> {
         self.numbers.as_ref()?.get(&self.at)
     }
 
@@ -226,7 +226,7 @@ impl Codecs<'_> {
                     // The number's own text where the document's is known,
                     // so it is rounded to a float once (chunk 5.8c).
                     let written = path
-                        .number_text()
+                        .written_number()
                         .map_or_else(|| number.to_string(), str::to_string);
                     match jadpo_std::standard::ai::float(&written)
                         .and_then(|text| Value::decimal(&text))

@@ -24,10 +24,19 @@ pub enum Problem {
     /// A bare number where a percentage goes, which could be a ratio or a
     /// percentage already (area 19): written with `%` instead.
     PercentRequired(jadpo_std::Num),
+    /// Text where a standard object type with rules across its parts goes
+    /// (chunk 5.8c): its canonical text, which isn't read while compiling,
+    /// so its rules can't be checked against it.
+    Unread(String),
 }
 
 /// Checks a constant against the type it goes into.
 pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), Problem> {
+    if let Ty::Opaque(name, args) = expected
+        && args.is_empty()
+    {
+        return standard_object(name, value);
+    }
     if expected.has_error() || matches!(expected, Ty::Var(_) | Ty::Opaque(..)) {
         return Ok(());
     }
@@ -162,6 +171,32 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
     }
     Ok(())
+}
+
+/// A literal where a standard object type goes (chunk 5.8c): only text,
+/// its canonical text, which the type's contract reads where the value is
+/// made, and only for a type with one text form and no rules across its
+/// parts, since the checker can't read the text to check them; anything
+/// else is the wrong kind of value, never a value kept as it was written.
+fn standard_object(name: &str, value: &Const) -> Result<(), Problem> {
+    let Some(entry) = jadpo_std::standard::standard_type(name) else {
+        return Ok(());
+    };
+    if !matches!(
+        entry.holds,
+        jadpo_std::standard::Holds::Object(_) | jadpo_std::standard::Holds::Range
+    ) {
+        return Ok(());
+    }
+    match value {
+        Const::Other | Const::Path(_) | Const::None => Ok(()),
+        Const::Str(_) if entry.text.is_none() => Err(Problem::Kind { fix: None }),
+        Const::Str(_) if !jadpo_std::standard::across::rules(name).is_empty() => {
+            Err(Problem::Unread(name.to_string()))
+        }
+        Const::Str(_) => Ok(()),
+        _ => Err(Problem::Kind { fix: None }),
+    }
 }
 
 /// A vector written out against what its type holds beyond its length
@@ -323,6 +358,17 @@ pub fn diagnostic(
             }
         }
         Problem::UnitRequired(kind) => unit_required(kind, written, &expected.to_string(), span),
+        Problem::Unread(standard) => Diagnostic::new(
+            &rule::TYPE_INVALID_LITERAL,
+            format!("`{written}` can't be checked as a `{expected}` while compiling"),
+        )
+        .at(span, "canonical text")
+        .reason(format!(
+            "A `{standard}` has rules across its parts, which every literal is checked against while compiling; text written where one goes is its canonical text, which isn't read until the program runs, so its rules can't be checked."
+        ))
+        .next(format!(
+            "Write it out as `{standard} {{ ... }}`, or read the text with `text.parse(..., as: {standard})` and `attempt`"
+        )),
         Problem::PercentRequired(number) => {
             let headline = if constructor {
                 Diagnostic::new(

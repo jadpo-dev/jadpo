@@ -536,11 +536,11 @@ pub fn distance_bound(bound: &str, strict: bool) -> Option<f64> {
     }
     // `low` meets, `high` doesn't.
     while i128::from(high) - i128::from(low) > 1 {
-        let middle = ((i128::from(low) + i128::from(high)) / 2) as i64;
-        if meets(double(middle)) {
-            low = middle;
+        let halfway = ((i128::from(low) + i128::from(high)) / 2) as i64;
+        if meets(double(halfway)) {
+            low = halfway;
         } else {
-            high = middle;
+            high = halfway;
         }
     }
     Some(double(low))

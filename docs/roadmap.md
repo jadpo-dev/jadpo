@@ -1760,7 +1760,7 @@ chunks below, taken before Phase 6.
   never reads (`CHECK … NOT VALID`, `VALIDATE`, then `SET NOT NULL`), as
   area 5 says; a constant's `scale:` rounding as area 2 says. Done when
   each review reproduction passes on live PostgreSQL.
-- [ ] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
+- [x] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
   query result type with cross-field rules checked row by row as it is
   read, or refused; `ai.distance` in `where:` never keeping a NaN or
   infinite distance and comparing against the bound's exact double, and a
@@ -1773,6 +1773,20 @@ chunks below, taken before Phase 6.
   way a value is made (JSON, query strings, `text.parse`, settings,
   storage reads), standard types' named rules, `altitudes_agree`, and
   `prompts.render` with restricted fields.
+  Built: a result type with rules is refused (`query.result_rule`, area 6,
+  "Chosen in chunk 5.8c"); a cosine vector of zeros breaks `distance`, a
+  type indexed at half precision holds its items within ±65,504 (`min`,
+  `max`), `where:` distances never meet `NaN` or an infinity and compare
+  against the double that agrees with code's decimal, and nearest queries
+  set `hnsw.max_scan_tuples` to pgvector's most (area 21); JSON is read by
+  Jadpo's own reader, refusing a member named twice as malformed and
+  rounding a vector's item from its own text (area 19). The slice found
+  text literals of standard objects kept unchecked (a backwards range,
+  WKT with mixed altitudes, any number where a `Rating` goes), now
+  `type.invalid_literal` or `type.mismatch`, and standard objects read
+  from the store unchecked, now a defect naming the rule (areas 2 and
+  19); query strings, `text.parse`, settings and `prompts.render` with
+  restricted fields already held.
 - [x] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
   query giving a map layer", decided 2026-10-19): a query returning its
   records as a `FeatureCollection<G, P>`, naming the geometry field and

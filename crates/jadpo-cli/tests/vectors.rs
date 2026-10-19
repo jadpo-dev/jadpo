@@ -1223,7 +1223,13 @@ fn a_filtered_nearest_query_fills_its_limit_past_twenty_thousand_records() {
     // The index serves the order, whatever the table's size would
     // otherwise make the planner choose, and the scan has the memory it
     // needs, so the setting under test is what decides how far it goes.
-    let name = url.rsplit('/').next().expect("a database name").to_string();
+    let name = match rows(&url, "SELECT current_database()", &[])
+        .first()
+        .and_then(|row| row.first())
+    {
+        Some(SqlValue::Text(name)) => name.clone(),
+        other => panic!("no database name: {other:?}"),
+    };
     rows(
         &url,
         &format!("ALTER DATABASE \"{name}\" SET enable_seqscan = off"),

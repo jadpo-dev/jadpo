@@ -2330,19 +2330,19 @@ check failed: 1 error, 1 file
 ### `query.result_rule`
 
 ```jadpo check project=e-result-rule expect=query.result_rule
-type PageCount = Int {
+type LeafCount = Int {
     min: 1
     max: 5000
 }
 
 entity Book {
     id: Uuid
-    pages: PageCount
+    leaves: LeafCount
 }
 
 type ThickBook = Output {
-    pick: [Book.id, Book.pages]
-    rule thick: pages > 1000
+    pick: [Book.id, Book.leaves]
+    rule thick: leaves > 1000
 }
 
 query thick_books() -> List<ThickBook> {

@@ -11239,6 +11239,57 @@ From the Phase 5 soundness review, each the most conservative reading:
 - **What a vector type holds beyond its length** (area 21, "Chosen in
   chunk 5.8c"): not all zeros when compared by cosine, `distance`, and its
   items within ±65,504 when indexed at half precision, `min` and `max`.
+- **Text written where a standard object type with rules across its parts
+  goes is refused.** Such text is the type's canonical text, which the
+  contract reads only when the program runs, so a backwards range or a
+  week past its year's last was kept, its rules never checked. The checker
+  doesn't hold the contract's readers, so it can't read the text either;
+  the literal is `type.invalid_literal`, and the type is written out as an
+  object literal, whose rules are checked, or read with `text.parse` and
+  `attempt`. A type with one text form and no such rules
+  (`SemanticVersion`, `CardExpiry`, `Colour`) still takes its text.
+- **Any other literal where a standard object type goes is
+  `type.mismatch`:** a number, a `Bool`, or text where a type with no
+  single text form goes (`PostalAddress`, or WKT where a geometry goes,
+  mixed altitudes included). Each was kept as written and faulted where
+  it was used.
+- **A standard object read from the store is checked against its rules
+  across its parts,** as a value made anywhere else is; Jadpo writes none
+  that breaks one, so a row that does was written around it, and reading
+  it is a defect naming the rule, never the values.
+
+```jadpo check project=e-unread-text expect=type.invalid_literal
+/// When the shop's winter sale runs.
+function winter_sale() -> DateRange {
+    return "2026-12-27/2027-01-03"
+}
+```
+
+```text output
+error: `"2026-12-27/2027-01-03"` can't be checked as a `DateRange` while compiling
+ --> main.jadpo:3:12
+  |
+3 |     return "2026-12-27/2027-01-03"
+  |            ^^^^^^^^^^^^^^^^^^^^^^^ canonical text
+  reason: A `DateRange` has rules across its parts, which every literal is checked against while compiling; text written where one goes is its canonical text, which isn't read until the program runs, so its rules can't be checked.
+  next: Write it out as `DateRange { ... }`, or read the text with `text.parse(..., as: DateRange)` and `attempt` (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
+
+Written out, the sale's rules are checked while compiling:
+
+```jadpo check project=unread-text-written
+/// When the shop's winter sale runs.
+function winter_sale() -> DateRange {
+    return DateRange {
+        start: "2026-12-27"
+        end: "2027-01-03"
+    }
+}
+```
 
 ### Decisions
 
