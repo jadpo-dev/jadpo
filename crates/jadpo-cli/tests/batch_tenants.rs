@@ -7,7 +7,8 @@
 //!
 //! A household application: each sweep walks every chore the system may
 //! see a page at a time and ticks it. Two households, Ash with three
-//! chores and Birch with two.
+//! chores and Birch with two. A sweep's `finished:` keeps its summary's
+//! counts in a tally of the household it walked (chunk 6.4d).
 //!
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
@@ -196,6 +197,86 @@ action tick_with(chore: Chore, also: Household.id) fails ChoreNotFound -> Unit {
 "#,
     ),
     (
+        "domains/home/actions/tick_once.jadpo",
+        r#"use home/entities { Chore, ChoreNotFound }
+use home/failures { ChoreTicked }
+
+action tick_once(chore: Chore) fails ChoreTicked, ChoreNotFound -> Unit {
+    if (chore.ticks > 0) {
+        reject ChoreTicked {}
+    }
+    attempt Chore.update(chore.id) {
+        set: {
+            ticks: Chore.ticks + 1
+        }
+    }
+}
+"#,
+    ),
+    (
+        "domains/home/actions/keep_tally.jadpo",
+        r#"use home/entities { Household, HouseholdNotFound, Tally }
+
+action keep_tally(summary: ImportSummary, household_id: Household.id) fails HouseholdNotFound -> Unit {
+    var kept: Tally = attempt Tally.create {
+        set: {
+            household_id: household_id
+            walked: summary.items
+            skipped: summary.items_with_problems
+        }
+    }
+    assert kept.walked == summary.items
+}
+"#,
+    ),
+    (
+        // The run's tenant is the chore's household: `chore.household_id`
+        // is declared `Household.id`, the tenant's `id` type.
+        "domains/home/actions/sweep_and_tally.jadpo",
+        r#"use home/actions { keep_tally, tick_once }
+use home/entities { Chore }
+use home/queries { all_chores }
+use home/types { SweepPage }
+
+action sweep_and_tally(chore: Chore, page: SweepPage) -> BatchRun {
+    return batches.each(
+        from: all_chores(page),
+        each: found -> tick_once(found),
+        finished: summary -> keep_tally(summary, chore.household_id),
+        key: chore.id
+    )
+}
+"#,
+    ),
+    (
+        "domains/home/entities/tally.jadpo",
+        r#"use home/entities { Household }
+use home/types { HomeRole }
+
+entity Tally {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    walked: Int
+    skipped: Int
+
+    policy: {
+        create: [Access.system]
+        read: [HomeRole.member, Access.system]
+    }
+}
+"#,
+    ),
+    (
+        "domains/home/failures/chore_ticked.jadpo",
+        r#"type ChoreTicked = Failure {
+    kind: FailureKind.rejected
+    message: "This chore is ticked already."
+}
+"#,
+    ),
+    (
         "domains/home/actions/sweep_household.jadpo",
         r#"use home/actions { tick }
 use home/entities { Household }
@@ -276,7 +357,7 @@ action sweep_pair(household_id: Household.id, also: Household.id, page: SweepPag
 ];
 
 fn project(name: &str) -> PathBuf {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("batch-tenants-6.4c-{name}"));
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("batch-tenants-{name}"));
     let _ = fs::remove_dir_all(&root);
     for (path, text) in FILES {
         write(&root, path, text);
@@ -350,6 +431,25 @@ impl Store {
             .collect()
     }
 
+    /// Each tally's household, items walked and items skipped.
+    async fn tallies(&self) -> Vec<(String, i64, i64)> {
+        self.db
+            .query_once(
+                "SELECT \"household_id\"::text, \"walked\"::int8, \"skipped\"::int8 FROM \"tally\" ORDER BY 1",
+                &[],
+            )
+            .await
+            .expect("the query")
+            .into_iter()
+            .map(|row| match row.as_slice() {
+                [SqlValue::Text(household), SqlValue::Int8(walked), SqlValue::Int8(skipped)] => {
+                    (household.clone(), *walked, *skipped)
+                }
+                other => panic!("a tally's row: {other:?}"),
+            })
+            .collect()
+    }
+
     /// The run's state and items done, as its row keeps them.
     async fn kept(&self, run: &Value) -> (String, i64) {
         let id = match jadpo_runtime::to_sql(&field(run, "id"), jadpo_runtime::SqlType::Uuid) {
@@ -413,7 +513,7 @@ async fn sweep(program: &Program, host: &Store, action: &str, args: Vec<Value>) 
 
 #[test]
 fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
-    let root = project("runs");
+    let root = project("6.4c-runs");
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     if !jadpo_test::live() {
@@ -515,6 +615,87 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
                 ("ash-3".to_string(), 1),
                 ("birch-1".to_string(), 1),
                 ("birch-2".to_string(), 1),
+            ]
+        );
+    });
+    drop(copy);
+}
+
+#[test]
+fn a_runs_finished_keeps_its_counts_in_its_tenants_record() {
+    // Chunk 6.4d: `finished:` stores what the summary counts in a tally of
+    // the household the run is limited to, named by the chore it was
+    // started from, and the run never reaches the other household.
+    let root = project("6.4d-finished");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store {
+        db: postgres(&url).expect("store"),
+        seeds: Cell::new(0),
+        random: Cell::new(11),
+    };
+    let program = &program;
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        host.execute(
+            "INSERT INTO \"household\" (\"id\", \"name\") VALUES ($1::uuid, 'Ash'), ($2::uuid, 'Birch')",
+            &[SqlValue::Text(ASH.into()), SqlValue::Text(BIRCH.into())],
+        )
+        .await;
+        // Ash's third chore is ticked already, so its turn fails.
+        for (n, (title, household, ticks)) in [
+            ("ash-1", ASH, 0),
+            ("ash-2", ASH, 0),
+            ("ash-3", ASH, 5),
+            ("birch-1", BIRCH, 0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            host.execute(
+                "INSERT INTO \"chore\" (\"id\", \"household_id\", \"title\", \"ticks\") VALUES ($1::uuid, $2::uuid, $3, $4)",
+                &[
+                    SqlValue::Text(format!("0c000000-0000-4000-8000-00000000000{n}")),
+                    SqlValue::Text(household.into()),
+                    SqlValue::Text(title.into()),
+                    SqlValue::Int8(ticks),
+                ],
+            )
+            .await;
+        }
+        let ash_chore = Value::record(
+            "Chore",
+            vec![
+                (
+                    Rc::from("id"),
+                    Value::uuid("0c000000-0000-4000-8000-000000000000"),
+                ),
+                (Rc::from("household_id"), Value::uuid(ASH)),
+                (Rc::from("title"), Value::text("ash-1")),
+                (Rc::from("ticks"), Value::Int(0)),
+            ],
+        );
+        let run = sweep(program, &host, "sweep_and_tally", vec![ash_chore, page(2)]).await;
+        assert_eq!(host.kept(&run).await, ("finished".to_string(), 3));
+        assert_eq!(host.tallies().await, [(ASH.to_string(), 3, 1)]);
+        assert_eq!(
+            host.ticks().await,
+            [
+                ("ash-1".to_string(), 1),
+                ("ash-2".to_string(), 1),
+                ("ash-3".to_string(), 5),
+                ("birch-1".to_string(), 0),
             ]
         );
     });

@@ -1,15 +1,19 @@
 // A batch in an application with a tenant runs within one tenant: the
-// one its saved values name. Here `from:`'s first argument is a
-// `Society.id`, so every page, and every plot's action, runs as the
-// system within that society alone, however many societies share the
-// application. A run that saves no tenant's id reaches no tenant's
-// records, only those every tenant shares.
+// one its saved values name. Here `from:`'s first argument is the
+// round's `society_id`, a `Society.id`, so every page, every plot's
+// action and `finished:` run as the system within that society alone,
+// however many societies share the application. A run that saves no
+// tenant's id reaches no tenant's records, only those every tenant
+// shares.
+//
+// `finished:` keeps how the round went on the round itself, a record of
+// the same society, whose treasurer reads the plots it counts.
 //
 // `key:` is the round, so starting a round twice charges nobody twice.
 
 use plots/entities { RentRound }
 use plots/types { PlotPage }
-use plots/actions { invoice_plot }
+use plots/actions { invoice_plot, record_round }
 use plots/queries { society_plots }
 
 /// Charges every plot in the round's society its year's rent.
@@ -17,6 +21,7 @@ action invoice_round(rent_round: RentRound) -> RentRound {
     var invoicing: BatchRun = batches.each(
         from: society_plots(rent_round.society_id, PlotPage {}),
         each: plot -> invoice_plot(plot, rent_round.id),
+        finished: summary -> record_round(summary, rent_round.id),
         key: rent_round.id
     )
     return RentRound.update(rent_round) {

@@ -29,7 +29,10 @@ use jadpo_graph::body::{Callee, Expr, Node, SiteId};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::write::WriteOp;
 
-use super::{Flow, Origin, Prov, Src, Walk, erased, field_name, shallow, widen};
+use super::{
+    DEPTH, Flow, Origin, Prov, Run, Src, Walk, erased, field_name, retold, shallow, tenancy_of,
+    widen,
+};
 use crate::policy::proof::{Fact, Facts, Reached};
 use crate::policy::{Effect, Grant};
 use crate::types::{Fact as Did, TypeView, body_facts, resolve};
@@ -233,6 +236,10 @@ pub(super) struct Store {
     field: String,
     /// A [`Src::Param`], or what decided by one, or deep inside one.
     value: Src,
+    /// When a batch's run stores it (chunk 6.4d): the parameters' parts
+    /// holding the tenant ids the run saved. The value has left its
+    /// record, but for one whose tenancy reference is among them.
+    run: Option<Vec<(usize, Vec<String>)>>,
 }
 
 impl Store {
@@ -241,6 +248,15 @@ impl Store {
             dest: self.dest.widened(),
             field: self.field,
             value: widen(self.value),
+            run: self.run.map(|tenant| {
+                tenant
+                    .into_iter()
+                    .map(|(at, mut path)| {
+                        path.truncate(DEPTH);
+                        (at, path)
+                    })
+                    .collect()
+            }),
         }
     }
 }
@@ -387,12 +403,17 @@ impl Walk<'_> {
                 }
             }
             if let (Some(theirs), Some(own)) = (tenancy(&dest.entity), tenancy(source))
-                && dest.refs.iter().any(|(name, srcs)| {
+                && (dest.refs.iter().any(|(name, srcs)| {
                     *name == theirs.via
                         && single(srcs)
                             == Some(Ident::Field(source.to_string(), own.via.clone(), origin))
-                })
+                }) || self
+                    .run
+                    .as_ref()
+                    .is_some_and(|run| run.live.contains(&origin)))
             {
+                // Or a record a batch's run read, which is limited to its
+                // tenant, as everything it writes is (chunk 6.4d).
                 out.push(Rel::Tenant(theirs.via.clone(), own.via.clone()));
             }
         }
@@ -559,6 +580,7 @@ impl Walk<'_> {
                         dest: dest.erased(),
                         field: field.to_string(),
                         value: erased(&src),
+                        run: self.run.as_ref().map(|run| run.tenant.clone()),
                     };
                     if !self.stores.contains(&store) {
                         self.stores.push(store);
@@ -640,6 +662,16 @@ impl Walk<'_> {
                     "An event carries what each `emit` of it put there away from the record it came from, so its subscriber stores it only where everyone who may read it may read `{from}` of any `{entity}`{tenant}."
                 )
             }
+            None if decided && self.summary => {
+                let tenant = if flow.prover.policies.root().tenant.is_some() {
+                    " of the run's tenant"
+                } else {
+                    ""
+                };
+                format!(
+                    "A batch's summary counts the items whose action failed, which shows what decided each failure, so `finished:` stores it only where everyone who may read it may read `{from}` of any `{entity}`{tenant}."
+                )
+            }
             None if decided => "Which value is stored shows what decided it, so a value made under an `if`, a `match` or a loop, or kept by a filter, is stored only where everyone who may read it may read the fields they test.".to_string(),
             None => "A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.".to_string(),
         };
@@ -653,6 +685,9 @@ impl Walk<'_> {
         let next = match (callee, decided) {
             (Some(callee), _) if self.event.is_some() => format!(
                 "Pass the event's ids and have `{callee}` read what it stores, or give `{field}`'s `read:` only those who may read `{from}`"
+            ),
+            (Some(_), true) if self.summary => format!(
+                "Decide which items fail by what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read `{from}`"
             ),
             (Some(callee), _) => format!(
                 "Pass `{callee}` what everyone who may read {into} may read, or give `{field}`'s `read:` only those who may read `{from}`"
@@ -766,7 +801,33 @@ impl Walk<'_> {
         let mut dest = store.dest.substitute(provs);
         let kept = store.dest.held.clone();
         self.hold(flow, &mut dest, site, &[], Some(&kept));
-        let value = Prov::of(store.value.clone()).substitute(provs);
+        let mut value = Prov::of(store.value.clone()).substitute(provs);
+        // A batch's run stores it later: it has left its record, but for
+        // one whose tenancy reference the run's tenant id was read from,
+        // which is of the tenant the run is limited to (chunk 6.4d).
+        let outer = store.run.as_ref().map(|tenant| {
+            let mut origins: Vec<u32> = Vec::new();
+            let mut params: Vec<(usize, Vec<String>)> = Vec::new();
+            for (at, path) in tenant {
+                let Some(prov) = provs.get(*at) else {
+                    continue;
+                };
+                match single(&prov.at(path).whole) {
+                    Some(Ident::Param(at, path)) => params.push((at, path)),
+                    Some(ident) => origins.extend(tenancy_of(flow, &ident)),
+                    None => {}
+                }
+            }
+            value = value.retold(&|src| {
+                retold(src, &|origin| {
+                    (origin == TENANT || origins.contains(&origin)).then_some(TENANT)
+                })
+            });
+            self.run.replace(Run {
+                live: Vec::new(),
+                tenant: params,
+            })
+        });
         self.store(
             flow,
             &dest,
@@ -775,6 +836,9 @@ impl Walk<'_> {
             &value,
             Some(callee),
         );
+        if let Some(outer) = outer {
+            self.run = outer;
+        }
     }
 
     /// A subscriber passing its event's parts, `provs` (what every `emit`

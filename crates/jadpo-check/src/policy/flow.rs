@@ -54,6 +54,7 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::body::{ArmBody, Body, Callee, Expr, LocalId, Node, SiteId, Stmt};
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_std::Op;
+use jadpo_std::batch::{BatchOp, IMPORT_SUMMARY_FIELDS};
 use jadpo_std::http::PrincipalKind;
 use jadpo_std::read::Cardinality;
 use jadpo_std::write::WriteOp;
@@ -212,6 +213,15 @@ fn widen(src: Src) -> Src {
 /// Everything in `prov` as what decided a value.
 fn decide(prov: &Prov) -> Vec<Src> {
     prov.flat().into_iter().filter_map(decided).collect()
+}
+
+/// What decides whether a callable with `summary` fails, given `args`.
+fn failed(summary: &Summary, args: &[Prov]) -> Prov {
+    Prov {
+        whole: summary.fails.clone(),
+        fields: BTreeMap::new(),
+    }
+    .substitute(args)
 }
 
 /// Where a value may have come from: as a whole, and by field.
@@ -405,6 +415,11 @@ struct Summary {
     /// stores is checked against these (chunk 6.1c). With no [`Origin`]
     /// but [`stores::TENANT`].
     emits: Vec<(Key, Prov)>,
+    /// What decides whether it fails: what decided each `reject` and
+    /// `attempt` it runs, and what decides whether an action or function
+    /// it calls fails. A batch's summary counts the items whose action
+    /// failed, so it carries these (chunk 6.4d).
+    fails: Vec<Src>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -416,6 +431,7 @@ static NOTHING: Summary = Summary {
     sends: BTreeSet::new(),
     stores: Vec::new(),
     emits: Vec::new(),
+    fails: Vec::new(),
 };
 
 impl Summary {
@@ -431,6 +447,11 @@ impl Summary {
         for emit in &other.emits {
             if !self.emits.contains(emit) {
                 self.emits.push(emit.clone());
+            }
+        }
+        for src in &other.fails {
+            if !self.fails.contains(src) {
+                self.fails.push(src.clone());
             }
         }
         self
@@ -463,6 +484,16 @@ impl Summary {
                 .fold(Vec::new(), |mut out, emit| {
                     if !out.contains(&emit) {
                         out.push(emit);
+                    }
+                    out
+                }),
+            fails: self
+                .fails
+                .into_iter()
+                .map(widen)
+                .fold(Vec::new(), |mut out, src| {
+                    if !out.contains(&src) {
+                        out.push(src);
                     }
                     out
                 }),
@@ -739,11 +770,18 @@ impl<'a> Flow<'a> {
                 (event, prov)
             })
             .collect();
+        let mut fails: Vec<Src> = Vec::new();
+        for src in walk.fails.iter().map(erased) {
+            if !fails.contains(&src) {
+                fails.push(src);
+            }
+        }
         let summary = Summary {
             returns: walk.returns.erased(),
             sends: walk.sends,
             stores: walk.stores,
             emits,
+            fails,
         };
         (summary, walk.problems)
     }
@@ -850,6 +888,38 @@ struct Walk<'b> {
     /// The event a subscriber's walk stores from, by name: what it stores
     /// came from an `emit` of it (chunk 6.1c).
     event: Option<String>,
+    /// What decides whether the body fails ([`Summary::fails`]): gathered
+    /// in every walk, as `failing` is.
+    fails: Vec<Src>,
+    /// While a batch's run's calls are checked (chunk 6.4d).
+    run: Option<Run>,
+    /// Whether the call being checked is a batch's `finished:`, whose
+    /// summary is decided by what decided its items' failures.
+    summary: bool,
+}
+
+/// A batch's run, while its calls are checked (chunk 6.4d): it works as
+/// the system limited to the tenant its saved tenant ids name.
+#[derive(Clone, Debug, Default)]
+struct Run {
+    /// The [`Origin`]s of the records the run reads and passes on whole,
+    /// `each:`'s item: the same record all through the action given it,
+    /// and of the run's tenant.
+    live: Vec<u32>,
+    /// The parameters' parts holding a tenant's id the run saves: a value
+    /// it stores from a parameter is checked where the starting action
+    /// is called, with these ([`stores::Store`]).
+    tenant: Vec<(usize, Vec<String>)>,
+}
+
+/// `each:`'s or `finished:`'s call: the inline function at `inline`, its
+/// parameter, and the call at `site` of the action `key` with `args`.
+struct RunCall {
+    inline: SiteId,
+    param: Option<LocalId>,
+    site: SiteId,
+    key: Key,
+    args: Vec<Option<SiteId>>,
 }
 
 impl<'b> Walk<'b> {
@@ -878,6 +948,9 @@ impl<'b> Walk<'b> {
             found: BTreeMap::new(),
             emits: Vec::new(),
             event: None,
+            fails: Vec::new(),
+            run: None,
+            summary: false,
         }
     }
 
@@ -917,16 +990,54 @@ fn tenant_record(flow: &Flow<'_>, event: &Key, prov: &Prov) -> Option<u32> {
             crate::events::Tenant::Field(field) => Some(field.clone()),
             _ => None,
         })?;
-    let stores::Ident::Field(entity, via, origin) = stores::single(&prov.field(&field).whole)?
-    else {
+    tenancy_of(flow, &stores::single(&prov.field(&field).whole)?)
+}
+
+/// The record whose tenancy reference `ident` is, when it is one: a
+/// tenant's id read from it holds that record's tenant.
+fn tenancy_of(flow: &Flow<'_>, ident: &stores::Ident) -> Option<u32> {
+    let stores::Ident::Field(entity, via, origin) = ident else {
         return None;
     };
     flow.prover
         .policies
-        .entity(&entity)
+        .entity(entity)
         .and_then(|policy| policy.tenancy.as_ref())
-        .is_some_and(|tenancy| tenancy.via == via && tenancy.via != "id")
-        .then_some(origin)
+        .is_some_and(|tenancy| tenancy.via == *via && tenancy.via != "id")
+        .then_some(*origin)
+}
+
+/// `src` with a record it holds that the body doesn't know marked
+/// [`stores::TENANT`]: one a batch's run reads, of the tenant it is
+/// limited to (chunk 6.4d).
+fn of_run(src: &Src) -> Src {
+    match src {
+        Src::Record {
+            entity,
+            reached,
+            given,
+            origin: None,
+        } => Src::Record {
+            entity: entity.clone(),
+            reached: reached.clone(),
+            given: given.clone(),
+            origin: Some(stores::TENANT),
+        },
+        Src::Field {
+            entity,
+            field,
+            reached,
+            origin: None,
+        } => Src::Field {
+            entity: entity.clone(),
+            field: field.clone(),
+            reached: reached.clone(),
+            origin: Some(stores::TENANT),
+        },
+        Src::Decided(inner) => Src::Decided(Box::new(of_run(inner))),
+        Src::Deep(inner) => Src::Deep(Box::new(of_run(inner))),
+        other => other.clone(),
+    }
 }
 
 impl Walk<'_> {
@@ -963,6 +1074,18 @@ impl Walk<'_> {
             prov.add(src.clone());
         }
         prov
+    }
+
+    /// The body may fail here, decided by what decided that the
+    /// statements being walked run and by `also` ([`Summary::fails`]).
+    fn may_fail(&mut self, also: &[Src]) {
+        let srcs: Vec<Src> = self.pc.iter().chain(also).cloned().collect();
+        for src in srcs {
+            let src = self.unturned_src(&src);
+            if !self.fails.contains(&src) {
+                self.fails.push(src);
+            }
+        }
     }
 
     /// The statements walked next run only as `prov` decides.
@@ -1271,6 +1394,8 @@ impl Walk<'_> {
                 out
             }
             Expr::Attempt { inner, arms } => {
+                // Whether it fails is decided by whether it runs.
+                self.may_fail(&[]);
                 for arm in &arms {
                     self.failure(flow, &arm.failure, &arm.fields, None);
                 }
@@ -1288,6 +1413,7 @@ impl Walk<'_> {
                         self.failing.push(src);
                     }
                 }
+                self.may_fail(&[]);
                 match &failure {
                     Some(failure) => self.failure(flow, failure, &fields, Some(site)),
                     None => {
@@ -1539,6 +1665,9 @@ impl Walk<'_> {
         callee: &Callee,
         args: &[Option<SiteId>],
     ) -> Prov {
+        if matches!(callee, Callee::Batch(BatchOp::Each)) {
+            return self.batch(flow, args);
+        }
         // An inline function's parameter holds the list it is given.
         let first = match args.first() {
             Some(Some(first)) => self.eval(flow, *first),
@@ -1637,38 +1766,7 @@ impl Walk<'_> {
                 self.query(flow, site, key)
             }
             Callee::Action(key) | Callee::Function(key) => {
-                let summary = flow.summary(key);
-                if self.report {
-                    // One problem per argument, at its first part sent.
-                    let mut reported = BTreeSet::new();
-                    for (at, path) in &summary.sends {
-                        let Some(Some(arg)) = args.get(*at) else {
-                            continue;
-                        };
-                        let prov = provs.get(*at).map(|p| p.at(path)).unwrap_or_default();
-                        if reported.contains(at) {
-                            self.params_in(&prov);
-                        } else if self.passed(flow, key.name(), *arg, &prov) {
-                            reported.insert(*at);
-                        }
-                    }
-                } else {
-                    for (at, path) in &summary.sends {
-                        if let Some(prov) = provs.get(*at) {
-                            self.params_in(&prov.at(path));
-                        }
-                    }
-                }
-                for store in &summary.stores {
-                    self.passed_store(flow, site, key.name(), store, args, &provs);
-                }
-                if self.report {
-                    for (event, prov) in &summary.emits {
-                        let prov = prov.substitute(&provs);
-                        self.emitted(flow, event, prov);
-                    }
-                }
-                summary.returns.substitute(&provs)
+                self.called(flow, site, key, args, &provs, true)
             }
             Callee::Caller(kind) => Prov::of(Src::Caller(*kind)),
             // How many there are shows only what decided which were kept.
@@ -1698,6 +1796,273 @@ impl Walk<'_> {
             }
             _ => all(),
         }
+    }
+
+    /// `batches.each(from:, each:, finished:, key:)` (area 12; chunk
+    /// 6.4d). Its run works later, as the system limited to the tenant its
+    /// saved tenant ids name, so what its calls show their caller is shown
+    /// to nobody; what they store is checked here, as a call's is. Each
+    /// item is one of the records `from:` finds, the same record all
+    /// through `each:`'s action and of the run's tenant. A value the run
+    /// saves has left its record, as an event's has (chunk 6.1c), but for
+    /// one whose tenancy reference a saved tenant id was read from, which
+    /// is of the run's tenant. The summary `finished:` is given holds
+    /// counts and problems only: how many items there were, which shows
+    /// nothing of them, as a count of records doesn't, and which failed
+    /// and why, decided by what decides whether `each:`'s action fails.
+    fn batch(&mut self, flow: &Flow<'_>, args: &[Option<SiteId>]) -> Prov {
+        let arg = |at: usize| args.get(at).copied().flatten();
+        let page = match arg(0) {
+            Some(from) => self.eval(flow, from),
+            None => Prov::default(),
+        };
+        let each = self.run_call(arg(1));
+        let finished = self.run_call(arg(2));
+        // What the run saves: `from:`'s arguments (walked with its query
+        // already, so again without reporting), what `each:` and
+        // `finished:` capture, and `key:`.
+        let mut saved: Vec<(SiteId, Prov)> = Vec::new();
+        if let Some(from) = arg(0)
+            && let Node::Expr(Expr::Call {
+                callee: Callee::Query(_),
+                args: given,
+                ..
+            }) = self.body.site(from).node.clone()
+        {
+            let report = std::mem::replace(&mut self.report, false);
+            for at in given.into_iter().flatten() {
+                let prov = self.eval(flow, at);
+                saved.push((at, prov));
+            }
+            self.report = report;
+        }
+        let mut captured: BTreeMap<u32, Prov> = BTreeMap::new();
+        for call in each.iter().chain(&finished) {
+            for at in call.args.iter().flatten() {
+                if call.param.is_some_and(|param| self.of_param(*at, param)) {
+                    continue;
+                }
+                let prov = self.eval(flow, *at);
+                captured.insert(at.0, prov.clone());
+                saved.push((*at, prov));
+            }
+        }
+        if let Some(key) = arg(3) {
+            let prov = self.eval(flow, key);
+            saved.push((key, prov));
+        }
+        // The run's tenant, from each saved value of the tenant's `id`
+        // type: the record it was read from, or the parameter's part it
+        // is, for the starting action's callers.
+        let mut origins: Vec<u32> = Vec::new();
+        let mut tenant: Vec<(usize, Vec<String>)> = Vec::new();
+        if let Some(tenant_id) = crate::batches::tenant_id(flow.db, flow.project) {
+            for (at, prov) in &saved {
+                let ty = &self.body.site(*at).ty;
+                if !crate::batches::holds_tenant_id(&flow.lookup, ty, &tenant_id) {
+                    continue;
+                }
+                match stores::single(&prov.whole) {
+                    Some(stores::Ident::Param(at, path)) => tenant.push((at, path)),
+                    Some(ident) => origins.extend(tenancy_of(flow, &ident)),
+                    None => {}
+                }
+            }
+        }
+        let left = |src: &Src| {
+            retold(src, &|origin| {
+                (origin == stores::TENANT || origins.contains(&origin)).then_some(stores::TENANT)
+            })
+        };
+        for prov in captured.values_mut() {
+            *prov = prov.retold(&left);
+        }
+        // Each item, one turn's own record.
+        self.looping += 1;
+        let items = page.field("items");
+        let item = match &each {
+            Some(call) => self.item(call.inline, &items),
+            None => items,
+        };
+        let item = item.retold(&of_run);
+        let live: Vec<u32> = item
+            .whole
+            .iter()
+            .filter_map(|src| match src {
+                Src::Record {
+                    origin: Some(origin),
+                    ..
+                } if *origin != stores::TENANT => Some(*origin),
+                _ => None,
+            })
+            .collect();
+        // Once the item's turn is over, it has left its record.
+        let gone = |src: &Src| {
+            retold(src, &|origin| {
+                Some(if live.contains(&origin) {
+                    stores::TENANT
+                } else {
+                    origin
+                })
+            })
+        };
+        let mut fails: Vec<Src> = Vec::new();
+        if let Some(call) = &each {
+            let provs = self.run_args(flow, call, &item, &captured);
+            let outer = self.run.replace(Run {
+                live: live.clone(),
+                tenant: tenant.clone(),
+            });
+            self.called(flow, call.site, &call.key, &call.args, &provs, false);
+            self.run = outer;
+            let summary = flow.summary(&call.key);
+            let inner = Prov {
+                whole: summary.fails.iter().map(of_run).collect(),
+                fields: BTreeMap::new(),
+            };
+            fails = decide(&inner.substitute(&provs)).iter().map(gone).collect();
+        }
+        self.looping -= 1;
+        if let Some(call) = &finished {
+            // What decided that the run starts decides it all, read as
+            // the run saves it.
+            let counted = self
+                .with_pc(Prov {
+                    whole: decide(&item).iter().map(gone).collect(),
+                    fields: BTreeMap::new(),
+                })
+                .retold(&left);
+            let mut failed = counted.clone();
+            for src in fails {
+                failed.add(src);
+            }
+            let mut summary = Prov::default();
+            for (name, _) in IMPORT_SUMMARY_FIELDS {
+                let prov = if name == "items" { &counted } else { &failed };
+                summary.fields.insert(name.to_string(), prov.clone());
+            }
+            let provs = self.run_args(flow, call, &summary, &captured);
+            let outer = self.run.replace(Run {
+                live: Vec::new(),
+                tenant,
+            });
+            let was = std::mem::replace(&mut self.summary, true);
+            self.called(flow, call.site, &call.key, &call.args, &provs, false);
+            self.summary = was;
+            self.run = outer;
+        }
+        Prov::default()
+    }
+
+    /// `each:`'s or `finished:`'s inline function at `at`: the action it
+    /// calls, with what.
+    fn run_call(&self, at: Option<SiteId>) -> Option<RunCall> {
+        let inline = at?;
+        let Node::Expr(Expr::Inline {
+            params,
+            body: Some(call),
+        }) = &self.body.site(inline).node
+        else {
+            return None;
+        };
+        let Node::Expr(Expr::Call {
+            callee: Callee::Action(key) | Callee::Function(key),
+            args,
+            ..
+        }) = &self.body.site(*call).node
+        else {
+            return None;
+        };
+        Some(RunCall {
+            inline,
+            param: params.first().copied(),
+            site: *call,
+            key: key.clone(),
+            args: args.clone(),
+        })
+    }
+
+    /// Whether the value at `site` is `param`, or a field inside it.
+    fn of_param(&self, site: SiteId, param: LocalId) -> bool {
+        match &self.body.site(site).node {
+            Node::Expr(Expr::Local(local)) => *local == param,
+            Node::Expr(Expr::Field { receiver, .. }) => self.of_param(*receiver, param),
+            _ => false,
+        }
+    }
+
+    /// What a batch's `call` is passed: the item or the summary, `given`,
+    /// or a field inside it, and what it saved, `captured`.
+    fn run_args(
+        &mut self,
+        flow: &Flow<'_>,
+        call: &RunCall,
+        given: &Prov,
+        captured: &BTreeMap<u32, Prov>,
+    ) -> Vec<Prov> {
+        self.local(call.param, given);
+        call.args
+            .iter()
+            .map(|arg| match arg {
+                Some(at) => match captured.get(&at.0) {
+                    Some(prov) => prov.clone(),
+                    None => self.eval(flow, *at),
+                },
+                None => Prov::default(),
+            })
+            .collect()
+    }
+
+    /// A call at `site` of the action or function `key`, passed `provs`
+    /// at `args`: what it stores and emits from them, in the caller's
+    /// terms, and, when it runs `here` rather than in a batch's run
+    /// later, what it shows its caller and whether it fails; gives its
+    /// result.
+    fn called(
+        &mut self,
+        flow: &Flow<'_>,
+        site: SiteId,
+        key: &Key,
+        args: &[Option<SiteId>],
+        provs: &[Prov],
+        here: bool,
+    ) -> Prov {
+        let summary = flow.summary(key);
+        if here && self.report {
+            // One problem per argument, at its first part sent.
+            let mut reported = BTreeSet::new();
+            for (at, path) in &summary.sends {
+                let Some(Some(arg)) = args.get(*at) else {
+                    continue;
+                };
+                let prov = provs.get(*at).map(|p| p.at(path)).unwrap_or_default();
+                if reported.contains(at) {
+                    self.params_in(&prov);
+                } else if self.passed(flow, key.name(), *arg, &prov) {
+                    reported.insert(*at);
+                }
+            }
+        } else if here {
+            for (at, path) in &summary.sends {
+                if let Some(prov) = provs.get(*at) {
+                    self.params_in(&prov.at(path));
+                }
+            }
+        }
+        for store in &summary.stores {
+            self.passed_store(flow, site, key.name(), store, args, provs);
+        }
+        if self.report {
+            for (event, prov) in &summary.emits {
+                let prov = prov.substitute(provs);
+                self.emitted(flow, event, prov);
+            }
+        }
+        if here && !summary.fails.is_empty() {
+            let fails = decide(&failed(summary, provs));
+            self.may_fail(&fails);
+        }
+        summary.returns.substitute(provs)
     }
 
     /// What a query's result carries: an `Output` was proved where the
