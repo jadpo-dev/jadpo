@@ -222,16 +222,29 @@ fn schedules_plan(
     db: &dyn Db,
     project: Project,
     by_key: &HashMap<Key, u32>,
+    purges: &[PurgePlan],
 ) -> jadpo_std::schedule::SchedulesPlan {
+    use jadpo_check::schedules::ScheduleRun;
     use jadpo_std::schedule::{SchedulePlan, SchedulesPlan};
     let schedules: Vec<SchedulePlan> = jadpo_check::schedules::schedules(db, project)
         .iter()
         .filter_map(|model| {
+            let run = match &model.run {
+                ScheduleRun::Action(key) => {
+                    jadpo_std::schedule::ScheduleRun::Action(*by_key.get(key)?)
+                }
+                // An entity's built-in purge runs its purge plan (area 5;
+                // chunk 6.2c).
+                ScheduleRun::Purge(entity) => {
+                    purges.iter().find(|plan| plan.entity == *entity)?;
+                    jadpo_std::schedule::ScheduleRun::Purge(entity.clone())
+                }
+            };
             Some(SchedulePlan {
                 key: model.key.as_str().to_string(),
                 name: model.name.clone(),
                 every_ms: model.every_ms,
-                callable: *by_key.get(&model.run)?,
+                run,
                 file: model.path.clone(),
                 line: model.line,
             })
@@ -751,7 +764,7 @@ impl Plan {
         );
         routes.identity = identity;
         let events = events_plan(db, project, &by_key);
-        let schedules = schedules_plan(db, project, &by_key);
+        let schedules = schedules_plan(db, project, &by_key, &purges);
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();

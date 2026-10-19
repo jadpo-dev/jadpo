@@ -470,6 +470,13 @@ pub enum Callee {
     /// `clock.advance(duration)` in a test (area 13, "Controlling time"):
     /// the test's clock moved on.
     AdvanceClock,
+    /// `schedule.run()` in a test (area 13, "Kinds of test"; chunk 6.2c):
+    /// the schedule run once at the test's clock, its action called with
+    /// nothing as the system with no tenant.
+    Schedule {
+        schedule: Key,
+        action: Key,
+    },
     /// `translations.<key>(locale:, ...)` (area 10): the key, whose message
     /// the runtime formats in the locale given.
     Translation(String),
@@ -492,6 +499,7 @@ impl Callee {
             | Callee::Object(key)
             | Callee::Variant(key) => Some(key),
             Callee::Entity { entity, .. } => Some(entity),
+            Callee::Schedule { schedule, .. } => Some(schedule),
             Callee::Std(_)
             | Callee::Construct(_)
             | Callee::Caller(_)
@@ -504,7 +512,8 @@ impl Callee {
         }
     }
 
-    /// Whether it is another callable of the project: a `calls` edge.
+    /// Whether it is another callable of the project, or a schedule a
+    /// test runs: a `calls` edge.
     pub fn is_callable(&self) -> bool {
         matches!(
             self,
@@ -513,6 +522,7 @@ impl Callee {
                 | Callee::Query(_)
                 | Callee::Fixture(_)
                 | Callee::LibraryFunction(_)
+                | Callee::Schedule { .. }
         )
     }
 }

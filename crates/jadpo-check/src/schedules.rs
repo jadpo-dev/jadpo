@@ -42,8 +42,71 @@ pub struct ScheduleModel {
     pub line: u32,
     /// `every:`, in milliseconds: a whole number of seconds above zero.
     pub every_ms: u64,
-    /// The action it runs, by key: one in its own domain, taking nothing.
-    pub run: Key,
+    /// What it runs.
+    pub run: ScheduleRun,
+}
+
+/// What a schedule runs.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ScheduleRun {
+    /// An action of its own domain, by key, called with nothing.
+    Action(Key),
+    /// The built-in purge of the entity of this name (area 5,
+    /// "Lifecycle"): every entity whose lifecycle has `purge:` gets one,
+    /// with nothing written for it (area 12, "Schedules"; chunk 6.2c).
+    Purge(String),
+}
+
+impl ScheduleRun {
+    /// The action it runs, when it runs one.
+    pub fn action(&self) -> Option<&Key> {
+        match self {
+            ScheduleRun::Action(key) => Some(key),
+            ScheduleRun::Purge(_) => None,
+        }
+    }
+}
+
+/// How often the built-in purge schedule runs: hourly (area 12).
+pub const PURGE_EVERY_MS: u64 = 60 * 60 * 1000;
+
+/// The built-in purge schedule of `entity`, when its lifecycle purges and
+/// it has a store: `Member.purge`, keyed by the entity's born name so a
+/// rename keeps its state and run records, declared where its `purge:`
+/// is written.
+fn purge_schedule(
+    db: &dyn Db,
+    project: Project,
+    read: &crate::data::EntityRead,
+) -> Option<ScheduleModel> {
+    let entity = &read.model;
+    entity.lifecycle.as_ref()?.purge.as_ref()?;
+    entity.store.as_ref()?;
+    let span = read.spans.purge.as_ref()?;
+    Some(ScheduleModel {
+        key: Key::new(Kind::Schedule, &format!("{}.purge", entity.born)),
+        name: format!("{}.purge", entity.name),
+        path: entity.path.clone(),
+        line: crate::events::location_line(db, project, &entity.path, span.start),
+        every_ms: PURGE_EVERY_MS,
+        run: ScheduleRun::Purge(entity.name.clone()),
+    })
+}
+
+/// Every entity's built-in purge schedule, by the entity's name, with
+/// where its `purge:` is written.
+#[salsa::tracked(returns(ref))]
+pub fn purge_schedules(db: &dyn Db, project: Project) -> Vec<(Arc<ScheduleModel>, Span)> {
+    crate::data::entity_names(db, project)
+        .iter()
+        .filter_map(|name| {
+            let read =
+                crate::data::entity_read(db, project, crate::lookups::Name::new(db, name.clone()))
+                    .as_ref()?;
+            let model = purge_schedule(db, project, read)?;
+            Some((Arc::new(model), read.spans.purge.clone()?))
+        })
+        .collect()
 }
 
 /// One schedule as read, with its problems.
@@ -113,7 +176,8 @@ pub fn schedules_in(db: &dyn Db, project: Project, file: File) -> Vec<ScheduleRe
     out
 }
 
-/// Every schedule that reads cleanly, in key order.
+/// Every schedule that reads cleanly, the built-in purge schedules
+/// among them, in key order.
 #[salsa::tracked(returns(ref))]
 pub fn schedules(db: &dyn Db, project: Project) -> Arc<Vec<Arc<ScheduleModel>>> {
     let mut out: Vec<Arc<ScheduleModel>> = project
@@ -121,13 +185,19 @@ pub fn schedules(db: &dyn Db, project: Project) -> Arc<Vec<Arc<ScheduleModel>>> 
         .iter()
         .flat_map(|&file| schedules_in(db, project, file).iter())
         .filter_map(|read| read.model.clone())
+        .chain(
+            purge_schedules(db, project)
+                .iter()
+                .map(|(model, _)| Arc::clone(model)),
+        )
         .collect();
     out.sort_by(|a, b| a.key.cmp(&b.key));
     out.dedup_by(|a, b| a.key == b.key);
     Arc::new(out)
 }
 
-/// Whether the project declares a schedule at all, read cleanly or not.
+/// Whether the project has a schedule at all: one it declares, read
+/// cleanly or not, or an entity's built-in purge schedule.
 #[salsa::tracked]
 pub fn declares_schedules(db: &dyn Db, project: Project) -> bool {
     project.files(db).iter().any(|&file| {
@@ -135,7 +205,7 @@ pub fn declares_schedules(db: &dyn Db, project: Project) -> bool {
             .items
             .iter()
             .any(|item| item.kind == ItemKind::Schedule)
-    })
+    }) || !purge_schedules(db, project).is_empty()
 }
 
 /// The problems of the schedules `file` declares: how each reads, where
@@ -151,10 +221,13 @@ pub fn schedule_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
             out.push(store_required(db, project, &read.name, &read.span));
         }
         let Some(model) = &read.model else { continue };
+        let Some(action) = model.run.action() else {
+            continue;
+        };
         if !crate::policy::policy_clean(db, project) {
             continue;
         }
-        if let Some(found) = crate::policy::reach::public_only(db, project, model.run.name()) {
+        if let Some(found) = crate::policy::reach::public_only(db, project, action.name()) {
             out.push(crate::events::public_only(
                 "schedule",
                 &model.name,
@@ -163,7 +236,47 @@ pub fn schedule_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagn
             ));
         }
     }
+    // An entity's built-in purge schedule keeps its state where every
+    // schedule does.
+    if settings.store.is_none() && settings.problems.is_empty() {
+        let path = file.path(db);
+        for (model, span) in purge_schedules(db, project) {
+            if model.path == *path
+                && let ScheduleRun::Purge(entity) = &model.run
+            {
+                out.push(purge_store_required(db, project, entity, span));
+            }
+        }
+    }
     out
+}
+
+/// `schedule.store_required` for an entity's built-in purge schedule, at
+/// its `purge:`.
+fn purge_store_required(db: &dyn Db, project: Project, entity: &str, span: &Span) -> Diagnostic {
+    let databases = crate::data::connections(db, project).databases();
+    let listed = crate::and_list(
+        &databases
+            .iter()
+            .map(|d| format!("`{d}`"))
+            .collect::<Vec<_>>(),
+    );
+    // The database the entity is in is the one to suggest.
+    let model = crate::data::data_model(db, project);
+    let first = model
+        .entity(entity)
+        .and_then(|entity| entity.store.as_deref())
+        .or(databases.first().map(String::as_str))
+        .unwrap_or("main");
+    Diagnostic::new(
+        &rule::SCHEDULE_STORE_REQUIRED,
+        format!("`{entity}`'s purge has no database named to keep its state in"),
+    )
+    .at(span.clone(), "a schedule with no store for its state")
+    .reason(format!(
+        "Purge runs as a built-in schedule every hour, and each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has {listed}, and `app.jadpo` names none with `schedules: {{ store: }}`."
+    ))
+    .next(format!("Add `schedules: {{ store: {first} }}` to `application {{ }}` in `app.jadpo`"))
 }
 
 /// `schedule.store_required`: no database is named to keep a schedule's
@@ -391,7 +504,7 @@ impl Reader<'_> {
             path: self.path.to_string(),
             line,
             every_ms,
-            run,
+            run: ScheduleRun::Action(run),
         })
     }
 

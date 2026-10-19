@@ -63,6 +63,16 @@ pub trait Executor {
         None
     }
 
+    /// The purge of the entity called `entity` (area 5, "Lifecycle"), which
+    /// its built-in schedule runs (chunk 6.2c), with how long it waits, in
+    /// milliseconds: its `after:`, or the value the program started with
+    /// for the setting it reads; `None` when that setting holds no
+    /// duration. `None` for an entity that isn't purged.
+    fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
+        let _ = entity;
+        None
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.

@@ -45,9 +45,19 @@ pub struct SchedulePlan {
     pub name: String,
     /// `every:`, in milliseconds.
     pub every_ms: u64,
-    /// The action it runs, by callable number, with no arguments.
-    pub callable: u32,
+    /// What it runs.
+    pub run: ScheduleRun,
     /// Where it is written, for logs.
     pub file: String,
     pub line: u32,
+}
+
+/// What a schedule runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScheduleRun {
+    /// An action, by callable number, with no arguments.
+    Action(u32),
+    /// The built-in purge of the entity of this name (area 5,
+    /// "Lifecycle"; chunk 6.2c), the plan's `purge` of it.
+    Purge(String),
 }

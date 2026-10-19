@@ -502,6 +502,52 @@ test "an overdue todo gets one reminder" {
 }
 ```
 
+Built in chunk 6.2c, but for fakes, which come with packages: the run
+calls the schedule's action with nothing, as the system with no tenant, as
+the tick does, at the test's clock; it gives nothing and fails as its
+action fails, so `assert overdue_reminders.run() fails ReminderFailed`
+checks a failing run. Only a test runs a schedule by hand:
+
+```jadpo check project=e-schedule-run-outside-test file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-schedule-run-outside-test file=domains/planning/actions/tidy.jadpo hidden
+/// Tidies up.
+action tidy() -> Unit {}
+```
+
+```jadpo check project=e-schedule-run-outside-test file=domains/planning/schedules/tidy_up.jadpo hidden migrate=initial
+use planning/actions { tidy }
+
+/// Tidies up every quarter of an hour.
+schedule tidy_up {
+    every: 15m
+    run: tidy()
+}
+```
+
+```jadpo check project=e-schedule-run-outside-test file=domains/planning/actions/tidy_now.jadpo expect=semantic.not_callable
+/// Tidies up at once.
+action tidy_now() -> Unit {
+    tidy_up.run()
+}
+```
+
+```text output
+error: An action can't run schedule `tidy_up`
+ --> domains/planning/actions/tidy_now.jadpo:3:5
+  |
+3 |     tidy_up.run()
+  |     ^^^^^^^^^^^ runs a schedule
+  reason: Only a test runs a schedule by hand, with `.run()`, to prove what one run does; in the application the tick runs it when it is due, and an operator runs it now with `jadpo schedules run`.
+  next: Call the action `tidy_up` runs, or move this into the schedule's test (agent)
+  rule: semantic.not_callable
+  help: docs/language/01-project-layout-and-modules.html#semantic-not-callable
+
+check failed: 1 error, 4 files
+```
+
 ## Test settings
 
 A test's environment is set at the top of its body, before the first
@@ -1708,7 +1754,8 @@ with when it comes.
 | Feature | Status |
 |---|---|
 | Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Since chunk 2.10 each test gets its own environment (its seed and clock, and the places its database and fakes will take), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
-| Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test), and the footer and `--json` count each kind. Schedule tests come with area 12; `--kind schedule` says so (`toolchain.not_built_yet`). |
+| Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, and since chunk 6.2c a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
+| Schedule tests | Work (run, chunk 6.2c): `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. Fakes for what a run calls come with packages. "Chosen in chunk 6.2c" below. |
 | Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
@@ -1721,6 +1768,36 @@ with when it comes.
 | Watch mode | Works (run, chunk 2.3): `jadpo test --watch` runs the tests asked for, then on every save the ones that reach what changed, through the graph's digests and `calls` and `uses` edges, on one long-lived database; a save no test reaches says `nothing to rerun`, a broken build shows its errors, and the next good save runs everything changed since the last run, or says `errors fixed` when no test reaches it; a removed file is a change like any other. Run from outside the project, its paths start with the project as typed. It ends when nothing reads its output any more, as when piped into `head`. A save shows its results in about 0.1 s on a 230-file project, and the gate fails above 1.25 s. The keys in the decided screen (`enter`, `a`, `f`) wait for `--interactive`, which says `toolchain.not_built_yet`; ctrl-c quits. |
 | Fixtures | Work (run): a fixture is checked like an action and called by name from tests, fixtures and seeds; an action calling one is `semantic.not_callable`. A `public` fixture is called through its domain from other domains' tests, fixtures and seeds and from root `tests/`; a private one from there is `visibility.private_cross_domain`. Seeds are checked but `jadpo seed` is not built. |
 | `test.no_tests` | Raised by `jadpo test` only (area 14), when the project has no tests or a file, line, name, kind or `--failed` picks none (run, chunk 2.2). |
+
+### Chosen in chunk 6.2c
+
+What the page leaves to the build about schedule tests, each the most
+conservative reading:
+
+- **What `.run()` is.** A call of the schedule's action with nothing, as
+  the system with no tenant, as the tick runs it (area 12, "Chosen in
+  chunk 6.2"), through the runtime's action boundary at the test's clock,
+  which stays fixed through the run. What it emits waits as any step's
+  does: delivering in tests is not built yet (area 12, "Chosen in chunk
+  6.1b"). It gives `Unit` whatever the action returns, since a
+  tick keeps no value, and fails with the action's failures, so a bare
+  call of one that can fail takes `attempt` and `assert … fails` checks a
+  failing run. It writes no run record and takes no lease: a schedule
+  test proves what one run does, and the tick's records are area 12's
+  live tests'. It takes no arguments (`type.argument_count`).
+- **Only tests run one.** `.run()` in an action, fixture or seed is
+  `semantic.not_callable`: the tick runs a schedule when it is due, and an
+  operator with `jadpo schedules run`. A test runs a schedule it can see,
+  as it calls an action. *Flagged:* an entity's built-in purge schedule
+  has no name a test can write, so no test runs it; giving it one
+  (`Member.purge.run()`) is a language choice the pages don't make.
+  Recommended as built: purge is the compiler's own operation, proven by
+  the compiler's live tests rather than each application's.
+- **The kind.** A test that runs a schedule is a schedule test, whatever
+  it calls to set up its data, a `request` included: what it proves is
+  the run. `--kind schedule` runs only those, and a kind with none says
+  `test.no_tests`; `toolchain.not_built_yet` no longer comes from
+  `--kind`.
 
 ### Consistency with the rest of the language
 

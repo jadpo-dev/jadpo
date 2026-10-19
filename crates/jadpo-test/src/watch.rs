@@ -356,14 +356,9 @@ impl Watch {
     }
 }
 
-/// Why `options` can't start a session, if they can't: a kind not built
-/// yet, a path that doesn't exist, or no project to run in.
+/// Why `options` can't start a session, if they can't: a path that
+/// doesn't exist, or no project to run in.
 pub fn validate(options: &Options) -> Option<Ran> {
-    if let Some(kind) = options.kind
-        && !kind.built()
-    {
-        return Some(Ran::Stopped(Box::new(select::kind_not_built(kind))));
-    }
     select::resolve(options).err()
 }
 

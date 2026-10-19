@@ -605,18 +605,18 @@ fn a_project_with_errors_is_refused_with_them() {
 }
 
 #[test]
-fn schedule_tests_are_not_built_yet() {
+fn a_kind_with_no_tests_says_so() {
     let root = loose("route", &[ADDS]);
     let output = jadpo(&root, &["test", ".", "--kind", "schedule"]);
     assert_eq!(output.code, 1);
     assert_eq!(
         output.stdout,
         "\
-error: Schedule tests aren't built yet
-  reason: A schedule test runs a schedule once (area 12), and this toolchain runs pure, action and route tests so far.
-  next: Run `jadpo test --kind pure`, `--kind action` or `--kind route` (agent)
-  rule: toolchain.not_built_yet
-  help: docs/language/13-testing.html#kinds-of-test
+error: No schedule tests to run
+  reason: Of the 1 test asked for, none is a schedule test: a test's kind comes from what it calls.
+  next: Leave out `--kind` to run every kind (agent)
+  rule: test.no_tests
+  help: docs/language/14-tooling.html#command-errors
 "
     );
     let route = jadpo(&root, &["test", ".", "--kind", "route"]);

@@ -543,8 +543,8 @@ pub fn system_table(name: &str) -> Table {
             // Each run of a schedule, and each due tick it skipped and why
             // (area 12, "Watching schedules"; chunk 6.2): when it was due,
             // started and ended, how it ended with its failure's code and
-            // kind, never a value, how many events it emitted, and its
-            // trace. Kept 30 days.
+            // kind, never a value, how many events it emitted, its trace,
+            // and how many items it processed. Kept 30 days.
             add("id", "uuid", false);
             add("schedule", "text", false);
             add("due_slot", "timestamptz(3)", false);
@@ -555,6 +555,9 @@ pub fn system_table(name: &str) -> Table {
             add("failure", "jsonb", true);
             add("events", "integer", true);
             add("traceparent", "text", true);
+            // The items a run processed, for a run that counts them: the
+            // records a purge deleted (area 5; chunk 6.2c).
+            add("items", "integer", true);
             for columns in [vec!["schedule", "started_at"], vec!["started_at"]] {
                 indexes.insert(
                     object_name(

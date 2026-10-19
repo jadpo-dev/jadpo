@@ -512,6 +512,24 @@ fn events(count: Option<i32>) -> String {
     )
 }
 
+/// What a run that succeeded did: the records a purge deleted, or the
+/// events an action's run emitted.
+fn did(record: &RunRecord) -> String {
+    match record.items {
+        Some(items) => purged(u64::try_from(items).unwrap_or(0)),
+        None => events(record.events),
+    }
+}
+
+fn count_json(count: u64) -> Json {
+    Json::Int(i64::try_from(count).unwrap_or(i64::MAX))
+}
+
+/// `2 records purged`: what a run of an entity's purge did (chunk 6.2c).
+fn purged(items: u64) -> String {
+    plural(items, "record purged", "records purged")
+}
+
 /// A failure as the screens write it: `provider_unavailable · unavailable`.
 fn failure(code: Option<&str>, kind: Option<&str>) -> String {
     let code = code.unwrap_or("internal_fault");
@@ -632,6 +650,7 @@ fn run_json(run: &RunRecord) -> Json {
             "events",
             run.events.map_or(Json::Null, |n| Json::from(i64::from(n))),
         ),
+        ("items", run.items.map_or(Json::Null, Json::from)),
         (
             "traceparent",
             run.trace.as_deref().map_or(Json::Null, Json::from),
@@ -753,7 +772,7 @@ fn last_run_cell(schedule: &Watched, now: i64) -> Cell {
             "{} · {} · {}{by_hand}",
             clock(run.started, now),
             duration(run.duration_ms(now)),
-            events(run.events)
+            did(run)
         )),
         _ => {
             let streak = if schedule.failures_in_a_row > 1 {
@@ -1041,8 +1060,7 @@ fn history_row(record: &RunRecord, now: i64) -> Vec<Cell> {
             due,
             Cell::muted(same_day(record.started)),
             Cell::muted(duration(record.duration_ms(now))),
-            Cell::state(Symbol::Success, "succeeded")
-                .then(format!("{}{by_hand}", events(record.events))),
+            Cell::state(Symbol::Success, "succeeded").then(format!("{}{by_hand}", did(record))),
         ],
         _ => vec![
             due,
@@ -1347,6 +1365,7 @@ fn ran_screen(name: &str, due: &Due) -> Reply {
                 _ => Json::from(0),
             },
         ),
+        ("items", due.items.map_or(Json::Null, count_json)),
         (
             "code",
             match &due.ran {
@@ -1400,11 +1419,18 @@ fn ran_screen(name: &str, due: &Due) -> Reply {
         Ran::Succeeded { events: count } => Reply::screen(
             Screen::new().with(Block::Status {
                 outcome: Outcome::Success,
-                text: format!(
-                    "Ran `{name}` in {}, emitting {}",
-                    duration(due.duration_ms()),
-                    plural(u64::from(*count), "event", "events")
-                ),
+                text: match due.items {
+                    Some(items) => format!(
+                        "Ran `{name}` in {}: {}",
+                        duration(due.duration_ms()),
+                        purged(items)
+                    ),
+                    None => format!(
+                        "Ran `{name}` in {}, emitting {}",
+                        duration(due.duration_ms()),
+                        plural(u64::from(*count), "event", "events")
+                    ),
+                },
                 rows: Vec::new(),
             }),
             data,
@@ -1722,7 +1748,7 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                     "due {} · took {} · {}{}",
                     grid_clock(run.due, now),
                     duration(run.duration_ms(now)),
-                    events(run.events),
+                    did(run),
                     if run.by_hand_run() { " · by hand" } else { "" }
                 ),
             )];
@@ -1764,7 +1790,13 @@ fn run_words(run: &RunRecord, now: i64) -> String {
 /// A schedule's run in `jadpo dev`'s output and its `--json` envelope.
 pub(crate) fn dev_line(name: &str, due: &Due) -> (String, Json) {
     let (word, detail) = match &due.ran {
-        Ran::Succeeded { events } => ("succeeded", plural(u64::from(*events), "event", "events")),
+        Ran::Succeeded { events } => (
+            "succeeded",
+            match due.items {
+                Some(items) => purged(items),
+                None => plural(u64::from(*events), "event", "events"),
+            },
+        ),
         Ran::Failed { code, kind } => ("failed", failure(Some(code), kind.as_deref())),
         Ran::Skipped(why) => ("skipped", skip_reason(Some(why.word())).to_string()),
     };
@@ -1782,6 +1814,19 @@ pub(crate) fn dev_line(name: &str, due: &Due) -> (String, Json) {
             due.trace.as_deref().map_or(Json::Null, Json::from),
         ),
     ]);
+    // A purge's log line says how many records each batch deleted (area
+    // 5, "Lifecycle"; chunk 6.2c).
+    let json = match (json, due.items) {
+        (Json::Object(mut fields), Some(items)) => {
+            fields.push(("items".to_string(), count_json(items)));
+            fields.push((
+                "batches".to_string(),
+                Json::Array(due.batches.iter().copied().map(count_json).collect()),
+            ));
+            Json::Object(fields)
+        }
+        (json, _) => json,
+    };
     (detail, json)
 }
 
@@ -1846,6 +1891,8 @@ mod tests {
             started: T,
             ended: T + 41,
             trace: Some("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01".into()),
+            items: None,
+            batches: Vec::new(),
         };
         let (detail, json) = dev_line("census", &due);
         assert_eq!(detail, "bell_missing · unavailable");
