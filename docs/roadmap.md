@@ -1798,14 +1798,23 @@ chunks below, taken before Phase 6.
   bounded list without includes, groups or pages, held to field policy
   as an `Output`; example 21's whole layer behind `GET /drop-points`, as
   area 6's "Chosen in chunk 5.5u8" records.
-- [ ] **5.9 Durable values** `opus · xhigh` (area 19, "Changing a
+- [x] **5.9 Durable values** `opus · xhigh` (area 19, "Changing a
   standard type's encoding", decided 2026-10-19: only with a reader for
   the old form and a release note, enforced by a golden file): a golden file per standard type, from its
   examples, pinning its text, JSON, storage columns and SQL literal; an
   encoding version on every durable row and token (session tokens, the
   outbox row, the stored passkey credential, now `WebAuthnCredential`'s
   standard JSON), with a reader for each form written before versions.
-  Split on 2026-10-19: the JSON columns are 5.9b.
+  Split on 2026-10-19: the JSON columns are 5.9b. *Built:* 259 golden
+  files in `crates/jadpo-interp/tests/goldens/standard/`, made by the
+  codecs a program gets, rewritten by `JADPO_BLESS=1` only past the
+  encoding each records; one release encoding,
+  `jadpo_std::standard::ENCODING`, with area 19's "Encodings each release
+  writes" held to the files; a signed part's `enc`, and `encoding` on
+  `jadpo_outbox` and `jadpo_passkeys`; a passkey kept as
+  `WebAuthnCredential`'s contract JSON through the plan's JSON table;
+  parts and passkeys kept before encodings read as they were written, as
+  area 19's "Chosen in chunk 5.9" records.
 - [ ] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
   split from 5.9), after 5.9: JSON columns for any type the route codec
   handles, so an application's objects, lists, maps and enums with data
