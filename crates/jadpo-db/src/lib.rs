@@ -12,11 +12,16 @@
 mod identities;
 mod items;
 mod load;
+mod lock;
 mod places;
+pub mod record;
 mod table;
 mod texts;
 
-pub use identities::{IDENTITIES, parse_identities, write_identities};
+pub use identities::{
+    IDENTITIES, LEGACY_IDENTITIES, parse_identities, parse_legacy_identities, write_identities,
+};
+pub use lock::{LOCK, Locked, Source, parse_lock, write_lock};
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
@@ -53,9 +58,10 @@ pub struct File {
 }
 
 /// A committed record beside the source that isn't a `.jadpo` file (area
-/// 18): a migration's `snapshot.json` and `postgres.sql`, an API's record,
-/// `api/<api>.api` (area 7), the identity registry,
-/// `database/identities.json`, and a prompt's text, `<name>.prompt`
+/// 18): a migration's `snapshot.json` and `postgres.sql`, every
+/// `.jadpo_record` ([`record::kind_of`]) and `jadpo.lock`, a record still
+/// under its name from before chunk 7.0 (`api/<api>.api`,
+/// `database/identities.json`), and a prompt's text, `<name>.prompt`
 /// (area 21), read whole.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Record {
@@ -66,18 +72,15 @@ pub struct Record {
 }
 
 /// Whether a project-relative path is a record [`Record`] holds: a file in
-/// a migration's folder that isn't source, an API's record, the identity
-/// registry, a `translations/` folder's sources (area 18), or a prompt's
-/// text in a `prompts/` folder (area 21).
+/// a migration's folder that isn't source, a generated record of any kind,
+/// one under its old name, or a prompt's text in a `prompts/` folder (area
+/// 21).
 pub fn is_record(path: &str) -> bool {
-    if path == IDENTITIES {
+    if record::kind_of(path).is_some() || record::renamed(path).is_some() {
         return true;
     }
     if is_prompt_text(path) {
         return true;
-    }
-    if let ["api", name] = path.split('/').collect::<Vec<_>>().as_slice() {
-        return name.ends_with(".api");
     }
     matches!(
         path.split('/').collect::<Vec<_>>().as_slice(),
@@ -86,9 +89,7 @@ pub fn is_record(path: &str) -> bool {
             "migrations",
             _,
             "snapshot.json" | "postgres.sql"
-        ] | ["domains", _, "translations", "sources.jadpo_record"]
-            | ["shared", "translations", "sources.jadpo_record"]
-            | ["translations", "sources.jadpo_record"]
+        ]
     )
 }
 
@@ -109,8 +110,8 @@ pub fn is_prompt_text(path: &str) -> bool {
 /// The project: its source files in path order, the paths of every other
 /// file inside it (templates and other assets), its layout, the identity
 /// registry's lines (area 18): for each thing renamed since it was born,
-/// `kind name-now` and its born name, as `database/identities.json` holds
-/// them, and its migrations' records in path order. The registry and the
+/// `kind name-now` and its born name, as `database/identities.jadpo_record`
+/// holds them, and its migrations' records in path order. The registry and the
 /// records are inputs like the files, so a rename re-keys exactly what it
 /// touches and a new migration rechecks only what reads the migrations.
 #[salsa::input(debug)]

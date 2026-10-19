@@ -1,0 +1,318 @@
+//! The lock, `jadpo.lock` (area 18; the `lock` record): each installed
+//! package's version, digest and source, one line per package, sorted by
+//! name and major version, so git's `union` merge combines two branches'
+//! additions.
+//!
+//! ```text
+//! package AcmeCouriers.v1 version 1.4.0 git github.com/acme/acme-couriers tag v1.4.0 commit 9c2f…a1 digest sha256:5be1…c0
+//! package Postcodes.v2 version 2.1.0 registry digest sha256:e3b0…55
+//! package Tables.v1 version 1.0.0 path ../tables digest sha256:0c1d…9e
+//! package AcmePricing.v2 link ../acme-pricing
+//! ```
+//!
+//! A source is `registry`, `git` (the repository, the tag and the tag's
+//! commit), `path` or `link`; a link is a live folder, so it has no
+//! version or digest of its own, and production builds and CI refuse it.
+//! Packages come in chunk 7.1; this is the format they are locked in.
+
+use crate::record::{self, Entry};
+
+/// The lock's path in a project; it keeps its usual name.
+pub const LOCK: &str = "jadpo.lock";
+
+/// What the lock's header says it is generated from.
+const FROM: &str = "the installed packages";
+
+/// One installed package.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Locked {
+    /// Its name and major version, `AcmeCouriers.v1`.
+    pub package: String,
+    pub source: Source,
+}
+
+/// Where an installed package came from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+    Registry {
+        version: String,
+        digest: String,
+    },
+    Git {
+        version: String,
+        repository: String,
+        tag: String,
+        commit: String,
+        digest: String,
+    },
+    Path {
+        version: String,
+        path: String,
+        digest: String,
+    },
+    Link {
+        path: String,
+    },
+}
+
+impl Locked {
+    /// The package's line.
+    pub fn line(&self) -> String {
+        let package = &self.package;
+        match &self.source {
+            Source::Registry { version, digest } => {
+                format!("package {package} version {version} registry digest {digest}")
+            }
+            Source::Git {
+                version,
+                repository,
+                tag,
+                commit,
+                digest,
+            } => format!(
+                "package {package} version {version} git {repository} tag {tag} commit {commit} digest {digest}"
+            ),
+            Source::Path {
+                version,
+                path,
+                digest,
+            } => format!("package {package} version {version} path {path} digest {digest}"),
+            Source::Link { path } => format!("package {package} link {path}"),
+        }
+    }
+
+    /// What it sorts by: the name, then the major version as a number.
+    fn order(&self) -> (String, u64) {
+        let (name, major) = split_package(&self.package).unwrap_or((&self.package, 0));
+        (name.to_string(), major)
+    }
+}
+
+/// `AcmeCouriers.v1` as its name and major version.
+fn split_package(package: &str) -> Option<(&str, u64)> {
+    let (name, major) = package.rsplit_once(".v")?;
+    let starts_upper = name.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+    let named = starts_upper && name.chars().all(|c| c.is_ascii_alphanumeric());
+    let digits = !major.is_empty() && major.bytes().all(|b| b.is_ascii_digit());
+    (named && digits && (major == "0" || !major.starts_with('0')))
+        .then(|| Some((name, major.parse().ok()?)))
+        .flatten()
+}
+
+/// The lock's text for `packages`: sorted by name and major version.
+pub fn write_lock(packages: &[Locked]) -> String {
+    let mut sorted: Vec<&Locked> = packages.iter().collect();
+    sorted.sort_by_key(|locked| locked.order());
+    let entries: Vec<Entry> = sorted
+        .into_iter()
+        .map(|locked| Entry::new(locked.line()))
+        .collect();
+    record::write(&record::LOCK, FROM, &entries)
+}
+
+/// The lock's packages, or the line that can't be read (from 0) and why:
+/// each line has to be one this Jadpo writes, and each package is locked
+/// once.
+pub fn parse_lock(text: &str) -> Result<Vec<Locked>, (usize, String)> {
+    let text = record::normalise(text);
+    record::read_header(&text, &record::LOCK, FROM)
+        .map_err(|problem| (problem.line(), problem.describe(&record::LOCK)))?;
+    record::read(&text, &record::LOCK)?;
+    let mut out: Vec<(usize, Locked)> = Vec::new();
+    for (at, line) in text.lines().enumerate().skip(2) {
+        if line.is_empty() {
+            continue;
+        }
+        let locked = parse_line(line).map_err(|why| (at, why))?;
+        if let Some((first, _)) = out.iter().find(|(_, other)| other.package == locked.package) {
+            return Err((
+                at,
+                format!(
+                    "`{}` is locked on lines {} and {}: two versions of one package, as a merge of two branches can leave",
+                    locked.package,
+                    first + 1,
+                    at + 1
+                ),
+            ));
+        }
+        out.push((at, locked));
+    }
+    Ok(out.into_iter().map(|(_, locked)| locked).collect())
+}
+
+fn parse_line(line: &str) -> Result<Locked, String> {
+    let words: Vec<&str> = line.split(' ').collect();
+    let shape = "a line is `package <Name>.v<major>` then its version and source";
+    let (package, rest) = match words.as_slice() {
+        ["package", package, rest @ ..] => (*package, rest),
+        _ => return Err(shape.into()),
+    };
+    if split_package(package).is_none() {
+        return Err(format!("`{package}` isn't a package and major version, such as `Postcodes.v2`"));
+    }
+    let source = match rest {
+        ["link", path] if !path.is_empty() => Source::Link {
+            path: path.to_string(),
+        },
+        ["version", version, rest @ ..] => {
+            if !is_version(version) {
+                return Err(format!("`{version}` isn't a version, such as `1.4.0`"));
+            }
+            let digest = |digest: &str| -> Result<String, String> {
+                is_digest(digest)
+                    .then(|| digest.to_string())
+                    .ok_or_else(|| format!("`{digest}` isn't a digest: `sha256:` and 64 lower-case hex digits"))
+            };
+            let version = version.to_string();
+            match rest {
+                ["registry", "digest", d] => Source::Registry {
+                    version,
+                    digest: digest(d)?,
+                },
+                ["git", repository, "tag", tag, "commit", commit, "digest", d]
+                    if !repository.is_empty() && !tag.is_empty() =>
+                {
+                    if !is_commit(commit) {
+                        return Err(format!("`{commit}` isn't a commit: 40 or 64 lower-case hex digits"));
+                    }
+                    Source::Git {
+                        version,
+                        repository: repository.to_string(),
+                        tag: tag.to_string(),
+                        commit: commit.to_string(),
+                        digest: digest(d)?,
+                    }
+                }
+                ["path", path, "digest", d] if !path.is_empty() => Source::Path {
+                    version,
+                    path: path.to_string(),
+                    digest: digest(d)?,
+                },
+                _ => return Err(shape.into()),
+            }
+        }
+        _ => return Err(shape.into()),
+    };
+    Ok(Locked {
+        package: package.to_string(),
+        source,
+    })
+}
+
+fn is_hex(text: &str) -> bool {
+    text.bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+fn is_digest(text: &str) -> bool {
+    text.strip_prefix("sha256:")
+        .is_some_and(|hex| hex.len() == 64 && is_hex(hex))
+}
+
+fn is_commit(text: &str) -> bool {
+    (text.len() == 40 || text.len() == 64) && is_hex(text)
+}
+
+/// `1.4.0`, or with a pre-release, `2.0.0-beta.1`.
+fn is_version(text: &str) -> bool {
+    let (core, pre) = match text.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (text, None),
+    };
+    let numbers: Vec<&str> = core.split('.').collect();
+    numbers.len() == 3
+        && numbers.iter().all(|n| {
+            !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && (*n == "0" || !n.starts_with('0'))
+        })
+        && pre.is_none_or(|pre| {
+            !pre.is_empty()
+                && pre
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn digest(c: char) -> String {
+        format!("sha256:{}", c.to_string().repeat(64))
+    }
+
+    fn packages() -> Vec<Locked> {
+        vec![
+            Locked {
+                package: "Postcodes.v2".into(),
+                source: Source::Registry {
+                    version: "2.1.0".into(),
+                    digest: digest('e'),
+                },
+            },
+            Locked {
+                package: "AcmeCouriers.v1".into(),
+                source: Source::Git {
+                    version: "1.4.0".into(),
+                    repository: "github.com/acme/acme-couriers".into(),
+                    tag: "v1.4.0".into(),
+                    commit: "9".repeat(40),
+                    digest: digest('5'),
+                },
+            },
+            Locked {
+                package: "AcmePricing.v10".into(),
+                source: Source::Link {
+                    path: "../acme-pricing".into(),
+                },
+            },
+            Locked {
+                package: "AcmePricing.v2".into(),
+                source: Source::Path {
+                    version: "2.0.0-beta.1".into(),
+                    path: "../pricing".into(),
+                    digest: digest('0'),
+                },
+            },
+        ]
+    }
+
+    #[test]
+    fn the_lock_is_a_ledger_of_one_line_per_package() {
+        let text = write_lock(&packages());
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            lines[0],
+            "// Generated by Jadpo from the installed packages; update it with `jadpo package add`, `update` or `remove`, never by hand."
+        );
+        assert_eq!(lines[1], "record lock 1");
+        assert_eq!(lines[2], "");
+        assert_eq!(
+            lines[3],
+            format!(
+                "package AcmeCouriers.v1 version 1.4.0 git github.com/acme/acme-couriers tag v1.4.0 commit {} digest {}",
+                "9".repeat(40),
+                digest('5')
+            )
+        );
+        // By name, then major version as a number.
+        assert!(lines[4].starts_with("package AcmePricing.v2 version 2.0.0-beta.1 path ../pricing digest"));
+        assert_eq!(lines[5], "package AcmePricing.v10 link ../acme-pricing");
+        assert!(lines[6].starts_with("package Postcodes.v2 version 2.1.0 registry digest sha256:"));
+        let mut sorted = packages();
+        sorted.sort_by_key(Locked::order);
+        assert_eq!(parse_lock(&text), Ok(sorted));
+    }
+
+    #[test]
+    fn a_lock_line_jadpo_wouldnt_write_is_refused() {
+        let text = write_lock(&packages());
+        let twice = format!("{text}package Postcodes.v2 link ../postcodes\n");
+        assert_eq!(parse_lock(&twice).map_err(|(at, _)| at), Err(7));
+        let short = text.replace(&digest('e'), "sha256:e3b0");
+        assert_eq!(parse_lock(&short).map_err(|(at, _)| at), Err(6));
+        assert!(parse_lock(&text.replace("version 1.4.0", "version 1.4")).is_err());
+        assert!(parse_lock(&text.replace("AcmeCouriers.v1", "acme_couriers")).is_err());
+        assert!(parse_lock(&text.replace(" tag v1.4.0", "")).is_err());
+        assert_eq!(parse_lock(&write_lock(&[])), Ok(Vec::new()));
+    }
+}
