@@ -1,0 +1,8 @@
+Feature: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column jsonb
+
+example {"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}
+text none
+json {"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}
+stored '{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"name":"Site A"}}'::jsonb

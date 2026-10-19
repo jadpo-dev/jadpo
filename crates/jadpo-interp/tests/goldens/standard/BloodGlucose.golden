@@ -1,0 +1,23 @@
+BloodGlucose: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 9) -- Concentration in grams per litre (g/L)
+
+example 0.7206228 gL
+text 0.7206228 gL
+json {"value":"0.7206228","unit":"gL"}
+stored 0.7206228
+
+example 0.99 gL
+text 0.99 gL
+json {"value":"0.99","unit":"gL"}
+stored 0.99
+
+example 0.99085635 gL
+text 0.99085635 gL
+json {"value":"0.99085635","unit":"gL"}
+stored 0.99085635
+
+example 2.01774384 gL
+text 2.01774384 gL
+json {"value":"2.01774384","unit":"gL"}
+stored 2.01774384

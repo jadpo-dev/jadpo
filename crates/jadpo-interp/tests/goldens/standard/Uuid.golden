@@ -1,0 +1,8 @@
+Uuid: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column uuid
+
+example 0192f0c4-9a1e-7b3c-8d2e-4f5a6b7c8d9e
+text 0192f0c4-9a1e-7b3c-8d2e-4f5a6b7c8d9e
+json "0192f0c4-9a1e-7b3c-8d2e-4f5a6b7c8d9e"
+stored '0192f0c4-9a1e-7b3c-8d2e-4f5a6b7c8d9e'::uuid

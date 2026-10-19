@@ -1,0 +1,22 @@
+ModelId: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column provider text
+column name text
+
+example openai/gpt-4o
+text openai/gpt-4o
+json "openai/gpt-4o"
+stored provider 'openai'
+stored name 'gpt-4o'
+
+example meta-llama/Llama-3.1-8B-Instruct
+text meta-llama/Llama-3.1-8B-Instruct
+json "meta-llama/Llama-3.1-8B-Instruct"
+stored provider 'meta-llama'
+stored name 'Llama-3.1-8B-Instruct'
+
+example ollama/llama3:8b
+text ollama/llama3:8b
+json "ollama/llama3:8b"
+stored provider 'ollama'
+stored name 'llama3:8b'

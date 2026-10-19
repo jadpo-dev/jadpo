@@ -1,0 +1,18 @@
+PaperSize: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example A4
+text A4
+json "A4"
+stored 'A4'
+
+example B5
+text B5
+json "B5"
+stored 'B5'
+
+example Letter
+text Letter
+json "Letter"
+stored 'Letter'

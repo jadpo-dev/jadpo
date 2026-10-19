@@ -1,0 +1,13 @@
+UpcA: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 036000291452
+text 036000291452
+json "036000291452"
+stored '036000291452'
+
+example 614141000036
+text 614141000036
+json "614141000036"
+stored '614141000036'

@@ -1,0 +1,16 @@
+PersonName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column given text
+column family text
+
+example {"given":"Mary","family":"Somerville"}
+text none
+json {"given":"Mary","family":"Somerville"}
+stored given 'Mary'
+stored family 'Somerville'
+
+example {"given":"Sukarno","family":null}
+text none
+json {"given":"Sukarno","family":null}
+stored given 'Sukarno'
+stored family NULL::text

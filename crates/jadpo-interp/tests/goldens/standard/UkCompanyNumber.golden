@@ -1,0 +1,13 @@
+UkCompanyNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 00445790
+text 00445790
+json "00445790"
+stored '00445790'
+
+example SC123456
+text SC123456
+json "SC123456"
+stored 'SC123456'

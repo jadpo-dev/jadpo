@@ -14,11 +14,13 @@
 //!   are made.
 //! - **The relying party** is the browser session's configured origin,
 //!   never the request's; a public write needs an `Origin` naming it.
-//! - **Passkeys** are kept in `jadpo_passkeys` as `WebAuthnCredential`
-//!   JSON with their user and a random user handle; signing in updates
-//!   the counter, backup state and last use only if the counter is still
-//!   what was read, then starts a browser session in the same
-//!   transaction.
+//! - **Passkeys** are kept in `jadpo_passkeys` as `WebAuthnCredential`'s
+//!   contract JSON, written and read by the plan's JSON codec, with the
+//!   encoding it was written in, their user and a random user handle; one
+//!   kept before encodings were recorded is read as it was written
+//!   (chunk 5.9). Signing in updates the counter, backup state and last
+//!   use only if the counter is still what was read, in this release's
+//!   encoding, then starts a browser session in the same transaction.
 //!
 //! Every failure is one of area 8's: `passkey_challenge_expired`,
 //! `passkey_rejected`, `passkey_already_registered`,
@@ -26,9 +28,14 @@
 //! `invalid_input`, `csrf_rejected`, `user_disabled`,
 //! `authentication_unavailable` and `authentication_misconfigured`.
 
+use std::rc::Rc;
+
 use jadpo_std::http::{IdentityPlan, PASSKEY_LIMIT, PasskeyPlan, PasskeyStep, SESSION_LIFETIME_MS};
 use jadpo_std::read::SqlType;
-use jadpo_value::encoding::{from_base64, to_base64};
+use jadpo_std::standard::ENCODING;
+use jadpo_std::standard::security::WEB_AUTHN_CREDENTIAL;
+use jadpo_value::Value;
+use jadpo_value::encoding::from_base64;
 
 use super::identity::{
     AUTHENTICATION_MISCONFIGURED, AUTHENTICATION_UNAVAILABLE, CSRF_REJECTED, START, USER_DISABLED,
@@ -68,17 +75,19 @@ const SWEEP: &str = "DELETE FROM \"jadpo_passkey_challenges\" WHERE \"expires_at
 const TAKE: &str = "DELETE FROM \"jadpo_passkey_challenges\" WHERE \"challenge\" = $1 AND \"purpose\" = $2 RETURNING \"binding\", \"principal_id\", \"user_handle\", \"state\", \"expires_at\"";
 
 /// A person's passkeys, oldest first.
-const LIST: &str = "SELECT \"id\", \"credential\" FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $1 ORDER BY \"registered_at\", \"id\"";
+const LIST: &str = "SELECT \"id\", \"credential\", \"encoding\" FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $1 ORDER BY \"registered_at\", \"id\"";
 
 /// Keeps a new passkey while its person has fewer than the limit.
-const ADD: &str = "INSERT INTO \"jadpo_passkeys\" (\"id\", \"principal_id\", \"credential_id\", \"user_handle\", \"credential\", \"registered_at\") SELECT $1, $2, $3, $4, $5, $6 WHERE (SELECT count(*) FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $2) < $7";
+const ADD: &str = "INSERT INTO \"jadpo_passkeys\" (\"id\", \"principal_id\", \"credential_id\", \"user_handle\", \"credential\", \"registered_at\", \"encoding\") SELECT $1, $2, $3, $4, $5, $6, $8 WHERE (SELECT count(*) FROM \"jadpo_passkeys\" WHERE \"principal_id\" = $2) < $7";
 
-/// Writes a passkey after it signed in, if its counter is still the one
-/// read: a second answer racing it changes nothing.
-const USED: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = $3 WHERE \"id\" = $1 AND \"credential\" ->> 'sign_count' = $2";
+/// Writes a passkey after it signed in, in this release's encoding, if its
+/// counter is still the one read: a second answer racing it changes
+/// nothing.
+const USED: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = $3, \"encoding\" = $4 WHERE \"id\" = $1 AND \"credential\" ->> 'sign_count' = $2";
 
-/// Renames one of a person's passkeys.
-const RENAME: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = jsonb_set(\"credential\", '{name}', to_jsonb($3::text)) WHERE \"id\" = $1 AND \"principal_id\" = $2 RETURNING \"id\", \"credential\"";
+/// Renames one of a person's passkeys, in whichever encoding it is kept:
+/// `name` is text in each.
+const RENAME: &str = "UPDATE \"jadpo_passkeys\" SET \"credential\" = jsonb_set(\"credential\", '{name}', to_jsonb($3::text)) WHERE \"id\" = $1 AND \"principal_id\" = $2 RETURNING \"id\", \"credential\", \"encoding\"";
 
 /// Removes one of a person's passkeys.
 const REMOVE: &str = "DELETE FROM \"jadpo_passkeys\" WHERE \"id\" = $1 AND \"principal_id\" = $2";
@@ -149,6 +158,7 @@ async fn run(
     let site = Site {
         plan,
         passkeys,
+        json: &app.json,
         origin,
         ceremonies,
         request_id,
@@ -164,11 +174,12 @@ async fn run(
     }
 }
 
-/// What every step reads: the plan, the configured origin, the host's
-/// ceremonies and the request's id.
+/// What every step reads: the plan, the codecs a passkey is kept with, the
+/// configured origin, the host's ceremonies and the request's id.
 struct Site<'s> {
     plan: &'s IdentityPlan,
     passkeys: &'s PasskeyPlan,
+    json: &'s crate::JsonCodecs<'s>,
     origin: &'s str,
     ceremonies: &'s dyn Passkeys,
     request_id: &'s str,
@@ -181,6 +192,29 @@ impl Site<'_> {
 
     fn fail(&self, failure: (u16, &str, &str)) -> Stop {
         stop(failure, self.request_id)
+    }
+
+    /// A kept passkey, read by the encoding its row records (area 19,
+    /// "Changing a standard type's encoding"; chunk 5.9): this release's,
+    /// through the contract's JSON codec, which holds it to
+    /// `WebAuthnCredential`'s rules, or none, one kept before encodings
+    /// were recorded, as it was written then. Any other encoding, a later
+    /// release's, isn't read.
+    fn read_kept(&self, stored: &str, encoding: &SqlValue) -> Option<Credential> {
+        match encoding {
+            SqlValue::Null(_) => read_unversioned(stored),
+            SqlValue::Int2(n) if u32::try_from(*n).ok() == Some(ENCODING) => {
+                Credential::from_value(&self.json.read(self.passkeys.credential, stored).ok()?)
+            }
+            _ => None,
+        }
+    }
+
+    /// `credential` as the contract's JSON, in this release's encoding.
+    fn write_kept(&self, credential: &Credential) -> Result<SqlValue, Stop> {
+        self.json
+            .write(self.passkeys.credential, &credential.to_value())
+            .map_err(|_| self.fail(AUTHENTICATION_MISCONFIGURED))
     }
 
     /// One statement on its own, against the store the user lives in.
@@ -460,6 +494,7 @@ impl Site<'_> {
             [
                 SqlValue::Uuid(row),
                 SqlValue::Json(stored),
+                encoding,
                 SqlValue::Bytes(handle),
                 SqlValue::Uuid(user),
                 SqlValue::Bool(active),
@@ -469,7 +504,7 @@ impl Site<'_> {
             return Err(self.fail(REJECTED));
         };
         let (Some(parts), Ok(handle)) = (
-            read_credential(stored),
+            self.read_kept(stored, encoding),
             <[u8; 16]>::try_from(handle.as_slice()),
         ) else {
             return Err(self.fail(REJECTED));
@@ -501,9 +536,10 @@ impl Site<'_> {
         let written = Credential {
             ceremony: updated,
             name: parts.name.clone(),
-            registered_at: parts.registered_at.clone(),
-            last_used_at: Some(jadpo_std::format_instant(now)),
+            registered_at: parts.registered_at,
+            last_used_at: Some(now),
         };
+        let written = self.write_kept(&written)?;
         let (Some(token), Some(csrf), Some(session)) =
             (new_token(ctx), new_token(ctx), ctx.new_id())
         else {
@@ -520,7 +556,8 @@ impl Site<'_> {
                 &[
                     SqlValue::Uuid(*row),
                     SqlValue::Text(parts.ceremony.sign_count.to_string()),
-                    SqlValue::Json(written.to_json()),
+                    written,
+                    encoding_value(),
                 ],
             )
             .await;
@@ -642,7 +679,7 @@ impl Site<'_> {
         let kept = Credential {
             ceremony: parts,
             name,
-            registered_at: jadpo_std::format_instant(now),
+            registered_at: now,
             last_used_at: None,
         };
         let Some(id) = ctx.new_id() else {
@@ -653,9 +690,10 @@ impl Site<'_> {
             SqlValue::Uuid(user),
             SqlValue::Bytes(kept.ceremony.credential_id.clone()),
             SqlValue::Bytes(handle.to_vec()),
-            SqlValue::Json(kept.to_json()),
+            self.write_kept(&kept)?,
             SqlValue::Timestamp(now.saturating_mul(1000)),
             SqlValue::Int8(PASSKEY_LIMIT),
+            encoding_value(),
         ];
         let Some(database) = ctx.host().database(&self.plan.store) else {
             return Err(self.fail(AUTHENTICATION_MISCONFIGURED));
@@ -725,10 +763,12 @@ impl Site<'_> {
             )
             .await?;
         match rows.first().map(Vec::as_slice) {
-            Some([SqlValue::Uuid(id), SqlValue::Json(stored)]) => match read_credential(stored) {
-                Some(credential) => Ok(ok_json(200, view(id, &credential))),
-                None => Err(self.fail(AUTHENTICATION_MISCONFIGURED)),
-            },
+            Some([SqlValue::Uuid(id), SqlValue::Json(stored), encoding]) => {
+                match self.read_kept(stored, encoding) {
+                    Some(credential) => Ok(ok_json(200, view(id, &credential))),
+                    None => Err(self.fail(AUTHENTICATION_MISCONFIGURED)),
+                }
+            }
             _ => Err(self.fail(NOT_FOUND)),
         }
     }
@@ -809,8 +849,8 @@ impl Site<'_> {
         Ok(rows
             .iter()
             .filter_map(|row| match row.as_slice() {
-                [SqlValue::Uuid(id), SqlValue::Json(stored)] => {
-                    Some((*id, read_credential(stored)?))
+                [SqlValue::Uuid(id), SqlValue::Json(stored), encoding] => {
+                    Some((*id, self.read_kept(stored, encoding)?))
                 }
                 _ => None,
             })
@@ -831,62 +871,127 @@ struct Taken {
 }
 
 /// A passkey as `jadpo_passkeys` keeps it: a `WebAuthnCredential` (area
-/// 19), its ceremony's parts and the person's.
+/// 19), its ceremony's parts and the person's, each time in milliseconds
+/// since 1970.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Credential {
     ceremony: PasskeyParts,
     name: String,
-    registered_at: String,
-    last_used_at: Option<String>,
+    registered_at: i64,
+    last_used_at: Option<i64>,
 }
 
 impl Credential {
-    /// Its JSON, as `WebAuthnCredential` is sent and stored: bytes in
-    /// Base64, the count a JSON number, as the contract sends a whole number
-    /// whose range JavaScript holds (chunk 5.5w3), `last_used_at` left out
-    /// until it is used.
-    fn to_json(&self) -> String {
-        let mut object = serde_json::Map::new();
+    /// The `WebAuthnCredential` it is, its parts in their declared order,
+    /// as the contract's codec writes one.
+    fn to_value(&self) -> Value {
         let part = &self.ceremony;
-        object.insert(
-            "credential_id".into(),
-            to_base64(&part.credential_id).into(),
-        );
-        object.insert("public_key".into(), to_base64(&part.public_key).into());
-        object.insert("sign_count".into(), part.sign_count.into());
-        object.insert(
-            "transports".into(),
-            serde_json::Value::Array(
-                part.transports
+        let bytes = |bytes: &[u8]| Value::Bytes(Rc::from(bytes));
+        Value::record(
+            WEB_AUTHN_CREDENTIAL,
+            vec![
+                ("credential_id".into(), bytes(&part.credential_id)),
+                ("public_key".into(), bytes(&part.public_key)),
+                ("sign_count".into(), Value::Int(i64::from(part.sign_count))),
+                (
+                    "transports".into(),
+                    Value::list(part.transports.iter().map(|t| Value::text(t)).collect()),
+                ),
+                ("backup_eligible".into(), Value::Bool(part.backup_eligible)),
+                ("backed_up".into(), Value::Bool(part.backed_up)),
+                ("name".into(), Value::text(&self.name)),
+                ("registered_at".into(), Value::Instant(self.registered_at)),
+                (
+                    "last_used_at".into(),
+                    self.last_used_at.map_or(Value::None, Value::Instant),
+                ),
+            ],
+        )
+    }
+
+    /// The passkey a `WebAuthnCredential` the contract's codec read is.
+    fn from_value(value: &Value) -> Option<Credential> {
+        let Value::Record(record) = value else {
+            return None;
+        };
+        let bytes = |name: &str| match record.get(name)? {
+            Value::Bytes(bytes) => Some(bytes.to_vec()),
+            _ => None,
+        };
+        let flag = |name: &str| match record.get(name)? {
+            Value::Bool(flag) => Some(*flag),
+            _ => None,
+        };
+        let Some(Value::List(transports)) = record.get("transports") else {
+            return None;
+        };
+        Some(Credential {
+            ceremony: PasskeyParts {
+                credential_id: bytes("credential_id")?,
+                public_key: bytes("public_key")?,
+                sign_count: match record.get("sign_count")? {
+                    Value::Int(n) => u32::try_from(*n).ok()?,
+                    _ => return None,
+                },
+                transports: transports
                     .iter()
-                    .map(|transport| transport.clone().into())
-                    .collect(),
-            ),
-        );
-        object.insert("backup_eligible".into(), part.backup_eligible.into());
-        object.insert("backed_up".into(), part.backed_up.into());
-        object.insert("name".into(), self.name.clone().into());
-        object.insert("registered_at".into(), self.registered_at.clone().into());
-        if let Some(used) = &self.last_used_at {
-            object.insert("last_used_at".into(), used.clone().into());
-        }
-        serde_json::Value::Object(object).to_string()
+                    .map(|transport| match transport {
+                        Value::Text(text) => Some(text.to_string()),
+                        _ => None,
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+                backup_eligible: flag("backup_eligible")?,
+                backed_up: flag("backed_up")?,
+            },
+            name: match record.get("name")? {
+                Value::Text(text) => text.to_string(),
+                _ => return None,
+            },
+            registered_at: match record.get("registered_at")? {
+                Value::Instant(millis) => *millis,
+                _ => return None,
+            },
+            last_used_at: match record.get("last_used_at") {
+                None | Some(Value::None) => None,
+                Some(Value::Instant(millis)) => Some(*millis),
+                Some(_) => return None,
+            },
+        })
     }
 }
 
-/// A kept passkey read back; `None` when it isn't one.
-fn read_credential(stored: &str) -> Option<Credential> {
+/// The encoding a passkey is written in, as its column holds it.
+fn encoding_value() -> SqlValue {
+    SqlValue::Int2(i16::try_from(ENCODING).unwrap_or(i16::MAX))
+}
+
+/// A passkey kept before encodings were recorded (chunks 5.5z and 5.5w3),
+/// read as it was written: JSON of its parts in any order, bytes in
+/// Base64, its count a number or, as chunk 5.5z wrote it, its digits,
+/// `last_used_at` left out until it was used. `None` when it isn't one.
+fn read_unversioned(stored: &str) -> Option<Credential> {
     let json: serde_json::Value = serde_json::from_str(stored).ok()?;
     let text = |key: &str| json.get(key).and_then(serde_json::Value::as_str);
     let flag = |key: &str| json.get(key).and_then(serde_json::Value::as_bool);
+    let instant = |text: &str| match jadpo_value::standard::builtin_text(
+        jadpo_std::Builtin::Instant,
+        text,
+    )? {
+        Value::Instant(millis) => Some(millis),
+        _ => None,
+    };
+    let sign_count = match json.get("sign_count")? {
+        serde_json::Value::Number(n) => n.as_u64(),
+        serde_json::Value::String(digits) if digits.bytes().all(|b| b.is_ascii_digit()) => {
+            digits.parse().ok()
+        }
+        _ => None,
+    };
     Some(Credential {
         ceremony: PasskeyParts {
             credential_id: from_base64(text("credential_id")?)?,
             public_key: from_base64(text("public_key")?)?,
-            sign_count: json
-                .get("sign_count")?
-                .as_u64()
-                .and_then(|n| u32::try_from(n).ok())?,
+            sign_count: u32::try_from(sign_count?).ok()?,
             transports: json
                 .get("transports")?
                 .as_array()?
@@ -897,8 +1002,11 @@ fn read_credential(stored: &str) -> Option<Credential> {
             backed_up: flag("backed_up")?,
         },
         name: text("name")?.to_string(),
-        registered_at: text("registered_at")?.to_string(),
-        last_used_at: text("last_used_at").map(str::to_string),
+        registered_at: instant(text("registered_at")?)?,
+        last_used_at: match text("last_used_at") {
+            Some(used) => Some(instant(used)?),
+            None => None,
+        },
     })
 }
 
@@ -909,14 +1017,15 @@ fn view(id: &[u8; 16], credential: &Credential) -> String {
     object.insert("name".into(), credential.name.clone().into());
     object.insert(
         "registered_at".into(),
-        credential.registered_at.clone().into(),
+        jadpo_std::format_instant(credential.registered_at).into(),
     );
     object.insert(
         "last_used_at".into(),
         credential
             .last_used_at
-            .clone()
-            .map_or(serde_json::Value::Null, serde_json::Value::String),
+            .map_or(serde_json::Value::Null, |used| {
+                jadpo_std::format_instant(used).into()
+            }),
     );
     serde_json::Value::Object(object).to_string()
 }
@@ -1011,8 +1120,11 @@ fn parse_uuid(text: &str) -> Option<[u8; 16]> {
 mod tests {
     use super::*;
 
+    /// What chunk 5.5z kept, its count as its digits, and what chunk
+    /// 5.5w3 kept, its count a number, both read as they were written
+    /// (chunk 5.9).
     #[test]
-    fn a_credential_is_kept_as_its_standard_json() {
+    fn a_passkey_kept_before_encodings_still_reads() {
         let credential = Credential {
             ceremony: PasskeyParts {
                 credential_id: vec![1, 2, 3],
@@ -1023,15 +1135,59 @@ mod tests {
                 backed_up: false,
             },
             name: "Work phone".to_string(),
-            registered_at: "2026-10-18T09:00:00Z".to_string(),
+            registered_at: 1_792_314_000_000,
             last_used_at: None,
         };
-        let json = credential.to_json();
-        assert_eq!(
-            json,
-            r#"{"backed_up":false,"backup_eligible":true,"credential_id":"AQID","name":"Work phone","public_key":"BAU=","registered_at":"2026-10-18T09:00:00Z","sign_count":7,"transports":["internal"]}"#
+        let numbered = r#"{"backed_up":false,"backup_eligible":true,"credential_id":"AQID","name":"Work phone","public_key":"BAU=","registered_at":"2026-10-18T09:00:00Z","sign_count":7,"transports":["internal"]}"#;
+        assert_eq!(read_unversioned(numbered), Some(credential.clone()));
+        let digits = numbered.replace("\"sign_count\":7", "\"sign_count\":\"7\"");
+        assert_eq!(read_unversioned(&digits), Some(credential.clone()));
+        let used = numbered.replace(
+            "\"transports\"",
+            "\"last_used_at\":\"2026-10-18T09:05:00Z\",\"transports\"",
         );
-        assert_eq!(read_credential(&json), Some(credential));
+        assert_eq!(
+            read_unversioned(&used).and_then(|read| read.last_used_at),
+            Some(1_792_314_300_000)
+        );
+        for broken in [
+            numbered.replace("\"sign_count\":7", "\"sign_count\":\"-7\""),
+            numbered.replace("\"sign_count\":7", "\"sign_count\":4294967296"),
+            numbered.replace("2026-10-18T09:00:00Z", "yesterday"),
+            numbered.replace("\"credential_id\":\"AQID\",", ""),
+        ] {
+            assert_eq!(read_unversioned(&broken), None, "{broken}");
+        }
+    }
+
+    /// The parts a passkey is written with are `WebAuthnCredential`'s, in
+    /// its declared order, and read back as they were.
+    #[test]
+    fn a_passkey_is_the_contract_s_web_authn_credential() {
+        let credential = Credential {
+            ceremony: PasskeyParts {
+                credential_id: vec![1, 2, 3],
+                public_key: vec![4, 5],
+                sign_count: 7,
+                transports: vec!["internal".to_string(), "hybrid".to_string()],
+                backup_eligible: true,
+                backed_up: false,
+            },
+            name: "Work phone".to_string(),
+            registered_at: 1_792_314_000_000,
+            last_used_at: Some(1_792_314_300_000),
+        };
+        let value = credential.to_value();
+        let Value::Record(record) = &value else {
+            panic!("{value:?}")
+        };
+        let names: Vec<&str> = record.fields.iter().map(|(name, _)| &**name).collect();
+        let declared: Vec<&str> = jadpo_std::standard::security::WEB_AUTHN_CREDENTIAL_FIELDS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        assert_eq!(names, declared);
+        assert_eq!(Credential::from_value(&value), Some(credential));
     }
 
     #[test]

@@ -319,10 +319,14 @@ pub struct PasskeyPlan {
     pub expires_after_ms: i64,
     /// A passkey found by its credential ID with its user's record, `$1`
     /// the credential ID and `$2` the time now: the passkey's `id`, its
-    /// `WebAuthnCredential` JSON, its user handle, the user's `id` and
-    /// subject, and whether the user's `active:` holds. None when no
-    /// passkey has it or its user isn't visible.
+    /// `WebAuthnCredential` JSON and the encoding that JSON was written in,
+    /// its user handle, the user's `id` and subject, and whether the
+    /// user's `active:` holds. None when no passkey has it or its user
+    /// isn't visible.
     pub lookup: String,
+    /// `WebAuthnCredential`'s number in the plan's JSON table, whose codec
+    /// writes and reads a passkey as the contract's JSON (chunk 5.9).
+    pub credential: u32,
 }
 
 /// What one argument of the call is made from.

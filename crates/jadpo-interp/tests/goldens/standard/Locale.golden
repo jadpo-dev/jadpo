@@ -1,0 +1,13 @@
+Locale: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example en-GB
+text en-GB
+json "en-GB"
+stored 'en-GB'
+
+example fr-FR
+text fr-FR
+json "fr-FR"
+stored 'fr-FR'

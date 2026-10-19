@@ -1,0 +1,28 @@
+Percentage: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric
+
+example -5%
+text -5%
+json "-5%"
+stored -0.05
+
+example 0%
+text 0%
+json "0%"
+stored 0.00
+
+example 12.5%
+text 12.5%
+json "12.5%"
+stored 0.125
+
+example 20%
+text 20%
+json "20%"
+stored 0.20
+
+example 1500%
+text 1500%
+json "1500%"
+stored 15.00

@@ -1,0 +1,23 @@
+Country: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example GB
+text GB
+json "GB"
+stored 'GB'
+
+example IN
+text IN
+json "IN"
+stored 'IN'
+
+example JP
+text JP
+json "JP"
+stored 'JP'
+
+example YU
+text YU
+json "YU"
+stored 'YU'

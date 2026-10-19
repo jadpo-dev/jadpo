@@ -1,0 +1,16 @@
+Quarter: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column year smallint
+column quarter smallint
+
+example 2026-Q1
+text 2026-Q1
+json "2026-Q1"
+stored year 2026
+stored quarter 1
+
+example 2026-Q4
+text 2026-Q4
+json "2026-Q4"
+stored year 2026
+stored quarter 4

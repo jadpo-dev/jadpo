@@ -1,0 +1,13 @@
+CalendarDate: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column date
+
+example 2026-02-28
+text 2026-02-28
+json "2026-02-28"
+stored '2026-02-28'::date
+
+example 2026-10-25
+text 2026-10-25
+json "2026-10-25"
+stored '2026-10-25'::date

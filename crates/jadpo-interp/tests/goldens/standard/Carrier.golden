@@ -1,0 +1,13 @@
+Carrier: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example UPSN
+text UPSN
+json "UPSN"
+stored 'UPSN'
+
+example MAEU
+text MAEU
+json "MAEU"
+stored 'MAEU'

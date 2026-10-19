@@ -1,0 +1,13 @@
+Ean13: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 4006381333931
+text 4006381333931
+json "4006381333931"
+stored '4006381333931'
+
+example 6291041500213
+text 6291041500213
+json "6291041500213"
+stored '6291041500213'

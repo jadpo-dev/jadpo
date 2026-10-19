@@ -1,0 +1,13 @@
+TraceId: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 4bf92f3577b34da6a3ce929d0e0e4736
+text 4bf92f3577b34da6a3ce929d0e0e4736
+json "4bf92f3577b34da6a3ce929d0e0e4736"
+stored '4bf92f3577b34da6a3ce929d0e0e4736'
+
+example 0af7651916cd43dd8448eb211c80319c
+text 0af7651916cd43dd8448eb211c80319c
+json "0af7651916cd43dd8448eb211c80319c"
+stored '0af7651916cd43dd8448eb211c80319c'

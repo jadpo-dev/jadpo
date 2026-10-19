@@ -1,0 +1,18 @@
+Frequency: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 3) -- Frequency in hertz (Hz)
+
+example 50 Hz
+text 50 Hz
+json {"value":"50","unit":"Hz"}
+stored 50
+
+example 440 Hz
+text 440 Hz
+json {"value":"440","unit":"Hz"}
+stored 440
+
+example 2400000000 Hz
+text 2400000000 Hz
+json {"value":"2400000000","unit":"Hz"}
+stored 2400000000

@@ -1,0 +1,18 @@
+SoundLevel: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 2) -- SoundLevel in decibels (dB)
+
+example -3.5 dB
+text -3.5 dB
+json {"value":"-3.5","unit":"dB"}
+stored -3.5
+
+example 60 dB
+text 60 dB
+json {"value":"60","unit":"dB"}
+stored 60
+
+example 120 dB
+text 120 dB
+json {"value":"120","unit":"dB"}
+stored 120

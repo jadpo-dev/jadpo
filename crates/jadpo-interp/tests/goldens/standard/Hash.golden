@@ -1,0 +1,13 @@
+Hash: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column bytea
+
+example 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=
+text 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=
+json "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="
+stored E'\\xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'::bytea
+
+example ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=
+text ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=
+json "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
+stored E'\\xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'::bytea

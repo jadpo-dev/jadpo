@@ -1,0 +1,18 @@
+UserAgent: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example curl/8.7.1
+text curl/8.7.1
+json "curl/8.7.1"
+stored 'curl/8.7.1'
+
+example Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36
+text Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36
+json "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+stored 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+
+example ExampleBot/1.0 (+https://example.com/bot)
+text ExampleBot/1.0 (+https://example.com/bot)
+json "ExampleBot/1.0 (+https://example.com/bot)"
+stored 'ExampleBot/1.0 (+https://example.com/bot)'

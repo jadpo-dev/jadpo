@@ -1,0 +1,13 @@
+MultiLineString: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column geography
+
+example {"type":"MultiLineString","coordinates":[[[0,0],[1,1]],[[2,2],[3,3]]]}
+text none
+json {"type":"MultiLineString","coordinates":[[[0,0],[1,1]],[[2,2],[3,3]]]}
+stored 'SRID=4326;MULTILINESTRING ((0 0, 1 1), (2 2, 3 3))'::geography
+
+example {"type":"MultiLineString","coordinates":[[[0,0],[1,1]]]}
+text none
+json {"type":"MultiLineString","coordinates":[[[0,0],[1,1]]]}
+stored 'SRID=4326;MULTILINESTRING ((0 0, 1 1))'::geography

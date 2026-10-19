@@ -1,0 +1,18 @@
+InterestRateBasis: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example aer
+text aer
+json "aer"
+stored 'aer'
+
+example apr
+text apr
+json "apr"
+stored 'apr'
+
+example flat
+text flat
+json "flat"
+stored 'flat'

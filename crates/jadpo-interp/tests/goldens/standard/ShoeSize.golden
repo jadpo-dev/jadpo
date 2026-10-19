@@ -1,0 +1,28 @@
+ShoeSize: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column system text
+column size text
+
+example UK 7.5
+text UK 7.5
+json "UK 7.5"
+stored system 'UK'
+stored size '7.5'
+
+example EU 42
+text EU 42
+json "EU 42"
+stored system 'EU'
+stored size '42'
+
+example US 9
+text US 9
+json "US 9"
+stored system 'US'
+stored size '9'
+
+example EU 38.5
+text EU 38.5
+json "EU 38.5"
+stored system 'EU'
+stored size '38.5'

@@ -1,0 +1,19 @@
+Embedding: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column model_provider text
+column model_name text
+column vector vector
+
+example {"model":"openai/text-embedding-3-small","vector":[0.5,-0.25,1]}
+text none
+json {"model":"openai/text-embedding-3-small","vector":[0.5,-0.25,1]}
+stored model_provider 'openai'
+stored model_name 'text-embedding-3-small'
+stored vector '[0.5,-0.25,1]'::vector
+
+example {"model":"ollama/nomic-embed-text","vector":[0.0123]}
+text none
+json {"model":"ollama/nomic-embed-text","vector":[0.0123]}
+stored model_provider 'ollama'
+stored model_name 'nomic-embed-text'
+stored vector '[0.0123]'::vector

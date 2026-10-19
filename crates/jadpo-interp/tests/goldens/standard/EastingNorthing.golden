@@ -1,0 +1,19 @@
+EastingNorthing: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column easting numeric
+column northing numeric
+column crs text
+
+example {"easting":"530000","northing":"180000","crs":"EPSG:27700"}
+text none
+json {"easting":"530000","northing":"180000","crs":"EPSG:27700"}
+stored easting 530000
+stored northing 180000
+stored crs 'EPSG:27700'
+
+example {"easting":"448251.795","northing":"5411932.678","crs":"EPSG:32630"}
+text none
+json {"easting":"448251.795","northing":"5411932.678","crs":"EPSG:32630"}
+stored easting 448251.795
+stored northing 5411932.678
+stored crs 'EPSG:32630'

@@ -1,0 +1,54 @@
+OidcClaims: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column sub text
+column name text
+column given_name text
+column family_name text
+column preferred_username text
+column email text
+column email_verified boolean
+column phone_number text
+column phone_number_verified boolean
+column picture text
+
+example {"sub":"248289761001","name":"Jane Doe","given_name":"Jane","family_name":"Doe","preferred_username":"j.doe","email":"janedoe@example.com","email_verified":true,"picture":"https://example.com/janedoe/me.jpg"}
+text none
+json {"sub":"248289761001","name":"Jane Doe","given_name":"Jane","family_name":"Doe","preferred_username":"j.doe","email":"janedoe@example.com","email_verified":true,"picture":"https://example.com/janedoe/me.jpg"}
+stored sub '248289761001'
+stored name 'Jane Doe'
+stored given_name 'Jane'
+stored family_name 'Doe'
+stored preferred_username 'j.doe'
+stored email 'janedoe@example.com'
+stored email_verified TRUE
+stored phone_number NULL::text
+stored phone_number_verified NULL::boolean
+stored picture 'https://example.com/janedoe/me.jpg'
+
+example {"sub":"248289761002","email":"j.doe@example.org","email_verified":false}
+text none
+json {"sub":"248289761002","email":"j.doe@example.org","email_verified":false}
+stored sub '248289761002'
+stored name NULL::text
+stored given_name NULL::text
+stored family_name NULL::text
+stored preferred_username NULL::text
+stored email 'j.doe@example.org'
+stored email_verified FALSE
+stored phone_number NULL::text
+stored phone_number_verified NULL::boolean
+stored picture NULL::text
+
+example {"sub":"248289761003"}
+text none
+json {"sub":"248289761003"}
+stored sub '248289761003'
+stored name NULL::text
+stored given_name NULL::text
+stored family_name NULL::text
+stored preferred_username NULL::text
+stored email NULL::text
+stored email_verified NULL::boolean
+stored phone_number NULL::text
+stored phone_number_verified NULL::boolean
+stored picture NULL::text

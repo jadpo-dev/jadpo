@@ -1,0 +1,28 @@
+Money: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column amount bigint
+column currency char(3)
+
+example GBP -5.00
+text GBP -5.00
+json {"amount":-500,"currency":"GBP"}
+stored amount -500
+stored currency 'GBP'
+
+example GBP 0.05
+text GBP 0.05
+json {"amount":5,"currency":"GBP"}
+stored amount 5
+stored currency 'GBP'
+
+example GBP 10.50
+text GBP 10.50
+json {"amount":1050,"currency":"GBP"}
+stored amount 1050
+stored currency 'GBP'
+
+example GBP 1234.50
+text GBP 1234.50
+json {"amount":123450,"currency":"GBP"}
+stored amount 123450
+stored currency 'GBP'

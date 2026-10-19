@@ -1,0 +1,23 @@
+DomainName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example example.com
+text example.com
+json "example.com"
+stored 'example.com'
+
+example www.example.co.uk
+text www.example.co.uk
+json "www.example.co.uk"
+stored 'www.example.co.uk'
+
+example xn--mnchen-3ya.de
+text xn--mnchen-3ya.de
+json "xn--mnchen-3ya.de"
+stored 'xn--mnchen-3ya.de'
+
+example localhost
+text localhost
+json "localhost"
+stored 'localhost'

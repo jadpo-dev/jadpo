@@ -1,0 +1,22 @@
+TrackingNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column carrier text
+column number text
+
+example UPSN 1Z999AA10123456784
+text UPSN 1Z999AA10123456784
+json "UPSN 1Z999AA10123456784"
+stored carrier 'UPSN'
+stored number '1Z999AA10123456784'
+
+example FDXE 449044304137821
+text FDXE 449044304137821
+json "FDXE 449044304137821"
+stored carrier 'FDXE'
+stored number '449044304137821'
+
+example USPS 9400111899223197428490
+text USPS 9400111899223197428490
+json "USPS 9400111899223197428490"
+stored carrier 'USPS'
+stored number '9400111899223197428490'

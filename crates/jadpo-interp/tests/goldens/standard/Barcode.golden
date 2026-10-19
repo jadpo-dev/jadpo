@@ -1,0 +1,28 @@
+Barcode: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column data text
+
+example {"tag":"ean13","data":"4006381333931"}
+text none
+json {"tag":"ean13","data":"4006381333931"}
+stored kind 'ean13'
+stored data '4006381333931'
+
+example {"tag":"upc_a","data":"036000291452"}
+text none
+json {"tag":"upc_a","data":"036000291452"}
+stored kind 'upc_a'
+stored data '036000291452'
+
+example {"tag":"code128","data":"CTN-0042"}
+text none
+json {"tag":"code128","data":"CTN-0042"}
+stored kind 'code128'
+stored data 'CTN-0042'
+
+example {"tag":"qr_code","data":"https://example.com/a1"}
+text none
+json {"tag":"qr_code","data":"https://example.com/a1"}
+stored kind 'qr_code'
+stored data 'https://example.com/a1'

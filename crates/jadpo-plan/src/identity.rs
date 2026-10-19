@@ -8,6 +8,7 @@
 
 use jadpo_check::policy::Effect;
 use jadpo_db::{Db, Project};
+use jadpo_graph::TypeRef;
 use jadpo_sql::{Bind, Value, ident};
 use jadpo_std::http::{GatedStatements, IdentityPlan, PasskeyPlan, PrincipalKind, PrincipalPlan};
 use jadpo_std::read::SqlType;
@@ -96,6 +97,10 @@ impl Planner<'_> {
                     path: passkey.path.clone(),
                     expires_after_ms: passkey.expires_after_ms,
                     lookup: self.passkey_lookup(user?)?,
+                    credential: self.json_number(TypeRef::Std(
+                        jadpo_std::standard::security::WEB_AUTHN_CREDENTIAL.to_string(),
+                        Vec::new(),
+                    ))?,
                 })
             }),
         })
@@ -116,9 +121,10 @@ impl Planner<'_> {
         let mut wheres = vec![format!("{} = s.{}", ident("id"), ident("principal_id"))];
         wheres.extend(self.access(&mut bind, entity, Reach::Read)?);
         Some(format!(
-            "SELECT s.{id}, s.{credential}, s.{handle}, u.{id}, u.{active} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{credential_id} = $1 AND $2::timestamptz IS NOT NULL",
+            "SELECT s.{id}, s.{credential}, s.{encoding}, s.{handle}, u.{id}, u.{active} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{credential_id} = $1 AND $2::timestamptz IS NOT NULL",
             id = ident("id"),
             credential = ident("credential"),
+            encoding = ident("encoding"),
             handle = ident("user_handle"),
             active = ident("active"),
             table = ident(jadpo_check::data::PASSKEYS),

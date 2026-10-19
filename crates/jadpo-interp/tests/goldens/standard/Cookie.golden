@@ -1,0 +1,23 @@
+Cookie: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example lang=en-GB
+text lang=en-GB
+json "lang=en-GB"
+stored 'lang=en-GB'
+
+example SID=31d4d96e407aad42; Path=/; Secure; HttpOnly; SameSite=Lax
+text SID=31d4d96e407aad42; Path=/; Secure; HttpOnly; SameSite=Lax
+json "SID=31d4d96e407aad42; Path=/; Secure; HttpOnly; SameSite=Lax"
+stored 'SID=31d4d96e407aad42; Path=/; Secure; HttpOnly; SameSite=Lax'
+
+example lang=en-US; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Domain=example.com
+text lang=en-US; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Domain=example.com
+json "lang=en-US; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Domain=example.com"
+stored 'lang=en-US; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Domain=example.com'
+
+example __Host-SID=31d4d96e407aad42; Max-Age=3600; Path=/; Secure; SameSite=None
+text __Host-SID=31d4d96e407aad42; Max-Age=3600; Path=/; Secure; SameSite=None
+json "__Host-SID=31d4d96e407aad42; Max-Age=3600; Path=/; Secure; SameSite=None"
+stored '__Host-SID=31d4d96e407aad42; Max-Age=3600; Path=/; Secure; SameSite=None'

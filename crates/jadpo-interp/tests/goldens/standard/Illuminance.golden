@@ -1,0 +1,18 @@
+Illuminance: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 3) -- Illuminance in lux (lx)
+
+example 0.5 lx
+text 0.5 lx
+json {"value":"0.5","unit":"lx"}
+stored 0.5
+
+example 500 lx
+text 500 lx
+json {"value":"500","unit":"lx"}
+stored 500
+
+example 100000 lx
+text 100000 lx
+json {"value":"100000","unit":"lx"}
+stored 100000

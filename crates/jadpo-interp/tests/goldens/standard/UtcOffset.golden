@@ -1,0 +1,18 @@
+UtcOffset: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column smallint
+
+example +00:00
+text +00:00
+json "+00:00"
+stored 0
+
+example +05:30
+text +05:30
+json "+05:30"
+stored 330
+
+example -05:00
+text -05:00
+json "-05:00"
+stored -300

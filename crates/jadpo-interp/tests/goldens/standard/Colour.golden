@@ -1,0 +1,46 @@
+Colour: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column red smallint
+column green smallint
+column blue smallint
+column alpha smallint
+
+example #000000
+text #000000
+json "#000000"
+stored red 0
+stored green 0
+stored blue 0
+stored alpha 255
+
+example #ffffff
+text #ffffff
+json "#ffffff"
+stored red 255
+stored green 255
+stored blue 255
+stored alpha 255
+
+example #1e6fd9
+text #1e6fd9
+json "#1e6fd9"
+stored red 30
+stored green 111
+stored blue 217
+stored alpha 255
+
+example #1e6fd980
+text #1e6fd980
+json "#1e6fd980"
+stored red 30
+stored green 111
+stored blue 217
+stored alpha 128
+
+example #00000000
+text #00000000
+json "#00000000"
+stored red 0
+stored green 0
+stored blue 0
+stored alpha 0

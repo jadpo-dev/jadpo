@@ -1,0 +1,23 @@
+GitRef: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example main
+text main
+json "main"
+stored 'main'
+
+example refs/heads/feature/x-1
+text refs/heads/feature/x-1
+json "refs/heads/feature/x-1"
+stored 'refs/heads/feature/x-1'
+
+example v1.2.0
+text v1.2.0
+json "v1.2.0"
+stored 'v1.2.0'
+
+example 8d3f2a1c9b7e6d5f4a3b2c1d0e9f8a7b6c5d4e3f
+text 8d3f2a1c9b7e6d5f4a3b2c1d0e9f8a7b6c5d4e3f
+json "8d3f2a1c9b7e6d5f4a3b2c1d0e9f8a7b6c5d4e3f"
+stored '8d3f2a1c9b7e6d5f4a3b2c1d0e9f8a7b6c5d4e3f'

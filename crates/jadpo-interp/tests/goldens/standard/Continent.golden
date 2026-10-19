@@ -1,0 +1,13 @@
+Continent: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example antarctica
+text antarctica
+json "antarctica"
+stored 'antarctica'
+
+example europe
+text europe
+json "europe"
+stored 'europe'

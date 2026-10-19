@@ -1,0 +1,18 @@
+Temperature: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 3) -- Temperature in kelvins (K)
+
+example 0 kelvin
+text 0 kelvin
+json {"value":"0","unit":"kelvin"}
+stored 0
+
+example 273.15 kelvin
+text 273.15 kelvin
+json {"value":"273.15","unit":"kelvin"}
+stored 273.15
+
+example 373.15 kelvin
+text 373.15 kelvin
+json {"value":"373.15","unit":"kelvin"}
+stored 373.15

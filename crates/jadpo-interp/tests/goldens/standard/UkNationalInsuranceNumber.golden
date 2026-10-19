@@ -1,0 +1,13 @@
+UkNationalInsuranceNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example AB123456C
+text AB123456C
+json "AB123456C"
+stored 'AB123456C'
+
+example CE987654A
+text CE987654A
+json "CE987654A"
+stored 'CE987654A'

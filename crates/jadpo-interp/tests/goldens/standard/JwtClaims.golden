@@ -1,0 +1,42 @@
+JwtClaims: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column iss text
+column sub text
+column aud text[]
+column exp timestamptz(3)
+column nbf timestamptz(3)
+column iat timestamptz(3)
+column jti text
+
+example {"iss":"https://id.example.com","sub":"member-42","aud":["clinic"],"exp":"2026-10-18T10:00:00Z","nbf":"2026-10-18T09:00:00Z","iat":"2026-10-18T09:00:00Z","jti":"a1b2c3"}
+text none
+json {"iss":"https://id.example.com","sub":"member-42","aud":["clinic"],"exp":"2026-10-18T10:00:00Z","nbf":"2026-10-18T09:00:00Z","iat":"2026-10-18T09:00:00Z","jti":"a1b2c3"}
+stored iss 'https://id.example.com'
+stored sub 'member-42'
+stored aud ARRAY['clinic']::text[]
+stored exp '2026-10-18 10:00:00.000000+00'::timestamptz
+stored nbf '2026-10-18 09:00:00.000000+00'::timestamptz
+stored iat '2026-10-18 09:00:00.000000+00'::timestamptz
+stored jti 'a1b2c3'
+
+example {"iss":"https://id.example.com","aud":[],"exp":"2026-10-18T10:00:00Z"}
+text none
+json {"iss":"https://id.example.com","aud":[],"exp":"2026-10-18T10:00:00Z"}
+stored iss 'https://id.example.com'
+stored sub NULL::text
+stored aud '{}'::text[]
+stored exp '2026-10-18 10:00:00.000000+00'::timestamptz
+stored nbf NULL::timestamptz
+stored iat NULL::timestamptz
+stored jti NULL::text
+
+example {"aud":[],"exp":"2026-10-18T10:00:00Z"}
+text none
+json {"aud":[],"exp":"2026-10-18T10:00:00Z"}
+stored iss NULL::text
+stored sub NULL::text
+stored aud '{}'::text[]
+stored exp '2026-10-18 10:00:00.000000+00'::timestamptz
+stored nbf NULL::timestamptz
+stored iat NULL::timestamptz
+stored jti NULL::text

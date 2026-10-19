@@ -1,0 +1,25 @@
+PostalAddress: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column lines text[]
+column locality text
+column region text
+column postal_code text
+column country text
+
+example {"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"SW1A 1AA","country":"GB"}
+text none
+json {"lines":["Buckingham Palace"],"locality":"London","region":null,"postal_code":"SW1A 1AA","country":"GB"}
+stored lines ARRAY['Buckingham Palace']::text[]
+stored locality 'London'
+stored region NULL::text
+stored postal_code 'SW1A 1AA'
+stored country 'GB'
+
+example {"lines":["2-7-2 Marunouchi"],"locality":"Chiyoda-ku","region":"Tokyo","postal_code":"100-8994","country":"JP"}
+text none
+json {"lines":["2-7-2 Marunouchi"],"locality":"Chiyoda-ku","region":"Tokyo","postal_code":"100-8994","country":"JP"}
+stored lines ARRAY['2-7-2 Marunouchi']::text[]
+stored locality 'Chiyoda-ku'
+stored region 'Tokyo'
+stored postal_code '100-8994'
+stored country 'JP'

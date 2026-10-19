@@ -1,0 +1,18 @@
+IataAirline: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example BA
+text BA
+json "BA"
+stored 'BA'
+
+example U2
+text U2
+json "U2"
+stored 'U2'
+
+example 6E
+text 6E
+json "6E"
+stored '6E'

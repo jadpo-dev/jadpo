@@ -1,0 +1,18 @@
+Pressure: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 3) -- Pressure in pascals (Pa)
+
+example 0 Pa
+text 0 Pa
+json {"value":"0","unit":"Pa"}
+stored 0
+
+example 1013.25 Pa
+text 1013.25 Pa
+json {"value":"1013.25","unit":"Pa"}
+stored 1013.25
+
+example 101325 Pa
+text 101325 Pa
+json {"value":"101325","unit":"Pa"}
+stored 101325

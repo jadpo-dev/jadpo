@@ -1,0 +1,13 @@
+Imei: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 490154203237518
+text 490154203237518
+json "490154203237518"
+stored '490154203237518'
+
+example 356938035643809
+text 356938035643809
+json "356938035643809"
+stored '356938035643809'

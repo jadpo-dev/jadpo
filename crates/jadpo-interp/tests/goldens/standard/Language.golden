@@ -1,0 +1,23 @@
+Language: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example en
+text en
+json "en"
+stored 'en'
+
+example iw
+text iw
+json "iw"
+stored 'iw'
+
+example ja
+text ja
+json "ja"
+stored 'ja'
+
+example or
+text or
+json "or"
+stored 'or'

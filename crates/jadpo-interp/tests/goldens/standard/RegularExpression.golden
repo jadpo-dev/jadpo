@@ -1,0 +1,18 @@
+RegularExpression: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example [A-Z]{2}[0-9]{2}
+text [A-Z]{2}[0-9]{2}
+json "[A-Z]{2}[0-9]{2}"
+stored '[A-Z]{2}[0-9]{2}'
+
+example (?i)grey|gray
+text (?i)grey|gray
+json "(?i)grey|gray"
+stored '(?i)grey|gray'
+
+example \p{Lu}\w*
+text \p{Lu}\w*
+json "\\p{Lu}\\w*"
+stored E'\\p{Lu}\\w*'

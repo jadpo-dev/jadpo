@@ -1,0 +1,38 @@
+VersionRange: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example ^1.2.3
+text ^1.2.3
+json "^1.2.3"
+stored '^1.2.3'
+
+example ~1.2
+text ~1.2
+json "~1.2"
+stored '~1.2'
+
+example >=1.0.0 <2.0.0
+text >=1.0.0 <2.0.0
+json ">=1.0.0 <2.0.0"
+stored '>=1.0.0 <2.0.0'
+
+example 1.2.x || >=2.5.0-beta.1
+text 1.2.x || >=2.5.0-beta.1
+json "1.2.x || >=2.5.0-beta.1"
+stored '1.2.x || >=2.5.0-beta.1'
+
+example 1.0.0 - 1.4.2
+text 1.0.0 - 1.4.2
+json "1.0.0 - 1.4.2"
+stored '1.0.0 - 1.4.2'
+
+example *
+text *
+json "*"
+stored '*'
+
+example 2.0.0
+text 2.0.0
+json "2.0.0"
+stored '2.0.0'

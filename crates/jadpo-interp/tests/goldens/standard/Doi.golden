@@ -1,0 +1,23 @@
+Doi: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 10.1000/182
+text 10.1000/182
+json "10.1000/182"
+stored '10.1000/182'
+
+example 10.1038/nphys1170
+text 10.1038/nphys1170
+json "10.1038/nphys1170"
+stored '10.1038/nphys1170'
+
+example 10.1002/(sici)1097-4571(199806)49:8<693::aid-asi4>3.0.co;2-o
+text 10.1002/(sici)1097-4571(199806)49:8<693::aid-asi4>3.0.co;2-o
+json "10.1002/(sici)1097-4571(199806)49:8<693::aid-asi4>3.0.co;2-o"
+stored '10.1002/(sici)1097-4571(199806)49:8<693::aid-asi4>3.0.co;2-o'
+
+example 10.1000.10/123456
+text 10.1000.10/123456
+json "10.1000.10/123456"
+stored '10.1000.10/123456'

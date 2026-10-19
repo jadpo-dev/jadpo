@@ -1,0 +1,26 @@
+Dimensions: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column length numeric(38, 6) -- Length in metres (m)
+column width numeric(38, 6) -- Length in metres (m)
+column height numeric(38, 6) -- Length in metres (m)
+
+example {"length":{"value":"0.3","unit":"metre"},"width":{"value":"0.2","unit":"metre"},"height":{"value":"0.1","unit":"metre"}}
+text none
+json {"length":{"value":"0.3","unit":"metre"},"width":{"value":"0.2","unit":"metre"},"height":{"value":"0.1","unit":"metre"}}
+stored length 0.3
+stored width 0.2
+stored height 0.1
+
+example {"length":{"value":"1.2","unit":"metre"},"width":{"value":"0.8","unit":"metre"},"height":{"value":"0.144","unit":"metre"}}
+text none
+json {"length":{"value":"1.2","unit":"metre"},"width":{"value":"0.8","unit":"metre"},"height":{"value":"0.144","unit":"metre"}}
+stored length 1.2
+stored width 0.8
+stored height 0.144
+
+example {"length":{"value":"12","unit":"inch"},"width":{"value":"9","unit":"inch"},"height":{"value":"4","unit":"inch"}}
+text none
+json {"length":{"value":"0.3048","unit":"metre"},"width":{"value":"0.2286","unit":"metre"},"height":{"value":"0.1016","unit":"metre"}}
+stored length 0.3048
+stored width 0.2286
+stored height 0.1016

@@ -1,0 +1,28 @@
+Dose: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column amount numeric(38, 9) -- Mass in kilograms (kg) when kind is mass; Volume in cubic metres (m³) when kind is volume
+
+example {"tag":"mass","amount":{"value":"500","unit":"mg"}}
+text none
+json {"tag":"mass","amount":{"value":"0.0005","unit":"kg"}}
+stored kind 'mass'
+stored amount 0.0005
+
+example {"tag":"mass","amount":{"value":"125","unit":"mcg"}}
+text none
+json {"tag":"mass","amount":{"value":"0.000000125","unit":"kg"}}
+stored kind 'mass'
+stored amount 0.000000125
+
+example {"tag":"mass","amount":{"value":"1","unit":"g"}}
+text none
+json {"tag":"mass","amount":{"value":"0.001","unit":"kg"}}
+stored kind 'mass'
+stored amount 0.001
+
+example {"tag":"volume","amount":{"value":"5","unit":"ml"}}
+text none
+json {"tag":"volume","amount":{"value":"0.000005","unit":"cubic_metre"}}
+stored kind 'volume'
+stored amount 0.000005

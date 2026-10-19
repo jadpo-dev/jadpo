@@ -1,0 +1,22 @@
+ExchangeRate: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column from char(3)
+column to char(3)
+column rate numeric
+column at timestamptz(3)
+
+example GBP/EUR 1.17 2026-10-18T09:00:00Z
+text GBP/EUR 1.17 2026-10-18T09:00:00Z
+json {"from":"GBP","to":"EUR","rate":"1.17","at":"2026-10-18T09:00:00Z"}
+stored from 'GBP'
+stored to 'EUR'
+stored rate 1.17
+stored at '2026-10-18 09:00:00.000000+00'::timestamptz
+
+example EUR/JPY 162.4031 2026-10-18T09:30:00Z
+text EUR/JPY 162.4031 2026-10-18T09:30:00Z
+json {"from":"EUR","to":"JPY","rate":"162.4031","at":"2026-10-18T09:30:00Z"}
+stored from 'EUR'
+stored to 'JPY'
+stored rate 162.4031
+stored at '2026-10-18 09:30:00.000000+00'::timestamptz

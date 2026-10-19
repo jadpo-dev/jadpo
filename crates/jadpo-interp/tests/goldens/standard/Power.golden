@@ -1,0 +1,18 @@
+Power: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 3) -- Power in watts (W)
+
+example 0.001 W
+text 0.001 W
+json {"value":"0.001","unit":"W"}
+stored 0.001
+
+example 60 W
+text 60 W
+json {"value":"60","unit":"W"}
+stored 60
+
+example 3000 W
+text 3000 W
+json {"value":"3000","unit":"W"}
+stored 3000

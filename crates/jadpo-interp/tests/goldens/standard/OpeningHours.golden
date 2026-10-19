@@ -1,0 +1,13 @@
+OpeningHours: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example Mo-Fr 09:00-17:30; Sa 10:00-16:00 [Europe/London]
+text Mo-Fr 09:00-17:30; Sa 10:00-16:00 [Europe/London]
+json "Mo-Fr 09:00-17:30; Sa 10:00-16:00 [Europe/London]"
+stored 'Mo-Fr 09:00-17:30; Sa 10:00-16:00 [Europe/London]'
+
+example Mo-Th 17:00-23:00; Fr,Sa 17:00-02:00; 2026 Dec 25 off [America/New_York]
+text Mo-Th 17:00-23:00; Fr,Sa 17:00-02:00; 2026 Dec 25 off [America/New_York]
+json "Mo-Th 17:00-23:00; Fr,Sa 17:00-02:00; 2026 Dec 25 off [America/New_York]"
+stored 'Mo-Th 17:00-23:00; Fr,Sa 17:00-02:00; 2026 Dec 25 off [America/New_York]'
