@@ -742,6 +742,14 @@ impl Types {
     /// question 15); `None` for a literal `ty` can't hold, which the
     /// checker rules out.
     pub fn literal(&self, literal: &Literal, ty: &TypeRef) -> Option<Constant> {
+        // Text where a standard object type goes is that type's canonical
+        // text, read through its contract where it becomes a value.
+        if let (Literal::Text(written), Some(standard)) = (literal, self.standard_object(ty)) {
+            return Some(Constant::Standard {
+                ty: standard,
+                text: written.clone(),
+            });
+        }
         let chain = self.chain(ty);
         let builtin = chain.as_ref().map(|(builtin, _)| *builtin);
         let scale = chain
@@ -749,6 +757,36 @@ impl Types {
             .and_then(|(_, rules)| rules.iter().find_map(|rules| rules.scale));
         let decoded = constant::literal(literal, builtin, scale)?;
         Some(Self::kept_secret(chain.as_ref(), decoded))
+    }
+
+    /// The standard object type `ty` is, or is built on: `SemanticVersion`,
+    /// `CardExpiry`, a `Colour` (area 19), whose values are records read
+    /// from their canonical text.
+    fn standard_object(&self, ty: &TypeRef) -> Option<&'static str> {
+        let mut current = ty;
+        for _ in 0..CHAIN {
+            current = match current {
+                TypeRef::Nullable(inner) => inner,
+                TypeRef::Node(key) => match &self.node(key)?.detail {
+                    Detail::Type {
+                        base: Base::Refines(parent),
+                        ..
+                    } => parent,
+                    _ => return None,
+                },
+                TypeRef::Field(key) => match &self.node(key)?.detail {
+                    Detail::Field { ty, .. } => ty,
+                    _ => return None,
+                },
+                TypeRef::Std(name, args) if args.is_empty() => {
+                    let entry = jadpo_std::standard::standard_type(name)?;
+                    return matches!(entry.holds, jadpo_std::standard::Holds::Object(_))
+                        .then_some(entry.name);
+                }
+                _ => return None,
+            };
+        }
+        None
     }
 
     /// `decoded` held as a secret value when the type is built on one (area

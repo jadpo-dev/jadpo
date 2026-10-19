@@ -522,6 +522,12 @@ impl Value {
                     .collect(),
             ),
             Constant::Secret { kind, text } => Value::secret(kind, &text.0),
+            // The checker proved the text is one of the type, so its
+            // contract reads it; were it not, the text is kept, as it was
+            // written, and the value faults where it is used.
+            Constant::Standard { ty, text } => {
+                crate::standard::parse(text, ty).unwrap_or_else(|_| Value::text(text))
+            }
         }
     }
 
