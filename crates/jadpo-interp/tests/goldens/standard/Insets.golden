@@ -1,0 +1,30 @@
+Insets: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column top numeric
+column right numeric
+column bottom numeric
+column left numeric
+
+example 8 16 8 16
+text 8 16 8 16
+json {"top":"8","right":"16","bottom":"8","left":"16"}
+stored top 8
+stored right 16
+stored bottom 8
+stored left 16
+
+example 0 0 0 0
+text 0 0 0 0
+json {"top":"0","right":"0","bottom":"0","left":"0"}
+stored top 0
+stored right 0
+stored bottom 0
+stored left 0
+
+example 0.5 1 1.5 2
+text 0.5 1 1.5 2
+json {"top":"0.5","right":"1","bottom":"1.5","left":"2"}
+stored top 0.5
+stored right 1
+stored bottom 1.5
+stored left 2

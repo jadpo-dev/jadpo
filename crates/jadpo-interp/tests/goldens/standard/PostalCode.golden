@@ -1,0 +1,18 @@
+PostalCode: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example SW1A 1AA
+text SW1A 1AA
+json "SW1A 1AA"
+stored 'SW1A 1AA'
+
+example 22162-1010
+text 22162-1010
+json "22162-1010"
+stored '22162-1010'
+
+example 100-8994
+text 100-8994
+json "100-8994"
+stored '100-8994'

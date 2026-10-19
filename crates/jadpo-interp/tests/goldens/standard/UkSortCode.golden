@@ -1,0 +1,13 @@
+UkSortCode: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 089999
+text 089999
+json "089999"
+stored '089999'
+
+example 107999
+text 107999
+json "107999"
+stored '107999'

@@ -1,0 +1,8 @@
+InstantRange: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column tstzrange
+
+example 2026-10-25T09:00:00Z/2026-10-25T17:00:00Z
+text 2026-10-25T09:00:00Z/2026-10-25T17:00:00Z
+json {"start":"2026-10-25T09:00:00Z","end":"2026-10-25T17:00:00Z"}
+stored tstzrange('2026-10-25 09:00:00.000000+00'::timestamptz, '2026-10-25 17:00:00.000000+00'::timestamptz, '[)')

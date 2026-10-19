@@ -1,0 +1,16 @@
+IsoWeek: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column year smallint
+column week smallint
+
+example 2026-W01
+text 2026-W01
+json "2026-W01"
+stored year 2026
+stored week 1
+
+example 2026-W53
+text 2026-W53
+json "2026-W53"
+stored year 2026
+stored week 53

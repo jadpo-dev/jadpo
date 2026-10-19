@@ -1,0 +1,22 @@
+VehicleRegistration: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column country text
+column plate text
+
+example GB AB12 CDE
+text GB AB12 CDE
+json "GB AB12 CDE"
+stored country 'GB'
+stored plate 'AB12 CDE'
+
+example DE M-AB 1234
+text DE M-AB 1234
+json "DE M-AB 1234"
+stored country 'DE'
+stored plate 'M-AB 1234'
+
+example FR AA-123-AA
+text FR AA-123-AA
+json "FR AA-123-AA"
+stored country 'FR'
+stored plate 'AA-123-AA'

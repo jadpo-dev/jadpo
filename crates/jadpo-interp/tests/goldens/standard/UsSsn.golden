@@ -1,0 +1,13 @@
+UsSsn: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 123456789
+text 123456789
+json "123456789"
+stored '123456789'
+
+example 001010001
+text 001010001
+json "001010001"
+stored '001010001'

@@ -1,0 +1,22 @@
+ChatMessage: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column role text
+column content text
+
+example {"role":"system","content":"Answer in British English."}
+text none
+json {"role":"system","content":"Answer in British English."}
+stored role 'system'
+stored content 'Answer in British English.'
+
+example {"role":"user","content":"Summarise this page.\nThanks"}
+text none
+json {"role":"user","content":"Summarise this page.\nThanks"}
+stored role 'user'
+stored content E'Summarise this page.\nThanks'
+
+example {"role":"assistant","content":""}
+text none
+json {"role":"assistant","content":""}
+stored role 'assistant'
+stored content ''

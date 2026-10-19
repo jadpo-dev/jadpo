@@ -1,0 +1,40 @@
+VatNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column country text
+column number text
+
+example GB980780684
+text GB980780684
+json "GB980780684"
+stored country 'GB'
+stored number '980780684'
+
+example DE143454214
+text DE143454214
+json "DE143454214"
+stored country 'DE'
+stored number '143454214'
+
+example FR59542051180
+text FR59542051180
+json "FR59542051180"
+stored country 'FR'
+stored number '59542051180'
+
+example IE6388047V
+text IE6388047V
+json "IE6388047V"
+stored country 'IE'
+stored number '6388047V'
+
+example EL094259216
+text EL094259216
+json "EL094259216"
+stored country 'GR'
+stored number '094259216'
+
+example AU51824753556
+text AU51824753556
+json "AU51824753556"
+stored country 'AU'
+stored number '51824753556'

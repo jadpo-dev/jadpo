@@ -513,6 +513,13 @@ fn a_person_registers_a_passkey_and_signs_in_with_it() {
         ]
     );
 
+    // In the contract's JSON, in this release's encoding (chunk 5.9).
+    let encoding = live.rows("SELECT \"encoding\"::text FROM \"jadpo_passkeys\"");
+    assert_eq!(
+        encoding[0][0],
+        jadpo_runtime::SqlValue::Text("1".to_string())
+    );
+
     // Signing in in another browser starts a session there.
     live.at(START + MINUTE);
     let (mut laptop, signed) = live.sign_in(&mut phone);
@@ -532,6 +539,63 @@ fn a_person_registers_a_passkey_and_signs_in_with_it() {
         "{count:?}"
     );
     laptop.cookies.clear();
+}
+
+/// A passkey kept before encodings were recorded (area 19, chunk 5.9),
+/// with no `encoding` and its count as text, as chunk 5.5z kept it, is
+/// still listed, renamed and signed in with, and is written in this
+/// release's encoding once it is used.
+#[test]
+fn a_passkey_kept_before_encodings_were_recorded_still_signs_in() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("encodings");
+    let mut ada = live.sign_up("ada@example.com");
+    let mut phone = TestAuthenticator::new(ORIGIN);
+    let added = live.register(&mut ada, &mut phone, "Work phone");
+    assert_eq!(added.status, 201, "{}", text(&added));
+    let id = json(&added)["id"].as_str().expect("an id").to_string();
+    live.rows(
+        "UPDATE \"jadpo_passkeys\" SET \"encoding\" = NULL, \"credential\" = jsonb_set(\"credential\", '{sign_count}', to_jsonb(\"credential\" ->> 'sign_count'))",
+    );
+    let before = live.rows("SELECT \"credential\" ->> 'sign_count', jsonb_typeof(\"credential\" -> 'sign_count') FROM \"jadpo_passkeys\"");
+    assert_eq!(
+        before[0],
+        [
+            jadpo_runtime::SqlValue::Text("0".to_string()),
+            jadpo_runtime::SqlValue::Text("string".to_string())
+        ]
+    );
+
+    let listed = live.send(&ada.public("GET", "/auth/passkey", ""));
+    assert_eq!(listed.status, 200, "{}", text(&listed));
+    assert_eq!(json(&listed)[0]["name"], "Work phone");
+    let renamed = live.send(&ada.write(
+        "PATCH",
+        &format!("/auth/passkey/{id}"),
+        "{\"name\":\"Old phone\"}",
+    ));
+    assert_eq!(renamed.status, 200, "{}", text(&renamed));
+    assert_eq!(json(&renamed)["name"], "Old phone");
+
+    live.at(START + MINUTE);
+    let (laptop, signed) = live.sign_in(&mut phone);
+    assert_eq!(signed.status, 204, "{}", text(&signed));
+    assert!(laptop.signed_in(), "{:?}", signed.headers);
+    let after = live.rows("SELECT \"encoding\"::text, \"credential\" ->> 'sign_count', jsonb_typeof(\"credential\" -> 'sign_count'), \"credential\" ->> 'name' FROM \"jadpo_passkeys\"");
+    assert_eq!(
+        after[0],
+        [
+            jadpo_runtime::SqlValue::Text("1".to_string()),
+            jadpo_runtime::SqlValue::Text("1".to_string()),
+            jadpo_runtime::SqlValue::Text("number".to_string()),
+            jadpo_runtime::SqlValue::Text("Old phone".to_string()),
+        ]
+    );
+    // An encoding a later release writes is never guessed at.
+    live.rows("UPDATE \"jadpo_passkeys\" SET \"encoding\" = 2");
+    refused(&live.sign_in(&mut phone).1, 401, "passkey_rejected");
 }
 
 #[test]

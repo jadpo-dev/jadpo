@@ -1,0 +1,18 @@
+IdempotencyKey: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 8e03978e-40d5-43e8-bc93-6894a57f9324
+text 8e03978e-40d5-43e8-bc93-6894a57f9324
+json "8e03978e-40d5-43e8-bc93-6894a57f9324"
+stored '8e03978e-40d5-43e8-bc93-6894a57f9324'
+
+example order-1042-attempt
+text order-1042-attempt
+json "order-1042-attempt"
+stored 'order-1042-attempt'
+
+example a
+text a
+json "a"
+stored 'a'

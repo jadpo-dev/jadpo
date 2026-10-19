@@ -1,0 +1,18 @@
+Volume: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 9) -- Volume in cubic metres (m³)
+
+example 0.0005 cubic_metre
+text 0.0005 cubic_metre
+json {"value":"0.0005","unit":"cubic_metre"}
+stored 0.0005
+
+example 0.001 cubic_metre
+text 0.001 cubic_metre
+json {"value":"0.001","unit":"cubic_metre"}
+stored 0.001
+
+example 2 cubic_metre
+text 2 cubic_metre
+json {"value":"2","unit":"cubic_metre"}
+stored 2

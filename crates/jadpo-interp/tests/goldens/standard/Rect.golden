@@ -1,0 +1,30 @@
+Rect: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column x numeric
+column y numeric
+column width numeric
+column height numeric
+
+example 0 0 300 200
+text 0 0 300 200
+json {"x":"0","y":"0","width":"300","height":"200"}
+stored x 0
+stored y 0
+stored width 300
+stored height 200
+
+example -10.5 20 300.25 0
+text -10.5 20 300.25 0
+json {"x":"-10.5","y":"20","width":"300.25","height":"0"}
+stored x -10.5
+stored y 20
+stored width 300.25
+stored height 0
+
+example 12 8 0.5 1.50
+text 12 8 0.5 1.50
+json {"x":"12","y":"8","width":"0.5","height":"1.50"}
+stored x 12
+stored y 8
+stored width 0.5
+stored height 1.50

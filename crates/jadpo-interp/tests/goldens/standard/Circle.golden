@@ -1,0 +1,16 @@
+Circle: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column centre geography
+column radius numeric(38, 6) -- Length in metres (m)
+
+example {"centre":{"type":"Point","coordinates":[-0.1276,51.5072]},"radius":{"value":"1000","unit":"metre"}}
+text none
+json {"centre":{"type":"Point","coordinates":[-0.1276,51.5072]},"radius":{"value":"1000","unit":"metre"}}
+stored centre 'SRID=4326;POINT (-0.1276 51.5072)'::geography
+stored radius 1000
+
+example {"centre":{"type":"Point","coordinates":[0,0]},"radius":{"value":"0","unit":"metre"}}
+text none
+json {"centre":{"type":"Point","coordinates":[0,0]},"radius":{"value":"0","unit":"metre"}}
+stored centre 'SRID=4326;POINT (0 0)'::geography
+stored radius 0

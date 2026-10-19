@@ -1,0 +1,33 @@
+RelativeUrl: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example ../images/logo.png
+text ../images/logo.png
+json "../images/logo.png"
+stored '../images/logo.png'
+
+example /docs?page=2#intro
+text /docs?page=2#intro
+json "/docs?page=2#intro"
+stored '/docs?page=2#intro'
+
+example //cdn.example.com/app.js
+text //cdn.example.com/app.js
+json "//cdn.example.com/app.js"
+stored '//cdn.example.com/app.js'
+
+example ?sort=name
+text ?sort=name
+json "?sort=name"
+stored '?sort=name'
+
+example #top
+text #top
+json "#top"
+stored '#top'
+
+example caf%C3%A9.html
+text caf%C3%A9.html
+json "caf%C3%A9.html"
+stored 'caf%C3%A9.html'

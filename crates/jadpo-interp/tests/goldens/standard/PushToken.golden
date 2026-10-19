@@ -1,0 +1,13 @@
+PushToken: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 740f4707bebcf74f9b7c25d48e3358945f6aa01da5ddb387462c7eaf61bb78ad
+text 740f4707bebcf74f9b7c25d48e3358945f6aa01da5ddb387462c7eaf61bb78ad
+json "740f4707bebcf74f9b7c25d48e3358945f6aa01da5ddb387462c7eaf61bb78ad"
+stored '740f4707bebcf74f9b7c25d48e3358945f6aa01da5ddb387462c7eaf61bb78ad'
+
+example bk3RNwTe3H0:CI2k_HHwgIpoDKCIZvvDMExUdFQ3P1
+text bk3RNwTe3H0:CI2k_HHwgIpoDKCIZvvDMExUdFQ3P1
+json "bk3RNwTe3H0:CI2k_HHwgIpoDKCIZvvDMExUdFQ3P1"
+stored 'bk3RNwTe3H0:CI2k_HHwgIpoDKCIZvvDMExUdFQ3P1'

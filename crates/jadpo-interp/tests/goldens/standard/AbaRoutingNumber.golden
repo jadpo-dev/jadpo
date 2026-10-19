@@ -1,0 +1,13 @@
+AbaRoutingNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 011000015
+text 011000015
+json "011000015"
+stored '011000015'
+
+example 021000021
+text 021000021
+json "021000021"
+stored '021000021'

@@ -1,0 +1,28 @@
+ContentRating: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column scheme text
+column rating text
+
+example BBFC 12A
+text BBFC 12A
+json "BBFC 12A"
+stored scheme 'BBFC'
+stored rating '12A'
+
+example MPA PG-13
+text MPA PG-13
+json "MPA PG-13"
+stored scheme 'MPA'
+stored rating 'PG-13'
+
+example PEGI 16
+text PEGI 16
+json "PEGI 16"
+stored scheme 'PEGI'
+stored rating '16'
+
+example ESRB E10+
+text ESRB E10+
+json "ESRB E10+"
+stored scheme 'ESRB'
+stored rating 'E10+'

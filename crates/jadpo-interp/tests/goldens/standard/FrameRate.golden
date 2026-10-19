@@ -1,0 +1,34 @@
+FrameRate: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numerator integer
+column denominator integer
+
+example 24/1
+text 24/1
+json "24/1"
+stored numerator 24
+stored denominator 1
+
+example 25/1
+text 25/1
+json "25/1"
+stored numerator 25
+stored denominator 1
+
+example 24000/1001
+text 24000/1001
+json "24000/1001"
+stored numerator 24000
+stored denominator 1001
+
+example 30000/1001
+text 30000/1001
+json "30000/1001"
+stored numerator 30000
+stored denominator 1001
+
+example 60000/1001
+text 60000/1001
+json "60000/1001"
+stored numerator 60000
+stored denominator 1001

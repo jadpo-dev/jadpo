@@ -1,0 +1,26 @@
+Jurisdiction: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column country text
+column subdivision text
+
+example {"tag":"country","country":"GB"}
+text none
+json {"tag":"country","country":"GB"}
+stored kind 'country'
+stored country 'GB'
+stored subdivision NULL::text
+
+example {"tag":"subdivision","subdivision":"GB-ENG"}
+text none
+json {"tag":"subdivision","subdivision":"GB-ENG"}
+stored kind 'subdivision'
+stored country NULL::text
+stored subdivision 'GB-ENG'
+
+example {"tag":"subdivision","subdivision":"US-CA"}
+text none
+json {"tag":"subdivision","subdivision":"US-CA"}
+stored kind 'subdivision'
+stored country NULL::text
+stored subdivision 'US-CA'

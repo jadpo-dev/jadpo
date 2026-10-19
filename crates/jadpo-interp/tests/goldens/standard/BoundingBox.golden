@@ -1,0 +1,22 @@
+BoundingBox: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column south numeric
+column west numeric
+column north numeric
+column east numeric
+
+example {"south":"51.28","west":"-0.51","north":"51.69","east":"0.33"}
+text none
+json {"south":"51.28","west":"-0.51","north":"51.69","east":"0.33"}
+stored south 51.28
+stored west -0.51
+stored north 51.69
+stored east 0.33
+
+example {"south":"-20","west":"170","north":"-10","east":"-170"}
+text none
+json {"south":"-20","west":"170","north":"-10","east":"-170"}
+stored south -20
+stored west 170
+stored north -10
+stored east -170

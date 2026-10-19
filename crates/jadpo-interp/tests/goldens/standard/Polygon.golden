@@ -1,0 +1,13 @@
+Polygon: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column geography
+
+example {"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}
+text none
+json {"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}
+stored 'SRID=4326;POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))'::geography
+
+example {"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]],[[0.25,0.25],[0.25,0.75],[0.75,0.75],[0.75,0.25],[0.25,0.25]]]}
+text none
+json {"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]],[[0.25,0.25],[0.25,0.75],[0.75,0.75],[0.75,0.25],[0.25,0.25]]]}
+stored 'SRID=4326;POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0), (0.25 0.25, 0.25 0.75, 0.75 0.75, 0.75 0.25, 0.25 0.25))'::geography

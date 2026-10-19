@@ -1,0 +1,22 @@
+Fraction: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numerator bigint
+column denominator bigint
+
+example 3/4
+text 3/4
+json "3/4"
+stored numerator 3
+stored denominator 4
+
+example -1/2
+text -1/2
+json "-1/2"
+stored numerator -1
+stored denominator 2
+
+example 30000/1001
+text 30000/1001
+json "30000/1001"
+stored numerator 30000
+stored denominator 1001

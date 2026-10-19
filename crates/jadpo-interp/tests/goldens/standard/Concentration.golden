@@ -1,0 +1,18 @@
+Concentration: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 9) -- Concentration in grams per litre (g/L)
+
+example 0.005 gL
+text 0.005 gL
+json {"value":"0.005","unit":"gL"}
+stored 0.005
+
+example 1 gL
+text 1 gL
+json {"value":"1","unit":"gL"}
+stored 1
+
+example 35 gL
+text 35 gL
+json {"value":"35","unit":"gL"}
+stored 35

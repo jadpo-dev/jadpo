@@ -1,0 +1,13 @@
+NhsNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 9434765919
+text 9434765919
+json "9434765919"
+stored '9434765919'
+
+example 9990000018
+text 9990000018
+json "9990000018"
+stored '9990000018'

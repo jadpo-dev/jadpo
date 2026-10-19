@@ -1,0 +1,26 @@
+SubtitleCue: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column start bigint
+column end bigint
+column text text
+
+example 00:00:01.000 --> 00:00:04.000\nNever drink liquid nitrogen.
+text 00:00:01.000 --> 00:00:04.000\nNever drink liquid nitrogen.
+json {"start":"PT1S","end":"PT4S","text":"Never drink liquid nitrogen."}
+stored start 1000
+stored end 4000
+stored text 'Never drink liquid nitrogen.'
+
+example 00:01:05.250 --> 00:01:07.500\n— It will perforate your stomach.\n— You could die.
+text 00:01:05.250 --> 00:01:07.500\n— It will perforate your stomach.\n— You could die.
+json {"start":"PT1M5.25S","end":"PT1M7.5S","text":"— It will perforate your stomach.\n— You could die."}
+stored start 65250
+stored end 67500
+stored text E'— It will perforate your stomach.\n— You could die.'
+
+example 100:00:00.000 --> 100:00:00.001\nEnd
+text 100:00:00.000 --> 100:00:00.001\nEnd
+json {"start":"PT100H","end":"PT100H0.001S","text":"End"}
+stored start 360000000
+stored end 360000001
+stored text 'End'

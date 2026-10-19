@@ -1,0 +1,13 @@
+SerialNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 12345678
+text 12345678
+json "12345678"
+stored '12345678'
+
+example SN-0042a
+text SN-0042a
+json "SN-0042a"
+stored 'SN-0042a'

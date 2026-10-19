@@ -1,0 +1,18 @@
+Vector: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column vector
+
+example [0.5,-0.25,1]
+text none
+json [0.5,-0.25,1]
+stored '[0.5,-0.25,1]'::vector
+
+example [0.0123,-0.00456,0.789]
+text none
+json [0.0123,-0.00456,0.789]
+stored '[0.0123,-0.00456,0.789]'::vector
+
+example [1250.5]
+text none
+json [1250.5]
+stored '[1250.5]'::vector

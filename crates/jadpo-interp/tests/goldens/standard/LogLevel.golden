@@ -1,0 +1,18 @@
+LogLevel: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example TRACE
+text TRACE
+json "TRACE"
+stored 'TRACE'
+
+example INFO
+text INFO
+json "INFO"
+stored 'INFO'
+
+example FATAL
+text FATAL
+json "FATAL"
+stored 'FATAL'

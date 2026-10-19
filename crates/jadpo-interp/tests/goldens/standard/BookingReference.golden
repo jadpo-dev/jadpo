@@ -1,0 +1,13 @@
+BookingReference: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example X7K9QZ
+text X7K9QZ
+json "X7K9QZ"
+stored 'X7K9QZ'
+
+example ABC123
+text ABC123
+json "ABC123"
+stored 'ABC123'

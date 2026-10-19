@@ -22,8 +22,10 @@ jadpo-std.workspace = true
 jadpo-value.workspace = true
 
 # The per-type harness reads each standard type's JSON examples
-# (tests/standard_types.rs, chunk 5.5w3).
+# (tests/standard_types.rs, chunk 5.5w3); the golden files write each
+# stored value as SQL text (tests/standard_goldens.rs, chunk 5.9).
 [dev-dependencies]
+jadpo-sql.workspace = true
 serde_json.workspace = true
 
 [lints]

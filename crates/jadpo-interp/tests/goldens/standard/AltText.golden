@@ -1,0 +1,13 @@
+AltText: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example A red bicycle leaning against a brick wall
+text A red bicycle leaning against a brick wall
+json "A red bicycle leaning against a brick wall"
+stored 'A red bicycle leaning against a brick wall'
+
+example Logo
+text Logo
+json "Logo"
+stored 'Logo'

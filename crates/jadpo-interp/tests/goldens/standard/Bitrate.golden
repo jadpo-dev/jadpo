@@ -1,0 +1,18 @@
+Bitrate: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 0) -- Bitrate in bits per second (bit/s)
+
+example 8000 bps
+text 8000 bps
+json {"value":"8000","unit":"bps"}
+stored 8000
+
+example 1000000 bps
+text 1000000 bps
+json {"value":"1000000","unit":"bps"}
+stored 1000000
+
+example 100000000 bps
+text 100000000 bps
+json {"value":"100000000","unit":"bps"}
+stored 100000000

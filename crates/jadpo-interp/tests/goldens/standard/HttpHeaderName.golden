@@ -1,0 +1,18 @@
+HttpHeaderName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example content-type
+text content-type
+json "content-type"
+stored 'content-type'
+
+example accept-language
+text accept-language
+json "accept-language"
+stored 'accept-language'
+
+example x-request-id
+text x-request-id
+json "x-request-id"
+stored 'x-request-id'

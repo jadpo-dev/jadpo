@@ -1,0 +1,30 @@
+UnitPrice: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column price bigint
+column price_currency char(3)
+column per numeric(38, 9) -- Mass in kilograms (kg) when kind is per_mass; Volume in cubic metres (m³) when kind is per_volume; Length in metres (m) when kind is per_length; Area in square metres (m²) when kind is per_area
+
+example {"tag":"per_mass","price":{"amount":250,"currency":"GBP"},"per":{"value":"1","unit":"kg"}}
+text none
+json {"tag":"per_mass","price":{"amount":250,"currency":"GBP"},"per":{"value":"1","unit":"kg"}}
+stored kind 'per_mass'
+stored price 250
+stored price_currency 'GBP'
+stored per 1
+
+example {"tag":"per_volume","price":{"amount":180,"currency":"GBP"},"per":{"value":"0.001","unit":"cubic_metre"}}
+text none
+json {"tag":"per_volume","price":{"amount":180,"currency":"GBP"},"per":{"value":"0.001","unit":"cubic_metre"}}
+stored kind 'per_volume'
+stored price 180
+stored price_currency 'GBP'
+stored per 0.001
+
+example {"tag":"per_length","price":{"amount":399,"currency":"GBP"},"per":{"value":"1","unit":"metre"}}
+text none
+json {"tag":"per_length","price":{"amount":399,"currency":"GBP"},"per":{"value":"1","unit":"metre"}}
+stored kind 'per_length'
+stored price 399
+stored price_currency 'GBP'
+stored per 1

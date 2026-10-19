@@ -1,0 +1,18 @@
+Duration: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column bigint
+
+example PT5M
+text PT5M
+json "PT5M"
+stored 300000
+
+example PT1H30M
+text PT1H30M
+json "PT1H30M"
+stored 5400000
+
+example PT26H
+text PT26H
+json "PT26H"
+stored 93600000

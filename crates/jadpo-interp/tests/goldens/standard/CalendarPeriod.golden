@@ -1,0 +1,33 @@
+CalendarPeriod: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column years integer
+column months integer
+column days integer
+
+example P1Y2M10D
+text P1Y2M10D
+json "P1Y2M10D"
+stored years 1
+stored months 2
+stored days 10
+
+example P1M
+text P1M
+json "P1M"
+stored years 0
+stored months 1
+stored days 0
+
+example P-1M-3D
+text P-1M-3D
+json "P-1M-3D"
+stored years 0
+stored months -1
+stored days -3
+
+example P0D
+text P0D
+json "P0D"
+stored years 0
+stored months 0
+stored days 0

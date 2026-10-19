@@ -1,0 +1,23 @@
+RichTextBlock: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column jsonb
+
+example {"tag":"paragraph","spans":[{"text":"Fresh ","marks":[]},{"text":"soup","marks":["emphasis"]}]}
+text none
+json {"tag":"paragraph","spans":[{"text":"Fresh ","marks":[]},{"text":"soup","marks":["emphasis"]}]}
+stored '{"tag":"paragraph","spans":[{"text":"Fresh ","marks":[]},{"text":"soup","marks":["emphasis"]}]}'::jsonb
+
+example {"tag":"heading","level":1,"spans":[{"text":"Soups","marks":[]}]}
+text none
+json {"tag":"heading","level":1,"spans":[{"text":"Soups","marks":[]}]}
+stored '{"tag":"heading","level":1,"spans":[{"text":"Soups","marks":[]}]}'::jsonb
+
+example {"tag":"quote","spans":[{"text":"Fresh every day","marks":[]}]}
+text none
+json {"tag":"quote","spans":[{"text":"Fresh every day","marks":[]}]}
+stored '{"tag":"quote","spans":[{"text":"Fresh every day","marks":[]}]}'::jsonb
+
+example {"tag":"numbered_item","level":2,"spans":[{"text":"Stir","marks":[]}]}
+text none
+json {"tag":"numbered_item","level":2,"spans":[{"text":"Stir","marks":[]}]}
+stored '{"tag":"numbered_item","level":2,"spans":[{"text":"Stir","marks":[]}]}'::jsonb

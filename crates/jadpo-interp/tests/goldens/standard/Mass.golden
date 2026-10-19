@@ -1,0 +1,18 @@
+Mass: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 9) -- Mass in kilograms (kg)
+
+example 0.25 kg
+text 0.25 kg
+json {"value":"0.25","unit":"kg"}
+stored 0.25
+
+example 2.5 kg
+text 2.5 kg
+json {"value":"2.5","unit":"kg"}
+stored 2.5
+
+example 1000 kg
+text 1000 kg
+json {"value":"1000","unit":"kg"}
+stored 1000

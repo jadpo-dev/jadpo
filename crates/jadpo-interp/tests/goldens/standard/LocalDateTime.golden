@@ -1,0 +1,13 @@
+LocalDateTime: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column timestamp
+
+example 2026-03-29T01:30:00
+text 2026-03-29T01:30:00
+json "2026-03-29T01:30:00"
+stored '2026-03-29 01:30:00.000000'::timestamp
+
+example 2026-10-25T01:30:00
+text 2026-10-25T01:30:00
+json "2026-10-25T01:30:00"
+stored '2026-10-25 01:30:00.000000'::timestamp

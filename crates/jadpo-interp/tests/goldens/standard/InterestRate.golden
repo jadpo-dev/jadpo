@@ -1,0 +1,28 @@
+InterestRate: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column rate numeric
+column basis text
+
+example {"rate":"5.5%","basis":"apr"}
+text none
+json {"rate":"5.5%","basis":"apr"}
+stored rate 0.055
+stored basis 'apr'
+
+example {"rate":"4.75%","basis":"aer"}
+text none
+json {"rate":"4.75%","basis":"aer"}
+stored rate 0.0475
+stored basis 'aer'
+
+example {"rate":"-0.5%","basis":"aer"}
+text none
+json {"rate":"-0.5%","basis":"aer"}
+stored rate -0.005
+stored basis 'aer'
+
+example {"rate":"3%","basis":"flat"}
+text none
+json {"rate":"3%","basis":"flat"}
+stored rate 0.03
+stored basis 'flat'

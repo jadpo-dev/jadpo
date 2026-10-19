@@ -1,0 +1,33 @@
+FlightNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column airline text
+column number integer
+column suffix text
+
+example BA123
+text BA123
+json "BA123"
+stored airline 'BA'
+stored number 123
+stored suffix NULL::text
+
+example U21234
+text U21234
+json "U21234"
+stored airline 'U2'
+stored number 1234
+stored suffix NULL::text
+
+example 6E2001
+text 6E2001
+json "6E2001"
+stored airline '6E'
+stored number 2001
+stored suffix NULL::text
+
+example BA5A
+text BA5A
+json "BA5A"
+stored airline 'BA'
+stored number 5
+stored suffix 'A'

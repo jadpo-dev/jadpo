@@ -1124,6 +1124,15 @@ pub struct StandardType {
 /// arrive in: the workspace's version until then.
 pub const FIRST_RELEASE: &str = "0.1.0";
 
+/// The encoding this release writes every value that outlives it in
+/// (area 19, "Changing a standard type's encoding", chunk 5.9): each
+/// standard type's canonical text, contract JSON and storage, as its golden
+/// file pins them, and the runtime's own records holding them. A row or a
+/// token kept beyond a request records it (a signed part's `enc`, the
+/// outbox's and a passkey's `encoding` column), so a release that changes a
+/// form raises it and reads what an earlier one wrote by its encoding.
+pub const ENCODING: u32 = 1;
+
 /// `FileType` (area 16): a file's IANA media type. Its variants are the
 /// media types the pages name (chosen in chunk 5.5a); a later chunk adds
 /// more.

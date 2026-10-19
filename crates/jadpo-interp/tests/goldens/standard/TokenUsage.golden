@@ -1,0 +1,26 @@
+TokenUsage: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column input bigint
+column output bigint
+column cached bigint
+
+example {"input":1200,"output":350,"cached":null}
+text none
+json {"input":1200,"output":350,"cached":null}
+stored input 1200
+stored output 350
+stored cached NULL::bigint
+
+example {"input":1200,"output":350,"cached":800}
+text none
+json {"input":1200,"output":350,"cached":800}
+stored input 1200
+stored output 350
+stored cached 800
+
+example {"input":0,"output":0,"cached":0}
+text none
+json {"input":0,"output":0,"cached":0}
+stored input 0
+stored output 0
+stored cached 0

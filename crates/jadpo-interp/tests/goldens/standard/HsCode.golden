@@ -1,0 +1,13 @@
+HsCode: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 090111
+text 090111
+json "090111"
+stored '090111'
+
+example 8471300000
+text 8471300000
+json "8471300000"
+stored '8471300000'

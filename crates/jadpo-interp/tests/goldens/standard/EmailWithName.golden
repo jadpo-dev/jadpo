@@ -1,0 +1,22 @@
+EmailWithName: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column name text
+column address text
+
+example Mary Somerville <mary@example.com>
+text Mary Somerville <mary@example.com>
+json {"name":"Mary Somerville","address":"mary@example.com"}
+stored name 'Mary Somerville'
+stored address 'mary@example.com'
+
+example "Somerville, Mary" <mary@example.com>
+text "Somerville, Mary" <mary@example.com>
+json {"name":"Somerville, Mary","address":"mary@example.com"}
+stored name 'Somerville, Mary'
+stored address 'mary@example.com'
+
+example mary@example.com
+text mary@example.com
+json {"name":null,"address":"mary@example.com"}
+stored name NULL::text
+stored address 'mary@example.com'

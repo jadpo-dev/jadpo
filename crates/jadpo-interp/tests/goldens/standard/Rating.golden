@@ -1,0 +1,33 @@
+Rating: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column value numeric
+column best numeric
+column worst numeric
+
+example {"value":"4.5","best":"5","worst":"1"}
+text none
+json {"value":"4.5","best":"5","worst":"1"}
+stored value 4.5
+stored best 5
+stored worst 1
+
+example {"value":"8","best":"10","worst":"0"}
+text none
+json {"value":"8","best":"10","worst":"0"}
+stored value 8
+stored best 10
+stored worst 0
+
+example {"value":"92","best":"100","worst":"0"}
+text none
+json {"value":"92","best":"100","worst":"0"}
+stored value 92
+stored best 100
+stored worst 0
+
+example {"value":"1","best":"5","worst":"1"}
+text none
+json {"value":"1","best":"5","worst":"1"}
+stored value 1
+stored best 5
+stored worst 1

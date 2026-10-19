@@ -1,0 +1,18 @@
+WritingScript: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example Jpan
+text Jpan
+json "Jpan"
+stored 'Jpan'
+
+example Latn
+text Latn
+json "Latn"
+stored 'Latn'
+
+example Zyyy
+text Zyyy
+json "Zyyy"
+stored 'Zyyy'

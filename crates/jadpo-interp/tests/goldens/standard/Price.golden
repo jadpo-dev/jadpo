@@ -1,0 +1,26 @@
+Price: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column amount bigint
+column currency char(3)
+column includes_tax boolean
+
+example {"amount":{"amount":1050,"currency":"GBP"},"includes_tax":true}
+text none
+json {"amount":{"amount":1050,"currency":"GBP"},"includes_tax":true}
+stored amount 1050
+stored currency 'GBP'
+stored includes_tax TRUE
+
+example {"amount":{"amount":875,"currency":"GBP"},"includes_tax":false}
+text none
+json {"amount":{"amount":875,"currency":"GBP"},"includes_tax":false}
+stored amount 875
+stored currency 'GBP'
+stored includes_tax FALSE
+
+example {"amount":{"amount":1200,"currency":"EUR"},"includes_tax":true}
+text none
+json {"amount":{"amount":1200,"currency":"EUR"},"includes_tax":true}
+stored amount 1200
+stored currency 'EUR'
+stored includes_tax TRUE

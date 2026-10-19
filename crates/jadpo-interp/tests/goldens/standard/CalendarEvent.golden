@@ -1,0 +1,63 @@
+CalendarEvent: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column summary text
+column first_day date
+column last_day date
+column start timestamp
+column end timestamp
+column zone text
+column location text
+column description text
+column recurrence text
+
+example BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261225\nDTEND;VALUE=DATE:20261226\nSUMMARY:Christmas Day\nEND:VEVENT
+text BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261225\nDTEND;VALUE=DATE:20261226\nSUMMARY:Christmas Day\nEND:VEVENT
+json {"summary":"Christmas Day","first_day":"2026-12-25","last_day":"2026-12-25","start":null,"end":null,"zone":null,"location":null,"description":null,"recurrence":null}
+stored summary 'Christmas Day'
+stored first_day '2026-12-25'::date
+stored last_day '2026-12-25'::date
+stored start NULL::timestamp
+stored end NULL::timestamp
+stored zone NULL::text
+stored location NULL::text
+stored description NULL::text
+stored recurrence NULL::text
+
+example BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261024\nDTEND;VALUE=DATE:20261027\nSUMMARY:Half-term walk\nLOCATION:Keswick\, Cumbria\nDESCRIPTION:Boots\; maps\nFlask\nEND:VEVENT
+text BEGIN:VEVENT\nDTSTART;VALUE=DATE:20261024\nDTEND;VALUE=DATE:20261027\nSUMMARY:Half-term walk\nLOCATION:Keswick\, Cumbria\nDESCRIPTION:Boots\; maps\nFlask\nEND:VEVENT
+json {"summary":"Half-term walk","first_day":"2026-10-24","last_day":"2026-10-26","start":null,"end":null,"zone":null,"location":"Keswick, Cumbria","description":"Boots; maps\nFlask","recurrence":null}
+stored summary 'Half-term walk'
+stored first_day '2026-10-24'::date
+stored last_day '2026-10-26'::date
+stored start NULL::timestamp
+stored end NULL::timestamp
+stored zone NULL::text
+stored location 'Keswick, Cumbria'
+stored description E'Boots; maps\nFlask'
+stored recurrence NULL::text
+
+example BEGIN:VEVENT\nDTSTART;VALUE=DATE:20240229\nDTEND;VALUE=DATE:20240301\nSUMMARY:Wedding anniversary\nRRULE:FREQ=YEARLY\nEND:VEVENT
+text BEGIN:VEVENT\nDTSTART;VALUE=DATE:20240229\nDTEND;VALUE=DATE:20240301\nSUMMARY:Wedding anniversary\nRRULE:FREQ=YEARLY\nEND:VEVENT
+json {"summary":"Wedding anniversary","first_day":"2024-02-29","last_day":"2024-02-29","start":null,"end":null,"zone":null,"location":null,"description":null,"recurrence":"DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY"}
+stored summary 'Wedding anniversary'
+stored first_day '2024-02-29'::date
+stored last_day '2024-02-29'::date
+stored start NULL::timestamp
+stored end NULL::timestamp
+stored zone NULL::text
+stored location NULL::text
+stored description NULL::text
+stored recurrence E'DTSTART;VALUE=DATE:20240229\nRRULE:FREQ=YEARLY'
+
+example BEGIN:VEVENT\nDTSTART;TZID=Europe/London:20261024T220000\nDTEND;TZID=Europe/London:20261025T020000\nSUMMARY:Night shift\nRRULE:FREQ=WEEKLY;COUNT=4\nEND:VEVENT
+text BEGIN:VEVENT\nDTSTART;TZID=Europe/London:20261024T220000\nDTEND;TZID=Europe/London:20261025T020000\nSUMMARY:Night shift\nRRULE:FREQ=WEEKLY;COUNT=4\nEND:VEVENT
+json {"summary":"Night shift","first_day":null,"last_day":null,"start":"2026-10-24T22:00:00","end":"2026-10-25T02:00:00","zone":"Europe/London","location":null,"description":null,"recurrence":"DTSTART;TZID=Europe/London:20261024T220000\nRRULE:FREQ=WEEKLY;COUNT=4"}
+stored summary 'Night shift'
+stored first_day NULL::date
+stored last_day NULL::date
+stored start '2026-10-24 22:00:00.000000'::timestamp
+stored end '2026-10-25 02:00:00.000000'::timestamp
+stored zone 'Europe/London'
+stored location NULL::text
+stored description NULL::text
+stored recurrence E'DTSTART;TZID=Europe/London:20261024T220000\nRRULE:FREQ=WEEKLY;COUNT=4'

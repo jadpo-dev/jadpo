@@ -1,0 +1,16 @@
+PassportNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column country text
+column number text
+
+example {"country":"GB","number":"123456789"}
+text none
+json {"country":"GB","number":"123456789"}
+stored country 'GB'
+stored number '123456789'
+
+example {"country":"FR","number":"12AB34567"}
+text none
+json {"country":"FR","number":"12AB34567"}
+stored country 'FR'
+stored number '12AB34567'

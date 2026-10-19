@@ -1,0 +1,23 @@
+Bearing: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric
+
+example 0
+text 0
+json "0"
+stored 0
+
+example 90
+text 90
+json "90"
+stored 90
+
+example 247.5
+text 247.5
+json "247.5"
+stored 247.5
+
+example 359.9
+text 359.9
+json "359.9"
+stored 359.9

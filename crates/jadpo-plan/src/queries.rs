@@ -819,7 +819,13 @@ impl Planner<'_> {
             .types
             .graph()
             .named(Kind::Field, &format!("{}.{}", entity.name, field.name))?;
-        let ty = TypeRef::Field(self.types.graph().node(id).key.clone());
+        self.json_number(TypeRef::Field(self.types.graph().node(id).key.clone()))
+    }
+
+    /// `ty`'s number in the plan's JSON table, numbered once: a JSON-held
+    /// field's type, or a type the runtime keeps as its contract's JSON
+    /// (a passkey's `WebAuthnCredential`, chunk 5.9).
+    pub(crate) fn json_number(&self, ty: TypeRef) -> Option<u32> {
         let mut json = self.json.borrow_mut();
         let at = match json.iter().position(|known| *known == ty) {
             Some(at) => at,

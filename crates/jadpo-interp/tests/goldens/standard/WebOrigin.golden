@@ -1,0 +1,23 @@
+WebOrigin: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example https://example.com
+text https://example.com
+json "https://example.com"
+stored 'https://example.com'
+
+example http://localhost:8080
+text http://localhost:8080
+json "http://localhost:8080"
+stored 'http://localhost:8080'
+
+example https://[2001:db8::1]
+text https://[2001:db8::1]
+json "https://[2001:db8::1]"
+stored 'https://[2001:db8::1]'
+
+example http://192.0.2.1:3000
+text http://192.0.2.1:3000
+json "http://192.0.2.1:3000"
+stored 'http://192.0.2.1:3000'

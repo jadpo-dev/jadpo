@@ -1,0 +1,13 @@
+CardBin: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 424242
+text 424242
+json "424242"
+stored '424242'
+
+example 42424242
+text 42424242
+json "42424242"
+stored '42424242'

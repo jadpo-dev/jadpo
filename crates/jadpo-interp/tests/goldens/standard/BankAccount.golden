@@ -1,0 +1,48 @@
+BankAccount: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column sort_code text
+column account_number text
+column iban text
+column country text
+column bank_code text
+
+example {"tag":"uk","sort_code":"089999","account_number":"66374958"}
+text none
+json {"tag":"uk","sort_code":"089999","account_number":"66374958"}
+stored kind 'uk'
+stored sort_code '089999'
+stored account_number '66374958'
+stored iban NULL::text
+stored country NULL::text
+stored bank_code NULL::text
+
+example {"tag":"iban","iban":"GB29NWBK60161331926819"}
+text none
+json {"tag":"iban","iban":"GB29NWBK60161331926819"}
+stored kind 'iban'
+stored sort_code NULL::text
+stored account_number NULL::text
+stored iban 'GB29NWBK60161331926819'
+stored country NULL::text
+stored bank_code NULL::text
+
+example {"tag":"other","country":"US","bank_code":"021000021","account_number":"123456789"}
+text none
+json {"tag":"other","country":"US","bank_code":"021000021","account_number":"123456789"}
+stored kind 'other'
+stored sort_code NULL::text
+stored account_number '123456789'
+stored iban NULL::text
+stored country 'US'
+stored bank_code '021000021'
+
+example {"tag":"other","country":"NZ","bank_code":null,"account_number":"010202012345600"}
+text none
+json {"tag":"other","country":"NZ","bank_code":null,"account_number":"010202012345600"}
+stored kind 'other'
+stored sort_code NULL::text
+stored account_number '010202012345600'
+stored iban NULL::text
+stored country 'NZ'
+stored bank_code NULL::text

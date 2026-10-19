@@ -1,0 +1,25 @@
+UtmParameters: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column source text
+column medium text
+column campaign text
+column term text
+column content text
+
+example utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale
+text utm_source=mailing&utm_medium=email&utm_campaign=autumn_sale
+json {"source":"mailing","medium":"email","campaign":"autumn_sale","term":null,"content":null}
+stored source 'mailing'
+stored medium 'email'
+stored campaign 'autumn_sale'
+stored term NULL::text
+stored content NULL::text
+
+example utm_source=search&utm_medium=cpc&utm_campaign=spring&utm_term=running%20shoes&utm_content=banner
+text utm_source=search&utm_medium=cpc&utm_campaign=spring&utm_term=running%20shoes&utm_content=banner
+json {"source":"search","medium":"cpc","campaign":"spring","term":"running shoes","content":"banner"}
+stored source 'search'
+stored medium 'cpc'
+stored campaign 'spring'
+stored term 'running shoes'
+stored content 'banner'

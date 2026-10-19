@@ -1,0 +1,16 @@
+DrivingLicenceNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column country text
+column number text
+
+example {"country":"GB","number":"MCADI801206HZ9HM"}
+text none
+json {"country":"GB","number":"MCADI801206HZ9HM"}
+stored country 'GB'
+stored number 'MCADI801206HZ9HM'
+
+example {"country":"US","number":"D1234567"}
+text none
+json {"country":"US","number":"D1234567"}
+stored country 'US'
+stored number 'D1234567'

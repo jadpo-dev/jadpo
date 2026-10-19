@@ -1,0 +1,23 @@
+LocalisedText: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column jsonb
+
+example {"en-GB":"Leek soup","fr-FR":"Soupe aux poireaux"}
+text none
+json {"en-GB":"Leek soup","fr-FR":"Soupe aux poireaux"}
+stored '{"en-GB":"Leek soup","fr-FR":"Soupe aux poireaux"}'::jsonb
+
+example {"en-US":"Leek potage"}
+text none
+json {"en-US":"Leek potage"}
+stored '{"en-US":"Leek potage"}'::jsonb
+
+example {"de-DE":"Lauchsuppe"}
+text none
+json {"de-DE":"Lauchsuppe"}
+stored '{"de-DE":"Lauchsuppe"}'::jsonb
+
+example {}
+text none
+json {}
+stored '{}'::jsonb

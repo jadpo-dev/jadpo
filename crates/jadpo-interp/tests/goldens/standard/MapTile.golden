@@ -1,0 +1,26 @@
+MapTile: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column zoom smallint
+column x integer
+column y integer
+
+example {"zoom":0,"x":0,"y":0}
+text none
+json {"zoom":0,"x":0,"y":0}
+stored zoom 0
+stored x 0
+stored y 0
+
+example {"zoom":10,"x":511,"y":340}
+text none
+json {"zoom":10,"x":511,"y":340}
+stored zoom 10
+stored x 511
+stored y 340
+
+example {"zoom":18,"x":130981,"y":87168}
+text none
+json {"zoom":18,"x":130981,"y":87168}
+stored zoom 18
+stored x 130981
+stored y 87168
