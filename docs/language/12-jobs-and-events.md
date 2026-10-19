@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and to the limits of background work. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type. Built in chunk 6.7: background work within the budget its host gives each invocation, every lease that budget and a minute, a batch run carried on by time in a fresh invocation, and a native server draining when it is stopped.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and to the limits of background work. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type. Built in chunk 6.7: background work within the budget its host gives each invocation, every lease that budget and a minute, a batch run carried on by time in a fresh invocation, and a native server draining when it is stopped. Built in chunk 6.6c: the tenant an event or a batch's run names proved to be one its action reached, and a batch's `key:` unique per call, tenant and key.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -165,7 +165,8 @@ action export_products(request: ProductExport) -> BatchRun {
   called only in actions. It returns a `BatchRun` at once and runs in the
   background; if the action rolls back, the run never starts. `key:`
   makes a repeated start return the same run, so a client's retry does not
-  import a file twice.
+  import a file twice; in an application with a tenant, the same key in
+  two tenants starts two runs.
 - **`batches.status(run)`** gives a `BatchProgress`: items done, the
   estimated total (from the file's size, or the query's count), problems so
   far and the state (`running`, `finished`, `failed`, `cancelled`);
@@ -2317,7 +2318,8 @@ reading; the file helpers wait for chunk 6.4b:
   transaction, and the run is left for after the response at once
   (`Deferred::Batch`); an action that rolls back left no row, so the
   runner finds nothing to run. A start keyed with `key:` that finds the
-  same call's run with the same key (by its contract JSON) gives that run,
+  same call's run with the same key (by its contract JSON), in the same
+  tenant (chunk 6.6c), gives that run,
   in whatever state, whatever else the call was given; a start without
   one is always a new run. A start needs no outbox row: its run's row is
   as durable, and the resume sweep below picks up a start a host
@@ -3015,6 +3017,52 @@ conservative reading:
   held after its run was deleted): a thousand rows at a time, at most
   ten times a tick, as the tick's other deletes. A run still going is
   never deleted, however old.
+
+### Chosen in chunk 6.6c
+
+What "The tenant background work names" (area 9's Decisions) and "A
+batch's `key:` with tenants" (below) leave to the build, each the most
+conservative reading:
+
+- **What proves a tenant.** An event's one field of the tenant's `id`
+  type, which its subscribers are limited to (chunk 6.1b), and each value
+  a batch's run saves of that type (chunk 6.4c) hold only values naming a
+  tenant the action reached under its caller's policy: the tenant's own
+  `id`, or the tenancy reference of a record of it, that the action, or an
+  action or query it calls, read, created or changed; the same of a record
+  the action is handed whole; or what a create that runs whenever the
+  action does set a record's tenancy reference from, since the create
+  needs the caller's membership there and the action fails with it. A
+  create inside an `if`, a `match`, a loop or after a `return` that may
+  leave first proves nothing. Anything else, a parameter holding an id
+  among them, is `policy.event_tenant_unproved` at the value; what decided
+  the value is no part of it.
+- **A record handed whole counts as read.** A route passes placeholders,
+  `input` and the caller, and a subscriber its event's fields, so only a
+  body that read a record, with the same caller, or a run limited to its
+  tenant, can hand one to an action. Example 25's
+  `invoice_round(rent_round: RentRound)` names its run's society from
+  `rent_round.society_id` as before.
+- **Checked where it is emitted or started.** In the action whose `emit`
+  or `batches.each` it is, never at its callers: an action that emits from
+  a parameter is refused even when every action calling it passes a proved
+  id, since a route may call it too. Pass it the record instead. A
+  subscriber's action passing its event's tenant on, to another `emit` or
+  a batch, reads a record of it first, as "Declaring an event" advises for
+  anything more than ids. *Flagged:* knowing which actions only background
+  work calls would let such an action pass its event's tenant on unread;
+  recommended as built, one rule for every action.
+- **A batch's key.** A run's row keeps the tenant it is limited to
+  (`jadpo_batch_runs.tenant`: all zeros when it reaches no tenant's
+  records or the application has none), and its unique constraint is the
+  call, the tenant and the key, with a migration in examples 24 and 25. A
+  start finds the run of the same call with the same key in its own
+  tenant. A run kept before the migration has no tenant and no later
+  start finds it, since nothing says which tenant its key was given in.
+  *Flagged:* a keyed run still going when the migration is deployed may
+  be started again by a retry after it; recommended as built, since
+  finding it could hand one tenant another's run, the fault this
+  decision fixes.
 
 ### Chosen in chunk 6.7
 
