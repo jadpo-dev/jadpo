@@ -624,20 +624,40 @@ fn a_save_swaps_in_the_new_version_and_errors_keep_the_last_good_one() {
     let routes = root.join("domains/planning/routes/todos.jadpo");
     let text = std::fs::read_to_string(&routes).expect("the routes");
     // An error: the last good version keeps answering.
-    std::fs::write(&routes, text.replace("SuccessStatus.created", "201")).expect("save");
+    save(&routes, &text.replace("SuccessStatus.created", "201"));
     let errors = wait_for(&dev, "\"errors\"");
     assert!(errors.contains("route.status_invalid"), "{errors}");
     let created = dev.send("POST", "/todos", &[], r#"{"title":"Still served"}"#);
     assert_eq!(created.status, 201);
     // Fixed differently: the new version answers.
-    std::fs::write(
+    save(
         &routes,
-        text.replace("SuccessStatus.created", "SuccessStatus.accepted"),
-    )
-    .expect("save");
+        &text.replace("SuccessStatus.created", "SuccessStatus.accepted"),
+    );
     wait_for(&dev, "\"reloaded\"");
     let accepted = dev.send("POST", "/todos", &[], r#"{"title":"Reloaded"}"#);
     assert_eq!(accepted.status, 202);
+}
+
+/// Saves `text` to `path` in one step, as an editor's atomic save does:
+/// written beside the project, then renamed over the file. A plain write
+/// truncates the file first, and on a loaded machine `jadpo dev` can see the
+/// empty file, which checks cleanly without its routes, and reload it.
+fn save(path: &Path, text: &str) {
+    let project = path
+        .ancestors()
+        .find(|dir| dir.join("app.jadpo").is_file())
+        .expect("the project");
+    let name = project
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a name");
+    let saving = project
+        .parent()
+        .expect("the project's folder")
+        .join(format!("{name}.saving"));
+    std::fs::write(&saving, text).expect("write");
+    std::fs::rename(&saving, path).expect("save");
 }
 
 /// Waits for `jadpo dev` to write a line holding `needle`.
