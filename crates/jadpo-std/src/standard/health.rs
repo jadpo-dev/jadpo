@@ -104,7 +104,7 @@ const DOSE_UNITS: &[ShownIn] = &[
 ];
 
 /// An amount of a medicine, by mass or by volume, above nothing: a choice
-/// sent tagged, stored as that JSON and shown in milligrams or millilitres,
+/// sent tagged, stored in a column per part and shown in milligrams or millilitres,
 /// `500 mg`, `0.125 mg`, `5 ml`.
 pub const DOSE_ENTRY: StandardType = StandardType {
     name: DOSE,
@@ -250,7 +250,7 @@ pub const DOSAGE_INSTRUCTION_FIELDS: [(&str, Part); 5] = [
 /// How to take a medicine, structured as FHIR's `Dosage` structures its
 /// commonest form: a dose, a route, a number of times in a period and
 /// whether only when needed, never free text to read. Sent as its fields,
-/// stored as that JSON and shown in English, as its route's name is:
+/// stored in a column per part and shown in English, as its route's name is:
 /// `500 mg, Oral use, 2 times per 1 day`.
 pub const DOSAGE_INSTRUCTION_ENTRY: StandardType = StandardType {
     name: DOSAGE_INSTRUCTION,
@@ -397,7 +397,7 @@ pub const BLOOD_PRESSURE_RULES: &[StandardRule] = &[StandardRule {
 
 /// A blood pressure (LOINC 85354-9): its systolic and diastolic
 /// `Pressure`s, held in pascals as every pressure is, sent as named fields,
-/// so nothing reads the pair the other way round, stored as that JSON and
+/// so nothing reads the pair the other way round, stored in a column per part and
 /// shown as a reading writes it, `120/80 mmHg`.
 pub const BLOOD_PRESSURE_ENTRY: StandardType = StandardType {
     name: BLOOD_PRESSURE,

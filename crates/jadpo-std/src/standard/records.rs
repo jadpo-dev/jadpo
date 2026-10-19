@@ -197,7 +197,7 @@ pub const UNIT_QUANTITY_VARIANTS: &[(&str, &[(&str, Part)])] = &[
 ];
 
 /// How much of something an order line or a stock count holds: a count or
-/// an amount of a quantity, never below 0, sent tagged, stored as that JSON
+/// an amount of a quantity, never below 0, sent tagged, stored in a column per part
 /// and shown as its count or amount.
 pub const UNIT_QUANTITY_ENTRY: StandardType = StandardType {
     name: UNIT_QUANTITY,
@@ -469,7 +469,7 @@ pub const DIMENSIONS_FIELDS: [(&str, Part); 3] = [
 ];
 
 /// A box's length, width and height, sent as named fields so nothing reads
-/// them in another order, stored as that JSON and shown in centimetres, or
+/// them in another order, stored in a column per part and shown in centimetres, or
 /// the unit `unit:` names, written once: `30 × 20 × 10 cm`.
 pub const DIMENSIONS_ENTRY: StandardType = StandardType {
     name: DIMENSIONS,
@@ -685,7 +685,7 @@ pub const JURISDICTION_VARIANTS: &[(&str, &[(&str, Part)])] = &[
 ];
 
 /// Where a law applies: a country or a subdivision, a choice sent tagged,
-/// stored as that JSON and shown by its CLDR name.
+/// stored in a column per part and shown by its CLDR name.
 pub const JURISDICTION_ENTRY: StandardType = StandardType {
     name: JURISDICTION,
     holds: Holds::Choice(JURISDICTION_VARIANTS),

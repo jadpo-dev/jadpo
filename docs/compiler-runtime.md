@@ -246,243 +246,92 @@ Rust 1.88 or later).
 
 | Crate | Responsibility | wasm32 |
 |---|---|---|
-| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard library's enums Rust interprets, the typed operation table; the plans both executors run, as plain data (type and failure plans, constants, read, write and purge plans) | yes |
+| `jadpo-std` | Shared leaf: built-in types, exact numbers, value rules and their validators, the standard types' data entries and storage codec, the standard library's enums Rust interprets, the typed operation table; the plans both executors run, as plain data (type and failure plans, constants, read, write and purge plans, the route, settings, JSON, translation and prompt tables) | yes |
 | `jadpo-diag` | Rule catalogue, diagnostic model, edits | |
 | `jadpo-syntax` | Lexer, parser, lossless syntax tree, typed AST, `jadpo.ungram` | |
 | `jadpo-fmt` | Formatter | |
 | `jadpo-sql` | Every PostgreSQL text the compiler writes: conditions and their one lowering (an exact SQL form, or an index search the runtime rechecks), statements, aggregates, identity lookups and table definitions, rendered from what the graph, the checker and the plan decide | |
-| `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff | |
-| `jadpo-db` | Incremental database: inputs, project layout, packages and lock, identity registry, the before side from git | |
+| `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff; the physical schema, its snapshots and migration diffs | |
+| `jadpo-db` | Incremental database: source inputs, project layout, the lock and the identity registry; the only compiler crate that does I/O (the before side from git comes later) | |
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
-| `jadpo-plan` | What both executors need besides control flow: each statement's parts with policy compiled in, which `jadpo-sql` writes, codecs and validators per type, route, schedule and subscriber tables, system-table placement, migration diffs | |
+| `jadpo-plan` | What both executors need besides control flow: numbered callables and their frame tables, type and failure plans, constants, each read and write site's statements with policy compiled in (written by `jadpo-sql`), codecs per type, and the route, settings, JSON, translation and prompt tables; schedule and subscriber tables come with area 12 | |
 | `jadpo-interp` | The interpreter | |
 | `jadpo-codegen` | Rust source from graph and plan; drives cargo | |
-| `jadpo-value` | Runtime values, JSON and row codecs, validation, failure envelope, standard-library implementations | yes |
+| `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
-| `jadpo-drivers` | PostgreSQL, Redis, SMTP, S3 and package (JSON over HTTP) drivers over a host-supplied transport; a cargo feature each | yes |
-| `jadpo-host-native` | tokio, hyper, rustls; timers, delivery workers, local disk and inbox | |
+| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL now; Redis, SMTP, S3 and the package driver (JSON over HTTP) with their areas | yes |
+| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies; local disk and inbox with their areas | |
 | `jadpo-host-workers` | workers-rs: fetch, scheduled, `waitUntil`, sockets, bindings | only |
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
-| `jadpo-test` | Test runner, PostgreSQL harness, differential comparison | |
+| `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code | |
 | `jadpo-lsp` | Language server | |
 | `jadpo-cli` | The `jadpo` binary: commands, help, completion | |
 
 Built so far: every crate above but `jadpo-codegen` and
-`jadpo-host-workers`; `jadpo-plan` began in chunk 2.10 with type plans,
-failure shapes, constants and the frame table (§2.5), and `jadpo-drivers`
-(PostgreSQL only) and `jadpo-host-native` in chunk 3.1 (§2.6). Since chunk
-3.2 `jadpo-plan` also holds the SQL each query and `get` runs
-(`QueryPlan`, `EntityPlan`), since chunk 3.3 each write site's
-(`WriteSitePlan`), and since chunk 3.4 each lifecycle's purge
-(`PurgePlan`), as the read and write plans `jadpo_std::read` and
-`jadpo_std::write` define: plain data (statement text, where each
-parameter comes from, how each column becomes a value and a row a
-record) that `jadpo-plan` decides and `jadpo-runtime` runs, so both
-executors send the same statements and build the same values, and compiled
-code needs nothing from a compiler crate to run them.
+`jadpo-host-workers`, which come with Phase 8.
 
-Since chunk 4.1 the plan also holds the route table
-(`jadpo_std::http::RouteTable`, `Plan::routes`): each route's method and
-full path, where its input comes from (the query string, the JSON body,
-and the fields read from headers), its success status and deadline, the
-action it runs by callable number or the query's read plan, and how each
-argument is made from the placeholders and the input; and a JSON codec
-(`jadpo_std::http::Codec`) for every type that crosses the boundary,
-numbered like the type plans: a scalar with its validator and whether an
-`Int` is a JSON number, an object's fields in declared order, an enum's
-variants, collections, `T?` and a page. The checker reads each route group
-into a model without positions (`jadpo_check::routes`: `group_read` per
-group, `table_problems` across them, `api_table` from `app.jadpo`), which
-the graph (route and API nodes, `runs` and `uses` edges), the plan, the
-API record (`routes::record`) and OpenAPI (`routes::openapi`, written by
-`jadpo check` to `build/openapi/<api>.json`) all read; the record and
-OpenAPI render types through one view of the graph (`routes::wire`).
+**`jadpo-std`** decides once what both sides need: what a valid value is
+(`Rules` and the validators the checker runs on literals and the runtime on
+values), what each standard-library operation takes and gives
+(`OPERATIONS`), and each standard type's data entry (`standard`, area 19:
+its text form, JSON shape, storage and validator), with the storage codec
+that binds a value to its column (`standard::storage::bind`). The plans the
+runtime runs are its plain data, so compiled code needs nothing from a
+compiler crate.
 
-Since chunk 5.1 the plan also holds the settings
-(`jadpo_std::config::ConfigPlan`, `Plan::config`): each setting's name, the
-environment variable it is read from, whether it is secret, the codec its
-value is read and checked by (numbered with the route table's, sharing the
-type plans' validators), its default and test value in the spelling a
-variable has, and how `jadpo test` makes a secret; and for each database
-connection the setting holding its address. A body's `config.<name>` is its
-own graph expression (`Expr::Config`, decoded to the setting's number), and
-a test's `config:` the values the test's callable plan gives that test.
+**`jadpo-sql`** writes every PostgreSQL text, each a function given the
+columns, conditions and values its caller chose, so the graph, the checker
+and the plan keep no SQL of their own. A condition becomes SQL in one place
+(`condition`), which the plan's statements and the checker's partial indexes
+both use; `literal` writes a value as SQL text where a statement takes no
+parameters (a partial index's predicate, a backfill), as the storage codec
+made it.
 
-Since chunk 5.5g the plan also holds the codecs `json.read` and
-`json.write` run with (`jadpo_std::http::JsonTable`, `Plan::json`): the
-route table's kind of codec for each type a call reads or writes, built by
-the same code, numbered per call through the site's `Decoded::Json`, so a
-document in memory is read and written exactly as a request and a
-response are (area 19, "Data formats").
-Since chunk 5.5w2b the table also numbers the type of each field holding
-a JSON-held standard value (`RichText`, `RichTextBlock`, `LocalisedText`,
-`FieldModel::json`): its column is `Column::Json(n)` and its write's
-parameter `WriteSource::Json`, and the runtime's `store` is given the
-table with the program's validators and shapes (`JsonCodecs`, as
-`json.read` is given them), so its `jsonb` holds what `json.write` writes
-and reads back as `json.read` reads. Since chunk 5.9b that is every field
-stored as JSON, an application's enum with data, object, list, set or map
-among them (`FieldModel::json` holds its type), within the 1 MiB and 128
-levels a request's body is read to (`JSON_KEPT_LIMIT`, `JSON_KEPT_DEPTH`),
-and the table numbers each event type too, by its identity key
-(`JsonTable::events`), for the outbox's payload.
-Since chunk 5.5w3 a codec of a standard type a built-in type holds reads
-and writes it through the contract's JSON (`jadpo_value::standard::json`),
-by its entry's `Json`: its canonical text, or an object of the members
-`Json::Parts` lists (`Money`, `ZonedTime`, the quantities), which
-OpenAPI's schema reads too (`routes::wire::scalar_schema`), so neither
-names a built-in type; `jadpo_plan::standard_codecs` makes any standard
-type's codecs over an empty graph, for the per-type harness.
-Since chunk 5.5w3b the storage codec is the shared leaf's
-(`jadpo_std::standard::storage::bind`, with `SqlValue`): the runtime's
-`to_sql` reads a value as the codec's `Stored` view and calls it, and
-`jadpo_sql::condition` decodes a literal for its field
-(`jadpo_std::constant::literal`, moved from `jadpo-plan`, given the
-field's built-in type and scale on `Column`) and makes its value with
-it. A statement binds that value as a parameter through `Bind::stored`
-(`Source::Stored`, `WriteSource::Stored`, `PurgeSource::Stored`, which the
-runtime sends as they are); where a statement takes none (a partial
-index's predicate, a migration's backfill, the identity statements with
-fixed parameters) `jadpo_sql::literal::sql` writes the same value as SQL
-text (area 19, "Chosen in chunk 5.5w3b").
-Since chunk 5.5q the table marks the operations that read the generator
-(`Op::reads_generator`, `random`'s five): the one exception to every
-operation being pure. The checker refuses them outside actions and tests
-(`type.random_context`, as `clock.now`'s `type.clock_context`), and each
-executor runs them through `jadpo_value::random::run`, given the
-invocation's source of random bytes, rather than `jadpo_value::run`.
-Since chunk 5.5q2 `crypto`'s operations run the same way, through
-`jadpo_value::crypto::run`, given the invocation's random bytes (for
-`encrypt`'s nonce and `hash_password`'s salt, which read the generator)
-and the key its `key: config.<name>` names. A key is never a value: the
-executor passes the setting's number in the key's place, and the
-operation is handed the setting's `KeyRing` (current and previous), which
-`jadpo_runtime::config::key_ring` makes from the checked settings for
-either executor.
-Since chunk 5.5r `crypto.verify_jwt` runs there too, given the
-invocation's clock as well (`Op::reads_clock`, its one operation, which the
-checker refuses outside actions and tests as `type.clock_context`), in
-`jadpo_value::jwt`: the token types are entries in
-`jadpo_std::standard::security`, whose `decode_base64url` both sides
-read, and the kinds of key a `Jwk` holds, their algorithms and the
-rules across its parts are `jadpo_std::standard::jwk`'s (chunk 5.5r4),
-and its conditions are `RuleKey`s that only an `attempt` settles
-(`RuleKey::only_when_run`). With `as:` (chunk 5.5r4) the plan gives the
-call the codec of the type `as:` names, as it gives `json.read`'s, and
-`jwt::verify_jwt_as` reads the token's own claims through it. A new `FormatKey`,
-`FirstPart`, shows an object by the first of its named parts it has.
-Since chunk 5.5r2 the secret values (`Password`, `ApiKey`, `BearerToken`,
-`TotpSecret`, `SecretText`, and `Jwt`) are entries held as text whose
-text form, JSON, format and storage say read and never written
-(`TextForm::Secret`, `Json::Secret`, `FormatKey::Redacted`,
-`Storage::Never`; `security::secret_value` names them). The runtime holds
-one as `Value::Secret` (`jadpo_value::secret`): `Validator::store` makes
-it from text whose chain names a secret, so construction, a request's
-JSON, `json.read` and settings all give one, the plan keeps a literal as
-`Constant::Secret`, and `text.parse` reads one through its text form.
-`Display` and `Debug` write it redacted, so every report and test screen
-does; `==` (`ops::equal`, and `PartialEq`) compares it in constant time;
-the operations made for one read it through `Secret::expose`.
-`jadpo_check::types::secrets` decides where one may go: the declaration
-check, the data model, `json.write`, every standard operation's arguments,
-the operators and construction report `type.secret_exposed`. Credentials
-the runtime makes draw on `Ctx::secret_random_bytes`, never on a
-recording's tape.
-Since chunk 5.5r3 a standard type may be built on `Bytes` (`Holds::Bytes`,
-`Hash`, `Hmac` and `EncryptedValue`): `standard::declared` gives it as
-`Bytes` whose rules name it as their `standard`, which
-`Rules::check_bytes` checks through the entry's `Validator::accepts_bytes`,
-so the type table, the plan's chain, the wire and storage treat it as
-`Bytes` (Base64 in JSON, `bytea`), and `TextForm::Base64` is its canonical
-text. The checker proves a construction from the operation that makes its
-bytes (`security::made_by`, read in the rule verdict), so
-`Hash(hash.sha256(x))` needs no arm. `Value`'s `PartialEq` and the
-canonical order compare every `Bytes` in constant time. `OneTimeCode`
-joined the secret values, and a `Bytes` part of a standard object is
-bounded by its length (`Part::Bounded` on `Bytes`).
-Since chunk 5.5r5 `Certificate` is a standard object read only from what
-it parses (`standard::certificates::read_only`): its canonical text and
-JSON are its PEM (`TextForm::Pem`), which `jadpo_value::certificate` reads
-strictly, the DER checked as DER by its own walk and then read by
-`x509-parser` (pure Rust, so it builds for wasm32), the parts made from
-the DER and written back from its `der` part. The checker refuses an
-object literal of one (`type.constructor_input`), so no executor ever
-holds parts its DER doesn't say.
-Since chunk 5.5g2 an `attempt` arm that maps `json.read`'s `mismatch` to
-a failure declaring `problem: DecodeProblem` carries that field's place
-(`RuleArm::problem` in the graph, `Raise::problem` in the plan), and the
-executor fills it with the first problem the codec found, a built-in
-object like `IssuedToken` (`jadpo_std::http::builtin_object_fields`).
-Since chunk 5.5t a rule across an object's fields (area 2) is a `rule`
-node, a child of its type, whose typed body is its condition checked with
-the type's fields as parameters (`types::rule_callables`); `jadpo-plan`
-lowers each into `jadpo_std::across::CrossRule`, plain data on the
-object type's `ValidatorPlan`, and `jadpo_value::across` runs it, so the
-interpreter's builds, the codecs' objects and compiled code check one
-implementation. A broken one is `RuleKey::Named` with the rule's name,
-which `RuleArm::named` maps; the checker's proof reads the condition as a
-positionless `types::across::Cond` with comparisons known around the
-construction (`known::Relation`).
-Since chunk 5.5t2 a standard object type's rules across its parts are
-`jadpo_std::standard::across`'s `StandardRule`s, each one check over what
-is known of the parts (`Known`, `Given`, `Parts`): the checker reads a
-literal by it (`types/body/standard_rules.rs`) and proves a rule ordering
-two parts through the same `Cond` proof; the plan gives a standard
-object's validator a `CrossRule` per rule whose check is
-`RuleExpr::Standard`, which `jadpo_value::across` runs over the value's
-fields, so builds, `text.parse`, the codecs and compiled code read one
-implementation. `jadpo_value::across::broken_standard` names the rule a
-value sent as its text breaks. The checks it replaced (`order_rules`,
-`part_rules`, `events::broken`, the media and geo ones) are gone, and no
-text reader checks a rule across parts any more.
+**`jadpo-graph`** holds the application graph (§2.3) and the physical
+schema (`schema`: stores, tables, columns, keys, constraints and indexes,
+each with its database name and born name), a migration's `snapshot.json`
+and the structural diff between two schemas; `migration` works out which
+changes need a person's decision and writes each store's SQL. The schema
+sits here, not in `jadpo-plan`, because `jadpo check` and `jadpo migrate
+new` both read it.
 
-Since chunk 3.12 everything the runtime needs of a plan is that kind of
-plain data in `jadpo-std`: type plans (`jadpo_std::types`: a type's
-validator chain, a shape's fields in declared order with what a field
-left out holds, a variant's place, a failure's code, kind, status,
-message and sectioned fields), constants (`Constant`), and on the read
-and write plans the failure a missing record raises (`MissingPlan`) and
-what each refused constraint raises (`Refusal`: the site's `conflict:`
-arm, a reference's not-found failure, or a fault). `jadpo-plan` decides
-and numbers them; the runtime raises from them (§2.5), and Phase 4's
-codecs and display reads and Phase 8's code generator read them without
-the interpreter. PostgreSQL text is written in one leaf crate,
-`jadpo-sql`, which depends only on `jadpo-std`: the condition model and
-its renderer (below), the plan's reads, writes and purges, and a
-migration's table definitions, each a function given the columns,
-conditions and values its caller chose, so the graph, the checker and the
-plan keep no SQL text of their own.
+**`jadpo-db` and `jadpo-check`** are the incremental compiler (§2.2, §2.4),
+the only crates that use salsa. `jadpo-check` builds the schema the
+entities ask for, system tables included, and compares it with the latest
+snapshot. The standard library is declared for programs in Jadpo stubs
+embedded in `jadpo-check` (`std/`), which a test holds to `jadpo-std`'s
+operation table on arity and kinds; a namespace the compiler fills
+(`clock`, `sessions`, `oauth`) lists its built members in `std/names.txt`,
+and any other member is `toolchain.not_built_yet`.
 
-Since chunk 3.1 the physical schema lives where both sides of the compiler
-reach it: `jadpo_graph::schema` holds the model (stores, tables, columns,
-keys, unique constraints, foreign keys and indexes, each with the name the
-database knows it by and the born name it holds), a migration's
-`snapshot.json` in canonical JSON, and the structural diff between two
-schemas; `jadpo_graph::migration` works out from two schemas which changes
-need a person's decision, the snapshot the next migration records, and its
-SQL, per store. `jadpo-check` builds the schema the entities ask for, with
-each store's system tables (`data::schema`), and compares it with the
-latest snapshot, so `jadpo check` and `jadpo migrate new` read one answer.
-That is the "migration diffs" and "system-table placement" the table gives
-`jadpo-plan`, moved down because `jadpo check` needs them. Since chunk 3.2
-the schema also holds the indexes the queries need (area 5, "Indexes"):
-for each query, and each list it includes, the fields it always tests with
-`==` or `in`, in the order its lines name them, then its order's fields,
-unless an index or unique key the table already has serves them; a
-reference's own index goes once a query's index starts with its column.
-Their columns are ascending, which PostgreSQL also reads backwards. Since
-chunk 3.4 an index of an entity with a lifecycle holds only the records
-its `visible:` lets through (`Index::predicate`, a partial index's `WHERE`
-in the snapshot and the migration), unless `visible:` reads `clock.now`,
-and a reference's own index then stays. Conditions become SQL in one
-place, `jadpo_sql::condition` (in `jadpo_check::data` until chunk 3.12),
-which the plans' statements and the indexes' predicates both use, through
-a `Bind` that says where a parameter goes and the `Columns` an entity's
-model gives it. What
-each write can break (`data::write_rules`: an entity's unique rules, its
-references, and the restricting references a delete reaches through every
-`cascade`) is a per-entity query the checker and the plan both read, so a
-body depends only on the entities it writes.
+**`jadpo-plan`** reads a checked project once and numbers what both
+executors run (§2.5): each callable and site, each type's validator chain
+and codecs, each statement, and the tables above. A rule across an object's
+fields lowers to a `CrossRule`, which `jadpo-value` runs, so builds, codecs
+and compiled code check one implementation.
+
+**`jadpo-value`** implements each standard-library operation once, as one
+Rust function both executors call; `run` matches on the table's `Op`
+exhaustively. Its pure-Rust dependencies build for wasm32 with their data
+compiled in (jiff with its bundled IANA zones, ICU4X with Unicode CLDR), so
+every target reads the same zones and locale data and none reads the
+platform's. Operations that read the generator or the clock run only in
+actions and tests, given the invocation's random bytes or clock.
+
+**`jadpo-runtime`, `jadpo-drivers` and the hosts** are §2.6: the runtime
+owns the action boundary and the components, a driver implements one
+capability over a transport the host supplies, and a host is the only code
+that knows its platform. The PostgreSQL driver sends pgvector and PostGIS
+values in their binary forms with no type number, knowing those columns by
+their type's name, and refuses to encode a geometry whose positions mix
+with and without altitude, since EWKB flags a third coordinate once for the
+whole geometry; storage itself binds a geometry without asking, because the
+checker and every reader refuse such a mix (area 20, "Altitudes are all or
+nothing").
+
+**`jadpo-term`, `jadpo-test`, `jadpo-lsp` and `jadpo-cli`** are tooling:
+the CLI design language's screens, the test runner (§2.5, §2.7), the
+language server, and the binary that nothing depends on.
 
 **Dependency direction.** Compiler crates never depend on runtime crates,
 except `jadpo-interp`, which links the runtime it shares with compiled
@@ -492,562 +341,25 @@ shared crate, `jadpo-std`, depends on no workspace crate, so both sides may
 depend on it: what a valid value is, and what each standard-library
 operation takes and gives, is decided once (decided 2026-10-13, Phase 1
 review). The layers are a table in the root `Cargo.toml`
-(`[workspace.metadata.layers]`); a workspace test reads it and `cargo
-metadata` and fails on anything a crate reaches, directly or through other
-crates, against these rules, on salsa anywhere but `jadpo-db` and
-`jadpo-check`, and, since chunk 3.12, on `jadpo-sql` reaching anything
-but the shared leaf. *Rejected:* v0's single `core` crate, which grew to
-everything and let the generator read the syntax tree.
-
-**The standard library** (`list`, `temporal`, `decimal` and the rest)
-is declared in Jadpo stub files embedded in `jadpo-check`, for programs to
-call, and listed, typed, in `jadpo-std`'s operation table: each operation's
-parameters with their kinds, its result, and the one Rust function in
-`jadpo-value` that runs it, so its semantics exist once for both executors.
-A test holds the stubs to the table on arity and kinds, and `jadpo-value`
-matches on the table's operations exhaustively. An operation the language
-names but no chunk has built yet is `toolchain.not_built_yet` where it is
-called. In the stubs a single capital letter is a type variable, fixed by
-the arguments at each call; `Number` is any type built on `Int` or
-`Decimal`, and a built-in representation such as `Int` in a parameter is
-any type built on it, since operations work on the representation as
-operators do (so `integer.divide` takes values built on `Int`, and
-`decimal.divide` numbers). A parameter the table marks `never_zero` (the
-divisions' `divisor`) is checked as `/`'s divisor is: a literal isn't `0` and
-a value's type excludes zero (chunk 1.9). A type variable no argument fixes is a checked
-unknown: it accepts anything where it stands, but the container around it
-is still checked, so a `List<T>` parameter takes only a list. Since chunk
-5.2 the table also says what the stubs can't: a parameter of kind `OneOf`
-(a stub's `T`) takes only values built on the types it lists, and a result
-of that kind keeps the argument's named type; an `optional` parameter (a
-stub's `T?`) may be left out and is given `none`; an option `only_for`
-one built-in type means nothing for others (`type.temporal_option_unused`);
-a `Clock` parameter takes only a clock time written out; since chunk
-5.2b an option that is also `needed` must be given when it applies
-(`zone:` for an `Instant`, `type.temporal_zone_required`), and a `Format`
-parameter takes only a format written out, which the checker reads into
-`jadpo_std::TimeFormatSpec` and lowers as its text; and an operation's
-`conditions` are what it fails on unless an option written out settles
-them, mapped by the call's `attempt` as a construction's broken rules are
-(the operation returns `Fault::Broke(key)`, which the interpreter raises as
-the arm's failure). Since chunk 5.5b (area 19, "Lists") a `never_negative`
-parameter (a count or a position) is checked as a divisor is, a literal
-not below `0` and a value's type with a `min` of at least `0`
-(`type.argument_negative`); an `ordered` inline function's result must be
-a kind `<` orders, or text (`type.ordering_operand`); an `implicit`
-parameter is never written: the checker lowers it from the call's types,
-as `list.sum`'s `zero` of its items' representation, and a result of kind
-`Number` is that representation; a `Map` result is a stub's `Map<K, V>`;
-and `MOVED_NAMESPACES` lists a namespace that moved whole (`collection`,
-reserved with no operations), whose calls the type checker reports with
-an edit by their first value's type, since resolution can't know it.
-Since chunk 5.5c a `Set` parameter or result is a stub's `Set<T>`, and a
-standard object type an operation takes (`InstantRange`, kind `Std`) can
-be written as an object literal, which the plan builds from its data
-entry's fields (area 19, "Sets", "Maps" and "Ranges"). Since chunk 5.5c2
-a stub's `Function<K, V, U>` is an inline function of two parameters,
-`(key, value) -> ...` (the graph's `Inline` holds its parameters in
-order, and `jadpo_value::run`'s `each` is given the values as a slice);
-and a `Range` parameter (a stub's `Range<T>`) takes a `Range<T>` or a
-standard range type, all of a call's ranges one range type, which a
-`Range` result is. `Range<T>` is the first standard type with a type
-argument: `Holds::Range` in its entry, the checker's `Ty::Opaque("Range",
-[T])`, one plan shape for every `T` and a codec per `T`.
-Since chunk 5.5k (area 19, "Time and calendar additions") a standard
-object's fields are `Part`s: a built-in type, a whole number with a range,
-or another standard type. The type table reads them as fields
-(`types::standard_fields`), a range as the field's own rules, so an
-object literal proves it and `LocalTime.hour(...)` builds one, which the
-plan's validator checks from the entry. An object whose JSON is its
-canonical text has `Codec::Standard`, read and written through
-`jadpo_value::standard`; `jadpo_value::calendar` holds the time group's
-texts, `CalendarPeriod`'s operator rows (which `ops::add`, `subtract`
-and `multiply` reach by the value's shape) and `temporal.period_between`,
-and `ops::compare` orders a record its entry marks ordered, part by part.
-Since chunk 5.5k2 a standard type held as text is a stub's kind
-`Std` too (`RecurrenceRule`, `OpeningHours`), the runtime giving the
-operation its text; `jadpo_std::standard::recurrence` reads an RFC 5545
-rule and expands it in local time, and `opening_hours` reads OpenStreetMap's
-hours, each shared by the type's validator and by `jadpo_value::temporal`'s
-`occurrences` and `open_at`, which put the local times in the zone with
-jiff. A `within` parameter (`occurrences`' `count`) is a whole number
-proved between two bounds as a count's sign is. Since chunk 5.5k4 a
-`Clock` parameter also takes a `LocalTime`, given to the operation as its
-record; a `Local` parameter (`resolve`'s first, a stub's `T`) takes a value
-built on `CalendarDate` or a `LocalDateTime`, `resolve`'s `at:` being an
-option `needed` for a date and `only_for` it; a `OneOf` text literal
-takes the first listed time it is written as; and `occurrences`' result is
-`List<CalendarDate>` when its `from:` is a date, the runtime matching on
-the value it is given.
-Since chunk 5.5d (area 19, "Numbers") a `written_out` parameter
-(`decimal.round`'s `scale:`) takes only a whole number from 0 to 18
-written at the call, and an operation whose `OneOf` result shares its `T`
-with two parameters (`min`, `max`) takes values of one type there, as `+`
-does, giving that type, or the representation for a plain number.
-Since chunk 5.5f (area 19, "Text") a `never_empty` parameter is text
-checked as a divisor is (a literal not `""`, a value's type with a
-`min_length` of at least 1, `type.argument_empty`); a `character`
-parameter (`text.pad_start`'s `fill:`) takes only a text literal of one
-code point; a `bounds_length` parameter is the text a result is never
-longer than (`at_most_length_of`), which construction proofs read as that
-argument's `max_length`; and a stub's `List<Text>` takes a list of any
-values built on `Text`. `jadpo-value`'s `text` module runs the text
-operations in code points, case mapping, collation (`list.sort_by`'s
-`locale:`) and the slug's decomposition over ICU4X, and the codecs compose
-every text a request carries to NFC before its rules run, in the one
-function both executors decode through.
-`temporal` runs on jiff with its bundled IANA database,
-in `jadpo-value` only, so every target reads the same zones and none reads
-the platform's (area 10, "Zones and local times"). The time types'
-`text.format` (area 19; `temporal.format` until chunk 5.5a) and
-`format_relative` write text for people in `jadpo-value`'s `present` module
-over ICU4X with Unicode CLDR compiled in (pure Rust, pinned exactly, built
-for wasm32 like the rest; area 10, "Chosen in chunk 5.3"): the format
-arrives as `TimeFormatSpec` text, the locale as the `Locale` variant, and
-the locales an application supports (`locales { }`, `LocalePlan`) reach the
-wire through the codecs, which accept only those, and reach `jadpo-value`'s
-`run` as its `locales` argument, which `locale.from_accept_language`
-(chunk 5.3c; `locale` module, a pure function of the header and the plan)
-chooses among; a `nullable` parameter (a stub's `T?` that a call must still
-pass) is the one the table marks apart from an `optional` one. Translations
-(area 10, "Translations as messages", chunk 5.4c) are read in `jadpo-check`'s
-`translations` module from the project's own source: a `type X = Message`
-in a `translations/` folder (`FieldsBase::Message`, with `PluralCount` a
-built-in beside `PresentationText`), and one unnamed `translations { }` in
-each language file, named for its locale (`SINGLETONS` in the grammar,
-`Folder::Translations`). `declared` reads what can be worded in a scope (a
-domain's or `shared`'s): its messages, the enums of the scope that a
-language file words, and the emails; `language` reads one language file by
-itself, and `check` compares a scope's files with its subjects and the
-application's `locales { }`, giving the project's `TranslationPlan`: for
-each message or enum, its parameters and its wording (`jadpo-std`'s
-`Template`, `{field}` pieces only) in each locale that has it complete. A
-call is typed by a per-name `callable` query that sees only the message's
-parameters, so editing wording checks no body again. The plan reaches the
-interpreter's `Callee::Translation` (and generated code, which will write
-the text with the same function): `jadpo_value::present::translate` walks
-the fallback chain of an `in_progress:` locale (`locale::fallback_chain`:
-itself, its regional siblings with CLDR's likely one first, the default),
-picks the wording by the enum value or by the locale's CLDR plural form,
-and writes numbers the locale's way, over `icu_plurals` and `icu_decimal`
-beside `icu_datetime`. The plural forms each locale needs are a table in
-`jadpo-std`, which `jadpo-value`'s tests hold equal to ICU4X's data. Each
-message and enum is a `translation_key` graph node digested with its
-wording in every language file, so a save of one reaches the tests that call
-it. Chunk 5.4d adds, in the same module: failures as subjects keyed by code
-(`declared`), required when a route's `fails` lists them (`failures`, which
-reads the route model), their wording carried in `Analysis` and written by
-`jadpo-cli` as `build/openapi/<api>.failures.<locale>.json` beside the
-OpenAPI documents; `sources`, each folder's `sources.jadpo_record` against
-the wording (`Standings`, `updated`) and `translations: { review: }` in
-`app.jadpo`; `outstanding`, the gaps and unused messages the commands list;
-and `definitions`, go to definition from a call. Chunk 5.4e adds `jadpo`,
-Jadpo's own messages: a catalogue in `jadpo-std` (`jadpo_text`) of each
-message with its feature, fields and shipped wording, turned into
-`Subject`s the root `translations/` folder's `jadpo: { }` group (the
-`RootTranslations` place, read by `language` into `Group`s) is checked
-against by the same `Ctx` as a folder's, a feature being on when a route
-(and its authentication) calls for it; the root folder's record is `sources`'
-`ROOT` scope, and the failures it words join each API's export. The pseudo-locale
-`Locale.en_xa` is a `Locale` variant that `fallback_chain` sends straight to
-the default locale, and `present::pseudo` accents and lengthens the text of
-the wording while the values it writes stay as they are.
-
-Prompts (area 21, "Prompts as files", chunk 5.5v2) are read in
-`jadpo-check`'s `prompts` module: a `type X = Prompt` (`Base::Prompt`,
-`FieldsBase::Prompt`, `Folder::Prompts` in a domain or `shared/`) and its
-text, `<name>.prompt` beside it, which `jadpo-db` reads as a record
-(`is_prompt_text`; in loose files any `.prompt`) and `source_texts` hands
-to the renderer so its errors quote it. `jadpo-std`'s `prompt` module
-parses the two sections into `Piece`s, fills them (`fill`) and escapes a
-data block's closing tags (`escape`), for text and for JSON; `analysis`
-decides how each field is sent (`Form::Closed`, `Text` or `Json`, or the
-conversation's turns), reports the `prompt.` rules and gives each checked
-prompt a `PromptEntry` with its digest, a SHA-256 over its two files. The
-graph gets a `prompt` node per prompt (`Detail::Prompt { version }`) and a
-`uses` edge from each callable that renders it. `prompts.render(value)`,
-a member of the generated `prompts` namespace, is checked from the value's
-type alone and lowered to `Callee::Prompt(name)`; `jadpo-plan` numbers a
-JSON codec for each field the text writes (`Decoded::Prompt`) and carries
-the `PromptPlan`, and `jadpo_value::prompt::render` builds the
-`List<ChatMessage>` for both executors. `jadpo ai show` (`jadpo-cli`'s
-`ai`) prints a prompt's messages from `outline`, unfilled.
-Enums that Rust code interprets (`Rounding`, `TextFormat`,
-`UuidVersion`, `Weekday`, `Dst`, `InvalidDay`, `ComponentStyle`, `TextDirection`, `TranslationReview`, and `Zone` and `Locale` from their tables) are
-declared once, in `jadpo-std`. The namespaces the compiler fills from the
-project or the platform (`clock`, `config`, `translations`, `sessions`,
-`oauth`) list in `std/names.txt` the members built so far (`clock.now`,
-and a test's `clock.advance`);
-any other member is `toolchain.not_built_yet`. `config.<name>` is the
-exception: its members are the project's own settings, read from
-`config { }` (chunk 5.1, `jadpo_check::config`), so `names.txt` lists none.
-
-**The standard types** (area 19, "Every standard type meets one
-contract"; chunk 5.5a) are the extension point chunks 5.5b to 5.5s add
-type groups through, with no new code path. Each is two things:
-
-- a stub declaration in `crates/jadpo-check/std/standard.jadpo`, global,
-  which `StdNames` reads (`StandardStub`): `= Enum { ... }` for a closed
-  list (its variants, or none when its table in `jadpo-std` is long),
-  `= Object { ... }` for a value with named fields, or its own name for a
-  type built into the language (`jadpo_std::Builtin`);
-- a data entry in `jadpo_std::standard::STANDARD_TYPES` (`StandardType`):
-  what it holds (`Holds`), its canonical text (`TextForm`), its JSON shape
-  (`Json`), its storage column, the locale data it is formatted with
-  (`FormatKey`) and the `text.format` options it takes and needs, whether
-  `<` takes it, its named `Validator` (IBAN's mod-97, Luhn and the like are
-  added to that enum, one function each), the shape `type.standard_exists`
-  matches (`FieldMatch`), its examples, and the release that added it,
-  which `type.standard_clash` names (chunk 5.5a2).
-
-Every baseline operation has one implementation over the entries:
-`jadpo_value::standard` (`text.from`, `text.parse`, `text.format`, with
-CLDR names in `present::names`), the plan's codecs (`Made::StdObject` for
-an object), `jadpo_check::data::columns::column_type`, the checker's
-`ordered`, and `types/body/contract.rs`, which decides which values the
-three calls take, the options a type needs and what `text.parse` can fail
-with (`malformed` and the rules of the type `as:` names; the interpreter
-builds that type once the text is read). `jadpo_check::types::decl`
-matches `type.standard_exists`. Two tests hold everything to the entries:
-`crates/jadpo-check/tests/standard_types.rs` (the stub against the entry,
-and what each call and `<` accept) and
-`crates/jadpo-interp/tests/standard_types.rs` (text both ways, the
-format for people, JSON, storage, `==` and order, per example, through
-the codecs the plan's builder makes, `jadpo_plan::standard_codecs`, since
-chunk 5.5w3). A new
-`TextForm` or `FormatKey` variant is the only code a group may need, once,
-for every type that shares it. Operations that move are listed in
-`jadpo_std::MOVED` and reported as `semantic.standard_operation_moved`.
-Since chunk 5.5h an entry's storage is one column or named columns
-(`jadpo_std::standard::Storage`): a field of such a type (`Money`) is
-stored in `<column>_<part>` columns, always all of them, read through
-`Column::Compound` and `Column::Part` and written through
-`WriteSource::Part`, with `jadpo_value::standard::to_parts` and
-`from_parts` the one codec, and the part a type can fix (`Money`'s
-currency) held to its value by a check constraint, which the physical
-schema, snapshots and migrations now carry (`schema::Check`). Standard
-enums are spelt on the wire and in settings by their entry's codes
-(`Spelling::Codes`). `Money` itself is a `Builtin` (`Value::Money`, minor
-units and a currency), its operators in `jadpo_value::ops` and `money`;
-the checker carries what it knows of an amount's currency
-(`types/body/currency.rs`, with conditions' currency classes in
-`known.rs`), an `attempt` covers a chain of operators that can fail
-`currency_mismatch`, and the plan gives each `*` or `/` of an amount its
-type's `rounding:` (`Decoded::Rounding`).
-Since chunk 5.5i a standard type can be held as text (`Holds::Text`, the
-payment and identity numbers in `jadpo_std::standard::identifiers`): its
-stub is `= Text {}`, the checker's type table declares it as a type built
-on `Text` whose one rule is `Rules::standard`, its own check (its pattern
-and named validator, broken as `format`), and the plan's chain, the wire
-and OpenAPI read a `TypeRef::Std` of it as text with that rule
-(`standard::text_rules`), so construction, JSON and storage need nothing
-new. `text.format` is given the type's name by an implicit argument the
-checker fills (`standard`), since the runtime holds only the text, and
-shows it grouped or masked to its last four (`FormatKey::Grouped`,
-`FormatKey::LastFour`).
-Since chunk 5.5j (area 19, "Physical quantities") each of the 17
-quantities with `DataSize` and `Bitrate` is `Builtin::Quantity(kind)`
-(`jadpo_std::QuantityKind`), held as `Value::Quantity`, a mantissa in the
-kind's SI base unit at its scale. `jadpo_std::quantity` is the one table
-of units (each kind's unit enum, its suffix, its size as an exact fraction
-and an offset for temperatures) and of the products and quotients, with
-the exact conversions and the table's arithmetic both the checker and
-`jadpo-value`'s `units` module use; `unit_suffixes()` reads it for the
-editor. A suffixed literal is `Const::Quantity` and `Literal::Quantity`
-(any suffix but a duration's), checked by `literal::check`, which also
-reports a bare number as `type.unit_required`; `types/body/quantities.rs`
-types the `units` operations and `text.format`'s `unit:`, whose stubs
-write `Quantity` and `QuantityUnit` (`Kind::Quantity`,
-`Kind::QuantityUnit`). A quantity is stored in one `numeric(38, <scale>)`
-column (`Column::Quantity`), sent as `{ "value": "2.5", "unit": "kg" }`,
-and shown by `present::units` over ICU4X's CLDR unit names where it has
-them.
-Since chunk 5.5j2 `Percentage` is `Builtin::Percentage`, held as
-`Value::Percentage`, the exact `Decimal` fraction (20% is 0.20), with its
-operator rows in `jadpo_value::ops` and the checker's `ops.rs`
-(`percentage_arithmetic`, and money's and quantities' rows taking it).
-The lexer reads digits touching `%` as one `UNIT_NUMBER` token, which the
-checker reads as `Const::Percentage` and the graph holds as
-`Literal::Percentage`; a number, `%` and a name or number all touching is
-`LexErrorKind::PercentOrRemainder`, `syntax.percent_ambiguous`.
-`jadpo_std::percentage` holds the literal's and the three types' texts.
-A construction into a type built on `Percentage` takes a `Decimal` ratio,
-which `Validator::store` turns into a percentage. It is stored in one
-`numeric` column (`Column::Percentage`), sent as its text, `"20%"`, and
-shown by `present::percent` over ICU4X's percent formatter; a message
-writes it through `translation::Style::Percent`. `Ratio` and `Fraction`
-are standard objects held as text on the wire and in storage, as the
-time objects are.
-Since chunk 5.5l a closed list (question 22) is a standard enum with a
-`ClosedList` in `jadpo_std::standard::places`: its authority, its other
-code systems (`CodeForm`, each a list of codes in the variants' order,
-which `text.parse` and `text.from` take as `form:`, checked in
-`types/body/contract.rs`) and its retired variants, which the checker
-refuses where code writes one (`type.variant_retired`) and `Enum.all`
-leaves out. `jadpo_std::enums()` and `variant_ordinal` read every standard
-enum from its entry, so a list is its table alone; the tables are
-generated once into `places_data`, `person_names_data` and
-`addresses_data`, which the example-name ban skips as authority data
-(`// @generated`). `Enum.all` lowers to a list of the variants it lists.
-A standard object's `Part` may be a line of text (`Part::Line`, its
-pattern its rules), `Optional` or a `List`; the checker reads such a part
-as a nullable field or a list, the plan as the field itself (`TypeRef::Field`,
-whose chain is the part's rules), and an object with `Storage::Columns` is
-stored a column per part, through the same `Column::Compound`,
-`WriteSource::Part`, `to_parts` and `from_parts` as `Money`, a part that
-may be `none` a column that may be `NULL` and a list a `text[]`, which
-the PostgreSQL driver now reads. `jadpo_value::present::contact` writes a
-person's name by CLDR's person-name patterns and an address by
-libaddressinput's formats, and `present::names` the CLDR names of places,
-languages and scripts through ICU4X's display names.
-Since chunk 5.5l2 `jadpo_std::standard::phones` validates, reads and
-formats phone numbers from libphonenumber's metadata (`phones_data`,
-generated once, its patterns compiled on first use), and
-`standard::postal` checks and reads postal codes by each country's
-pattern (`postal_codes_data`). `text.parse` takes `country:` (a `Country`
-value; `country_option` in `types/body/contract.rs` refuses it for other
-types), which `jadpo-value`'s `parse_in` hands to those modules. A postal
-code fitting its address's country is a rule across the address's parts,
-`standard::across` since chunk 5.5t2.
-Since chunk 5.5i2 the cards (`jadpo_std::standard::card_types`) and the
-identity documents (`standard::documents`) are entries like the rest: a
-number's rule reads its document's kind and country (`standard::across::fits`
-since chunk 5.5t2), and each country's forms are tables
-of a pattern and an optional check digit (`CountryForm`), with bounds for
-a country that has none. `Part::Matching` is a part of text matching a
-pattern (a masked card's last four). `money.mask` (`Op::MoneyMask`) makes
-a `MaskedCardNumber` from a `PaymentCardNumber` by its issuer range
-(`card_types::brand_of`).
-Since chunk 5.5n a standard type may be held as a whole number
-(`Holds::Whole`, `HttpStatus` and `NetworkPort`): the checker's type table
-declares it as a type built on `Int` with its range as its rules, which
-name it as their `standard`, as a type held as text's do
-(`jadpo_std::standard::declared` gives either), so the plan's chain, the
-wire and OpenAPI read it as an `Int` with that range, sent as a JSON number
-(`Json::Number`) and stored in an `integer` column; `text.format` is told
-its name as a type held as text's is. A type held as text may be a
-narrower form of another (`standard::WITHIN`: a `UrlPath` is a
-`RelativeUrl`), built on it in the type table. A standard object's part
-named with a reserved word's trailing `_` is sent without it
-(`standard::wire_name`, `ProblemDetails`' `type_`), and one sent as RFC
-9457 sends a problem (`Json::Members`) leaves out its parts that are
-`none`, which read as `none` when left out, through the plan's `absent`.
-`jadpo_std::standard::web` holds the web types' validators (UTS 46 by the
-`idna` crate, the only dependency `jadpo-std` gained besides `regex`;
-RFC 3986's grammar and resolution; RFC 6265's cookies; Emoji 18.0's list
-in `emoji_data`), and `jadpo_value::web` runs `web`'s operations over it.
-Since chunk 5.5n2 `jadpo_std::standard::software` holds the software
-types' validators and SemVer 2.0.0's grammar and precedence, with
-node-semver's ranges desugared to comparators there; `SpdxLicence` reads
-the SPDX licence list from the `spdx` crate (0.13.6, Apache-2.0, the list
-3.29.0 under CC0), `jadpo-std`'s third dependency, and its expression
-grammar is jadpo-std's own. `SemanticVersion` is a standard object whose
-canonical text is SemVer's (`TextForm::SemanticVersion`), stored a column
-per part; `<` on it is its precedence (`jadpo_value::ops::compare`, build
-metadata ignored), and the one order (`jadpo_value::order`) sorts it by
-precedence then build metadata, so `sort_by` agrees with `<`.
-`jadpo_value::semver` runs `semver.satisfies` (`Op::SemverSatisfies`).
-Since chunk 5.5o `jadpo_std::standard::markup` is the HTML sanitiser
-every `Html` value is built with: ammonia over html5ever, with Jadpo's
-allow-list as data there, its output always a fixed point, and markup
-nested past 512 elements kept as text. ammonia and html5ever are
-`jadpo-std`'s fourth and fifth dependencies, so the checker proves an
-`Html` literal (`Validator::Html`, a literal already safe) with the code
-the runtime builds values with. `Html` is held as text (`Holds::Text`,
-`TextForm::Html`). Its construction is a transformation, not a refusal:
-`jadpo_value::Validator::store` sanitises text whose chain names it, as
-it turns a ratio into a percentage. Every construction, a write's input,
-a request's JSON and the probes go through `store`, and `text.parse`
-reads it through `TextForm::Html`. The checker's `verdict` never counts
-`format` breakable for it, and `parse_fallible` reads it as text, so
-neither needs an `attempt`. `jadpo_value::markup` renders CommonMark with
-pulldown-cmark (`jadpo-value` only) and sanitises the result for
-`markup.to_html`; `markup.to_plain_text` and `FormatKey::PlainText` read
-the sanitised text's tokens.
-Since chunk 5.5o2 a standard type may be a named collection: a list
-(`Holds::List`, `RichText`) or a map (`Holds::Map`, `LocalisedText`) of
-parts. The checker's type table builds each on `List<...>` or
-`Map<...>` as it builds an application's named collection, the plan
-gives it a list or map codec of its parts, and a map keyed by a standard
-enum is written by each key's wire text (a locale's tag). A part may now
-be a standard choice or object sent as its fields, which the plan
-already built recursively. `jadpo_std::standard::rich_text` holds the
-entries, the link pattern and `render`, which writes blocks and spans as
-HTML the sanitiser keeps unchanged; `jadpo_value::markup` reads a
-`RichText` value into those blocks for `markup.rich_to_html`
-(`Op::MarkupRichToHtml`), which sanitises the result, and
-`jadpo_value::locale::pick` walks area 10's fallback chain over a
-`LocalisedText` for `text.pick` (`Op::TextPick`) and `text.format`, with
-the application's default locale from the `LocalePlan` `run` is given.
-Since chunk 5.5p `jadpo_std::standard::colour` holds `Colour` and its
-hex text, and `jadpo_std::standard::media` the media types, the
-WebCodecs codec strings, SMPTE drop-frame and WebVTT rules and
-`media.fit`'s whole-number arithmetic. Generic text forms carry objects
-whose parts are numbers joined by a separator (`TextForm::Wholes`,
-`TextForm::Decimals`), an enum's code then text (`TextForm::CodeThenText`)
-and a WebVTT cue (`TextForm::Cue`); `Timecode` has no text form and is
-shown by `FormatKey::Timecode`. `jadpo_value::colour` runs `colour`'s five
-operations by CSS Color 4's conversions in fixed point at 18 places over
-`maths`' correctly rounded functions, so every target gives the same
-channels, and `jadpo_value::media` runs `media.fit`; a timecode's and a
-cue's rules are rules across their parts (chunk 5.5t2). A shape's `FieldMatch` may be `optional`
-(`Colour`'s alpha), and a stub parameter written `Percentage` or a
-quantity kind takes any type built on it.
-Since chunk 5.5m2 the records and measures are entries in
-`jadpo_std::standard::records` and `standard::health`. Two text forms came
-with them: `TextForm::Joined`, two parts joined by a separator, the first
-an enum's code, a standard type's text or a pattern's (`CodeThenText` is
-its case with a space and an enum, through the same
-`jadpo_value::media::read_joined`), and `TextForm::FlightNumber`, IATA's
-designator, in `jadpo_value::measures`. Three `FormatKey`s show measures
-in the unit a reader expects: `UnitsIn` (a quantity in a listed unit at
-listed places, or in `unit:`'s), `Measures` (an object's or a choice's
-quantity parts, each in its kind's listed unit or `unit:`'s, the unit
-written once where it says) and `Dosage`; `present::units` now splits a
-quantity into its number (`number_in`, exact or rounded to places) and
-its unit (`with_unit`), so a unit can follow several numbers. A type built
-on a quantity with `UnitsIn` (`HeartRate`) is named to `text.format` by
-the checker as a type held as text is, since the runtime holds only the
-quantity, and `StandardType::unit_kind` gives the kind `unit:` names a
-unit of. A rating's and a blood pressure's parts are ordered by rules
-across them (chunk 5.5t2). A `Part::Bounded` on a `Duration`
-keeps its bounds in milliseconds as `min_duration` and `max_duration`.
-Four units joined the table with no literal suffix (`mmHg`, `bpm`,
-`mgdL` and the glucose millimole). `CodeForm::Isbn10` is a form read and
-never written (`standard::reads_form`), which `text.parse` turns into the
-13 digits through `standard::isbn_from_isbn10`.
-Since chunk 5.5s the geospatial types are entries in
-`jadpo_std::standard::geo`, with H3's index check there. A geometry is
-sent as GeoJSON (`Json::GeoJson`): the plan gives it a `Codec::Standard`,
-which `jadpo_value::json` hands to `jadpo_value::geo` to read and write,
-the one place a position's `[longitude, latitude]` exists; it checks
-ranges, lengths, closure and members, rewinds rings to the right-hand rule
-on the way in and out, and reports a refusal at its place in
-`coordinates`. `Geometry` is a choice the plan sends the same way, never
-tagged. A geometry's storage is `Storage::Geography`, whose column type is
-`geography` (chunk 5.5u4, below). Since chunk 5.5u6 `Feature<G, P>` and
-`FeatureCollection<G, P>` are standard types with two type arguments, as
-`Range<T>` has one: `Holds::Feature` and `Holds::FeatureCollection`, the
-checker's `Ty::Opaque("Feature", [G, P])` (its fields in
-`types::body::features`), one plan shape each, and `Codec::Feature` and
-`Codec::FeatureCollection` holding their arguments' codecs, which
-`jadpo_value::json` reads and writes as RFC 7946's objects
-(`Json::Feature`). WKT is read and written by `jadpo_value::geo::wkt`,
-the one reader, which reports a refusal at its character. A type built on
-`Decimal` with bounds (`Latitude`) has `TextForm::Decimal` and is named to
-`text.format` by the checker, so `FormatKey::Coordinate` can show its
-hemisphere; a compound type's column may now be `numeric`
-(`EastingNorthing`).
-Since chunk 5.5s2 the AI types are entries in `jadpo_std::standard::ai`.
-`Vector` is a named collection of `Part::Float`, a single-precision float
-held as the decimal `standard::ai::float` gives; its type rules
-(`standard::collection_rules`: 1 to 16,000 items, `standard` naming it)
-make `Validator::store` keep every item as that float, as it makes
-`Html` safe, so the checker's `verdict` never counts `format` breakable
-for it. The plan sends one as a `Codec::List` of `Codec::Float`, a JSON
-number each. A type built on `Vector` takes `dimensions:` (`Subject::Vector`
-in the checker's constraints, `Rules::dimensions`, `RuleKey::Dimensions`),
-checked by `Rules::check_length` before the lengths it decides, proved by
-`verdict` from a list's counted items, and shown in the API record and as
-OpenAPI's `minItems` and `maxItems`. A vector's storage is
-`Storage::Vector`, a pgvector `vector` column. `FormatKey::Vector` and
-`FormatKey::ByLabel` show vectors and labelled parts.
-Since chunk 5.5v1 a vector field is stored: the data model gives any
-type whose rule chain is `Vector`'s a `vector(n)` column, `n` its
-`dimensions:` (`vector` without), with no length checked beside it, and an
-`Embedding` three columns (its `ModelId`'s two and a `vector`). The
-column is `SqlType::Vector` and `Column::Vector`; the runtime holds it as
-`SqlValue::Vector`, each item's float by its bits, and the PostgreSQL
-driver sends it in pgvector's binary format with no type number (the
-server infers it from the column) and knows a column of it by its type's
-name, since the extension's number differs in each database. `distance:`
-(`Rules::distance`, a `VectorDistance`) says how a type's vectors are
-compared; `ai.distance` (`Op::AiDistance`, `jadpo_value::vector`) is
-given its metric by the checker, as `text.format` its standard type, and
-works it out as pgvector does (`jadpo_std::standard::ai::distance`). The
-migration diff writes `CREATE EXTENSION IF NOT EXISTS "vector"` first in
-the first migration with a vector column (`migration::extensions`);
-`jadpo_runtime::migrate` refuses a database that doesn't offer an
-extension a pending migration creates before running anything
-(`MigrateError::ExtensionMissing`, `migration.extension_missing`), and
-`has_extensions` is the start-up check, which `jadpo dev` runs.
-Since chunk 5.5u4 a geometry field is stored: the data model gives a
-field holding one of the six geometries or a `Geometry` one untyped
-`geography` column (`FieldModel::geometry` names which), with a check
-constraint (`schema::Check { geography: true }`) holding it to SRID 4326
-and its `GeometryType`s; a `BoundingBox` and a `Circle` are named columns
-(`Storage::Columns`), a circle's centre a point's `geography` with the
-same check (`storage::geometry_at`). The column is `SqlType::Geography`
-and `Column::Geography`; the runtime holds it as `SqlValue::Geography`, a
-`jadpo_std::geography::Shape` of `Coordinates`, each a double by its bits,
-which `jadpo_value::geo::shape` and `from_shape` make from a value and
-back without rewinding a ring; the storage codec binds one
-(`Stored::Shape`) and refuses one whose positions mix with and without
-altitude. The PostgreSQL driver sends and reads it as EWKB, with no type
-number, and knows the column by its type's name; the compiler writes it
-as EWKT (`jadpo_sql::literal`). `migration::extensions` adds `postgis`
-for a `geography` column, and `jadpo_runtime::migrate` also creates each
-extension a pending migration needs in a savepoint and undoes it, so a
-role that can't create PostGIS is refused before anything runs
-(`MigrateError::ExtensionNotCreatable`, `migration.extension_missing`).
-An `indexes:` entry's block takes `fields:` and `kind:`
-(`ListRule::kind`, `IndexKind`); `IndexKind.geographic` is a GiST index
-(`IndexMethod` `gist`, no operator class) on one geometry field.
-Since chunk 5.5k3 `CalendarEvent` is a standard object whose canonical
-text is an RFC 5545 `VEVENT` (`TextForm::Event`), written and read by
-`jadpo_std::standard::events`, which also holds the rules across its parts
-(days or times, their order, a recurrence from the event's start), named
-rules since chunk 5.5t2. A part may be another standard object
-(`Part::Standard("LocalDateTime")`), sent as its canonical text and stored
-as it in a `text` column (`to_parts`), or text over several lines
-(`Part::Paragraph`); a `date` part reads back from PostgreSQL as a date.
-Since chunk 5.5m the codes of commerce, health, travel and the other
-published standards are held as text in `jadpo_std::standard::codes`, with
-their check digits as named validators (GS1's mod 10, ISO 6346, ISO 7064
-MOD 11-2, Verhoeff, a VIN's and an MPAN's), and their closed lists are
-standard enums in `standard::lists`, whose `ClosedList`s `closed_list`
-reads beside the places'. A list CLDR names none of is shown by its
-authority's English wording through chunk 5.5i2's `FormatKey::Names`;
-no other code was needed.
-Since chunk 5.5i3 a standard type may be a choice of other types
-(`Holds::Choice`, `Discount` and `UnitPrice` first): its stub is `= Enum
-{ ... }` with each variant's fields written as the built-in types its
-parts are built on (`StandardStub::payloads`), and its entry lists each
-variant's parts. The checker's type table declares it as an enum with
-data whose variants' fields come from the parts (`standard_field`), so
-construction, `match`, a binding's fields and literal proofs are area 2's
-own; `jadpo_std::enums()` lists it, and the plan gives each variant the
-shape and the parts' codecs of its entry (`standard_variant_fields`,
-`Routes::choice_fields`, keyed `field <Choice>.<variant>.<field>`, whose
-chain `standard_part` reads), so the interpreter builds and reads a
-`Value::Variant` with fields, and JSON is area 2's tagged form
-(`Json::Tagged`, `Codec::Enum` with payload variants). OpenAPI describes
-it as `oneOf` its tagged variants. A later choice (`BankAccount`, chunk
-5.5i4) is a stub and an entry; its UK modulus check is
-`jadpo_std::standard::modulus`, which reads Vocalink's tables as text and
-which nothing runs until they can ship. A standard type may also be built
-on a built-in type with bounds of its own (`Holds::Bounded`, `TaxRate`): `standard::declared`
-gives its built-in type and its bounds, as it gives a type held as text
-or as a whole number its rules, so the table, the plan's chain and the
-wire read it as that refinement; its bounds name no `standard`, so a
-plain `Percentage` builds one by its bounds alone. A part may keep bounds
-too (`Part::Bounded`). `BasisPoints` is a whole number (`Holds::Whole`),
-whose text now takes a `-`. Two `FormatKey`s came with them: `Parts`
-(named parts each shown as their own type is, joined) and `Suffixed` (a
-number and a fixed unit, `25 bp`).
-`money.apply_discount` (`Op::MoneyApplyDiscount`) takes a `Discount` off
-a `Price` in `jadpo_value::money`.
+(`[workspace.metadata.layers]`: shared, compiler, runtime and tooling, with
+every workspace crate in one). A workspace test
+(`crates/jadpo-cli/tests/crate_graph.rs`) reads it and `cargo metadata` and
+fails on anything a crate reaches, directly or through other crates,
+against these rules: compiler crates reach no tooling crate either, nothing
+depends on `jadpo-cli`, salsa is confined to `jadpo-db` and `jadpo-check`,
+and `jadpo-sql` is a leaf that reaches only the shared crate.
+Dev-dependencies are not part of the graph. *Rejected:* v0's single `core`
+crate, which grew to everything and let the generator read the syntax tree.
 
 **wasm32.** The runtime crates and the shared leaf build for
 `wasm32-unknown-unknown`, checked by the gate, which reads the list from
 the layer table, less the crates `[workspace.metadata.targets]` lists as
-native only (`jadpo-host-native`); `jadpo-drivers` builds with every driver
-feature on. `rust-toolchain.toml` pins the target with the toolchain. The
-maths on `Decimal` runs there too, not only builds (chunk 5.5e): the gate
-builds `jadpo-value`'s `decimal_maths` example for wasm32 and runs it under
-Node (`tools/run_wasm.mjs`), holding it to the reference values the native
-test checks. Compiler crates do no I/O below `jadpo-db`, which
-keeps a browser playground possible later without gating on it now.
+`native_only`; `jadpo-drivers` builds with every driver feature on.
+`rust-toolchain.toml` pins the target with the toolchain. The maths on `Decimal` runs there too, not only builds:
+the gate builds `jadpo-value`'s `decimal_maths` example for wasm32 and runs
+it under Node (`tools/run_wasm.mjs`), holding it to the reference values the
+native test checks. Compiler crates do no I/O below `jadpo-db`, which keeps
+a browser playground possible later without gating on it now.
 
 ### 2.2 Source to graph
 
@@ -1649,8 +961,8 @@ is a test-only action, area 13). The transaction begins at the body's first
 store operation (`Ctx::transaction`); a concurrent change runs the whole
 body again, up to `RERUN_ATTEMPTS` (3) times, then fails `unavailable`; a
 body that fails rolls back; and what it emitted is delivered only after it
-commits. The second of area 6's budget waits for the host's clock (no host
-reads one yet; chunk 5.2 brings time), and caches come with area 5. Since
+commits. The second of area 6's budget isn't built: the boundary counts
+attempts only. Caches come with area 5. Since
 chunk 3.10 an action called inside another whose failure the caller
 handles (`ActionBody::caught`: the call is an outcome `match`'s subject or
 an `assert … fails`'s) runs inside a savepoint: when it fails, the
@@ -2086,7 +1398,7 @@ the data goes); it returns each batch's count (`Purged`). Since chunk 3.12
 a run stops after `batches` batches (`PURGE_BATCHES`, 20, for the
 schedule) and says whether it `finished`, so a Workers cron run can't
 overrun however much is due, and the next run carries on; the budget is a
-batch count, since no host reads a clock yet (chunk 5.2). Area 12's
+batch count. Area 12's
 hourly purge schedule will call it (chunk 6.2); a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
 budget.
@@ -2859,7 +2171,7 @@ steps running at once on one PostgreSQL container named by
 `JADPO_TEST_DATABASE_URL`) and `wasm32`; `docs` and `tests` each build and
 start their own container from `tools/postgres/Dockerfile`, PostgreSQL 16
 with pgvector and PostGIS at pinned versions (chunk 5.5v1; area 21,
-"Chosen in chunk 5.5v1"), while the toolchain installs. A local run's
+"Without pgvector"), while the toolchain installs. A local run's
 disposable server comes from the machine's own PostgreSQL tools, which
 need pgvector for the vector tests and PostGIS for the geography tests
 (Postgres.app ships both). The
