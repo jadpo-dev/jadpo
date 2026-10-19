@@ -204,7 +204,7 @@
             },
             "encoding": {
               "nullable": true,
-              "position": 16,
+              "position": 17,
               "type": "smallint"
             },
             "failure": {
@@ -263,6 +263,11 @@
             "stepped_at": {
               "position": 13,
               "type": "timestamptz(3)"
+            },
+            "tenant": {
+              "nullable": true,
+              "position": 16,
+              "type": "uuid"
             }
           },
           "indexes": {
@@ -282,9 +287,10 @@
           },
           "system": "batch_runs",
           "unique": {
-            "jadpo_batch_runs_batch_key_key": {
+            "jadpo_batch_runs_batch_tenant_key_key": {
               "columns": [
                 "batch",
+                "tenant",
                 "key"
               ],
               "rule": "system batch runs"

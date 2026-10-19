@@ -382,6 +382,10 @@ pub const BATCH_RUNS: SystemTable = SystemTable {
         // which its items run at (chunk 6.6a); `NULL` in a run kept
         // before, which counts from the start.
         column("depth", "integer", true),
+        // The tenant the run is limited to, all zeros for none, which its
+        // `key:` is unique within (chunk 6.6c); `NULL` in a run kept
+        // before, which no later start finds.
+        column("tenant", "uuid", true),
         // The encoding its saved values and its `key:` were written in
         // (area 19, "Changing a standard type's encoding"; chunk 6.8);
         // `NULL` in a run kept before, whose values are encoding 1's.
@@ -389,7 +393,7 @@ pub const BATCH_RUNS: SystemTable = SystemTable {
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
-        columns: &["batch", "key"],
+        columns: &["batch", "tenant", "key"],
         rule: "system batch runs",
     }],
     foreign_keys: &[],

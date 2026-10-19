@@ -1949,7 +1949,12 @@ row and keep a cancel. An executor gives the runner its batches through
 application with a tenant the plan's `BatchTenant` names which saved
 values hold the tenant's id, and each page runs as the system limited to
 the one tenant they name, or to none (`outbox::named_tenant`, shared
-with a subscriber's delivery; chunk 6.4c).
+with a subscriber's delivery; chunk 6.4c). `start` keeps that tenant on
+the run's row, and a `key:` is unique per call, tenant and key (chunk
+6.6c). The checker proves each value naming the tenant came from a record
+of it the action reached (`policy::flow::tenants`, as an event's tenant
+field is), so a caller never aims a run or a delivery at a tenant they
+don't belong to.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

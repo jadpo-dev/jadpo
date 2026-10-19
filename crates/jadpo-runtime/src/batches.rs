@@ -86,7 +86,10 @@ const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
 /// The most runs one sweep picks up.
 const SWEEP_LIMIT: i64 = 100;
 
-pub(crate) const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\", \"encoding\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7, $8) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
+/// Starts a run, or finds the one its call already started with its
+/// `key:` in its tenant (chunk 6.6c), keeping the encoding its saved
+/// values are written in (chunk 6.8).
+pub(crate) const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\", \"tenant\", \"encoding\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7, $8, $9) ON CONFLICT (\"batch\", \"tenant\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"tenant\" = $8 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
 
 pub(crate) const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\", \"depth\", \"encoding\"";
 
@@ -212,6 +215,10 @@ pub async fn start(
     let Some((captured, key)) = values.split_at_checked(plan.captured.len()) else {
         return fault(ctx, "a batch started without the values it saves", site);
     };
+    // The tenant it is limited to, which its `key:` is unique within
+    // (chunk 6.6c).
+    let tenant =
+        tenant_of(plan, captured, key_value(plan, key)).unwrap_or(crate::outbox::NO_TENANT);
     let text = match saved(batches.json, plan, captured) {
         Ok(text) => text,
         Err(why) => {
@@ -252,6 +259,7 @@ pub async fn start(
         // How deep in a chain of events it was started, which its items
         // run at (chunk 6.6a).
         SqlValue::Int4(i32::try_from(ctx.chain).unwrap_or(i32::MAX)),
+        SqlValue::Uuid(tenant),
         // The encoding its saved values and its key are written in (chunk
         // 6.8).
         crate::read::encoding_value(),
@@ -288,26 +296,42 @@ fn run_system(
     values: &[Value],
     key: Option<&str>,
 ) -> Result<System, String> {
+    let key = match (plan.key, key) {
+        (Some(number), Some(text)) => json.read(number, text)?,
+        _ => Value::None,
+    };
+    Ok(System {
+        tenant: tenant_of(plan, values, key),
+    })
+}
+
+/// The tenant a run saving `values` with `key:` `key` is limited to: the
+/// one its saved values holding a tenant's id name, and `None` in an
+/// application with no tenant.
+fn tenant_of(plan: &BatchPlan, values: &[Value], key: Value) -> Option<[u8; 16]> {
     let BatchTenant::Saved {
         captured,
         key: by_key,
     } = &plan.tenant
     else {
-        return Ok(System { tenant: None });
+        return None;
     };
     let mut held: Vec<Value> = captured
         .iter()
         .map(|at| values.get(*at as usize).cloned().unwrap_or(Value::None))
         .collect();
     if *by_key {
-        held.push(match (plan.key, key) {
-            (Some(number), Some(text)) => json.read(number, text)?,
-            _ => Value::None,
-        });
+        held.push(key);
     }
-    Ok(System {
-        tenant: Some(crate::outbox::named_tenant(held.iter())),
-    })
+    Some(crate::outbox::named_tenant(held.iter()))
+}
+
+/// The `key:` a call passes, of the values it gives after what it saves.
+fn key_value(plan: &BatchPlan, key: &[Value]) -> Value {
+    match (plan.key, key.first()) {
+        (Some(_), Some(value)) => value.clone(),
+        _ => Value::None,
+    }
 }
 
 /// What a run's `shape` column keeps: a digest of the plan's shape, so a

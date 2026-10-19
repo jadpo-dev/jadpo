@@ -60,6 +60,7 @@ use jadpo_std::read::Cardinality;
 use jadpo_std::write::WriteOp;
 
 mod stores;
+mod tenants;
 
 use stores::{Dest, Store};
 
@@ -1006,6 +1007,13 @@ struct Walk<'b> {
     /// What decides the failures of each batch the body starts
     /// ([`Summary::batches`]): gathered in every walk, as `failing` is.
     batches: Vec<Src>,
+    /// What a create that runs whenever the body does set a tenanted
+    /// record's tenancy reference from: the caller holds a membership in
+    /// that tenant, or the create fails and the action with it, so each
+    /// names a tenant the action reached (chunk 6.6c). Gathered in every
+    /// walk, as `failing` is, since an `emit` before the create is kept
+    /// only if it succeeds.
+    tenant_ids: Vec<Src>,
 }
 
 /// A batch's run, while its calls are checked (chunk 6.4d): it works as
@@ -1062,6 +1070,7 @@ impl<'b> Walk<'b> {
             run: None,
             summary: false,
             batches: Vec::new(),
+            tenant_ids: Vec::new(),
         }
     }
 
@@ -1393,6 +1402,7 @@ impl Walk<'_> {
                         && let jadpo_graph::TypeRef::Node(event) = &self.body.site(value).ty
                     {
                         let event = event.clone();
+                        self.event_tenant(flow, &event, value, &prov);
                         self.emitted(flow, &event, prov);
                     }
                 }
@@ -1582,6 +1592,9 @@ impl Walk<'_> {
                     values.push((field_name(key), *value, self.with_pc(prov)));
                 }
                 self.stored = outer;
+                if op == WriteOp::Create {
+                    self.created_tenant(flow, site, &entity, &values);
+                }
                 let patched = patch.map(|patch| (patch, self.eval(flow, patch)));
                 let mut supplied: Vec<(String, SiteId, Prov)> = Vec::new();
                 for (when, fields) in &when_supplied {
@@ -1974,6 +1987,7 @@ impl Walk<'_> {
                 if !crate::batches::holds_tenant_id(&flow.lookup, ty, &tenant_id) {
                     continue;
                 }
+                self.run_tenant(flow, *at, prov);
                 match stores::single(&prov.whole) {
                     Some(stores::Ident::Param(at, path)) => tenant.push((at, path)),
                     Some(ident) => origins.extend(tenancy_of(flow, &ident)),

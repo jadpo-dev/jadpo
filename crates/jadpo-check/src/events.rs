@@ -895,27 +895,35 @@ impl Reader<'_> {
     /// The event's field holding the tenant's id, which a subscriber is
     /// limited to (area 9).
     fn tenant(&self, event: &str) -> Tenant {
-        let Some(tenant) = crate::policy::root_policy(self.db, self.project)
-            .tenant
-            .clone()
-        else {
-            return Tenant::Untenanted;
-        };
-        let holding: Vec<String> = self
-            .lookup
-            .fields(event)
-            .unwrap_or_default()
-            .iter()
-            .filter(|field| {
-                matches!(field.declared.strip_nullable(), Ty::Field(host, path)
-                    if *host == tenant && path.as_slice() == ["id"])
-            })
-            .map(|field| field.name.clone())
-            .collect();
-        match holding.as_slice() {
-            [one] => Tenant::Field(one.clone()),
-            _ => Tenant::None,
-        }
+        event_tenant(self.db, self.project, self.lookup, event)
+    }
+}
+
+/// The field of the event `event` (by name) holding the tenant's id, which
+/// its subscribers are limited to (area 9): what an `emit` of it must
+/// prove it reached (chunk 6.6c).
+pub(crate) fn event_tenant(
+    db: &dyn Db,
+    project: Project,
+    lookup: &Lookup<'_>,
+    event: &str,
+) -> Tenant {
+    let Some(tenant) = crate::policy::root_policy(db, project).tenant.clone() else {
+        return Tenant::Untenanted;
+    };
+    let holding: Vec<String> = lookup
+        .fields(event)
+        .unwrap_or_default()
+        .iter()
+        .filter(|field| {
+            matches!(field.declared.strip_nullable(), Ty::Field(host, path)
+                if *host == tenant && path.as_slice() == ["id"])
+        })
+        .map(|field| field.name.clone())
+        .collect();
+    match holding.as_slice() {
+        [one] => Tenant::Field(one.clone()),
+        _ => Tenant::None,
     }
 }
 

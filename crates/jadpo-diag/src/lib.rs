@@ -486,6 +486,8 @@ rules! {
         "09-policy.html#policy-effect-ungranted", "Route reaches something no grant allows";
     POLICY_EFFECT_UNKNOWN: "policy.effect_unknown", area 9, Error, Agent,
         "09-policy.html#policy-effect-unknown", "Policy holds something that isn't a grant or a setting";
+    POLICY_EVENT_TENANT_UNPROVED: "policy.event_tenant_unproved", area 9, Error, Agent,
+        "09-policy.html#policy-event-tenant-unproved", "An event or a batch names a tenant its action never reached under its caller's policy";
     POLICY_FIELD_WIDENS_ENTITY: "policy.field_widens_entity", area 9, Error, Agent,
         "09-policy.html#policy-field-widens-entity", "Field policy lets in someone its record's grants don't";
     POLICY_MEMBERSHIP_DUPLICATE: "policy.membership_duplicate", area 9, Error, Agent,
