@@ -653,12 +653,12 @@ pub static COMMANDS: &[Command] = &[
         synonyms: &[],
         group: "Change safely",
         summary: "Rewrite the API records",
-        description: "`update` rewrites each API's committed record, api/<api>.api, from the routes \
-                      (areas 7 and 18): every route, the fields it takes and sends, and the failure \
-                      codes it can answer with. Its version rises by one when its text changes, and \
-                      becomes the OpenAPI document's version. jadpo check fails while a record \
-                      disagrees with the routes, so every change to an API is a diff of one file to \
-                      review and commit with the code.",
+        description: "`update` rewrites each API's committed record, api/<api>.jadpo_record, from the \
+                      routes (areas 7 and 18): every route, the fields it takes and sends, and the \
+                      failure codes it can answer with. The OpenAPI document's version is a hash of \
+                      the record. jadpo check fails while a record disagrees with the routes, so \
+                      every change to an API is a diff of one file to review and commit with the \
+                      code. A record under its old name, api/<api>.api, is removed.",
         arguments: &[Argument {
             name: "action",
             description: "What to do: update",
@@ -676,6 +676,46 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::api,
+    },
+    Command {
+        name: "records",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "List and update the records",
+        description: "Every file Jadpo generates and the project commits is a record (area 18): each \
+                      API's api/<api>.jadpo_record, the identity registry, each translations \
+                      folder's sources, the suggestions the project ignored or taught, and jadpo.lock. \
+                      `jadpo records` lists them by the command that writes them, each with whether \
+                      it is up to date, and fails while one is not, naming the command to run. \
+                      `update` brings every record up to date at once: each API record written from \
+                      the routes, each other record rewritten sorted and in the newest format, and a record \
+                      under its old name moved.",
+        arguments: &[Argument {
+            name: "action",
+            description: "What to do: update, or nothing to list them",
+            required: false,
+            values: Values::Fixed(crate::records::ACTIONS),
+        }],
+        flags: &[],
+        examples: &[
+            Example {
+                description: "See every record and whether it is up to date",
+                command: "jadpo records",
+            },
+            Example {
+                description: "Bring every record up to date",
+                command: "jadpo records update",
+            },
+        ],
+        arguments_rule: &rule::CLI_RECORDS_ARGUMENTS,
+        raises: &[
+            &rule::RECORD_EDITED,
+            &rule::RECORD_FORMAT_NEWER,
+            &rule::RECORD_OUT_OF_DATE,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::records,
     },
     Command {
         name: "declines",

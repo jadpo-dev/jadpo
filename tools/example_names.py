@@ -65,6 +65,7 @@ PARAMETER = re.compile(rf'({IDENT})\??\s*:')
 # Example types and entities, whose names may not stand alone in a string.
 TYPE_NAME = re.compile(rf'^\s*(?:public\s+)?(?:entity|type)\s+([A-Z][A-Za-z0-9_]*)', re.MULTILINE)
 DOMAIN_PATH = re.compile(r'(?:^|/)domains/([a-z_][a-z0-9_]*)/')
+RECORD_FILE = re.compile(r'\bfile=\S*(?:\.jadpo_record|jadpo\.lock)\b')
 
 
 def code_blocks(path: Path):
@@ -117,6 +118,10 @@ def extract() -> set[str]:
     for root in SOURCES:
         for path in source_files(root, '*.md'):
             for attrs, lines in code_blocks(path):
+                # A generated record's words (`authentication none`) are
+                # the record format's, not declarations (area 18).
+                if RECORD_FILE.search(attrs):
+                    continue
                 names |= declared_names(attrs, lines)
         for path in source_files(root, '*.jadpo'):
             names |= declared_names(str(path.relative_to(root)), path.read_text().splitlines())

@@ -2147,7 +2147,8 @@ build/
   line in the identity registry, so it reads as a move and not as a removal
   and an addition (area 18, question 8; 2026-10-16, built in chunk 5.3d:
   `layout.promotion_required`'s edits for a type moving to `shared/types/`
-  add the line to `database/identities.json`, so `jadpo fmt --layout`
+  add the line to `database/identities.jadpo_record` (`database/identities.json`
+  before chunk 7.0), so `jadpo fmt --layout`
   writes it. A failure raised by a second domain gets no edit, so its move
   by hand writes no line, and a library keeps its name in `shared/`, so
   its functions' keys need none).

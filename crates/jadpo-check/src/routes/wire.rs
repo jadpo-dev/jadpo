@@ -517,13 +517,18 @@ pub fn issued_of(key: &Key) -> Option<&'static str> {
         .flatten()
 }
 
-/// The record's section for a built-in `IssuedToken` or `IssuedKey`.
-pub fn issued_section(name: &str) -> String {
-    let mut text = format!("output {name}\n");
-    for (field, builtin) in jadpo_std::http::builtin_object_fields(name).unwrap_or_default() {
-        text.push_str(&format!("    {field}: {}\n", builtin.name()));
+/// The record's entry for a built-in `IssuedToken` or `IssuedKey`, its
+/// fields sorted by name.
+pub fn issued_entry(name: &str) -> jadpo_db::record::Entry {
+    let mut entry = jadpo_db::record::Entry::new(format!("output {name}"));
+    let mut fields = jadpo_std::http::builtin_object_fields(name)
+        .unwrap_or_default()
+        .to_vec();
+    fields.sort_by_key(|(field, _)| *field);
+    for (field, builtin) in fields {
+        entry.push(format!("{field}: {}", builtin.name()));
     }
-    text
+    entry
 }
 
 /// The JSON Schema of a built-in `IssuedToken` or `IssuedKey`.

@@ -889,7 +889,7 @@ fn import_refuses_a_record_it_cannot_read() {
     let before = snapshot(&root);
     let (code, out) = plain(&root, &["translations", "import", "pl.xlf"]);
     assert_eq!(code, 1, "{out}");
-    assert!(out.contains("rule: translation.sources_invalid"), "{out}");
+    assert!(out.contains("rule: record.edited"), "{out}");
     assert_eq!(snapshot(&root), before);
 }
 
