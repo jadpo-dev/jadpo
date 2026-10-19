@@ -35,6 +35,11 @@
 //! idempotency keys (area 7), and events every subscriber has had,
 //! [`SETTLED_KEPT_MS`] after they were emitted; then each of
 //! [`HOOKS`], where batch runs resume (chunk 6.4).
+//!
+//! What an operator reads and does with them, `jadpo schedules` and
+//! `jadpo why`, is [`watch`] (chunk 6.2b).
+
+pub mod watch;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -70,6 +75,9 @@ pub const RUNNING: &str = "running";
 pub const SUCCEEDED: &str = "succeeded";
 pub const FAILED: &str = "failed";
 pub const SKIPPED: &str = "skipped";
+/// The reason a run record gives for a run an operator started
+/// (`jadpo schedules run`), rather than a tick.
+pub const MANUAL: &str = "manual";
 
 /// Work the tick runs after the schedules and the runtime's own sweeps,
 /// given the program, the host and the tick's time; what it leaves runs on
@@ -111,8 +119,10 @@ pub const CLAIM: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3, \"
 /// skips it: once, by whichever instance gets there first.
 pub const SKIP: &str = "UPDATE \"jadpo_schedules\" SET \"next_run_at\" = $3 WHERE \"schedule\" = $1 AND \"next_run_at\" = $2 RETURNING \"schedule\"";
 
-/// Gives schedule `$1`'s lease back once run `$2` has ended.
-pub const RELEASE: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = NULL, \"run_id\" = NULL WHERE \"schedule\" = $1 AND \"run_id\" = $2 RETURNING \"schedule\"";
+/// Gives schedule `$1`'s lease back once run `$2` has ended, keeping
+/// `$3`, the start of a run that succeeded, as its last success (`NULL`
+/// keeps the one before).
+pub const RELEASE: &str = "UPDATE \"jadpo_schedules\" SET \"lease_until\" = NULL, \"run_id\" = NULL, \"last_succeeded_at\" = COALESCE($3, \"last_succeeded_at\") WHERE \"schedule\" = $1 AND \"run_id\" = $2 RETURNING \"schedule\"";
 
 /// A run record: its id, schedule, due, start and end, outcome, the reason
 /// a tick skipped it, its failure, its events and its trace.
@@ -165,7 +175,7 @@ pub enum Ran {
     Skipped(Skipped),
 }
 
-/// One due schedule on one tick.
+/// One due schedule on one tick, or a run an operator started.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Due {
     /// The schedule's identity key.
@@ -173,6 +183,25 @@ pub struct Due {
     /// The due time the tick took, in milliseconds since the epoch.
     pub due_slot: i64,
     pub ran: Ran,
+    /// When the run started and ended; a skipped tick's are the tick's
+    /// time. Its lateness is `started - due_slot`, its duration
+    /// `ended - started` (area 12, "Watching schedules": the metrics).
+    pub started: i64,
+    pub ended: i64,
+    /// The run's `traceparent`; none for a skipped tick.
+    pub trace: Option<String>,
+}
+
+impl Due {
+    /// How late it started after it was due, in milliseconds.
+    pub fn lateness_ms(&self) -> i64 {
+        self.started.saturating_sub(self.due_slot).max(0)
+    }
+
+    /// How long the run took, in milliseconds.
+    pub fn duration_ms(&self) -> i64 {
+        self.ended.saturating_sub(self.started).max(0)
+    }
 }
 
 /// What one tick did.
@@ -433,6 +462,9 @@ async fn take(
                 schedule: schedule.key.clone(),
                 due_slot,
                 ran: Ran::Skipped(why),
+                started: now,
+                ended: now,
+                trace: None,
             },
             Vec::new(),
         ));
@@ -442,7 +474,7 @@ async fn take(
         .query_once(
             CLAIM,
             &[
-                key.clone(),
+                key,
                 micros(due_slot),
                 micros(next),
                 micros(now.saturating_add(LEASE_MS)),
@@ -453,10 +485,50 @@ async fn take(
         .await
         .ok()?;
     claimed.first()?;
+    let lost = state.run.map(|lost| (lost, state.lease_until));
+    let claimed = Claimed {
+        run,
+        due_slot,
+        lost,
+        reason: None,
+    };
+    Some(run_claimed(executor, host, database, schedule, claimed, ctx, now).await)
+}
+
+/// A run whose lease has been taken: its id, the due time it runs for, the
+/// run that held the lease before it and never ended, with that lease's
+/// end, and the reason its record gives (`manual` for an operator's).
+pub(crate) struct Claimed {
+    pub run: [u8; 16],
+    pub due_slot: i64,
+    pub lost: Option<([u8; 16], Option<i64>)>,
+    pub reason: Option<&'static str>,
+}
+
+/// Runs `schedule` under the lease `claimed` holds, at `now`: its record
+/// written as running, the action run as the system with no tenant in a
+/// new trace, stopped at the limit, then its record ended and the lease
+/// given back. How it went and the work its run left.
+pub(crate) async fn run_claimed(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    database: &dyn crate::Database,
+    schedule: &SchedulePlan,
+    claimed: Claimed,
+    mut ctx: Ctx<'_>,
+    now: i64,
+) -> (Due, Vec<Deferred>) {
+    let Claimed {
+        run,
+        due_slot,
+        lost,
+        reason,
+    } = claimed;
+    let key = SqlValue::Text(schedule.key.clone());
     // A run that held the lease before and never ended was lost with its
     // worker: its record says so.
-    if let Some(lost) = state.run {
-        let ended_at = state.lease_until.unwrap_or(now).min(now);
+    if let Some((lost, lease_until)) = lost {
+        let ended_at = lease_until.unwrap_or(now).min(now);
         let _ = database
             .query_once(
                 ENDED,
@@ -470,6 +542,7 @@ async fn take(
             )
             .await;
     }
+    let began = host.monotonic_ms();
     let trace = ctx.new_trace();
     let _ = database
         .query_once(
@@ -481,7 +554,9 @@ async fn take(
                 micros(now),
                 SqlValue::Null(SqlType::Timestamp),
                 SqlValue::Text(RUNNING.into()),
-                SqlValue::Null(SqlType::Text),
+                reason.map_or(SqlValue::Null(SqlType::Text), |reason| {
+                    SqlValue::Text(reason.into())
+                }),
                 SqlValue::Null(SqlType::Json),
                 SqlValue::Null(SqlType::Int4),
                 SqlValue::Text(trace.header()),
@@ -521,7 +596,15 @@ async fn take(
             kind: None,
         },
     };
-    let ended_at = host.now_ms().unwrap_or(now).max(now);
+    // Measured on the monotonic clock from the run's own time, so the
+    // record's duration is how long it took whatever the wall clock did;
+    // a host with no timer reads its wall clock.
+    let ended_at = match (began, host.monotonic_ms()) {
+        (Some(began), Some(end)) => {
+            now.saturating_add(i64::try_from(end.saturating_sub(began)).unwrap_or(i64::MAX))
+        }
+        _ => host.now_ms().unwrap_or(now).max(now),
+    };
     let (status, failure, events) = match &ran {
         Ran::Succeeded { events } => (
             SUCCEEDED,
@@ -547,17 +630,24 @@ async fn take(
             ],
         )
         .await;
+    let succeeded = match &ran {
+        Ran::Succeeded { .. } => micros(now),
+        _ => SqlValue::Null(SqlType::Timestamp),
+    };
     let _ = database
-        .query_once(RELEASE, &[key, SqlValue::Uuid(run)])
+        .query_once(RELEASE, &[key, SqlValue::Uuid(run), succeeded])
         .await;
-    Some((
+    (
         Due {
             schedule: schedule.key.clone(),
             due_slot,
             ran,
+            started: now,
+            ended: ended_at,
+            trace: Some(trace.header()),
         },
         ctx.take_deferred(),
-    ))
+    )
 }
 
 /// Runs delete `sql` in `store` with cut-off `before`, batch after batch

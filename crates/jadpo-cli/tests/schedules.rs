@@ -825,3 +825,490 @@ async fn futures_join<A: std::future::Future, B: std::future::Future>(
     .await;
     (left.expect("a"), right.expect("b"))
 }
+
+// --- Watching schedules (chunk 6.2b) -----------------------------------------
+
+/// A check of the bell each hour, which fails with `bell_missing` (of kind
+/// `unavailable`) until a bell is hung.
+const BELL_CHECK: (&str, &str) = (
+    "domains/home/schedules/bell_check.jadpo",
+    r#"use home/actions { ring }
+
+/// Checks the bell is hung.
+schedule bell_check {
+    every: 1h
+    run: ring()
+}
+"#,
+);
+
+fn watched_project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("schedules-6.2b-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in FILES.iter().chain([&BELL_CHECK]) {
+        write(&root, path, text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    root
+}
+
+/// `jadpo <args> --url <url>` at `at` (milliseconds), as a terminal with
+/// colour off shows it, bold taken out.
+fn watching(root: &Path, url: &str, at: i64, args: &[&str]) -> Output {
+    let mut args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+    args.extend(["--url".to_string(), url.to_string()]);
+    let env = Environment::empty()
+        .with_var("SOURCE_DATE_EPOCH", &(at / 1000).to_string())
+        .with_terminals(true, true, true)
+        .with_var("TERM", "xterm-256color")
+        .with_var("NO_COLOR", "1");
+    let mut output = run(&args, &env.with_cwd(root));
+    output.stdout = output.stdout.replace("\x1b[1m", "").replace("\x1b[0m", "");
+    output.stderr = output.stderr.replace("\x1b[1m", "").replace("\x1b[0m", "");
+    output
+}
+
+/// The screen, with a `traceparent`'s random ids written as `…`.
+fn without_trace(text: &str) -> String {
+    text.lines()
+        .map(|line| match line.find("00-") {
+            Some(at) if line.trim_start().starts_with("trace") => format!("{}00-…", &line[..at]),
+            _ => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+#[test]
+fn schedules_are_listed_explained_paused_resumed_run_and_paged() {
+    let root = watched_project("watch");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let host = Store::new(&url, 0);
+    let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
+    let runtime = Runtime::new().expect("runtime");
+    let tick_at = |minutes: i64| {
+        host.clock.set(at(minutes, 0));
+        runtime.block_on(tick(&program, &host, at(minutes, 0)))
+    };
+
+    // No tick has seen either schedule yet.
+    let listed = watching(&root, &url, at(0, 0) - 5_000, &["schedules"]);
+    assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
+    assert_eq!(
+        listed.stdout,
+        "  schedule      last run (UTC)  next
+  bell_check    – none yet      –
+  chore_census  – none yet      –
+
+✓ 2 schedules  no tick yet
+"
+    );
+    let why = watching(&root, &url, at(0, 0), &["why", "chore_census"]);
+    assert_eq!(why.code, 0, "{}{}", why.stdout, why.stderr);
+    assert_eq!(
+        why.stdout,
+        "No tick has seen `chore_census` yet: the app hasn't run since it was added
+  schedule  domains/home/schedules/chore_census.jadpo:3
+"
+    );
+
+    // The first tick keeps their state; neither is due yet.
+    tick_at(0);
+    let listed = watching(&root, &url, at(0, 30), &["schedules"]);
+    assert_eq!(
+        listed.stdout,
+        "  schedule      last run (UTC)  next
+  bell_check    – none yet      10:00
+  chore_census  – none yet      09:15
+
+✓ 2 schedules  last tick 30 s ago
+"
+    );
+    let history = watching(
+        &root,
+        &url,
+        at(0, 30),
+        &["schedules", "history", "chore_census"],
+    );
+    assert_eq!(
+        history.stdout,
+        "`chore_census` hasn't been due yet: its first run is due at 09:15\n"
+    );
+
+    // An hour on: the census has run four times, and the bell check
+    // failed.
+    for minutes in [15, 30, 45, 60] {
+        tick_at(minutes);
+    }
+    let listed = watching(&root, &url, at(60, 20), &["schedules"]);
+    assert_eq!(listed.code, 0);
+    assert_eq!(
+        listed.stdout,
+        "  schedule      last run (UTC)                          next
+  bell_check    ✗ failed     10:00:00 · bell_missing    11:00
+  chore_census  ✓ succeeded  10:00:00 · 0 ms · 1 event  10:15
+
+✗ 1 failed  2 schedules · last tick 20 s ago
+
+→ jadpo why bell_check  explains what went wrong
+"
+    );
+    let why = watching(&root, &url, at(60, 20), &["why", "bell_check"]);
+    assert_eq!(
+        without_trace(&why.stdout),
+        "`bell_check` failed at 10:00:00 with bell_missing
+  run       due 10:00 · took 0 ms
+  kind      unavailable
+  next      11:00: a schedule's next run is its retry
+  trace     00-…
+  schedule  domains/home/schedules/bell_check.jadpo:3
+
+→ jadpo schedules run bell_check  runs it again now, once the cause is fixed
+"
+    );
+    let json = watching(&root, &url, at(60, 20), &["why", "bell_check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(document["data"]["answer"], "failed");
+    assert_eq!(
+        document["data"]["place"],
+        "domains/home/schedules/bell_check.jadpo:3"
+    );
+
+    // Three failures in a row, and no success in twice its interval: two
+    // alerts, and the footer says so.
+    for minutes in [75, 90, 105, 120, 135, 150, 165, 180] {
+        tick_at(minutes);
+    }
+    let listed = watching(&root, &url, at(180, 20), &["schedules"]);
+    assert_eq!(
+        listed.stdout,
+        "  schedule      last run (UTC)                                     next
+  bell_check    ✗ failed     12:00:00 · bell_missing · 3 in a row  13:00
+  chore_census  ✓ succeeded  12:00:00 · 0 ms · 1 event             12:15
+
+▲ alert  `bell_check` has failed 3 times in a row
+▲ alert  `bell_check` hasn't succeeded since it was first due at 10:00
+
+✗ 1 failed  2 schedules · 2 alerts · last tick 20 s ago
+
+→ jadpo why bell_check  explains what went wrong
+"
+    );
+    let json = watching(&root, &url, at(180, 20), &["schedules", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    assert_eq!(
+        document["data"]["alerts"][0],
+        serde_json::json!({
+            "event": "schedule.alert",
+            "alert": "failed_in_a_row",
+            "schedule": "bell_check",
+            "failures": 3,
+        })
+    );
+
+    // Paused: it says so, again is no change, and its due tick is skipped.
+    let paused = watching(
+        &root,
+        &url,
+        at(180, 30),
+        &["schedules", "pause", "chore_census"],
+    );
+    assert_eq!(paused.code, 0, "{}{}", paused.stdout, paused.stderr);
+    assert_eq!(
+        paused.stdout,
+        "✓ Paused `chore_census`: its due ticks are skipped until it is resumed
+
+→ jadpo schedules resume chore_census  starts it again
+"
+    );
+    let again = watching(
+        &root,
+        &url,
+        at(180, 40),
+        &["schedules", "pause", "chore_census"],
+    );
+    assert_eq!(
+        again.stdout,
+        "✓ `chore_census` was already paused
+
+→ jadpo schedules resume chore_census  starts it again
+"
+    );
+    tick_at(195);
+    let listed = watching(&root, &url, at(195, 10), &["schedules"]);
+    assert!(
+        listed.stdout.contains(
+            "  chore_census  ✓ succeeded  12:00:00 · 0 ms · 1 event             ‖ paused\n"
+        ),
+        "{}",
+        listed.stdout
+    );
+    assert!(listed.stdout.contains("· 1 paused ·"), "{}", listed.stdout);
+    let why = watching(&root, &url, at(195, 10), &["why", "chore_census"]);
+    assert_eq!(
+        why.stdout,
+        "`chore_census` is paused, so its due ticks are skipped
+  skipped   1 due time since 12:15
+  last run  succeeded at 12:00:00
+  schedule  domains/home/schedules/chore_census.jadpo:3
+
+→ jadpo schedules resume chore_census  starts it again
+"
+    );
+    let resumed = watching(
+        &root,
+        &url,
+        at(195, 20),
+        &["schedules", "resume", "chore_census"],
+    );
+    assert_eq!(
+        resumed.stdout,
+        "✓ Resumed `chore_census`: its next run is at 12:30\n"
+    );
+
+    // Run now, by hand, under the lease: in this process, against the
+    // same database.
+    let ran = watching(
+        &root,
+        &url,
+        at(196, 0),
+        &["schedules", "run", "chore_census"],
+    );
+    assert_eq!(ran.code, 0, "{}{}", ran.stdout, ran.stderr);
+    assert!(
+        ran.stdout.starts_with("✓ Ran `chore_census` in ")
+            && ran.stdout.ends_with(", emitting 1 event\n"),
+        "{}",
+        ran.stdout
+    );
+    let failed = watching(
+        &root,
+        &url,
+        at(196, 30),
+        &["schedules", "run", "bell_check"],
+    );
+    assert_eq!(failed.code, 1, "{}{}", failed.stdout, failed.stderr);
+    assert!(
+        failed.stdout.starts_with(
+            "✗ failed  `bell_check`\n  failure   bell_missing · unavailable\n  took      "
+        ),
+        "{}",
+        failed.stdout
+    );
+    assert!(
+        failed
+            .stdout
+            .ends_with("\n\n→ jadpo why bell_check  explains the run\n"),
+        "{}",
+        failed.stdout
+    );
+
+    // A run still holding the lease: running, and a run now is refused.
+    tick_at(200);
+    runtime.block_on(async {
+        host.rows("INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_slot\", \"started_at\", \"outcome\") VALUES ('00000000-0000-7000-8000-0000000000aa', 'schedule chore_census', '2026-10-19T12:20:00Z', '2026-10-19T12:20:00Z', 'running') RETURNING 1")
+            .await;
+        host.rows("UPDATE \"jadpo_schedules\" SET \"lease_until\" = '2026-10-19T12:25:00Z', \"run_id\" = '00000000-0000-7000-8000-0000000000aa' WHERE \"schedule\" = 'schedule chore_census' RETURNING 1")
+            .await;
+    });
+    let listed = watching(&root, &url, at(200, 40), &["schedules"]);
+    assert!(
+        listed
+            .stdout
+            .contains("  chore_census  ● running  12:20:00 · 40 s so far"),
+        "{}",
+        listed.stdout
+    );
+    let refused = watching(
+        &root,
+        &url,
+        at(200, 40),
+        &["schedules", "run", "chore_census"],
+    );
+    assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
+    assert!(
+        refused
+            .stderr
+            .contains("✗ error  `chore_census` is already running"),
+        "{}",
+        refused.stderr
+    );
+    assert!(
+        refused.stderr.contains("rule      schedules.lease_held"),
+        "{}",
+        refused.stderr
+    );
+    let why = watching(&root, &url, at(200, 40), &["why", "chore_census"]);
+    assert_eq!(
+        why.stdout,
+        "`chore_census`'s run from 12:20:00 is still going, so its due ticks are skipped
+until it ends
+  lease     held until 12:25:00, the 15-minute limit and a minute
+  schedule  domains/home/schedules/chore_census.jadpo:3
+"
+    );
+    // Past its lease's end, its worker was lost.
+    host.clock.set(at(205, 30));
+    runtime.block_on(tick(&program, &host, at(205, 30)));
+    let why = watching(&root, &url, at(206, 0), &["why", "chore_census"]);
+    assert!(
+        why.stdout.starts_with(
+            "`chore_census`'s run from 12:20:00 held its lease past 12:25:00: its worker was\nlost\n"
+        ),
+        "{}",
+        why.stdout
+    );
+
+    // The tick takes it over, and history pages through the records.
+    for minutes in (225..=360).step_by(15) {
+        tick_at(minutes);
+    }
+    let history = watching(
+        &root,
+        &url,
+        at(360, 30),
+        &["schedules", "history", "chore_census"],
+    );
+    assert_eq!(history.code, 0, "{}{}", history.stdout, history.stderr);
+    assert!(
+        history.stdout.starts_with(
+            "2026-10-19
+  due (UTC)  started    took  outcome
+  15:00      15:00:00   0 ms  ✓ succeeded  1 event
+"
+        ),
+        "{}",
+        history.stdout
+    );
+    assert!(
+        history
+            .stdout
+            .contains("\n  12:20      12:20:00  5 min  ✗ failed     lease_expired\n")
+            && history.stdout.contains("\n  –          12:16:00  ")
+            && history.stdout.contains("✓ succeeded  1 event · by hand\n")
+            && history
+                .stdout
+                .contains("\n  12:15      –             –  – skipped    paused\n"),
+        "{}",
+        history.stdout
+    );
+    assert!(
+        history
+            .stdout
+            .contains("  runs      24 in the last 30 days · 1 failed · 1 skipped tick\n  took      median 0 ms · longest 5 min\n  late      median 0 ms · at most 15 min\n"),
+        "{}",
+        history.stdout
+    );
+    assert!(
+        history.stdout.ends_with(
+            "→ jadpo schedules history chore_census --page 2  shows the 5 before these\n"
+        ),
+        "{}",
+        history.stdout
+    );
+    let second = watching(
+        &root,
+        &url,
+        at(360, 30),
+        &["schedules", "history", "chore_census", "--page", "2"],
+    );
+    assert!(
+        second
+            .stdout
+            .contains("\n  09:15      09:15:00  0 ms  ✓ succeeded  1 event\n")
+            && second.stdout.ends_with("at most 15 min\n"),
+        "{}",
+        second.stdout
+    );
+    let past = watching(
+        &root,
+        &url,
+        at(360, 30),
+        &["schedules", "history", "chore_census", "--page", "3"],
+    );
+    assert_eq!(past.code, 2);
+    assert!(
+        past.stderr.contains("`chore_census` has no page 3"),
+        "{}",
+        past.stderr
+    );
+
+    // Hours with no tick: the ticks have stopped, and the next due time
+    // is late.
+    let listed = watching(&root, &url, at(480, 0), &["schedules"]);
+    assert!(
+        listed
+            .stdout
+            .contains("▲ alert  No tick has arrived since 15:00:00: the app isn't running\n"),
+        "{}",
+        listed.stdout
+    );
+    assert!(
+        listed.stdout.contains("▲ late since 15:15"),
+        "{}",
+        listed.stdout
+    );
+    let why = watching(&root, &url, at(480, 0), &["why", "chore_census"]);
+    assert_eq!(
+        why.stdout,
+        "No tick has reached `chore_census` since 15:00:00
+  due       15:15, not run
+  ticks     none since 15:00:00; the running app ticks every 1 min
+  schedule  domains/home/schedules/chore_census.jadpo:3
+
+▲ alert  `chore_census` hasn't succeeded since 15:00:00, over twice its `15m`
+"
+    );
+
+    // A misspelt name gets the nearest.
+    let misspelt = watching(&root, &url, at(480, 0), &["why", "chore_censu"]);
+    assert_eq!(misspelt.code, 2);
+    assert!(
+        misspelt
+            .stderr
+            .contains("Use `chore_census` instead of `chore_censu`"),
+        "{}",
+        misspelt.stderr
+    );
+}
+
+#[test]
+fn a_project_with_no_schedules_says_so() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("schedules-6.2b-none");
+    let _ = fs::remove_dir_all(&root);
+    write(&root, "app.jadpo", "application {}\n");
+    let listed = watching(
+        &root,
+        "postgresql://unused.invalid/none",
+        T0,
+        &["schedules"],
+    );
+    assert_eq!(listed.code, 0, "{}{}", listed.stdout, listed.stderr);
+    assert_eq!(listed.stdout, "The project declares no schedules\n");
+    let why = watching(
+        &root,
+        "postgresql://unused.invalid/none",
+        T0,
+        &["why", "census"],
+    );
+    assert_eq!(why.code, 2);
+    assert!(
+        why.stderr.contains("`census` isn't a schedule"),
+        "{}",
+        why.stderr
+    );
+}

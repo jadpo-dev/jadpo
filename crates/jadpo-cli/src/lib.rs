@@ -22,6 +22,7 @@ mod migrate;
 mod records;
 mod routes;
 mod run;
+mod schedules;
 mod share;
 mod sql;
 mod suggest;

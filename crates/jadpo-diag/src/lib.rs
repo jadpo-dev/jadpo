@@ -142,6 +142,8 @@ rules! {
         "14-tooling.html#command-errors", "Records command has invalid arguments";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Routes command has invalid arguments";
+    CLI_SCHEDULES_ARGUMENTS: "cli.schedules_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Schedules command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Sql command has invalid arguments";
     CLI_SUGGEST_ARGUMENTS: "cli.suggest_arguments", area 14, Error, Agent,
@@ -156,6 +158,8 @@ rules! {
         "14-tooling.html#command-errors", "Unknown flag";
     CLI_VERSION_ARGUMENTS: "cli.version_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Version command has invalid arguments";
+    CLI_WHY_ARGUMENTS: "cli.why_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Why command has invalid arguments";
     CONFIGURATION_BINDING_EMPTY: "configuration.binding_empty", area 10, Error, Agent,
         "10-configuration-and-time.html#configuration-binding-empty", "Setting names an empty environment variable";
     CONFIGURATION_BINDING_INVALID: "configuration.binding_invalid", area 10, Error, Agent,
@@ -650,6 +654,12 @@ rules! {
         "12-jobs-and-events.html#schedule-settings-invalid", "Schedules settings in `app.jadpo` hold something other than a database's `store:`";
     SCHEDULE_STORE_REQUIRED: "schedule.store_required", area 12, Error, Human,
         "12-jobs-and-events.html#schedule-store-required", "Schedule has no database named to keep its state and lease in";
+    SCHEDULES_LEASE_HELD: "schedules.lease_held", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Schedule is already running";
+    SCHEDULES_RUN_FAILED: "schedules.run_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Schedule's run failed";
+    SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Schedules' database couldn't be read";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
         "08-identity.html#semantic-auth-method-duplicate", "Sign-in method is declared twice";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,

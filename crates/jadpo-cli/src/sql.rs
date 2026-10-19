@@ -770,7 +770,7 @@ pub fn query_and_action_names(cwd: &std::path::Path) -> Vec<(String, &'static st
 }
 
 /// The declarations in each domain's `folder`, by file name.
-fn names_in(root: &std::path::Path, folder: &str) -> Vec<String> {
+pub(crate) fn names_in(root: &std::path::Path, folder: &str) -> Vec<String> {
     let mut out = Vec::new();
     let Ok(domains) = std::fs::read_dir(root.join("domains")) else {
         return out;
