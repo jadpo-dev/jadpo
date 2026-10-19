@@ -196,6 +196,10 @@ pub const SCHEDULES: SystemTable = SystemTable {
         // against a deployment (chunk 6.2d): the id its record will have,
         // until the application's own tick takes it.
         column("run_requested", "uuid", true),
+        // The alerts a tick raised that still hold, each with when it was
+        // raised (chunk 6.9), so of several instances' ticks one raises
+        // each.
+        column("alerts", "jsonb", true),
     ],
     primary_key: &["schedule"],
     unique: &[],

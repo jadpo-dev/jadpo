@@ -15,7 +15,9 @@
 //! ([`Handler::tick`]) once a minute (chunk 6.2). Stopped, the server
 //! drains: it accepts nothing more, starts no more ticks, and each worker
 //! waits for its handler's background work to give back what it holds
-//! ([`Handler::drain`]; chunk 6.7).
+//! ([`Handler::drain`]; chunk 6.7). [`AppHandler`] is the handler that
+//! serves an application: the runtime's [`Serving`] on a [`NativeHost`],
+//! which a deployable and `jadpo dev` both use (chunk 6.9).
 
 use std::cell::Cell;
 use std::collections::hash_map::DefaultHasher;
@@ -36,8 +38,9 @@ use hyper::service::service_fn;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::http::{BODY_LIMIT, Request, Response};
+use jadpo_runtime::serve::{Application, Observer, Serving};
 
-use crate::Runtime;
+use crate::{NativeHost, Runtime};
 
 /// What answers requests on one worker thread. It lives on that thread,
 /// so it may hold the runtime's `Rc` values and its stores.
@@ -72,6 +75,68 @@ pub trait Handler {
     /// does as the server stops (chunk 6.7; [`crate::NativeHost::drain`]).
     fn drain(&self) -> LocalFuture<'static, ()> {
         Box::pin(async {})
+    }
+}
+
+/// The handler that serves an application on one worker (chunk 6.9): the
+/// runtime's [`Serving`] on the worker's [`NativeHost`], whose work left
+/// for after a response, and whose ticks, run as tasks on the worker's
+/// thread and are given back as the server drains.
+pub struct AppHandler {
+    serving: Serving,
+    host: Rc<NativeHost>,
+}
+
+impl std::fmt::Debug for AppHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppHandler").finish_non_exhaustive()
+    }
+}
+
+impl AppHandler {
+    /// Serves on `host` the program `program` gives each time it is asked.
+    pub fn new(
+        host: NativeHost,
+        program: impl Fn() -> Rc<dyn Application> + 'static,
+    ) -> AppHandler {
+        let host = Rc::new(host);
+        AppHandler {
+            serving: Serving::new(Rc::clone(&host) as Rc<dyn jadpo_runtime::Host>, program),
+            host,
+        }
+    }
+
+    /// Tells `observer` about each request answered and each tick.
+    pub fn observed_by(mut self, observer: Rc<dyn Observer>) -> AppHandler {
+        self.serving = self.serving.observed_by(observer);
+        self
+    }
+}
+
+impl Handler for AppHandler {
+    fn handle(&self, request: Request) -> LocalFuture<'_, Response> {
+        Box::pin(async move { self.serving.handle(&request).await })
+    }
+
+    fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
+        self.host.take_deferred()
+    }
+
+    /// Counted as the host's background work, so stopping waits for it to
+    /// give back what it holds (chunk 6.7).
+    fn tick(&self) -> Option<LocalFuture<'static, ()>> {
+        let tick = self.serving.tick();
+        Some(self.host.track(Box::pin(async move {
+            let _ = tick.await;
+        })))
+    }
+
+    fn tick_every_ms(&self) -> u64 {
+        self.serving.tick_every_ms()
+    }
+
+    fn drain(&self) -> LocalFuture<'static, ()> {
+        self.host.drain()
     }
 }
 
@@ -492,5 +557,157 @@ mod tests {
             );
         }
         server.stop();
+    }
+
+    /// An application with no routes, which the runtime answers itself.
+    struct Bare {
+        places: jadpo_runtime::Places,
+        table: jadpo_std::http::RouteTable,
+        auth: jadpo_runtime::http::signed::AuthSettings,
+        client: jadpo_runtime::http::address::ClientAddress,
+    }
+
+    impl Bare {
+        fn new() -> Bare {
+            Bare {
+                places: jadpo_runtime::Places::default(),
+                table: jadpo_std::http::RouteTable::default(),
+                auth: jadpo_runtime::http::signed::AuthSettings::NONE,
+                client: jadpo_runtime::http::address::ClientAddress::CONNECTION,
+            }
+        }
+    }
+
+    impl jadpo_runtime::Executor for Bare {
+        fn places(&self) -> &jadpo_runtime::Places {
+            &self.places
+        }
+
+        fn callable(&self, _key: &str) -> Option<u32> {
+            None
+        }
+
+        fn run<'a, 'p: 'a>(
+            &'a self,
+            _ctx: &'a mut jadpo_runtime::Ctx<'p>,
+            _callable: u32,
+            _args: Vec<jadpo_value::Value>,
+        ) -> LocalFuture<'a, jadpo_runtime::Outcome> {
+            Box::pin(async { jadpo_runtime::Outcome::Value(jadpo_value::Value::Unit) })
+        }
+    }
+
+    impl Application for Bare {
+        fn app(&self) -> jadpo_runtime::http::App<'_> {
+            jadpo_runtime::http::App {
+                table: &self.table,
+                codecs: jadpo_value::json::Codecs {
+                    codecs: &[],
+                    validators: &[],
+                    shapes: &[],
+                },
+                failures: &[],
+                json: jadpo_runtime::JsonCodecs::NONE,
+                auth: &self.auth,
+                client: &self.client,
+            }
+        }
+    }
+
+    /// Hears each request answered and each tick.
+    struct Heard(Arc<Mutex<mpsc::Sender<String>>>);
+
+    impl Observer for Heard {
+        fn answered(&self, answered: &jadpo_runtime::serve::Answered<'_>) {
+            let line = format!(
+                "{} {} {}",
+                answered.request.method, answered.request.path, answered.response.status
+            );
+            let _ = self.0.lock().unwrap().send(line);
+        }
+
+        fn ticked(
+            &self,
+            _program: &dyn Application,
+            ticked: &jadpo_runtime::schedules::Ticked,
+            _now: i64,
+        ) {
+            let _ = self
+                .0
+                .lock()
+                .unwrap()
+                .send(format!("tick {}", ticked.due.len()));
+        }
+    }
+
+    /// The handler that serves an application needs nothing from the CLI:
+    /// given a program and a host, it answers requests through the
+    /// runtime, and an observer hears each one and each tick (chunk 6.9).
+    #[test]
+    fn the_application_handler_serves_without_the_cli() {
+        let (said, heard) = mpsc::channel();
+        let said = Arc::new(Mutex::new(said));
+        let heard_by = Arc::clone(&said);
+        let make: MakeHandler = Arc::new(move || {
+            let said = &heard_by;
+            let program: Rc<dyn Application> = Rc::new(Bare::new());
+            Box::new(
+                AppHandler::new(NativeHost::new(), move || Rc::clone(&program))
+                    .observed_by(Rc::new(Heard(Arc::clone(said)))),
+            ) as Box<dyn Handler>
+        });
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = serve(listener, 2, make).unwrap();
+        let get = |path: &str| {
+            let mut stream = std::net::TcpStream::connect(server.address()).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let request =
+                format!("GET {path} HTTP/1.1\r\nHost: jadpo\r\nConnection: close\r\n\r\n");
+            stream.write_all(request.as_bytes()).unwrap();
+            let mut answer = String::new();
+            stream.read_to_string(&mut answer).unwrap();
+            answer
+        };
+        let live = get("/health/live");
+        assert!(live.starts_with("HTTP/1.1 200"), "{live}");
+        assert!(live.contains("x-request-id"), "{live}");
+        let missing = get("/nothing/here");
+        assert!(missing.starts_with("HTTP/1.1 404"), "{missing}");
+        assert!(missing.contains("route_not_found"), "{missing}");
+        let mut lines = Vec::new();
+        while lines.len() < 2 {
+            let line = heard.recv_timeout(Duration::from_secs(10)).unwrap();
+            if !line.starts_with("tick") {
+                lines.push(line);
+            }
+        }
+        assert_eq!(lines, ["GET /health/live 200", "GET /nothing/here 404"]);
+        // The server's own timer runs the runtime's tick, once a minute
+        // for a program with no schedules, which a test can't wait for:
+        // the handler's tick is the one the timer starts.
+        let handler = make_tick(&said);
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            handler.tick().unwrap().await;
+        });
+        let mut ticked = false;
+        while let Ok(line) = heard.recv_timeout(Duration::from_secs(10)) {
+            if line == "tick 0" {
+                ticked = true;
+                break;
+            }
+        }
+        assert!(ticked, "the tick was heard");
+        assert_eq!(handler.tick_every_ms(), 60_000);
+        server.stop();
+    }
+
+    /// An application handler for [`Bare`] heard by `said`.
+    fn make_tick(said: &Arc<Mutex<mpsc::Sender<String>>>) -> AppHandler {
+        let program: Rc<dyn Application> = Rc::new(Bare::new());
+        AppHandler::new(NativeHost::new(), move || Rc::clone(&program))
+            .observed_by(Rc::new(Heard(Arc::clone(said))))
     }
 }
