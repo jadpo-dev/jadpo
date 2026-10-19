@@ -285,13 +285,13 @@ accepted wherever a literal is, since it is a value fixed while compiling
 (decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
 durations, as they do in a body (area 3). A field may be passed to three
 kinds of operation. `ai.distance` (area 21) is compared with a bound. A
-`geo.` test, which a GiST index serves: `geo.within`,
-`geo.contains` or `geo.intersects` with a geometry field first and a
-parameter after, on a `where:` line of its own or joined by `and`; the
-index finds the records and Jadpo's own code decides each, so the query
-gives the code's answer ([area 20](20-geospatial.md), "Queries", built
-in chunk 5.5u5). And a standard operation with an exact SQL form, which
-stands where the field would ("Operations in conditions", below). A field that is `none` meets no
+`geo.` test (`geo.within`, `geo.contains` or `geo.intersects`) takes a
+geometry field first and a parameter after, on a `where:` line of its
+own or joined by `and`, and a GiST index serves it: the index finds the
+records and Jadpo's own code decides each, so the query gives the code's
+answer ([area 20](20-geospatial.md), "Queries", built in chunk 5.5u5).
+And a standard operation with an exact SQL form stands where the field
+would ("Operations in conditions", below). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
 absent; that is what `where_present:` is for. The compiler creates the
