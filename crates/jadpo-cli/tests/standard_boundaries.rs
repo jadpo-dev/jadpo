@@ -636,7 +636,11 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     ),
     (
         "crates/jadpo-check/src/data/queries.rs",
-        "checks a query condition's literal against its field",
+        "reads a constant into the literal a query condition compares",
+    ),
+    (
+        "crates/jadpo-check/src/data/queries/geo.rs",
+        "checks that a `geo.within` radius written in a query is never negative",
     ),
     (
         "crates/jadpo-check/src/data/backfill.rs",

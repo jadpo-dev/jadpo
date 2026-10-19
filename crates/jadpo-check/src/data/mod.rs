@@ -2501,6 +2501,7 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         table.indexes.insert(
             physical::object_name(&parts, "idx"),
             physical::Index {
+                expression: None,
                 columns: born,
                 reason: format!("query {query}"),
                 predicate,
@@ -2510,23 +2511,28 @@ fn derived_indexes(db: &dyn Db, project: Project, model: &DataModel, schema: &mu
         );
     }
     nearest_indexes(model, &queries.queries, schema);
-    geo_indexes(model, &queries.queries, schema);
+    search_indexes(model, &queries.queries, schema);
+    expression_indexes(model, &queries.queries, schema);
 }
 
 /// The GiST indexes the `geo.` conditions search (area 20, "Indexes",
 /// chunk 5.5u5): one on each geometry field a condition tests, with
 /// `geography`'s own operator class, and one on a `Point` field cast to
 /// `geometry` for each a `BoundingBox` filter tests, however many queries
-/// test it. A field declared with `kind: IndexKind.geographic` already has
-/// the first.
-fn geo_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
+/// test it, as [`jadpo_sql::condition::search_index`] says the search reads.
+/// A field declared with `kind: IndexKind.geographic` already has the
+/// first.
+fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
     for query in queries {
         let Some(entity) = model.entity(&query.entity) else {
             continue;
         };
         let Some(store) = &entity.store else { continue };
-        for (tested, test) in queries::geo_tests(&query.filter) {
-            let Some(field) = entity.fields.iter().find(|f| f.name == tested) else {
+        for call in jadpo_sql::condition::search_calls(&query.filter) {
+            let Some(found) = jadpo_sql::condition::search_index(call) else {
+                continue;
+            };
+            let Some(field) = entity.fields.iter().find(|f| f.name == call.field) else {
                 continue;
             };
             let Some(table) = schema
@@ -2536,11 +2542,10 @@ fn geo_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut 
             else {
                 continue;
             };
-            let boxed = test.is_box();
             let method = physical::IndexMethod {
-                name: "gist".to_string(),
+                name: found.method.to_string(),
                 operator_class: String::new(),
-                cast: boxed.then(|| "geometry".to_string()),
+                cast: found.cast.map(str::to_string),
                 with: Vec::new(),
             };
             let column = field.born.clone();
@@ -2550,7 +2555,7 @@ fn geo_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut 
                 continue;
             }
             let table_name = entity.table.as_str();
-            let mut name = if boxed {
+            let mut name = if found.cast.is_some() {
                 physical::object_name(&[table_name, column.as_str(), "box"], "idx")
             } else {
                 physical::object_name(&[table_name, column.as_str()], "idx")
@@ -2560,17 +2565,11 @@ fn geo_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut 
             }
             // Only the records its `visible:` lets queries see, as every
             // query's index of an entity with a lifecycle (area 5).
-            let predicate = entity
-                .lifecycle
-                .as_ref()
-                .and_then(|lifecycle| lifecycle.visible.as_ref())
-                .filter(|visible| !lifecycle::reads_now(visible))
-                .and_then(|visible| {
-                    jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false)
-                });
+            let predicate = visible_predicate(entity);
             table.indexes.insert(
                 name,
                 physical::Index {
+                    expression: None,
                     columns: vec![column],
                     reason: format!("query {}", query.name),
                     predicate,
@@ -2580,6 +2579,105 @@ fn geo_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut 
             );
         }
     }
+}
+
+/// The B-tree index on each operation's expression a condition compares
+/// (area 6, "Operations in conditions", chunk 6.3b): one for each
+/// expression however many queries and lists they include test it,
+/// `<table>_<column>_<operation>_idx`, holding the operation's SQL form on
+/// the field's column with every other argument written out, as the
+/// statement compares it, so PostgreSQL matches the two.
+fn expression_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &mut Schema) {
+    fn lines<'q>(
+        entity: &'q str,
+        filter: &'q [queries::Condition],
+        includes: &'q [queries::Include],
+        query: &'q str,
+        out: &mut Vec<(&'q str, &'q queries::Call, &'q str)>,
+    ) {
+        let mut calls = Vec::new();
+        for line in filter {
+            line.calls(&mut calls);
+        }
+        out.extend(calls.into_iter().map(|call| (entity, call, query)));
+        for include in includes {
+            lines(
+                &include.entity,
+                &include.filter,
+                &include.includes,
+                query,
+                out,
+            );
+        }
+    }
+    let mut wanted = Vec::new();
+    for query in queries {
+        lines(
+            &query.entity,
+            &query.filter,
+            &query.includes,
+            &query.name,
+            &mut wanted,
+        );
+    }
+    for (entity_name, call, query) in wanted {
+        let Some(entity) = model.entity(entity_name) else {
+            continue;
+        };
+        let Some(store) = &entity.store else { continue };
+        let Some(expression) = jadpo_sql::condition::index_expression(entity, call) else {
+            continue;
+        };
+        let Some(field) = entity.fields.iter().find(|f| f.name == call.field) else {
+            continue;
+        };
+        let Some(table) = schema
+            .stores
+            .get_mut(store)
+            .and_then(|store| store.tables.get_mut(&entity.table))
+        else {
+            continue;
+        };
+        if table
+            .indexes
+            .values()
+            .any(|index| index.expression.as_ref() == Some(&expression))
+        {
+            continue;
+        }
+        let table_name = entity.table.as_str();
+        let column = field.born.as_str();
+        let mut name = physical::object_name(&[table_name, column, call.name()], "idx");
+        // Another expression of the same operation and field: its own
+        // index, named apart by its expression's digest.
+        if table.indexes.contains_key(&name) {
+            let digest = blake3::hash(expression.as_bytes()).to_hex();
+            name = physical::object_name(&[table_name, column, call.name(), &digest[..8]], "idx");
+        }
+        table.indexes.insert(
+            name,
+            physical::Index {
+                expression: Some(expression),
+                columns: vec![field.born.clone()],
+                reason: format!("query {query}"),
+                predicate: visible_predicate(entity),
+                collate: Vec::new(),
+                method: None,
+            },
+        );
+    }
+}
+
+/// The predicate of a derived index of `entity`'s records: the records its
+/// lifecycle's `visible:` lets queries see, unless `visible:` reads
+/// `clock.now`, which changes as time passes (area 5, "Indexes").
+fn visible_predicate(entity: &EntityModel) -> Option<String> {
+    entity
+        .lifecycle
+        .as_ref()
+        .and_then(|lifecycle| lifecycle.visible.as_ref())
+        .filter(|visible| !lifecycle::reads_now(visible))
+        .and_then(|visible| jadpo_sql::condition(&mut jadpo_sql::Fixed, entity, visible, false))
 }
 
 /// The HNSW index each nearest-neighbour query searches (area 21, "The
@@ -2639,6 +2737,7 @@ fn nearest_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &
         table.indexes.insert(
             name,
             physical::Index {
+                expression: None,
                 columns: vec![column],
                 reason: format!("query {}", query.name),
                 predicate,
@@ -2794,6 +2893,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
                 out.indexes.insert(
                     physical::object_name(&[table, &field.born], "idx"),
                     physical::Index {
+                        expression: None,
                         columns: vec![field.born.clone()],
                         reason: format!("reference {}.{}", entity.born, field.born),
                         predicate: None,
@@ -2817,6 +2917,7 @@ fn table_of(entity: &EntityModel, by_name: &BTreeMap<&str, &EntityModel>) -> phy
         out.indexes.insert(
             physical::object_name(&[table, &index.name], "idx"),
             physical::Index {
+                expression: None,
                 columns: index.fields.iter().flat_map(|f| column(f)).collect(),
                 reason: format!("index {}.{}", entity.born, index.name),
                 predicate: None,

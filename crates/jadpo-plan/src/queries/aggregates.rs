@@ -23,6 +23,7 @@
 
 use super::*;
 use jadpo_check::data::queries::{AggregateKind, Entry, GroupKey, Grouping};
+use jadpo_sql::aggregate;
 use jadpo_sql::form::{self, Arg, Held};
 use jadpo_std::{Builtin, Op};
 
@@ -35,6 +36,10 @@ struct Selected {
     inner: Vec<(String, String)>,
     outer: Vec<(String, String)>,
     column: Column,
+    /// For a group by a field, and a field's `min` or `max`: a stored
+    /// value of the field, held to its rules when read (chunk 5.9d). A
+    /// count, a sum, an average and a bucket are worked out, and hold none.
+    held: Option<FieldRules>,
     group: Option<String>,
     sort: String,
 }
@@ -75,6 +80,7 @@ impl Planner<'_> {
             .collect();
         let mut rows: Vec<(String, String)> = Vec::new();
         let mut kinds: Vec<Column> = Vec::new();
+        let mut held: Vec<Option<FieldRules>> = Vec::new();
         let mut starts: Vec<u32> = Vec::new();
         for entry in &selected {
             starts.push(u32::try_from(rows.len()).ok()?);
@@ -85,6 +91,7 @@ impl Planner<'_> {
                 } else {
                     Column::Part
                 });
+                held.push(if at == 0 { entry.held.clone() } else { None });
             }
         }
         let groups: Vec<String> = selected.iter().filter_map(|s| s.group.clone()).collect();
@@ -131,6 +138,7 @@ impl Planner<'_> {
                     permitted: None,
                     params: statement.into_params(),
                     columns: kinds,
+                    held,
                     record: Record {
                         ty: query.element.ty.clone(),
                         fields,
@@ -165,6 +173,7 @@ impl Planner<'_> {
             inner: vec![(expr.clone(), name.to_string())],
             outer: vec![(alias.clone(), name.to_string())],
             column: kind,
+            held: None,
             group: group.then_some(expr),
             sort: alias.clone(),
         };
@@ -173,25 +182,21 @@ impl Planner<'_> {
                 let (field, column) = (field?, column?);
                 let kind = self.column(entity, field)?;
                 let sort = match &kind {
-                    Column::Text => format!("{alias} COLLATE \"C\""),
+                    Column::Text => aggregate::text_order(&alias),
                     Column::Enum { ty, variants } => {
-                        let codes: Vec<String> = variants
+                        let codes: Vec<&str> = variants
                             .iter()
-                            .map(|variant| {
-                                jadpo_sql::text_literal(jadpo_std::standard::stored_variant(
-                                    ty, variant,
-                                ))
-                            })
+                            .map(|variant| jadpo_std::standard::stored_variant(ty, variant))
                             .collect();
-                        format!(
-                            "array_position(ARRAY[{}]::text[], ({alias})::text)",
-                            codes.join(", ")
-                        )
+                        aggregate::enum_order(&alias, &codes)
                     }
                     _ => alias.clone(),
                 };
+                let held =
+                    (!matches!(kind, Column::Json(_))).then(|| self.held_field(entity, field));
                 Selected {
                     sort,
+                    held,
                     ..one(column, kind, true)
                 }
             }
@@ -204,7 +209,7 @@ impl Planner<'_> {
             Entry::Aggregate {
                 kind: AggregateKind::Count,
                 ..
-            } => one("count(*)".to_string(), Column::Int, false),
+            } => one(aggregate::count(), Column::Int, false),
             Entry::Aggregate {
                 kind: AggregateKind::Sum,
                 ..
@@ -213,21 +218,16 @@ impl Planner<'_> {
                 let kind = self.column(entity, field)?;
                 match &kind {
                     Column::Int | Column::Duration => {
-                        one(format!("coalesce(sum({column}), 0)::bigint"), kind, false)
+                        one(aggregate::sum_whole(&column), kind, false)
                     }
                     Column::Decimal => one(
-                        format!(
-                            "coalesce(sum({column}), {})",
-                            zero(field.scale.unwrap_or(0))
-                        ),
+                        aggregate::sum_at(&column, field.scale.unwrap_or(0)),
                         kind,
                         false,
                     ),
-                    Column::Quantity(quantity) => one(
-                        format!("coalesce(sum({column}), {})", zero(quantity.scale())),
-                        kind,
-                        false,
-                    ),
+                    Column::Quantity(quantity) => {
+                        one(aggregate::sum_at(&column, quantity.scale()), kind, false)
+                    }
                     // Money: its minor units added up, and the currency its
                     // type fixes.
                     Column::Compound { .. } => {
@@ -237,11 +237,8 @@ impl Planner<'_> {
                         let part = format!("{name}_currency");
                         Selected {
                             inner: vec![
-                                (
-                                    format!("coalesce(sum({amount}), 0)::bigint"),
-                                    name.to_string(),
-                                ),
-                                (format!("{currency}::text"), part.clone()),
+                                (aggregate::sum_whole(&amount), name.to_string()),
+                                (aggregate::as_text(&currency), part.clone()),
                             ],
                             outer: vec![
                                 (alias.clone(), name.to_string()),
@@ -251,6 +248,7 @@ impl Planner<'_> {
                                 ty: "Money".to_string(),
                                 may_be_none: false,
                             },
+                            held: None,
                             group: None,
                             sort: alias.clone(),
                         }
@@ -264,17 +262,14 @@ impl Planner<'_> {
             } => {
                 let (field, column) = (field?, column?);
                 let read = self.column(entity, field)?;
-                let word = if *kind == AggregateKind::Min {
-                    "min"
-                } else {
-                    "max"
-                };
-                let collate = if read == Column::Text {
-                    " COLLATE \"C\""
-                } else {
-                    ""
-                };
-                one(format!("{word}({column}{collate})"), read, false)
+                let max = *kind == AggregateKind::Max;
+                let text = read == Column::Text;
+                let held =
+                    (!matches!(read, Column::Json(_))).then(|| self.held_field(entity, field));
+                Selected {
+                    held,
+                    ..one(aggregate::extreme(&column, max, text), read, false)
+                }
             }
             // The sum at `scale:` places and how many values there are,
             // grouped; outside, `decimal.divide`'s form of the one by the
@@ -287,7 +282,7 @@ impl Planner<'_> {
                 let column = column?;
                 let (sum, count) = (format!("{name}_sum"), format!("{name}_count"));
                 let dividend = jadpo_sql::ident(&sum);
-                let divisor = format!("NULLIF({}, 0)", jadpo_sql::ident(&count));
+                let divisor = aggregate::nonzero(&count);
                 let form = form::operation(
                     Op::DecimalDivide,
                     &[
@@ -298,24 +293,16 @@ impl Planner<'_> {
                 )?;
                 Selected {
                     inner: vec![
-                        (format!("round((sum({column}))::numeric, {scale})"), sum),
-                        (format!("count({column})"), count),
+                        (aggregate::sum_rounded(&column, *scale), sum),
+                        (aggregate::count_of(&column), count),
                     ],
                     outer: vec![(form.value()?.to_string(), name.to_string())],
                     column: Column::Decimal,
+                    held: None,
                     group: None,
                     sort: alias.clone(),
                 }
             }
         })
-    }
-}
-
-/// Zero with `places` places, as a sum of no values at a scale gives it.
-fn zero(places: u32) -> String {
-    if places == 0 {
-        "0".to_string()
-    } else {
-        format!("0.{}", "0".repeat(places as usize))
     }
 }

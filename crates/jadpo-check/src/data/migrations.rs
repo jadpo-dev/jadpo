@@ -764,19 +764,24 @@ impl Decide<'_> {
         let retired = retired_fields(self.db, self.project, &need.entity);
         let mut reads = Vec::new();
         for name in names {
-            let decode = match retired.iter().find(|(field, _)| *field == name) {
-                Some((_, Ty::Prim(builtin))) => jadpo_std::read::Column::of_builtin(*builtin)?,
+            let (decode, now) = match retired.iter().find(|(field, _)| *field == name) {
+                Some((_, Ty::Prim(builtin))) => {
+                    (jadpo_std::read::Column::of_builtin(*builtin)?, None)
+                }
                 Some(_) => return None,
-                None => decode_column(
-                    self.lookup,
-                    &entity.name,
-                    field_model(self.model, &need.entity, &name)?,
-                )?,
+                None => {
+                    let read = field_model(self.model, &need.entity, &name)?;
+                    (
+                        decode_column(self.lookup, &entity.name, read)?,
+                        Some(read.name.clone()),
+                    )
+                }
             };
             reads.push(super::backfill::Read {
                 column: columns.get(&name)?.clone(),
                 field: name,
                 decode,
+                name: now,
             });
         }
         Some(super::backfill::InJadpo {
@@ -1063,7 +1068,7 @@ pub fn migration_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     let source = super::schema(db, project);
     let latest = set.latest_schema();
     let next = next_snapshot(&latest, source);
-    if next != latest {
+    if !next.same_but_reasons(&latest) {
         out.push(out_of_date(db, project, set, model, &latest, &next));
         return out;
     }

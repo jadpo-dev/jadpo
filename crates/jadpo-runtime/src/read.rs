@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
-    Cardinality, Column, Field, GeoOp, IncludeShape, ReadPlan, Recheck, Record, Select, Size,
-    Source,
+    Cardinality, Check, Column, Field, FieldRules, IncludeShape, Operand, ReadPlan, Recheck,
+    Record, Select, Size, Source,
 };
 use jadpo_value::Value;
 
@@ -369,15 +369,15 @@ async fn run_read(
     Ok((rows, values, hidden))
 }
 
-/// The rows of a read with `geo.` conditions (area 20, "Queries", chunk
-/// 5.5u5): those its statement finds that pass each condition as Jadpo's
-/// own code works it out, sorted by the code's distance when the query is
-/// ordered by `geo.distance`, as many as the read keeps. The statement
-/// searches a margin wider than the conditions, so it never leaves out a
-/// row the code keeps; it asks for as many rows as the read keeps, and
-/// again for four times as many while the recheck leaves the read short,
-/// or while a row past those fetched could, by PostGIS's distance less the
-/// margin, still come before the last kept.
+/// The rows of a read whose conditions search an index (chunk 6.3b; area
+/// 20, "Queries", chunk 5.5u5): those its statement finds that pass each
+/// check as Jadpo's own code works it out, sorted by the code's result when
+/// the read is ordered by an operation's, as many as the read keeps. The
+/// statement searches a margin wider than the conditions, so it never
+/// leaves out a row the code keeps; it asks for as many rows as the read
+/// keeps, and again for four times as many while the checks leave the read
+/// short, or while a row past those fetched could, by the database's
+/// measure less the margin, still come before the last kept.
 async fn rechecked(
     transaction: &mut dyn Transaction,
     plan: &ReadPlan,
@@ -407,8 +407,8 @@ async fn rechecked(
         });
         let mut kept = Vec::new();
         for row in rows {
-            if let Some(distance) = passes(recheck, &plan.select, &row, env)? {
-                kept.push((distance, row));
+            if let Some(key) = passes(recheck, &plan.select, &row, env)? {
+                kept.push((key, row));
             }
         }
         if let Some(order) = &recheck.order {
@@ -421,13 +421,14 @@ async fn rechecked(
         let exhausted = found < fetch;
         let enough = kept.len() >= keep
             && match (&recheck.order, last_measured) {
-                // The last row kept by the code's distance is nearer than
+                // The last row kept by the code's result is nearer than
                 // any row not fetched could be.
                 (Some(_), Some(measured)) => kept
                     .get(keep.saturating_sub(1))
-                    .and_then(|(distance, _)| *distance)
-                    .is_some_and(|micrometres| {
-                        (micrometres as f64) / 1e6 < measured - jadpo_std::read::GEO_MARGIN_METRES
+                    .and_then(|(key, _)| *key)
+                    .is_some_and(|(amount, scale)| {
+                        (amount as f64) / 10f64.powi(scale as i32)
+                            < measured - jadpo_std::read::GEO_MARGIN_METRES
                     }),
                 (Some(_), None) => false,
                 (None, _) => true,
@@ -440,71 +441,63 @@ async fn rechecked(
     }
 }
 
-/// Whether `row` passes each of the read's `geo.` conditions as Jadpo's
-/// code works them out: `None` when it doesn't, and when it does, the
-/// code's distance, in micrometres, for a query ordered by one.
+/// Whether `row` passes each of the read's checks as Jadpo's code works
+/// them out: `None` when it doesn't, and when it does, the code's result
+/// for a read ordered by one, a physical quantity's amount and its kind's
+/// scale.
 fn passes(
     recheck: &Recheck,
     select: &Select,
     row: &Row,
     env: &Env<'_>,
-) -> Result<Option<Option<i128>>, Problem> {
-    let column = |at: u32| field_value(row, &select.columns, at, env.json).map_err(Problem::Defect);
-    let argument = |source: &Source| -> Result<Value, Problem> {
-        match source {
-            Source::Stored(stored) => {
-                from_sql(stored, &Column::Quantity(jadpo_std::QuantityKind::Length))
-                    .map_err(Problem::Defect)
-            }
-            other => value_at(other, env.args)
-                .ok_or_else(|| Problem::Defect("a value the read wasn't given".into())),
-        }
-    };
-    let fault = |fault: jadpo_value::Fault| Problem::Defect(format!("{fault:?}"));
-    let mut distance = None;
+) -> Result<Option<Option<(i128, u32)>>, Problem> {
+    let mut key = None;
     if let Some(order) = &recheck.order {
-        let point = column(order.column)?;
-        if point == Value::None {
+        let Some(found) = checked(&order.key, select, row, env)? else {
             return Ok(None);
-        }
-        match jadpo_value::geo::distance(&point, &argument(&order.point)?).map_err(fault)? {
-            Value::Quantity(length) => distance = Some(length.amount),
-            _ => return Err(Problem::Defect("a distance that isn't a length".into())),
+        };
+        match found {
+            Value::Quantity(quantity) => key = Some((quantity.amount, quantity.kind.scale())),
+            _ => return Err(Problem::Defect("an order that isn't a quantity".into())),
         }
     }
     for check in &recheck.checks {
-        let field = column(check.column)?;
-        // A record whose field is `none` meets no `geo.` condition.
-        if field == Value::None {
-            return Ok(None);
-        }
-        let value = argument(&check.value)?;
-        let held = match (check.op, &check.distance) {
-            (GeoOp::Within, Some(reach)) => {
-                let reach = argument(reach)?;
-                match (&recheck.order, distance, &reach) {
-                    // Measured already, from the same point.
-                    (Some(order), Some(apart), Value::Quantity(reach))
-                        if order.column == check.column && order.point == check.value =>
-                    {
-                        Value::Bool(apart <= reach.amount)
-                    }
-                    _ => jadpo_value::geo::within(&field, &value, &reach).map_err(fault)?,
-                }
-            }
-            (GeoOp::Within, None) => {
-                jadpo_value::geo::within(&field, &value, &Value::None).map_err(fault)?
-            }
-            (GeoOp::Contains, _) => jadpo_value::geo::contains(&field, &value).map_err(fault)?,
-            (GeoOp::Intersects, _) => {
-                jadpo_value::geo::intersects(&field, &value).map_err(fault)?
-            }
-        };
-        if held != Value::Bool(true) {
+        if checked(check, select, row, env)? != Some(Value::Bool(true)) {
             return Ok(None);
         }
     }
-    Ok(Some(distance))
+    Ok(Some(key))
+}
+
+/// What `check` gives on `row`, run by the code a function body's call of
+/// its operation runs; `None` when a column it reads is `none`, which no
+/// condition on an operation of a field meets.
+fn checked(
+    check: &Check,
+    select: &Select,
+    row: &Row,
+    env: &Env<'_>,
+) -> Result<Option<Value>, Problem> {
+    let mut args = Vec::with_capacity(check.args.len());
+    for operand in &check.args {
+        args.push(match operand {
+            Operand::Column(at) => {
+                let value = stored_value(row, &select.columns, &select.held, *at, env.json)
+                    .map_err(Problem::Defect)?;
+                if value == Value::None {
+                    return Ok(None);
+                }
+                value
+            }
+            Operand::Value(source) => value_at(source, env.args)
+                .ok_or_else(|| Problem::Defect("a value the read wasn't given".into()))?,
+            Operand::Constant(constant) => Value::constant(constant),
+            Operand::Absent => Value::None,
+        });
+    }
+    jadpo_value::run(check.op, &args, None, &mut |_| None)
+        .map(Some)
+        .map_err(|fault| Problem::Defect(format!("{fault:?}")))
 }
 
 async fn run(
@@ -591,9 +584,8 @@ fn record(
     let mut fields = Vec::with_capacity(shape.fields.len());
     for (name, field) in &shape.fields {
         let value = match field {
-            Field::Column(at) => {
-                field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?
-            }
+            Field::Column(at) => stored_value(row, &select.columns, &select.held, *at, env.json)
+                .map_err(Problem::Defect)?,
             Field::Record(inner) => record(inner, row, select, found, env)?,
             Field::Include(at) => {
                 let (Some(include), Some(matched)) =
@@ -970,6 +962,61 @@ pub fn field_value(
     Ok(value)
 }
 
+/// The value of the field whose column is at `at` of `row`, as
+/// [`field_value`] reads it, held to the rules `held` names for that column
+/// (area 5, "A field's rules on read"; chunk 5.9d).
+pub fn stored_value(
+    row: &[SqlValue],
+    columns: &[Column],
+    held: &[Option<FieldRules>],
+    at: u32,
+    json: JsonCodecs<'_>,
+) -> Result<Value, String> {
+    let value = field_value(row, columns, at, json)?;
+    held_to(&value, held.get(at as usize).and_then(Option::as_ref), json)?;
+    Ok(value)
+}
+
+/// Whether `value`, read from the store, keeps every rule of the field
+/// `held` names: checked by the field's own validator, the one a write
+/// checks it by, so a stored value is refused on read for exactly what a
+/// write refuses (chunk 5.9d). Jadpo writes none that breaks one, so a row
+/// that does was written around it, and reading it is a defect naming the
+/// field and the rule, never the value.
+pub fn held_to(
+    value: &Value,
+    held: Option<&FieldRules>,
+    json: JsonCodecs<'_>,
+) -> Result<(), String> {
+    let Some(held) = held else {
+        return Ok(());
+    };
+    if matches!(value, Value::None) {
+        return Ok(());
+    }
+    let validator = json
+        .codecs
+        .validators
+        .get(held.validator.0 as usize)
+        .ok_or_else(|| format!("`{}`'s rules, which the plan doesn't have", held.field))?;
+    kept_by(&held.field, validator, value)
+}
+
+/// Whether `value`, stored for `field`, keeps `validator`'s rules: a
+/// defect naming the field and the rule broken when it doesn't.
+pub fn kept_by(
+    field: &str,
+    validator: &jadpo_value::Validator,
+    value: &Value,
+) -> Result<(), String> {
+    if matches!(value, Value::None) {
+        return Ok(());
+    }
+    validator
+        .check(value)
+        .map_err(|invalid| format!("a stored `{field}` that breaks {}", invalid.broken(None)))
+}
+
 /// A vector read back from pgvector: each float as the decimal a vector
 /// keeps it as (chunk 5.5s2), so what was written reads back unchanged.
 fn vector_value(bits: &[u32]) -> Result<Value, String> {
@@ -1320,5 +1367,60 @@ mod tests {
         )
         .expect_err("never written");
         assert!(why.contains("`null`"), "{why}");
+    }
+
+    /// A stored value is held to every rule its field has when it is read
+    /// (chunk 5.9d), by the field's own validator: one that breaks a rule
+    /// is a defect naming the field and the rule, never the value; `none`
+    /// and a column with no rules of its own read as they are.
+    #[test]
+    fn a_stored_value_is_held_to_its_fields_rules() {
+        use jadpo_std::types::ValidatorId;
+        let stars = jadpo_value::Validator::new(
+            Some(jadpo_std::Builtin::Int),
+            vec![jadpo_std::Rules {
+                min: jadpo_std::Num::parse("1"),
+                max: jadpo_std::Num::parse("5"),
+                ..jadpo_std::Rules::default()
+            }],
+        );
+        let validators = [stars];
+        let json = JsonCodecs {
+            codecs: jadpo_value::json::Codecs {
+                codecs: &[],
+                validators: &validators,
+                shapes: &[],
+            },
+            types: &[],
+        };
+        let columns = [Column::Int, Column::Int];
+        let held = [
+            Some(FieldRules {
+                field: "Tool.stars".into(),
+                validator: ValidatorId(0),
+            }),
+            None,
+        ];
+        let read = |n: i64, at: u32| {
+            stored_value(
+                &[SqlValue::Int8(n), SqlValue::Int8(n)],
+                &columns,
+                &held,
+                at,
+                json,
+            )
+        };
+        assert_eq!(read(4, 0), Ok(Value::Int(4)));
+        let why = read(77, 0).expect_err("past its max");
+        assert_eq!(why, "a stored `Tool.stars` that breaks `max: 5`");
+        assert!(!why.contains("77"), "{why}");
+        assert_eq!(read(77, 1), Ok(Value::Int(77)), "no rules of its own");
+        assert_eq!(
+            stored_value(&[SqlValue::Null(SqlType::Int8)], &columns, &held, 0, json),
+            Ok(Value::None)
+        );
+        // A plan's rules always come with its validators.
+        let missing = stored_value(&[SqlValue::Int8(4)], &columns, &held, 0, JsonCodecs::NONE);
+        assert!(missing.is_err(), "{missing:?}");
     }
 }

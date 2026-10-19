@@ -183,9 +183,67 @@ pub fn held_by(holder: &str, table: &str, conditions: &[String]) -> String {
     format!("{holder} IN ({inner})")
 }
 
+/// Every one of `parts` holding: [`ANYONE`] for none, the one itself, or
+/// `a AND b` of several.
+pub fn all_of(parts: &[String]) -> String {
+    match parts {
+        [] => ANYONE.to_string(),
+        [one] => one.clone(),
+        _ => parts.join(" AND "),
+    }
+}
+
+/// `(a AND b ...)`: several conditions as one, inside another's `OR`.
+pub fn grouped(parts: &[String]) -> String {
+    format!("({})", parts.join(" AND "))
+}
+
+/// `<value> = <caller>`: a field of the record (a column or a new record's
+/// parameter) naming the caller.
+pub fn names_caller(value: &str, caller: &str) -> String {
+    format!("{value} = {caller}")
+}
+
+/// A field's own grant `who` on a new record's field that may be `none`:
+/// met by a field left `none`, which reaches no one.
+pub fn unless_none(value: &str, who: &str) -> String {
+    format!("({value} IS NULL OR {who})")
+}
+
+/// A field's own grant `who` on an update's field, met when the patch
+/// doesn't supply it (`supplied` the parameter saying whether it does).
+pub fn unless_unsupplied(supplied: &str, who: &str) -> String {
+    format!("(NOT {supplied} OR {who})")
+}
+
+/// A field's value once a patch is written: `value` when `supplied`, its
+/// stored one in `table`'s `column` otherwise.
+pub fn supplied_value(table: &str, column: &str, supplied: &str, value: &str) -> String {
+    format!(
+        "CASE WHEN {supplied} THEN {value} ELSE {} END",
+        qualified(table, column)
+    )
+}
+
+/// `SELECT 1 WHERE <any of whos>`: whether a caller holds one of the roles
+/// an action's gate names (area 9, `policy { actions: }`).
+pub fn gate(whos: &[Who]) -> String {
+    format!("SELECT 1 WHERE {}", any_of(whos))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn several_conditions_join_as_the_plan_wrote_them() {
+        assert_eq!(all_of(&[]), ANYONE);
+        assert_eq!(all_of(&["a".into(), "b".into()]), "a AND b");
+        assert_eq!(grouped(&["a".into(), "b".into()]), "(a AND b)");
+        assert_eq!(unless_none("$1", "w"), "($1 IS NULL OR w)");
+        assert_eq!(unless_unsupplied("$2", "w"), "(NOT $2 OR w)");
+        assert_eq!(gate(&[Who::Condition("$1".into())]), "SELECT 1 WHERE $1");
+    }
 
     #[test]
     fn a_membership_is_an_exists_of_the_callers_current_role() {

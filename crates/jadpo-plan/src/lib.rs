@@ -287,6 +287,9 @@ pub struct BackfillPlan {
     pub callable: u32,
     /// How each of their columns is read, in parameter order.
     pub reads: Vec<jadpo_std::read::Column>,
+    /// The rules each value read is held to, in the same order (chunk
+    /// 5.9d): `None` for a field the migration retires.
+    pub held: Vec<Option<jadpo_std::read::FieldRules>>,
     /// The column type its value is written as.
     pub write: jadpo_std::SqlType,
     /// Its field's rules, its type's included, which each value is kept
@@ -348,6 +351,8 @@ impl Plan {
         let mut backfills = Vec::new();
         // The field each fills, by its entity's and its own name.
         let mut backfill_fields: Vec<(String, String)> = Vec::new();
+        // The fields each reads, by their names now.
+        let mut backfill_reads: Vec<Vec<Option<String>>> = Vec::new();
         let mut backfill_lines: HashMap<Key, (String, u32)> = HashMap::new();
         if with_backfills {
             for backfill in jadpo_check::data::migrations::jadpo_backfills(db, project) {
@@ -365,9 +370,18 @@ impl Plan {
                         .iter()
                         .map(|read| read.decode.clone())
                         .collect(),
+                    held: Vec::new(),
                     write: backfill.plan.write,
                     validator: ValidatorId(0),
                 });
+                backfill_reads.push(
+                    backfill
+                        .plan
+                        .reads
+                        .iter()
+                        .map(|read| read.name.clone())
+                        .collect::<Vec<_>>(),
+                );
                 backfill_fields.push(backfill.plan.fills.clone());
                 backfill_lines.insert(key.clone(), (backfill.field.clone(), backfill.line));
                 found.push((
@@ -397,10 +411,31 @@ impl Plan {
         let mut types = Types::new(Arc::clone(&graph), rule_bodies);
         if !backfills.is_empty() {
             let lookup = jadpo_check::lookups::Lookup::new(db, project);
-            for (backfill, (entity, field)) in backfills.iter_mut().zip(&backfill_fields) {
+            for ((backfill, (entity, field)), reads) in backfills
+                .iter_mut()
+                .zip(&backfill_fields)
+                .zip(&backfill_reads)
+            {
                 let key =
                     jadpo_check::graph::field_key(&lookup, entity, std::slice::from_ref(field));
                 backfill.validator = types.validator_id(&TypeRef::Field(key));
+                // Each stored value it reads is held to its field's rules,
+                // as a query's read is (chunk 5.9d).
+                backfill.held = reads
+                    .iter()
+                    .map(|read| {
+                        let read = read.as_ref()?;
+                        let key = jadpo_check::graph::field_key(
+                            &lookup,
+                            entity,
+                            std::slice::from_ref(read),
+                        );
+                        Some(jadpo_std::read::FieldRules {
+                            field: format!("{entity}.{read}"),
+                            validator: types.validator_id(&TypeRef::Field(key)),
+                        })
+                    })
+                    .collect();
             }
         }
         // The types the JSON table numbers: each JSON-held field's, which

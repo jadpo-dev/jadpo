@@ -226,7 +226,7 @@ impl Planner<'_> {
                     };
                     let value = new.iter().find(|(n, _)| n == name)?.1.clone();
                     narrowed.push(if field(entity_model, name)?.nullable {
-                        format!("({value} IS NULL OR {who})")
+                        jadpo_sql::policy::unless_none(&value, &who)
                     } else {
                         who
                     });
@@ -413,7 +413,8 @@ impl Planner<'_> {
                                 Effect::Update,
                                 &Row::Table,
                             )? {
-                                narrowed.push(format!("(NOT {supplied} OR {who})"));
+                                narrowed
+                                    .push(jadpo_sql::policy::unless_unsupplied(&supplied, &who));
                             }
                             if field.reference.is_some() {
                                 written_refs.push((
@@ -474,7 +475,9 @@ impl Planner<'_> {
                                     Effect::Update,
                                     &Row::Table,
                                 )? {
-                                    narrowed.push(format!("(NOT {supplied} OR {who})"));
+                                    narrowed.push(jadpo_sql::policy::unless_unsupplied(
+                                        &supplied, &who,
+                                    ));
                                 }
                             }
                         }
@@ -826,22 +829,31 @@ impl Planner<'_> {
     }
 
     /// The record a written row becomes: every column of the entity.
-    fn returned(&self, entity: &EntityModel) -> Option<Returned> {
+    fn returned(&mut self, entity: &EntityModel) -> Option<Returned> {
         let mut columns = Vec::new();
+        let mut held = Vec::new();
         let mut fields = Vec::new();
         for field in &entity.fields {
             let at = columns.len() as u32;
             let column = self.column(entity, field)?;
             // A compound type comes back in its several columns (area 19).
             let parts = field.columns().len().max(1);
+            // Every stored field is read back, held to its rules (chunk
+            // 5.9d); a JSON-held one by its codec.
+            held.push(
+                (!matches!(column, jadpo_std::read::Column::Json(_)))
+                    .then(|| self.held_field(entity, field)),
+            );
             columns.push(column);
             for _ in 1..parts {
                 columns.push(jadpo_std::read::Column::Part);
+                held.push(None);
             }
             fields.push((field.name.clone(), Field::Column(at)));
         }
         Some(Returned {
             columns,
+            held,
             record: Record {
                 ty: entity.name.clone(),
                 fields,
@@ -853,10 +865,7 @@ impl Planner<'_> {
 /// A patched field's value once written, as the `WHERE` of its update
 /// reads it: the value when the request supplies it, the column otherwise.
 fn supplied_value(table: &str, column: &str, supplied: &str, value: &str) -> String {
-    format!(
-        "CASE WHEN {supplied} THEN {value} ELSE {} END",
-        jadpo_sql::policy::qualified(table, column)
-    )
+    jadpo_sql::policy::supplied_value(table, column, supplied, value)
 }
 
 /// `condition` and each of `fields`: [`jadpo_sql::policy::ANYONE`] when
@@ -867,11 +876,7 @@ fn all_of(condition: String, fields: Vec<String>) -> String {
         parts.push(condition);
     }
     parts.extend(fields);
-    if parts.is_empty() {
-        jadpo_sql::policy::ANYONE.to_string()
-    } else {
-        parts.join(" AND ")
-    }
+    jadpo_sql::policy::all_of(&parts)
 }
 
 /// Every column of an entity, as `RETURNING` lists them: a compound

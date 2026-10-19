@@ -3,13 +3,16 @@
 //! from parts the checker, the graph's migrations and the plan decide, so
 //! the SQL has one author and reads the same wherever it lands.
 //!
+//! - [`aggregate`]: an aggregate query's groups, totals and their order.
 //! - [`condition`]: the model of a condition on one entity's fields (a
 //!   query's `where:` lines, a lifecycle's `visible:` and `when:`) and its
 //!   renderer, which the plan's statements and the checker's partial
 //!   indexes both use, through a [`Bind`] that says where a parameter goes.
 //! - [`form`]: the SQL form of each standard operation that has one
 //!   (area 19, "SQL forms"), written from its arguments' SQL, for computed
-//!   backfills.
+//!   backfills, aggregate queries and a query's conditions, which
+//!   [`condition`] lowers one way for every operation (chunk 6.3b).
+//! - [`identity`]: how callers are looked up and their credentials kept.
 //! - [`literal`]: a value written into a statement's text where it takes
 //!   no parameters, as the storage codec made it (chunk 5.5w3b).
 //! - [`statement`]: the reads, writes and purges the plan runs.
@@ -21,15 +24,18 @@
 //! writes them as PostgreSQL does. Identifiers are always quoted, so a
 //! table called `user` or `order` is a name, not a keyword.
 
+pub mod aggregate;
 pub mod condition;
 pub mod form;
+pub mod identity;
 pub mod literal;
 pub mod policy;
 pub mod statement;
 pub mod table;
 
 pub use condition::{
-    Bind, Column, Columns, Compare, Condition, Fixed, GeoTest, Value, condition, value,
+    Bind, Call, CallArg, Column, Columns, Compare, Condition, Fixed, Lowering, Test, Value,
+    condition, lowering, value,
 };
 
 /// An identifier, always quoted: a table called `user` or `order` is a

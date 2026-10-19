@@ -4,3 +4,4 @@
 
 mod plan;
 mod sql;
+mod sql_text;

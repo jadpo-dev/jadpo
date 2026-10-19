@@ -250,11 +250,11 @@ Rust 1.88 or later).
 | `jadpo-diag` | Rule catalogue, diagnostic model, edits | |
 | `jadpo-syntax` | Lexer, parser, lossless syntax tree, typed AST, `jadpo.ungram` | |
 | `jadpo-fmt` | Formatter | |
-| `jadpo-sql` | PostgreSQL text: conditions, statements and table definitions, rendered from what the graph, the checker and the plan decide | |
+| `jadpo-sql` | Every PostgreSQL text the compiler writes: conditions and their one lowering (an exact SQL form, or an index search the runtime rechecks), statements, aggregates, identity lookups and table definitions, rendered from what the graph, the checker and the plan decide | |
 | `jadpo-graph` | Node and edge model, identity keys, canonical JSON, diff | |
 | `jadpo-db` | Incremental database: inputs, project layout, packages and lock, identity registry, the before side from git | |
 | `jadpo-check` | Resolution, types, failures, effects, policy, data and layout rules, as queries that build the graph | |
-| `jadpo-plan` | What both executors need besides control flow: SQL per engine with policy compiled in, codecs and validators per type, route, schedule and subscriber tables, system-table placement, migration diffs | |
+| `jadpo-plan` | What both executors need besides control flow: each statement's parts with policy compiled in, which `jadpo-sql` writes, codecs and validators per type, route, schedule and subscriber tables, system-table placement, migration diffs | |
 | `jadpo-interp` | The interpreter | |
 | `jadpo-codegen` | Rust source from graph and plan; drives cargo | |
 | `jadpo-value` | Runtime values, JSON and row codecs, validation, failure envelope, standard-library implementations | yes |
@@ -1929,6 +1929,35 @@ a grouped subquery selecting each entry, then an outer one that orders,
 limits and works out what needs several totals (an average from its sum
 and count, through `decimal.divide`'s SQL form). Its rows are ordinary
 read-plan records, so the runtime reads them as it reads any query's.
+Since chunk 6.3b a query's condition on a standard operation of a field
+is one model, `jadpo_sql::Condition::Call` (the operation, the field it
+is called on, its other arguments and how its result is held, and what
+the condition asks of the result), lowered one way for every operation
+by `jadpo_sql::condition::lowering`: `Exact`, its SQL form
+(`jadpo_sql::form`) compared in the statement, for area 19's exact forms
+(area 6, "Operations in conditions") and `ai.distance` as pgvector works
+it out (area 21); or `Search`, a search an index serves a margin wider
+than the condition, for the `geo.` tests (area 20), whose rows the
+runtime holds to the operation. The read plan says what it holds them to
+as `jadpo_std::read::Recheck`: each `Check` an operation and its operands
+(a column of the row, a value from the read's arguments, a constant), run
+by `jadpo_value::run`, the code a function body's call runs, and an order
+by an operation's result (`geo.distance`), with the refetch-when-short
+loop `jadpo_runtime::read` keeps for any of them. An exact operation's
+other arguments are written into its expression, so
+`jadpo_sql::condition::index_expression` gives the same text for the
+B-tree the checker derives on it (`jadpo_graph::schema::Index::expression`,
+`jadpo_sql::table::create_expression_index`), and
+`jadpo_sql::form::indexable` says which forms PostgreSQL can index.
+`jadpo-plan` decides each statement's parts and where each value comes
+from, and writes no SQL text of its own: the vector distances and
+`hnsw.` settings, `ST_Distance`, an aggregate's parts
+(`jadpo_sql::aggregate`), the identity lookups (`jadpo_sql::identity`)
+and the policy joins are `jadpo-sql`'s, which `jadpo-plan`'s `sql_text`
+test holds it to. The checker's query reader is split by concern under
+`jadpo_check::data::queries`: reading a declaration, conditions, values,
+operations, order and pages, includes, `missing:`, vectors, geospatial
+conditions and aggregates.
 
 Built in chunk 3.3: the runtime runs a write plan
 (`jadpo_std::write`, one per write site, planned in `jadpo-plan`'s

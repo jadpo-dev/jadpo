@@ -1858,13 +1858,20 @@ chunks below, taken before Phase 6.
   read (by count and rule, never a value), or rewrites them with an
   optional `backfill:`; a structured backfill is worked out in Jadpo and
   written through the codec, as area 5's "Chosen in chunk 5.9c" records.
-- [ ] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
+- [x] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
   "A field's rules on read", decided 2026-10-19): every stored field
   checked against its type's rules when read, a broken one a defect naming
   the rule and never the value, on both executors and on live PostgreSQL;
   and a derived index's recorded reason no longer part of what the
   migration diff compares, so adding a query that sorts first never drops
-  and recreates an identical index (found in chunk 5.5u8).
+  and recreates an identical index (found in chunk 5.5u8). Built: each
+  selected column carries its field's validator in the plan, and the
+  runtime's one read path checks every stored value with it (queries,
+  `get`, includes, aggregate groups and `min`/`max`, nearest and layer
+  queries, the record a write gives back, backfill reads), a defect naming
+  the field and the rule; the diff and the out-of-date check compare an
+  index by what builds it, its reason recorded by the next migration.
+  Choices in area 5's "Chosen in chunk 5.9d".
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and
@@ -1967,14 +1974,22 @@ chunks below, taken before Phase 6.
   "Waiting for follow-on work", 2026-10-15): `settle:` delivers an action's
   events and their follow-ons at once, answers with the named query when
   they settle and with `202` past `within:`.
-- [ ] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
+- [x] **6.3b One condition lowering** `opus · xhigh`, from the Phase 5
   review: a query condition is either an exact SQL form or an index
   prefilter with a check the runtime runs on each row, one path for
   standard operations, `geo.` and `ai.distance`; all SQL text written in
   `jadpo-sql` (today `jadpo-plan` writes the vector, `ST_Distance` and
   `SET LOCAL hnsw.*` SQL itself); `data/queries.rs` split along the way.
   Then standard operations with an exact SQL form allowed in `where:`,
-  with a derived expression index (area 6, decided 2026-10-19).
+  with a derived expression index (area 6, decided 2026-10-19). Built:
+  `Condition::Call` lowered by `jadpo_sql::condition::lowering` to an
+  exact form or an index search, the read plan's recheck a generic
+  `Check` run by `jadpo_value::run`; every SQL text `jadpo-plan` wrote
+  moved to `jadpo-sql`, held there by a test; the checker's query reader
+  split into ten modules; operations in `where:` with an index on their
+  expression, area 6's "Operations in conditions" and its refusal
+  example checked, and a live test of the code's answer and each index.
+  Choices in area 6's "Chosen in chunk 6.3b".
 - [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
   `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
   transactions that commit their writes and position together, problems

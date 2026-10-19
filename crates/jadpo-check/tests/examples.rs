@@ -365,6 +365,8 @@ fn built() -> BTreeSet<String> {
             "present",
             "distance",
             "geo",
+            // A standard operation with an exact SQL form (chunk 6.3b).
+            "operation",
         ]
         .iter()
         .map(|c| format!("query condition {c}")),
@@ -1342,8 +1344,13 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                         used.insert("query section where_present".to_string());
                         "present"
                     }
-                    Condition::Distance { .. } => "distance",
-                    Condition::Geo { .. } => "geo",
+                    Condition::Call { call, .. } => match call.op {
+                        jadpo_std::Op::AiDistance => "distance",
+                        jadpo_std::Op::GeoWithin
+                        | jadpo_std::Op::GeoContains
+                        | jadpo_std::Op::GeoIntersects => "geo",
+                        _ => "operation",
+                    },
                 };
                 used.insert(format!("query condition {word}"));
                 match condition {

@@ -9,6 +9,6 @@ LIMIT $3
 -- $3: rows to fetch as Int8
 -- columns: uuid, text, geography("point"), measured
 -- record BakeryCard: id = column 0, name = column 1, spot = column 2
--- recheck: Within column 2 with argument 0, distance argument 1
--- recheck order: geo.distance of column 2 from argument 0, PostGIS's in column 3, ties by column 0
+-- recheck: geo.within(column 2, argument 0, argument 1)
+-- recheck order: geo.distance(column 2, argument 0), the database's in column 3, ties by column 0
 -- recheck keeps: 20

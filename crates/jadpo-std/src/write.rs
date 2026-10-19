@@ -78,6 +78,9 @@ pub struct WriteParam {
 pub struct Returned {
     /// What each returned column becomes, in order.
     pub columns: Vec<Column>,
+    /// The rules each column's field is held to when read back (chunk
+    /// 5.9d), as a read's [`crate::read::Select::held`].
+    pub held: Vec<Option<crate::read::FieldRules>>,
     pub record: Record,
 }
 

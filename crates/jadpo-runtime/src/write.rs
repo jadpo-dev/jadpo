@@ -18,7 +18,7 @@ use jadpo_std::read::Field;
 use jadpo_std::write::{PolicyRefusal, WriteParam, WritePlan, WriteSource};
 use jadpo_value::Value;
 
-use crate::read::{Interrupt, JsonCodecs, defect, field_value, refused, to_sql, uuid_text};
+use crate::read::{Interrupt, JsonCodecs, defect, refused, stored_value, to_sql, uuid_text};
 use crate::{Ctx, Failure, FaultKind, SqlValue, StoreError};
 
 /// What a write did.
@@ -214,7 +214,7 @@ pub(crate) async fn write(
         let Field::Column(at) = field else {
             return Err(defect(ctx, "a written record with an include", site));
         };
-        match field_value(row, &returns.columns, *at, json) {
+        match stored_value(row, &returns.columns, &returns.held, *at, json) {
             Ok(value) => fields.push((std::rc::Rc::from(name.as_str()), value)),
             Err(what) => return Err(defect(ctx, &what, site)),
         }

@@ -8,5 +8,5 @@ LIMIT $2
 -- $2: rows to fetch as Int8
 -- columns: uuid, uuid, geography("polygon")
 -- record DeliveryPatch: id = column 0, bakery_id = column 1, outline = column 2
--- recheck: Contains column 2 with argument 0
+-- recheck: geo.contains(column 2, argument 0)
 -- recheck keeps: 10
