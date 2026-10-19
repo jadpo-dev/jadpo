@@ -1001,3 +1001,156 @@ fn a_tuned_hnsw_index_s_migration_sets_m_and_ef_construction() {
         nearest_in_code(&question, &articles)
     );
 }
+
+// --- distances that are no number (chunk 5.8c) ---------------------------------------
+
+/// A project of notes with a cosine meaning and an inner-product score,
+/// and queries on how far each is from a given one: past a literal, and
+/// within a bound the caller gives.
+fn far_project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("vectors-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    write(&root, "app.jadpo", "application {}\n");
+    for (file, text) in [
+        (
+            "types/meaning.jadpo",
+            "/// A note's meaning.\ntype Meaning = Vector {\n    dimensions: 2\n    distance: VectorDistance.cosine\n}\n",
+        ),
+        (
+            "types/score.jadpo",
+            "/// A note's score, compared by inner product.\ntype Score = Vector {\n    dimensions: 2\n    distance: VectorDistance.inner_product\n}\n",
+        ),
+        (
+            "types/reach.jadpo",
+            "/// How far a search reaches.\ntype Reach = Decimal {\n    scale: 2\n}\n",
+        ),
+        (
+            "entities/note.jadpo",
+            "use notes/types { Meaning, Score }\n\n/// A note.\nentity Note {\n    id: Uuid\n    meaning: Meaning\n    score: Score\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+        ),
+        (
+            "types/note_card.jadpo",
+            "use notes/entities { Note }\n\n/// A note in a list.\ntype NoteCard = Output {\n    pick: [Note.id]\n}\n",
+        ),
+        (
+            "queries/far_notes.jadpo",
+            "use notes/entities { Note }\nuse notes/types { Meaning, NoteCard }\n\n/// Notes far from a meaning.\nquery far_notes(from_meaning: Meaning) -> List<NoteCard> {\n    from: Note\n    where: ai.distance(Note.meaning, from_meaning) >= 0.5\n    order: [Note.id asc]\n    limit: 10\n}\n",
+        ),
+        (
+            "queries/near_notes.jadpo",
+            "use notes/entities { Note }\nuse notes/types { Meaning, NoteCard, Reach }\n\n/// Notes within a reach of a meaning.\nquery near_notes(from_meaning: Meaning, reach: Reach) -> List<NoteCard> {\n    from: Note\n    where: ai.distance(Note.meaning, from_meaning) <= reach\n    order: [Note.id asc]\n    limit: 10\n}\n",
+        ),
+        (
+            "queries/scored_notes.jadpo",
+            "use notes/entities { Note }\nuse notes/types { NoteCard, Score }\n\n/// Notes scoring at least as close as nothing to a score.\nquery scored_notes(from_score: Score) -> List<NoteCard> {\n    from: Note\n    where: ai.distance(Note.score, from_score) <= 0.0\n    order: [Note.id asc]\n    limit: 10\n}\n",
+        ),
+        (
+            "actions/find_far.jadpo",
+            "use notes/queries { far_notes }\nuse notes/types { Meaning, NoteCard }\n\n/// The far notes.\naction find_far(from_meaning: Meaning) -> List<NoteCard> {\n    return far_notes(from_meaning)\n}\n",
+        ),
+        (
+            "actions/find_near.jadpo",
+            "use notes/queries { near_notes }\nuse notes/types { Meaning, NoteCard, Reach }\n\n/// The near notes.\naction find_near(from_meaning: Meaning, reach: Reach) -> List<NoteCard> {\n    return near_notes(from_meaning, reach)\n}\n",
+        ),
+        (
+            "actions/find_scored.jadpo",
+            "use notes/queries { scored_notes }\nuse notes/types { NoteCard, Score }\n\n/// The scored notes.\naction find_scored(from_score: Score) -> List<NoteCard> {\n    return scored_notes(from_score)\n}\n",
+        ),
+    ] {
+        write(&root, &format!("domains/notes/{file}"), text);
+    }
+    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    root
+}
+
+/// The ids of the cards an action returns.
+fn card_ids(found: Outcome) -> Vec<String> {
+    let Outcome::Value(Value::List(found)) = found else {
+        panic!("expected a list, got {found:?}");
+    };
+    found
+        .iter()
+        .map(|card| {
+            let Value::Record(card) = card else {
+                panic!("not a record: {card:?}");
+            };
+            card.get("id")
+                .expect("an id")
+                .to_string()
+                .trim_matches('"')
+                .to_string()
+        })
+        .collect()
+}
+
+#[test]
+fn a_distance_that_is_no_number_meets_no_condition() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let root = far_project("far");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    let url = database("vector_far");
+    let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    // Notes written outside Jadpo: a meaning of zeros, whose cosine is
+    // `NaN`, and a score whose inner product with itself is past a
+    // float's range, minus infinity.
+    let id = |n: u8| {
+        let mut id = [0u8; 16];
+        id[15] = n;
+        id[6] = 0x40;
+        id[8] = 0x80;
+        id
+    };
+    let notes: [(u8, [f32; 2], [f32; 2]); 4] = [
+        (1, [0.0, 0.0], [3e19, 0.0]),
+        (2, [1.0, 0.0], [1.0, 0.0]),
+        (3, [0.0, 1.0], [0.0, 1.0]),
+        (4, [-1.0, 0.0], [-1.0, 0.0]),
+    ];
+    for (n, meaning, score) in &notes {
+        rows(
+            &url,
+            "INSERT INTO note (id, meaning, score) VALUES ($1, $2, $3)",
+            &[SqlValue::Uuid(id(*n)), bits(meaning), bits(score)],
+        );
+    }
+    let shown = |n: u8| jadpo_runtime::uuid_text(&id(n));
+    let loaded = jadpo_db::load(&root);
+    let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
+    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let call = |action: &str, args: Vec<Value>| {
+        let id = program.plan().find(action).expect("the action");
+        runtime.block_on(async {
+            let env = Env {
+                seed: Some(1),
+                clock: Clock::TEST,
+            };
+            let mut ctx = Ctx::new(program.places(), &host, env);
+            program.run(&mut ctx, id, args).await
+        })
+    };
+    // At least 0.5 from (1, 0): the notes at right angles and opposite,
+    // never the one of zeros, whose distance PostgreSQL sorts above every
+    // number.
+    assert_eq!(
+        card_ids(call("find_far", vec![vector(&[1.0, 0.0])])),
+        [shown(3), shown(4)]
+    );
+    // Within a reach the caller gives, sent as the double that agrees.
+    let reach = Value::decimal("1.00").expect("a decimal");
+    assert_eq!(
+        card_ids(call("find_near", vec![vector(&[1.0, 0.0]), reach])),
+        [shown(2), shown(3)]
+    );
+    // An inner product past a float's range is minus infinity, which
+    // meets no bound either.
+    assert_eq!(
+        card_ids(call("find_scored", vec![vector(&[3e19, 0.0])])),
+        [shown(2), shown(3)]
+    );
+}

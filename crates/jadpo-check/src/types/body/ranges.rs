@@ -339,6 +339,9 @@ struct Combined {
     rate_to: Option<u32>,
     /// A vector type's one length (chunk 5.5s2).
     dimensions: Option<u64>,
+    /// How a vector type compares its vectors, cosine when unsaid (area
+    /// 21).
+    distance: Option<jadpo_std::VectorDistance>,
     /// The standard type held as text whose own check the chain makes
     /// (area 19, chunk 5.5i), which counts as `format`.
     standard: Option<&'static str>,
@@ -392,12 +395,32 @@ fn combine<'r>(chain: impl Iterator<Item = &'r Rules>) -> Combined {
         out.rate_from = out.rate_from.or(rules.rate_from);
         out.rate_to = out.rate_to.or(rules.rate_to);
         out.dimensions = out.dimensions.or(rules.dimensions);
+        out.distance = out.distance.or(rules.distance);
         out.standard = out.standard.or(rules.standard);
     }
     out
 }
 
 impl Combined {
+    /// Whether it is a vector type's, from the chain's standard type.
+    fn vector(&self) -> bool {
+        self.standard == Some(jadpo_std::standard::ai::VECTOR)
+    }
+
+    /// For a vector type, whether it compares by cosine, so a vector of
+    /// zeros breaks `distance` (chunk 5.8c).
+    fn cosine(&self) -> bool {
+        self.vector()
+            && self.distance.unwrap_or(jadpo_std::VectorDistance::Cosine)
+                == jadpo_std::VectorDistance::Cosine
+    }
+
+    /// For a vector type, whether it is indexed at half precision, so
+    /// holds its items within 65504 (chunk 5.8c).
+    fn half(&self) -> bool {
+        self.vector() && jadpo_std::standard::ai::held_at_half(self.dimensions)
+    }
+
     /// The rules it holds, by the keys an `attempt`'s arms use, each as
     /// written: `("max", "max: 1000")`.
     fn written(&self) -> Vec<(&'static str, String)> {
@@ -420,6 +443,16 @@ impl Combined {
         }
         if let Some(n) = self.dimensions {
             out.push(("dimensions", format!("dimensions: {n}")));
+        }
+        if self.half() {
+            out.push(("min", jadpo_std::standard::ai::HALF_MIN_WRITTEN.to_string()));
+            out.push(("max", jadpo_std::standard::ai::HALF_MAX_WRITTEN.to_string()));
+        }
+        if self.cosine() {
+            out.push((
+                "distance",
+                jadpo_std::standard::ai::COSINE_WRITTEN.to_string(),
+            ));
         }
         if let Some(pattern) = self.patterns.first() {
             out.push(("pattern", format!("pattern: \"{pattern}\"")));
@@ -792,6 +825,7 @@ impl Body<'_> {
                 }
             }
         }
+        out.extend(self.vector_breaks(value, &needs, &has));
         if needs.patterns.iter().any(|p| !has.patterns.contains(p)) {
             out.push("pattern".to_string());
         }
@@ -901,6 +935,71 @@ impl Body<'_> {
     /// What the conditions around a list say about how many items it
     /// holds: the bounds known for `list.count` on it, which counts
     /// exactly the items `min_length` and `max_length` count.
+    /// What a vector type holds beyond its length that `value` may break
+    /// (chunk 5.8c): its items within a half-precision float (`min` and
+    /// `max`) and, compared by cosine, not all zeros (`distance`). A
+    /// vector of a type that holds the same proves it, and so does a list
+    /// written out whose items show it.
+    fn vector_breaks(&self, value: &Expr, needs: &Combined, has: &Combined) -> Vec<String> {
+        let mut out = Vec::new();
+        if !needs.half() && !needs.cosine() {
+            return out;
+        }
+        let items = self.vector_items(value);
+        if needs.half()
+            && !has.half()
+            && !items.as_ref().is_some_and(|items| {
+                items.iter().all(|item| {
+                    at_most(item, Num::whole(65_504))
+                        && item.low.cmp(End::At(Num::whole(-65_504))).is_ge()
+                })
+            })
+        {
+            out.push("min".to_string());
+            out.push("max".to_string());
+        }
+        // An item below 1e-30 is held as 0, so only one clear of it gives a
+        // direction.
+        let clear = Num::parse("0.000000000000000000000000000002").unwrap_or(Num::whole(1));
+        let clear_below = Num::parse("-0.000000000000000000000000000002").unwrap_or(Num::whole(-1));
+        if needs.cosine()
+            && !has.cosine()
+            && !items.as_ref().is_some_and(|items| {
+                items.iter().any(|item| {
+                    item.low.cmp(End::At(clear)).is_ge()
+                        || item.high.cmp(End::At(clear_below)).is_le()
+                })
+            })
+        {
+            out.push("distance".to_string());
+        }
+        out
+    }
+
+    /// For a list written out where a vector type is built, what its
+    /// items may break beyond its length (chunk 5.8c).
+    pub(super) fn written_vector_breaks(&self, value: &Expr, target: &Ty) -> Vec<String> {
+        let needs = combine(self.table.rule_chain(target).into_iter().map(|(_, r)| r));
+        self.vector_breaks(value, &needs, &Combined::default())
+    }
+
+    /// The values each item of a list written out can take, from its
+    /// declared ranges: `None` for anything else (chunk 5.8c).
+    fn vector_items(&self, value: &Expr) -> Option<Vec<Interval>> {
+        let mut value = value.clone();
+        while let Expr::ParenExpr(paren) = &value {
+            value = paren.expr()?;
+        }
+        let Expr::ListExpr(list) = value else {
+            return None;
+        };
+        Some(
+            list.exprs()
+                .map(|item| self.interval(&item, &mut Reading::ranges_only()))
+                .collect(),
+        )
+    }
+
     fn counted(&self, value: &Expr, actual: &Ty) -> Option<Counted> {
         if self.known.is_empty()
             || self.table.is_nullable(actual)

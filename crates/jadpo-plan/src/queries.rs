@@ -158,6 +158,22 @@ impl Bind for Statement {
             SqlType::Numeric,
         ))
     }
+
+    /// The double an `ai.distance` condition compares with, worked out
+    /// from its bound when the read runs (chunk 5.8c).
+    fn distance_bound(&mut self, bound: &Value, strict: bool) -> Option<String> {
+        let Value::Param { index, path } = bound else {
+            return None;
+        };
+        Some(self.param(
+            Source::DistanceBound {
+                index: *index,
+                path: path.clone(),
+                strict,
+            },
+            SqlType::Float8,
+        ))
+    }
 }
 
 /// The columns a statement selects, each a field of its entity once, with

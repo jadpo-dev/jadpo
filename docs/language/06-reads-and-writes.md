@@ -35,7 +35,9 @@ come back, so there is no separate word for it:
 
 The element type is the entity or a type derived from it
 (`type TodoView = Output { pick: [Todo.id, Todo.title] }`, area 2); the compiler
-reads only the fields that type needs. Records hidden by the entity's
+reads only the fields that type needs. It names no rule across its fields
+(area 2), since nothing could map a stored record that breaks one
+([`query.result_rule`](#query-result-rule); chunk 5.8c). Records hidden by the entity's
 lifecycle are left out of every query. The generated SQL selects only the
 columns the result type needs, plus the `order:` fields a page cursor needs
 and any field a policy condition checks outside the database. A query writes nothing and calls no
@@ -2325,6 +2327,48 @@ error: `BookCard.author` isn't a field of `Book`, or an include
 check failed: 1 error, 1 file
 ```
 
+### `query.result_rule`
+
+```jadpo check project=e-result-rule expect=query.result_rule
+type PageCount = Int {
+    min: 1
+    max: 5000
+}
+
+entity Book {
+    id: Uuid
+    pages: PageCount
+}
+
+type ThickBook = Output {
+    pick: [Book.id, Book.pages]
+    rule thick: pages > 1000
+}
+
+query thick_books() -> List<ThickBook> {
+    from: Book
+    order: [Book.id asc]
+    limit: 20
+}
+```
+
+```text output
+error: `thick_books` returns `ThickBook`, whose rule `thick` no read can check
+ --> main.jadpo:16:24
+   |
+16 | query thick_books() -> List<ThickBook> {
+   |                        ^^^^^^^^^^^^^^^ `ThickBook` has rules
+  reason: A rule across an object's fields is checked whenever a value is made, and a value that breaks it is a failure an `attempt` maps; a query makes `ThickBook` from stored records with no `attempt` around it, so its result type has no rules across its fields.
+  next: Return a type without rules, and build `ThickBook` from it with `attempt` where its rules are checked (agent)
+  rule: query.result_rule
+  help: docs/language/06-reads-and-writes.html#query-result-rule
+
+check failed: 1 error, 1 file
+```
+
+A query that needs only the thick books says so in `where:`, and a type
+with the rule is built from its result where a failure can be mapped.
+
 ### `query.geometry_field`
 
 ```jadpo check project=e-geometry-field expect=query.geometry_field
@@ -4406,6 +4450,22 @@ database.
     checks; policy grants of simple equality on the record's own fields,
     checked after reading. Joins and `include`, ranges, other orderings,
     `matches` and other grants are compile errors naming PostgreSQL.
+
+### Chosen in chunk 5.8c
+
+- **A result type names no rule across its fields**
+  (`query.result_rule`), whatever stands for its records: the records
+  themselves, a `Nearest<T>`'s item, a map layer's properties, an
+  aggregate's rows, or the records an include brings. Area 2 checks a
+  rule whenever a value is made, and a broken one is a failure an
+  `attempt` maps; a read has no `attempt` around it and nothing to fail
+  with but a defect, and the database can't check the rule as it reads.
+  Checking each row as it is read would turn a stored record into a
+  runtime failure no caller could name, so the conservative reading is to
+  refuse the type while compiling, rule proved by the declared ranges or
+  not. The type's fields without the rule fill a result as before, and
+  code builds the type with the rule from it where an `attempt` maps the
+  failure.
 
 ### Chosen in chunk 5.5u8
 

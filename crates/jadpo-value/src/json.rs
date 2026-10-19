@@ -728,9 +728,16 @@ impl Codecs<'_> {
             // A rule across an object's fields is reported by its name, at
             // the object's path (area 2, "Rules across fields").
             Err(invalid) => {
+                // A vector's item past what its half-precision index holds
+                // is reported at its place, as one past a decimal's digits
+                // is (chunk 5.8c).
+                let at = match validator.vector_holding(&value) {
+                    Some((key, Some(item))) if key == invalid.key() => path.with(item.to_string()),
+                    _ => path.clone(),
+                };
                 Self::problem(
                     problems,
-                    path,
+                    &at,
                     invalid.name().unwrap_or(invalid.key().word()),
                 );
                 None

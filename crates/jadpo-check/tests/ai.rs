@@ -37,7 +37,7 @@ fn a_vector_type_s_length_is_proved_for_a_list_written_out() {
     // A list only the running program knows breaks `dimensions` by name.
     assert_eq!(
         rules(
-            "function from_model(numbers: ModelNumbers) fails WrongSize -> ArticleVector {\n    return attempt ArticleVector(numbers) {\n        dimensions: WrongSize\n    }\n}\n"
+            "function from_model(numbers: ModelNumbers) fails WrongSize -> ArticleVector {\n    return attempt ArticleVector(numbers) {\n        dimensions: WrongSize\n        distance: WrongSize\n    }\n}\n"
         ),
         NONE
     );
@@ -54,7 +54,29 @@ fn a_vector_type_s_length_is_proved_for_a_list_written_out() {
     );
     assert_eq!(
         rules(
-            "function any(numbers: ModelNumbers) fails WrongSize -> Vector {\n    return attempt Vector(numbers) {\n        min_length: WrongSize\n        max_length: WrongSize\n    }\n}\n"
+            "function any(numbers: ModelNumbers) fails WrongSize -> Vector {\n    return attempt Vector(numbers) {\n        min_length: WrongSize\n        max_length: WrongSize\n        distance: WrongSize\n    }\n}\n"
+        ),
+        NONE
+    );
+    // A vector compared by cosine, the default, needs a direction: a list
+    // only the running program knows breaks `distance` (chunk 5.8c), one
+    // written out with an item clear of zero doesn't, and one of zeros is
+    // refused while compiling.
+    assert_eq!(
+        rules(
+            "function from_model(numbers: ModelNumbers) fails WrongSize -> ArticleVector {\n    return attempt ArticleVector(numbers) {\n        dimensions: WrongSize\n    }\n}\n"
+        ),
+        ["failure.rule_unmapped"]
+    );
+    assert_eq!(
+        rules(
+            "function sample() -> ArticleVector {\n    return ArticleVector([0.0, 0.0, 0.0])\n}\n"
+        ),
+        ["type.invalid_literal"]
+    );
+    assert_eq!(
+        rules(
+            "function sample() -> ArticleVector {\n    return ArticleVector([0.0, 0.0, 0.5])\n}\n"
         ),
         NONE
     );

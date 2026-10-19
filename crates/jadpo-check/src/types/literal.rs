@@ -65,7 +65,7 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
             for (host, rules) in table.rule_chain(expected) {
                 check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
             }
-            return Ok(());
+            return vector_holding(table, expected, items);
         }
         _ => {}
     }
@@ -162,6 +162,69 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
         check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
     }
     Ok(())
+}
+
+/// A vector written out against what its type holds beyond its length
+/// (chunk 5.8c): items within a half-precision float where its index is
+/// one, and not all zeros where it compares by cosine.
+pub fn vector_holding(table: &dyn TypeView, expected: &Ty, items: &[Const]) -> Result<(), Problem> {
+    use jadpo_std::standard::ai;
+    let chain = table.rule_chain(expected);
+    if !chain
+        .iter()
+        .any(|(_, rules)| rules.standard.is_some_and(ai::rounds))
+    {
+        return Ok(());
+    }
+    let mut floats = Vec::with_capacity(items.len());
+    for item in items {
+        let Const::Number { value, .. } = item else {
+            return Ok(());
+        };
+        let Some(float) = ai::float(&value.to_string()).and_then(|kept| kept.parse::<f32>().ok())
+        else {
+            return Ok(());
+        };
+        floats.push(float);
+    }
+    let dimensions = chain.iter().find_map(|(_, rules)| rules.dimensions);
+    let metric = chain
+        .iter()
+        .find_map(|(_, rules)| rules.distance)
+        .unwrap_or(jadpo_std::VectorDistance::Cosine);
+    let Some((key, _)) = ai::holding(&floats, dimensions, metric) else {
+        return Ok(());
+    };
+    let host = chain
+        .iter()
+        .find(|(_, rules)| match key {
+            jadpo_std::RuleKey::Distance => rules.distance.is_some(),
+            _ => rules.dimensions.is_some(),
+        })
+        .or(chain.first())
+        .map_or_else(String::new, |(host, _)| host.clone());
+    let (rule, why) = match key {
+        jadpo_std::RuleKey::Distance => (
+            ai::COSINE_WRITTEN,
+            "is a vector of zeros, which has no direction to compare by cosine",
+        ),
+        jadpo_std::RuleKey::Min => (
+            ai::HALF_MIN_WRITTEN,
+            "has an item below -65504, which its half-precision index can't hold",
+        ),
+        _ => (
+            ai::HALF_MAX_WRITTEN,
+            "has an item above 65504, which its half-precision index can't hold",
+        ),
+    };
+    Err(Problem::Broken(
+        host,
+        jadpo_std::Broken {
+            key,
+            rule: rule.to_string(),
+            why: why.to_string(),
+        },
+    ))
 }
 
 /// The first value a list literal gives twice, as written for a reason

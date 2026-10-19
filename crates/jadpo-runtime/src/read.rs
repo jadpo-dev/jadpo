@@ -306,6 +306,32 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
             };
             SqlValue::Numeric(part.of(&west, &east).to_string())
         }
+        // The double a distance is compared with (chunk 5.8c).
+        Source::DistanceBound {
+            index,
+            path,
+            strict,
+        } => {
+            let bound = value_at(
+                &Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                },
+                env.args,
+            );
+            let written = match &bound {
+                Some(Value::Decimal(decimal)) => decimal.to_string(),
+                Some(Value::Int(n)) => n.to_string(),
+                _ => {
+                    return Err(Problem::Defect(
+                        "a distance bound that isn't a number".into(),
+                    ));
+                }
+            };
+            let found = jadpo_std::standard::ai::distance_bound(&written, *strict)
+                .ok_or_else(|| Problem::Defect("a distance bound that isn't a number".into()))?;
+            SqlValue::Float8(found.to_bits())
+        }
     })
 }
 

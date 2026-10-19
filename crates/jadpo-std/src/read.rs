@@ -283,6 +283,16 @@ pub enum Source {
         path: Vec<String>,
         part: EnvelopePart,
     },
+    /// The double an `ai.distance` condition compares with (area 21, chunk
+    /// 5.8c), worked out from the decimal or whole number the read's
+    /// argument at `index` (or a field inside it, `path`) holds, so it
+    /// meets the comparison as code's decimal does
+    /// ([`crate::standard::ai::distance_bound`]); below it when `strict`.
+    DistanceBound {
+        index: u32,
+        path: Vec<String>,
+        strict: bool,
+    },
 }
 
 /// The sides of the two envelopes a `BoundingBox` filter searches, in

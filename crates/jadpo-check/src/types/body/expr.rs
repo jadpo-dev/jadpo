@@ -111,6 +111,12 @@ impl Body<'_> {
                             other => other,
                         })
                         .collect();
+                    // A vector written out, against what its type holds
+                    // beyond its length (chunk 5.8c).
+                    if let Err(problem) = literal::vector_holding(self.table, expected, &items) {
+                        self.literal_problem(expr, expected, problem, false);
+                        return;
+                    }
                     if is_set && let Some(twice) = literal::repeated(&items) {
                         let problem = literal::Problem::Builtin(format!(
                             "has {twice} twice, and a set holds each value once"
