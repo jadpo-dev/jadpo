@@ -62,12 +62,21 @@ fn the_reviews_reproducers_format_safely() {
         "function f(a: A) -> B {\n    return g([a.owner, st.\n//\n b])\n}\n",
         "type Quantity = Int {}\n\naction reserve_stock(quantity: Quantity) -> Unit { // TODO\n}\n",
         "type Count = Int {}\n\nfunction f(x: Count) -> Count {\n    return Count(x + // the base\n    1) // plus one\n}\n",
+        // A declaration inside another's braces, which a mutation of an
+        // example found: on a line of its own its keyword would end the
+        // block, so it stays on the brace's line.
+        "/// When an order was placed.\ntype OrderedAt = Instant {type OrderedAt = Instant { }\n}\n",
     ] {
         assert_eq!(holds(text), Ok(()), "{text}");
     }
     assert_eq!(
         format_file("library wording { config {} }\n").expect("formats"),
         "library wording {\n    config {}\n}\n"
+    );
+    assert_eq!(
+        format_file("type OrderedAt = Instant {type OrderedAt = Instant { }\n}\n")
+            .expect("formats"),
+        "type OrderedAt = Instant { type OrderedAt = Instant {}\n}\n"
     );
     assert_eq!(
         format_file("type Count = Int {}\n\nfunction f(x: Count) -> Count {\n    return x + // the base\n        1 // plus one\n}\n")

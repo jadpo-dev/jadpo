@@ -147,6 +147,38 @@ fn significant_children(node: &SyntaxNode) -> Vec<SyntaxElement> {
         .collect()
 }
 
+/// Whether `item`, inside the braces of `container`, is a declaration
+/// whose keyword ends the block when it starts a line (jadpo-syntax's
+/// `ends_block`): a declaration keyword, but for `constant` and, in a
+/// declaration's members, `function`, and never a contextual word
+/// (`config`, `test`) or `decline`, which end it only at column zero,
+/// where the formatter never writes a member.
+fn ends_block_on_new_line(container: &SyntaxNode, item: &SyntaxElement) -> bool {
+    let NodeOrToken::Node(node) = item else {
+        return false;
+    };
+    if !is_decl(node.kind()) {
+        return false;
+    }
+    let mut tokens = node
+        .descendants_with_tokens()
+        .filter_map(|element| element.into_token())
+        .filter(|token| !token.kind().is_trivia());
+    let Some(first) = tokens.next() else {
+        return false;
+    };
+    let keyword = if first.kind() == PUBLIC_KW {
+        tokens.next().map(|token| token.kind())
+    } else {
+        Some(first.kind())
+    };
+    keyword.is_some_and(|kind| {
+        jadpo_syntax::DECLARATION_KEYWORDS.contains(&kind)
+            && kind != CONSTANT_KW
+            && !(kind == FUNCTION_KW && container.kind() == MEMBER_LIST)
+    })
+}
+
 fn is_decl(kind: SyntaxKind) -> bool {
     matches!(
         kind,
@@ -460,6 +492,14 @@ impl Formatter {
         }
         let mut body = Vec::new();
         for (i, (blank, item)) in placed.iter().enumerate() {
+            // A declaration written inside braces stays on the line before
+            // it: at the start of a line its keyword would end the block
+            // and start a declaration of its own, a different file.
+            if ends_block_on_new_line(node, item) {
+                body.push(text(" "));
+                body.push(self.element(item));
+                continue;
+            }
             body.push(Doc::HardLine);
             if i > 0 && *blank {
                 body.push(Doc::HardLine);

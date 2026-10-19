@@ -12,7 +12,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Base, Detail, Key, Kind, Section, TypeRef};
 use jadpo_std::http::{
     ApiPlan, Arg, Codec, CodecId, FailureCodec, InputPlan, RoutePlan, RouteTable, Run, Segment,
-    VariantCodec,
+    SettlePlan, VariantCodec,
 };
 
 use crate::queries::QueryPlan;
@@ -211,10 +211,40 @@ pub(crate) fn table(
                         params.iter().position(|p| p == name).unwrap_or(0) as u32,
                     ),
                     ArgRoot::Caller => jadpo_std::http::ArgRoot::Caller,
+                    // `result` is read only by `settle:`'s `answer:`.
+                    ArgRoot::Result => jadpo_std::http::ArgRoot::Input,
                 },
                 path: arg.path.clone(),
             })
             .collect();
+        // What it waits for, and the query it answers with (area 7,
+        // "Waiting for follow-on work"; chunk 6.3).
+        let settle = match &route.settle {
+            Some(settle) => {
+                let Some(query) = queries
+                    .iter()
+                    .find(|query| query.name == settle.answer.name)
+                else {
+                    continue;
+                };
+                Some(SettlePlan {
+                    answer: Box::new(query.read.clone()),
+                    args: settle
+                        .answer
+                        .args
+                        .iter()
+                        .map(|arg| arg.path.clone())
+                        .collect(),
+                    codecs: settle
+                        .params
+                        .iter()
+                        .map(|ty| codecs.codec(&jadpo_check::graph::type_ref(&lookup, ty)))
+                        .collect(),
+                    within_ms: settle.within_ms,
+                })
+            }
+            None => None,
+        };
         for failure in &route.fails {
             let Some(key) = jadpo_check::graph::declaration_key(&lookup, failure) else {
                 continue;
@@ -266,6 +296,7 @@ pub(crate) fn table(
             status: route.status,
             deadline_ms: route.deadline_ms,
             run,
+            settle,
             keys,
             args,
             authentication: route.authentication,
@@ -297,6 +328,7 @@ pub(crate) fn table(
             status: jadpo_std::SuccessStatus::Ok,
             deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
             run: Run::Exchange,
+            settle: None,
             keys: None,
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Required,
@@ -340,6 +372,7 @@ pub(crate) fn table(
                 status: step.status(),
                 deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
                 run: Run::Passkey(step),
+                settle: None,
                 keys: None,
                 args: Vec::new(),
                 authentication: step.authentication(),

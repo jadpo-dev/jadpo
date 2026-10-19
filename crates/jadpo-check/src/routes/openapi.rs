@@ -964,6 +964,9 @@ fn operation(
         parameter.set(
             "description",
             match facts.keys {
+                // A repeat runs `answer:` again rather than replaying a
+                // body (area 7, "Waiting for follow-on work").
+                Keys::Kept if route.settle.is_some() => "Makes a retry safe: for 24 hours a repeat with the same key and request doesn't run the action again, but answers with `answer:` run again, showing how far the work has got, and the first response's status.",
                 Keys::Kept => "Makes a retry safe: a repeat with the same key and request gets the first response for 24 hours instead of running again.",
                 Keys::Claimed => "Keeps a retry from running alongside the first request; the response isn't kept, since it starts or ends a session or carries a new credential, so a retry once the first has finished runs again.",
                 Keys::Nothing => "Accepted, but nothing is kept: the route writes no store, so running it again changes nothing.",
@@ -981,15 +984,40 @@ fn operation(
 
     let mut responses = Value::object();
     let success = route.status.code().to_string();
-    match &route.output {
-        Some(output) => responses.set(
+    match (&route.output, &route.settle) {
+        // A route that waits for its work answers `answer:`'s result
+        // either way, and 202 when the work hadn't settled in time (area
+        // 7, "Waiting for follow-on work").
+        (Some(output), Some(settle)) => {
+            let schema = wire.schema(&type_ref(lookup, output), refs);
+            responses.set(
+                &success,
+                response(
+                    "Success, once the work it set off has settled.",
+                    Some(schema.clone()),
+                ),
+            );
+            responses.set(
+                "202",
+                response(
+                    &format!(
+                        "Accepted: the work it set off hadn't settled within {}; the body is what it has done so far, and the work carries on.",
+                        jadpo_std::Dur {
+                            millis: i128::from(settle.within_ms)
+                        }
+                    ),
+                    Some(schema),
+                ),
+            );
+        }
+        (Some(output), None) => responses.set(
             &success,
             response(
                 "Success.",
                 Some(wire.schema(&type_ref(lookup, output), refs)),
             ),
         ),
-        None => responses.set(&success, response("Success, with no content.", None)),
+        (None, _) => responses.set(&success, response("Success, with no content.", None)),
     }
     // Declared failures, under their statuses.
     let mut by_status: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();

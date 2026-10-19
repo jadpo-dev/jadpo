@@ -673,6 +673,24 @@ pub struct Arg {
     pub path: Vec<String>,
 }
 
+/// How a route waits for the work its action set off (area 7, "Waiting
+/// for follow-on work"; chunk 6.3): `settle: { answer: within: }`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SettlePlan {
+    /// The named query's read it answers with, run as the request's
+    /// caller under the query's policy.
+    pub answer: Box<ReadPlan>,
+    /// Its arguments, each a path read through the action's result
+    /// (`result.id` is `["id"]`).
+    pub args: Vec<Vec<String>>,
+    /// The codec each argument is kept with beside an `Idempotency-Key`,
+    /// its parameter's type's, so a repeat runs the query again.
+    pub codecs: Vec<CodecId>,
+    /// How long the route waits, from when the request came in, before it
+    /// answers 202 with what the query gives so far.
+    pub within_ms: u32,
+}
+
 /// One route.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RoutePlan {
@@ -689,6 +707,9 @@ pub struct RoutePlan {
     pub status: SuccessStatus,
     pub deadline_ms: u32,
     pub run: Run,
+    /// With `settle:`, what it waits for and answers with; its `output` is
+    /// then the answer query's result's codec.
+    pub settle: Option<SettlePlan>,
     /// The store an action keeps this route's `Idempotency-Key`s in: the
     /// one it writes, so a key commits with the writes it answers for.
     /// `None` for a `GET`, and for an action that writes no store, which
