@@ -2445,8 +2445,8 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
             continue;
         };
         let Some(store) = &entity.store else { continue };
-        for call in jadpo_sql::condition::searched(&query.filter) {
-            let Some(searched) = jadpo_sql::condition::search_index(call) else {
+        for call in jadpo_sql::condition::search_calls(&query.filter) {
+            let Some(found) = jadpo_sql::condition::search_index(call) else {
                 continue;
             };
             let Some(field) = entity.fields.iter().find(|f| f.name == call.field) else {
@@ -2460,9 +2460,9 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
                 continue;
             };
             let method = physical::IndexMethod {
-                name: searched.method.to_string(),
+                name: found.method.to_string(),
                 operator_class: String::new(),
-                cast: searched.cast.map(str::to_string),
+                cast: found.cast.map(str::to_string),
                 with: Vec::new(),
             };
             let column = field.born.clone();
@@ -2472,7 +2472,7 @@ fn search_indexes(model: &DataModel, queries: &[queries::QueryModel], schema: &m
                 continue;
             }
             let table_name = entity.table.as_str();
-            let mut name = if searched.cast.is_some() {
+            let mut name = if found.cast.is_some() {
                 physical::object_name(&[table_name, column.as_str(), "box"], "idx")
             } else {
                 physical::object_name(&[table_name, column.as_str()], "idx")

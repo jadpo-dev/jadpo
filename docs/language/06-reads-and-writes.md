@@ -396,9 +396,9 @@ use library/entities { Book }
 use library/types { BookCard, PublicationYear }
 
 /// The books first published in a year.
-query published_in(year: PublicationYear) -> List<BookCard> {
+query published_in(year_published: PublicationYear) -> List<BookCard> {
     from: Book
-    where: temporal.year(Book.published_on) == year
+    where: temporal.year(Book.published_on) == year_published
     order: [Book.title asc]
     limit: 100
 }

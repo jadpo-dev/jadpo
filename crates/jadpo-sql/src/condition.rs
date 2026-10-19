@@ -340,14 +340,14 @@ impl Condition {
 /// The calls a query's lines search for, which the runtime holds each row
 /// it finds to: each is a line of its own or a part of an `and`, which is
 /// where the checker lets a search stand (area 20, "Queries").
-pub fn searched(filter: &[Condition]) -> Vec<&Call> {
+pub fn search_calls(filter: &[Condition]) -> Vec<&Call> {
     let mut out = Vec::new();
     for line in filter {
         match line {
             Condition::Call { call, .. } if lowering(call.op) == Some(Lowering::Search) => {
                 out.push(call)
             }
-            Condition::And(parts) => out.extend(searched(parts)),
+            Condition::And(parts) => out.extend(search_calls(parts)),
             _ => {}
         }
     }

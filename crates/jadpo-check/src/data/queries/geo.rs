@@ -547,7 +547,7 @@ impl Reader<'_> {
         };
         // A radius from the same point on the same field: `within` with
         // its `distance:`.
-        let bounded = jadpo_sql::condition::searched(filter).iter().any(|call| {
+        let bounded = jadpo_sql::condition::search_calls(filter).iter().any(|call| {
             call.field == field.name
                 && call.op == Op::GeoWithin
                 && matches!(

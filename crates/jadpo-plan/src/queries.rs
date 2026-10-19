@@ -321,7 +321,7 @@ impl Planner<'_> {
         // `geo.distance`, by PostGIS's distance in the statement and the
         // code's after (area 20, chunk 5.5u5).
         let mut checks = Vec::new();
-        for call in jadpo_sql::condition::searched(&query.filter) {
+        for call in jadpo_sql::condition::search_calls(&query.filter) {
             let tested = field(entity, &call.field)?;
             let column = columns.add(&tested.name, self.column(entity, tested)?);
             checks.push(self.check(call, column)?);
