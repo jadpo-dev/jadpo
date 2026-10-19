@@ -198,6 +198,26 @@ impl Handler for DevHandler {
     fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
         self.host.take_deferred()
     }
+
+    /// The runtime's tick (area 12, chunk 6.2): the schedules due and the
+    /// runtime's own sweeps, on the version of the program running now.
+    fn tick(&self) -> Option<LocalFuture<'static, ()>> {
+        let program = self.program();
+        let host = Rc::clone(&self.host);
+        Some(Box::pin(async move {
+            let Some(now) = host.now_ms() else {
+                return;
+            };
+            jadpo_runtime::schedules::tick(program.as_ref(), host.as_ref(), now).await;
+        }))
+    }
+
+    fn tick_every_ms(&self) -> u64 {
+        let program = self.program();
+        jadpo_runtime::schedules::tick_every_ms(jadpo_runtime::Executor::schedules(
+            program.as_ref(),
+        ))
+    }
 }
 
 /// Writes to the session's streams.

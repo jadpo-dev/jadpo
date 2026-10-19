@@ -49,6 +49,8 @@ pub(crate) struct Boundary {
     /// transaction as it commits (chunk 6.1b), for the runner after it
     /// commits.
     pub sealed: Vec<crate::outbox::Delivery>,
+    /// How many events it wrote to the outbox as it sealed (chunk 6.2).
+    pub kept: u32,
     /// A store operation found another transaction had changed what this
     /// one read, so the body is run again.
     pub concurrent_change: bool,
@@ -212,6 +214,10 @@ pub struct Ctx<'p> {
     /// The subscriber's delivery being run, whose handled record the
     /// outermost action commits.
     pub(crate) handled: Option<Handled>,
+    /// How many events the actions it ran kept in the outbox once they
+    /// committed, which a schedule's run record counts (area 12,
+    /// "Watching schedules").
+    pub(crate) emitted: u32,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -254,6 +260,7 @@ impl<'p> Ctx<'p> {
             trace: None,
             chain: 0,
             handled: None,
+            emitted: 0,
         }
     }
 

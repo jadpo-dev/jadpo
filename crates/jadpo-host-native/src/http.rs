@@ -10,7 +10,9 @@
 //! most [`MAX_CONNECTIONS`] connections open. The work a response leaves
 //! for after it is sent ([`Handler::take_deferred`]) runs as tasks of
 //! their own on the worker's thread, which start only once the response
-//! has been handed to hyper and never hold it up (chunk 6.1a).
+//! has been handed to hyper and never hold it up (chunk 6.1a). The first
+//! worker also runs the server's timer, which starts the runtime's tick
+//! ([`Handler::tick`]) once a minute (chunk 6.2).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -44,6 +46,21 @@ pub trait Handler {
     /// response's work.
     fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
         Vec::new()
+    }
+
+    /// The runtime's tick, which the server's own timer starts on the
+    /// first worker's thread at each whole [`Handler::tick_every_ms`] of
+    /// UTC (area 12, "Schedules"; chunk 6.2): `None` for a handler with
+    /// nothing to tick. Each tick runs as a task of its own, so a long one
+    /// holds up neither the requests nor the next tick.
+    fn tick(&self) -> Option<LocalFuture<'static, ()>> {
+        None
+    }
+
+    /// How often the timer ticks, in milliseconds: once a minute unless a
+    /// schedule runs more often.
+    fn tick_every_ms(&self) -> u64 {
+        60_000
     }
 }
 
@@ -100,7 +117,7 @@ pub fn serve(listener: TcpListener, workers: usize, make: MakeHandler) -> io::Re
         let open = Arc::clone(&open);
         let thread = std::thread::Builder::new()
             .name(format!("jadpo-http-{index}"))
-            .spawn(move || worker(receiver, make, open))?;
+            .spawn(move || worker(receiver, make, open, index == 0))?;
         threads.push(thread);
     }
     let accepting = Arc::clone(&stop);
@@ -151,12 +168,16 @@ fn worker(
     mut receiver: tokio::sync::mpsc::UnboundedReceiver<std::net::TcpStream>,
     make: MakeHandler,
     open: Arc<AtomicUsize>,
+    first: bool,
 ) {
     let Ok(runtime) = Runtime::new() else {
         return;
     };
     let handler: Rc<dyn Handler> = Rc::from(make());
     runtime.block_on(async move {
+        if first {
+            tokio::task::spawn_local(ticker(Rc::clone(&handler)));
+        }
         while let Some(stream) = receiver.recv().await {
             let counted = Open(Arc::clone(&open));
             let peer = stream.peer_addr().ok();
@@ -197,6 +218,25 @@ fn worker(
             });
         }
     });
+}
+
+/// The server's own timer (area 12, question 16: `ScheduleTrigger.native`,
+/// an in-process timer): at each whole period of UTC it starts the
+/// handler's tick as a task of its own. The lease each schedule's state
+/// row holds decides who runs it, so ticks from several processes, or a
+/// late one, are harmless.
+async fn ticker(handler: Rc<dyn Handler>) {
+    loop {
+        let every = handler.tick_every_ms().max(1_000);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
+        let wait = u128::from(every) - now % u128::from(every);
+        tokio::time::sleep(Duration::from_millis(u64::try_from(wait).unwrap_or(every))).await;
+        if let Some(work) = handler.tick() {
+            tokio::task::spawn_local(work);
+        }
+    }
 }
 
 /// A request whose body wasn't read: hyper closes its connection.
@@ -382,6 +422,55 @@ mod tests {
         assert!(heard.try_recv().is_err(), "it hasn't finished");
         release.send(()).unwrap();
         assert_eq!(heard.recv_timeout(Duration::from_secs(10)), Ok("finished"));
+        server.stop();
+    }
+
+    /// Ticks every second, saying which thread each tick ran on.
+    struct Ticking {
+        said: Arc<Mutex<mpsc::Sender<String>>>,
+    }
+
+    impl Handler for Ticking {
+        fn handle(&self, _request: Request) -> LocalFuture<'_, Response> {
+            Box::pin(async { Response::default() })
+        }
+
+        fn tick(&self) -> Option<LocalFuture<'static, ()>> {
+            let said = Arc::clone(&self.said);
+            Some(Box::pin(async move {
+                let thread = std::thread::current()
+                    .name()
+                    .unwrap_or_default()
+                    .to_string();
+                let _ = said.lock().unwrap().send(thread);
+            }))
+        }
+
+        fn tick_every_ms(&self) -> u64 {
+            1_000
+        }
+    }
+
+    /// The server's own timer starts the handler's tick at each whole
+    /// period, on the first worker's thread only, so one process ticks
+    /// once however many workers it has (chunk 6.2).
+    #[test]
+    fn the_timer_ticks_on_the_first_worker_only() {
+        let (said, heard) = mpsc::channel();
+        let said = Arc::new(Mutex::new(said));
+        let make: MakeHandler = Arc::new(move || {
+            Box::new(Ticking {
+                said: Arc::clone(&said),
+            }) as Box<dyn Handler>
+        });
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = serve(listener, 3, make).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                heard.recv_timeout(Duration::from_secs(5)).as_deref(),
+                Ok("jadpo-http-0")
+            );
+        }
         server.stop();
     }
 }

@@ -339,7 +339,7 @@ below):
   stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
-  purge schedule will call it (chunk 6.2); until then nothing runs it on a
+  purge schedule will call it (chunk 6.2b); until then nothing runs it on a
   timer. Each run reports how many records each batch deleted, which the
   schedule logs.
 
@@ -964,7 +964,11 @@ credential ID, the user handle its device keeps and the
 under way, by its challenge's verifier, with what it is bound to and when
 it expires; area 8, chunk 5.5z) go beside the sessions they start.
 Schedule state and the stores system features name explicitly
-(`schedules: { store: main }`) join them with their chunks. The runtime
+(`schedules: { store: main }`) join them with their chunks; since chunk
+6.2 `jadpo_schedules` (each schedule's next due time, lease and last
+tick) and `jadpo_schedule_runs` (each run and skipped tick) are in the
+store `schedules: { store: }` names, or the only database, when a
+schedule is declared (area 12). The runtime
 state decided on 2026-10-16 (multi-step call records and batch runs beside
 the outbox, OAuth grants, poll state, and webhook and queue
 de-duplication) follows the same rules and is always in a database, never
@@ -2508,7 +2512,7 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 - Seeds and `jadpo seed` are not built. An entity's `policy:` and
   `membership:` are area 9's, built in chunk 4.4.
 - A lifecycle's `purge: { after: config.<setting> }` waits for configuration
-  (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2).
+  (chunk 5.1), and the hourly purge schedule for schedules (chunk 6.2b).
 - `jadpo rename`, which writes the identity registry (area 18), comes with
   area 14's tooling; until then a field renamed by hand reads as one
   removed and one added.

@@ -2351,8 +2351,7 @@ declared.
 
 Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
 `serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
-with the importer in chunk 7.2, the served route with no chunk yet); deleting
-expired idempotency keys from the runtime's minute tick (6.2); `settle:` (6.3); a route's own `rate_limit:` and the Redis
+with the importer in chunk 7.2, the served route with no chunk yet); `settle:` (6.3); a route's own `rate_limit:` and the Redis
 store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
@@ -2384,7 +2383,8 @@ From the Phase 5 soundness review:
   neither stored nor answered, can still be confirmed by guessing by
   whoever reads the table, who reads the kept responses and the
   application's own tables as well.
-- **Deleting expired keys stays 6.2's.** The index on `kept_until` it
+- **Deleting expired keys stays 6.2's** (built in chunk 6.2: the tick
+  deletes them in batches, area 12's "Chosen in chunk 6.2"). The index on `kept_until` it
   needs is already in the system table; what runs it is the runtime's
   minute tick, which 6.2 builds, so a statement with nothing to call it
   waits for that chunk.
