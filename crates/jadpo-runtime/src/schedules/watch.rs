@@ -1032,16 +1032,10 @@ mod tests {
         assert_eq!(to_record(&first, &[], 30), Some(BTreeMap::new()));
         assert_eq!(to_record(&none, &[], 30), None);
         // A record survives a row read back.
-        assert_eq!(
-            raised_from(&format!(
-                "{}",
-                match raised_json(&first) {
-                    SqlValue::Json(text) => text,
-                    other => panic!("{other:?}"),
-                }
-            )),
-            first
-        );
+        let SqlValue::Json(text) = raised_json(&first) else {
+            panic!("not JSON");
+        };
+        assert_eq!(raised_from(&text), first);
         assert_eq!(raised_json(&none), SqlValue::Null(SqlType::Json));
     }
 

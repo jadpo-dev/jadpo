@@ -1777,11 +1777,11 @@ fn say(answer: &why::Answer, name: &str, now: i64) -> Said {
         }
         Answer::TicksStopped {
             since,
-            overdue,
+            missed_due,
             tick_every_ms,
         } => {
             let mut fields = Vec::new();
-            if let Some(due) = overdue {
+            if let Some(due) = missed_due {
                 fields.push(field("due", format!("{}, not run", grid_clock(*due, now))));
             }
             fields.push(field(

@@ -59,10 +59,10 @@ pub enum Answer {
         last_run: Option<RunRecord>,
     },
     /// No tick has reached it since `since`, for a host that ticks every
-    /// `tick_every_ms`; `overdue` is its due time when that has passed.
+    /// `tick_every_ms`; `missed_due` is its due time when that has passed.
     TicksStopped {
         since: i64,
-        overdue: Option<i64>,
+        missed_due: Option<i64>,
         tick_every_ms: u64,
     },
     /// The run that started at `started` held its lease past `until` and
@@ -154,7 +154,7 @@ pub fn answer(watch: &Watch, recent: &[RunRecord], now: i64) -> Answer {
     }) {
         return Answer::TicksStopped {
             since,
-            overdue: (state.next_run_at <= now).then_some(state.next_run_at),
+            missed_due: (state.next_run_at <= now).then_some(state.next_run_at),
             tick_every_ms: tick_every_ms(watch),
         };
     }
@@ -356,7 +356,7 @@ mod tests {
             answer,
             Answer::TicksStopped {
                 since: 60 * MINUTE,
-                overdue: Some(120 * MINUTE),
+                missed_due: Some(120 * MINUTE),
                 tick_every_ms: 60_000,
             }
         );
@@ -381,7 +381,7 @@ mod tests {
             state.next_run_at = 180 * MINUTE;
         }
         assert_eq!(
-            answer(&watch, &[running.clone()], now),
+            answer(&watch, std::slice::from_ref(&running), now),
             Answer::Running {
                 started: 120 * MINUTE,
                 lease_until: 137 * MINUTE,
