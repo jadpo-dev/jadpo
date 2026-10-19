@@ -800,7 +800,7 @@ pub const JWT_CLAIMS_FIELDS: [(&str, Part); 7] = [
 
 /// A token's registered claims, once `crypto.verify_jwt` has checked it:
 /// sent with RFC 7519's names, its times as Jadpo writes an instant, and
-/// stored as that JSON.
+/// stored in a column per part.
 pub const JWT_CLAIMS_ENTRY: StandardType = StandardType {
     name: JWT_CLAIMS,
     holds: Holds::Object(&JWT_CLAIMS_FIELDS),
@@ -1065,7 +1065,7 @@ pub const OIDC_CLAIMS_FIELDS: [(&str, Part); 10] = [
 
 /// Who an identity provider says signed in (OpenID Connect Core 1.0):
 /// sent with the standard's names, the members it doesn't have left out,
-/// stored as that JSON. Personal data, by its parts.
+/// stored in a column per part. Personal data, by its parts.
 pub const OIDC_CLAIMS_ENTRY: StandardType = StandardType {
     name: OIDC_CLAIMS,
     holds: Holds::Object(&OIDC_CLAIMS_FIELDS),
@@ -1338,7 +1338,7 @@ pub const PASSWORD_POLICY_RULES: &[StandardRule] = &[StandardRule {
 }];
 
 /// The rules a password must meet (NIST SP 800-63B, area 19, chunk 5.5r3):
-/// sent as an object of its parts, stored as that JSON, and shown as its
+/// sent as an object of its parts, stored in a column per part, and shown as its
 /// lengths, `15–64`.
 pub const PASSWORD_POLICY_ENTRY: StandardType = StandardType {
     name: PASSWORD_POLICY,
@@ -1450,7 +1450,7 @@ pub const WEB_AUTHN_CREDENTIAL_FIELDS: [(&str, Part); 9] = [
 
 /// A passkey (area 19, chunk 5.5r3; area 8, "Passkeys"): what the server
 /// keeps of a credential a person registered, sent with its parts' names,
-/// stored as that JSON, and shown by the name the person gave it.
+/// stored in a column per part, and shown by the name the person gave it.
 pub const WEB_AUTHN_CREDENTIAL_ENTRY: StandardType = StandardType {
     name: WEB_AUTHN_CREDENTIAL,
     holds: Holds::Object(&WEB_AUTHN_CREDENTIAL_FIELDS),

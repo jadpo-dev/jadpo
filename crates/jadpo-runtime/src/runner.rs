@@ -31,8 +31,8 @@
 //! chunk 6.1b), which [`deliver`] claims, runs as the system limited to
 //! the event's tenant, and records as succeeded, retried later or failed
 //! ([`crate::outbox`]); [`sweep`] delivers what deferred work dropped.
-//! Schedules (chunk 6.2) hand their runs here on each tick, and the tick
-//! calls [`sweep`].
+//! Schedules hand their runs here on each tick ([`crate::schedules`],
+//! chunk 6.2), and the tick calls [`sweep`].
 
 use std::collections::VecDeque;
 use std::ops::ControlFlow;
@@ -205,7 +205,7 @@ pub async fn settle_within(
 }
 
 /// Runs `job` in `ctx` as the system, then puts back whoever ran `ctx`.
-async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outcome {
+pub(crate) async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outcome {
     if ctx.in_action() {
         return Outcome::Fault(ctx.fault(
             FaultKind::Defect("the runner's work inside a running action".into()),

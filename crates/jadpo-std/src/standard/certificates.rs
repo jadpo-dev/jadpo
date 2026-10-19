@@ -269,7 +269,7 @@ pub const WIDE_LINES: &str = concat!(
     "-----END CERTIFICATE-----\n",
 );
 
-/// An X.509 certificate, read from its PEM: sent and stored as that text,
+/// An X.509 certificate, read from its PEM: sent as that text and stored in a column per part,
 /// and shown by its subject.
 pub const CERTIFICATE_ENTRY: StandardType = StandardType {
     name: CERTIFICATE,

@@ -1160,9 +1160,8 @@ pub const PROBLEM_DETAILS_ENTRY: StandardType = StandardType {
     holds: Holds::Object(&PROBLEM_FIELDS),
     text: None,
     json: Json::Members(&["type", "status", "title", "detail", "instance"]),
-    // Stored as its JSON, as `InstantRange` is: every member may be
-    // `none`, so a column per member couldn't tell an empty problem from
-    // no problem at all.
+    // Stored in a column per member; every member may be `none`, so in a
+    // field that may be `none`, every column `NULL` reads back as `none`.
     storage: Storage::Columns {
         parts: &[
             ("type", "text"),

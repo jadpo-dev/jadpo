@@ -509,7 +509,7 @@ rules! {
     POLICY_SUBJECT_DUPLICATE: "policy.subject_duplicate", area 9, Error, Agent,
         "09-policy.html#policy-subject-duplicate", "Grant names the same caller twice";
     POLICY_SYSTEM_GRANT_MISSING: "policy.system_grant_missing", area 9, Error, Human,
-        "09-policy.html#policy-system-grant-missing", "Subscriber reaches what only `Access.public` grants, not `Access.system`";
+        "09-policy.html#policy-system-grant-missing", "Schedule or subscriber reaches what only `Access.public` grants, not `Access.system`";
     PROMPT_FREE_TEXT_IN_INSTRUCTIONS: "prompt.free_text_in_instructions", area 21, Error, Agent,
         "21-ai.html#prompt-free-text-in-instructions", "A free-text placeholder is written in a prompt's instructions";
     PROMPT_PLACEHOLDER_TYPE: "prompt.placeholder_type", area 21, Error, Agent,
@@ -642,6 +642,16 @@ rules! {
         "07-http.html#route-settle-invalid", "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
+    SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#schedule-every-invalid", "Schedule's `every:` isn't a whole number of seconds, minutes, hours or days";
+    SCHEDULE_ITEM_INVALID: "schedule.item_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#schedule-item-invalid", "Schedule holds an item it doesn't take, gives one twice or leaves out `every:` or `run:`";
+    SCHEDULE_RUN_INVALID: "schedule.run_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#schedule-run-invalid", "Schedule's `run:` isn't a call of an action in its own domain with no arguments";
+    SCHEDULE_SETTINGS_INVALID: "schedule.settings_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#schedule-settings-invalid", "Schedules settings in `app.jadpo` hold something other than a database's `store:`";
+    SCHEDULE_STORE_REQUIRED: "schedule.store_required", area 12, Error, Human,
+        "12-jobs-and-events.html#schedule-store-required", "Schedule has no database named to keep its state and lease in";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
         "08-identity.html#semantic-auth-method-duplicate", "Sign-in method is declared twice";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,

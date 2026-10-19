@@ -198,7 +198,7 @@ pub const RICH_TEXT_BLOCK_ENTRY: StandardType = StandardType {
 };
 
 /// A run of text with its marks and link: sent as its members, the link
-/// left out when there is none, stored as that JSON and shown as its text.
+/// left out when there is none, stored in a column per part and shown as its text.
 pub const RICH_TEXT_SPAN_ENTRY: StandardType = StandardType {
     name: RICH_TEXT_SPAN,
     holds: Holds::Object(&RICH_TEXT_SPAN_FIELDS),

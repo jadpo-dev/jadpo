@@ -5,15 +5,9 @@ status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - event.*
+  - schedule.*
   - subscriber.*
-  - syntax.job_*
   - type.batch_*
-  - type.job_delivery_authority_invalid
-  - type.job_delivery_binding_not_implemented
-  - type.job_delivery_hook_invalid
-  - type.job_interval_invalid
-  - type.job_run_argument_invalid
-  - type.job_run_signature_invalid
 ---
 
 # Jobs and events
@@ -22,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Event records come in chunk 6.1c, schedules in chunk 6.2. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Event records come in chunk 6.1c, and the commands that watch schedules in chunk 6.2b. Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -62,7 +56,8 @@ schedule overdue_reminders {
   counted in UTC from when the application starts.
 - Only one run of a schedule happens at a time. Ticks missed while the
   application was down, or while a run was still going, become one run, not a
-  backlog.
+  backlog. Each schedule's state and lease live in the store
+  `schedules: { store: }` names (area 5), or the only store when there is one.
 - Inside the run, `clock.now` is fixed: every read gives the time the run
   started, so the action does not need the time passed in.
 - A failed run is logged and shown to the operator; the next tick is the
@@ -515,7 +510,7 @@ compare them.
   through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
   numbered every event type in the plan's JSON table, by its identity
   key, for the outbox to write and read its payload through (area 5,
-  "Chosen in chunk 5.9b").
+  "Structured values").
 
 ## Several changing calls in one action
 
@@ -655,8 +650,9 @@ follow chunk 7.4 and are not yet a roadmap chunk.
 ## Where events travel
 
 Events stay inside the Jadpo runtime (Richard, 2026-10-13). They are stored
-in the main store's outbox in the same transaction as the action, and the
-runtime delivers them: on a long-running server from its own workers, on
+in the outbox of the store the action writes, in the same transaction as
+the action, and the runtime delivers them: on a long-running server from
+its own workers, on
 Cloudflare Workers right after the commit (`waitUntil`) with the
 once-a-minute schedule tick sweeping anything left. One place holds every
 log and trace, a request is never slowed by delivery, and no site needs a
@@ -858,7 +854,7 @@ and 6 type rules (question 2).
 
 ## Errors
 
-Built in chunk 6.1b: the errors of events and subscribers.
+Built in chunk 6.1b: the errors of events and subscribers. Built in chunk 6.2: the errors of schedules.
 
 ### `event.emit_invalid`
 
@@ -955,6 +951,173 @@ error: `glance` emits `NoteSeen` but writes no store to keep it in
   help: docs/language/12-jobs-and-events.html#event-store-required
 
 check failed: 1 error, 1 file
+```
+
+### `schedule.every_invalid`
+
+`every:` is a whole number of seconds, minutes, hours or days:
+
+```jadpo check project=e-schedule-every expect=schedule.every_invalid
+action tidy() -> Unit {}
+
+/// Tidies up four times a second.
+schedule tidy_up {
+    every: 250ms
+    run: tidy()
+}
+```
+
+```text output
+error: `every: 250ms` can't be how often a schedule runs
+ --> main.jadpo:5:12
+  |
+5 |     every: 250ms
+  |            ^^^^^ not seconds, minutes, hours or days
+  reason: `every:` is a whole number of seconds, minutes, hours or days above zero (`30s`, `15m`, `1h`, `1d`), counted in UTC from when the application starts.
+  next: Write a duration such as `every: 15m` (agent)
+  rule: schedule.every_invalid
+  help: docs/language/12-jobs-and-events.html#schedule-every-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `schedule.item_invalid`
+
+A schedule holds `every:` and `run:`, once each; how it is retried is the same for every schedule:
+
+```jadpo check project=e-schedule-item expect=schedule.item_invalid
+action tidy() -> Unit {}
+
+/// Tidies up every quarter of an hour.
+schedule tidy_up {
+    every: 15m
+    run: tidy()
+    retry: next_schedule
+}
+```
+
+```text output
+error: `retry` isn't something a schedule holds
+ --> main.jadpo:7:5
+  |
+7 |     retry: next_schedule
+  |     ^^^^^ not a schedule item
+  reason: A schedule says how often it runs with `every:` and the action it runs with `run:`; nothing else, since one run at a time, merged missed ticks and the next tick as the retry are how every schedule runs.
+  next: Write `every: <duration>` and `run: <action>()`, once each (agent)
+  rule: schedule.item_invalid
+  help: docs/language/12-jobs-and-events.html#schedule-item-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `schedule.run_invalid`
+
+`run:` calls an action of the schedule's own domain with nothing; the time is `clock.now`, fixed for the run:
+
+```jadpo check project=e-schedule-run expect=schedule.run_invalid
+type RemindAt = Instant {}
+
+action remind(at: RemindAt) -> Unit {}
+
+/// Sends the reminders due.
+schedule reminders {
+    every: 15m
+    run: remind(RemindAt(clock.now))
+}
+```
+
+```text output
+error: A schedule passes nothing to `remind`
+ --> main.jadpo:8:16
+  |
+8 |     run: remind(RemindAt(clock.now))
+  |                ^^^^^^^^^^^^^^^^^^^^^ arguments given
+  reason: `run:` calls one action of the schedule's own domain with no arguments; the action reads `clock.now`, fixed for the run, and queries for anything else, so all the logic lives in the action.
+  next: Write `run: remind()`, and let `remind` read `clock.now` and its queries for what it needs (agent)
+  rule: schedule.run_invalid
+  help: docs/language/12-jobs-and-events.html#schedule-run-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `schedule.settings_invalid`
+
+`schedules: { store: }` names a database:
+
+```jadpo check project=e-schedules-settings file=app.jadpo expect=schedule.settings_invalid
+application {
+    schedules: {
+        store: archive
+    }
+}
+```
+
+```text output
+error: `store: archive` isn't a database
+ --> app.jadpo:3:16
+  |
+3 |         store: archive
+  |                ^^^^^^^ not a database
+  reason: A schedule's next due time and its lease are kept in a database; this application's databases are `main`.
+  next: Name a database connection (agent)
+  rule: schedule.settings_invalid
+  help: docs/language/12-jobs-and-events.html#schedule-settings-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `schedule.store_required`
+
+With several databases, `schedules: { store: }` says which keeps every schedule's state and lease; with one, it is that one:
+
+```jadpo check project=e-schedule-store file=app.jadpo hidden
+application {
+    connections: {
+        archive: {
+            driver: Driver.postgres
+            url: config.archive_url
+        }
+        main: {
+            driver: Driver.postgres
+            url: config.main_url
+        }
+    }
+}
+```
+
+```jadpo check project=e-schedule-store file=config.jadpo hidden
+config {
+    archive_url: PostgresUrl
+    main_url: PostgresUrl
+}
+```
+
+```jadpo check project=e-schedule-store file=domains/planning/actions/tidy.jadpo hidden
+action tidy() -> Unit {}
+```
+
+```jadpo check project=e-schedule-store file=domains/planning/schedules/tidy_up.jadpo expect=schedule.store_required
+use planning/actions { tidy }
+
+/// Tidies up every quarter of an hour.
+schedule tidy_up {
+    every: 15m
+    run: tidy()
+}
+```
+
+```text output
+error: `tidy_up` has no database named to keep its state in
+ --> domains/planning/schedules/tidy_up.jadpo:4:10
+  |
+4 | schedule tidy_up {
+  |          ^^^^^^^ no store for its state
+  reason: Each schedule keeps its next due time and the lease that lets one instance run it at a time in a database; this application has `archive` and `main`, and `app.jadpo` names none with `schedules: { store: }`.
+  next: Add `schedules: { store: archive }` to `application { }` in `app.jadpo` (human)
+  rule: schedule.store_required
+  help: docs/language/12-jobs-and-events.html#schedule-store-required
+
+check failed: 1 error, 4 files
 ```
 
 ### `subscriber.argument_invalid`
@@ -1224,564 +1387,6 @@ error: `run: send_reminder` isn't a call
   help: docs/language/12-jobs-and-events.html#subscriber-run-invalid
 
 check failed: 1 error, 1 file
-```
-
-### Errors of the archived compiler
-
-> These examples predate the decisions above and are rewritten or removed when schedules are built (roadmap chunk 6.2).
-
-The archived compiler's `job` declarations, each error with an example that triggered it.
-
-### `syntax.job_every_required`
-
-```jadpo project=e-every expect=syntax.job_every_required
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders after 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}
-```
-
-### `syntax.job_duration_required`
-
-```jadpo project=e-duration expect=syntax.job_duration_required
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15 {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}
-```
-
-### `type.job_interval_invalid`
-
-```jadpo project=e-interval expect=type.job_interval_invalid
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 1d {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}
-```
-
-### `syntax.job_clause_required`
-
-```jadpo project=e-clause-required expect=syntax.job_clause_required
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-}
-```
-
-### `syntax.job_clause_value_invalid`
-
-```jadpo project=e-clause-value expect=syntax.job_clause_value_invalid
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: parallel
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}
-```
-
-### `syntax.job_item_duplicate`
-
-```jadpo project=e-item-duplicate expect=syntax.job_item_duplicate
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-    retry: next_schedule
-}
-```
-
-### `syntax.job_item_unknown`
-
-```jadpo project=e-item-unknown expect=syntax.job_item_unknown
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-    timeout: 5m
-}
-```
-
-### `syntax.job_run_invocation_required`
-
-```jadpo project=e-run-invocation expect=syntax.job_run_invocation_required
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan
-    retry: next_schedule
-}
-```
-
-### `syntax.job_export_invalid`
-
-```jadpo project=e-export expect=syntax.job_export_invalid
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-public job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(JobRunAt(clock.now))
-    retry: next_schedule
-}
-```
-
-### `type.job_run_signature_invalid`
-
-```jadpo project=e-run-signature expect=type.job_run_signature_invalid
-action scan() -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan()
-    retry: next_schedule
-}
-```
-
-### `type.job_run_argument_invalid`
-
-```jadpo project=e-run-argument expect=type.job_run_argument_invalid
-type JobRunAt = Instant {}
-
-action scan(at: JobRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: scan(clock.now)
-    retry: next_schedule
-}
-```
-
-### `type.job_delivery_binding_not_implemented`
-
-A complete descriptor:
-
-```jadpo project=e-delivery-binding expect=type.job_delivery_binding_not_implemented
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        selection: {
-            name: reminder_candidates
-            entity: Todo
-            identity: Todo.id
-            due: Todo.due_at
-            before: operation_time
-            open: Todo.status(TodoStatus.open)
-            visible: Todo
-            unsent: Todo.reminder_sent_at
-            required_owner: Todo.owner
-            owner_visible: User
-            order_by: Todo.due_at asc, Todo.id asc
-            limit: 500
-            continuation: due_identity
-        }
-        hooks: {
-            create: Todo.create_todo
-            patch: Todo.patch_todo
-            supplied: PatchTodo.due_at
-        }
-        service: {
-            operation: ReminderMail.send_overdue_reminder
-            intent: ReminderIntentId
-            input: ReminderMessage
-            output: ReminderReceipt
-            payload_version: "reminder.v1"
-            payload: {
-                idempotency_key: generated_intent
-                from: config.mail_sender
-                to: Todo.owner.email
-                todo_title: Todo.title
-                due_at: Todo.due_at
-            }
-        }
-        authority: {
-            validator: api_bearer.service_key
-            membership: ReminderServiceMembership
-            role: ReminderRole.sender
-            permit: reminder_only
-        }
-        completion: {
-            name: reminder_sent
-            field: Todo.reminder_sent_at
-            time: compiler_receipt_observation
-        }
-    }
-}
-```
-
-### `type.job_delivery_hook_invalid`
-
-The same descriptor on its own, without the entities and actions it names,
-reports "Delivery hooks or competing writes cannot be proved" on its
-`create:` and `patch:` lines. The example is the one above, hidden rather
-than repeated, since question 2 removes the rule.
-
-```jadpo project=e-delivery-hook expect=type.job_delivery_hook_invalid hidden
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        selection: {
-            name: reminder_candidates
-            entity: Todo
-            identity: Todo.id
-            due: Todo.due_at
-            before: operation_time
-            open: Todo.status(TodoStatus.open)
-            visible: Todo
-            unsent: Todo.reminder_sent_at
-            required_owner: Todo.owner
-            owner_visible: User
-            order_by: Todo.due_at asc, Todo.id asc
-            limit: 500
-            continuation: due_identity
-        }
-        hooks: {
-            create: Todo.create_todo
-            patch: Todo.patch_todo
-            supplied: PatchTodo.due_at
-        }
-        service: {
-            operation: ReminderMail.send_overdue_reminder
-            intent: ReminderIntentId
-            input: ReminderMessage
-            output: ReminderReceipt
-            payload_version: "reminder.v1"
-            payload: {
-                idempotency_key: generated_intent
-                from: config.mail_sender
-                to: Todo.owner.email
-                todo_title: Todo.title
-                due_at: Todo.due_at
-            }
-        }
-        authority: {
-            validator: api_bearer.service_key
-            membership: ReminderServiceMembership
-            role: ReminderRole.sender
-            permit: reminder_only
-        }
-        completion: {
-            name: reminder_sent
-            field: Todo.reminder_sent_at
-            time: compiler_receipt_observation
-        }
-    }
-}
-```
-
-### `type.job_delivery_authority_invalid`
-
-The same descriptor also reports "Delivery authority does not compose to
-its selected service identity" on its `authority:` section (hidden, not
-repeated).
-
-```jadpo project=e-delivery-authority expect=type.job_delivery_authority_invalid hidden
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        selection: {
-            name: reminder_candidates
-            entity: Todo
-            identity: Todo.id
-            due: Todo.due_at
-            before: operation_time
-            open: Todo.status(TodoStatus.open)
-            visible: Todo
-            unsent: Todo.reminder_sent_at
-            required_owner: Todo.owner
-            owner_visible: User
-            order_by: Todo.due_at asc, Todo.id asc
-            limit: 500
-            continuation: due_identity
-        }
-        hooks: {
-            create: Todo.create_todo
-            patch: Todo.patch_todo
-            supplied: PatchTodo.due_at
-        }
-        service: {
-            operation: ReminderMail.send_overdue_reminder
-            intent: ReminderIntentId
-            input: ReminderMessage
-            output: ReminderReceipt
-            payload_version: "reminder.v1"
-            payload: {
-                idempotency_key: generated_intent
-                from: config.mail_sender
-                to: Todo.owner.email
-                todo_title: Todo.title
-                due_at: Todo.due_at
-            }
-        }
-        authority: {
-            validator: api_bearer.service_key
-            membership: ReminderServiceMembership
-            role: ReminderRole.sender
-            permit: reminder_only
-        }
-        completion: {
-            name: reminder_sent
-            field: Todo.reminder_sent_at
-            time: compiler_receipt_observation
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_mode_invalid`
-
-The examples below are cut down to the part that is wrong; each also reports
-the sections it leaves out.
-
-```jadpo project=e-delivery-mode expect=syntax.job_delivery_mode_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: invoice_v1 {
-    }
-}
-```
-
-### `syntax.job_delivery_key_required`
-
-```jadpo project=e-delivery-required expect=syntax.job_delivery_key_required
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-    }
-}
-```
-
-### `syntax.job_delivery_key_unknown`
-
-```jadpo project=e-delivery-unknown expect=syntax.job_delivery_key_unknown
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        schedule: {
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_key_duplicate`
-
-```jadpo project=e-delivery-duplicate expect=syntax.job_delivery_key_duplicate
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        completion: {
-            name: reminder_sent
-            field: Todo.reminder_sent_at
-            time: compiler_receipt_observation
-        }
-        completion: {
-            name: reminder_sent
-            field: Todo.reminder_sent_at
-            time: compiler_receipt_observation
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_term_invalid`
-
-A slot given something other than its fixed word:
-
-```jadpo project=e-delivery-term expect=syntax.job_delivery_term_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        completion: {
-            name: reminder_sent
-            field: Todo.reminder_sent_at
-            time: receipt.accepted_at
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_reference_invalid`
-
-```jadpo project=e-delivery-reference expect=syntax.job_delivery_reference_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        completion: {
-            name: reminder_sent
-            field: generated_intent
-            time: compiler_receipt_observation
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_limit_invalid`
-
-A limit other than 500:
-
-```jadpo project=e-delivery-limit expect=syntax.job_delivery_limit_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        selection: {
-            limit: 100
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_direction_invalid`
-
-```jadpo project=e-delivery-direction expect=syntax.job_delivery_direction_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        selection: {
-            order_by: Todo.due_at desc, Todo.id asc
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_syntax_invalid`
-
-An ordering that names one field:
-
-```jadpo project=e-delivery-syntax expect=syntax.job_delivery_syntax_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        selection: {
-            order_by: Todo.due_at asc
-        }
-    }
-}
-```
-
-### `syntax.job_delivery_version_invalid`
-
-A payload version other than `"reminder.v1"`:
-
-```jadpo project=e-delivery-version expect=syntax.job_delivery_version_invalid
-type ReminderRunAt = Instant {}
-
-action reminder_tick(at: ReminderRunAt) -> Unit {}
-
-job overdue_reminders every 15m {
-    concurrency: singleton
-    run: reminder_tick(ReminderRunAt(clock.now))
-    retry: next_schedule
-    delivery: reminder_v1 {
-        service: {
-            payload_version: "reminder.v2"
-        }
-    }
-}
 ```
 
 ### `type.batch_capture_not_storable`
@@ -2100,10 +1705,13 @@ after a response, inline, or once per item in batches; "Chosen in chunk
 6.1a" below. Built in chunk 6.1b: `emit` and the outbox, subscribers,
 delivery after the response, handled records, retries, trace context,
 `events: { store: }` and the outbox sweep, with the errors below that
-name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Event
+name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Built in
+chunk 6.2: schedules, their state and leases, the native minute tick,
+every run and skipped tick recorded, and the tick's sweeps, with the
+errors that name `schedule.`; "Chosen in chunk 6.2" below. Event
 records and what a subscriber stores from an event come in chunk 6.1c,
-and schedules, their leases, the minute tick that calls the sweep and
-monitoring basics in chunk 6.2;
+and the commands that watch schedules, the built-in purge schedule and
+schedule tests in chunk 6.2b;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
@@ -2229,6 +1837,77 @@ conservative reading:
   retry and dismiss (area 14), the circuit breaker, publishing outward,
   and events from outside (Phase 7) are not built; event records and
   what a subscriber stores from an event are chunk 6.1c's.
+
+### Chosen in chunk 6.2
+
+What the page leaves to the build about schedules, each the most
+conservative reading:
+
+- **When a schedule runs.** Its state row (`jadpo_schedules`) is made by
+  the first tick that sees it, its first run due one `every:` later, and
+  each after that one `every:` on, on the same grid in UTC. The row
+  outlives a restart or a deploy, so neither moves the grid nor adds a
+  run. *Flagged:* "counted in UTC from when the application starts" could
+  mean each start counts afresh; that would add a run, or delay one, on
+  every deploy. Recommended as built.
+- **Missed ticks.** A tick at or past the due time runs it once and moves
+  its next due time to the first grid time after the tick, so ticks missed
+  while the application was down become one run. A due tick that finds
+  the schedule paused, or leased by a run still going, is skipped, not
+  queued: recorded with its reason, and its due time moves on the same
+  way. A changed `every:` takes effect from the earlier of the kept due
+  time and one new interval after the tick.
+- **The lease.** Taken in one conditional statement on the state row (the
+  due time unchanged, not paused, no live lease), so of two instances
+  ticking at once one runs it and the other does nothing. It lasts the
+  15-minute limit of a run and a minute; a run that held it past then was
+  lost with its worker, and its record ends `failed` with `lease_expired`.
+- **A run.** The action, called with nothing, as the system with no
+  tenant (Richard, 2026-10-19), in a context of its own whose `clock.now`
+  is the tick's time throughout, in a new trace, stopped at 15 minutes.
+  Its events are delivered after it on the runner. A failure is recorded
+  with its code and kind and not retried. *Flagged:* "the next tick is the
+  retry" is read as the next due time; the other reading reruns a failing
+  schedule at every minute's tick, which a schedule over a due field
+  doesn't need. Recommended as built. Due schedules run side by side, so a
+  long run holds no other up.
+- **Run records.** `jadpo_schedule_runs`: due, started and ended, outcome
+  (`running`, `succeeded`, `failed` or `skipped` with `paused` or
+  `lease_held`), the failure's code and kind, never a value, the events
+  the run kept once it committed and its `traceparent`. Each state row
+  keeps the last tick that reached it. Records are kept 30 days. Items
+  processed come with batches (chunk 6.4); a log event and the alerts
+  with telemetry and chunk 6.2b.
+- **Where the state is.** `schedules: { store: }`, or the only database
+  (Richard, 2026-10-19); with several and none named, or none at all,
+  each schedule is `schedule.store_required`. `schedules:` holds only
+  `store:` for now: a `trigger:` adapter (question 16) comes with the
+  Workers cron of chunk 8.2. The two tables are in the migration snapshot
+  only when a schedule is declared.
+- **`run:` and `every:`.** `run:` is a call of an action of the
+  schedule's own domain, with no arguments, taking no parameters
+  (`schedule.run_invalid`); `every:` a whole number of seconds, minutes,
+  hours or days above zero (`schedule.every_invalid`); anything else in a
+  schedule is `schedule.item_invalid`. A schedule reaching what only
+  `Access.public` grants is `policy.system_grant_missing`, as a
+  subscriber is (area 9, decided 2026-10-19).
+- **The tick.** `jadpo_runtime::schedules::tick`, which a host calls once
+  a minute, or as often as the shortest `every:` when that is shorter, at
+  least once a second: natively the server's timer on its first worker's
+  thread at each whole period of UTC (`jadpo dev` ticks; a test's or a
+  tool's host doesn't). On Workers the cron trigger is chunk 8.2's and
+  calls the same function. *Flagged:* a minute's cron can't run an
+  `every:` under a minute more than once a minute; recommended for 8.2: a
+  warning on Workers for such a schedule.
+- **The runtime's sweeps.** On each tick, in every store holding the
+  runtime's tables: `runner::sweep` for deliveries left behind; expired
+  idempotency keys deleted (area 7); and an event deleted with its
+  delivery records once every delivery succeeded, 24 hours after it was
+  emitted (one nothing subscribes to too), so a failed delivery's event
+  stays for an operator. Each delete takes 1,000 rows at a time, at most
+  ten times a tick. Handled records stay: deleting them waits until a
+  delivery can no longer repeat is worked out. Batch runs resume through
+  `schedules::HOOKS`, which runs chunk 6.4's `batches::resume`.
 
 ### Chosen in chunk 6.4
 
@@ -2603,3 +2282,4 @@ Nothing is decided on this page yet.
 | Event records (Phase 5 review) | An event's shape is recorded and diffed in the generated record exactly as an API's is (chunk 7.0's format); accepting a breaking change waits for area 18's acceptances together with the API record's (Richard, as recommended) | 2026-10-19 |
 | A schedule and tenants (after chunk 6.1a) | A schedule's run, which no tenant's event starts, reaches every tenant's records, as the system caller does with no tenant; a subscriber stays limited to its event's tenant (Richard, as recommended) | 2026-10-19 |
 | An event's tenant (after chunk 6.1b) | An event belongs to the tenant its one field holding a tenant's id names (e.g. `household_id: Household.id`), so the tenant is written in the event where a reviewer sees it; an event with no such field, or more than one, reaches no tenant's records (Richard, as recommended) | 2026-10-19 |
+| A batch's tenant (after chunk 6.4) | A batch run belongs to the tenant its one saved value holding a tenant's id names, as an event does; none or several reach no tenant's records (Richard, as recommended) | 2026-10-19 |
