@@ -9,12 +9,14 @@
 //! it. A driver's refusal becomes what the runtime raises: `unavailable`,
 //! a rerun of the action after a concurrent change, or a fault.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
-    Cardinality, Column, Field, IncludeShape, ReadPlan, Record, Select, Size, Source,
+    Cardinality, Column, Field, GeoOp, IncludeShape, ReadPlan, Recheck, Record, Select, Size,
+    Source,
 };
 use jadpo_value::Value;
 
@@ -91,6 +93,7 @@ pub(crate) async fn read(
         keys: None,
         callers: callers(ctx),
         unpoliced: ctx.unpoliced(),
+        fetch: Cell::new(0),
     };
     if let Some(page) = &plan.page {
         env.size = match &page.size {
@@ -235,6 +238,9 @@ struct Env<'a> {
     callers: [SqlValue; 3],
     /// Whether it runs its statements without their policy.
     unpoliced: bool,
+    /// How many rows a rechecked read's statement asks for this time
+    /// ([`Source::Fetch`]).
+    fetch: Cell<i64>,
 }
 
 enum Problem {
@@ -267,6 +273,31 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
         // A literal or an enum value, as the storage codec bound it when
         // the plan was made (chunk 5.5w3b).
         Source::Stored(value) => value.clone(),
+        Source::Fetch => SqlValue::Int8(env.fetch.get()),
+        // A side of a box filter's envelopes (area 20, chunk 5.5u5).
+        Source::Envelope { index, path, part } => {
+            let bounds = value_at(
+                &Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                },
+                env.args,
+            );
+            let side = |name: &str| match &bounds {
+                Some(Value::Record(record)) => match record.get(name) {
+                    Some(Value::Decimal(value)) => Some(jadpo_std::Num {
+                        mantissa: value.mantissa,
+                        scale: value.scale,
+                    }),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let (Some(west), Some(east)) = (side("west"), side("east")) else {
+                return Err(Problem::Defect("a box without its sides".into()));
+            };
+            SqlValue::Numeric(part.of(&west, &east).to_string())
+        }
     })
 }
 
@@ -283,7 +314,10 @@ async fn run_read(
     for setting in &plan.settings {
         transaction.batch(setting).await.map_err(Problem::Store)?;
     }
-    let mut rows = run(transaction, &plan.select, env).await?;
+    let mut rows = match &plan.recheck {
+        Some(recheck) => rechecked(transaction, plan, recheck, env).await?,
+        None => run(transaction, &plan.select, env).await?,
+    };
     let mut hidden = false;
     if let Some(at) = plan.select.permitted
         && !env.unpoliced
@@ -294,6 +328,144 @@ async fn run_read(
     }
     let values = records(transaction, &plan.select, &rows, env).await?;
     Ok((rows, values, hidden))
+}
+
+/// The rows of a read with `geo.` conditions (area 20, "Queries", chunk
+/// 5.5u5): those its statement finds that pass each condition as Jadpo's
+/// own code works it out, sorted by the code's distance when the query is
+/// ordered by `geo.distance`, as many as the read keeps. The statement
+/// searches a margin wider than the conditions, so it never leaves out a
+/// row the code keeps; it asks for as many rows as the read keeps, and
+/// again for four times as many while the recheck leaves the read short,
+/// or while a row past those fetched could, by PostGIS's distance less the
+/// margin, still come before the last kept.
+async fn rechecked(
+    transaction: &mut dyn Transaction,
+    plan: &ReadPlan,
+    recheck: &Recheck,
+    env: &Env<'_>,
+) -> Result<Vec<Row>, Problem> {
+    let keep = match (plan.cardinality, &recheck.limit) {
+        (Cardinality::Page, _) => Some(env.size.saturating_add(1)),
+        (_, Some(Size::Fixed(n))) => Some(i64::try_from(*n).unwrap_or(i64::MAX)),
+        (_, Some(Size::From(source))) => match value_at(source, env.args) {
+            Some(Value::Int(n)) => Some(n),
+            _ => return Err(Problem::Defect("a limit that isn't a whole number".into())),
+        },
+        (_, None) => None,
+    };
+    let keep = keep.map(|n| usize::try_from(n.max(0)).unwrap_or(usize::MAX));
+    let mut fetch = keep.unwrap_or(0).max(1);
+    loop {
+        env.fetch.set(i64::try_from(fetch).unwrap_or(i64::MAX));
+        let rows = run(&mut *transaction, &plan.select, env).await?;
+        let found = rows.len();
+        let last_measured = recheck.order.as_ref().and_then(|order| {
+            match rows.last().and_then(|row| row.get(order.measured as usize)) {
+                Some(SqlValue::Float8(bits)) => Some(f64::from_bits(*bits)),
+                _ => None,
+            }
+        });
+        let mut kept = Vec::new();
+        for row in rows {
+            if let Some(distance) = passes(recheck, &plan.select, &row, env)? {
+                kept.push((distance, row));
+            }
+        }
+        if let Some(order) = &recheck.order {
+            let id = order.id as usize;
+            kept.sort_by(|(a, x), (b, y)| a.cmp(b).then_with(|| x.get(id).cmp(&y.get(id))));
+        }
+        let Some(keep) = keep else {
+            return Ok(kept.into_iter().map(|(_, row)| row).collect());
+        };
+        let exhausted = found < fetch;
+        let enough = kept.len() >= keep
+            && match (&recheck.order, last_measured) {
+                // The last row kept by the code's distance is nearer than
+                // any row not fetched could be.
+                (Some(_), Some(measured)) => kept
+                    .get(keep.saturating_sub(1))
+                    .and_then(|(distance, _)| *distance)
+                    .is_some_and(|micrometres| {
+                        (micrometres as f64) / 1e6 < measured - jadpo_std::read::GEO_MARGIN_METRES
+                    }),
+                (Some(_), None) => false,
+                (None, _) => true,
+            };
+        if exhausted || enough {
+            kept.truncate(keep);
+            return Ok(kept.into_iter().map(|(_, row)| row).collect());
+        }
+        fetch = fetch.saturating_mul(4);
+    }
+}
+
+/// Whether `row` passes each of the read's `geo.` conditions as Jadpo's
+/// code works them out: `None` when it doesn't, and when it does, the
+/// code's distance, in micrometres, for a query ordered by one.
+fn passes(
+    recheck: &Recheck,
+    select: &Select,
+    row: &Row,
+    env: &Env<'_>,
+) -> Result<Option<Option<i128>>, Problem> {
+    let column = |at: u32| field_value(row, &select.columns, at, env.json).map_err(Problem::Defect);
+    let argument = |source: &Source| -> Result<Value, Problem> {
+        match source {
+            Source::Stored(stored) => {
+                from_sql(stored, &Column::Quantity(jadpo_std::QuantityKind::Length))
+                    .map_err(Problem::Defect)
+            }
+            other => value_at(other, env.args)
+                .ok_or_else(|| Problem::Defect("a value the read wasn't given".into())),
+        }
+    };
+    let fault = |fault: jadpo_value::Fault| Problem::Defect(format!("{fault:?}"));
+    let mut distance = None;
+    if let Some(order) = &recheck.order {
+        let point = column(order.column)?;
+        if point == Value::None {
+            return Ok(None);
+        }
+        match jadpo_value::geo::distance(&point, &argument(&order.point)?).map_err(fault)? {
+            Value::Quantity(length) => distance = Some(length.amount),
+            _ => return Err(Problem::Defect("a distance that isn't a length".into())),
+        }
+    }
+    for check in &recheck.checks {
+        let field = column(check.column)?;
+        // A record whose field is `none` meets no `geo.` condition.
+        if field == Value::None {
+            return Ok(None);
+        }
+        let value = argument(&check.value)?;
+        let held = match (check.op, &check.distance) {
+            (GeoOp::Within, Some(reach)) => {
+                let reach = argument(reach)?;
+                match (&recheck.order, distance, &reach) {
+                    // Measured already, from the same point.
+                    (Some(order), Some(apart), Value::Quantity(reach))
+                        if order.column == check.column && order.point == check.value =>
+                    {
+                        Value::Bool(apart <= reach.amount)
+                    }
+                    _ => jadpo_value::geo::within(&field, &value, &reach).map_err(fault)?,
+                }
+            }
+            (GeoOp::Within, None) => {
+                jadpo_value::geo::within(&field, &value, &Value::None).map_err(fault)?
+            }
+            (GeoOp::Contains, _) => jadpo_value::geo::contains(&field, &value).map_err(fault)?,
+            (GeoOp::Intersects, _) => {
+                jadpo_value::geo::intersects(&field, &value).map_err(fault)?
+            }
+        };
+        if held != Value::Bool(true) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(distance))
 }
 
 async fn run(
@@ -347,6 +519,7 @@ fn records<'a>(
                     keys: Some(SqlValue::Array(element, keys)),
                     callers: env.callers.clone(),
                     unpoliced: env.unpoliced,
+                    fetch: Cell::new(0),
                 };
                 let child_rows = run(&mut *transaction, &include.select, &inner).await?;
                 let values =

@@ -265,7 +265,9 @@ pub struct IndexMethod {
     pub operator_class: String,
     /// The type its one column is cast to, which makes it an index of
     /// that expression: `halfvec(3072)` for a vector of 2,001 to 4,000
-    /// dimensions, indexed at half precision (area 21, chunk 5.5v1c).
+    /// dimensions, indexed at half precision (area 21, chunk 5.5v1c), or
+    /// `geometry` for a `BoundingBox` filter on a point's `geography` (area
+    /// 20, "Indexes", chunk 5.5u5).
     pub cast: Option<String>,
     /// Its storage parameters in the order written, `WITH (m = 24,
     /// ef_construction = 128)`: an HNSW index's tuning (area 21, chunk

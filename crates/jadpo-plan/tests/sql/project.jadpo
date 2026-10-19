@@ -755,3 +755,86 @@ query delivery_totals() -> DeliveryTotals {
         first_courier: min(Delivery.courier)
     }
 }
+
+// Area 20's query conditions (chunk 5.5u5): each searched through a GiST
+// index with a margin, and held to Jadpo's own test again as it runs.
+
+type BakeryName = Text {
+    max_length: 80
+}
+
+type SearchReach = Length {
+    min: 0metre
+    max: 50km
+}
+
+entity Bakery {
+    id: Uuid
+    name: BakeryName
+    spot: Point
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+entity DeliveryPatch {
+    id: Uuid
+    bakery_id: Bakery.id {
+        on_delete: OnDelete.cascade
+    }
+    outline: Polygon
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+type BakeryCard = Output {
+    pick: [Bakery.id, Bakery.name, Bakery.spot]
+}
+
+query bakeries_near(doorstep: Point, max_trip: SearchReach) -> List<BakeryCard> {
+    from: Bakery
+    where: geo.within(Bakery.spot, doorstep, distance: max_trip)
+    order: [geo.distance(Bakery.spot, doorstep) asc]
+    limit: 20
+}
+
+query bakeries_in_view(view: BoundingBox) -> List<BakeryCard> {
+    from: Bakery
+    where: geo.within(Bakery.spot, view)
+    order: [Bakery.name asc]
+    limit: 200
+}
+
+query bakeries_in_area(area: MultiPolygon) -> List<BakeryCard> {
+    from: Bakery
+    where: geo.within(Bakery.spot, area)
+    order: [Bakery.name asc]
+    limit: 50
+}
+
+query bakeries_in_circle(circle: Circle) -> List<BakeryCard> {
+    from: Bakery
+    where: geo.within(Bakery.spot, circle)
+    order: [Bakery.name asc]
+    limit: 50
+}
+
+query patches_for(customer: Point) -> List<DeliveryPatch> {
+    from: DeliveryPatch
+    where: geo.contains(DeliveryPatch.outline, customer)
+    order: [DeliveryPatch.id asc]
+    limit: 10
+}
+
+query patches_crossing(round: LineString, after: PageCursor?) -> Page<DeliveryPatch> {
+    from: DeliveryPatch
+    where: geo.intersects(DeliveryPatch.outline, round)
+    order: [DeliveryPatch.id asc]
+    page: {
+        size: 25
+        after: after
+    }
+}

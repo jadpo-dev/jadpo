@@ -490,6 +490,18 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
     for setting in &plan.read.settings {
         fields.push(("first".to_string(), setting.clone()));
     }
+    // What the runtime works out again on the rows found (area 20, chunk
+    // 5.5u5).
+    if let Some(recheck) = &plan.read.recheck {
+        let mut then = Vec::new();
+        if !recheck.checks.is_empty() {
+            then.push("each row is held to its `geo.` conditions in Jadpo's own code".to_string());
+        }
+        if recheck.order.is_some() {
+            then.push("sorted by `geo.distance` as the code works it out, then `id`".to_string());
+        }
+        fields.push(("then".to_string(), then.join("; ")));
+    }
     statement(
         &mut screen,
         &mut statements,
@@ -618,6 +630,22 @@ impl Names<'_> {
             }
             Source::SizePlusOne => "the page size + 1, to see if more follow".to_string(),
             Source::Stored(value) => stored(value),
+            Source::Fetch => {
+                "as many rows as it keeps, more if the code's recheck leaves it short".to_string()
+            }
+            Source::Envelope { index, path, part } => {
+                let bounds = self.source(&Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                });
+                let side = match part {
+                    jadpo_std::read::EnvelopePart::FirstWest => "the first envelope's west",
+                    jadpo_std::read::EnvelopePart::FirstEast => "the first envelope's east",
+                    jadpo_std::read::EnvelopePart::SecondWest => "the second envelope's west",
+                    jadpo_std::read::EnvelopePart::SecondEast => "the second envelope's east",
+                };
+                format!("{side}, from {bounds}")
+            }
         }
     }
 }

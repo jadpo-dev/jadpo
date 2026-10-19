@@ -121,6 +121,38 @@ pub fn nearest_exact<S: AsRef<str>>(
     sql
 }
 
+/// The column a read ordered by `geo.distance` selects PostGIS's distance
+/// as (area 20, chunk 5.5u5).
+pub const MEASURED: &str = "jadpo_measured";
+
+/// A read ordered by `geo.distance` (area 20, "Queries", chunk 5.5u5):
+/// `columns` of `table` and the `measured` distance as [`MEASURED`], where
+/// `conditions` hold, nearest first by it and then `tie` (the `id`), at
+/// most `limit`. The runtime orders the rows again by the distance Jadpo
+/// works out, which the margin the conditions search keeps in reach.
+pub fn by_distance<S: AsRef<str>>(
+    columns: &[S],
+    table: &str,
+    measured: &str,
+    conditions: &[String],
+    limit: &str,
+    tie: &str,
+) -> String {
+    let mut sql = format!(
+        "SELECT {}, {measured} AS {}\nFROM {}",
+        idents(columns),
+        ident(MEASURED),
+        ident(table)
+    );
+    where_clause(&mut sql, conditions, "");
+    sql.push_str(&format!(
+        "\nORDER BY {}, {}\nLIMIT {limit}",
+        ident(MEASURED),
+        ident(tie)
+    ));
+    sql
+}
+
 /// The alias of an aggregate read's grouped rows.
 const GROUPED: &str = "grouped";
 

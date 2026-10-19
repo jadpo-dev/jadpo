@@ -361,7 +361,8 @@ pub struct IndexMethod<'a> {
 /// by `method` when given, else a B-tree: `hnsw` with `vector_cosine_ops`,
 /// or on `("column"::halfvec(3072))` with `halfvec_cosine_ops`, tuned
 /// `WITH (m = 24, ef_construction = 128)` (area 21); `gist` with none, its
-/// type's own, for a geometry (area 20).
+/// type's own, for a geometry, or on `("column"::geometry)` for a box
+/// filter (area 20).
 pub fn create_index(
     table: &str,
     name: &str,
