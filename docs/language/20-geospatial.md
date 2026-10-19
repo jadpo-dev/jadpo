@@ -1721,8 +1721,8 @@ test "a pasted patch is read longitude first" {
   CI moves to `postgis/postgis:16-3.4`. *Amended by chunk 5.5v1:* CI runs
   `tools/postgres/Dockerfile`, PostgreSQL 16 with PostGIS 3.6 and pgvector
   from apt.postgresql.org, since every `postgis/postgis` 16 tag is built on
-  Debian bullseye, whose support has ended (area 21, "Chosen in chunk
-  5.5v1").
+  Debian bullseye, whose support has ended (area 21, "Without
+  pgvector").
 - **Area 14:** `migration.extension_missing` is raised by `jadpo migrate
   apply`, like the other `migration.*` rules no source can trigger.
 - **Area 15:** unchanged. A position isn't personal data by type; an
