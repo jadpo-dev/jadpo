@@ -249,14 +249,14 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
 /// What a declaration sorts by in the record: its born name without its
 /// domain (`Todo` for a type renamed to `Task`; `Address` for
 /// `billing.Address`), then its name now.
-fn born_order(wire: &Wire<'_>, key: &Key) -> (String, String) {
+pub(crate) fn born_order(wire: &Wire<'_>, key: &Key) -> (String, String) {
     let born = key.name().rsplit('.').next().unwrap_or(key.name());
     (born.to_string(), wire.name(key))
 }
 
 /// A field's line: its name, the type a client sends or reads, and how it
 /// is sent (`header "X-Request-Tag"`, `default 20`, `optional`).
-fn field_line(
+pub(crate) fn field_line(
     wire: &Wire<'_>,
     field: &jadpo_graph::Node,
     refs: &mut BTreeSet<Key>,
@@ -288,7 +288,7 @@ fn field_line(
 }
 
 /// The fields of `fields`, sorted by born name.
-fn sorted_fields<'g>(
+pub(crate) fn sorted_fields<'g>(
     wire: &Wire<'g>,
     mut fields: Vec<&'g jadpo_graph::Node>,
 ) -> Vec<&'g jadpo_graph::Node> {
@@ -415,7 +415,24 @@ fn write(
         failure_entries.push((detail.code.clone(), entry));
     }
     failure_entries.sort_by(|a, b| a.0.cmp(&b.0));
-    // Each type a route, a field or a failure names, until none is new.
+    let mut sections = type_entries(wire, refs);
+    generated_sections.dedup();
+    for (name, entry) in generated_sections {
+        sections.insert((name.clone(), name), entry);
+    }
+    out.extend(sections.into_values());
+    out.extend(failure_entries.into_iter().map(|(_, entry)| entry));
+    out
+}
+
+/// The entry of each type `refs` names, and of each type their fields
+/// name in turn, until none is new: objects, inputs, outputs and entities
+/// with their fields, enums with their variants, each by born name. The
+/// API record and the event record (chunk 6.1c) both end with these.
+pub(crate) fn type_entries(
+    wire: &Wire<'_>,
+    mut refs: BTreeSet<Key>,
+) -> BTreeMap<(String, String), Entry> {
     let mut done: BTreeSet<Key> = BTreeSet::new();
     let mut sections: BTreeMap<(String, String), Entry> = BTreeMap::new();
     while let Some(key) = refs.iter().find(|key| !done.contains(*key)).cloned() {
@@ -471,13 +488,7 @@ fn write(
             }
         }
     }
-    generated_sections.dedup();
-    for (name, entry) in generated_sections {
-        sections.insert((name.clone(), name), entry);
-    }
-    out.extend(sections.into_values());
-    out.extend(failure_entries.into_iter().map(|(_, entry)| entry));
-    out
+    sections
 }
 
 #[cfg(test)]

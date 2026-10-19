@@ -157,6 +157,15 @@ fn retold(src: &Src, change: &dyn Fn(u32) -> Origin) -> Src {
     }
 }
 
+/// The parameter `src` is part of, decided by or deep inside.
+fn param_in(src: &Src) -> Option<usize> {
+    match src {
+        Src::Param(at, _) => Some(*at),
+        Src::Decided(inner) | Src::Deep(inner) => param_in(inner),
+        _ => None,
+    }
+}
+
 /// `src` as what decided a value; nothing for a whole record.
 fn decided(src: Src) -> Option<Src> {
     match src {
@@ -340,6 +349,22 @@ impl Prov {
         out
     }
 
+    /// Without what a parameter holds, wherever it is: an action's
+    /// parameters are what its caller passes, which the caller's own walk
+    /// holds, or what a request sent.
+    fn unpassed(&self) -> Prov {
+        let mut out = Prov::default();
+        for src in &self.whole {
+            if param_in(src).is_none() {
+                out.add(src.clone());
+            }
+        }
+        for (name, prov) in &self.fields {
+            out.fields.insert(name.clone(), prov.unpassed());
+        }
+        out
+    }
+
     /// With no [`Origin`]: what a summary holds.
     fn erased(&self) -> Prov {
         self.retold(&erased)
@@ -375,6 +400,11 @@ struct Summary {
     returns: Prov,
     sends: BTreeSet<(usize, Vec<String>)>,
     stores: Vec<Store>,
+    /// What each `emit` it runs, itself or through an action it calls,
+    /// puts in its event, by the event's key: what a subscriber of it
+    /// stores is checked against these (chunk 6.1c). With no [`Origin`]
+    /// but [`stores::TENANT`].
+    emits: Vec<(Key, Prov)>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -385,6 +415,7 @@ static NOTHING: Summary = Summary {
     },
     sends: BTreeSet::new(),
     stores: Vec::new(),
+    emits: Vec::new(),
 };
 
 impl Summary {
@@ -395,6 +426,11 @@ impl Summary {
         for store in &other.stores {
             if !self.stores.contains(store) {
                 self.stores.push(store.clone());
+            }
+        }
+        for emit in &other.emits {
+            if !self.emits.contains(emit) {
+                self.emits.push(emit.clone());
             }
         }
         self
@@ -420,6 +456,16 @@ impl Summary {
                 })
                 .collect(),
             stores,
+            emits: self
+                .emits
+                .into_iter()
+                .map(|(event, prov)| (event, prov.widened(0)))
+                .fold(Vec::new(), |mut out, emit| {
+                    if !out.contains(&emit) {
+                        out.push(emit);
+                    }
+                    out
+                }),
         }
     }
 }
@@ -488,6 +534,108 @@ pub fn flow_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     out
 }
 
+/// What every `emit` of each event puts in it, by the event's key (area 9,
+/// "Events and stores"; chunk 6.1c): each action's own `emit`s and those
+/// of the actions it calls, in its terms, so what a parameter holds is
+/// what each caller passes; a parameter of an action no action calls holds
+/// what a request sent. A subscriber's action is passed parts of its
+/// event, so what it emits from them is what the event it was delivered
+/// held, followed along chains of events until nothing more is found.
+#[salsa::tracked(returns(ref))]
+fn payloads(db: &dyn Db, project: Project) -> BTreeMap<Key, Prov> {
+    let mut out: BTreeMap<Key, Prov> = BTreeMap::new();
+    for &file in project.files(db) {
+        for callable in callables_of(db, file) {
+            let Some(key) = body_facts(db, project, callable).key_of(&[Kind::Action]) else {
+                continue;
+            };
+            if resolve(db, project, key) != Some(callable) {
+                continue;
+            }
+            for (event, prov) in &flow_summary(db, project, callable).emits {
+                out.entry(event.clone())
+                    .or_default()
+                    .union(&prov.unpassed());
+            }
+        }
+    }
+    let subscribers = crate::events::subscribers(db, project);
+    // An event chain stops 16 deep (area 12, "Limits and runtime faults").
+    for _ in 0..=16 {
+        let mut changed = false;
+        for subscriber in subscribers.iter() {
+            let Some(payload) = out.get(&subscriber.event).cloned() else {
+                continue;
+            };
+            let Some(callable) = resolve(db, project, &subscriber.run) else {
+                continue;
+            };
+            let provs: Vec<Prov> = subscriber
+                .args
+                .iter()
+                .map(|path| payload.at(path))
+                .collect();
+            for (event, prov) in &flow_summary(db, project, callable).emits {
+                let prov = prov.substitute(&provs).unpassed();
+                let entry = out.entry(event.clone()).or_default();
+                let before = entry.clone();
+                entry.union(&prov);
+                changed |= *entry != before;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    out
+}
+
+/// What the subscribers in `file` store from their events (area 9,
+/// "Events and stores"; chunk 6.1c): what each one's action stores from
+/// what it is passed, checked as a call is against what every `emit` of
+/// the event put in the parts it passes.
+#[salsa::tracked(returns(ref))]
+pub fn subscriber_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let reads = crate::events::subscribers_in(db, project, file);
+    if reads.iter().all(|read| read.model.is_none()) || !super::policy_clean(db, project) {
+        return Vec::new();
+    }
+    let flow = Flow {
+        db,
+        project,
+        prover: Prover::new(db, project),
+        lookup: Lookup::new(db, project),
+        entities: Entities::new(db, project),
+    };
+    let payloads = payloads(db, project);
+    let body = Body::default();
+    let mut out = Vec::new();
+    for read in reads {
+        let Some(model) = &read.model else { continue };
+        let Some(payload) = payloads.get(&model.event) else {
+            continue;
+        };
+        let provs: Vec<Prov> = model.args.iter().map(|path| payload.at(path)).collect();
+        let mut walk = Walk::blank(&body, file.path(db).clone(), model.name.clone());
+        walk.report = true;
+        walk.event = Some(
+            model
+                .event
+                .name()
+                .rsplit('.')
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+        );
+        for store in &flow.summary(&model.run).stores {
+            walk.event_store(&flow, model.run.name(), store, &read.args, &provs);
+        }
+        out.extend(walk.problems);
+    }
+    out.dedup();
+    out
+}
+
 /// An action's or function's walk: its summary and its problems.
 fn walked<'db>(
     db: &'db dyn Db,
@@ -541,30 +689,11 @@ impl<'a> Flow<'a> {
         body: &Body,
     ) -> (Summary, Vec<Diagnostic>) {
         let listed = kind == Kind::Action;
-        let mut walk = Walk {
-            locals: vec![Prov::default(); body.locals.len()],
-            body,
-            path,
-            name: name.clone(),
-            line: listed
-                .then(|| self.prover.policies.root().action(&name).cloned())
-                .flatten(),
-            gate: None,
-            returns: Prov::default(),
-            sends: BTreeSet::new(),
-            action: listed,
-            report: false,
-            problems: Vec::new(),
-            pc: Vec::new(),
-            stored: None,
-            decided: BTreeSet::new(),
-            stores: Vec::new(),
-            kept: BTreeSet::new(),
-            failing: Vec::new(),
-            looping: 0,
-            turns: BTreeSet::new(),
-            found: BTreeMap::new(),
-        };
+        let mut walk = Walk::blank(body, path, name.clone());
+        walk.line = listed
+            .then(|| self.prover.policies.root().action(&name).cloned())
+            .flatten();
+        walk.action = listed;
         if listed {
             walk.gate = super::reach::line_gate(self.db, self.project, &name)
                 .and_then(|gate| gate_way(&gate));
@@ -593,13 +722,28 @@ impl<'a> Flow<'a> {
         walk.returns = Prov::default();
         walk.sends.clear();
         walk.stores.clear();
+        walk.emits.clear();
         walk.pc.clear();
         walk.found.clear();
         walk.block(self, &body.block);
+        // An action is all-or-nothing: whatever a `reject` tests decides
+        // whether its events are kept.
+        let failing: Vec<Src> = walk.failing.iter().map(kept_origin).collect();
+        let emits = walk
+            .emits
+            .into_iter()
+            .map(|(event, mut prov)| {
+                for src in &failing {
+                    prov.add(src.clone());
+                }
+                (event, prov)
+            })
+            .collect();
         let summary = Summary {
             returns: walk.returns.erased(),
             sends: walk.sends,
             stores: walk.stores,
+            emits,
         };
         (summary, walk.problems)
     }
@@ -701,6 +845,88 @@ struct Walk<'b> {
     /// value known exactly: a record found by the `id` a write sets as a
     /// reference is the record it refers to.
     found: BTreeMap<u32, stores::Ident>,
+    /// What each `emit` it runs puts in its event (chunk 6.1c).
+    emits: Vec<(Key, Prov)>,
+    /// The event a subscriber's walk stores from, by name: what it stores
+    /// came from an `emit` of it (chunk 6.1c).
+    event: Option<String>,
+}
+
+impl<'b> Walk<'b> {
+    /// A walk of `body` that has found nothing yet.
+    fn blank(body: &'b Body, path: String, name: String) -> Walk<'b> {
+        Walk {
+            locals: vec![Prov::default(); body.locals.len()],
+            body,
+            path,
+            name,
+            line: None,
+            gate: None,
+            returns: Prov::default(),
+            sends: BTreeSet::new(),
+            action: false,
+            report: false,
+            problems: Vec::new(),
+            pc: Vec::new(),
+            stored: None,
+            decided: BTreeSet::new(),
+            stores: Vec::new(),
+            kept: BTreeSet::new(),
+            failing: Vec::new(),
+            looping: 0,
+            turns: BTreeSet::new(),
+            found: BTreeMap::new(),
+            emits: Vec::new(),
+            event: None,
+        }
+    }
+
+    /// An `emit` of `event` holding `prov`, or one an action it calls
+    /// runs: kept for the summary, its sources from a record of the
+    /// event's tenant marked [`stores::TENANT`] and every other [`Origin`]
+    /// dropped, since the record may change before the delivery.
+    fn emitted(&mut self, flow: &Flow<'_>, event: &Key, prov: Prov) {
+        let prov = self.with_pc(prov);
+        let prov = match tenant_record(flow, event, &prov) {
+            Some(origin) => prov.retold(&|src| {
+                retold(src, &|o| Some(if o == origin { stores::TENANT } else { o }))
+            }),
+            None => prov,
+        };
+        let prov = prov.retold(&kept_origin);
+        let emit = (event.clone(), prov);
+        if !self.emits.contains(&emit) {
+            self.emits.push(emit);
+        }
+    }
+}
+
+/// `src` with no [`Origin`] but [`stores::TENANT`].
+fn kept_origin(src: &Src) -> Src {
+    retold(src, &|origin| (origin == stores::TENANT).then_some(origin))
+}
+
+/// The record an `emit` of `event` holding `prov` read the event's tenant
+/// from: its tenant field holds that record's tenancy reference, and
+/// nothing else (chunk 6.1c).
+fn tenant_record(flow: &Flow<'_>, event: &Key, prov: &Prov) -> Option<u32> {
+    let field = crate::events::subscribers(flow.db, flow.project)
+        .iter()
+        .find(|subscriber| subscriber.event == *event)
+        .and_then(|subscriber| match &subscriber.tenant {
+            crate::events::Tenant::Field(field) => Some(field.clone()),
+            _ => None,
+        })?;
+    let stores::Ident::Field(entity, via, origin) = stores::single(&prov.field(&field).whole)?
+    else {
+        return None;
+    };
+    flow.prover
+        .policies
+        .entity(&entity)
+        .and_then(|policy| policy.tenancy.as_ref())
+        .is_some_and(|tenancy| tenancy.via == via && tenancy.via != "id")
+        .then_some(origin)
 }
 
 impl Walk<'_> {
@@ -926,6 +1152,16 @@ impl Walk<'_> {
                     self.after(site, saved);
                     self.pc = self.pc.iter().map(|src| self.unturned_src(src)).collect();
                 }
+                Stmt::Emit { value: Some(value) } => {
+                    let value = *value;
+                    let prov = self.eval(flow, value);
+                    if self.report
+                        && let jadpo_graph::TypeRef::Node(event) = &self.body.site(value).ty
+                    {
+                        let event = event.clone();
+                        self.emitted(flow, &event, prov);
+                    }
+                }
                 Stmt::Emit { value } | Stmt::Assert { value, .. } | Stmt::Expr { value } => {
                     if let Some(value) = value {
                         self.eval(flow, *value);
@@ -1144,12 +1380,12 @@ impl Walk<'_> {
                     .unwrap_or_default();
                 self.hold(flow, &mut dest, site, &changes, None);
                 for (name, value, prov) in values.iter().chain(&supplied) {
-                    self.store(flow, &dest, name, *value, prov, None);
+                    self.store(flow, &dest, name, stores::At::Site(*value), prov, None);
                 }
                 if let Some((patch, prov)) = &patched {
                     for name in self.patch_fields(flow, *patch) {
                         let field = self.with_pc(prov.field(&name));
-                        self.store(flow, &dest, &name, *patch, &field, None);
+                        self.store(flow, &dest, &name, stores::At::Site(*patch), &field, None);
                     }
                 }
                 if let Some(transition) = &transition {
@@ -1425,6 +1661,12 @@ impl Walk<'_> {
                 }
                 for store in &summary.stores {
                     self.passed_store(flow, site, key.name(), store, args, &provs);
+                }
+                if self.report {
+                    for (event, prov) in &summary.emits {
+                        let prov = prov.substitute(&provs);
+                        self.emitted(flow, event, prov);
+                    }
                 }
                 summary.returns.substitute(&provs)
             }

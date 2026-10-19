@@ -446,3 +446,106 @@ action add(team_id: Team.id) -> Todo {
     let subscribers = jadpo_check::events::subscribers(&db, project);
     assert_eq!(subscribers[0].tenant, jadpo_check::events::Tenant::None);
 }
+
+/// A household application whose `log_chore` subscriber copies the title
+/// of each chore `remind` emits into a digest of its household (chunk
+/// 6.1c).
+fn household<'a>(add: &'a str) -> Vec<(&'a str, &'a str)> {
+    vec![
+        ("app.jadpo", APP),
+        (
+            "authentication.jadpo",
+            "use home/entities { Person }\n\nprincipal {\n    user: {\n        subject: Person.handle\n    }\n}\n\nauthentication {\n    browser_session: {\n        cookie: \"home_session\"\n    }\n}\n",
+        ),
+        (
+            "policy.jadpo",
+            "use home/entities { Household }\n\npolicy {\n    tenant: Household\n}\n",
+        ),
+        (
+            "domains/home/types/home_role.jadpo",
+            "type HomeRole = Enum {\n    member\n}\n",
+        ),
+        (
+            "domains/home/types/title.jadpo",
+            "type Title = Text {\n    max_length: 80\n}\n",
+        ),
+        (
+            "domains/home/types/handle.jadpo",
+            "type Handle = Text {\n    min_length: 3\n    max_length: 40\n}\n",
+        ),
+        (
+            "domains/home/entities/person.jadpo",
+            "use home/types { Handle }\n\nentity Person {\n    id: Uuid\n    handle: Handle {\n        unique: true\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [id]\n        tenant: Tenancy.shared\n    }\n}\n",
+        ),
+        (
+            "domains/home/entities/household.jadpo",
+            "use home/types { HomeRole, Title }\n\nentity Household {\n    id: Uuid\n    name: Title\n\n    policy: {\n        read: [HomeRole.member]\n    }\n}\n",
+        ),
+        (
+            "domains/home/entities/home_membership.jadpo",
+            "use home/entities { Household, Person }\nuse home/types { HomeRole }\n\nentity HomeMembership {\n    id: Uuid\n    household_id: Household.id {\n        on_delete: OnDelete.cascade\n    }\n    person_id: Person.id {\n        on_delete: OnDelete.cascade\n    }\n    role: HomeRole\n\n    membership: {\n        scope: household_id\n        member: person_id\n        role: role\n    }\n\n    policy: {\n        create: [HomeRole.member]\n        read: [person_id]\n    }\n}\n",
+        ),
+        (
+            "domains/home/entities/chore.jadpo",
+            "use home/entities { Household }\nuse home/types { HomeRole, Title }\n\nentity Chore {\n    id: Uuid\n    household_id: Household.id {\n        on_delete: OnDelete.cascade\n    }\n    title: Title\n    reminded: Bool\n\n    policy: {\n        create: [HomeRole.member]\n        read: [HomeRole.member]\n        update: [HomeRole.member]\n    }\n}\n",
+        ),
+        (
+            "domains/home/entities/digest_line.jadpo",
+            "use home/entities { Household }\nuse home/types { HomeRole, Title }\n\nentity DigestLine {\n    id: Uuid\n    household_id: Household.id {\n        on_delete: OnDelete.cascade\n    }\n    line: Title\n\n    policy: {\n        create: [Access.system]\n        read: [HomeRole.member]\n    }\n}\n",
+        ),
+        (
+            "domains/home/events/chore_added.jadpo",
+            "use home/entities { Chore, Household }\nuse home/types { Title }\n\n/// A chore was added to a household.\ntype ChoreAdded = Event {\n    chore_id: Chore.id\n    household_id: Household.id\n    title: Title\n}\n",
+        ),
+        ("domains/home/actions/remind.jadpo", add),
+        (
+            "domains/home/actions/log.jadpo",
+            "use home/entities { DigestLine, Household, HouseholdNotFound }\nuse home/types { Title }\n\naction log(household_id: Household.id, title: Title) fails HouseholdNotFound -> Unit {\n    var line: DigestLine = attempt DigestLine.create {\n        set: {\n            household_id: household_id\n            line: title\n        }\n    }\n    assert line.line == title\n}\n",
+        ),
+        (
+            "domains/home/subscribers/log_chore.jadpo",
+            "use home/actions { log }\nuse home/events { ChoreAdded }\n\nsubscriber log_chore {\n    on: ChoreAdded\n    run: log(event.household_id, event.title)\n}\n",
+        ),
+    ]
+}
+
+const ADD_CHORE: &str = r#"use home/entities { Chore, ChoreNotFound, Household }
+use home/events { ChoreAdded }
+
+action remind(household_id: Household.id, chore_id: Chore.id) fails ChoreNotFound -> Unit {
+    var chore: Chore = attempt Chore.update(chore_id) {
+        set: {
+            reminded: true
+        }
+    }
+    emit ChoreAdded {
+        chore_id: chore.id
+        household_id: chore.household_id
+        title: chore.title
+    }
+}
+"#;
+
+#[test]
+fn a_subscriber_stores_what_its_event_carries_where_its_tenants_readers_may_read_it() {
+    // The chore's title, read by the household's members, goes into a
+    // record of the same household, read by its members: the event's
+    // tenant field came from the chore itself, and the subscriber is
+    // limited to that tenant.
+    assert_eq!(
+        support::problems(Layout::Project, &household(ADD_CHORE)),
+        Vec::<String>::new()
+    );
+    // With the tenant the request named rather than the chore's, nothing
+    // says the title is of the household the subscriber is limited to.
+    let found = ADD_CHORE.replace(
+        "        household_id: chore.household_id\n",
+        "        household_id: household_id\n",
+    );
+    assert_eq!(
+        support::problems(Layout::Project, &household(&found)),
+        [
+            "domains/home/subscribers/log_chore.jadpo policy.output_field_unproved: `log_chore` passes `Chore.title` to `log`, which stores it in `DigestLine.line`, though not everyone who may read `line` may read it"
+        ]
+    );
+}

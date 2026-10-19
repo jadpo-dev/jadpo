@@ -7,7 +7,8 @@ use jadpo_db::{Database, File, Layout, Project, Record};
 /// A project of `files`, in the order given. A project with entities
 /// gets the migration that creates their tables, as `jadpo migrate new`
 /// would write it, so tests of other rules aren't told the migrations are
-/// out of date.
+/// out of date; and each domain with events gets its event record, as
+/// `jadpo records update` would write it.
 pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project {
     let make = |db: &Database, records: Vec<Record>| {
         let inputs: Vec<File> = files
@@ -17,8 +18,25 @@ pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project
         Project::new(db, inputs, Vec::new(), layout, Default::default(), records)
     };
     let scratch = Database::default();
-    let records = migration(&scratch, make(&scratch, Vec::new()));
+    let scratched = make(&scratch, Vec::new());
+    let mut records = migration(&scratch, scratched);
+    records.extend(event_records(&scratch, scratched));
     make(db, records)
+}
+
+/// Each domain's event record, as `jadpo records update` writes it
+/// (chunk 6.1c).
+fn event_records(db: &Database, project: Project) -> Vec<Record> {
+    if project.layout(db) != Layout::Project {
+        return Vec::new();
+    }
+    jadpo_check::events::record::record_texts(db, project)
+        .iter()
+        .map(|(domain, text)| Record {
+            path: jadpo_check::events::record::path(domain),
+            text: Ok(text.clone()),
+        })
+        .collect()
 }
 
 fn migration(db: &Database, project: Project) -> Vec<Record> {
