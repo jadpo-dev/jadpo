@@ -320,7 +320,12 @@ a JSON-held standard value (`RichText`, `RichTextBlock`, `LocalisedText`,
 parameter `WriteSource::Json`, and the runtime's `store` is given the
 table with the program's validators and shapes (`JsonCodecs`, as
 `json.read` is given them), so its `jsonb` holds what `json.write` writes
-and reads back as `json.read` reads.
+and reads back as `json.read` reads. Since chunk 5.9b that is every field
+stored as JSON, an application's enum with data, object, list, set or map
+among them (`FieldModel::json` holds its type), within the 1 MiB and 128
+levels a request's body is read to (`JSON_KEPT_LIMIT`, `JSON_KEPT_DEPTH`),
+and the table numbers each event type too, by its identity key
+(`JsonTable::events`), for the outbox's payload.
 Since chunk 5.5w3 a codec of a standard type a built-in type holds reads
 and writes it through the contract's JSON (`jadpo_value::standard::json`),
 by its entry's `Json`: its canonical text, or an object of the members
@@ -1630,7 +1635,8 @@ one per-invocation context in `jadpo-runtime`:
 The runtime, not the executor, owns the action boundary: it opens the
 transaction at the first store operation, runs the body (a closure either
 executor supplies), reruns it on a concurrent change within the budget
-(area 6), commits, then delivers the outbox and clears caches. Limits
+(area 6), commits, then leaves the outbox for the runner (since chunk
+6.1a; §2.6) and clears caches. Limits
 (recursion depth, events per action, event size, chain depth) are runtime
 constants. Only control flow and value representation differ between the
 executors, so divergence can only come from those.
@@ -2037,7 +2043,12 @@ a `-- fill` read and write (`Step::Mixed`). `Plan::with_backfills`
 plans the latest migration's as callables of their own, and `jadpo
 migrate apply` hands `jadpo_runtime::migrate_with` a `Backfills` that
 runs them in the interpreter, reading and binding through the storage
-codec.
+codec. Since chunk 6.1a that `Backfills` is the runtime's own
+(`runner::InJadpo`, built from `Program::backfills`): each batch's rows
+run on the runner's per-item mode through the `Executor`, and each value
+is kept and checked by its field's validator (`BackfillPlan::validator`)
+rather than rounded by the command, so compiled code will run them the
+same way.
 
 Built in chunk 3.4: `jadpo-plan`'s `Planner::access` adds an entity's
 `visible:` to every query, `get`, child include, update, delete and
@@ -2432,6 +2443,52 @@ else (its `Debug` leaves it out); the interpreter reads a setting like a
 constant. Nothing here is interpreter-only, so the compiled deployables
 (Phase 8) call the same function with the Worker's bindings.
 
+**The system caller and the runner** (chunk 6.1a). Background work,
+area 12's schedules and subscribers, acts as the system (area 9,
+`Access.system`): `Ctx::system` holds it, with the tenant a subscriber's
+event came from, and only the runner sets it (`Ctx::become_system` is
+the crate's own); `set_caller`, `set_unpoliced` and every request the
+HTTP component answers clear it. Policy binds it as two caller parts,
+`CallerPart::System` (whether the system runs the statement) and
+`CallerPart::SystemTenant` (its tenant or `NULL`): the plan compiles
+`Access.system` to the first, and on a tenant's records adds
+`jadpo_sql::policy::system_in_tenant` beside the memberships, so a
+request, for which they are `false` and `NULL`, is never let in by
+them. A listed action's `Gate` says whether its line names the system
+(`Gate::system`) beside the callers it lets in (`Callers`).
+`jadpo_runtime::runner` drives an `Executor` for work no request waits
+on, each `Job` (a callable, its arguments and the system it runs as) in
+a boundary of its own:
+
+- **deferred**: a committed action's outbox is left on the context as
+  `Deferred::Events` (`Ctx::defer`), never delivered in the request
+  (`Host::deliver` is gone); `serve_request` moves what a request left
+  to `Response::deferred`, and the host hands it to `runner::after_response`,
+  which gives `Host::defer` a future running `run_deferred` once the
+  response has been handed back: natively the HTTP worker takes it
+  (`Handler::take_deferred`, `NativeHost::take_deferred`) and spawns it
+  on its own thread's `LocalSet`, where it shares the worker's program,
+  so no background thread needs a program of its own; on Workers,
+  `waitUntil` (chunk 8.2). Each run gets its own context under the
+  host's clock and no seed, as the system, raced against
+  `RUN_LIMIT_MS` (15 minutes, area 12) with a deadline the interpreter
+  yields at; what it sets off runs after it;
+- **inline**: `runner::settle` runs work in the invocation that left it,
+  then gives the context back to its caller (6.3's `settle:`, a test's
+  delivery after each commit);
+- **per item**: `runner::items` runs a callable once per item, and
+  inside a `runner::Batch` (a transaction of its own, begun as it opens)
+  each item's action joins it in a savepoint and is undone alone when it
+  fails, as `boundary::Undo` undoes a caught call; the run writes its
+  position in `Batch::transaction` before `Batch::commit`, so a stopped
+  run resumes after the last committed batch (6.4).
+
+Until subscribers (6.1b) turn an event into their jobs, a
+`Deferred::Events` reaches no one, and a host with nothing to run
+deferred work on (a test's, a tool's) drops it: the outbox will keep
+events durable and the minute tick sweep them. Schedules (6.2) hand
+their runs to the same runner.
+
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`
 runs one current-thread tokio runtime per core, each with its own
@@ -2451,7 +2508,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
 | Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
-| Outbox | Delivery, retries, circuit breaker, dead letters; native delivery workers | `waitUntil` after commit, swept by the minute tick |
+| Outbox | Delivery, retries, circuit breaker, dead letters, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records, tick adapters; native timer | Cloudflare cron |
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |

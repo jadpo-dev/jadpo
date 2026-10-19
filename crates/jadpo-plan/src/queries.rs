@@ -815,10 +815,11 @@ impl Planner<'_> {
     }
 
     /// The number of a JSON-held field's codec in the plan's JSON table
-    /// (chunk 5.5w2b): its field's type, numbered once as `json.read`'s
-    /// sites number theirs; `None` for any other field.
+    /// (chunks 5.5w2b and 5.9b): its field's type, with the field's own
+    /// rules, numbered once as `json.read`'s sites number theirs; `None`
+    /// for any other field.
     pub(crate) fn json_codec(&self, entity: &EntityModel, field: &FieldModel) -> Option<u32> {
-        field.json?;
+        field.json.as_ref()?;
         let id = self
             .types
             .graph()

@@ -320,8 +320,10 @@ that instruction, each the most conservative reading:
 > OpenAPI one encoder for every standard type, read from its entry
 > ("Chosen in chunk 5.5w3"), and chunk 5.5w3b made every SQL literal
 > the value the runtime's storage codec binds ("Chosen in chunk 5.5w3b");
-> the boundaries not built yet take these encodings in the chunks that
-> build them.
+> chunk 5.9b stored an application's structured values as their
+> contract's JSON too, and numbered each event type in the plan's JSON
+> table for the outbox (area 5, "Chosen in chunk 5.9b"); the boundaries
+> not built yet take these encodings in the chunks that build them.
 
 ### Changing a standard type's encoding
 
@@ -11078,6 +11080,8 @@ session, 2026-10-18):
   `toolchain.not_built_yet`, as one on a compound type is, and ordering by
   one was already refused; an application's own structured fields stay
   refused where they are declared, since their codec isn't built.
+  *Since built: chunk 5.9b stores them the same way (area 5, "Chosen in
+  chunk 5.9b").*
 
 ### Chosen in chunk 5.5w3
 

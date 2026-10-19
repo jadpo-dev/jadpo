@@ -1801,7 +1801,9 @@ test "a pasted patch is read longitude first" {
   geometry and its properties have theirs. A feature field in an entity
   is area 5's structured `jsonb`, which isn't built
   (`toolchain.not_built_yet`); the application stores the geometry and
-  the properties as fields of their own.
+  the properties as fields of their own. *Since built: chunk 5.9b stores
+  a feature field as its GeoJSON in `jsonb`, as area 5's structured
+  values are.*
 - **Sent from a route inside an `Output`,** *since decided: a route may
   send one bare (area 7, "A map layer as output", built in 5.5u7).* Area 7 sends only an
   `Output`, so a layer goes out as an `Output`'s field, described in

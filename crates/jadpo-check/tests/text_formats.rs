@@ -8,7 +8,8 @@
 //! `LocalisedText` is built as a named map; `text.pick`'s locale is checked
 //! as formatting's is; an application's own type of any of their names
 //! is a clash; and the three are stored as their JSON, which a query
-//! doesn't compare yet (chunk 5.5w2b).
+//! doesn't compare yet (chunk 5.5w2b), as any structured value is (chunk
+//! 5.9b).
 
 use crate::support;
 
@@ -381,7 +382,7 @@ fn checked(source: &str) -> Vec<String> {
 #[test]
 fn the_json_held_values_are_stored_but_not_compared_in_a_query() {
     // Stored as their contract's JSON in one `jsonb` column (chunk
-    // 5.5w2b), which an application's own structured field isn't yet.
+    // 5.5w2b), as an application's own structured field is (chunk 5.9b).
     for ty in [
         "RichText",
         "RichTextBlock",
@@ -398,7 +399,7 @@ fn the_json_held_values_are_stored_but_not_compared_in_a_query() {
     }
     assert_eq!(
         checked("entity Dish {\n    id: Uuid\n    tags: List<Text>\n}\n"),
-        ["toolchain.not_built_yet"]
+        NONE
     );
     assert_eq!(
         checked(

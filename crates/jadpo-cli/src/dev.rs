@@ -118,12 +118,14 @@ struct Shared {
 }
 
 /// A worker's handler: its view of the program, rebuilt when a save
-/// swaps in a new version, its host (its stores and rate-limit counters)
-/// and what the runtime keeps between its requests.
+/// swaps in a new version, its host (its stores and rate-limit counters,
+/// and the work each response leaves for after it is sent, which runs on
+/// the version that left it) and what the runtime keeps between its
+/// requests.
 struct DevHandler {
     shared: Arc<Shared>,
     program: RefCell<Option<(u64, Rc<Program>)>>,
-    host: NativeHost,
+    host: Rc<NativeHost>,
     worker: Worker,
 }
 
@@ -154,8 +156,20 @@ impl Handler for DevHandler {
             let started = Instant::now();
             let program = self.program();
             let app = program.app();
-            let response =
-                serve_request(&app, program.as_ref(), &self.host, &self.worker, &request).await;
+            let mut response = serve_request(
+                &app,
+                program.as_ref(),
+                self.host.as_ref(),
+                &self.worker,
+                &request,
+            )
+            .await;
+            // What the response left runs after it is sent (chunk 6.1a).
+            jadpo_runtime::runner::after_response(
+                Rc::clone(&program) as Rc<dyn jadpo_runtime::Executor>,
+                Rc::clone(&self.host) as Rc<dyn Host>,
+                std::mem::take(&mut response.deferred),
+            );
             if let Ok(log) = self.shared.log.lock() {
                 let _ = log.send(Line {
                     id: response
@@ -179,6 +193,10 @@ impl Handler for DevHandler {
             }
             response
         })
+    }
+
+    fn take_deferred(&self) -> Vec<LocalFuture<'static, ()>> {
+        self.host.take_deferred()
     }
 }
 
@@ -410,7 +428,7 @@ pub fn serve_to(
         Box::new(DevHandler {
             shared: Arc::clone(&make_shared),
             program: RefCell::new(None),
-            host,
+            host: Rc::new(host),
             worker: Worker::default(),
         }) as Box<dyn Handler>
     });
@@ -764,7 +782,18 @@ fn migrate_all(
     steps: &BTreeMap<String, Vec<jadpo_std::Migration>>,
     prepared: &Arc<Prepared>,
 ) -> Result<usize, Box<Diagnostic>> {
-    let worker = crate::migrate::Worker::new(Some(Program::new(Arc::clone(prepared))));
+    let program = Program::new(Arc::clone(prepared));
+    crate::migrate::with_backfills(Some(&program), |backfills| {
+        migrate_stores(urls, steps, backfills)
+    })
+}
+
+/// Applies each store's pending migrations with `backfills`.
+fn migrate_stores(
+    urls: &BTreeMap<String, String>,
+    steps: &BTreeMap<String, Vec<jadpo_std::Migration>>,
+    backfills: &dyn jadpo_runtime::Backfills,
+) -> Result<usize, Box<Diagnostic>> {
     let runtime = Runtime::new().map_err(|error| {
         Box::new(
             Diagnostic::new(&rule::CLI_DEV_START_FAILED, "The runtime couldn't start")
@@ -791,7 +820,7 @@ fn migrate_all(
             .block_on(jadpo_runtime::migrate_with(
                 &database,
                 migrations,
-                &worker,
+                backfills,
                 &mut |_| std::ops::ControlFlow::Continue(()),
             ))
             .map_err(|error| Box::new(crate::migrate::migrate_failed(store, error)))?;

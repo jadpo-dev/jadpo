@@ -248,7 +248,7 @@ fn a_feature_crosses_as_json_and_has_no_text_or_column() {
         )),
         ["type.mismatch"]
     );
-    // Storing one is area 5's structured JSON, not built yet.
+    // Storing one is area 5's structured JSON (chunk 5.9b).
     let stored = support::rules(
         Layout::Project,
         &[
@@ -267,7 +267,7 @@ fn a_feature_crosses_as_json_and_has_no_text_or_column() {
             ),
         ],
     );
-    assert_eq!(stored, ["toolchain.not_built_yet"]);
+    assert_eq!(stored, Vec::<String>::new());
 }
 
 /// A route sending a layer (area 20): the API record names it with its

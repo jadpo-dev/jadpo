@@ -1829,7 +1829,7 @@ chunks below, taken before Phase 6.
   `WebAuthnCredential`'s contract JSON through the plan's JSON table;
   parts and passkeys kept before encodings read as they were written, as
   area 19's "Chosen in chunk 5.9" records.
-- [ ] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
+- [x] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
   split from 5.9), after 5.9: JSON columns for any type the route codec
   handles, so an application's objects, lists, maps and enums with data
   can be stored as `jsonb` (today `toolchain.not_built_yet`), read
@@ -1837,7 +1837,21 @@ chunks below, taken before Phase 6.
   event and job types numbered in the plan's JSON table, so 6.1b writes
   the outbox's payload through it. Done when an entity storing an object,
   a list, a map and an enum with data reads each back unchanged on live
-  PostgreSQL, its rules enforced.
+  PostgreSQL, its rules enforced. *Built:* chunk 5.5w2b's column path
+  for any structured type, its parts with no stored form
+  `data.field_without_json`; a value kept as JSON held to a request
+  body's 1 MiB and 128 levels, `none` the column's `NULL`; no query
+  condition, order, unique rule, index or lifecycle value but `none` on
+  one; every event type numbered in the JSON table by its identity key
+  (no job takes arguments yet); live tests reading each back unchanged
+  and faulting on rows edited to break a rule. Changing a stored type
+  isn't migrated yet. Choices in area 5's "Chosen in chunk 5.9b".
+- [ ] **5.9c Migrating stored structured values** `opus · high` (area 5),
+  after 5.9b: the migration snapshot records what a JSON column's type
+  allows, so changing the stored type or the field's rules makes a
+  migration that rewrites or refuses stored values the new type can't
+  read, rather than a fault on read; and a required structured field
+  added to a table with rows taking a `backfill:` as any other field does.
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and
@@ -1869,14 +1883,27 @@ chunks below, taken before Phase 6.
   `jadpo check`; `jadpo records` and `jadpo records update`, which moves
   records from their old names; every example's record regenerated.
   Choices in area 18's "Chosen in chunk 7.0".
-- [ ] **6.1a System caller and delivery engine** `opus · xhigh`: from the
+- [x] **6.1a System caller and delivery engine** `opus · xhigh`: from the
   Phase 4 and Phase 5 reviews, a system caller (`Grant::System`, a
   `CallerPart` for it), so `Access.system` grants schedules and
   subscribers; one runtime-owned runner that drives an executor deferred
   (a new `Host::defer`, Workers' `waitUntil`, after the response is sent),
   inline (for 6.3's `settle:`) and per item (for 6.4); and 5.6b2's
   backfill row loop moved from the CLI into the runtime on that runner,
-  writing through each field's validator.
+  writing through each field's validator. Built: `CallerPart::System`
+  and `SystemTenant`, `Access.system` compiled into every statement and
+  a listed action's gate (`Gate::system`), the system limited to its
+  tenant or, for a schedule's run, none, and cleared for every request;
+  `jadpo_runtime::runner` with `Job`, `Deferred`, `settle`,
+  `run_deferred`, `after_response`, `items` and `Batch`; `Host::defer`
+  replacing `Host::deliver`, committed events left on the context and
+  carried on `Response::deferred`, the native HTTP worker running them
+  as tasks after the response; `runner::InJadpo` working out backfills
+  through the `Executor` and each field's validator, which `jadpo
+  migrate apply` and `jadpo dev` just call. Choices in area 9's and area
+  12's "Chosen in chunk 6.1a"; flagged there: what only `Access.public`
+  grants is left to 6.1b's and 6.2's checks, and a schedule's run
+  reaches every tenant.
 - [ ] **6.1b Events** `opus · high`, after 6.1a (area 12, "Outbox
   placement, settled" and "Event records", decided 2026-10-19: each
   store an action writes keeps its outbox and delivery records, a

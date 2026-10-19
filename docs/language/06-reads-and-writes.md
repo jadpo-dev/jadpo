@@ -443,8 +443,9 @@ test "a query keeps the books its operation keeps in code" {
   index can't hold: `map.count` and `temporal.period_between` read a
   subquery, and `hash.sha256` and `encoding.to_utf8` of text convert
   through the database's encoding, which PostgreSQL won't index. A field
-  kept in several columns, such as an amount of money, or as a range, isn't
-  compared in a query yet, its operations included.
+  kept in several columns, such as an amount of money, or whole as its
+  JSON, such as a list, isn't compared in a query yet, its operations
+  included.
 - **The field first, once.** The field is the operation's first argument,
   given as it is; an operation of another operation's result, or with the
   field anywhere else, is `query.condition_unsupported`.
@@ -4682,8 +4683,9 @@ the one lowering it is built on:
   database's encoding. A range's operations take a range written out,
   which a query can't write, and a field of money or a range isn't
   compared in a query yet, operations included (`toolchain.not_built_yet`,
-  as before); nor is a list, a set or a map, since none is stored yet. A
-  live test builds an index on every other form.
+  as before); nor is a field kept whole as its JSON (an object, a list, a
+  set, a map or an enum with data, chunk 5.9b), whose `list.count` would
+  otherwise have a form. A live test builds an index on every other form.
 - **The field first, once, and every other argument written out:** a
   literal, a constant, an enum value, a rounding mode, `decimal.round`'s
   `scale:`, `text.pad_start`'s `fill:`. Each is held to what code holds it

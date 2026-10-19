@@ -146,6 +146,27 @@ fn is_principal(name: &str) -> bool {
         .any(|kind| kind.type_name() == name)
 }
 
+/// Every event type the project declares, by key, in key order.
+fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
+    let mut keys: Vec<Key> = graph
+        .nodes()
+        .iter()
+        .filter(|node| {
+            node.kind == Kind::Type
+                && matches!(
+                    node.detail,
+                    jadpo_graph::Detail::Type {
+                        base: jadpo_graph::Base::Event,
+                        ..
+                    }
+                )
+        })
+        .map(|node| node.key.clone())
+        .collect();
+    keys.sort();
+    keys
+}
+
 /// A checked project's plan.
 #[derive(Debug)]
 pub struct Plan {
@@ -202,8 +223,10 @@ pub struct BackfillPlan {
     pub reads: Vec<jadpo_std::read::Column>,
     /// The column type its value is written as.
     pub write: jadpo_std::SqlType,
-    /// The places a decimal is stored at, rounded half to even.
-    pub scale: Option<u32>,
+    /// Its field's rules, its type's included, which each value is kept
+    /// and checked by, as a value of the field's type is (chunk 6.1a): a
+    /// decimal at the type's places, rounded half to even.
+    pub validator: ValidatorId,
 }
 
 impl Plan {
@@ -257,6 +280,8 @@ impl Plan {
         // Each backfill worked out in Jadpo, numbered after every callable
         // the project declares, keyed by its migration and field.
         let mut backfills = Vec::new();
+        // The field each fills, by its entity's and its own name.
+        let mut backfill_fields: Vec<(String, String)> = Vec::new();
         let mut backfill_lines: HashMap<Key, (String, u32)> = HashMap::new();
         if with_backfills {
             for backfill in jadpo_check::data::migrations::jadpo_backfills(db, project) {
@@ -275,8 +300,9 @@ impl Plan {
                         .map(|read| read.decode.clone())
                         .collect(),
                     write: backfill.plan.write,
-                    scale: backfill.plan.scale,
+                    validator: ValidatorId(0),
                 });
+                backfill_fields.push(backfill.plan.fills.clone());
                 backfill_lines.insert(key.clone(), (backfill.field.clone(), backfill.line));
                 found.push((
                     key,
@@ -303,6 +329,14 @@ impl Plan {
             }
         }
         let mut types = Types::new(Arc::clone(&graph), rule_bodies);
+        if !backfills.is_empty() {
+            let lookup = jadpo_check::lookups::Lookup::new(db, project);
+            for (backfill, (entity, field)) in backfills.iter_mut().zip(&backfill_fields) {
+                let key =
+                    jadpo_check::graph::field_key(&lookup, entity, std::slice::from_ref(field));
+                backfill.validator = types.validator_id(&TypeRef::Field(key));
+            }
+        }
         // The types the JSON table numbers: each JSON-held field's, which
         // its column reads and its writes write (chunk 5.5w2b), then each
         // `json.read` and `json.write` call's.
@@ -455,7 +489,31 @@ impl Plan {
                 settings,
             });
         }
-        let json = routes::json_table(db, project, &mut types, &json_types);
+        // Each event type, numbered after every other so their numbers
+        // don't move: the outbox keeps its payload as the type's contract
+        // JSON, written and read by its codec (area 12; chunk 5.9b). No
+        // job takes arguments yet (a schedule's `run:` takes none) and a
+        // batch's captures come with batches, so these are all the types
+        // a payload is kept as.
+        let events = event_types(&graph)
+            .into_iter()
+            .map(|key| {
+                let ty = TypeRef::Node(key.clone());
+                let number = match json_types.iter().position(|known| *known == ty) {
+                    Some(at) => at,
+                    None => {
+                        json_types.push(ty);
+                        json_types.len() - 1
+                    }
+                };
+                jadpo_std::http::EventJson {
+                    key: key.as_str().to_string(),
+                    number: u32::try_from(number).unwrap_or(u32::MAX),
+                }
+            })
+            .collect();
+        let mut json = routes::json_table(db, project, &mut types, &json_types);
+        json.events = events;
         let mut routes = routes::table(
             db,
             project,

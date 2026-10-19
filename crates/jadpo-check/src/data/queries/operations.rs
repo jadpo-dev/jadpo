@@ -13,7 +13,8 @@
 //! indexable`); a value given when the query runs as another argument; an
 //! operation of another operation's result, or with the field anywhere but
 //! first (`query.condition_unsupported`); a field kept in several columns
-//! or as JSON, which no condition compares yet (`toolchain.not_built_yet`);
+//! or whole as its JSON (chunk 5.9b), which no condition compares yet
+//! (`toolchain.not_built_yet`);
 //! and arguments code would refuse (`type.mismatch`, a zero divisor, a
 //! negative count, empty text to find).
 
@@ -156,7 +157,22 @@ impl Reader<'_> {
             }
         };
         let field_written = format!("{}.{}", entity.name, field.name);
-        if let Some(stored) = field.compound.or(field.json) {
+        // A field kept in several columns, or whole as its JSON (chunks
+        // 5.5w2b and 5.9b), isn't compared in a query yet, through an
+        // operation or not: PostgreSQL compares `jsonb` by its own rules,
+        // not by Jadpo's `==`, and an operation's form reads one column.
+        let not_built = match (field.compound, &field.json) {
+            (Some(compound), _) => Some((
+                compound.to_string(),
+                "stored in several columns (an amount of money in its minor units and its currency, area 19)",
+            )),
+            (None, Some(held)) => Some((
+                held.clone(),
+                "stored whole as its JSON in one `jsonb` column (area 5)",
+            )),
+            (None, None) => None,
+        };
+        if let Some((stored, how)) = not_built {
             self.out.push(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
@@ -164,7 +180,7 @@ impl Reader<'_> {
                 )
                 .at(Self::span(scope.path, whole), format!("a `{stored}`"))
                 .reason(format!(
-                    "`{field_written}` is a `{stored}`, stored in several columns or whole as its JSON (area 19), and this compiler's queries don't compare such a field yet, through an operation or not."
+                    "`{field_written}` is a `{stored}`, {how}, and this compiler's queries don't compare such a field yet, through an operation or not."
                 ))
                 .next("Filter the records after the query for now"),
             );

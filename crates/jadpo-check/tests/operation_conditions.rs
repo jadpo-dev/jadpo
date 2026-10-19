@@ -131,6 +131,24 @@ fn an_operation_without_an_exact_form_is_refused() {
         ["toolchain.not_built_yet"],
         "a field in several columns isn't compared in a query yet"
     );
+    // A structured field is kept whole as its JSON (chunk 5.9b), which no
+    // condition compares yet, through an operation or not.
+    let shelved = |condition: &str| {
+        support::rules(
+            Layout::Loose,
+            &[(
+                "main.jadpo",
+                &format!(
+                    "{BOOK}entity Shelf {{\n    id: Uuid\n    labels: List<Title>\n}}\n\n/// Shelves found by their labels.\nquery shelves() -> List<Shelf> {{\n    from: Shelf\n    where: {condition}\n    order: [Shelf.id asc]\n    limit: 20\n}}\n"
+                ),
+            )],
+        )
+    };
+    assert_eq!(
+        shelved("list.count(Shelf.labels) >= 2"),
+        ["toolchain.not_built_yet"],
+        "a list kept as JSON"
+    );
 }
 
 #[test]

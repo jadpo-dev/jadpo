@@ -117,9 +117,12 @@ POSTGRES = [
      [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills')], []),
     # Every standard type stored and read back, its column laid out as its
     # entry says, and each literal in SQL the value the runtime binds
-    # (area 19, chunks 5.5w and 5.5w3b).
+    # (area 19, chunks 5.5w and 5.5w3b); an application's structured
+    # values stored as JSON, read back unchanged and held to their rules
+    # (area 5, chunk 5.9b).
     ('live PostgreSQL: standard types stored and SQL literals',
-     [('jadpo-cli', 'standard_storage'), ('jadpo-cli', 'sql_literals')], []),
+     [('jadpo-cli', 'standard_storage'), ('jadpo-cli', 'sql_literals'),
+      ('jadpo-cli', 'json_columns')], []),
     # Passkeys registered and signed in with through the generated routes,
     # and each refusal (area 8, chunk 5.5z); configuration through the
     # commands, a database opened from a setting among them (area 10).
@@ -146,8 +149,9 @@ POSTGRES = [
     # stored standard object breaking its rules (chunk 5.8c).
     ('live PostgreSQL: routes over HTTP', [('jadpo-cli', 'http'), ('jadpo-cli', 'rule_slice')], []),
     # Policy through `jadpo test`: tenancy, roles, owner fields, listed
-    # actions and credentials; concealment through the runtime (area 9).
-    ('live PostgreSQL: policy', [('jadpo-cli', 'policy')], []),
+    # actions and credentials; concealment through the runtime (area 9);
+    # the system caller the runner gives background work (chunk 6.1a).
+    ('live PostgreSQL: policy', [('jadpo-cli', 'policy'), ('jadpo-cli', 'system')], []),
     # The runtime's request path counted in round trips (chunk 4.10),
     # and signed sessions: no read to sign in while a signed part
     # lasts, the delay's bound on revocation, key rotation, the key

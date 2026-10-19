@@ -442,12 +442,6 @@ impl Reader<'_> {
                 .iter()
                 .map(|f| (f.name.clone(), Source::Column(f.name.clone())))
                 .collect();
-            self.structured(
-                span,
-                ty,
-                entity,
-                entity.fields.iter().map(|f| f.name.as_str()),
-            );
             return Some((
                 Element {
                     ty: ty.to_string(),
@@ -484,7 +478,6 @@ impl Reader<'_> {
                 );
             }
         }
-        let mut columns = Vec::new();
         for field in &declared {
             if let Some(at) = includes.iter().position(|i| i.name == field.name) {
                 let include = &includes[at];
@@ -572,10 +565,8 @@ impl Reader<'_> {
                 );
                 continue;
             }
-            columns.push(column.name.as_str());
             fields.push((field.name.clone(), Source::Column(column.name.clone())));
         }
-        self.structured(span, ty, entity, columns.into_iter());
         ok.then(|| {
             (
                 Element {
@@ -585,37 +576,6 @@ impl Reader<'_> {
                 filled,
             )
         })
-    }
-
-    /// A stored field kept as `jsonb` can't be read yet: its codec is the
-    /// API's JSON, which comes with area 7.
-    pub(super) fn structured<'f>(
-        &mut self,
-        span: &Span,
-        ty: &str,
-        entity: &EntityModel,
-        columns: impl Iterator<Item = &'f str>,
-    ) {
-        let structured: Vec<String> = columns
-            .filter(|c| {
-                entity.fields.iter().any(|f| {
-                    f.name == *c && f.sql_type.as_deref() == Some("jsonb") && f.json.is_none()
-                })
-            })
-            .map(|c| format!("`{}.{c}`", entity.name))
-            .collect();
-        if structured.is_empty() {
-            return;
-        }
-        self.out.push(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("Reading {} isn't built yet", crate::and_list(&structured)),
-            )
-            .at(span.clone(), format!("`{ty}` reads a structured field"))
-            .reason("A structured field (an object, a list, a set, a map or an enum with data) is stored whole as `jsonb` in the API's JSON (area 5), and that codec comes with routes (area 7).")
-            .next(format!("Leave the structured fields out of `{ty}` for now")),
-        );
     }
 
     /// The result field an include fills: the shape its kind gives, of the

@@ -150,6 +150,15 @@ pub fn outside_tenant(
     )
 }
 
+/// `(<system> AND (<tenant> IS NULL OR <at> = <tenant>))`: the system,
+/// the caller of a schedule's run or a subscriber's delivery (area 12),
+/// on a record of tenant `at`: in the tenant it is limited to, or any
+/// tenant when it is limited to none (chunk 6.1a). `system` and `tenant`
+/// are the caller's parameters, `false` and `NULL` for every request.
+pub fn system_in_tenant(system: &str, tenant: &str, at: &str) -> String {
+    format!("({system} AND ({tenant} IS NULL OR {at} = {tenant}))")
+}
+
 /// `NOT EXISTS (SELECT 1 FROM <table> AS <alias> WHERE <alias>.<scope> =
 /// <value>)`: no membership of `table` is held in the record `value`
 /// names, hidden or not (area 9, "Tenancy": founding a tenant).
@@ -266,6 +275,14 @@ mod tests {
                 Who::Condition("$2".into())
             ]),
             "(\"todo\".\"owner_id\" = $1 OR $2)"
+        );
+    }
+
+    #[test]
+    fn the_system_is_in_its_own_tenant_or_any_when_it_has_none() {
+        assert_eq!(
+            system_in_tenant("$3", "$4", &qualified("chore", "company_id")),
+            "($3 AND ($4 IS NULL OR \"chore\".\"company_id\" = $4))"
         );
     }
 }

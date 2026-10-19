@@ -19,7 +19,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Nothing here is built yet: events and subscribers come in chunk 6.1, schedules in chunk 6.2.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Events and subscribers come in chunk 6.1b, schedules in chunk 6.2.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -408,7 +408,10 @@ compare them.
   parked with its problem, never dropped, as a message that keeps failing
   is ("Events from outside"). Decided by the lead session, 2026-10-18,
   under Richard's instruction of 2026-10-17 that every boundary goes
-  through the contract; built with the outbox (roadmap 6.1).
+  through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
+  numbered every event type in the plan's JSON table, by its identity
+  key, for the outbox to write and read its payload through (area 5,
+  "Chosen in chunk 5.9b").
 
 ## Several changing calls in one action
 
@@ -1311,8 +1314,12 @@ job overdue_reminders every 15m {
 
 ### Status
 
-Nothing in this area is built yet. Events, subscribers and retries come in
-chunk 6.1, and schedules, their leases and monitoring basics in chunk 6.2;
+Built in chunk 6.1a: the runtime's runner, which drives an executor for
+work no request waits on, as the system caller (area 9): deferred until
+after a response, inline, or once per item in batches; "Chosen in chunk
+6.1a" below. Nothing the language declares runs on it yet. Events,
+subscribers and retries come in chunk 6.1b, and schedules, their leases
+and monitoring basics in chunk 6.2;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches, several changing calls in one action, polls and `receiving`
@@ -1320,6 +1327,39 @@ were decided on 2026-10-16 and are not yet roadmap chunks; their errors
 are built with them. Batches need the CSV and JSON namespaces from chunk
 5.4, and on Workers a way to start each batch in a fresh invocation
 (chunk 8.2 checks it).
+
+### Chosen in chunk 6.1a
+
+What the page leaves to the runtime about running background work,
+each the most conservative reading:
+
+- **One runner.** The runtime drives an executor for all of it, so the
+  interpreter and compiled code run it the same way: a job is a call of
+  an action with its arguments as the system, in a boundary of its own,
+  and what a job sets off runs after it.
+- **After the response, never in it.** A committed action's events are
+  left for the runner, not delivered while the request waits. A
+  deployable hands what a response left to its host, which runs it once
+  the response has been handed back: Workers' `waitUntil` (chunk 8.2),
+  natively a task on the worker thread that answered, with that worker's
+  program, so no thread needs a program of its own. Each run has a
+  context of its own under the host's clock and no seed, stops at the
+  15-minute limit of one run, and gives the thread back as it checks
+  that limit. A host with nothing to run it on, a test's or a tool's,
+  drops it; the outbox (chunk 6.1b) is what keeps an event, and the
+  minute tick sweeps what a dropped run left. Until subscribers run,
+  nothing receives an event, and a run's outcome is kept nowhere;
+  delivery records keep it from chunk 6.1b.
+- **Inline.** A route that waits for its follow-on work (`settle:`, chunk
+  6.3) runs it in its own invocation, then answers as the caller it was.
+- **Per item.** Each item's action joins its batch's transaction and is
+  undone alone when it fails, as a call whose failure its caller handles
+  is (area 6); the run writes its position in the same transaction, so
+  the items' writes and the position commit together, and the batch's
+  events wait for its commit. A concurrent change found by an item or at
+  the commit keeps nothing, and the run runs the batch again. A backfill
+  worked out in Jadpo (area 5) runs its rows this way, each value kept
+  and checked by its field's rules as any value of the field's type is.
 
 ### Consistency with the rest of the language
 

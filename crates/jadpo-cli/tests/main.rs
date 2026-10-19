@@ -23,6 +23,7 @@ mod geo_layers;
 mod geo_queries;
 mod geography;
 mod http;
+mod json_columns;
 mod lifecycle;
 mod locales;
 mod lsp;
@@ -43,6 +44,7 @@ mod standard_boundaries;
 mod standard_storage;
 mod suggest;
 mod suggest_share;
+mod system;
 #[path = "test.rs"]
 mod test_command;
 mod translation_exchange;
