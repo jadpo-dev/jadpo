@@ -36,14 +36,6 @@ use jadpo_std::read::Column;
 use jadpo_std::{Builtin, Op, Rounding};
 use jadpo_value::Value;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 // --- inputs ------------------------------------------------------------------
 
 /// A column type: as PostgreSQL declares it, and as the codec binds it.
@@ -1853,7 +1845,7 @@ fn conditionals(forms: &mut Forms, whole: &[i64]) {
 
 #[test]
 fn every_sql_form_gives_what_the_runtime_gives() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let mut forms = Forms::new();

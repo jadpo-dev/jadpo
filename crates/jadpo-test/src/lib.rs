@@ -20,7 +20,8 @@
 //!
 //! [`postgres`] gives tests a PostgreSQL server: the one
 //! `JADPO_TEST_DATABASE_URL` names, or a disposable one from the machine's
-//! own PostgreSQL tools.
+//! own PostgreSQL tools; [`live`] says whether a Rust test's live part
+//! runs, the one helper every such test calls.
 //!
 //! What later phases add is left out rather than imitated: the trace of
 //! what ran, fakes, the kept database and clock overrides. Route and
@@ -30,6 +31,7 @@ pub mod database;
 mod diff;
 mod env;
 mod json;
+mod live;
 mod outcome;
 pub mod postgres;
 mod record;
@@ -49,6 +51,7 @@ use jadpo_interp::Prepared;
 
 pub use env::{Fakes, TestDatabase, TestEnv};
 pub use json::{json, schema};
+pub use live::{REQUIRE_VARIABLE, SKIP_VARIABLE, live, skip_for_version};
 pub use outcome::{
     AssertionFailure, Change, ChangeMark, Detail, FailureInfo, FaultInfo, Located, ShownLine,
     ShownPart, StackFrame, TestFailure,

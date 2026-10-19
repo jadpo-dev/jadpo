@@ -3,9 +3,9 @@
 
 The compiler must never special-case an example application, so the names
 declared in the language pages' code blocks and in `examples/` may not
-appear in the compiler's source. This script extracts every declared name
-into tools/example-identifiers.txt, minus the generic words listed in
-tools/example-identifiers-allowed.txt, and checks that no listed name appears,
+appear in the compiler's source. This script extracts every declared name,
+each time it runs, minus the generic words listed in the committed
+tools/example-identifiers-allowed.txt, and checks that no such name appears,
 in any case style, as an identifier or string in crates/*/src/ or in the
 standard library's stubs (crates/*/std/). Comments are not checked, and tests
 may use the names freely, as may a file of an authority's data generated
@@ -13,14 +13,18 @@ into the source, whose first line is `// @generated` (a subdivision called
 Baker Island special-cases no example).
 
 An example entity whose name is an allowed word (`Order`, `Session`) is still
-a sign of special-casing when it stands as a string, so those names go to
-tools/example-type-names.txt and may not appear exactly, as a name, in a
+a sign of special-casing when it stands as a string, so those names (less
+the language's own, tools/example-type-names-allowed.txt) may not appear
+exactly, as a name, in a
 string literal without spaces (`"Order"`, `"Order.get"`). Inline
 `#[cfg(test)] mod` blocks count as tests; the attribute mentioned in a
 comment does not.
 
-  python3 tools/example_names.py           # rewrite tools/example-identifiers.txt
-  python3 tools/example_names.py --check   # fail if the list is stale or a name is used
+  python3 tools/example_names.py --check   # fail if a name is used
+  python3 tools/example_names.py --list    # print the names it bans
+
+The lists are worked out from the pages and examples each run, never
+committed (chunk 5.8): only the allow-lists are.
 """
 from __future__ import annotations
 
@@ -30,9 +34,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LIST = ROOT / 'tools/example-identifiers.txt'
 ALLOWED = ROOT / 'tools/example-identifiers-allowed.txt'
-TYPE_LIST = ROOT / 'tools/example-type-names.txt'
 TYPE_ALLOWED = ROOT / 'tools/example-type-names-allowed.txt'
 SOURCES = [ROOT / 'docs/language', ROOT / 'examples']
 
@@ -329,22 +331,17 @@ def self_test() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--check', action='store_true', help='fail if the list is stale or a name is used')
+    parser.add_argument('--check', action='store_true', help='fail if a name is used (the default)')
+    parser.add_argument('--list', action='store_true', help='print the banned names and type names')
     args = parser.parse_args()
     self_test()
     banned = banned_list()
     type_names = banned_type_names()
-    lists = [(LIST, banned), (TYPE_LIST, type_names)]
-    if not args.check:
-        for path, names in lists:
-            path.write_text(''.join(f'{name}\n' for name in names))
-            print(f'wrote {len(names)} names to {path.relative_to(ROOT)}')
+    if args.list:
+        print(''.join(f'{name}\n' for name in banned), end='')
+        print(''.join(f'type {name}\n' for name in type_names), end='')
         return 0
     failed = False
-    for path, names in lists:
-        if not path.exists() or path.read_text() != ''.join(f'{name}\n' for name in names):
-            print(f'{path.relative_to(ROOT)} is stale: run python3 tools/example_names.py and commit it')
-            failed = True
     for problem in scan(banned, type_names):
         print(problem)
         failed = True

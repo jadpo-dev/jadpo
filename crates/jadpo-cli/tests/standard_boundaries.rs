@@ -551,7 +551,7 @@ fn every_standard_type_crosses_every_built_boundary() {
     }
 }
 
-// --- No boundary has an encoder of its own (chunk 5.5w3) -------------------
+// --- No boundary has an encoder of its own (chunks 5.5w3 and 5.8) ------------
 
 /// The source that encodes a value at a boundary, each a file or one
 /// function in it: the JSON reader and writer (requests, responses,
@@ -559,7 +559,8 @@ fn every_standard_type_crosses_every_built_boundary() {
 /// all read through them), OpenAPI's schemas, and the SQL literals (chunk
 /// 5.5w3b): a condition's literal, the text a statement that takes no
 /// parameters writes one as, and a migration's backfill. The plan's codecs
-/// name only which codec a type takes, never how it is written.
+/// name only which codec a type takes, never how it is written. Each is
+/// checked even where its file is in [`MAY_ENCODE`].
 const BOUNDARIES: &[(&str, Option<&str>)] = &[
     ("crates/jadpo-value/src/json.rs", None),
     ("crates/jadpo-check/src/routes/wire.rs", None),
@@ -568,6 +569,139 @@ const BOUNDARIES: &[(&str, Option<&str>)] = &[
     (
         "crates/jadpo-check/src/data/migrations.rs",
         Some("fn backfill_sql"),
+    ),
+];
+
+/// The source that may name how a standard type is held, decoded or
+/// written, a file or a folder each, with why: the contract itself, and the
+/// code that works with values rather than sending them across a boundary.
+/// Every other file of every crate's `src/` is denied, so an encoder added
+/// anywhere else, a new crate's above all, fails here.
+const MAY_ENCODE: &[(&str, &str)] = &[
+    (
+        "crates/jadpo-value/src/",
+        "the shared leaf: the contract itself (`standard`) and the operations on values; its JSON stays a boundary",
+    ),
+    (
+        "crates/jadpo-std/src/",
+        "the standard library's tables: each type's entry, storage and operations, which the contract reads",
+    ),
+    (
+        "crates/jadpo-check/src/config.rs",
+        "checks a setting's default, read by the contract's own reader",
+    ),
+    (
+        "crates/jadpo-check/src/constants.rs",
+        "works out a constant's value at compile time",
+    ),
+    (
+        "crates/jadpo-check/src/identity.rs",
+        "checks identity's settings, durations read by the contract's own reader",
+    ),
+    (
+        "crates/jadpo-check/src/routes/mod.rs",
+        "checks a route's durations, read by the contract's own reader",
+    ),
+    (
+        "crates/jadpo-check/src/types/rules.rs",
+        "checks a rule's literal against its type",
+    ),
+    (
+        "crates/jadpo-check/src/types/body/across.rs",
+        "proves an `across` bound from its literals",
+    ),
+    (
+        "crates/jadpo-check/src/types/body/calls.rs",
+        "proves a call's literal arguments",
+    ),
+    (
+        "crates/jadpo-check/src/types/body/standard_rules.rs",
+        "proves a standard type's rules on its literals",
+    ),
+    (
+        "crates/jadpo-check/src/data/mod.rs",
+        "says which built-in types a field may be stored as",
+    ),
+    (
+        "crates/jadpo-check/src/data/columns.rs",
+        "lays out each column as the type's storage entry says",
+    ),
+    (
+        "crates/jadpo-check/src/data/lifecycle.rs",
+        "reads a lifecycle's retention duration",
+    ),
+    (
+        "crates/jadpo-check/src/data/queries.rs",
+        "checks a query condition's literal against its field",
+    ),
+    (
+        "crates/jadpo-check/src/data/backfill.rs",
+        "chooses a computed backfill's column kinds and SQL types for `jadpo_sql::form` (chunk 5.6b)",
+    ),
+    (
+        "crates/jadpo-sql/src/form.rs",
+        "chooses each operation's SQL form by the types it takes (area 19, SQL forms)",
+    ),
+    (
+        "crates/jadpo-plan/src/types.rs",
+        "finds the money fields a plan's types hold",
+    ),
+    (
+        "crates/jadpo-plan/src/sites.rs",
+        "finds the money fields a site's types hold",
+    ),
+    (
+        "crates/jadpo-plan/src/routes.rs",
+        "names the codec a route's identifier takes",
+    ),
+    (
+        "crates/jadpo-plan/src/queries/aggregates.rs",
+        "groups an aggregate by a stored enum or date",
+    ),
+    (
+        "crates/jadpo-interp/src/machine.rs",
+        "the interpreter: `now` and a duration's arithmetic",
+    ),
+    (
+        "crates/jadpo-interp/src/probe.rs",
+        "makes sample values for the proof probes",
+    ),
+    (
+        "crates/jadpo-runtime/src/read.rs",
+        "turns a row's column into a value by the column kind the plan chose",
+    ),
+    ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
+    (
+        "crates/jadpo-runtime/src/write.rs",
+        "writes `now` into a stamped field",
+    ),
+    (
+        "crates/jadpo-runtime/src/purge.rs",
+        "compares a purge's cutoff with `now`",
+    ),
+    (
+        "crates/jadpo-runtime/src/policy.rs",
+        "keys a policy check by a record's identifier",
+    ),
+    (
+        "crates/jadpo-runtime/src/config.rs",
+        "takes a setting's duration as milliseconds",
+    ),
+    (
+        "crates/jadpo-runtime/src/http/mod.rs",
+        "a session's expiry as an instant",
+    ),
+    (
+        "crates/jadpo-runtime/src/http/identity.rs",
+        "a credential's expiry and identifier",
+    ),
+    (
+        "crates/jadpo-runtime/src/http/passkeys.rs",
+        "stamps a passkey's times with the contract's own writer",
+    ),
+    (
+        "crates/jadpo-cli/src/migrate.rs",
+        "shows when a migration was applied, by the contract's own writer",
     ),
 ];
 
@@ -605,15 +739,12 @@ fn code_of(text: &str) -> String {
         .join("\n")
 }
 
-/// No boundary encodes a standard type of its own (area 19, "Every
-/// boundary through the contract"): none names a standard type a built-in
-/// type holds, the runtime value that holds it, the parts the contract
-/// sends one as, or the shared leaf's per-type decoders and writers, so
-/// each reads the type's entry and calls the contract's JSON, storage or
-/// text. The names are made from the entries, so a type added later is
-/// held to it without a line here.
-#[test]
-fn no_boundary_has_an_encoder_of_its_own() {
+/// The names that encode a standard type: a standard type a built-in type
+/// holds, the runtime value that holds it, the parts the contract sends one
+/// as, and the shared leaf's per-type decoders and writers. They are made
+/// from the entries, so a type added later is held to it without a line
+/// here.
+fn encoder_names() -> std::collections::BTreeSet<String> {
     let mut names = std::collections::BTreeSet::new();
     for entry in STANDARD_TYPES {
         let Holds::Builtin(builtin) = entry.holds else {
@@ -673,23 +804,147 @@ fn no_boundary_has_an_encoder_of_its_own() {
         ]
         .map(String::from),
     );
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let mut found = Vec::new();
-    for (file, function) in BOUNDARIES {
-        let text = fs::read_to_string(root.join(file)).expect("a boundary's source");
-        let mut code = code_of(&text);
-        if let Some(function) = function {
-            code = function_of(&code, function);
+    names
+}
+
+/// Every Rust file of every crate's `src/`, as its path from the
+/// repository's root (`crates/…`) and its text.
+fn sources(root: &Path) -> Vec<(String, String)> {
+    fn walk(folder: &Path, found: &mut Vec<PathBuf>) {
+        let mut entries: Vec<_> = fs::read_dir(folder)
+            .expect("a source folder")
+            .map(|entry| entry.expect("an entry").path())
+            .collect();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                walk(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                found.push(path);
+            }
         }
-        for name in &names {
-            if mentions(&code, name) {
+    }
+    let mut files = Vec::new();
+    let mut crates: Vec<_> = fs::read_dir(root.join("crates"))
+        .expect("crates")
+        .map(|entry| entry.expect("a crate").path().join("src"))
+        .filter(|src| src.is_dir())
+        .collect();
+    crates.sort();
+    for src in crates {
+        walk(&src, &mut files);
+    }
+    files
+        .into_iter()
+        .map(|path| {
+            let shown = path
+                .strip_prefix(root)
+                .expect("under the root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            (shown, fs::read_to_string(&path).expect("a source file"))
+        })
+        .collect()
+}
+
+/// Each `file: name` where a file of `files` names an encoder `names` holds
+/// and may not: a boundary always, any other file unless [`MAY_ENCODE`]
+/// allows it.
+fn encoders_in(
+    files: &[(String, String)],
+    names: &std::collections::BTreeSet<String>,
+) -> Vec<String> {
+    let mut found = Vec::new();
+    for (file, text) in files {
+        let code = code_of(text);
+        let boundaries: Vec<_> = BOUNDARIES.iter().filter(|(path, _)| path == file).collect();
+        let checked: Vec<String> = if !boundaries.is_empty() {
+            boundaries
+                .iter()
+                .map(|(_, function)| match function {
+                    Some(function) => function_of(&code, function),
+                    None => code.clone(),
+                })
+                .collect()
+        } else if MAY_ENCODE.iter().any(|(allowed, _)| covers(allowed, file)) {
+            continue;
+        } else {
+            vec![code]
+        };
+        for name in names {
+            if checked.iter().any(|code| mentions(code, name)) {
                 found.push(format!("{file}: {name}"));
             }
         }
     }
+    found
+}
+
+/// Whether an entry of [`MAY_ENCODE`] (a file, or a folder ending `/`)
+/// covers `file`.
+fn covers(allowed: &str, file: &str) -> bool {
+    if allowed.ends_with('/') {
+        file.starts_with(allowed)
+    } else {
+        file == allowed
+    }
+}
+
+fn repository() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// No boundary encodes a standard type of its own (area 19, "Every
+/// boundary through the contract"): no source outside the contract and
+/// the code [`MAY_ENCODE`] lists, and no boundary at all, names an encoder,
+/// so each reads the type's entry and calls the contract's JSON, storage or
+/// text. And no entry of [`MAY_ENCODE`] is stale: each still exists and
+/// names one, so the list can't hide a file that has stopped needing it.
+#[test]
+fn no_boundary_has_an_encoder_of_its_own() {
+    let names = encoder_names();
+    let files = sources(&repository());
+    let found = encoders_in(&files, &names);
     assert!(
         found.is_empty(),
-        "a boundary encodes a standard type of its own:\n{}",
+        "a boundary encodes a standard type of its own; call the contract \
+         (jadpo_value::standard, jadpo_value::json) instead, or, for code that works \
+         with values rather than sending them, add it to MAY_ENCODE with why:\n{}",
         found.join("\n")
+    );
+    for (allowed, _) in MAY_ENCODE {
+        let used = files.iter().any(|(file, text)| {
+            covers(allowed, file) && {
+                let code = code_of(text);
+                names.iter().any(|name| mentions(&code, name))
+            }
+        });
+        assert!(
+            used,
+            "MAY_ENCODE allows {allowed}, which names no encoder: remove it"
+        );
+    }
+}
+
+/// A JSON writer added in a new crate, outside the contract, is caught: the
+/// guard covers every crate, not a list of known boundaries.
+#[test]
+fn a_json_writer_in_a_new_crate_is_caught() {
+    let names = encoder_names();
+    let mut files = sources(&repository());
+    files.push((
+        "crates/jadpo-elsewhere/src/lib.rs".into(),
+        "pub fn write(value: &Value, out: &mut String) {\n    \
+         if let Value::Instant(at) = value {\n        \
+         out.push_str(&format_instant(*at));\n    }\n}\n"
+            .into(),
+    ));
+    let found = encoders_in(&files, &names);
+    assert_eq!(
+        found,
+        [
+            "crates/jadpo-elsewhere/src/lib.rs: Value::Instant",
+            "crates/jadpo-elsewhere/src/lib.rs: format_instant",
+        ]
     );
 }

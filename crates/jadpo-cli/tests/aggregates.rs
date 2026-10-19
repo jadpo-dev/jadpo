@@ -24,14 +24,6 @@ use jadpo_value::Value;
 
 use crate::support;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -294,7 +286,7 @@ fn call(program: &Program, url: &str, name: &str, since: i32) -> (Value, usize) 
 
 #[test]
 fn usage_per_month_and_counts_by_status_are_one_statement_each_and_what_code_gives() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("live");

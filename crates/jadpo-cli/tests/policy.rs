@@ -17,14 +17,6 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_term::Environment;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -859,7 +851,7 @@ fn project(name: &str) -> PathBuf {
 
 #[test]
 fn policy_decides_what_each_caller_reads_writes_and_revokes() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("desk");
@@ -943,7 +935,7 @@ fn signed_in(person: &Value) -> Value {
 
 #[test]
 fn a_change_policy_refuses_reads_as_missing_and_is_logged_as_concealed() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("concealed");
@@ -1871,7 +1863,7 @@ fn ledger(name: &str) -> PathBuf {
 
 #[test]
 fn a_field_the_caller_may_not_change_refuses_the_whole_write() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = ledger("ledger");
@@ -1887,7 +1879,7 @@ fn a_field_the_caller_may_not_change_refuses_the_whole_write() {
 
 #[test]
 fn a_reference_stays_inside_its_tenant_so_an_include_of_its_parent_proves() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = ledger("ledger-tenant");
@@ -1907,7 +1899,7 @@ fn a_reference_stays_inside_its_tenant_so_an_include_of_its_parent_proves() {
 
 #[test]
 fn a_reference_into_another_tenant_is_refused_without_policy_too() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = ledger("ledger-unpoliced");
@@ -2746,7 +2738,7 @@ fn guild(name: &str) -> PathBuf {
 
 #[test]
 fn tenancy_seats_only_founders_moves_need_a_seat_and_a_field_refusal_comes_first() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = guild("guild");
@@ -2758,7 +2750,7 @@ fn tenancy_seats_only_founders_moves_need_a_seat_and_a_field_refusal_comes_first
 
 #[test]
 fn a_listed_line_held_in_a_record_refuses_an_action_that_changes_none() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = guild("guild-tally");

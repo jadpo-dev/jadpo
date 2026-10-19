@@ -36,14 +36,6 @@ use jadpo_runtime::{
 use jadpo_term::Environment;
 use jadpo_value::Value;
 
-fn skipped() -> bool {
-    let skip = std::env::var("JADPO_SKIP_POSTGRES").is_ok_and(|value| value == "1");
-    if skip {
-        println!("skipped: JADPO_SKIP_POSTGRES is set");
-    }
-    skip
-}
-
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
@@ -255,7 +247,7 @@ fn project(name: &str) -> PathBuf {
 
 #[test]
 fn writes_do_what_area_6_says() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("semantics");
@@ -415,7 +407,7 @@ async fn rows(store: &Postgres, sql: &str) -> Vec<Row> {
 
 #[test]
 fn a_concurrent_change_reruns_the_whole_action_and_its_writes_happen_once() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("rerun");
@@ -732,7 +724,7 @@ async fn race(
 
 #[test]
 fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
-    if skipped() {
+    if !jadpo_test::live() {
         return;
     }
     let root = project("race");
