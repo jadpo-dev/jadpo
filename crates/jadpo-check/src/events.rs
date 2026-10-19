@@ -21,6 +21,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+pub mod record;
+
 use jadpo_db::{Db, File, ItemKind, Project, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_graph::{Key, Kind};
@@ -99,6 +101,9 @@ pub struct SubscriberRead {
     pub model: Option<Arc<SubscriberModel>>,
     /// Where its declaration's name is, for a problem found later.
     pub span: Span,
+    /// Where each argument of its `run:` call is, in order, for a problem
+    /// with what it passes (chunk 6.1c).
+    pub args: Vec<Span>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -142,6 +147,7 @@ pub fn subscribers_in(db: &dyn Db, project: Project, file: File) -> Vec<Subscrib
             lookup: &lookup,
             names: &names,
             domain: ownership.domain().map(str::to_string),
+            args: Vec::new(),
             out: Vec::new(),
         };
         let model = reader.subscriber(&decl, &item.name, ownership);
@@ -152,6 +158,7 @@ pub fn subscribers_in(db: &dyn Db, project: Project, file: File) -> Vec<Subscrib
         out.push(SubscriberRead {
             model: model.map(Arc::new),
             span,
+            args: reader.args,
             problems: reader.out,
         });
     }
@@ -461,6 +468,8 @@ struct Reader<'a> {
     names: &'a Names<'a>,
     /// The subscriber's own domain, whose action it runs.
     domain: Option<String>,
+    /// Where each argument of `run:` is.
+    args: Vec<Span>,
     out: Vec<Diagnostic>,
 }
 
@@ -746,6 +755,7 @@ impl Reader<'_> {
                 return None;
             }
             let (path, ty) = self.argument(&expr, event)?;
+            self.args.push(self.span(&expr));
             args.push(path);
             typed.push((expr, ty));
         }

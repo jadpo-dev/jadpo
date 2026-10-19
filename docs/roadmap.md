@@ -601,14 +601,11 @@ chunks below, taken before Phase 6.
   delivery record per subscriber as the action commits, and delivery after
   the response as the system limited to its event's tenant, with retries,
   trace context, `events: { store: }` and the outbox sweep for 6.2's tick.
-- [ ] **6.1c Event records and stored values** `opus · high`, after 6.1b
-  (area 12, "Event records", decided 2026-10-19): event shapes recorded
-  and diffed in the generated record exactly as an API's is (chunk 7.0's
-  format, a new record kind with its header, diff and `jadpo records`
-  row), acceptance waiting for area 18 as the API record's does; and from
-  chunk 5.1d, what a subscriber stores from an event checked against what
-  every `emit` of it put there, as area 9's stored values are (an `emit`
-  itself stores nothing a caller reads).
+- [x] **6.1c Event records and stored values** `opus · high`. Built: a
+  domain's event shapes in `events/events.jadpo_record`, checked and
+  updated as the API record is, and what a subscriber stores from its
+  event held to what every `emit` put there (area 12, "Chosen in chunk
+  6.1c").
 - [x] **6.2 Schedules:** `opus · high` (area 12, "A schedule and
   tenants", and area 9's "Background work and `Access.public`", decided
   2026-10-19: a schedule reaches every tenant, and reaching what only
