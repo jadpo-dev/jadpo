@@ -3,7 +3,7 @@
 //! another country's account, each part checked by its own type's rules.
 //! A UK account's number is checked against its sort code by Vocalink's
 //! modulus check ([`super::modulus`]) only once its tables can ship, which
-//! they can't yet ("Chosen in chunk 5.5i4"). It is financial personal data
+//! they can't yet (area 19, "Bank accounts"). It is financial personal data
 //! (area 15), as an IBAN and a UK account number are, and is shown masked
 //! to its number's last four, as a card number is (chunk 5.5i).
 

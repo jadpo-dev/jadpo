@@ -7,8 +7,8 @@
 //! check.
 //!
 //! Natively, `cargo run --release -p jadpo-value --example geodesics --
-//! bench` times each measure instead (area 20's "Chosen in chunk 5.5u2"
-//! records the figures).
+//! bench` times each measure instead (area 20's "Precision and
+//! determinism" records the figures).
 
 mod check;
 mod shapes;

@@ -10,8 +10,8 @@
 //! The lists some of them name (IATA's airports and airlines, ICAO's
 //! location indicators, ICD-10's release) aren't shipped: IATA's and
 //! ICAO's are sold under licence, and WHO's ICD-10 may not be redistributed
-//! without its permission, so each is checked by its pattern only ("Chosen
-//! in chunk 5.5m").
+//! without its permission, so each is checked by its pattern only (area 19,
+//! "Groups with the baseline only").
 
 use super::{
     Examples, FIRST_RELEASE, Format, FormatKey, Grouping, Holds, Json, NO_OPTIONS, StandardType,

@@ -1860,8 +1860,8 @@ stores" leave to the build, each the most conservative reading:
   type a field names, written as the API record writes them. Events,
   fields and types sort by born name. Descriptions are left out, as the
   API record leaves them out.
-- **How it is checked.** As the API record is (area 18, "Chosen in chunk
-  7.0"): a missing record, one whose events changed (`record.out_of_date`,
+- **How it is checked.** As the API record is (area 18, "Checking a
+  record"): a missing record, one whose events changed (`record.out_of_date`,
   naming each entry added, changed or removed) and the record of a domain
   left with no events are put right by `jadpo records update`; a hand
   edit Jadpo could not have written is `record.edited`. While an event
