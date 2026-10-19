@@ -313,7 +313,7 @@ pub fn from_geojson(text: &Value) -> Result<Value, Fault> {
         return Err(Fault::Shape);
     };
     let malformed = Fault::Broke(jadpo_std::RuleKey::Malformed);
-    let json: serde_json::Value = serde_json::from_str(text).map_err(|_| malformed.clone())?;
+    let json: serde_json::Value = serde_json::from_str(text).map_err(|_| malformed)?;
     read(GEOMETRY, &json).map_err(|refused| match refused.rule {
         "min" | "max" => Fault::Broke(jadpo_std::RuleKey::OutOfRange),
         _ => malformed,
@@ -1113,6 +1113,53 @@ mod tests {
         let mut out = String::new();
         assert!(write(value, &mut out));
         out
+    }
+
+    /// A pair's coordinates are held as their nearest doubles before their
+    /// ranges are checked, as GeoJSON's are, and an altitude past a
+    /// `Length`'s range is out of range, from a pair or from GeoJSON
+    /// (chunk 5.11).
+    #[test]
+    fn a_pair_is_held_as_doubles_then_to_its_range() {
+        let pair = |items: &[&str]| {
+            Value::list(
+                items
+                    .iter()
+                    .map(|item| Value::decimal(item).expect("a number"))
+                    .collect(),
+            )
+        };
+        assert_eq!(
+            from_lat_lng(&pair(&["90.00000000000000001", "-180.00000000000000001"])),
+            Ok(point(
+                Decimal::new(90, 0),
+                Decimal::new(-180, 0),
+                Value::None
+            ))
+        );
+        let out_of_range = Err(Fault::Broke(jadpo_std::RuleKey::OutOfRange));
+        assert_eq!(from_lat_lng(&pair(&["90.0000001", "0"])), out_of_range);
+        // 10³³ metres, past the 1.7 × 10³² a `Length` holds in micrometres.
+        let past = "1000000000000000000000000000000000";
+        assert_eq!(from_lng_lat(&pair(&["0", "0", past])), out_of_range);
+        assert_eq!(
+            from_geojson(&Value::text(&format!(
+                r#"{{"type":"Point","coordinates":[0,0,{past}]}}"#
+            ))),
+            out_of_range
+        );
+        // The reader names the place it stopped at; the operation, the
+        // condition only.
+        assert_eq!(
+            read_text(
+                GEOMETRY,
+                r#"{"type":"LineString","coordinates":[[0,0],[1,91]]}"#
+            ),
+            Err(Unreadable {
+                at: vec!["coordinates".into(), "1".into(), "1".into()],
+                rule: "max",
+            })
+        );
     }
 
     /// Every geometry, each with and without altitude, as GeoJSON writes
