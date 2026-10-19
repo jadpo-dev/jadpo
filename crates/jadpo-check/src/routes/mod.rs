@@ -1113,6 +1113,20 @@ impl Reader<'_> {
         }
         let ty = self.lookup.resolve(&TypeRef::from_type(&written));
         if ty.has_error() {
+            // `Note.nope`: the name resolves, the field doesn't (chunk
+            // 6.6d), which nothing else reports.
+            if let TypeRef::Path(names, _) = TypeRef::from_type(&written)
+                && let [host, missing] = names.as_slice()
+                && let Some(fields) = self.lookup.fields(host)
+                && !fields.iter().any(|field| field.name == *missing)
+            {
+                self.out.push(unknown_placeholder_field(
+                    host,
+                    missing,
+                    fields,
+                    self.span(&written),
+                ));
+            }
             return None;
         }
         let type_span = self.span(&written);
@@ -2639,4 +2653,32 @@ fn sent_as_object(prim: Prim) -> bool {
         prim.representation(),
         Prim::Money | Prim::ZonedTime | Prim::Quantity(_)
     )
+}
+
+/// A placeholder typed `Host.missing`, a field `Host` doesn't declare
+/// (chunk 6.6d), as a field type elsewhere is reported.
+fn unknown_placeholder_field(
+    host: &str,
+    missing: &str,
+    fields: &[crate::types::FieldDef],
+    span: Span,
+) -> Diagnostic {
+    let near = nearest(missing, fields.iter().map(|field| field.name.as_str())).map(str::to_string);
+    let mean = near
+        .as_deref()
+        .map_or_else(String::new, |near| format!(" Did you mean `{near}`?"));
+    let problem = Diagnostic::new(
+        &rule::TYPE_UNKNOWN_FIELD,
+        format!("`{host}` has no field `{missing}`"),
+    )
+    .at(span.clone(), "not declared")
+    .reason(format!(
+        "A field type is written `Type.field`, naming a field the type declares.{mean}"
+    ));
+    match near {
+        Some(near) => problem
+            .next(format!("Use `{host}.{near}`"))
+            .edit(span, format!("{host}.{near}")),
+        None => problem.next(format!("Name a field of `{host}`")),
+    }
 }

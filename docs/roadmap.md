@@ -755,27 +755,40 @@ chunks below, taken before Phase 7, in this order.
   area 12's "Chosen in chunk 6.6b" and area 9's Decisions; flagged
   there: a tenanted run's status shows only what anyone, or a role held
   across the whole application, may read.
-- [ ] **6.6d A placeholder naming a missing field** `opus · high` (found
-  in chunk 6.6b): a route placeholder typed with a field that doesn't
-  exist (`{x: Note.nope}`) drops its route silently; it is
-  `type.unknown_field` at the placeholder, with a checked example.
-- [ ] **6.6c Tenancy of background work** `opus · high` (areas 9 and 12,
-  decided 2026-10-19): the tenant an event or a batch run names proved to
-  come from a record of that tenant the action read or wrote under its
-  caller's policy, using 6.1c's provenance, else
-  `policy.event_tenant_unproved`; in an application with a tenant, a
-  batch's `key:` unique per call, tenant and key.
-- [ ] **6.7 Background work within a host's budget** `opus · xhigh`: each
-  invocation given a budget by its host; the runner stops taking pieces
-  and releases its claims before the budget ends, every lease the budget
-  and a margin; a batch handed on by time into a fresh invocation; the
-  native host draining on SIGTERM and releasing what it holds; one helper
-  that runs work within a budget and one lease helper (claim, renew,
-  release) for deliveries, schedules and batches, schedules' own run path
-  folded in and `Deferred::Run` used or removed. Done when a test host
-  with a 2 s budget releases a delivery rather than holding it 16
-  minutes, a batch carries on in a second invocation, and a native
-  shutdown releases a claimed delivery.
+- [x] **6.6d A placeholder naming a missing field** `opus · high`. Built:
+  a route placeholder typed with a field its type doesn't declare
+  (`{x: Note.nope}`) is `type.unknown_field` at its type, with the
+  nearest field offered, rather than dropping its route silently; a
+  checked example in area 7.
+- [x] **6.6c Tenancy of background work** `opus · high`. Built: an
+  event's tenant field and each value a batch's run saves of the tenant's
+  `id` type proved to name a tenant the action read or wrote under its
+  caller's policy (the tenant's id or a record's tenancy reference it
+  reached, a record it was handed whole, or what a create that always
+  runs set), else `policy.event_tenant_unproved`; a batch's `key:` unique
+  per call, tenant and key (`jadpo_batch_runs.tenant`, with a migration
+  in examples 24 and 25); live tests of Bob reaching nothing of Ash's
+  through an event or a batch, and of two households sharing a key.
+  Choices in area 12's "Chosen in chunk 6.6c"; flagged there: a
+  subscriber's action passing its event's tenant on reads it first, and a
+  keyed run from before the migration isn't found again.
+- [x] **6.7 Background work within a host's budget** `opus · xhigh`.
+  Built: each invocation of background work given a budget by its host
+  (`Host::budget_ms`: the whole 15-minute run limit natively and by
+  default, a test's smaller), the runner taking no piece once it is
+  spent and running every action within it through one helper
+  (`runner::within_budget`, `Budget::run` for a purge or a page); every
+  lease, a delivery's, a schedule's and a batch run's, what is left of
+  the budget and a minute, through one lease helper (`lease`); a batch
+  run handed on by time into a fresh invocation (`Host::hand_on`), in
+  place of 500 pages; the tick within its budget, schedules' run path
+  folded in; the native server draining on SIGTERM, and on ctrl-c under
+  `jadpo dev`, giving back what its background work holds;
+  `Deferred::Run` and `runner::settle` removed. Live tests: a 2 s budget
+  ends a stalled delivery and takes nothing more, a batch carries on in a
+  second invocation, stopping `jadpo dev` gives back the delivery it was
+  running, and `jadpo dev` exits 0 on SIGTERM. Choices in area 12's
+  "Chosen in chunk 6.7".
 - [ ] **6.8 Durable background records** `opus · high`, after 6.7: outbox
   rows read by their `encoding`, a newer one parked; a batch's shape
   from canonical type text and its call named by a stable key, its saved

@@ -19,7 +19,10 @@
 //!   last page `finished:` runs in a transaction of its own and the run is
 //!   finished. A crash or a deploy anywhere loses only the batch in hand:
 //!   the lease lapses, and [`resume`] picks the run up from the position
-//!   that committed.
+//!   that committed. A runner works within its invocation's budget (chunk
+//!   6.7): its lease lasts what is left of the budget and a margin,
+//!   renewed with each page it commits, and once the budget is spent it
+//!   gives the lease back and hands the run on to a fresh invocation.
 //! - **Asking.** `batches.status` reads the row ([`status`]);
 //!   `batches.cancel` keeps a row of its own ([`cancel`]), which the next
 //!   batch finds, so asking never waits for the batch in hand.
@@ -32,10 +35,11 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 
 use jadpo_std::BatchState;
-use jadpo_std::batch::{BatchArg, BatchPlan, BatchTenant, LEASE_MS};
+use jadpo_std::batch::{BatchArg, BatchPlan, BatchTenant};
 use jadpo_std::types::FailurePlan;
 use jadpo_value::Value;
 
+use crate::budget::{Budget, Invocation};
 use crate::read::{JsonCodecs, uuid_text};
 use crate::runner::{Batch, Deferred};
 use crate::{
@@ -75,11 +79,6 @@ pub struct BatchStart {
     pub run: [u8; 16],
 }
 
-/// How many pages one run's runner goes through, at most, before it hands
-/// the run back to be carried on in a run of its own: what keeps one run
-/// within area 12's 15-minute limit on a host whose invocations end.
-const PAGES_PER_RUN: u32 = 500;
-
 /// How many times one batch is tried again after a concurrent change
 /// before the runner leaves the run for a later sweep.
 const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
@@ -87,7 +86,9 @@ const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
 /// The most runs one sweep picks up.
 const SWEEP_LIMIT: i64 = 100;
 
-const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
+/// Starts a run, or finds the one its call already started with its
+/// `key:` in its tenant (chunk 6.6c).
+const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\", \"tenant\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7, $8) ON CONFLICT (\"batch\", \"tenant\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"tenant\" = $8 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
 
 const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\", \"depth\"";
 
@@ -99,7 +100,25 @@ const PROBLEM: &str = "INSERT INTO \"jadpo_batch_problems\" (\"run_id\", \"row\"
 
 const END: &str = "UPDATE \"jadpo_batch_runs\" SET \"state\" = $2, \"failure\" = $3, \"lease_until\" = NULL, \"stepped_at\" = $4, \"finished_at\" = $4 WHERE \"id\" = $1";
 
-const RELEASE: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = NULL WHERE \"id\" = $1 AND \"state\" = 'running'";
+const RELEASE: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = NULL WHERE \"id\" = $1 AND \"state\" = 'running' RETURNING \"id\"";
+
+/// A batch run's row as its runner leases it ([`crate::lease`]; chunk
+/// 6.7): claimed once its lease has lapsed, renewed by each page's
+/// commit ([`ADVANCE`]), and given back once the runner's budget is
+/// spent.
+struct Leased {
+    id: [u8; 16],
+}
+
+impl crate::lease::Leased for Leased {
+    fn claim(&self, now: i64, until: i64) -> (&'static str, Vec<SqlValue>) {
+        (CLAIM, vec![SqlValue::Uuid(self.id), at(until), at(now)])
+    }
+
+    fn release(&self, _now: i64) -> (&'static str, Vec<SqlValue>) {
+        (RELEASE, vec![SqlValue::Uuid(self.id)])
+    }
+}
 
 const STATUS: &str =
     "SELECT \"items_done\", \"problems\", \"state\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
@@ -248,6 +267,10 @@ pub async fn start(
     let Some((captured, key)) = values.split_at_checked(plan.captured.len()) else {
         return fault(ctx, "a batch started without the values it saves", site);
     };
+    // The tenant it is limited to, which its `key:` is unique within
+    // (chunk 6.6c).
+    let tenant =
+        tenant_of(plan, captured, key_value(plan, key)).unwrap_or(crate::outbox::NO_TENANT);
     let text = match saved(batches.json, plan, captured) {
         Ok(text) => text,
         Err(why) => {
@@ -288,6 +311,7 @@ pub async fn start(
         // How deep in a chain of events it was started, which its items
         // run at (chunk 6.6a).
         SqlValue::Int4(i32::try_from(ctx.chain).unwrap_or(i32::MAX)),
+        SqlValue::Uuid(tenant),
     ];
     let transaction = match ctx.transaction(&plan.store).await {
         Ok(transaction) => transaction,
@@ -321,26 +345,42 @@ fn run_system(
     values: &[Value],
     key: Option<&str>,
 ) -> Result<System, String> {
+    let key = match (plan.key, key) {
+        (Some(number), Some(text)) => json.read(number, text)?,
+        _ => Value::None,
+    };
+    Ok(System {
+        tenant: tenant_of(plan, values, key),
+    })
+}
+
+/// The tenant a run saving `values` with `key:` `key` is limited to: the
+/// one its saved values holding a tenant's id name, and `None` in an
+/// application with no tenant.
+fn tenant_of(plan: &BatchPlan, values: &[Value], key: Value) -> Option<[u8; 16]> {
     let BatchTenant::Saved {
         captured,
         key: by_key,
     } = &plan.tenant
     else {
-        return Ok(System { tenant: None });
+        return None;
     };
     let mut held: Vec<Value> = captured
         .iter()
         .map(|at| values.get(*at as usize).cloned().unwrap_or(Value::None))
         .collect();
     if *by_key {
-        held.push(match (plan.key, key) {
-            (Some(number), Some(text)) => json.read(number, text)?,
-            _ => Value::None,
-        });
+        held.push(key);
     }
-    Ok(System {
-        tenant: Some(crate::outbox::named_tenant(held.iter())),
-    })
+    Some(crate::outbox::named_tenant(held.iter()))
+}
+
+/// The `key:` a call passes, of the values it gives after what it saves.
+fn key_value(plan: &BatchPlan, key: &[Value]) -> Value {
+    match (plan.key, key.first()) {
+        (Some(_), Some(value)) => value.clone(),
+        _ => Value::None,
+    }
 }
 
 /// What a run's `shape` column keeps: a digest of the plan's shape, so a
@@ -443,6 +483,10 @@ pub enum Ran {
     /// reached, changes that kept meeting its batch, its time running
     /// out): what committed stands, and it is carried on later.
     Paused(String),
+    /// Its invocation's budget was spent (chunk 6.7): what committed
+    /// stands, its lease was given back, and it goes on in a fresh
+    /// invocation.
+    HandedOn,
 }
 
 /// The host's clock now, or `None` for a host with none.
@@ -451,8 +495,9 @@ fn now_on(host: &dyn Host) -> Option<i64> {
 }
 
 /// Runs the run `start` names to its end, or as far as one runner goes,
-/// on `host` with `executor`'s batches: claimed with a lease, then a page
-/// of `from:` at a time, each page a transaction as the system. What the
+/// on `host` with `executor`'s batches, within the budget `host` gives an
+/// invocation after a response: claimed with a lease, then a page of
+/// `from:` at a time, each page a transaction as the system. What the
 /// runs' actions left for after (events, other runs) is given back with
 /// how the run was left.
 pub async fn run(
@@ -460,14 +505,32 @@ pub async fn run(
     host: &dyn Host,
     start: &BatchStart,
 ) -> (Ran, Vec<Deferred>) {
+    let budget = Budget::start(host, Invocation::AfterResponse);
+    run_within(executor, host, &budget, start).await
+}
+
+/// [`run`] within `budget` (chunk 6.7): the run's lease lasts what is left
+/// of it and a margin, and once it is spent, between pages or by cutting
+/// the page in hand short, the lease is given back and the run, if it got
+/// further in this invocation, handed on ([`Ran::HandedOn`], the run left
+/// with what the actions left for after) to a fresh one. A run that
+/// couldn't commit a page in a whole budget is left for the minute tick
+/// instead.
+pub async fn run_within(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    budget: &Budget<'_>,
+    start: &BatchStart,
+) -> (Ran, Vec<Deferred>) {
     let mut left = Vec::new();
-    let ran = run_inner(executor, host, start, &mut left).await;
+    let ran = run_inner(executor, host, budget, start, &mut left).await;
     (ran, left)
 }
 
 async fn run_inner(
     executor: &dyn Executor,
     host: &dyn Host,
+    budget: &Budget<'_>,
     start: &BatchStart,
     left: &mut Vec<Deferred>,
 ) -> Ran {
@@ -480,15 +543,10 @@ async fn run_inner(
     let Some(now) = now_on(host) else {
         return Ran::Paused("the host has no clock".into());
     };
-    let id = SqlValue::Uuid(start.run);
-    let claimed = database
-        .query_once(CLAIM, &[id.clone(), at(now + LEASE_MS), at(now)])
-        .await;
-    let row = match claimed {
-        Ok(rows) => match rows.into_iter().next() {
-            Some(row) => row,
-            None => return Ran::NotClaimed,
-        },
+    let lease = Leased { id: start.run };
+    let row = match crate::lease::claim(database, budget, &lease, now).await {
+        Ok(Some(row)) => row,
+        Ok(None) => return Ran::NotClaimed,
         Err(error) => return Ran::Paused(format!("the store refused its claim ({error:?})")),
     };
     let (name, shape, captured, key, depth) = match row.as_slice() {
@@ -543,32 +601,60 @@ async fn run_inner(
     let mut pages = 0;
     let mut attempts = 0;
     loop {
-        if pages >= PAGES_PER_RUN {
-            // Carried on in a run of its own, which claims it again.
-            let _ = database
-                .query_once(RELEASE, std::slice::from_ref(&id))
-                .await;
-            left.push(Deferred::Batch(start.clone()));
-            return Ran::Paused("it handed itself on after its share of pages".into());
+        if budget.spent() {
+            return handed_on(database, budget, start, &lease, pages, left).await;
         }
         let saved = Saved {
             values: &values,
             system,
             depth,
         };
-        let stepped = step(executor, host, batches, plan, start, saved, left).await;
+        // The page in hand is cut short when the budget ends: dropped,
+        // nothing it did kept.
+        let stepped = budget
+            .run(step(executor, budget, batches, plan, start, saved, left))
+            .await;
         match stepped {
-            Step::Next => {
+            Ok(Step::Next) => {
                 pages += 1;
                 attempts = 0;
             }
-            Step::Changed if attempts + 1 < BATCH_ATTEMPTS => attempts += 1,
-            Step::Changed => {
+            Ok(Step::Changed) if attempts + 1 < BATCH_ATTEMPTS => attempts += 1,
+            Ok(Step::Changed) => {
                 return Ran::Paused("changes by others kept meeting its batch".into());
             }
-            Step::Ended(ran) => return ran,
+            // An item that ran out of the budget's time pauses its page:
+            // the run is handed on as at any budget's end.
+            Ok(Step::Ended(Ran::Paused(_))) if budget.spent() => {}
+            Ok(Step::Ended(ran)) => return ran,
+            Err(_) => return handed_on(database, budget, start, &lease, pages, left).await,
         }
     }
+}
+
+/// Gives back the lease of the run `start` names once `budget` is spent,
+/// and hands the run on to a fresh invocation when it committed `pages`
+/// in this one and its host isn't shutting down: otherwise it waits for
+/// the minute tick, so a run that can't get a page done in a whole budget
+/// doesn't hand itself on for ever.
+async fn handed_on(
+    database: &dyn crate::Database,
+    budget: &Budget<'_>,
+    start: &BatchStart,
+    lease: &Leased,
+    pages: u32,
+    left: &mut Vec<Deferred>,
+) -> Ran {
+    let now = budget.host().now_ms().unwrap_or(0);
+    crate::lease::release(database, lease, now).await;
+    if budget.stopping() {
+        return Ran::Paused("its host began to shut down".into());
+    }
+    if pages == 0 {
+        return Ran::Paused("its invocation's budget ended before a page committed".into());
+    }
+    left.push(Deferred::Batch(start.clone()));
+    Ran::HandedOn
 }
 
 /// How one batch went.
@@ -593,13 +679,14 @@ struct Saved<'a> {
 /// every page is read, `finished:`; or the stop a cancel asked for.
 async fn step(
     executor: &dyn Executor,
-    host: &dyn Host,
+    budget: &Budget<'_>,
     batches: Batches<'_>,
     plan: &BatchPlan,
     start: &BatchStart,
     saved: Saved<'_>,
     left: &mut Vec<Deferred>,
 ) -> Step {
+    let host = budget.host();
     let Some(now) = now_on(host) else {
         return Step::Ended(Ran::Paused("the host has no clock".into()));
     };
@@ -614,7 +701,20 @@ async fn step(
     // that set it off, and a loop through a batch stops as any does
     // (chunk 6.6a).
     ctx.chain = saved.depth;
-    let stepped = batch(executor, &mut ctx, batches, plan, start, saved, now).await;
+    // Work that never waits gives the thread back as it checks this, and
+    // stops once the budget is spent (chunk 6.7).
+    ctx.set_deadline(Some(budget.limit_ms()));
+    let lease_until = crate::lease::until(budget, now);
+    let stepped = batch(
+        executor,
+        &mut ctx,
+        batches,
+        plan,
+        start,
+        saved,
+        (now, lease_until),
+    )
+    .await;
     left.extend(ctx.take_deferred());
     stepped
 }
@@ -627,6 +727,8 @@ struct Held {
     problems: i64,
 }
 
+/// One batch of the run at `now`, its lease renewed until `lease_until`
+/// as its position commits.
 async fn batch(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -634,7 +736,7 @@ async fn batch(
     plan: &BatchPlan,
     start: &BatchStart,
     saved: Saved<'_>,
-    now: i64,
+    (now, lease_until): (i64, i64),
 ) -> Step {
     let Saved { values, system, .. } = saved;
     let id = SqlValue::Uuid(start.run);
@@ -823,7 +925,7 @@ async fn batch(
                 SqlValue::Bool(next.is_none()),
                 SqlValue::Int8(done),
                 SqlValue::Int8(had),
-                at(now + LEASE_MS),
+                at(lease_until),
                 at(now),
             ],
         )
@@ -1120,20 +1222,34 @@ pub async fn waiting(executor: &dyn Executor, host: &dyn Host, now: i64) -> Vec<
     out
 }
 
-/// Picks up the runs [`waiting`] finds and runs each as [`run`] does:
-/// what area 12's resuming after crashes and deploys is. The runtime's
-/// minute tick calls it, or hands what `waiting` finds to its host to run
-/// after (chunk 6.2). How each was left, with what their actions left for
-/// after.
+/// Picks up the runs [`waiting`] finds and runs each as [`run`] does,
+/// within the budget `host` gives a tick: what area 12's resuming after
+/// crashes and deploys is. The runtime's minute tick calls it (chunk 6.2).
+/// How each was left, with what their actions left for after.
 pub async fn resume(
     executor: &dyn Executor,
     host: &dyn Host,
     now: i64,
 ) -> (Vec<(BatchStart, Ran)>, Vec<Deferred>) {
+    let budget = Budget::start(host, Invocation::Tick);
+    resume_within(executor, host, &budget, now).await
+}
+
+/// [`resume`] within `budget`, the tick's: once it is spent, the runs not
+/// reached wait for the next tick (chunk 6.7).
+pub async fn resume_within(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    budget: &Budget<'_>,
+    now: i64,
+) -> (Vec<(BatchStart, Ran)>, Vec<Deferred>) {
     let mut out = Vec::new();
     let mut left = Vec::new();
     for start in waiting(executor, host, now).await {
-        let (ran, more) = self::run(executor, host, &start).await;
+        if budget.spent() {
+            break;
+        }
+        let (ran, more) = run_within(executor, host, budget, &start).await;
         left.extend(more);
         out.push((start, ran));
     }

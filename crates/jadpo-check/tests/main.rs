@@ -84,6 +84,7 @@ mod standard_rules;
 mod standard_types;
 mod stores;
 mod suggest;
+mod tenant_proofs;
 mod text;
 mod text_formats;
 mod time;

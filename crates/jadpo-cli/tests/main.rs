@@ -9,6 +9,7 @@ mod across;
 mod aggregates;
 mod ai;
 mod backfills;
+mod background_budget;
 mod batch_limits;
 mod batch_tenants;
 mod batches;
@@ -55,6 +56,7 @@ mod standard_storage;
 mod suggest;
 mod suggest_share;
 mod system;
+mod tenant_reach;
 #[path = "test.rs"]
 mod test_command;
 mod translation_exchange;

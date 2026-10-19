@@ -71,3 +71,29 @@ fn a_route_without_output_is_told_what_to_send() {
         "{found:?}"
     );
 }
+
+#[test]
+fn a_placeholder_naming_a_missing_field_is_refused_at_the_placeholder() {
+    // Chunk 6.6d: `{memo_id: Memo.nope}` names a field `Memo` doesn't
+    // declare. It was dropped with its route and nothing said why.
+    let entity = "entity Note {\n    id: Uuid\n    text: Memo\n\n    policy: {\n        read: [Access.public]\n    }\n}\n\naction show_note(note_id: Note.id) -> MemoView {\n    return MemoView {\n        text: \"\"\n    }\n}\n\n";
+    let routes = |ty: &str| {
+        format!(
+            "{entity}routes Notes {{\n    prefix: /notes\n\n    POST /{{note_id: {ty}}} {{\n        authentication: RouteAuthentication.none\n        output: MemoView\n        run: show_note(note_id)\n    }}\n}}\n"
+        )
+    };
+    assert_eq!(
+        next_steps(&routes("Note.nope")),
+        ["type.unknown_field: Name a field of `Note`"]
+    );
+    // A near miss is offered as the fix.
+    assert_eq!(
+        next_steps(&routes("Note.idd")),
+        ["type.unknown_field: Use `Note.id`"]
+    );
+    let found = next_steps(&routes("Note.id"));
+    assert!(
+        !found.iter().any(|line| line.starts_with("type.")),
+        "{found:?}"
+    );
+}

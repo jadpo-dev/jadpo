@@ -116,6 +116,9 @@ pub struct Held {
     /// The deliveries of what it emitted, written to the outbox in
     /// `transaction`, for the runner once it commits (chunk 6.1b).
     pub deliveries: Vec<crate::outbox::Delivery>,
+    /// How many events it kept, counted once it commits (a schedule's run
+    /// record keeps the count; chunk 6.7).
+    pub kept: u32,
     /// What the body did to the request's session.
     pub session: Option<SessionEffect>,
     /// Whether the body issued an API token or a service key.

@@ -11,7 +11,10 @@
 //! gives random bytes for a deployable's new identities; since chunk 4.10
 //! its wall clock and rate limits are capabilities too; since chunk 6.1a
 //! it runs work after a response is sent ([`Host::defer`]), which
-//! replaced delivering a committed action's events in the request.
+//! replaced delivering a committed action's events in the request; since
+//! chunk 6.7 it gives each invocation of background work its budget
+//! ([`Host::budget_ms`]), says when it is shutting down
+//! ([`Host::stopping`]), and runs work handed on ([`Host::hand_on`]).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -282,6 +285,39 @@ pub trait Host {
     /// what an event sets off is kept in the outbox, which the minute
     /// tick sweeps (chunk 6.1b).
     fn defer(&self, work: LocalFuture<'static, ()>) {
+        drop(work);
+    }
+
+    /// How long one invocation of background work of kind `invocation`
+    /// may run on this host, in milliseconds from when it starts (chunk
+    /// 6.7): the runner takes no more work and gives back what it holds
+    /// before it ends, and every lease it takes lasts what is left of it
+    /// and a margin ([`crate::budget`], [`crate::lease`]). At most the
+    /// 15-minute limit of a run. Natively and under `jadpo dev`, and on a
+    /// host that says nothing, that limit; on Workers its platform's, 30
+    /// seconds after a response and 15 minutes for the cron (chunk 8.2).
+    fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
+        let _ = invocation;
+        crate::budget::GENEROUS_MS
+    }
+
+    /// A future that finishes once the host begins to shut down: natively
+    /// on SIGTERM, or ctrl-c under `jadpo dev` (chunk 6.7). Background
+    /// work's budget ends there: the piece running is stopped and what it
+    /// held given back as it was. A host that never shuts its work down so
+    /// gives one that never finishes.
+    fn stopping(&self) -> LocalFuture<'_, ()> {
+        Box::pin(std::future::pending())
+    }
+
+    /// Runs `work` as a fresh invocation, with a budget of its own: what an
+    /// invocation whose budget was spent hands on, a batch run carried on
+    /// and the work it hadn't reached (chunk 6.7). Natively a task of its
+    /// own on the worker's thread; on Workers a fresh invocation (chunk
+    /// 8.2). A host with nothing to run it on, as a test's or a tool's,
+    /// drops it: what it held was given back, and the minute tick takes it
+    /// up.
+    fn hand_on(&self, work: LocalFuture<'static, ()>) {
         drop(work);
     }
 

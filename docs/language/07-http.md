@@ -1701,6 +1701,58 @@ error: `memo_id` can't be typed `MemoId?`
 check failed: 1 error, 1 file
 ```
 
+A placeholder typed with a field its type doesn't declare is
+`type.unknown_field` at its type, as any field type is (chunk 6.6d):
+
+```jadpo check project=e-placeholder-unknown-field expect=type.unknown_field
+type NoteText = Text {
+    max_length: 200
+}
+
+type NoteView = Output {
+    text: NoteText
+}
+
+entity Note {
+    id: Uuid
+    text: NoteText
+
+    policy: {
+        read: [Access.public]
+    }
+}
+
+query find_note(note_id: Note.id) fails NoteNotFound -> NoteView {
+    from: Note
+    where: Note.id == note_id
+    missing: NoteNotFound
+}
+
+routes Notes {
+    prefix: /notes
+
+    GET /{note_id: Note.ident} {
+        authentication: RouteAuthentication.none
+        output: NoteView
+        run: find_note(note_id)
+    }
+}
+```
+
+```text output
+error: `Note` has no field `ident`
+ --> main.jadpo:27:20
+   |
+27 |     GET /{note_id: Note.ident} {
+   |                    ^^^^^^^^^^ not declared
+  reason: A field type is written `Type.field`, naming a field the type declares.
+  next: Name a field of `Note` (agent)
+  rule: type.unknown_field
+  help: docs/language/02-values-and-types.html#type-unknown-field
+
+check failed: 1 error, 1 file
+```
+
 ### `route.placeholder_duplicate`
 
 Each placeholder is named once in a path, its group's prefix included:
