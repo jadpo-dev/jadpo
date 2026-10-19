@@ -1,0 +1,31 @@
+// Text is counted, cut and padded in code points, and `Markdown` becomes
+// `Html` that is safe to put on a page: raw HTML in it is kept only where
+// the sanitiser keeps it.
+
+use newsletter/types { ArticlePage, ArticleTitle, IssueNumber }
+
+/// An article ready for the website and the email: its issue's label, a
+/// tidy headline, its section, a slug for its address, its body as HTML, the first
+/// words for a preview and how many words it has.
+action publish_article(issue_no: IssueNumber, title: ArticleTitle, body: Markdown) -> ArticlePage {
+    var page: Html = markup.to_html(body)
+    var plain: Text = text.trim(markup.to_plain_text(page))
+    var headline: Text = text.trim(text.replace(title, "  ", " "))
+    // A headline asking a question is a letter; one about the fête is an
+    // event; anything else is news.
+    var mut paper_section: Text = "news"
+    if (text.ends_with(headline, "?")) {
+        paper_section = "letters"
+    } else if (text.contains(text.lower(headline), "fête")) {
+        paper_section = "events"
+    }
+    return ArticlePage {
+        issue_label: "No. " + text.pad_start(text.from(issue_no), 3, fill: "0")
+        headline: headline
+        paper_section: paper_section
+        slug: text.slug(headline)
+        body: page
+        preview: text.keep_first(plain, 60)
+        word_count: list.count(text.split(text.replace(plain, "\n", " "), " "))
+    }
+}

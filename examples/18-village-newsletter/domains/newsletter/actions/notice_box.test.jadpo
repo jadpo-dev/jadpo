@@ -1,0 +1,21 @@
+test "a notice becomes safe HTML" {
+    var notice: RichText = RichText(
+        [
+            RichTextBlock.paragraph {
+                spans: [
+                    RichTextSpan {
+                        text: "Bins go out on "
+                        marks: []
+                        link: none
+                    },
+                    RichTextSpan {
+                        text: "Tuesday"
+                        marks: [RichTextMark.strong]
+                        link: none
+                    }
+                ]
+            }
+        ]
+    )
+    assert notice_box(notice) == "<p>Bins go out on <strong>Tuesday</strong></p>"
+}

@@ -1,0 +1,26 @@
+use newsletter/types { ArticlePage }
+
+test "an article is tidied, given an address and a preview" {
+    var fete: ArticlePage = publish_article(
+        7,
+        "Summer  fête  on the green ",
+        "The **fête** is on Saturday.\n\nBring a cake for the stall."
+    )
+    assert fete.issue_label == "No. 007"
+    assert fete.headline == "Summer fête on the green"
+    assert fete.paper_section == "events"
+    assert fete.slug == "summer-fete-on-the-green"
+    assert fete.body == "<p>The <strong>fête</strong> is on Saturday.</p>\n<p>Bring a cake for the stall.</p>\n"
+    assert fete.preview == "The fête is on Saturday.\nBring a cake for the stall."
+    assert fete.word_count == 11
+}
+
+test "a headline that asks is a letter, and HTML in Markdown is made safe" {
+    var letter_page: ArticlePage = publish_article(
+        12,
+        "Who moved the bench?",
+        "It was by the pond.<script>steal()</script>"
+    )
+    assert letter_page.paper_section == "letters"
+    assert letter_page.body == "<p>It was by the pond.</p>\n"
+}

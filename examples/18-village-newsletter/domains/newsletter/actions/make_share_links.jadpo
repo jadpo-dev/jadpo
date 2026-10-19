@@ -1,0 +1,20 @@
+// Links are built, never glued together: a query is added with its values
+// percent-encoded, and a relative link is resolved against the page.
+
+use newsletter/types { ArticleTitle, ShareLinks, SitePage }
+
+/// The links an article's share buttons use: the article with the
+/// newsletter's campaign on it, the events page beside it, and a subject
+/// line for an email, encoded for a `mailto:` link.
+action make_share_links(article: SitePage, title: ArticleTitle) -> ShareLinks {
+    var campaign_query: Map<Text, Text> = map.with(
+        map.with([], "utm_source", "newsletter"),
+        "utm_campaign",
+        "issue page"
+    )
+    return ShareLinks {
+        tracked_link: web.with_query(article, campaign_query)
+        events_page: web.resolve(article, "../events/")
+        email_subject: encoding.to_url_component(title)
+    }
+}

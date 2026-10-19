@@ -1,0 +1,7 @@
+use newsletter/types { VillageName }
+
+/// A village's name in the reader's language: their locale's entry, else
+/// one in their language, else English.
+action local_village_name(name: LocalisedText, reader_locale: Locale) -> VillageName {
+    return VillageName(text.pick(name, locale: reader_locale))
+}

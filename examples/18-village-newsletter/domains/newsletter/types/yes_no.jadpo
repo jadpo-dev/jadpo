@@ -1,0 +1,2 @@
+/// An answer to a question the newsletter asks of a value.
+type YesNo = Bool {}

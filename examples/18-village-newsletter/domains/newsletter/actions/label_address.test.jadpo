@@ -1,0 +1,10 @@
+use newsletter/types { AddressLabel }
+
+test "a postcode is tidied and split into its halves" {
+    var label: AddressLabel = label_address(" sa62 6pt ")
+    assert label.postcode == "SA62 6PT"
+    assert label.outward_half == "SA62"
+    assert label.inward == "6PT"
+    assert label.rural_round
+    assert not label_address("CF10 1AA").rural_round
+}

@@ -1,0 +1,5 @@
+/// Which issue of the newsletter this is.
+type IssueNumber = Int {
+    min: 1
+    max: 999
+}

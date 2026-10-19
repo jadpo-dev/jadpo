@@ -1,0 +1,2 @@
+/// The token a confirmation link carries.
+type ConfirmToken = Text {}

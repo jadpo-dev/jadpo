@@ -1,0 +1,7 @@
+test "a village's name in the reader's language" {
+    var name: LocalisedText = LocalisedText(
+        map.with(map.with([], Locale.en_gb, "Newport"), Locale.cy_gb, "Trefdraeth")
+    )
+    assert local_village_name(name, Locale.cy_gb) == "Trefdraeth"
+    assert local_village_name(name, Locale.en_gb) == "Newport"
+}

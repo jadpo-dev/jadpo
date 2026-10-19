@@ -1,0 +1,2 @@
+/// A subscriber's email address.
+type SubscriberEmail = Email {}

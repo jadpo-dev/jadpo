@@ -1,0 +1,7 @@
+// The newsletter is bilingual: English and Welsh.
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.cy_gb]
+}

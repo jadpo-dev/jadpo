@@ -1,0 +1,2 @@
+/// What the newsletter keeps of a token: its SHA-256, in hexadecimal.
+type TokenDigest = Text {}

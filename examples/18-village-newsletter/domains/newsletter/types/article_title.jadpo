@@ -1,0 +1,5 @@
+/// An article's headline, as its author typed it.
+type ArticleTitle = Text {
+    min_length: 1
+    max_length: 120
+}

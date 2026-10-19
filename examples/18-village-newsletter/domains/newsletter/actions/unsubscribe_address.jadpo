@@ -1,0 +1,15 @@
+use newsletter/types { SubscriberEmail, UnsubscribeKey }
+use newsletter/failures { LinkUnreadable }
+
+/// The address an unsubscribe link's key carries.
+action unsubscribe_address(key: UnsubscribeKey) fails LinkUnreadable -> SubscriberEmail {
+    var raw: Bytes = attempt encoding.from_base64url(key) {
+        malformed: LinkUnreadable
+    }
+    var address: Text = attempt encoding.from_utf8(raw) {
+        malformed: LinkUnreadable
+    }
+    return attempt SubscriberEmail(address) {
+        invalid: LinkUnreadable
+    }
+}

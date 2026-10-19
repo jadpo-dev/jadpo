@@ -1,0 +1,19 @@
+// Colours are worked out, not picked by eye: a lighter shade for a
+// button's hover, a tint for a box, and WCAG's contrast for whether text
+// is readable.
+
+use newsletter/types { EditionColours, SignHue }
+
+/// The colours of a village's edition from the hue on its sign: a strong
+/// accent from OKLCH, a lighter one for hover, a pale tint mixed with
+/// white, and whether the accent is readable as text on white paper.
+action edition_theme(sign_hue: SignHue) -> EditionColours {
+    var accent_colour: Colour = colour.from_oklch(45%, 0.15, sign_hue)
+    var white: Colour = colour.from_hsl(0deg, 0%, 100%)
+    return EditionColours {
+        accent_colour: accent_colour
+        hover_colour: colour.with_lightness(accent_colour, 60%)
+        tint: colour.mix(white, accent_colour, 15%)
+        readable_on_white: colour.contrast(accent_colour, white) >= 4.5
+    }
+}

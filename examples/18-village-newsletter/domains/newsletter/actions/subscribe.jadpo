@@ -1,0 +1,18 @@
+// A token for a link, a short code to read out, and a digest kept in
+// place of the token, so a leaked list of subscriptions can't confirm
+// anyone. Encodings write bytes as text and read them back.
+
+use newsletter/types { ConfirmToken, SubscriberEmail, Subscription, TokenDigest, UnsubscribeKey }
+
+/// A subscription's confirmation token, the code read to someone who
+/// subscribes by phone, the hex digest the newsletter keeps of the token,
+/// and the key an unsubscribe link carries: the address in Base64url.
+action subscribe(email: SubscriberEmail) -> Subscription {
+    var token: ConfirmToken = ConfirmToken(random.token())
+    return Subscription {
+        confirm_token: token
+        phone_code: random.code(6)
+        token_digest: TokenDigest(encoding.to_hex(hash.sha256(token)))
+        unsubscribe_key: UnsubscribeKey(encoding.to_base64url(encoding.to_utf8(email)))
+    }
+}

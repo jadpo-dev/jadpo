@@ -1,0 +1,2 @@
+/// What an unsubscribe link carries: the address, in Base64url.
+type UnsubscribeKey = Text {}

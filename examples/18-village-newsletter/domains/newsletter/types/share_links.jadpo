@@ -1,0 +1,6 @@
+/// The links an article's share buttons use.
+type ShareLinks = Output {
+    tracked_link: Url
+    events_page: Url
+    email_subject: Text
+}

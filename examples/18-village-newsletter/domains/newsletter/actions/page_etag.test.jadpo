@@ -1,0 +1,4 @@
+test "a page's ETag is the Base64 of its digest" {
+    // SHA-256 of `<p>Hello</p>` and a line feed, as Markdown renders it.
+    assert page_etag(markup.to_html("Hello")) == "PptotxzGZxaDmfC8z7ZLLRYxTNwO14+sSBmroN2hIaA="
+}

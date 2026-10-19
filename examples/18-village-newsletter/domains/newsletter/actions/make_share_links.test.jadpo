@@ -1,0 +1,11 @@
+use newsletter/types { ShareLinks }
+
+test "share links are built, not glued" {
+    var share_buttons: ShareLinks = make_share_links(
+        "https://newsletter.example/issues/7/summer-fete",
+        "Fête & dog show"
+    )
+    assert share_buttons.tracked_link == "https://newsletter.example/issues/7/summer-fete?utm_campaign=issue%20page&utm_source=newsletter"
+    assert share_buttons.events_page == "https://newsletter.example/issues/events/"
+    assert share_buttons.email_subject == "F%C3%AAte%20%26%20dog%20show"
+}

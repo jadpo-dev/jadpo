@@ -1,0 +1,7 @@
+use newsletter/types { EditorAddress, YesNo }
+
+/// Whether an editor's request comes from the village hall's network,
+/// where the newsletter is put together.
+action editor_in_hall(caller: EditorAddress) -> YesNo {
+    return YesNo(web.cidr_contains("192.0.2.0/24", caller))
+}

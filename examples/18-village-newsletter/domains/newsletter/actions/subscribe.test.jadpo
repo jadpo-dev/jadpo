@@ -1,0 +1,26 @@
+use newsletter/types { SubscriberEmail, Subscription, YesNo }
+use newsletter/failures { LinkUnreadable }
+use newsletter/actions { check_confirmation, unsubscribe_address }
+
+test "a subscription keeps a digest of its token, never the token" {
+    var new_subscription: Subscription = subscribe("ann@example.com")
+    assert text.length(new_subscription.confirm_token) == 43
+    assert text.length(new_subscription.phone_code) == 6
+    assert text.length(new_subscription.token_digest) == 64
+    var token_ok: YesNo = attempt check_confirmation(
+        new_subscription.confirm_token,
+        new_subscription.token_digest
+    )
+    assert token_ok
+    var other: YesNo = attempt check_confirmation("not-the-token", new_subscription.token_digest)
+    assert not other
+    assert check_confirmation(new_subscription.confirm_token, "not hex") fails LinkUnreadable
+}
+
+test "an unsubscribe link carries the address it was sent to" {
+    var new_subscription: Subscription = subscribe("ann@example.com")
+    assert new_subscription.unsubscribe_key == "YW5uQGV4YW1wbGUuY29t"
+    var address: SubscriberEmail = attempt unsubscribe_address(new_subscription.unsubscribe_key)
+    assert address == "ann@example.com"
+    assert unsubscribe_address("!!") fails LinkUnreadable
+}

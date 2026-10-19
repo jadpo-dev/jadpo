@@ -1,0 +1,4 @@
+/// A UK postcode as a subscriber typed it, such as ` sa62 6pt `.
+type PostcodeText = Text {
+    max_length: 20
+}
