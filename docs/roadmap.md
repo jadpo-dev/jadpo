@@ -755,16 +755,23 @@ chunks below, taken before Phase 7, in this order.
   area 12's "Chosen in chunk 6.6b" and area 9's Decisions; flagged
   there: a tenanted run's status shows only what anyone, or a role held
   across the whole application, may read.
-- [ ] **6.6d A placeholder naming a missing field** `opus · high` (found
-  in chunk 6.6b): a route placeholder typed with a field that doesn't
-  exist (`{x: Note.nope}`) drops its route silently; it is
-  `type.unknown_field` at the placeholder, with a checked example.
-- [ ] **6.6c Tenancy of background work** `opus · high` (areas 9 and 12,
-  decided 2026-10-19): the tenant an event or a batch run names proved to
-  come from a record of that tenant the action read or wrote under its
-  caller's policy, using 6.1c's provenance, else
-  `policy.event_tenant_unproved`; in an application with a tenant, a
-  batch's `key:` unique per call, tenant and key.
+- [x] **6.6d A placeholder naming a missing field** `opus · high`. Built:
+  a route placeholder typed with a field its type doesn't declare
+  (`{x: Note.nope}`) is `type.unknown_field` at its type, with the
+  nearest field offered, rather than dropping its route silently; a
+  checked example in area 7.
+- [x] **6.6c Tenancy of background work** `opus · high`. Built: an
+  event's tenant field and each value a batch's run saves of the tenant's
+  `id` type proved to name a tenant the action read or wrote under its
+  caller's policy (the tenant's id or a record's tenancy reference it
+  reached, a record it was handed whole, or what a create that always
+  runs set), else `policy.event_tenant_unproved`; a batch's `key:` unique
+  per call, tenant and key (`jadpo_batch_runs.tenant`, with a migration
+  in examples 24 and 25); live tests of Bob reaching nothing of Ash's
+  through an event or a batch, and of two households sharing a key.
+  Choices in area 12's "Chosen in chunk 6.6c"; flagged there: a
+  subscriber's action passing its event's tenant on reads it first, and a
+  keyed run from before the migration isn't found again.
 - [ ] **6.7 Background work within a host's budget** `opus · xhigh`: each
   invocation given a budget by its host; the runner stops taking pieces
   and releases its claims before the budget ends, every lease the budget

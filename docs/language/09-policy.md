@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "Chosen in chunk 6.4d"). Built in chunk 6.6b: every action background work reaches checked against its own line under `actions:`, a listed action's line deciding its own body's writes wherever it is called from, and what `batches.status` gives held to what decides every batch's failures (area 12, "Chosen in chunk 6.6b"). "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "Chosen in chunk 6.4d"). Built in chunk 6.6b: every action background work reaches checked against its own line under `actions:`, a listed action's line deciding its own body's writes wherever it is called from, and what `batches.status` gives held to what decides every batch's failures (area 12, "Chosen in chunk 6.6b"). Built in chunk 6.6c: the tenant an event or a batch's run names proved to be one its action reached under its caller's policy (`policy.event_tenant_unproved`; area 12, "Chosen in chunk 6.6c"). "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -189,6 +189,14 @@ system in beside whoever else it names; a line naming only `Access.system`
 still lets in no request. No request is ever the system: only the
 runtime's runner makes the system caller, and every request, and every
 call a test makes with a caller or without one, runs as someone else.
+
+Which tenant a subscriber or a batch's run works in is named by a value:
+the event's field of the tenant's `id` type, or what the run saves of it.
+A caller could pass the id of a tenant they don't belong to, so that value
+must come from a record of that tenant the action read or wrote under its
+caller's policy; otherwise it is `policy.event_tenant_unproved` (decided
+2026-10-19). Reading the tenant first, `attempt Household.get(household_id)`,
+or naming the tenant of a record the action changes, proves it.
 
 ## Tenancy
 
@@ -2292,6 +2300,471 @@ error: `send_due` runs as the system, which only `Access.public` lets call `mark
 check failed: 1 error, 1 file
 ```
 
+### `policy.event_tenant_unproved`
+
+An event's subscribers run as the system within the tenant its field of
+the tenant's `id` type names, and a batch's run within the one its saved
+values of that type name (area 12). That id must come from a record of
+the tenant the action read or wrote under its caller's policy, or a caller
+could aim the system at a tenant they don't belong to (decided
+2026-10-19). Here the event names the household the caller passed, not
+the chore's:
+
+```jadpo check project=e-event-tenant-unproved expect=policy.event_tenant_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+type Title = Text {
+    max_length: 80
+}
+
+type HomeRole = Enum {
+    member
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+entity Household {
+    id: Uuid
+    name: Title
+
+    policy: {
+        read: [HomeRole.member]
+    }
+}
+
+entity HomeMembership {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: HomeRole
+
+    membership: {
+        scope: household_id
+        member: person_id
+        role: role
+    }
+
+    policy: {
+        read: [person_id]
+    }
+}
+
+entity Chore {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+    thanked: Bool
+
+    policy: {
+        read: [HomeRole.member]
+        update: [HomeRole.member]
+    }
+}
+
+policy {
+    tenant: Household
+}
+
+type ChoreThanked = Event {
+    chore_id: Chore.id
+    household_id: Household.id
+}
+
+action thank(chore_id: Chore.id, household_id: Household.id) fails ChoreNotFound -> Unit {
+    var chore: Chore = attempt Chore.update(chore_id) {
+        set: {
+            thanked: true
+        }
+    }
+    emit ChoreThanked {
+        chore_id: chore.id
+        household_id: household_id
+    }
+}
+```
+
+```text output
+error: `thank` sends `ChoreThanked` to a `Household` it never reached
+ --> main.jadpo:92:23
+   |
+92 |         household_id: household_id
+   |                       ^^^^^^^^^^^^ `household_id`, whatever the caller passes
+  reason: `ChoreThanked`'s subscribers run as the system within the `Household` its `household_id` names, so that id must come from a `Household`, or a record of one, that `thank` read or wrote under its caller's policy; one the caller passes could name a `Household` they don't belong to.
+  next: Name the `Household` of a record `thank` reads or writes, or read it first with `attempt Household.get(household_id)` (agent)
+  rule: policy.event_tenant_unproved
+  help: docs/language/09-policy.html#policy-event-tenant-unproved
+
+check failed: 1 error, 1 file
+```
+
+The chore was changed under the caller's grants, so its household is one
+they belong to; a caller who isn't a member finds no chore, and the action
+fails:
+
+```jadpo check project=event-tenant-proved
+type Handle = Text {
+    max_length: 40
+}
+
+type Title = Text {
+    max_length: 80
+}
+
+type HomeRole = Enum {
+    member
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+entity Household {
+    id: Uuid
+    name: Title
+
+    policy: {
+        read: [HomeRole.member]
+    }
+}
+
+entity HomeMembership {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: HomeRole
+
+    membership: {
+        scope: household_id
+        member: person_id
+        role: role
+    }
+
+    policy: {
+        read: [person_id]
+    }
+}
+
+entity Chore {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+    thanked: Bool
+
+    policy: {
+        read: [HomeRole.member]
+        update: [HomeRole.member]
+    }
+}
+
+policy {
+    tenant: Household
+}
+
+type ChoreThanked = Event {
+    chore_id: Chore.id
+    household_id: Household.id
+}
+
+action thank(chore_id: Chore.id, household_id: Household.id) fails ChoreNotFound -> Unit {
+    var chore: Chore = attempt Chore.update(chore_id) {
+        set: {
+            thanked: true
+        }
+    }
+    emit ChoreThanked {
+        chore_id: chore.id
+        household_id: chore.household_id
+    }
+}
+```
+
+A batch's `key:` naming the household the caller passed is refused the
+same way:
+
+```jadpo check project=e-run-tenant-unproved expect=policy.event_tenant_unproved
+type Handle = Text {
+    max_length: 40
+}
+
+type Title = Text {
+    max_length: 80
+}
+
+type HomeRole = Enum {
+    member
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+entity Household {
+    id: Uuid
+    name: Title
+
+    policy: {
+        read: [HomeRole.member]
+    }
+}
+
+entity HomeMembership {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: HomeRole
+
+    membership: {
+        scope: household_id
+        member: person_id
+        role: role
+    }
+
+    policy: {
+        read: [person_id]
+    }
+}
+
+entity Chore {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+    ticks: Int
+
+    policy: {
+        read: [HomeRole.member, Access.system]
+        update: [Access.system]
+    }
+}
+
+policy {
+    tenant: Household
+}
+
+type ChorePage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+query all_chores(page: ChorePage) -> Page<Chore> {
+    from: Chore
+    order: [Chore.title asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action tick(chore: Chore) fails ChoreNotFound -> Unit {
+    attempt Chore.update(chore.id) {
+        set: {
+            ticks: Chore.ticks + 1
+        }
+    }
+}
+
+action sweep_house(household_id: Household.id, page: ChorePage) -> BatchRun {
+    return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household_id)
+}
+```
+
+```text output
+error: `sweep_house` starts a batch in a `Household` it never reached
+ --> main.jadpo:106:82
+    |
+106 |     return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household_id)
+    |                                                                                  ^^^^^^^^^^^^ `household_id`, whatever the caller passes
+  reason: A batch's run works as the system within the `Household` its saved values of type `Household.id` name, so each must come from a `Household`, or a record of one, that `sweep_house` read or wrote under its caller's policy; one the caller passes could name a `Household` they don't belong to.
+  next: Name the `Household` of a record `sweep_house` reads or writes, or read it first with `attempt Household.get(household_id)` (agent)
+  rule: policy.event_tenant_unproved
+  help: docs/language/09-policy.html#policy-event-tenant-unproved
+
+check failed: 1 error, 1 file
+```
+
+Reading the household first, through the caller's membership, proves it:
+
+```jadpo check project=run-tenant-proved
+type Handle = Text {
+    max_length: 40
+}
+
+type Title = Text {
+    max_length: 80
+}
+
+type HomeRole = Enum {
+    member
+}
+
+entity Person {
+    id: Uuid
+    handle: Handle {
+        unique: true
+    }
+
+    policy: {
+        read: [id]
+        tenant: Tenancy.shared
+    }
+}
+
+principal {
+    user: {
+        subject: Person.handle
+    }
+}
+
+entity Household {
+    id: Uuid
+    name: Title
+
+    policy: {
+        read: [HomeRole.member]
+    }
+}
+
+entity HomeMembership {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    person_id: Person.id {
+        on_delete: OnDelete.cascade
+    }
+    role: HomeRole
+
+    membership: {
+        scope: household_id
+        member: person_id
+        role: role
+    }
+
+    policy: {
+        read: [person_id]
+    }
+}
+
+entity Chore {
+    id: Uuid
+    household_id: Household.id {
+        on_delete: OnDelete.cascade
+    }
+    title: Title
+    ticks: Int
+
+    policy: {
+        read: [HomeRole.member, Access.system]
+        update: [Access.system]
+    }
+}
+
+policy {
+    tenant: Household
+}
+
+type ChorePage = Input {
+    page_size: PageSize {
+        default: 25
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+
+query all_chores(page: ChorePage) -> Page<Chore> {
+    from: Chore
+    order: [Chore.title asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+
+action tick(chore: Chore) fails ChoreNotFound -> Unit {
+    attempt Chore.update(chore.id) {
+        set: {
+            ticks: Chore.ticks + 1
+        }
+    }
+}
+
+action sweep_house(
+    household_id: Household.id,
+    page: ChorePage
+) fails HouseholdNotFound -> BatchRun {
+    var household: Household = attempt Household.get(household_id)
+    return batches.each(from: all_chores(page), each: chore -> tick(chore), key: household.id)
+}
+```
+
 ### `policy.public_grant_missing`
 
 A route anyone may call reaches an entity that does not grant `Access.public`:
@@ -3566,6 +4039,15 @@ reference the write sets points at, or one of the same tenant; a loop's
 item is one record within its turn. A value an action stores from its
 parameters is checked where it is called, through its summary, which
 holds no positions, as 4.11's do.
+
+Built in chunk 6.6c: the tenant an event or a batch's run names proved
+to be one the action reached under its caller's policy
+(`policy.event_tenant_unproved` at the value): the tenant's own `id`, or
+the tenancy reference of a record of it, that the action read, created or
+changed, itself or through what it calls; the same of a record it is
+handed whole; or what a create that runs whenever the action does set a
+record's tenancy reference from. Area 12's "Chosen in chunk 6.6c" has
+the choices.
 
 Not yet:
 

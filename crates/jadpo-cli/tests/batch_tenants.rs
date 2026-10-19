@@ -283,11 +283,11 @@ use home/entities { Household }
 use home/queries { all_chores }
 use home/types { SweepPage }
 
-action sweep_household(household_id: Household.id, page: SweepPage) -> BatchRun {
+action sweep_household(household: Household, page: SweepPage) -> BatchRun {
     return batches.each(
         from: all_chores(page),
         each: chore -> tick(chore),
-        key: household_id
+        key: household.id
     )
 }
 "#,
@@ -310,11 +310,11 @@ use home/entities { Household }
 use home/queries { all_chores }
 use home/types { SweepPage }
 
-action sweep_pair(household_id: Household.id, also: Household.id, page: SweepPage) -> BatchRun {
+action sweep_pair(household: Household, also: Household, page: SweepPage) -> BatchRun {
     return batches.each(
         from: all_chores(page),
-        each: chore -> tick_with(chore, also),
-        key: household_id
+        each: chore -> tick_with(chore, also.id),
+        key: household.id
     )
 }
 "#,
@@ -488,6 +488,17 @@ fn page(size: i64) -> Value {
     )
 }
 
+/// A household's record.
+fn household(id: &str, name: &str) -> Value {
+    Value::record(
+        "Household",
+        vec![
+            (Rc::from("id"), Value::uuid(id)),
+            (Rc::from("name"), Value::text(name)),
+        ],
+    )
+}
+
 const ASH: &str = "0a000000-0000-4000-8000-000000000001";
 const BIRCH: &str = "0b000000-0000-4000-8000-000000000002";
 
@@ -560,8 +571,11 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
             )
             .await;
         }
-        let ash = Value::uuid(ASH);
-        let birch = Value::uuid(BIRCH);
+        // Each household as a record read through the caller's grants
+        // would give it: a run names only a tenant its action reached
+        // (chunk 6.6c).
+        let ash = household(ASH, "Ash");
+        let birch = household(BIRCH, "Birch");
 
         // One saved tenant id, its `key:`: the run walks Ash's chores in
         // pages of two and never sees Birch's.

@@ -537,7 +537,9 @@ fn a_subscriber_stores_what_its_event_carries_where_its_tenants_readers_may_read
         Vec::<String>::new()
     );
     // With the tenant the request named rather than the chore's, nothing
-    // says the title is of the household the subscriber is limited to.
+    // says the title is of the household the subscriber is limited to,
+    // and the event names a household the action never reached (chunk
+    // 6.6c).
     let found = ADD_CHORE.replace(
         "        household_id: chore.household_id\n",
         "        household_id: household_id\n",
@@ -545,6 +547,7 @@ fn a_subscriber_stores_what_its_event_carries_where_its_tenants_readers_may_read
     assert_eq!(
         support::problems(Layout::Project, &household(&found)),
         [
+            "domains/home/actions/remind.jadpo policy.event_tenant_unproved: `remind` sends `ChoreAdded` to a `Household` it never reached",
             "domains/home/subscribers/log_chore.jadpo policy.output_field_unproved: `log_chore` passes `Chore.title` to `log`, which stores it in `DigestLine.line`, though not everyone who may read `line` may read it"
         ]
     );
