@@ -788,11 +788,18 @@ chunks below, taken before Phase 7, in this order.
   values with an encoding and read by the standard JSON reader; the
   system tables defined once in `jadpo-std`, with a test preparing every
   runtime statement against the migrated schema.
-- [ ] **6.9 Serving, alerts and `why` in the runtime** `opus · high`: a
-  server handler in the runtime or `jadpo-host-native` that `jadpo dev`
-  only wraps to print; alerts raised in `schedules::tick` and kept once
-  on the schedule's state row; the `why` answer decided in the runtime,
-  as data the CLI shows.
+- [x] **6.9 Serving, alerts and `why` in the runtime** `opus · high`.
+  Built: what a host does with a request and a tick in the runtime
+  (`serve::Serving` over an `Application`, heard by an `Observer`),
+  served natively by `jadpo_host_native::http::AppHandler`, which
+  `jadpo dev` only observes to print its lines; alerts raised by
+  `schedules::tick` and recorded on the schedule's state row (`alerts`,
+  each with when it was raised) in one conditional statement, so of
+  several instances one raises each (`Ticked::raised`), the in-memory
+  `Raised` removed; `jadpo why`'s answer decided by the runtime as data
+  (`schedules::why`) and said by the CLI unchanged. Examples 10 and 25
+  migrated. Live test: two instances ticking together raise each alert
+  once. Choices in area 12's "Chosen in chunk 6.9".
 - [ ] **5.13 Gate time** `opus · high`: test threads capped per gate
   step; the HTTP worker test's 150 ms ordering made deterministic;
   `tools/verify.py` honouring `CARGO_TARGET_DIR`; §2.7's timings

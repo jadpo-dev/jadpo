@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and to the limits of background work. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type. Built in chunk 6.7: background work within the budget its host gives each invocation, every lease that budget and a minute, a batch run carried on by time in a fresh invocation, and a native server draining when it is stopped.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to. Built in chunk 6.6a: the Phase 6 review's fixes to delivering once and to the limits of background work. Built in chunk 6.6b: a run's status held to what decides its failures, every action a run reaches checked against its own line, and no request carrying a batch type. Built in chunk 6.7: background work within the budget its host gives each invocation, every lease that budget and a minute, a batch run carried on by time in a fresh invocation, and a native server draining when it is stopped. Built in chunk 6.9: alerts raised by the tick, once across instances, and `jadpo why`'s answer decided by the runtime.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -3086,6 +3086,40 @@ be replaced), each the most conservative reading:
   or a batch run, kept in the store, so none is lost when an invocation
   stops short. A test runs an action as the system through the runner's
   `as_system`.
+
+### Chosen in chunk 6.9
+
+What the Phase 6 architecture review found about serving, alerts and
+`jadpo why` living in the CLI, which Phase 8's deployables and the
+console can't reach, each the most conservative reading:
+
+- **Alerts are raised by the tick.** Once a tick's schedules have run,
+  it works out the alerts that hold for each schedule, as any reader
+  does, and records them on the schedule's state row (`alerts`: each
+  alert's id and when it was raised) in one statement that changes the
+  record only while it is what the tick read. Of several instances
+  ticking, or several Workers cron invocations, the one whose statement
+  changed it raises what newly holds; the others raise nothing. An alert
+  is raised once until it stops holding, its details (a growing failure
+  count) changing nothing; one that stops and starts again is raised
+  again. `jadpo dev` prints the alerts its tick raised, so a restarted
+  session doesn't print one already raised.
+- **Ticks stopping is never raised by a tick**, since a tick arriving is
+  the proof they haven't; readers still say it.
+- **Readers still work the alerts out when they read.** `jadpo
+  schedules` and `jadpo why` show the alerts that hold at their own
+  time, as before, rather than only those a tick recorded: a stopped
+  application raises nothing, and its operator must still see its
+  alerts. Their screens and `--json` are unchanged.
+- **`jadpo why`'s answer is the runtime's**, as data (the answer, the
+  alerts that hold, a standing request), in the order this page's
+  "Chosen in chunk 6.2b" gives; the CLI says it in words, unchanged, and
+  the console and the MCP server (Phase 9) read the same data.
+- **Serving is the runtime's.** What a host does with a request (answer
+  it, hand on what it left for after the response) and with a tick is one
+  runtime type every host wraps; a native server and `jadpo dev` serve
+  through the same handler, `jadpo dev` only listening to print its
+  lines.
 
 ### Consistency with the rest of the language
 
