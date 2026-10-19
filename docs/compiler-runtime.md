@@ -1797,8 +1797,8 @@ on, each `Job` (a callable, its arguments and the system it runs as) in
 a boundary of its own:
 
 - **deferred**: a committed action's outbox is left on the context as
-  `Deferred::Deliveries` (`Ctx::defer`), never delivered in the request
-  (`Host::deliver` is gone); `serve_request` moves what a request left
+  `Deferred::Deliveries` (`Ctx::defer`), and a batch run it started as
+  `Deferred::Batch`, never run in the request; `serve_request` moves what a request left
   to `Response::deferred`, and the host hands it to `runner::after_response`,
   which gives `Host::defer` a future running it once the
   response has been handed back: natively the HTTP worker takes it
@@ -1822,7 +1822,8 @@ A host with nothing to run deferred work on (a test's, a tool's) drops
 it, and the outbox keeps what it held. Schedules (6.2) run their actions
 through the same runner.
 
-**Within a host's budget** (chunk 6.7, area 12's "Chosen in chunk 6.7").
+**Within a host's budget** (chunk 6.7, area 12's "Running background
+work").
 Each invocation of background work (`budget::Invocation`: after a
 response, the tick, or work handed on) runs within the budget its host
 gives it (`Host::budget_ms`, at most `RUN_LIMIT_MS`, 15 minutes; the
@@ -1921,7 +1922,7 @@ each shortest `every:` (`Handler::tick`, `schedules::tick_every_ms`);
 `jadpo dev` ticks. On Workers the cron trigger calls the same function
 (chunk 8.2).
 
-**Batch runs** (chunk 6.4, area 12's "Chosen in chunk 6.4"). The
+**Batch runs** (chunk 6.4, area 12's "How a run is kept"). The
 checker reads `batches.each(from:, each:, finished:, key:)`
 (`types::body::batches`) into a `Callee::Batch` call whose `from:` is
 its query's call and whose `each:` and `finished:` are inline functions
@@ -1975,8 +1976,8 @@ doubles the async signatures and lets bugs hide on one target.
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
 | Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
-| Outbox | Delivery, retries, circuit breaker, dead letters, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
-| Scheduler | Due times in the schedule's state row from its first tick, leases, run records, tick adapters; native timer | Cloudflare cron |
+| Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
+| Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2) | Cloudflare cron |
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
@@ -1984,10 +1985,14 @@ doubles the async signatures and lets bugs hide on one target.
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
 **Capability drivers.** One trait per capability: `Database` (begin,
-query, execute, commit, rollback, and one statement on its own),
-`Cache`, `Email`, `Sms`, `Files`, `Publishing` and `ScheduleTick` (ticks
-and an optional lease); rate limits and the wall clock are `Host`
-methods (chunk 4.10). Drivers
+query, execute, commit, rollback, and one statement on its own) and
+`Passkeys` so far, with `Cache`, `Email`, `Sms` and `Files` to come with
+their capabilities; rate limits and the wall clock (chunk 4.10), and
+deferring work, its budget, handing it on and shutting down (chunks 6.1a
+and 6.7), are `Host` methods. A schedule's tick is no trait: every host
+calls `schedules::tick`, natively from a timer and on Workers from the
+cron trigger, and the `trigger:` adapter that lets another source call
+it comes in 8.2; publishing events outward comes with Phase 7. Drivers
 classify their own errors into the runtime's fixed set (conflict with the
 constraint name, serialisation failure, unavailable, fault), so executors
 and targets agree; the experiments found exactly this classification
@@ -1995,14 +2000,15 @@ drifting between adapters
 ([shared conformance](experiments/shared-rust-conformance-results.md)).
 Package-backed capabilities use one generic driver that runs the package's
 declared protocol, credentials, idempotency header, retries and error
-mapping through `Host::fetch`; packages never generate driver code. Drivers
+mapping through `Host::fetch` (Phase 7); packages never generate driver code. Drivers
 list their targets for `jadpo check` (area 11), and test fakes implement
 the same traits.
 
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in
-  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule,
+  `waitUntil`, and the minute cron calls `schedules::tick`, which runs
+  the schedules due and sweeps each store's outbox,
   each within the budget the host gives it (30 seconds after a response,
   15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2),
   and what one leaves goes on in a fresh invocation (`Host::hand_on`).
