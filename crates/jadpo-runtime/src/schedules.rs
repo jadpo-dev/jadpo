@@ -77,7 +77,7 @@ pub const FAILED: &str = "failed";
 pub const SKIPPED: &str = "skipped";
 /// The reason a run record gives for a run an operator started
 /// (`jadpo schedules run`), rather than a tick.
-pub const MANUAL: &str = "manual";
+pub const BY_HAND: &str = "by_hand";
 
 /// Work the tick runs after the schedules and the runtime's own sweeps,
 /// given the program, the host and the tick's time; what it leaves runs on
@@ -194,7 +194,7 @@ pub struct Due {
 
 impl Due {
     /// How late it started after it was due, in milliseconds.
-    pub fn lateness_ms(&self) -> i64 {
+    pub fn delay_ms(&self) -> i64 {
         self.started.saturating_sub(self.due_slot).max(0)
     }
 
@@ -497,7 +497,7 @@ async fn take(
 
 /// A run whose lease has been taken: its id, the due time it runs for, the
 /// run that held the lease before it and never ended, with that lease's
-/// end, and the reason its record gives (`manual` for an operator's).
+/// end, and the reason its record gives (`by_hand` for an operator's).
 pub(crate) struct Claimed {
     pub run: [u8; 16],
     pub due_slot: i64,

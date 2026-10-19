@@ -44,11 +44,11 @@ and a `run:` that calls an action in the same domain with no arguments
 (question 1).
 
 ```jadpo fragment
-// domains/planning/schedules/overdue_reminders.jadpo
+// domains/planning/schedules/chore_census.jadpo
 /// Queues a reminder for each overdue todo.
-schedule overdue_reminders {
+schedule chore_census {
     every: 15m
-    run: queue_overdue_reminders()
+    run: queue_chore_census()
 }
 ```
 
@@ -75,8 +75,8 @@ handled by its own action, retried on its own, and one bad item never blocks
 or undoes the rest (question 11).
 
 ```jadpo fragment
-// domains/planning/actions/queue_overdue_reminders.jadpo
-action queue_overdue_reminders() -> Unit {
+// domains/planning/actions/queue_chore_census.jadpo
+action queue_chore_census() -> Unit {
     // a query in queries/ returning at most 500 todos not yet queued
     var cutoff: ReminderCutoff = ReminderCutoff(clock.now)
     var todos: List<Todo> = overdue_todos(cutoff)   // a list query declares no failures
@@ -1984,7 +1984,7 @@ most conservative reading:
   as `jadpo dev` would, with the app's settings from the environment
   over `.env.local`: under its lease (refused with `schedules.lease_held`
   while a run holds it), paused or not, as the system with no tenant at
-  the command's time. Its record's reason is `manual` and its due time
+  the command's time. Its record's reason is `by_hand` and its due time
   is when it started; the grid isn't moved. *Flagged:* the other reading
   marks it due so the next tick runs it, which keeps app code on the
   app's own instances but answers only once a tick comes; recommended
@@ -1996,7 +1996,7 @@ most conservative reading:
 - **`history`**: every record, runs and skipped ticks, newest first, 20
   a page (`--page <n>`), grouped by UTC day; then the metrics over the
   records kept (30 days): runs, failed runs and skipped ticks, the median
-  and longest duration, and the median and greatest lateness.
+  and longest duration, and the median and greatest delay (lateness).
 - **The alerts**, each a condition worked out from the rows at a time:
   ticks stopped when the last tick any schedule received is older than
   twice the host's tick period; a lease past its end with its run never
@@ -2280,7 +2280,7 @@ check failed: 1 error, 1 file
 
 ### Consistency with the rest of the language
 
-- **Setting in the header.** `job overdue_reminders every 15m {` breaks the
+- **Setting in the header.** `job chore_census every 15m {` breaks the
   colon rule (area 3); the schedule form uses `every: 15m`.
 - **One-value settings.** `concurrency: singleton` and `retry: next_schedule`
   are required and accept one value each; they become defaults.
@@ -2418,7 +2418,7 @@ check failed: 1 error, 1 file
     in the background. Is that always an event and a subscriber, and how
     does the client learn the outcome? *Decided 2026-10-13:* yes, as recommended.
 15. **How do tests run schedules and subscribers?** (carried from area 13)
-    Area 13 calls `overdue_reminders.run()`, relies on subscriber delivery
+    Area 13 calls `chore_census.run()`, relies on subscriber delivery
     order and needs retries of a failing subscriber. Does this page define
     those, and in what order are subscribers delivered in tests?
     *Decided 2026-10-13:* `schedule.run()` runs a schedule under the test

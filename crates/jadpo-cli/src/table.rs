@@ -730,7 +730,7 @@ pub static COMMANDS: &[Command] = &[
                       within twice its interval, ticks no longer arriving, a run past 80% of the \
                       15-minute limit, three failures in a row, or a lease held past its expiry. \
                       `history` shows a schedule's runs and skipped ticks, newest first, 20 a page, \
-                      and its metrics: runs, failures, skipped ticks, duration and lateness. `pause` \
+                      and its metrics: runs, failures, skipped ticks, duration and delay. `pause` \
                       and `resume` stop and start its due ticks running it. `run` runs it now in \
                       this process, under its lease, so it never runs twice at once. The database \
                       is the one --url names, or the one its connection's setting gives, or the one \
@@ -753,7 +753,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--url",
                 value: Some("url"),
-                description: "The PostgreSQL database the schedules' state is in",
+                description: "The database the schedules' state is in",
                 values: &[],
             },
             Flag {
@@ -770,15 +770,15 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "See a schedule's past runs and its metrics",
-                command: "jadpo schedules history overdue_reminders",
+                command: "jadpo schedules history nightly_digest",
             },
             Example {
                 description: "Stop a schedule running until it is resumed",
-                command: "jadpo schedules pause overdue_reminders",
+                command: "jadpo schedules pause nightly_digest",
             },
             Example {
                 description: "Run a schedule now",
-                command: "jadpo schedules run overdue_reminders",
+                command: "jadpo schedules run nightly_digest",
             },
         ],
         arguments_rule: &rule::CLI_SCHEDULES_ARGUMENTS,
@@ -810,12 +810,12 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--url",
             value: Some("url"),
-            description: "The PostgreSQL database the schedules' state is in",
+            description: "The database the schedules' state is in",
             values: &[],
         }],
         examples: &[Example {
             description: "Find out why a schedule hasn't run",
-            command: "jadpo why overdue_reminders",
+            command: "jadpo why nightly_digest",
         }],
         arguments_rule: &rule::CLI_WHY_ARGUMENTS,
         raises: &[

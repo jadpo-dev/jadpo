@@ -446,7 +446,7 @@ fn clock(at: i64, now: i64) -> String {
 
 /// A due time: `12:15` (seconds only when it has some) on `now`'s day,
 /// `2026-10-20 02:00` on another.
-fn due_time(at: i64, now: i64) -> String {
+fn grid_clock(at: i64, now: i64) -> String {
     let text = jadpo_std::format_instant(at);
     let minutes = text.get(11..16).unwrap_or_default();
     let seconds = text.get(16..19).filter(|s| *s != ":00").unwrap_or("");
@@ -497,7 +497,7 @@ fn ago(at: i64, now: i64) -> String {
 fn every(ms: u64) -> String {
     let seconds = ms / 1_000;
     for (unit, size) in [("d", 86_400), ("h", 3_600), ("m", 60)] {
-        if seconds >= size && seconds % size == 0 {
+        if seconds >= size && seconds.is_multiple_of(size) {
             return format!("{}{unit}", seconds / size);
         }
     }
@@ -580,7 +580,7 @@ fn alert_text(alert: &Alert, now: i64) -> String {
             } else {
                 format!(
                     "`{name}` hasn't succeeded since it was first due at {}",
-                    due_time(*since, now)
+                    grid_clock(*since, now)
                 )
             }
         }
@@ -623,7 +623,7 @@ fn run_json(run: &RunRecord) -> Json {
             "reason",
             run.reason.as_deref().map_or(Json::Null, Json::from),
         ),
-        ("dueAt", instant(Some(run.due))),
+        ("dueSlot", instant(Some(run.due))),
         ("startedAt", instant(Some(run.started))),
         ("endedAt", instant(run.ended)),
         ("code", run.code.as_deref().map_or(Json::Null, Json::from)),
@@ -742,7 +742,7 @@ fn last_run_cell(schedule: &Watched, now: i64) -> Cell {
     let Some(run) = &schedule.last_run else {
         return Cell::state(Symbol::Skipped, "none yet");
     };
-    let by_hand = if run.is_manual() { " · by hand" } else { "" };
+    let by_hand = if run.by_hand_run() { " · by hand" } else { "" };
     match run.outcome.as_str() {
         "running" => Cell::state(Symbol::Running, "running").then(format!(
             "{} · {} so far{by_hand}",
@@ -779,15 +779,15 @@ fn next_cell(schedule: &Watched, period: u64, now: i64) -> Cell {
     if state.paused {
         return Cell::state(Symbol::Paused, "paused");
     }
-    let late = now.saturating_sub(state.next_run_at)
+    let missed = now.saturating_sub(state.next_run_at)
         > i64::try_from(period).unwrap_or(i64::MAX).saturating_mul(2);
-    if late && !state.leased(now) {
+    if missed && !state.leased(now) {
         return Cell::state(
             Symbol::Warning,
-            format!("late since {}", due_time(state.next_run_at, now)),
+            format!("not run since {}", grid_clock(state.next_run_at, now)),
         );
     }
-    Cell::text(due_time(state.next_run_at, now))
+    Cell::text(grid_clock(state.next_run_at, now))
 }
 
 fn list_screen(watched: &Watch, period: u64, now: i64) -> Screen {
@@ -1011,7 +1011,7 @@ fn history_row(record: &RunRecord, now: i64) -> Vec<Cell> {
         let text = jadpo_std::format_instant(at);
         text.get(11..19).unwrap_or_default().to_string()
     };
-    let due = if record.is_manual() {
+    let due = if record.by_hand_run() {
         Cell::state(Symbol::Skipped, "")
     } else {
         let text = jadpo_std::format_instant(record.due);
@@ -1019,7 +1019,7 @@ fn history_row(record: &RunRecord, now: i64) -> Vec<Cell> {
         let seconds = text.get(16..19).filter(|s| *s != ":00").unwrap_or("");
         Cell::text(format!("{minutes}{seconds}"))
     };
-    let by_hand = if record.is_manual() {
+    let by_hand = if record.by_hand_run() {
         " · by hand"
     } else {
         ""
@@ -1078,9 +1078,9 @@ fn metric_fields(metrics: &Metrics) -> Vec<(String, String)> {
             ),
         ));
     }
-    if let (Some(median), Some(most)) = (metrics.median_late_ms, metrics.latest_late_ms) {
+    if let (Some(median), Some(most)) = (metrics.median_delay_ms, metrics.most_delay_ms) {
         fields.push((
-            "late".to_string(),
+            "delay".to_string(),
             format!("median {} · at most {}", duration(median), duration(most)),
         ));
     }
@@ -1097,8 +1097,8 @@ fn metrics_json(metrics: &Metrics) -> Json {
         ("skipped", n(metrics.skipped)),
         ("medianMs", ms(metrics.median_ms)),
         ("longestMs", ms(metrics.longest_ms)),
-        ("medianLateMs", ms(metrics.median_late_ms)),
-        ("mostLateMs", ms(metrics.latest_late_ms)),
+        ("medianDelayMs", ms(metrics.median_delay_ms)),
+        ("mostDelayMs", ms(metrics.most_delay_ms)),
     ])
 }
 
@@ -1108,7 +1108,7 @@ fn not_run(watched: &Watch, name: &str, now: i64) -> (String, &'static str) {
         Some(state) => (
             format!(
                 "`{name}` hasn't been due yet: its first run is due at {}",
-                due_time(state.next_run_at, now)
+                grid_clock(state.next_run_at, now)
             ),
             "not_due",
         ),
@@ -1171,7 +1171,10 @@ fn pause(call: &Call, project: &Project, schedule: &ScheduleModel, paused: bool)
         (Paused::Changed { next_run_at }, false) => (
             match next_run_at {
                 Some(at) if at > now => {
-                    format!("Resumed `{name}`: its next run is at {}", due_time(at, now))
+                    format!(
+                        "Resumed `{name}`: its next run is at {}",
+                        grid_clock(at, now)
+                    )
                 }
                 _ => format!("Resumed `{name}`: its next run is due now"),
             },
@@ -1525,7 +1528,7 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                 format!(
                     "{} since {}",
                     plural(skips.len() as u64, "due time", "due times"),
-                    due_time(first.due, now)
+                    grid_clock(first.due, now)
                 ),
             ));
         }
@@ -1555,7 +1558,7 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
         if state.next_run_at <= now {
             fields.push(field(
                 "due",
-                format!("{}, not run", due_time(state.next_run_at, now)),
+                format!("{}, not run", grid_clock(state.next_run_at, now)),
             ));
         }
         fields.push(field(
@@ -1597,7 +1600,7 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                 "next",
                 format!(
                     "{}: the next due tick records it as lease_expired and runs again",
-                    due_time(state.next_run_at.max(now), now)
+                    grid_clock(state.next_run_at.max(now), now)
                 ),
             )],
             restates: vec!["lease_expired"],
@@ -1644,12 +1647,12 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
         if let Some(run) = last_run {
             fields.push(field("last run", run_words(run, now)));
         }
-        fields.push(field("next", due_time(state.next_run_at, now)));
+        fields.push(field("next", grid_clock(state.next_run_at, now)));
         return Answer {
             id: "skipped",
             headline: format!(
                 "`{name}` skipped its tick due at {}: {}",
-                due_time(skip.due, now),
+                grid_clock(skip.due, now),
                 match skip.reason.as_deref() {
                     Some("paused") => "it was paused then",
                     _ => "its run before was still going",
@@ -1666,9 +1669,9 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                 "run",
                 format!(
                     "due {} · took {}{}",
-                    due_time(run.due, now),
+                    grid_clock(run.due, now),
                     duration(run.duration_ms(now)),
-                    if run.is_manual() { " · by hand" } else { "" }
+                    if run.by_hand_run() { " · by hand" } else { "" }
                 ),
             )];
             if let Some(kind) = &run.kind {
@@ -1691,7 +1694,7 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                 "next",
                 format!(
                     "{}: a schedule's next run is its retry",
-                    due_time(state.next_run_at, now)
+                    grid_clock(state.next_run_at, now)
                 ),
             ));
             if let Some(trace) = &run.trace {
@@ -1717,13 +1720,13 @@ fn answer(watched: &Watch, recent: &[RunRecord], name: &str, period: u64, now: i
                 "run",
                 format!(
                     "due {} · took {} · {}{}",
-                    due_time(run.due, now),
+                    grid_clock(run.due, now),
                     duration(run.duration_ms(now)),
                     events(run.events),
-                    if run.is_manual() { " · by hand" } else { "" }
+                    if run.by_hand_run() { " · by hand" } else { "" }
                 ),
             )];
-            fields.push(field("next", due_time(state.next_run_at, now)));
+            fields.push(field("next", grid_clock(state.next_run_at, now)));
             Answer {
                 id: "succeeded",
                 headline: format!("`{name}` ran at {} and succeeded", clock(run.started, now)),
@@ -1770,10 +1773,10 @@ pub(crate) fn dev_line(name: &str, due: &Due) -> (String, Json) {
         ("schedule", Json::from(name)),
         ("outcome", Json::from(word)),
         ("detail", Json::from(detail.as_str())),
-        ("dueAt", instant(Some(due.due_slot))),
+        ("dueSlot", instant(Some(due.due_slot))),
         ("startedAt", instant(Some(due.started))),
         ("ms", Json::from(due.duration_ms())),
-        ("lateMs", Json::from(due.lateness_ms())),
+        ("delayMs", Json::from(due.delay_ms())),
         (
             "traceparent",
             due.trace.as_deref().map_or(Json::Null, Json::from),
@@ -1848,7 +1851,7 @@ mod tests {
         assert_eq!(detail, "bell_missing · unavailable");
         assert_eq!(
             json.to_line(),
-            "{\"event\":\"schedule\",\"schedule\":\"census\",\"outcome\":\"failed\",\"detail\":\"bell_missing · unavailable\",\"dueAt\":\"2026-10-19T10:03:48Z\",\"startedAt\":\"2026-10-19T10:03:50Z\",\"ms\":41,\"lateMs\":2000,\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\"}\n"
+            "{\"event\":\"schedule\",\"schedule\":\"census\",\"outcome\":\"failed\",\"detail\":\"bell_missing · unavailable\",\"dueSlot\":\"2026-10-19T10:03:48Z\",\"startedAt\":\"2026-10-19T10:03:50Z\",\"ms\":41,\"delayMs\":2000,\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\"}\n"
         );
     }
 
@@ -1861,8 +1864,8 @@ mod tests {
         assert_eq!(duration(2 * 3_600_000 + 5 * 60_000), "2 h 5 min");
         assert_eq!(clock(T, T), "10:03:50");
         assert_eq!(clock(T - DAY, T), "2026-10-18 10:03");
-        assert_eq!(due_time(T - 50_000, T), "10:03");
-        assert_eq!(due_time(T, T), "10:03:50");
+        assert_eq!(grid_clock(T - 50_000, T), "10:03");
+        assert_eq!(grid_clock(T, T), "10:03:50");
         assert_eq!(ago(T - 8_000, T), "8 s ago");
         assert_eq!(every(15 * 60_000), "15m");
         assert_eq!(every(86_400_000), "1d");

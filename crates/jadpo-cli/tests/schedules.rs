@@ -854,6 +854,8 @@ fn watched_project(name: &str) -> PathBuf {
     }
     let migrated = jadpo(&root, &["migrate", "new", "initial"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    let recorded = jadpo(&root, &["records", "update"]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
     root
 }
 
@@ -1213,7 +1215,7 @@ until it ends
     assert!(
         history
             .stdout
-            .contains("  runs      24 in the last 30 days · 1 failed · 1 skipped tick\n  took      median 0 ms · longest 5 min\n  late      median 0 ms · at most 15 min\n"),
+            .contains("  runs      24 in the last 30 days · 1 failed · 1 skipped tick\n  took      median 0 ms · longest 5 min\n  delay     median 0 ms · at most 15 min\n"),
         "{}",
         history.stdout
     );
@@ -1262,7 +1264,7 @@ until it ends
         listed.stdout
     );
     assert!(
-        listed.stdout.contains("▲ late since 15:15"),
+        listed.stdout.contains("▲ not run since 15:15"),
         "{}",
         listed.stdout
     );

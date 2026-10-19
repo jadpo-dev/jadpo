@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jadpo_std::schedule::SchedulePlan;
 
-use super::{Claimed, ENSURE, MANUAL, RUNNING, SKIPPED, run_claimed};
+use super::{BY_HAND, Claimed, ENSURE, RUNNING, SKIPPED, run_claimed};
 use crate::outbox::micros;
 use crate::runner::{self, RUN_LIMIT_MS};
 use crate::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlType, SqlValue, StoreError};
@@ -118,7 +118,7 @@ pub struct RunRecord {
     pub ended: Option<i64>,
     /// `running`, `succeeded`, `failed` or `skipped`.
     pub outcome: String,
-    /// Why a tick skipped it (`paused`, `lease_held`), or `manual` for a
+    /// Why a tick skipped it (`paused`, `lease_held`), or `by_hand` for a
     /// run an operator started.
     pub reason: Option<String>,
     pub code: Option<String>,
@@ -136,12 +136,12 @@ impl RunRecord {
         self.outcome == SKIPPED
     }
 
-    pub fn is_manual(&self) -> bool {
-        self.reason.as_deref() == Some(MANUAL)
+    pub fn by_hand_run(&self) -> bool {
+        self.reason.as_deref() == Some(BY_HAND)
     }
 
     /// How late it started after it was due.
-    pub fn lateness_ms(&self) -> i64 {
+    pub fn delay_ms(&self) -> i64 {
         self.started.saturating_sub(self.due).max(0)
     }
 
@@ -185,8 +185,8 @@ pub struct Metrics {
     pub skipped: u64,
     pub median_ms: Option<i64>,
     pub longest_ms: Option<i64>,
-    pub median_late_ms: Option<i64>,
-    pub latest_late_ms: Option<i64>,
+    pub median_delay_ms: Option<i64>,
+    pub most_delay_ms: Option<i64>,
 }
 
 /// An alert (area 12, "Watching schedules": "Alerts with no setup").
@@ -573,8 +573,8 @@ pub async fn metrics(database: &dyn Database, key: &str) -> Result<Metrics, Stor
         skipped: count(3),
         median_ms: int(row.get(4)),
         longest_ms: int(row.get(5)),
-        median_late_ms: int(row.get(6)),
-        latest_late_ms: int(row.get(7)),
+        median_delay_ms: int(row.get(6)),
+        most_delay_ms: int(row.get(7)),
     })
 }
 
@@ -642,7 +642,7 @@ pub enum RunNow {
 
 /// Runs `schedule` at `now`, outside the grid, as `jadpo schedules run`
 /// does: under its lease, paused or not, so only one run of it happens at
-/// a time; its record says an operator started it (`manual`), and its
+/// a time; its record says an operator started it (`by_hand`), and its
 /// next due time is left as it is.
 pub async fn run_now(
     executor: &dyn Executor,
@@ -698,7 +698,7 @@ pub async fn run_now(
         run,
         due_slot: now,
         lost,
-        reason: Some(MANUAL),
+        reason: Some(BY_HAND),
     };
     let (due, left) = run_claimed(executor, host, database, schedule, claimed, ctx, now).await;
     let deliveries = runner::run_deferred(executor, host, left).await;
