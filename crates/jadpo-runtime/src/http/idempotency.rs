@@ -74,8 +74,8 @@ pub(crate) fn key(request: &Request) -> Result<Option<String>, ()> {
     }
 }
 
-/// The request's digest, which a repeat must match: its route (`route
-/// POST /widgets/{name}`, the method and the path as declared), then what
+/// The request's digest, which a repeat must match: its route's key (the
+/// method and the path as declared, one per route), then what
 /// it says as the route reads it, each placeholder and its input (the
 /// query string, the headers it reads, the body), decoded. Every secret
 /// value is left out but for its kind, so whoever reads the keys table
