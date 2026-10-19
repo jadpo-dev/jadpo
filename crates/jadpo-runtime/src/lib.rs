@@ -34,6 +34,10 @@
 //!   route table, its placeholders and input decoded, what the route runs
 //!   run, and the output or the failure envelope written, with the default
 //!   rate limits ([`RateLimits`]).
+//! - [`effects`]: the one entry point for operations with effects
+//!   (chunk 7.0b): `clock.now`, `random`, `crypto` with its key,
+//!   `json.read` and `json.write` with the plan's codec, and `emit`, which
+//!   both executors call.
 //! - [`runner`]: the runner (chunk 6.1a), which drives an executor for
 //!   work no request waits on, as the system ([`System`]): deferred until
 //!   after a response, while a route waits for it, or once per item of a
@@ -63,6 +67,7 @@ mod boundary;
 pub mod budget;
 pub mod config;
 mod ctx;
+pub mod effects;
 mod env;
 mod executor;
 mod failure;
