@@ -1858,13 +1858,20 @@ chunks below, taken before Phase 6.
   read (by count and rule, never a value), or rewrites them with an
   optional `backfill:`; a structured backfill is worked out in Jadpo and
   written through the codec, as area 5's "Chosen in chunk 5.9c" records.
-- [ ] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
+- [x] **5.9d Field rules on read; index reasons** `opus · high` (area 5,
   "A field's rules on read", decided 2026-10-19): every stored field
   checked against its type's rules when read, a broken one a defect naming
   the rule and never the value, on both executors and on live PostgreSQL;
   and a derived index's recorded reason no longer part of what the
   migration diff compares, so adding a query that sorts first never drops
-  and recreates an identical index (found in chunk 5.5u8).
+  and recreates an identical index (found in chunk 5.5u8). Built: each
+  selected column carries its field's validator in the plan, and the
+  runtime's one read path checks every stored value with it (queries,
+  `get`, includes, aggregate groups and `min`/`max`, nearest and layer
+  queries, the record a write gives back, backfill reads), a defect naming
+  the field and the rule; the diff and the out-of-date check compare an
+  index by what builds it, its reason recorded by the next migration.
+  Choices in area 5's "Chosen in chunk 5.9d".
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and

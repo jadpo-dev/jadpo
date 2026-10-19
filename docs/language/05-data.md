@@ -2847,6 +2847,52 @@ JSON, each the most conservative reading:
   result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
   rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
 
+### Chosen in chunk 5.9d
+
+What the decision "A field's rules on read" left open, and a derived
+index's reason, each the most conservative reading:
+
+- **One check, the write's.** A stored value is checked on read by its
+  field's validator, the one a write and a backfill check it by: the
+  field's own rules, then its type's along its chain, a built-in type's
+  own check (`Email`, `Url`) and a standard object's rules across its
+  parts. Nothing is checked twice by a second copy of the rules, and a
+  value a write would keep is never refused on read.
+- **Every read that makes a stored value.** A query's records, `get`, a
+  parent's, a child's and children's includes, a nearest query's records,
+  a map layer's properties and geometry, a `geo.` condition's recheck, the
+  record a `create` or an `update` gives back, every stored field it
+  holds, and each field a backfill worked out in Jadpo reads. An
+  aggregate makes a stored value only for a group by a field and for
+  `min` and `max`, which are checked; a count, a sum, an average and a
+  time bucket are worked out, and a sum past a field's `max:` is no
+  defect. A field kept as JSON is read by its codec with its type's and
+  the field's rules (chunk 5.9b), not again; a field a migration retires
+  has no declaration left, and a backfill reads it as its built-in type
+  alone.
+- **The defect.** `` a stored `Tool.stars` that breaks `max: 5` ``: the
+  field and the rule as written, never the value, so the fault behind a
+  500 or a stopped backfill names what to fix and leaks nothing; `none`
+  breaks no rule. A backfill stops as it does on any defect, naming the
+  record's key (`it read a stored …`).
+- **Where it runs.** In the runtime's one read path
+  (`jadpo_runtime::stored_value`), which both executors call; the plan
+  gives each selected column its field's validator (`Select::held`,
+  `Returned::held`).
+- **`scale:` can't break on read.** A decimal with `scale:` is kept in a
+  `numeric(p, s)` column, which rounds anything written into it to its
+  places, so the check holds already; ranges, lengths and patterns are the
+  rules a row written around Jadpo breaks. No `CHECK` constraint is added
+  in this chunk.
+- **An index's reason isn't what defines it.** A derived index records
+  why it exists, the first query alphabetically that needs it, but the
+  migration diff compares only its table, columns or expression, kind,
+  partial condition, operator class, code-point columns and settings. A
+  query that sorts first needs no migration, and `jadpo check` and
+  `jadpo migrate new` find nothing to do; the next migration written for
+  another change records the new reason in its snapshot, with no step for
+  the index. Snapshots keep the same format, so every existing one reads.
+
 ### Carried to later areas
 
 | Item | Area | Status |
@@ -3006,4 +3052,4 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
 | Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b", what working one out in Jadpo left open is "Chosen in chunk 5.6b2", and the Phase 5 review's fixes (constructions rounded as the runtime rounds, the digest's types, what it may read, every backfill filled before any column is required, a last step that proves a check before `SET NOT NULL`) are "Chosen in chunk 5.8b" | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |
-| A field's rules on read (after chunk 5.8c) | A stored value is checked against every rule its field's type has when it is read, not only a standard type's rules across its parts: a row written around Jadpo that breaks one is a defect naming the rule and never the value, as 5.8c and 5.9b do; `CHECK` constraints may follow (Richard, as recommended) | 2026-10-19 |
+| A field's rules on read (after chunk 5.8c) | A stored value is checked against every rule its field's type has when it is read, not only a standard type's rules across its parts: a row written around Jadpo that breaks one is a defect naming the rule and never the value, as 5.8c and 5.9b do; `CHECK` constraints may follow (Richard, as recommended). Built in chunk 5.9d; its choices are "Chosen in chunk 5.9d" | 2026-10-19 |
