@@ -343,6 +343,18 @@ code breaks a named rule, `rings_valid`, mapped like any cross-field rule
 over the edges); a country's outline of 10,000 points takes about 70 ms
 (measured in chunk 5.5u3).
 
+### Altitudes are all or nothing
+
+Every position in one geometry has an altitude, or none does (Richard,
+2026-10-19). WKT can't write a mix and PostGIS refuses one ("can not mix
+dimensionality in a geometry", verified in chunk 5.5u4), so a geometry
+that mixes them couldn't be stored or exchanged. A mixed geometry read
+from GeoJSON or WKT is refused, `format` at the first position of the
+other size, and one built in code breaks a named rule, `altitudes_agree`,
+mapped like `rings_valid`. A `Point` has one position, so it always
+agrees; a multi-geometry's parts must agree with each other. Built in
+chunk 5.5u7.
+
 A polygon built from values is attempted:
 
 ```jadpo check project=geo-shapes file=patches.jadpo
@@ -1158,6 +1170,8 @@ test "what isn't an outline is refused" {
 | Point-only distance | `geo.distance` and `within(distance:)` between points only for now (Richard, as recommended, question 10) | 2026-10-18 |
 | Box filter | On `Point` fields only, through an index on the column cast to `geometry` (Richard, as recommended, question 11) | 2026-10-18 |
 | The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written (Richard, as recommended) | 2026-10-18 |
+| Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built (Richard, as recommended, after chunk 5.5u4) | 2026-10-19 |
+| A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7; Richard, as recommended, after chunk 5.5u6) | 2026-10-19 |
 
 ### Chosen in chunk 5.5u2
 
@@ -1560,8 +1574,8 @@ test "what isn't an outline is refused" {
   `encoding.from_hex`'s does; the place is for the tests and for a later
   failure that receives it.
 - **Positions with and without an altitude in one geometry,**
-  *provisional, pending Richard's answer on whether such a geometry is
-  valid at all:* WKT can't write one and PostGIS refuses it ("can not
+  *since decided: all or nothing ("Altitudes are all or nothing", built
+  in 5.5u7):* WKT can't write one and PostGIS refuses it ("can not
   mix dimensionality in a geometry", verified), so reading WKT that mixes
   them is `malformed`, at the first position of the other size, and
   `geo.to_wkt` of a geometry built in code that mixes them is a fault,
@@ -1763,4 +1777,4 @@ Five chunks, each one session, placed after 5.5u on the roadmap:
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done
   when a feature collection round-trips through JSON and a WKT polygon
   through PostGIS unchanged. *Built:* as "Chosen in chunk 5.5u6" records;
-  mixing altitudes in one geometry stays provisional, pending Richard.
+  mixing altitudes in one geometry was decided afterwards (all or nothing, 5.5u7).
