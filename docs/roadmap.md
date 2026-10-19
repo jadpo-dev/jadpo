@@ -1749,7 +1749,7 @@ chunks below, taken before Phase 6.
   entry is `<key>` in a problem's path; `crypto.encrypt`'s nonce is
   secret randomness (area 19); a host without a clock answers 500 and
   `jadpo dev` won't start.
-- [ ] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
+- [x] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
   xhigh`: a scaled construction in a backfill run by `UPDATE` rounded as
   the runtime rounds; the backfill digest covering every type its bodies
   reach and the toolchain version, so a resumed backfill can't mix values;
@@ -1759,7 +1759,20 @@ chunks below, taken before Phase 6.
   as is a field the same migration adds; the last step locking writes and
   never reads (`CHECK … NOT VALID`, `VALIDATE`, then `SET NOT NULL`), as
   area 5 says; a constant's `scale:` rounding as area 2 says. Done when
-  each review reproduction passes on live PostgreSQL.
+  each review reproduction passes on live PostgreSQL. Built: a
+  construction by `UPDATE` keeps a fixed scale through one shared form
+  (`form::kept_at_scale`, half to even, then `numeric(38, scale)`), and a
+  constant's construction rounds before its rules; the digest adds every
+  type reached, with its chain, fields, variants and rules, and the
+  toolchain version; a setting reached through a function, a `crypto`
+  key included, and a field the migration adds are
+  `migration.backfill_outside_row`, with examples; a section with batches
+  fills every backfill first, then one step locks writes, fills the rows
+  written meanwhile and adds `NOT VALID` checks, a `-- step:` proves them,
+  and a last requires each column without a scan and drops its check.
+  `backfills.rs` has a live test per finding; reads in Jadpo share
+  `Column::of_builtin` with queries, so a percentage can be filled. The
+  choices are area 5's and area 2's "Chosen in chunk 5.8b".
 - [ ] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
   query result type with cross-field rules checked row by row as it is
   read, or refused; `ai.distance` in `where:` never keeping a NaN or

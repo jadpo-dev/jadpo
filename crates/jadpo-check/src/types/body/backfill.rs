@@ -17,9 +17,11 @@ impl Body<'_> {
             ty,
             value,
             retired,
+            added,
         } = target;
         self.stored = Some(entity);
         self.retired = retired;
+        self.added = added;
         self.result = ty.clone();
         self.check(&value, &ty);
         // `attempt` passes a failure on, and a backfill has nowhere to
@@ -83,19 +85,24 @@ impl Body<'_> {
     /// entity's stored field, or a setting.
     pub(super) fn backfill_outside_row(&mut self, span: Span, written: &str, label: &str) {
         let key = self.flow.name.clone();
+        self.out.push(crate::data::backfill::outside_row(
+            &key, written, span, label,
+        ));
+    }
+
+    /// The error for a backfill that reads a field the same migration
+    /// adds, which no stored record has a value for yet (chunk 5.8b).
+    pub(super) fn backfill_reads_added(&mut self, span: Span, written: &str) {
+        let key = self.flow.name.clone();
         let entity = key.split('.').next().unwrap_or_default().to_string();
         self.out.push(
-            Diagnostic::new(
-                &rule::MIGRATION_BACKFILL_OUTSIDE_ROW,
-                format!("The backfill for `{key}` can't read `{written}`"),
-            )
-            .at(span, label)
-            .reason(format!(
-                "A backfill works each `{entity}` record's value out from that record's own fields, constants and pure functions, so it gives the same value whenever and wherever the migration runs."
-            ))
-            .next(format!(
-                "Work the value out from `{entity}`'s own fields, or a constant"
-            )),
+            crate::data::backfill::outside_row(&key, written, span, "a field this migration adds")
+                .reason(format!(
+                    "`{written}` is added by this same migration, so no `{entity}` record already stored has a value for it while the backfill runs."
+                ))
+                .next(format!(
+                    "Work the value out from the fields `{entity}` had before this migration, or a constant"
+                )),
         );
     }
 
