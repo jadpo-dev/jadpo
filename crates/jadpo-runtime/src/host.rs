@@ -155,12 +155,18 @@ pub trait Database {
 }
 
 /// An event an action emitted, waiting in its outbox until the action
-/// commits (area 12).
+/// commits (area 12), when it is written to the outbox with a delivery
+/// record for each of its subscribers (chunk 6.1b).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
     /// The event type's identity key.
     pub key: String,
     pub value: Value,
+    /// Its payload, its type's contract JSON (area 12, "A payload is the
+    /// contract's JSON"), as the outbox keeps it.
+    pub payload: String,
+    /// The identity keys of its subscribers, each delivered to on its own.
+    pub subscribers: Vec<String>,
 }
 
 /// What is kept of a passkey for its ceremonies (area 8, "Passkeys"):

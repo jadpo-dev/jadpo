@@ -58,6 +58,13 @@ pub trait ActionBody<'p> {
     fn site(&self) -> u32 {
         crate::Frame::ENTRY
     }
+
+    /// The store its events are kept in when it began no transaction: the
+    /// one it writes, or the one `events: { store: }` names, as its plan
+    /// says (area 12, chunk 6.1b).
+    fn outbox(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Runs `body` once, its gate checked first, so a caller the gate refuses
@@ -118,13 +125,16 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             isolation,
             ..Default::default()
         });
-        let outcome = gated(ctx, body).await;
+        let mut outcome = gated(ctx, body).await;
+        if matches!(outcome, Outcome::Value(_)) {
+            outcome = sealed(ctx, body.outbox(), outcome).await;
+        }
         let boundary = ctx.boundary.take().unwrap_or_default();
         let succeeded = matches!(outcome, Outcome::Value(_));
         if hold && succeeded && !boundary.concurrent_change {
             ctx.held = Some(crate::ctx::Held {
                 transaction: boundary.transaction,
-                outbox: boundary.outbox,
+                deliveries: boundary.sealed,
                 session: boundary.session,
                 issued: boundary.issued,
             });
@@ -153,7 +163,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         };
         match ended {
             Ended::Committed => {
-                committed(ctx, boundary.outbox);
+                committed(ctx, boundary.sealed);
                 return outcome;
             }
             Ended::RolledBack => return outcome,
@@ -168,12 +178,109 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     }
 }
 
-/// Leaves what a committed action emitted for the runner, to deliver
-/// after the response (area 12; chunk 6.1a).
-pub(crate) fn committed(ctx: &mut Ctx<'_>, outbox: Vec<crate::Event>) {
-    if !outbox.is_empty() {
-        ctx.defer(crate::runner::Deferred::Events(outbox));
+/// Leaves the deliveries of what a committed action emitted for the
+/// runner, to run after the response (area 12; chunks 6.1a and 6.1b).
+pub(crate) fn committed(ctx: &mut Ctx<'_>, deliveries: Vec<crate::outbox::Delivery>) {
+    if !deliveries.is_empty() {
+        ctx.defer(crate::runner::Deferred::Deliveries(deliveries));
     }
+}
+
+/// `outcome`, a body's success, once what commits with its writes is
+/// written in its transaction ([`seal`]); the failure the action ends in
+/// when the store couldn't keep it.
+async fn sealed(ctx: &mut Ctx<'_>, outbox: Option<&str>, outcome: Outcome) -> Outcome {
+    match seal(ctx, outbox).await {
+        Ok(()) => outcome,
+        Err(StoreError::ConcurrentChange) => {
+            ctx.concurrent_change();
+            outcome
+        }
+        Err(StoreError::Fault(reason)) => Outcome::Fault(ctx.fault(
+            crate::FaultKind::Defect(reason),
+            crate::Frame::ENTRY,
+        )),
+        Err(_) => Outcome::Failed(Box::new(Failure {
+            frames: ctx.frames(),
+            ..unavailable()
+        })),
+    }
+}
+
+/// Writes what commits with a succeeding body's writes, in its
+/// transaction (area 12, chunk 6.1b): each event it emitted in the
+/// outbox, with a delivery record for each subscriber, in the store its
+/// transaction is in, or, having begun none, the store `outbox` names;
+/// and for a subscriber's delivery, its handled record in the store its
+/// action wrote.
+pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), StoreError> {
+    let handled = ctx.handled.take();
+    let Some(boundary) = ctx.boundary.as_mut() else {
+        return Ok(());
+    };
+    let events = std::mem::take(&mut boundary.outbox);
+    let open = boundary.store.clone();
+    if !events.is_empty() {
+        let Some(store) = open.clone().or_else(|| outbox.map(str::to_string)) else {
+            return Err(StoreError::Fault(
+                "an action emitted events with no store to keep them in".into(),
+            ));
+        };
+        let mut sealed = crate::outbox::Sealed {
+            outbox: Vec::with_capacity(events.len()),
+            deliveries: Vec::new(),
+        };
+        let emitted_at = ctx.now();
+        let trace = ctx.trace();
+        let depth = ctx.chain;
+        for event in events {
+            let Some(id) = ctx.new_id() else {
+                return Err(StoreError::Fault(
+                    "no random bytes for an event's identity".into(),
+                ));
+            };
+            for subscriber in &event.subscribers {
+                let Some(delivery) = ctx.new_id() else {
+                    return Err(StoreError::Fault(
+                        "no random bytes for a delivery's identity".into(),
+                    ));
+                };
+                sealed.deliveries.push(crate::outbox::Delivery {
+                    store: store.clone(),
+                    id: delivery,
+                    outbox: id,
+                    subscriber: subscriber.clone(),
+                    event: event.key.clone(),
+                    value: event.value.clone(),
+                    emitted_at,
+                    trace,
+                    depth,
+                });
+            }
+            sealed.outbox.push((id, event.key, event.payload));
+        }
+        let transaction = ctx.transaction(&store).await?;
+        crate::outbox::write(transaction, &sealed, emitted_at, trace, depth).await?;
+        if let Some(boundary) = ctx.boundary.as_mut() {
+            boundary.sealed = sealed.deliveries;
+        }
+    }
+    if let Some(handled) = handled
+        && open.as_deref() == Some(handled.store.as_str())
+    {
+        let now = ctx.now();
+        let transaction = ctx.transaction(&handled.store).await?;
+        transaction
+            .execute(
+                crate::outbox::INSERT_HANDLED,
+                &[
+                    crate::SqlValue::Uuid(handled.id),
+                    crate::outbox::micros(now),
+                ],
+            )
+            .await?;
+    }
+    Ok(())
 }
 
 /// Commits what a held boundary left open, first running `then`, one
@@ -189,7 +296,7 @@ pub async fn commit_held(
 ) -> Result<(), StoreError> {
     let crate::ctx::Held {
         transaction,
-        outbox,
+        deliveries,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
@@ -218,13 +325,13 @@ pub async fn commit_held(
                 lapsed(changed.map(|rows| rows.len() as u64))?;
             }
         }
-        committed(ctx, outbox);
+        committed(ctx, deliveries);
         return Ok(());
     }
     if let Some(open) = transaction {
         open.commit().await?;
     }
-    committed(ctx, outbox);
+    committed(ctx, deliveries);
     Ok(())
 }
 
@@ -456,14 +563,14 @@ mod tests {
         /// action leaves any (chunk 6.1a).
         fn deferred(&self, ctx: &mut Ctx<'_>) {
             for work in ctx.take_deferred() {
-                let crate::runner::Deferred::Events(events) = work else {
+                let crate::runner::Deferred::Deliveries(deliveries) = work else {
                     continue;
                 };
-                for event in events {
+                for delivery in deliveries {
                     self.log
                         .lines
                         .borrow_mut()
-                        .push(format!("deliver {}", event.key));
+                        .push(format!("deliver {}", delivery.event));
                 }
             }
         }
@@ -512,6 +619,10 @@ mod tests {
             self.isolation
         }
 
+        fn outbox(&self) -> Option<&str> {
+            Some("main")
+        }
+
         fn caught(&self) -> bool {
             self.caught
         }
@@ -527,9 +638,11 @@ mod tests {
                 if self.writes && ctx.transaction("main").await.is_err() {
                     return Outcome::Value(Value::Unit);
                 }
-                ctx.emit(Event {
+                let _ = ctx.emit(Event {
                     key: format!("type Ran{}", self.runs),
                     value: Value::Unit,
+                    payload: "null".into(),
+                    subscribers: vec!["subscriber s".into()],
                 });
                 if let Some(effect) = self.session.clone() {
                     ctx.session(effect);
@@ -583,8 +696,8 @@ mod tests {
         run(&host, &mut reading_nothing);
         assert_eq!(
             host.lines(),
-            ["deliver type Ran1"],
-            "no store, no transaction"
+            ["begin", "commit", "deliver type Ran1"],
+            "no store of its own: its events begin one in its outbox's store"
         );
     }
 

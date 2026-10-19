@@ -452,6 +452,11 @@ pub fn system_table(name: &str) -> Table {
             // writes it; a migration adds it to a table that may hold rows
             // already, so it may be `NULL`, as a passkey's may.
             add("encoding", "smallint", true);
+            // How many events led to it from the request that set the
+            // chain off, which stops a loop at 16 (area 12, "Limits";
+            // chunk 6.1b). Added to a table that may hold rows, so it may
+            // be `NULL`, read as 0.
+            add("depth", "integer", true);
             indexes.insert(
                 object_name(&[&table, "emitted_at"], "idx"),
                 jadpo_graph::schema::Index {
@@ -471,7 +476,8 @@ pub fn system_table(name: &str) -> Table {
             add("attempts", "integer", false);
             add("next_attempt_at", "timestamptz(3)", true);
             add("last_failure", "jsonb", true);
-            add("last_tried_at", "timestamptz(3)", false);
+            // `NULL` until it is first tried (chunk 6.1b).
+            add("last_tried_at", "timestamptz(3)", true);
             unique.insert(
                 object_name(&[&table, "outbox_id", "subscriber"], "key"),
                 jadpo_graph::schema::Unique {
@@ -497,6 +503,15 @@ pub fn system_table(name: &str) -> Table {
                     method: None,
                 },
             );
+        }
+        "handled_deliveries" => {
+            // A subscriber's handled record (area 12, "Outbox placement,
+            // settled"; chunk 6.1b): in the store its action writes,
+            // committed with its writes, so a repeated delivery finds it
+            // and does nothing. Keyed by the delivery's `id`, which the
+            // outbox's store holds: no reference across stores.
+            add("id", "uuid", false);
+            add("handled_at", "timestamptz(3)", false);
         }
         "sessions" => {
             // Browser sessions and API tokens (area 8): each found by its

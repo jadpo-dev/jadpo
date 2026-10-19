@@ -141,7 +141,7 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
                         found(Loads::Guarded(transition.name().to_string()), &mut loading);
                     }
                 }
-                Fact::Function(_) | Fact::Session(_) => {}
+                Fact::Function(_) | Fact::Session(_) | Fact::Emits(_) => {}
             }
         }
         out.insert(key, loading);

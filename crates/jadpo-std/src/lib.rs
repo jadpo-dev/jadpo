@@ -74,6 +74,7 @@ pub mod read;
 mod rules;
 pub mod sphere;
 pub mod standard;
+pub mod subscriber;
 mod time;
 pub mod translation;
 pub mod types;

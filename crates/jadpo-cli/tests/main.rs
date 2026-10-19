@@ -16,6 +16,7 @@ mod client_address;
 mod config;
 mod crate_graph;
 mod declines;
+mod events;
 mod decode_problems;
 mod fix;
 mod fmt;

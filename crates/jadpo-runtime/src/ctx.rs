@@ -45,6 +45,10 @@ pub(crate) struct Boundary {
     pub store: Option<String>,
     /// What the action emitted, for after it commits.
     pub outbox: Vec<Event>,
+    /// Its events' deliveries, once written to the outbox in its
+    /// transaction as it commits (chunk 6.1b), for the runner after it
+    /// commits.
+    pub sealed: Vec<crate::outbox::Delivery>,
     /// A store operation found another transaction had changed what this
     /// one read, so the body is run again.
     pub concurrent_change: bool,
@@ -101,7 +105,9 @@ pub struct System {
 pub struct Held {
     /// `None` when the body did no store operation.
     pub transaction: Option<Box<dyn Transaction>>,
-    pub outbox: Vec<Event>,
+    /// The deliveries of what it emitted, written to the outbox in
+    /// `transaction`, for the runner once it commits (chunk 6.1b).
+    pub deliveries: Vec<crate::outbox::Delivery>,
     /// What the body did to the request's session.
     pub session: Option<SessionEffect>,
     /// Whether the body issued an API token or a service key.
@@ -112,11 +118,31 @@ impl fmt::Debug for Held {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Held")
             .field("transaction", &self.transaction.is_some())
-            .field("outbox", &self.outbox)
+            .field("deliveries", &self.deliveries)
             .field("session", &self.session)
             .field("issued", &self.issued)
             .finish()
     }
+}
+
+/// A subscriber's delivery being run: the handled record its action
+/// commits with its writes, in the store it writes (area 12, chunk 6.1b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Handled {
+    pub store: String,
+    /// The delivery's `id`.
+    pub id: [u8; 16],
+}
+
+/// Why an `emit` wasn't kept (area 12, "Limits and runtime faults").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EmitRefused {
+    /// No action is running.
+    OutsideAction,
+    /// The action has emitted [`crate::outbox::MAX_EVENTS`] already.
+    TooMany,
+    /// The event's payload is past [`crate::outbox::MAX_EVENT_BYTES`].
+    TooLarge,
 }
 
 /// What happens to the random bytes an invocation is given (area 17).
@@ -165,6 +191,9 @@ pub struct Ctx<'p> {
     pub(crate) unpoliced: bool,
     /// How many random values it has made from its seed.
     draws: u64,
+    /// How many trace and span ids it has worked out without the host's
+    /// randomness.
+    spans: u64,
     /// The random bytes a recorded run keeps, or a replayed run gives back
     /// (area 17, "Replaying a production request").
     tape: Tape,
@@ -174,6 +203,15 @@ pub struct Ctx<'p> {
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
+    /// The trace context of the work under way (area 12, question 17):
+    /// a request's, or the event's a delivery continues.
+    trace: Option<crate::outbox::Trace>,
+    /// How many events led to the work under way from the request that
+    /// set the chain off: 0 for a request (area 12, "Limits").
+    pub(crate) chain: u32,
+    /// The subscriber's delivery being run, whose handled record the
+    /// outermost action commits.
+    pub(crate) handled: Option<Handled>,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -209,10 +247,73 @@ impl<'p> Ctx<'p> {
             client: None,
             unpoliced: false,
             draws: 0,
+            spans: 0,
             tape: Tape::Off,
             deadline: None,
             settings: Vec::new(),
+            trace: None,
+            chain: 0,
+            handled: None,
         }
+    }
+
+    /// The trace context of the work under way, when it has one.
+    pub fn trace(&self) -> Option<crate::outbox::Trace> {
+        self.trace
+    }
+
+    /// Sets the trace context of the work under way.
+    pub fn set_trace(&mut self, trace: Option<crate::outbox::Trace>) {
+        self.trace = trace;
+    }
+
+    /// How many events led to the work under way.
+    pub fn chain(&self) -> u32 {
+        self.chain
+    }
+
+    /// Bytes for a new trace or span id: the host's, or worked out from
+    /// the seed and the clock, without drawing on what `random` gives, so
+    /// tracing never changes a test's values (area 13).
+    pub fn trace_bytes(&mut self, out: &mut [u8]) {
+        if self.host.random(out) {
+            return;
+        }
+        let mut state = self
+            .env
+            .seed
+            .unwrap_or(0)
+            .wrapping_add(self.env.clock.now() as u64)
+            .wrapping_add(u64::from(self.chain).wrapping_mul(0x2545_F491_4F6C_DD1D))
+            .wrapping_add(self.spans.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        self.spans += 1;
+        for chunk in out.chunks_mut(8) {
+            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^= z >> 31;
+            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
+                *to = from;
+            }
+        }
+    }
+
+    /// A new trace, for a request that brings none.
+    pub fn new_trace(&mut self) -> crate::outbox::Trace {
+        let mut bytes = [0u8; 24];
+        self.trace_bytes(&mut bytes);
+        crate::outbox::Trace::from_bytes(bytes)
+    }
+
+    /// A new span of `trace`, for work it continues.
+    pub fn new_span(&mut self, trace: crate::outbox::Trace) -> crate::outbox::Trace {
+        let mut bytes = [0u8; 8];
+        self.trace_bytes(&mut bytes);
+        if bytes == [0; 8] {
+            bytes[7] = 1;
+        }
+        trace.child(bytes)
     }
 
     /// The signed-in caller of the request being answered, when there is
@@ -746,16 +847,21 @@ impl<'p> Ctx<'p> {
         Some(uuid_v7(self.env.clock.now(), a, b))
     }
 
-    /// Queues `event` in the running action's outbox, delivered once it
-    /// commits (area 12); `false` outside an action.
-    pub fn emit(&mut self, event: Event) -> bool {
-        match &mut self.boundary {
-            Some(boundary) => {
-                boundary.outbox.push(event);
-                true
-            }
-            None => false,
+    /// Queues `event` in the running action's outbox, written to it as
+    /// the action commits and delivered once it has (area 12); refused
+    /// outside an action, and past the limits of one action's events.
+    pub fn emit(&mut self, event: Event) -> Result<(), EmitRefused> {
+        let Some(boundary) = &mut self.boundary else {
+            return Err(EmitRefused::OutsideAction);
+        };
+        if boundary.outbox.len() >= crate::outbox::MAX_EVENTS {
+            return Err(EmitRefused::TooMany);
         }
+        if event.payload.len() > crate::outbox::MAX_EVENT_BYTES {
+            return Err(EmitRefused::TooLarge);
+        }
+        boundary.outbox.push(event);
+        Ok(())
     }
 
     /// Asks the next action that opens a boundary of its own not to commit

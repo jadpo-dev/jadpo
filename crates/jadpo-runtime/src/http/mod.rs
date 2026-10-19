@@ -328,6 +328,16 @@ async fn answer_request(
     // A request is never the system, whatever context it is answered in.
     ctx.system = None;
     ctx.set_client(app.client.of(request));
+    // Its trace continues the caller's `traceparent`, or starts one, so
+    // what it emits carries it to each subscriber (area 12, question 17).
+    let trace = match request
+        .header("traceparent")
+        .and_then(crate::outbox::Trace::parse)
+    {
+        Some(parent) => ctx.new_span(parent),
+        None => ctx.new_trace(),
+    };
+    ctx.set_trace(Some(trace));
     let mut response = respond(app, executor, ctx, request, request_id, ready).await;
     response.client = ctx.client().map(str::to_string);
     response
