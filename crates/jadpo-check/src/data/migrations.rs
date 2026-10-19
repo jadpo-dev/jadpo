@@ -1404,7 +1404,7 @@ fn computed_problems(
         )
         .at(span.clone(), "no SQL form")
         .reason(format!(
-            "Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads and writes values held in one column, and `{key}` or a field it reads is held in several columns or as JSON."
+            "Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads values held in one column, and fills those or a structured value held as JSON, and `{key}` is held in several columns or reads a field held so or as JSON."
         ))
         .next(format!(
             "Work `{key}`'s value out with operators, `if`, `match` and standard operations that have a SQL form for now"

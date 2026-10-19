@@ -198,6 +198,13 @@ pub enum MigrateError {
         name: String,
         field: String,
     },
+    /// `name` reads the stored values of the structured field `field` with
+    /// its type as the project's code declares it, rows need it, and
+    /// nothing given can read them (chunk 5.9c).
+    Unchecked {
+        name: String,
+        field: String,
+    },
     /// Working out `name`'s backfill of `field` in Jadpo stopped at the
     /// row whose key is `record`, for `reason` (chunk 5.6b2): its batch
     /// rolled back.
@@ -832,7 +839,7 @@ fn unread(
         backfills
             .unreadable(migration, field, values)
             .map_err(|unworked| match unworked {
-                Unworked::Unavailable => MigrateError::Unworked {
+                Unworked::Unavailable => MigrateError::Unchecked {
                     name: migration.to_string(),
                     field: field.to_string(),
                 },

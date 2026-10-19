@@ -112,9 +112,11 @@ POSTGRES = [
     # The driver, the test database's template and copies.
     ('live PostgreSQL', [('jadpo-test', 'postgres')], ['--nocapture']),
     # `jadpo migrate apply` and `status`; computed backfills, in batches,
-    # resumed, and worked out in Jadpo where SQL can't (area 5).
+    # resumed, and worked out in Jadpo where SQL can't (area 5); stored
+    # structured values checked or rewritten when their type reads less
+    # (chunk 5.9c).
     ('live PostgreSQL: jadpo migrate and backfills',
-     [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills')], []),
+     [('jadpo-cli', 'migrate'), ('jadpo-cli', 'backfills'), ('jadpo-cli', 'json_migrations')], []),
     # Every standard type stored and read back, its column laid out as its
     # entry says, and each literal in SQL the value the runtime binds
     # (area 19, chunks 5.5w and 5.5w3b); an application's structured

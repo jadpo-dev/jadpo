@@ -1333,4 +1333,85 @@ mod tests {
         let sql = migration_sql(&wider, &indexed, &|_| None).expect("sql");
         assert_eq!(sql.summary(), vec!["create index"]);
     }
+
+    /// `Todo` with a `label` stored as JSON, a `Text` of at most `max`
+    /// characters, or recorded without what it reads (before chunk 5.9c).
+    fn labelled(max: Option<u64>) -> Schema {
+        let mut out = schema(&[
+            ("id", "uuid", false, false),
+            ("label", "jsonb", false, false),
+        ]);
+        let column = out
+            .stores
+            .get_mut("main")
+            .and_then(|s| s.tables.get_mut("todo"))
+            .and_then(|t| t.columns.get_mut("label"))
+            .expect("label");
+        column.allows = Some(Allows {
+            json: max.map(|max| crate::stored_json::Reads {
+                shape: crate::stored_json::Shape::Value(crate::stored_json::Scalar {
+                    ty: "Text".into(),
+                    max_length: Some(max),
+                    ..Default::default()
+                }),
+                types: BTreeMap::new(),
+            }),
+            ..Allows::default()
+        });
+        out
+    }
+
+    #[test]
+    fn a_json_column_that_reads_less_is_checked_first_or_rewritten() {
+        let before = labelled(Some(20));
+        // Wider: recorded, with nothing to run.
+        let wider = labelled(Some(40));
+        assert!(decisions_needed(&before, &wider).is_empty());
+        assert_eq!(
+            migration_sql(&before, &wider, &|_| None)
+                .expect("sql")
+                .count(),
+            0
+        );
+        // Narrower: a decision that may be left out, and a check first.
+        let narrower = labelled(Some(5));
+        let needed = decisions_needed(&before, &narrower);
+        assert_eq!(needed.len(), 1);
+        assert_eq!(needed[0].kind, NeededKind::Unreadable);
+        assert!(needed[0].kind.optional());
+        let sql = migration_sql(&before, &narrower, &|_| None).expect("sql");
+        assert_eq!(
+            sql.summary(),
+            vec!["check stored values in batches in Jadpo"]
+        );
+        let document = sql.to_document("20261101T0900_shorten");
+        assert!(
+            document.contains("-- store: main\n-- check Todo.label: in Jadpo, 1000 rows a batch"),
+            "{document}"
+        );
+        // With a backfill, a rewrite instead.
+        let decided = |_: &Needed| {
+            Some(Decided::InJadpo {
+                reads: Vec::new(),
+                code: "abc".into(),
+            })
+        };
+        let sql = migration_sql(&before, &narrower, &decided).expect("sql");
+        assert_eq!(
+            sql.summary(),
+            vec!["rewrite values no longer read in batches in Jadpo"]
+        );
+        let document = sql.to_document("20261101T0900_shorten");
+        assert!(
+            document.contains("-- rewrite Todo.label: in Jadpo"),
+            "{document}"
+        );
+        assert!(document.contains("$2::jsonb[]"), "{document}");
+        // A snapshot that recorded nothing of what it read: checked.
+        let unrecorded = labelled(None);
+        assert_eq!(
+            decisions_needed(&unrecorded, &wider)[0].kind,
+            NeededKind::Unreadable
+        );
+    }
 }

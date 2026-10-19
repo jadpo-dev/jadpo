@@ -1054,9 +1054,10 @@ fn apply(call: &Call) -> Reply {
         Ok(Ok(Ok((ran, filled)))) => applied(&store, &ran, &filled),
         // The latest migration's backfill can't run while the code doesn't
         // check: its errors are what to fix.
-        Ok(Ok(Err(jadpo_runtime::MigrateError::Unworked { name, .. })))
-            if Some(&name) == latest.as_ref() && !code_errors.is_empty() =>
-        {
+        Ok(Ok(Err(
+            jadpo_runtime::MigrateError::Unworked { name, .. }
+            | jadpo_runtime::MigrateError::Unchecked { name, .. },
+        ))) if Some(&name) == latest.as_ref() && !code_errors.is_empty() => {
             blocked(&loaded, &cwd, code_errors, "migrate apply stopped")
         }
         Ok(Ok(Err(error))) => Reply::failed(migrate_failed(&store, error)),
@@ -1466,6 +1467,19 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
                 "Write `{field}: {{ backfill: <value> }}` in `{}/{name}/changes.jadpo` to rewrite them, run `jadpo migrate new`, then apply again",
                 records::FOLDER
             ),
+            Decider::Human,
+        ),
+        // Only the latest migration is checked against the code whose
+        // types read a structured field's stored values (chunk 5.9c).
+        MigrateError::Unchecked { name, field } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!("Checking `{field}` for `{name}` needs the build it was written in"),
+        )
+        .reason(format!(
+            "`{name}` changes `{field}`'s type so it may not read every value stored before, so `jadpo migrate apply` reads each one with that type as the project's code declares it, and only the latest migration is checked against that code; `{name}` isn't the latest. Nothing of `{name}` past its last committed step was applied."
+        ))
+        .next_for(
+            format!("Run `jadpo migrate apply` with the build that wrote `{name}` (its commit), then with this one"),
             Decider::Human,
         ),
         MigrateError::BackfillStopped {
