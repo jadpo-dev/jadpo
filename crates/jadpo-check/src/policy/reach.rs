@@ -182,6 +182,27 @@ struct Reached {
     tenant: bool,
     /// For a field whose own `policy:` narrows the record's: its name.
     field: Option<String>,
+    /// The line under `actions:` whose grants these are, as written, when
+    /// a listed action's own body writes the record.
+    line: Option<String>,
+}
+
+/// The action called `run` and every action it calls, itself or through
+/// another, each once, `run` first.
+fn calls_from(db: &dyn Db, project: Project, run: &str) -> Vec<String> {
+    let mut out = vec![run.to_string()];
+    let mut at = 0;
+    while let Some(current) = out.get(at).cloned() {
+        for act in acts(db, project, &current) {
+            if let Act::Calls(callee) = act
+                && !out.contains(callee)
+            {
+                out.push(callee.clone());
+            }
+        }
+        at += 1;
+    }
+    out
 }
 
 /// Everything the route running `action` (or the query `query`) reaches,
@@ -197,8 +218,16 @@ fn reached(
     let entities = crate::data::Entities::new(db, project);
     let mut out: Vec<Reached> = Vec::new();
     let mut any = false;
-    let push = |entity: &str, effect: Effect, grants: Vec<Grant>, out: &mut Vec<Reached>| {
-        if out.iter().any(|r| r.entity == entity && r.effect == effect) {
+    // Each effect once for each list of grants that decides it: an
+    // entity's own, and each listed action's line its body writes under.
+    let push = |entity: &str,
+                effect: Effect,
+                grants: Vec<Grant>,
+                line: Option<String>,
+                out: &mut Vec<Reached>| {
+        if out.iter().any(|r| {
+            r.field.is_none() && r.entity == entity && r.effect == effect && r.grants == grants
+        }) {
             return;
         }
         let tenant = access
@@ -210,6 +239,7 @@ fn reached(
             grants,
             tenant,
             field: None,
+            line,
         });
     };
     let own = |entity: &str, effect: Effect| -> Vec<Grant> {
@@ -221,38 +251,48 @@ fn reached(
     if query {
         for entity in query_reads(db, project, run) {
             any = true;
-            push(&entity, Effect::Read, own(&entity, Effect::Read), &mut out);
+            push(
+                &entity,
+                Effect::Read,
+                own(&entity, Effect::Read),
+                None,
+                &mut out,
+            );
         }
         return (out, any);
     }
-    let listed = access.root().action(run);
-    let mut seen = BTreeSet::from([run.to_string()]);
-    let mut queue = vec![(run.to_string(), true)];
-    while let Some((current, first)) = queue.pop() {
+    // Each action's own body writes under its own line when it is listed,
+    // wherever it is called from, as the plan builds its statements
+    // (chunk 6.6b); its reads, and what it calls, keep their own grants.
+    for current in calls_from(db, project, run) {
+        let listed = access.root().action(&current);
         for act in acts(db, project, &current) {
             match act {
                 Act::Entity(entity, effect) => {
                     any = true;
-                    let grants = match (first, listed, effect) {
-                        (true, Some(line), Effect::Create | Effect::Update | Effect::Delete) => {
+                    let (grants, line) = match (listed, effect) {
+                        (Some(line), Effect::Create | Effect::Update | Effect::Delete) => (
                             match entities.get(entity) {
                                 Some(model) => line.on(model, access.memberships()),
                                 None => Vec::new(),
-                            }
-                        }
-                        _ => own(entity, *effect),
+                            },
+                            Some(line.written.clone()),
+                        ),
+                        _ => (own(entity, *effect), None),
                     };
-                    push(entity, *effect, grants, &mut out);
+                    push(entity, *effect, grants, line, &mut out);
                 }
-                Act::Calls(callee) => {
-                    if seen.insert(callee.clone()) {
-                        queue.push((callee.clone(), false));
-                    }
-                }
+                Act::Calls(_) => {}
                 Act::Queries(query) => {
                     for entity in query_reads(db, project, query) {
                         any = true;
-                        push(&entity, Effect::Read, own(&entity, Effect::Read), &mut out);
+                        push(
+                            &entity,
+                            Effect::Read,
+                            own(&entity, Effect::Read),
+                            None,
+                            &mut out,
+                        );
                     }
                 }
                 Act::SignsIn => any = true,
@@ -271,6 +311,7 @@ fn reached(
                             grants: grants.to_vec(),
                             tenant: false,
                             field: Some(field.clone()),
+                            line: None,
                         });
                     }
                 }
@@ -315,6 +356,7 @@ fn generated_reach(
             grants,
             tenant,
             field: None,
+            line: None,
         }],
         true,
     )
@@ -482,16 +524,11 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
                     continue;
                 }
                 if !real {
-                    let from = match listed {
-                        Some(line)
-                            if matches!(
-                                reach.effect,
-                                Effect::Create | Effect::Update | Effect::Delete
-                            ) && touches_own(db, project, &run, &reach.entity, reach.effect) =>
-                        {
+                    let from = match &reach.line {
+                        Some(line) => {
                             format!(
-                                "`{}`'s line under `actions:` grants nobody on `{}`",
-                                line.written, reach.entity
+                                "`{line}`'s line under `actions:` grants nobody on `{}`",
+                                reach.entity
                             )
                         }
                         _ => format!(
@@ -579,16 +616,21 @@ pub enum PublicOnly {
 /// whose grants name `Access.public` but not `Access.system` (area 9,
 /// "Background work and `Access.public`", decided 2026-10-19): a
 /// statement anyone at all may run tests no caller, so it would let the
-/// system in without the entity ever granting background work.
+/// system in without the entity ever granting background work. The line
+/// under `actions:` of `run` and of every action it calls, itself or
+/// through another, is checked first, since each lets its caller in as it
+/// starts, wherever it is called from (chunk 6.6b).
 pub fn public_only(db: &dyn Db, project: Project, run: &str) -> Option<PublicOnly> {
     let access = &Policies::new(db, project);
-    if let Some(line) = access.root().action(run)
-        && line.who.contains(&ActionWho::Public)
-        && !line.who.contains(&ActionWho::System)
-    {
-        return Some(PublicOnly::Line {
-            written: line.written.clone(),
-        });
+    for action in calls_from(db, project, run) {
+        if let Some(line) = access.root().action(&action)
+            && line.who.contains(&ActionWho::Public)
+            && !line.who.contains(&ActionWho::System)
+        {
+            return Some(PublicOnly::Line {
+                written: line.written.clone(),
+            });
+        }
     }
     public_only_reached(db, project, access, run, false)
 }
@@ -641,11 +683,6 @@ pub fn may_refuse(db: &dyn Db, project: Project, run: &str) -> bool {
         }
     }
     false
-}
-
-/// Whether the action `run`'s own body does `effect` to `entity`.
-fn touches_own(db: &dyn Db, project: Project, run: &str, entity: &str, effect: Effect) -> bool {
-    acts(db, project, run).contains(&Act::Entity(entity.to_string(), effect))
 }
 
 /// `policy.effect_ungranted`: a route running an action whose line under

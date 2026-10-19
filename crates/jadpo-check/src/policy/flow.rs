@@ -122,6 +122,47 @@ enum Src {
 /// summary holds none: another body's records are someone else's.
 type Origin = Option<u32>;
 
+/// Whether `reached` is how a status's reader holds what decides a
+/// batch's failures ([`Walk::status`]): one way with a grant nothing is
+/// known of, which no statement's grants give.
+fn by_id(reached: &Reached) -> bool {
+    reached
+        .ways
+        .first()
+        .is_some_and(|way| way.len() == 1 && way[0].is_empty())
+}
+
+/// `src` as the caller who reached it as `reached` holds it.
+fn as_held_by(src: &Src, reached: &Reached) -> Src {
+    match src {
+        Src::Record {
+            entity,
+            given,
+            origin,
+            ..
+        } => Src::Record {
+            entity: entity.clone(),
+            reached: reached.clone(),
+            given: given.clone(),
+            origin: *origin,
+        },
+        Src::Field {
+            entity,
+            field,
+            origin,
+            ..
+        } => Src::Field {
+            entity: entity.clone(),
+            field: field.clone(),
+            reached: reached.clone(),
+            origin: *origin,
+        },
+        Src::Decided(inner) => Src::Decided(Box::new(as_held_by(inner, reached))),
+        Src::Deep(inner) => Src::Deep(Box::new(as_held_by(inner, reached))),
+        other => other.clone(),
+    }
+}
+
 /// `src` with no [`Origin`].
 fn erased(src: &Src) -> Src {
     retold(src, &|_| None)
@@ -420,6 +461,11 @@ struct Summary {
     /// it calls fails. A batch's summary counts the items whose action
     /// failed, so it carries these (chunk 6.4d).
     fails: Vec<Src>,
+    /// What decides the failures of each batch it starts itself, its
+    /// items' and its `finished:`'s, as any record of their entities,
+    /// with nothing of its parameters: what `batches.status` gives
+    /// anywhere is held to these, every batch's together (chunk 6.6b).
+    batches: Vec<Src>,
 }
 
 /// The summary of a callable nothing resolves to.
@@ -432,6 +478,7 @@ static NOTHING: Summary = Summary {
     stores: Vec::new(),
     emits: Vec::new(),
     fails: Vec::new(),
+    batches: Vec::new(),
 };
 
 impl Summary {
@@ -452,6 +499,11 @@ impl Summary {
         for src in &other.fails {
             if !self.fails.contains(src) {
                 self.fails.push(src.clone());
+            }
+        }
+        for src in &other.batches {
+            if !self.batches.contains(src) {
+                self.batches.push(src.clone());
             }
         }
         self
@@ -497,6 +549,7 @@ impl Summary {
                     }
                     out
                 }),
+            batches: self.batches,
         }
     }
 }
@@ -536,6 +589,59 @@ fn summary_round<'db>(
     _callable: Callable<'db>,
 ) -> Summary {
     last.clone().join(&value).widened()
+}
+
+/// What decides the failures of every batch the application starts
+/// (chunk 6.6b; area 12, "Chosen in chunk 6.6b"): what `batches.status`
+/// gives is held to these, since where a status is read nothing says
+/// which batch its `BatchRun` is. A status read inside a batch's own
+/// actions goes round, solved as a summary's cycle is.
+#[salsa::tracked(returns(ref), cycle_fn = failures_round, cycle_initial = failures_start)]
+fn batch_failures(db: &dyn Db, project: Project) -> Vec<Src> {
+    let mut out: Vec<Src> = Vec::new();
+    for &file in project.files(db) {
+        for callable in callables_of(db, file) {
+            let facts = body_facts(db, project, callable);
+            let Some(key) = facts.key_of(&[Kind::Action]) else {
+                continue;
+            };
+            if resolve(db, project, key) != Some(callable)
+                || !facts
+                    .facts
+                    .iter()
+                    .any(|fact| matches!(fact, crate::types::Fact::Batch(_)))
+            {
+                continue;
+            }
+            for src in &flow_summary(db, project, callable).batches {
+                if !out.contains(src) {
+                    out.push(src.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Every batch's failures start unknown in a cycle.
+fn failures_start(_db: &dyn Db, _id: salsa::Id, _project: Project) -> Vec<Src> {
+    Vec::new()
+}
+
+/// Each round keeps what the last found, so the rounds only grow.
+fn failures_round(
+    _db: &dyn Db,
+    _cycle: &salsa::Cycle,
+    last: &Vec<Src>,
+    mut value: Vec<Src>,
+    _project: Project,
+) -> Vec<Src> {
+    for src in last {
+        if !value.contains(src) {
+            value.push(src.clone());
+        }
+    }
+    value
 }
 
 /// The problems with what values carry in the actions and functions in
@@ -782,6 +888,7 @@ impl<'a> Flow<'a> {
             stores: walk.stores,
             emits,
             fails,
+            batches: walk.batches,
         };
         (summary, walk.problems)
     }
@@ -896,6 +1003,9 @@ struct Walk<'b> {
     /// Whether the call being checked is a batch's `finished:`, whose
     /// summary is decided by what decided its items' failures.
     summary: bool,
+    /// What decides the failures of each batch the body starts
+    /// ([`Summary::batches`]): gathered in every walk, as `failing` is.
+    batches: Vec<Src>,
 }
 
 /// A batch's run, while its calls are checked (chunk 6.4d): it works as
@@ -951,6 +1061,7 @@ impl<'b> Walk<'b> {
             fails: Vec::new(),
             run: None,
             summary: false,
+            batches: Vec::new(),
         }
     }
 
@@ -1791,6 +1902,7 @@ impl Walk<'_> {
                 }
                 out
             }
+            Callee::Batch(BatchOp::Status) => self.status(flow),
             Callee::Session(_) | Callee::Batch(_) | Callee::AdvanceClock | Callee::Unknown => {
                 Prov::default()
             }
@@ -1923,19 +2035,20 @@ impl Walk<'_> {
             fails = decide(&inner.substitute(&provs)).iter().map(gone).collect();
         }
         self.looping -= 1;
+        // What decided that the run starts decides it all, read as the
+        // run saves it.
+        let counted = self
+            .with_pc(Prov {
+                whole: decide(&item).iter().map(gone).collect(),
+                fields: BTreeMap::new(),
+            })
+            .retold(&left);
+        let mut failed = counted.clone();
+        for src in fails {
+            failed.add(src);
+        }
+        self.batch_failed(&failed.whole);
         if let Some(call) = &finished {
-            // What decided that the run starts decides it all, read as
-            // the run saves it.
-            let counted = self
-                .with_pc(Prov {
-                    whole: decide(&item).iter().map(gone).collect(),
-                    fields: BTreeMap::new(),
-                })
-                .retold(&left);
-            let mut failed = counted.clone();
-            for src in fails {
-                failed.add(src);
-            }
             let mut summary = Prov::default();
             for (name, _) in IMPORT_SUMMARY_FIELDS {
                 let prov = if name == "items" { &counted } else { &failed };
@@ -1950,8 +2063,45 @@ impl Walk<'_> {
             self.called(flow, call.site, &call.key, &call.args, &provs, false);
             self.summary = was;
             self.run = outer;
+            // Whether `finished:`'s action fails decides the run's state.
+            let finishing = decide(&self::failed(flow.summary(&call.key), &provs));
+            self.batch_failed(&finishing);
         }
         Prov::default()
+    }
+
+    /// `srcs` among what decides the failures of a batch the body starts
+    /// ([`Summary::batches`]): as any record of their entities, since a
+    /// status is read where nothing says which run it is, and without
+    /// the body's parameters or its caller, which aren't the reader's.
+    fn batch_failed(&mut self, srcs: &[Src]) {
+        for src in srcs {
+            let held = match shallow(src.clone()) {
+                Src::Decided(inner) => shallow(*inner),
+                other => other,
+            };
+            if !matches!(held, Src::Field { .. } | Src::Record { .. }) {
+                continue;
+            }
+            let src = erased(src);
+            if !self.batches.contains(&src) {
+                self.batches.push(src);
+            }
+        }
+    }
+
+    /// What `batches.status` gives (chunk 6.6b): held to what decides the
+    /// failures of every batch the application starts, each as a caller
+    /// of whom nothing is known but what the action's line checks as it
+    /// starts would read it, since the run is found by its `id` alone.
+    fn status(&self, flow: &Flow<'_>) -> Prov {
+        let known = self.gated(Reached::by(vec![Vec::new()]));
+        let mut out = Prov::default();
+        for src in batch_failures(flow.db, flow.project) {
+            let src = as_held_by(src, &known);
+            out.add(decided(src.clone()).unwrap_or(src));
+        }
+        out
     }
 
     /// `each:`'s or `finished:`'s inline function at `at`: the action it
@@ -2257,10 +2407,25 @@ impl Walk<'_> {
                 format!("Leave `{field}` out of `{output}`"),
             )
         };
-        let reason = format!(
-            "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. {keeps}",
-            self.name
-        );
+        let next = if by_id(&reached) {
+            format!(
+                "Let only those who may read `{from}` call `{}`, through its line under `actions:`, or decide which items fail by what its callers may read",
+                self.name
+            )
+        } else {
+            next
+        };
+        let reason = if by_id(&reached) {
+            format!(
+                "`batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `{entity}.{from}` among them, to anyone who may call `{}`, and {readers} `{from}`.",
+                self.name
+            )
+        } else {
+            format!(
+                "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. {keeps}",
+                self.name
+            )
+        };
         self.problems.push(
             Diagnostic::new(
                 &rule::POLICY_OUTPUT_FIELD_UNPROVED,
