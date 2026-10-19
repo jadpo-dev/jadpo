@@ -202,6 +202,11 @@
               "position": 15,
               "type": "integer"
             },
+            "encoding": {
+              "nullable": true,
+              "position": 17,
+              "type": "smallint"
+            },
             "failure": {
               "nullable": true,
               "position": 10,
