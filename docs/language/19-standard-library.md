@@ -6727,7 +6727,8 @@ area page to specify:
 > are [area 20](20-geospatial.md)'s; storing a geometry is
 > `toolchain.not_built_yet` until then. Chunk 5.5u2 built area 20's
 > measures, `geo.distance`, `length`, `bearing` and `area`; chunk 5.5u4
-> its storage in PostGIS.
+> its storage in PostGIS, and chunk 5.11 the three constructions, as
+> area 20's "Chosen in chunk 5.11" records.
 
 ## AI: a future area
 

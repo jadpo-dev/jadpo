@@ -3100,6 +3100,17 @@ chunk that built them chose the rest, as conservatively as it could:
 - **`include` and `pick` don't copy rules:** a rule reads fields its own
   type has, and a copy may leave one out.
 
+### Chosen in chunk 5.8b
+
+- **A constant's construction rounds as `scale` says.** "A fixed `scale`
+  rounds first" holds for a constant too: `Type(value)` keeps a computed
+  decimal at the type's fixed scale, rounded half to even, before its
+  rules are checked, as the runtime builds it, so `constant rate: Rate =
+  Rate(0.10 * 1.25)` with `scale: 2` is 0.12, not an error. A literal
+  written with more places than its type keeps is still refused where it
+  is written, as any literal is. Kept past 38 digits, it is
+  `type.invalid_literal`, as arithmetic past them is.
+
 ### Chosen in chunk 5.8c
 
 The Phase 5 soundness review's slice of "checked whenever a value is

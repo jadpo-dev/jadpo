@@ -653,6 +653,7 @@ impl<'db> Eval<'db> {
         if target.has_error() {
             return Err(Stop::Unknown);
         }
+        let value = self.kept(cx, expr, &target, value)?;
         match literal::check(&cx.lookup, &target, &value.to_const()) {
             Ok(()) => Ok(value),
             Err(Problem::Kind { .. } | Problem::PercentRequired(_)) => Err(Stop::Unknown),
@@ -706,6 +707,55 @@ impl<'db> Eval<'db> {
                         broken.rule, broken.why
                     ))
                     .next(format!("Use a value that `{target}` allows")),
+                );
+                Err(Stop::Unknown)
+            }
+        }
+    }
+
+    /// `value` as `Type(value)` keeps it for `target`: a decimal at a fixed
+    /// `scale` rounded half to even to that many places, as the runtime
+    /// keeps one it builds, before the type's rules are checked (area 2,
+    /// "A fixed `scale` rounds first"; chunk 5.8b). A literal written with
+    /// more places is still refused where it is written, as a literal.
+    fn kept(&self, cx: &mut Cx<'_>, expr: &Expr, target: &Ty, value: Value) -> Worked {
+        let Value::Number {
+            value: number,
+            decimal: true,
+        } = value
+        else {
+            return Ok(value);
+        };
+        let decimal = cx
+            .lookup
+            .base_prim(target)
+            .map(|prim| prim.representation())
+            == Some(crate::types::Prim::Decimal);
+        let scale = cx
+            .lookup
+            .rule_chain(target)
+            .iter()
+            .find_map(|(_, rules)| rules.scale);
+        let Some(scale) = scale.filter(|_| decimal) else {
+            return Ok(value);
+        };
+        match number.at_scale(scale) {
+            Some(kept) => Ok(Value::Number {
+                value: kept,
+                decimal: true,
+            }),
+            None => {
+                let span = cx.span(expr.syntax());
+                cx.problems.push(
+                    Diagnostic::new(
+                        &rule::TYPE_INVALID_LITERAL,
+                        format!("`{}` has no `{target}` value", tree::written(expr.syntax())),
+                    )
+                    .at(span, "past what a `Decimal` holds")
+                    .reason(format!(
+                        "A constant is worked out while compiling, and this kept at `{target}`'s {scale} places is past the 38 digits a `Decimal` holds."
+                    ))
+                    .next("Use values whose result a number holds"),
                 );
                 Err(Stop::Unknown)
             }

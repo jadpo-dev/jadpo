@@ -405,6 +405,31 @@ pub enum Column {
     Measured,
 }
 
+impl Column {
+    /// How a column holding a value of a type built on `builtin` is read
+    /// (area 5, "Storage types"): the one table a query's read and a
+    /// backfill worked out in Jadpo share (chunk 5.8b). `None` for a value
+    /// held in several columns, as JSON, or not stored.
+    pub fn of_builtin(builtin: crate::Builtin) -> Option<Column> {
+        use crate::Builtin;
+        Some(match builtin {
+            Builtin::Bool => Column::Bool,
+            Builtin::Int => Column::Int,
+            Builtin::Decimal => Column::Decimal,
+            Builtin::Text => Column::Text,
+            Builtin::Bytes => Column::Bytes,
+            Builtin::Uuid => Column::Uuid,
+            Builtin::Instant => Column::Instant,
+            Builtin::CalendarDate => Column::Date,
+            Builtin::Duration => Column::Duration,
+            // In its kind's base unit (area 19).
+            Builtin::Quantity(kind) => Column::Quantity(kind),
+            Builtin::Percentage => Column::Percentage,
+            _ => return None,
+        })
+    }
+}
+
 /// Where a record's field comes from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Field {

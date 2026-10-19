@@ -93,7 +93,7 @@ fn problems(files: &[(String, String)]) -> Vec<String> {
     support::problems(Layout::Project, &borrowed)
         .into_iter()
         // The API record is `jadpo api update`'s, not what is tested here.
-        .filter(|line| !line.contains("api.record_out_of_date"))
+        .filter(|line| !line.contains("record.out_of_date"))
         .collect()
 }
 
@@ -107,7 +107,7 @@ fn reasons(files: &[(String, String)]) -> Vec<(String, String)> {
     let project = support::project(&db, Layout::Project, &borrowed);
     jadpo_check::check(&db, project)
         .iter()
-        .filter(|d| !d.rule.id.starts_with("api."))
+        .filter(|d| !d.rule.id.starts_with("api.") && !d.rule.id.starts_with("record."))
         .map(|d| (d.rule.id.to_string(), d.reason.clone().unwrap_or_default()))
         .collect()
 }
@@ -363,7 +363,7 @@ fn standing(from: &str, wording: &str, record: bool) -> (Vec<String>, bool) {
     let project = support::project_with_records(&db, Layout::Project, &borrowed, &records);
     let found = jadpo_check::check(&db, project)
         .iter()
-        .filter(|d| !d.rule.id.starts_with("api."))
+        .filter(|d| !d.rule.id.starts_with("api.") && !d.rule.id.starts_with("record."))
         .map(|d| format!("{} {}", d.rule.id, d.message))
         .collect();
     let stale = standings(&db, project, Name::new(&db, ROOT.to_string()))

@@ -1749,7 +1749,7 @@ chunks below, taken before Phase 6.
   entry is `<key>` in a problem's path; `crypto.encrypt`'s nonce is
   secret randomness (area 19); a host without a clock answers 500 and
   `jadpo dev` won't start.
-- [ ] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
+- [x] **5.8b Phase 5 review fixes: migrations and backfills** `opus ·
   xhigh`: a scaled construction in a backfill run by `UPDATE` rounded as
   the runtime rounds; the backfill digest covering every type its bodies
   reach and the toolchain version, so a resumed backfill can't mix values;
@@ -1759,7 +1759,20 @@ chunks below, taken before Phase 6.
   as is a field the same migration adds; the last step locking writes and
   never reads (`CHECK … NOT VALID`, `VALIDATE`, then `SET NOT NULL`), as
   area 5 says; a constant's `scale:` rounding as area 2 says. Done when
-  each review reproduction passes on live PostgreSQL.
+  each review reproduction passes on live PostgreSQL. Built: a
+  construction by `UPDATE` keeps a fixed scale through one shared form
+  (`form::kept_at_scale`, half to even, then `numeric(38, scale)`), and a
+  constant's construction rounds before its rules; the digest adds every
+  type reached, with its chain, fields, variants and rules, and the
+  toolchain version; a setting reached through a function, a `crypto`
+  key included, and a field the migration adds are
+  `migration.backfill_outside_row`, with examples; a section with batches
+  fills every backfill first, then one step locks writes, fills the rows
+  written meanwhile and adds `NOT VALID` checks, a `-- step:` proves them,
+  and a last requires each column without a scan and drops its check.
+  `backfills.rs` has a live test per finding; reads in Jadpo share
+  `Column::of_builtin` with queries, so a percentage can be filled. The
+  choices are area 5's and area 2's "Chosen in chunk 5.8b".
 - [x] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
   query result type with cross-field rules checked row by row as it is
   read, or refused; `ai.distance` in `where:` never keeping a NaN or
@@ -1818,23 +1831,28 @@ chunks below, taken before Phase 6.
   cut to the crate table; finished roadmap chunks collapsed to one line
   each. Area 12's outbox and schedule-state text brought in line with
   its 2026-10-19 decision.
-- [ ] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
+- [x] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
   `geo.from_lng_lat` and `geo.from_lat_lng`, decided and used by area 20's
-  pages but marked not built.
+  pages but marked not built. Built: all three in `jadpo-value`'s `geo`,
+  GeoJSON text through the one GeoJSON reader into a `Geometry`, a pair or
+  a triple with an altitude into a `Point`, each failing `malformed` or
+  `out_of_range`; the not-built markers gone, and area 20's example of
+  them checked and tested, as its "Chosen in chunk 5.11" records.
 
 ## Phase 6 — Events and schedules (area 12)
 
-- [ ] **7.0 Generated records** `opus · high` (area 18, decided
-  2026-10-16): the API record and identity registry renamed to
-  `.jadpo_record` in the decided record format, with the header line, the
-  hand-edit check and `jadpo records`; the format 7.1's package surfaces
-  and 5.4c's translation sources also use, as
-  [the design](language/research/jadpo-record-format.md) sets out (decided
-  2026-10-16): the API record loses its `version:` counter, the OpenAPI
-  version coming from a hash of the record, and `jadpo.lock` takes the
-  format.
-  Moved before Phase 6 by the Phase 5 review, so 6.1b records event
-  shapes in this format rather than one it replaces.
+- [x] **7.0 Generated records** `opus · high` (area 18, decided
+  2026-10-16), moved before Phase 6 by the Phase 5 review. Built: the
+  [record format](language/research/jadpo-record-format.md) for every
+  record (a kind, its header and closed lists, an outline writer and
+  reader, and an entry differ 6.1b's event shapes reuse); the API record
+  as `api/<api>.jadpo_record` with no `version:`, the OpenAPI version a
+  hash of it; the identity registry as `database/identities.jadpo_record`;
+  the suggestion records on the shared header; `jadpo.lock` as a ledger;
+  `record.out_of_date`, `record.edited` and `record.format_newer` in
+  `jadpo check`; `jadpo records` and `jadpo records update`, which moves
+  records from their old names; every example's record regenerated.
+  Choices in area 18's "Chosen in chunk 7.0".
 - [ ] **6.1a System caller and delivery engine** `opus · xhigh`: from the
   Phase 4 and Phase 5 reviews, a system caller (`Grant::System`, a
   `CallerPart` for it), so `Access.system` grants schedules and

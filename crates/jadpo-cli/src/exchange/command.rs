@@ -679,7 +679,16 @@ pub fn import(loaded: &mut Loaded, call: &Call, cwd: &Path) -> Reply {
         let (db, project) = (&loaded.db, loaded.project);
         let unreadable: Vec<Diagnostic> = jadpo_check::check(db, project)
             .into_iter()
-            .filter(|d| d.rule.id == "translation.sources_invalid")
+            .filter(|d| {
+                let sources = d.primary.as_ref().is_some_and(|label| {
+                    label
+                        .span
+                        .path
+                        .ends_with("translations/sources.jadpo_record")
+                });
+                d.rule.id == "translation.sources_invalid"
+                    || (sources && matches!(d.rule.id, "record.edited" | "record.format_newer"))
+            })
             .collect();
         if !unreadable.is_empty() {
             return fail(loaded, unreadable);

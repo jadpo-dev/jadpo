@@ -7,4 +7,9 @@ SELECT count(*) FROM "delivery" WHERE "crates_used" IS NULL;
 WITH "batch" AS (SELECT "id" AS "jadpo_key" FROM "delivery" WHERE "id" > $1 ORDER BY "id" LIMIT 1000), "filled" AS (UPDATE "delivery" SET "crates_used" = (((("delivery"."boxes")::bigint) / ((6)::bigint)) + CASE WHEN ((("delivery"."boxes")::bigint) % ((6)::bigint)) = 0 THEN 0 WHEN TRUE THEN (CASE WHEN ((("delivery"."boxes")::bigint) < 0) = (((6)::bigint) < 0) THEN 1 ELSE -1 END) ELSE 0 END) FROM "batch" WHERE "delivery"."id" = "batch"."jadpo_key" AND "delivery"."crates_used" IS NULL RETURNING 1) SELECT (SELECT "jadpo_key" FROM "batch" ORDER BY "jadpo_key" DESC LIMIT 1), (SELECT count(*) FROM "filled");
 LOCK TABLE "delivery" IN SHARE ROW EXCLUSIVE MODE;
 UPDATE "delivery" SET "crates_used" = (((("delivery"."boxes")::bigint) / ((6)::bigint)) + CASE WHEN ((("delivery"."boxes")::bigint) % ((6)::bigint)) = 0 THEN 0 WHEN TRUE THEN (CASE WHEN ((("delivery"."boxes")::bigint) < 0) = (((6)::bigint) < 0) THEN 1 ELSE -1 END) ELSE 0 END) WHERE "crates_used" IS NULL;
+ALTER TABLE "delivery" ADD CONSTRAINT "delivery_crates_used_filled" CHECK ("crates_used" IS NOT NULL) NOT VALID;
+-- step: check every row has a value, locking out neither reads nor writes
+ALTER TABLE "delivery" VALIDATE CONSTRAINT "delivery_crates_used_filled";
+-- step: require a value, which the proved check lets PostgreSQL do without reading a row
 ALTER TABLE "delivery" ALTER COLUMN "crates_used" SET NOT NULL;
+ALTER TABLE "delivery" DROP CONSTRAINT "delivery_crates_used_filled";

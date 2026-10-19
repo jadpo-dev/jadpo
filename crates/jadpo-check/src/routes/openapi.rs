@@ -9,8 +9,9 @@
 //! claimed, all with the `///` descriptions. Each route's responses come
 //! from what it runs (chunk 4.9): what it can be refused, whether it uses
 //! a store, and whether its response is kept for a repeat. Its
-//! title is the application's name and its version the API record's
-//! version. Health (`/health/live`, `/health/ready`) is the runtime's own
+//! title is the application's name and its version the first 12 hex
+//! digits of the SHA-256 of the API's record (area 18), so it changes
+//! exactly when the record does and is never stored. Health (`/health/live`, `/health/ready`) is the runtime's own
 //! and in no document. The sign-in methods the API accepts are its
 //! security schemes (area 8; area 7, question 12): a route anyone may call
 //! says `security: []`, and every other answers 401, 403 and 503 for the
@@ -173,7 +174,7 @@ pub fn document(
     project: Project,
     api: &str,
     title: &str,
-    version: u64,
+    version: &str,
 ) -> Option<Value> {
     if !routes_clean(db, project) {
         return None;
@@ -292,7 +293,7 @@ pub fn document(
 
     let mut info = Value::object();
     info.set("title", title);
-    info.set("version", version.to_string());
+    info.set("version", version);
     let mut components = Value::object();
     components.set("schemas", Value::Object(schemas));
     components.set("responses", responses);
@@ -1277,23 +1278,14 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
     out
 }
 
-/// Every API's document, by API name, each at the version its committed
-/// record says (0 before it has one), titled `title`.
+/// Every API's document, by API name, each at the version its record
+/// gives, titled `title`.
 pub fn documents(db: &dyn Db, project: Project, title: &str) -> Vec<(String, Value)> {
-    let versions: BTreeMap<String, u64> = project
-        .records(db)
+    super::record::record_texts(db, project)
         .iter()
-        .filter_map(|record| {
-            let api = record.path.strip_prefix("api/")?.strip_suffix(".api")?;
-            let version = super::record::version(record.text.as_ref().ok()?)?;
-            Some((api.to_string(), version))
-        })
-        .collect();
-    super::record::record_bodies(db, project)
-        .keys()
-        .filter_map(|api| {
-            let version = versions.get(api).copied().unwrap_or(0);
-            Some((api.clone(), document(db, project, api, title, version)?))
+        .filter_map(|(api, text)| {
+            let version = super::record::openapi_version(text);
+            Some((api.clone(), document(db, project, api, title, &version)?))
         })
         .collect()
 }

@@ -106,11 +106,12 @@ pub(crate) fn blocked(
 
 // --- new ----------------------------------------------------------------
 
-/// The rules `migrate new` itself answers, and an API record out of date,
-/// another record with its own command; any other error stops it.
+/// The rules `migrate new` itself answers, and another record out of date
+/// or edited, which has its own command; any other error stops it.
 fn answers(diagnostic: &Diagnostic) -> bool {
     [
-        rule::API_RECORD_OUT_OF_DATE.id,
+        rule::RECORD_OUT_OF_DATE.id,
+        rule::RECORD_EDITED.id,
         rule::MIGRATION_OUT_OF_DATE.id,
         rule::MIGRATION_DECISION_REQUIRED.id,
         rule::MIGRATION_DECISION_INVALID.id,

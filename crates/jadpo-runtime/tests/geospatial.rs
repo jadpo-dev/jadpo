@@ -270,3 +270,86 @@ fn a_feature_collection_round_trips_through_json_as_compiled_code_runs_it() {
         }]
     );
 }
+
+/// `geo.from_geojson`, `geo.from_lng_lat` and `geo.from_lat_lng` as
+/// compiled code calls them (area 19, "Shared vocabulary types"; chunk
+/// 5.11): the same values and conditions the interpreter's `geo_interop`
+/// tests assert.
+#[test]
+fn the_constructions_at_an_axis_order_s_edges_as_compiled_code_runs_them() {
+    let call = |op: Op, arg: Value| run(op, &[arg], None, &mut |_| None);
+    let depot = jadpo_value::geo::point(
+        Decimal::parse("51.5072").expect("a latitude"),
+        Decimal::parse("-0.1276").expect("a longitude"),
+        Value::None,
+    );
+    let pair = |items: &[&str]| {
+        Value::list(
+            items
+                .iter()
+                .map(|item| Value::decimal(item).expect("a number"))
+                .collect(),
+        )
+    };
+    assert_eq!(
+        call(Op::GeoFromLngLat, pair(&["-0.1276", "51.5072"])),
+        Ok(depot.clone())
+    );
+    assert_eq!(
+        call(Op::GeoFromLatLng, pair(&["51.5072", "-0.1276"])),
+        Ok(depot.clone())
+    );
+    assert_eq!(
+        call(
+            Op::GeoFromLatLng,
+            Value::list(vec![Value::Int(51), Value::Int(0)])
+        ),
+        Ok(jadpo_value::geo::point(
+            Decimal::new(51, 0),
+            Decimal::new(0, 0),
+            Value::None
+        ))
+    );
+    let read = call(
+        Op::GeoFromGeojson,
+        Value::text(r#"{"type":"Point","coordinates":[-0.1276,51.5072]}"#),
+    )
+    .expect("a point");
+    let Value::Variant(variant) = &read else {
+        panic!("a geometry");
+    };
+    assert_eq!(&*variant.name, "point");
+    assert_eq!(variant.fields.first().map(|(_, held)| held), Some(&depot));
+    assert_eq!(
+        call(Op::GeoToWkt, read),
+        Ok(Value::text("POINT(-0.1276 51.5072)"))
+    );
+    for (op, arg, condition) in [
+        (
+            Op::GeoFromGeojson,
+            Value::text(r#"{"type":"Point","coordinates":[0,91]}"#),
+            jadpo_std::RuleKey::OutOfRange,
+        ),
+        (
+            Op::GeoFromGeojson,
+            Value::text("POINT(0 0)"),
+            jadpo_std::RuleKey::Malformed,
+        ),
+        (
+            Op::GeoFromLatLng,
+            pair(&["91", "0"]),
+            jadpo_std::RuleKey::OutOfRange,
+        ),
+        (
+            Op::GeoFromLngLat,
+            pair(&["0"]),
+            jadpo_std::RuleKey::Malformed,
+        ),
+    ] {
+        assert_eq!(
+            call(op, arg),
+            Err(jadpo_value::Fault::Broke(condition)),
+            "{op:?}"
+        );
+    }
+}

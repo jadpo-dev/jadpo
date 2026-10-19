@@ -79,6 +79,17 @@ pub fn part_columns(part: Part) -> Option<Vec<Laid>> {
 }
 
 /// The columns a value built on `builtin` takes.
+/// The type of the one column a value built on `builtin` is stored in, at
+/// its widest (`bigint`, `numeric`, `timestamptz(3)`), from the table
+/// every layout reads: what a literal of it is bound for (chunk 5.8b).
+/// `None` for one stored in several columns or not stored.
+pub fn builtin_column(builtin: Builtin) -> Option<crate::SqlType> {
+    match builtin_columns(builtin)?.as_slice() {
+        [one] => crate::SqlType::of_column(&one.sql_type),
+        _ => None,
+    }
+}
+
 fn builtin_columns(builtin: Builtin) -> Option<Vec<Laid>> {
     let laid = |sql_type: &str, comment: Option<String>| Laid {
         sql_type: sql_type.to_string(),
