@@ -1,0 +1,22 @@
+BloodPressure: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column systolic numeric(38, 3) -- Pressure in pascals (Pa)
+column diastolic numeric(38, 3) -- Pressure in pascals (Pa)
+
+example {"systolic":{"value":"120","unit":"mmHg"},"diastolic":{"value":"80","unit":"mmHg"}}
+text none
+json {"systolic":{"value":"15998.686","unit":"Pa"},"diastolic":{"value":"10665.791","unit":"Pa"}}
+stored systolic 15998.686
+stored diastolic 10665.791
+
+example {"systolic":{"value":"145","unit":"mmHg"},"diastolic":{"value":"92","unit":"mmHg"}}
+text none
+json {"systolic":{"value":"19331.746","unit":"Pa"},"diastolic":{"value":"12265.66","unit":"Pa"}}
+stored systolic 19331.746
+stored diastolic 12265.66
+
+example {"systolic":{"value":"16","unit":"kPa"},"diastolic":{"value":"10.7","unit":"kPa"}}
+text none
+json {"systolic":{"value":"16000","unit":"Pa"},"diastolic":{"value":"10700","unit":"Pa"}}
+stored systolic 16000
+stored diastolic 10700

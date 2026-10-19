@@ -1,0 +1,13 @@
+LawfulBasis: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example consent
+text consent
+json "consent"
+stored 'consent'
+
+example legitimate_interests
+text legitimate_interests
+json "legitimate_interests"
+stored 'legitimate_interests'

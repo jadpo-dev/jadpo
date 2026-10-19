@@ -1,0 +1,28 @@
+Cidr: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 192.0.2.0/24
+text 192.0.2.0/24
+json "192.0.2.0/24"
+stored '192.0.2.0/24'
+
+example 198.51.100.7/32
+text 198.51.100.7/32
+json "198.51.100.7/32"
+stored '198.51.100.7/32'
+
+example 0.0.0.0/0
+text 0.0.0.0/0
+json "0.0.0.0/0"
+stored '0.0.0.0/0'
+
+example 2001:db8::/32
+text 2001:db8::/32
+json "2001:db8::/32"
+stored '2001:db8::/32'
+
+example 2001:db8:0:1::/64
+text 2001:db8:0:1::/64
+json "2001:db8:0:1::/64"
+stored '2001:db8:0:1::/64'

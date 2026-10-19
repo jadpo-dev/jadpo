@@ -1,0 +1,22 @@
+MaskedCardNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column brand text
+column last_four text
+
+example {"brand":"visa","last_four":"4242"}
+text none
+json {"brand":"visa","last_four":"4242"}
+stored brand 'visa'
+stored last_four '4242'
+
+example {"brand":"american_express","last_four":"0005"}
+text none
+json {"brand":"american_express","last_four":"0005"}
+stored brand 'american_express'
+stored last_four '0005'
+
+example {"brand":null,"last_four":"1234"}
+text none
+json {"brand":null,"last_four":"1234"}
+stored brand NULL::text
+stored last_four '1234'

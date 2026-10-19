@@ -1,0 +1,13 @@
+Username: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example mary
+text mary
+json "mary"
+stored 'mary'
+
+example mary.somerville_1780
+text mary.somerville_1780
+json "mary.somerville_1780"
+stored 'mary.somerville_1780'

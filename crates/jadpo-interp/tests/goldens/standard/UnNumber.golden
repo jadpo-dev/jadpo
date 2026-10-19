@@ -1,0 +1,13 @@
+UnNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example UN1203
+text UN1203
+json "UN1203"
+stored 'UN1203'
+
+example UN3480
+text UN3480
+json "UN3480"
+stored 'UN3480'

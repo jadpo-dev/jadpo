@@ -1,0 +1,13 @@
+SpanId: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 00f067aa0ba902b7
+text 00f067aa0ba902b7
+json "00f067aa0ba902b7"
+stored '00f067aa0ba902b7'
+
+example ffffffffffffffff
+text ffffffffffffffff
+json "ffffffffffffffff"
+stored 'ffffffffffffffff'

@@ -1,0 +1,13 @@
+Sscc: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 106141412345678908
+text 106141412345678908
+json "106141412345678908"
+stored '106141412345678908'
+
+example 350123450000000016
+text 350123450000000016
+json "350123450000000016"
+stored '350123450000000016'

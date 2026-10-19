@@ -1,0 +1,8 @@
+Url: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example https://example.com/orders
+text https://example.com/orders
+json "https://example.com/orders"
+stored 'https://example.com/orders'

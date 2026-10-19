@@ -1,0 +1,28 @@
+Longitude: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric
+
+example -180
+text -180
+json "-180"
+stored -180
+
+example -0.1276
+text -0.1276
+json "-0.1276"
+stored -0.1276
+
+example 0
+text 0
+json "0"
+stored 0
+
+example 151.2093
+text 151.2093
+json "151.2093"
+stored 151.2093
+
+example 180
+text 180
+json "180"
+stored 180

@@ -1,0 +1,33 @@
+RichTextSpan: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text text
+column marks text[]
+column link text
+
+example {"text":"Soup","marks":[]}
+text none
+json {"text":"Soup","marks":[]}
+stored text 'Soup'
+stored marks '{}'::text[]
+stored link NULL::text
+
+example {"text":"today's soup","marks":["strong","emphasis"]}
+text none
+json {"text":"today's soup","marks":["strong","emphasis"]}
+stored text 'today''s soup'
+stored marks ARRAY['strong', 'emphasis']::text[]
+stored link NULL::text
+
+example {"text":"our site","marks":[],"link":"https://example.com/soups?day=mon#leek"}
+text none
+json {"text":"our site","marks":[],"link":"https://example.com/soups?day=mon#leek"}
+stored text 'our site'
+stored marks '{}'::text[]
+stored link 'https://example.com/soups?day=mon#leek'
+
+example {"text":"write to us","marks":["underline"],"link":"mailto:soup@example.com"}
+text none
+json {"text":"write to us","marks":["underline"],"link":"mailto:soup@example.com"}
+stored text 'write to us'
+stored marks ARRAY['underline']::text[]
+stored link 'mailto:soup@example.com'

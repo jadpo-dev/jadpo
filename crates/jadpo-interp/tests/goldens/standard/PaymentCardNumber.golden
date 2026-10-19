@@ -1,0 +1,18 @@
+PaymentCardNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 4242424242424242
+text 4242424242424242
+json "4242424242424242"
+stored '4242424242424242'
+
+example 378282246310005
+text 378282246310005
+json "378282246310005"
+stored '378282246310005'
+
+example 5555555555554444
+text 5555555555554444
+json "5555555555554444"
+stored '5555555555554444'

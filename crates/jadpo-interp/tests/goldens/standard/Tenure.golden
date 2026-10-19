@@ -1,0 +1,13 @@
+Tenure: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example freehold
+text freehold
+json "freehold"
+stored 'freehold'
+
+example leasehold
+text leasehold
+json "leasehold"
+stored 'leasehold'

@@ -1,0 +1,22 @@
+IdentityDocument: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column kind text
+column country text
+column number text
+column expires date
+
+example {"kind":"passport","country":"GB","number":"123456789","expires":"2030-01-31"}
+text none
+json {"kind":"passport","country":"GB","number":"123456789","expires":"2030-01-31"}
+stored kind 'passport'
+stored country 'GB'
+stored number '123456789'
+stored expires '2030-01-31'::date
+
+example {"kind":"identity_card","country":"DE","number":"L01X00T47","expires":null}
+text none
+json {"kind":"identity_card","country":"DE","number":"L01X00T47","expires":null}
+stored kind 'identity_card'
+stored country 'DE'
+stored number 'L01X00T47'
+stored expires NULL::date

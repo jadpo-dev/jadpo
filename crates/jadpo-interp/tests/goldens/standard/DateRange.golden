@@ -1,0 +1,13 @@
+DateRange: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column daterange
+
+example 2026-10-01/2026-10-31
+text 2026-10-01/2026-10-31
+json {"start":"2026-10-01","end":"2026-10-31"}
+stored daterange('2026-10-01'::date, '2026-10-31'::date, '[]')
+
+example 2026-10-25/2026-10-25
+text 2026-10-25/2026-10-25
+json {"start":"2026-10-25","end":"2026-10-25"}
+stored daterange('2026-10-25'::date, '2026-10-25'::date, '[]')

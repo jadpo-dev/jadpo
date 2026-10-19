@@ -1,0 +1,12 @@
+BearerToken: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+
+example mF_9.B5f-4.1JqM
+text none
+json "<redacted BearerToken>"
+stored never
+
+example dGhpcyBpcyBhIHRva2Vu==
+text none
+json "<redacted BearerToken>"
+stored never

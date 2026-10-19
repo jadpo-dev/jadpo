@@ -1,0 +1,13 @@
+Isbn: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 9780306406157
+text 9780306406157
+json "9780306406157"
+stored '9780306406157'
+
+example 9791090636071
+text 9791090636071
+json "9791090636071"
+stored '9791090636071'

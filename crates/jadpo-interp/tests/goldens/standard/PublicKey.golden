@@ -1,0 +1,13 @@
+PublicKey: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo
+text 11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo
+json "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+stored '11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo'
+
+example PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw
+text PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw
+json "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"
+stored 'PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw'

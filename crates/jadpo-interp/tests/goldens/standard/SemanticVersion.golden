@@ -1,0 +1,106 @@
+SemanticVersion: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column major bigint
+column minor bigint
+column patch bigint
+column pre_release text
+column build text
+
+example 1.0.0-alpha
+text 1.0.0-alpha
+json "1.0.0-alpha"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'alpha'
+stored build NULL::text
+
+example 1.0.0-alpha.1
+text 1.0.0-alpha.1
+json "1.0.0-alpha.1"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'alpha.1'
+stored build NULL::text
+
+example 1.0.0-alpha.beta
+text 1.0.0-alpha.beta
+json "1.0.0-alpha.beta"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'alpha.beta'
+stored build NULL::text
+
+example 1.0.0-beta
+text 1.0.0-beta
+json "1.0.0-beta"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'beta'
+stored build NULL::text
+
+example 1.0.0-beta.2
+text 1.0.0-beta.2
+json "1.0.0-beta.2"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'beta.2'
+stored build NULL::text
+
+example 1.0.0-beta.11
+text 1.0.0-beta.11
+json "1.0.0-beta.11"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'beta.11'
+stored build NULL::text
+
+example 1.0.0-rc.1
+text 1.0.0-rc.1
+json "1.0.0-rc.1"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release 'rc.1'
+stored build NULL::text
+
+example 1.0.0
+text 1.0.0
+json "1.0.0"
+stored major 1
+stored minor 0
+stored patch 0
+stored pre_release NULL::text
+stored build NULL::text
+
+example 1.9.0
+text 1.9.0
+json "1.9.0"
+stored major 1
+stored minor 9
+stored patch 0
+stored pre_release NULL::text
+stored build NULL::text
+
+example 1.10.0+build.5
+text 1.10.0+build.5
+json "1.10.0+build.5"
+stored major 1
+stored minor 10
+stored patch 0
+stored pre_release NULL::text
+stored build 'build.5'
+
+example 2.0.0
+text 2.0.0
+json "2.0.0"
+stored major 2
+stored minor 0
+stored patch 0
+stored pre_release NULL::text
+stored build NULL::text

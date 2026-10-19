@@ -1,0 +1,43 @@
+SpdxLicence: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example MIT
+text MIT
+json "MIT"
+stored 'MIT'
+
+example Apache-2.0
+text Apache-2.0
+json "Apache-2.0"
+stored 'Apache-2.0'
+
+example MIT OR Apache-2.0
+text MIT OR Apache-2.0
+json "MIT OR Apache-2.0"
+stored 'MIT OR Apache-2.0'
+
+example GPL-2.0-or-later WITH Classpath-exception-2.0
+text GPL-2.0-or-later WITH Classpath-exception-2.0
+json "GPL-2.0-or-later WITH Classpath-exception-2.0"
+stored 'GPL-2.0-or-later WITH Classpath-exception-2.0'
+
+example (MIT OR Apache-2.0) AND BSD-3-Clause
+text (MIT OR Apache-2.0) AND BSD-3-Clause
+json "(MIT OR Apache-2.0) AND BSD-3-Clause"
+stored '(MIT OR Apache-2.0) AND BSD-3-Clause'
+
+example LGPL-2.1+
+text LGPL-2.1+
+json "LGPL-2.1+"
+stored 'LGPL-2.1+'
+
+example LicenseRef-acme-internal
+text LicenseRef-acme-internal
+json "LicenseRef-acme-internal"
+stored 'LicenseRef-acme-internal'
+
+example DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2
+text DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2
+json "DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2"
+stored 'DocumentRef-spdx-tool-1.2:LicenseRef-MIT-Style-2'

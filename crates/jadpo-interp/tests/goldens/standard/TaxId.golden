@@ -1,0 +1,16 @@
+TaxId: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column country text
+column number text
+
+example {"country":"GB","number":"AB123456C"}
+text none
+json {"country":"GB","number":"AB123456C"}
+stored country 'GB'
+stored number 'AB123456C'
+
+example {"country":"US","number":"123456789"}
+text none
+json {"country":"US","number":"123456789"}
+stored country 'US'
+stored number '123456789'

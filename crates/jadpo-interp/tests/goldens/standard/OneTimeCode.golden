@@ -1,0 +1,17 @@
+OneTimeCode: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+
+example 287082
+text none
+json "<redacted OneTimeCode>"
+stored never
+
+example 94287082
+text none
+json "<redacted OneTimeCode>"
+stored never
+
+example 012345
+text none
+json "<redacted OneTimeCode>"
+stored never

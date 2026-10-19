@@ -1,0 +1,18 @@
+RouteOfAdministration: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example oral
+text oral
+json "oral"
+stored 'oral'
+
+example intravenous
+text intravenous
+json "intravenous"
+stored 'intravenous'
+
+example subcutaneous
+text subcutaneous
+json "subcutaneous"
+stored 'subcutaneous'

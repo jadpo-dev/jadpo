@@ -1,0 +1,18 @@
+Voltage: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 6) -- Voltage in volts (V)
+
+example 1.5 V
+text 1.5 V
+json {"value":"1.5","unit":"V"}
+stored 1.5
+
+example 230 V
+text 230 V
+json {"value":"230","unit":"V"}
+stored 230
+
+example 11000 V
+text 11000 V
+json {"value":"11000","unit":"V"}
+stored 11000

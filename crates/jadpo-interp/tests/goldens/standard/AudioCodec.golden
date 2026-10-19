@@ -1,0 +1,23 @@
+AudioCodec: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example mp4a.40.2
+text mp4a.40.2
+json "mp4a.40.2"
+stored 'mp4a.40.2'
+
+example opus
+text opus
+json "opus"
+stored 'opus'
+
+example flac
+text flac
+json "flac"
+stored 'flac'
+
+example pcm-s16
+text pcm-s16
+json "pcm-s16"
+stored 'pcm-s16'

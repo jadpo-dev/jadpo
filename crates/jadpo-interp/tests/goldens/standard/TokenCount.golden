@@ -1,0 +1,18 @@
+TokenCount: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column bigint
+
+example 0
+text 0
+json 0
+stored 0
+
+example 350
+text 350
+json 350
+stored 350
+
+example 128000
+text 128000
+json 128000
+stored 128000

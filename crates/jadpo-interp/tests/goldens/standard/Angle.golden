@@ -1,0 +1,18 @@
+Angle: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 9) -- Angle in radians (rad)
+
+example 0 rad
+text 0 rad
+json {"value":"0","unit":"rad"}
+stored 0
+
+example 1.570796327 rad
+text 1.570796327 rad
+json {"value":"1.570796327","unit":"rad"}
+stored 1.570796327
+
+example 3.141592654 rad
+text 3.141592654 rad
+json {"value":"3.141592654","unit":"rad"}
+stored 3.141592654

@@ -1,0 +1,13 @@
+InvoiceNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example INV-2026-0042
+text INV-2026-0042
+json "INV-2026-0042"
+stored 'INV-2026-0042'
+
+example 2026/17
+text 2026/17
+json "2026/17"
+stored '2026/17'

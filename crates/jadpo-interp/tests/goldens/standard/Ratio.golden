@@ -1,0 +1,22 @@
+Ratio: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numerator numeric
+column denominator numeric
+
+example 16:9
+text 16:9
+json "16:9"
+stored numerator 16
+stored denominator 9
+
+example 1.85:1
+text 1.85:1
+json "1.85:1"
+stored numerator 1.85
+stored denominator 1
+
+example 4.0:3.0
+text 4.0:3.0
+json "4.0:3.0"
+stored numerator 4.0
+stored denominator 3.0

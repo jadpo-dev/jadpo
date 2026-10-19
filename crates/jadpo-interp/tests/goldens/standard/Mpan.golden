@@ -1,0 +1,13 @@
+Mpan: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 1200012345679
+text 1200012345679
+json "1200012345679"
+stored '1200012345679'
+
+example 2300004567890
+text 2300004567890
+json "2300004567890"
+stored '2300004567890'

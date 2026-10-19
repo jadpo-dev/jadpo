@@ -1,0 +1,18 @@
+Area: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column numeric(38, 6) -- Area in square metres (m²)
+
+example 0.5 sqm
+text 0.5 sqm
+json {"value":"0.5","unit":"sqm"}
+stored 0.5
+
+example 12 sqm
+text 12 sqm
+json {"value":"12","unit":"sqm"}
+stored 12
+
+example 10000 sqm
+text 10000 sqm
+json {"value":"10000","unit":"sqm"}
+stored 10000

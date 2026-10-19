@@ -323,6 +323,43 @@ that instruction, each the most conservative reading:
 > the boundaries not built yet take these encodings in the chunks that
 > build them.
 
+### Changing a standard type's encoding
+
+Decided 2026-10-19 (Richard, from the Phase 5 review): a Jadpo release
+changes how a standard type is sent, stored or written as text only
+together with a reader for the old form and a release note. A golden file
+per type, built from its examples, pins every form, so a change can't pass
+unnoticed.
+
+A value outlives the release that wrote it wherever it is kept: in a
+column, in an event waiting to be delivered, in a passkey, in a signed
+session cookie. Each of those records which encoding wrote it, so a
+release that changes a form reads what an earlier one kept by its own
+reader, and an upgrade never strands it.
+
+**Encodings each release writes,** the release notes' list, held to the
+golden files by a test:
+
+| Encoding | Release | What it changed |
+|---|---|---|
+| 1 | 0.1.0 | The first: every standard type's forms as its golden file holds them |
+
+> Built in chunk 5.9. Each standard type's golden file, in
+> `crates/jadpo-interp/tests/goldens/standard/`, holds each of its entry's
+> valid examples as its canonical text, its contract JSON and the value of
+> each storage column written as SQL text, beside the columns' types, all
+> made by the codecs a program gets; a test fails when any form changes.
+> The encoding is `jadpo_std::standard::ENCODING`, recorded where a value
+> is kept beyond a request: a signed part's `enc`, and the outbox's and a
+> passkey's `encoding` column. Changing a form on purpose takes four
+> steps: raise the encoding; read the old form wherever it is kept, chosen
+> by the encoding the row or token records; add the encoding's row above,
+> naming each type whose forms it changed; then `JADPO_BLESS=1 cargo test
+> -p jadpo-interp --test integration standard_goldens::`, which rewrites a
+> changed file only past the encoding it records. A new type, or a new
+> example, needs only the last step. What the page left open is "Chosen
+> in chunk 5.9", under "Review".
+
 ### Packages use the standard types
 
 Decided 2026-10-17 (Richard), as a warning on packages' public types,

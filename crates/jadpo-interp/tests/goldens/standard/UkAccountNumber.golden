@@ -1,0 +1,13 @@
+UkAccountNumber: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 66374958
+text 66374958
+json "66374958"
+stored '66374958'
+
+example 88837491
+text 88837491
+json "88837491"
+stored '88837491'

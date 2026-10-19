@@ -1,0 +1,16 @@
+YearMonth: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column year smallint
+column month smallint
+
+example 2026-02
+text 2026-02
+json "2026-02"
+stored year 2026
+stored month 2
+
+example 2026-10
+text 2026-10
+json "2026-10"
+stored year 2026
+stored month 10

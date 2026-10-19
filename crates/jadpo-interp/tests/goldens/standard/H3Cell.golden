@@ -1,0 +1,23 @@
+H3Cell: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example 8001fffffffffff
+text 8001fffffffffff
+json "8001fffffffffff"
+stored '8001fffffffffff'
+
+example 85283473fffffff
+text 85283473fffffff
+json "85283473fffffff"
+stored '85283473fffffff'
+
+example 8928308280fffff
+text 8928308280fffff
+json "8928308280fffff"
+stored '8928308280fffff'
+
+example 8f2830828052d25
+text 8f2830828052d25
+json "8f2830828052d25"
+stored '8f2830828052d25'

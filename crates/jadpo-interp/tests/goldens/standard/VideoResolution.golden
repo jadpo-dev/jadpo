@@ -1,0 +1,28 @@
+VideoResolution: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column width integer
+column height integer
+
+example 1280x720
+text 1280x720
+json {"width":1280,"height":720}
+stored width 1280
+stored height 720
+
+example 1920x1080
+text 1920x1080
+json {"width":1920,"height":1080}
+stored width 1920
+stored height 1080
+
+example 3840x2160
+text 3840x2160
+json {"width":3840,"height":2160}
+stored width 3840
+stored height 2160
+
+example 4096x2160
+text 4096x2160
+json {"width":4096,"height":2160}
+stored width 4096
+stored height 2160

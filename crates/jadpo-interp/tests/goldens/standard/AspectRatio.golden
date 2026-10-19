@@ -1,0 +1,34 @@
+AspectRatio: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column width integer
+column height integer
+
+example 16:9
+text 16:9
+json "16:9"
+stored width 16
+stored height 9
+
+example 4:3
+text 4:3
+json "4:3"
+stored width 4
+stored height 3
+
+example 1:1
+text 1:1
+json "1:1"
+stored width 1
+stored height 1
+
+example 32:18
+text 32:18
+json "32:18"
+stored width 32
+stored height 18
+
+example 239:100
+text 239:100
+json "239:100"
+stored width 239
+stored height 100

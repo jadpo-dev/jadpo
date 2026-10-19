@@ -1,0 +1,13 @@
+Instant: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column timestamptz(3)
+
+example 2026-03-29T00:30:00Z
+text 2026-03-29T00:30:00Z
+json "2026-03-29T00:30:00Z"
+stored '2026-03-29 00:30:00.000000+00'::timestamptz
+
+example 2026-10-25T09:30:00.250Z
+text 2026-10-25T09:30:00.250Z
+json "2026-10-25T09:30:00.250Z"
+stored '2026-10-25 09:30:00.250000+00'::timestamptz

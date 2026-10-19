@@ -1,0 +1,23 @@
+ContainerImage: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column text
+
+example docker.io/library/nginx:1.27
+text docker.io/library/nginx:1.27
+json "docker.io/library/nginx:1.27"
+stored 'docker.io/library/nginx:1.27'
+
+example ghcr.io/acme/shop-api@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b
+text ghcr.io/acme/shop-api@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b
+json "ghcr.io/acme/shop-api@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b"
+stored 'ghcr.io/acme/shop-api@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b'
+
+example localhost:5000/infra/web_app:v2.1.0-rc.1
+text localhost:5000/infra/web_app:v2.1.0-rc.1
+json "localhost:5000/infra/web_app:v2.1.0-rc.1"
+stored 'localhost:5000/infra/web_app:v2.1.0-rc.1'
+
+example registry.example.com:8443/a/b/c:latest@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b
+text registry.example.com:8443/a/b/c:latest@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b
+json "registry.example.com:8443/a/b/c:latest@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b"
+stored 'registry.example.com:8443/a/b/c:latest@sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b'

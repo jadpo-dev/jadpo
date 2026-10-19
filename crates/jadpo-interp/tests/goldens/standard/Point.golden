@@ -1,0 +1,28 @@
+Point: every form its examples take (area 19, "Changing a standard type's encoding")
+encoding 1
+column geography
+
+example {"type":"Point","coordinates":[-0.1276,51.5072]}
+text none
+json {"type":"Point","coordinates":[-0.1276,51.5072]}
+stored 'SRID=4326;POINT (-0.1276 51.5072)'::geography
+
+example {"type":"Point","coordinates":[151.2093,-33.8688]}
+text none
+json {"type":"Point","coordinates":[151.2093,-33.8688]}
+stored 'SRID=4326;POINT (151.2093 -33.8688)'::geography
+
+example {"type":"Point","coordinates":[0,0]}
+text none
+json {"type":"Point","coordinates":[0,0]}
+stored 'SRID=4326;POINT (0 0)'::geography
+
+example {"type":"Point","coordinates":[-180,-90]}
+text none
+json {"type":"Point","coordinates":[-180,-90]}
+stored 'SRID=4326;POINT (-180 -90)'::geography
+
+example {"type":"Point","coordinates":[86.925,27.9881,8848.86]}
+text none
+json {"type":"Point","coordinates":[86.925,27.9881,8848.86]}
+stored 'SRID=4326;POINT Z (86.925 27.9881 8848.86)'::geography
