@@ -16,7 +16,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`).
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Built in chunk 6.1c: each domain's event record, and what a subscriber stores from its event checked against what every `emit` of it put there. Built in chunk 6.2: schedules, their leases and state, the minute tick and the runtime's sweeps on it, and every run recorded. Built in chunk 6.2b: the commands that watch schedules, their runs and alerts in `jadpo dev`, and the alerts and metrics with no setup. Built in chunk 6.2c: each entity's built-in hourly purge schedule, recorded and watched like any schedule, and schedule tests (area 13). Built in chunk 6.4: `batches.each`, `batches.status`, `batches.cancel` and `key:`, a run walking a named query a page at a time and resuming after a crash or a deploy; the file helpers come in chunk 6.4b. Built in chunk 6.4c: `batches.each` in an application with a tenant, a run limited to the tenant its saved tenant id names, and a batch reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.4d: a batch's summary held to its counts and problems, and what a run stores proved by the tenant it is limited to.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -1784,7 +1784,8 @@ on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches were built in chunk 6.4 ("Chosen in chunk 6.4"
 below), with tenants and their grants in chunk 6.4c ("Chosen in chunk
-6.4c" below), but for the file helpers, which come in chunk 6.4b, and on
+6.4c" below) and what a run stores under policy in chunk 6.4d ("Chosen
+in chunk 6.4d" below), but for the file helpers, which come in chunk 6.4b, and on
 Workers each run's continuation in a fresh invocation, which chunk 8.2
 checks. Several changing calls in one action, polls and `receiving`
 were decided on 2026-10-16 and come with Phase 7; their errors are built
@@ -2385,6 +2386,53 @@ error: `mark_seen` runs as the system, which only `Access.public` lets update `I
 
 check failed: 1 error, 1 file
 ```
+
+### Chosen in chunk 6.4d
+
+What area 9's "What a write stores" and "What decides a value" leave
+to the build for a batch's run (found in chunk 6.5), each the most
+conservative reading:
+
+- **What the summary carries.** An `ImportSummary` holds counts and
+  problems, never a record's fields. `items` shows nothing of the items
+  the run walked, as a count of a query's records doesn't.
+  `items_with_problems` and `problems` count the items whose action
+  failed and say which and why, so they carry what decides whether
+  `each:`'s action fails: what decided each `reject` and `attempt` it
+  runs, and whether an action it calls fails, read of the item and of
+  what the run saved. What decided that the run starts goes with all
+  three. Until now the summary was given the walked records and each
+  item's result, so an application with a tenant could store nothing
+  of it, and the error named fields no record has.
+- **The item.** Each item is one of the records `from:` finds, the same
+  record all through `each:`'s action, so what that action stores from
+  it is checked where `each:` calls it, as a call's arguments are.
+  Until now the item carried nothing, and what it stored went
+  unchecked.
+- **What a run saves.** A value `from:`, `each:`, `finished:` or `key:`
+  saves has left its record, as a value an event carries has (chunk
+  6.1c): it is proved as one from any record of its entity, but for a
+  record a saved tenant id was read from, which is of the tenant the run
+  is limited to. One the starting action was passed is checked where
+  that action is called, the same way.
+- **The run's tenant proves what it reaches.** Every record a run reads
+  is of the tenant it is limited to, so the item, and what decided its
+  action's failures, may be stored wherever that tenant's roles may read
+  them, as a record of an event's tenant may (chunk 6.1c). A record
+  every tenant shares (`Tenancy.shared`) isn't the tenant's.
+- **A reference names the tenant.** A saved value of a field declared
+  with the tenant's `id` type, as a reference to the tenant is
+  (`rent_round.society_id`), names the run's tenant as a `Society.id`
+  does. Chunk 6.4c read only the latter, so example 25's run reached no
+  society.
+- **What the run's actions show.** Nothing reaches whoever started the
+  run: a failure's fields and a record found by a value are shown to
+  nobody, and a problem keeps only the failure's code.
+- *Flagged:* `batches.status` shows its caller how many items have
+  failed so far, which what decides `each:`'s failures decides, and
+  isn't held to it yet, since where it is read nothing says which batch
+  a `BatchRun` is. Recommended: hold what it gives to what decides the
+  failures of every batch the application starts.
 
 ### Consistency with the rest of the language
 
