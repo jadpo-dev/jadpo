@@ -728,19 +728,18 @@ Two independent reviewers, soundness and architecture for the phases
 ahead, read everything Phase 6 built; their confirmed findings are the
 chunks below, taken before Phase 7, in this order.
 
-- [ ] **6.6a Phase 6 review fixes: exactly-once and limits** `opus ·
-  xhigh`: a subscriber whose action emits without writing keeps a handled
-  record in its outbox store, written after the outbox write, so a repeat
-  never duplicates downstream work; the sweep runs each piece at the
-  host's time and leases from the claim's time, never the tick's; a
-  batch's runs keep the chain depth they started at, so an event loop
-  through a batch stops at 16; the 1,000-event allowance counted per
-  item's action, not per batch page; a delivery claimed again over its
-  `retry:` budget or past `within:` fails, the run-limit path settling
-  against the budget; `settle:`'s `within:` races the body only, the
-  commit outside the race; ended batch runs, their problems and cancels
-  deleted by the tick after 30 days. Each from the review's reproduction,
-  a failing test first.
+- [x] **6.6a Phase 6 review fixes: exactly-once and limits** `opus ·
+  xhigh`. Built: a subscriber's handled record written after its outbox
+  rows, in its outbox store when its action only emits, so a repeat sets
+  nothing off twice; the sweep running each piece at the host's time and
+  leasing from the claim; a batch run keeping its chain depth
+  (`jadpo_batch_runs.depth`, with a migration in examples 24 and 25), so
+  a loop through a batch stops at 16; 1,000 events per item's action; a
+  delivery claimed over its budget or past `within:` failing unrun
+  (`lease_expired` for a lost attempt), the run limit settling against
+  the budget; `settle:`'s `within:` and the run limit racing the body
+  only; and the tick deleting batch runs 30 days after they ended. Each
+  from a failing live test of the review's reproduction.
 - [ ] **6.6b Phase 6 review fixes: policy proofs** `opus · xhigh`: a
   batch's `each:` parameter bound to the provenance of the `from:`
   query's items and its inline call checked like any call, so a

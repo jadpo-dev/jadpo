@@ -79,7 +79,19 @@ pub const FIND_HANDLED: &str = "SELECT \"id\" FROM \"jadpo_handled_deliveries\" 
 
 /// Claims delivery `$1` at `$2` until `$3` when it is due, giving its
 /// attempt's number: one statement, so two runners never both have it.
-pub const CLAIM: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'running', \"attempts\" = \"attempts\" + 1, \"last_tried_at\" = $2, \"next_attempt_at\" = $3 WHERE \"id\" = $1 AND \"status\" IN ('pending', 'running') AND \"next_attempt_at\" <= $2 RETURNING \"attempts\"";
+/// One still `running` was lost with its worker once its lease passed:
+/// its last failure becomes `$4`, [`LEASE_EXPIRED`] (chunk 6.6a).
+pub const CLAIM: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'running', \"attempts\" = \"attempts\" + 1, \"last_tried_at\" = $2, \"next_attempt_at\" = $3, \"last_failure\" = CASE WHEN \"status\" = 'running' THEN $4::jsonb ELSE \"last_failure\" END WHERE \"id\" = $1 AND \"status\" IN ('pending', 'running') AND \"next_attempt_at\" <= $2 RETURNING \"attempts\"";
+
+/// Gives up delivery `$1`, claimed for attempt `$2` over its budget or
+/// past `within:`, without running it (chunk 6.6a): `failed`, the claim
+/// not counted as an attempt, keeping its last attempt's failure, or `$3`
+/// when it was never tried.
+pub const GIVE_UP: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'failed', \"attempts\" = \"attempts\" - 1, \"next_attempt_at\" = NULL, \"last_failure\" = COALESCE(\"last_failure\", $3) WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
+
+/// The failure a delivery record keeps for an attempt lost with its
+/// worker, as a schedule's run record does (chunk 6.2).
+pub const LEASE_EXPIRED: &str = "lease_expired";
 
 /// Records how attempt `$2` of delivery `$1` ended, while it is still the
 /// claimer's: its state `$3`, its next attempt `$4` and its failure `$5`.

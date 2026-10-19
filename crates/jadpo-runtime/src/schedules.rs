@@ -40,7 +40,8 @@
 //! that holds them: deliveries left behind ([`runner::sweep`]), expired
 //! idempotency keys (area 7), and events every subscriber has had,
 //! [`SETTLED_KEPT_MS`] after they were emitted; then each of
-//! [`HOOKS`], where batch runs resume (chunk 6.4).
+//! [`HOOKS`], where batch runs resume (chunk 6.4) and ended ones are
+//! deleted after 30 days (chunk 6.6a).
 //!
 //! What an operator reads and does with them, `jadpo schedules` and
 //! `jadpo why`, is [`watch`] (chunk 6.2b).
@@ -91,8 +92,9 @@ pub const BY_HAND: &str = "by_hand";
 pub type Hook = for<'a> fn(&'a dyn Executor, &'a dyn Host, i64) -> LocalFuture<'a, Vec<Deferred>>;
 
 /// What the tick runs after its sweeps: batch runs whose runner's lease
-/// lapsed are picked up from where they committed (chunk 6.4).
-pub const HOOKS: &[Hook] = &[resume_batches];
+/// lapsed are picked up from where they committed (chunk 6.4), and runs
+/// that ended 30 days ago are deleted (chunk 6.6a).
+pub const HOOKS: &[Hook] = &[resume_batches, clean_batches];
 
 /// [`crate::batches::resume`] as a [`Hook`]: what the runs it picked up
 /// left for after.
@@ -102,6 +104,18 @@ fn resume_batches<'a>(
     now: i64,
 ) -> LocalFuture<'a, Vec<Deferred>> {
     Box::pin(async move { crate::batches::resume(executor, host, now).await.1 })
+}
+
+/// [`crate::batches::clean`] as a [`Hook`]: it leaves nothing for after.
+fn clean_batches<'a>(
+    executor: &'a dyn Executor,
+    host: &'a dyn Host,
+    now: i64,
+) -> LocalFuture<'a, Vec<Deferred>> {
+    Box::pin(async move {
+        crate::batches::clean(executor, host, now).await;
+        Vec::new()
+    })
 }
 
 /// A state row for each schedule that has none, its first run due one

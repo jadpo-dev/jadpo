@@ -87,9 +87,9 @@ const BATCH_ATTEMPTS: u32 = crate::RERUN_ATTEMPTS;
 /// The most runs one sweep picks up.
 const SWEEP_LIMIT: i64 = 100;
 
-const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
+const START: &str = "WITH \"started\" AS (INSERT INTO \"jadpo_batch_runs\" (\"id\", \"batch\", \"shape\", \"key\", \"captured\", \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", \"failure\", \"lease_until\", \"started_at\", \"stepped_at\", \"finished_at\", \"depth\") VALUES ($1, $2, $3, $4, $5, 'running', NULL, FALSE, 0, 0, NULL, NULL, $6, $6, NULL, $7) ON CONFLICT (\"batch\", \"key\") DO NOTHING RETURNING \"id\") SELECT \"id\" FROM \"started\" UNION ALL SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"batch\" = $2 AND \"key\" = $4 AND NOT EXISTS (SELECT 1 FROM \"started\")";
 
-const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\"";
+const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" = $2 WHERE \"id\" = $1 AND \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $3) RETURNING \"batch\", \"shape\", \"captured\", \"key\", \"depth\"";
 
 const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
 
@@ -107,6 +107,19 @@ const STATUS: &str =
 const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
 
 const CANCEL: &str = "INSERT INTO \"jadpo_batch_cancels\" (\"run_id\", \"requested_at\") VALUES ($1, $2) ON CONFLICT (\"run_id\") DO NOTHING";
+
+/// Runs that ended (finished, failed or cancelled) at or before `$1`, at
+/// most `$2`, with their cancels; their problems go with them.
+const ENDED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_batch_runs\" WHERE \"id\" IN (SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" <> 'running' AND \"finished_at\" <= $1 ORDER BY \"finished_at\" LIMIT $2) RETURNING \"id\"), \"asked\" AS (DELETE FROM \"jadpo_batch_cancels\" WHERE \"run_id\" IN (SELECT \"id\" FROM \"gone\")) SELECT 1 FROM \"gone\"";
+
+/// Cancels asked for at or before `$1` of runs no store keeps, at most
+/// `$2`: a run the caller held after it was deleted.
+const UNKEPT_CANCELS: &str = "DELETE FROM \"jadpo_batch_cancels\" WHERE \"run_id\" IN (SELECT \"c\".\"run_id\" FROM \"jadpo_batch_cancels\" AS \"c\" WHERE \"c\".\"requested_at\" <= $1 AND NOT EXISTS (SELECT 1 FROM \"jadpo_batch_runs\" AS \"r\" WHERE \"r\".\"id\" = \"c\".\"run_id\") LIMIT $2) RETURNING 1";
+
+/// How long a run that ended is kept, with its problems and its cancel,
+/// before the tick deletes it (chunk 6.6a): as long as a schedule's run
+/// records.
+pub const ENDED_KEPT_MS: i64 = crate::schedules::RUNS_KEPT_MS;
 
 const WAITING: &str = "SELECT \"id\" FROM \"jadpo_batch_runs\" WHERE \"state\" = 'running' AND (\"lease_until\" IS NULL OR \"lease_until\" < $1) ORDER BY \"started_at\", \"id\" LIMIT $2";
 
@@ -272,6 +285,9 @@ pub async fn start(
         key,
         SqlValue::Json(text),
         at(now),
+        // How deep in a chain of events it was started, which its items
+        // run at (chunk 6.6a).
+        SqlValue::Int4(i32::try_from(ctx.chain).unwrap_or(i32::MAX)),
     ];
     let transaction = match ctx.transaction(&plan.store).await {
         Ok(transaction) => transaction,
@@ -475,12 +491,13 @@ async fn run_inner(
         },
         Err(error) => return Ran::Paused(format!("the store refused its claim ({error:?})")),
     };
-    let (name, shape, captured, key) = match row.as_slice() {
+    let (name, shape, captured, key, depth) = match row.as_slice() {
         [
             SqlValue::Text(name),
             SqlValue::Text(shape),
             SqlValue::Json(captured),
             key,
+            depth,
         ] => (
             name.clone(),
             shape.clone(),
@@ -488,6 +505,11 @@ async fn run_inner(
             match key {
                 SqlValue::Text(key) => Some(key.clone()),
                 _ => None,
+            },
+            // A run kept before its depth was counts from the start.
+            match depth {
+                SqlValue::Int4(depth) => u32::try_from(*depth).unwrap_or(0),
+                _ => 0,
             },
         ),
         _ => return Ran::Failed("its row isn't one the runtime wrote".into()),
@@ -532,6 +554,7 @@ async fn run_inner(
         let saved = Saved {
             values: &values,
             system,
+            depth,
         };
         let stepped = step(executor, host, batches, plan, start, saved, left).await;
         match stepped {
@@ -557,11 +580,13 @@ enum Step {
     Ended(Ran),
 }
 
-/// What a run saved, read back, and the system its batches work as.
+/// What a run saved, read back, the system its batches work as, and how
+/// deep in a chain of events it was started.
 #[derive(Clone, Copy)]
 struct Saved<'a> {
     values: &'a [Value],
     system: System,
+    depth: u32,
 }
 
 /// One transaction of the run: the next page with its items, or, once
@@ -584,6 +609,11 @@ async fn step(
         clock: Clock::fixed(now),
     };
     let mut ctx = Ctx::new(executor.places(), host, env);
+    // Its items run as deep in a chain of events as the action that
+    // started the run, so what they emit is one deeper than the event
+    // that set it off, and a loop through a batch stops as any does
+    // (chunk 6.6a).
+    ctx.chain = saved.depth;
     let stepped = batch(executor, &mut ctx, batches, plan, start, saved, now).await;
     left.extend(ctx.take_deferred());
     stepped
@@ -606,7 +636,7 @@ async fn batch(
     saved: Saved<'_>,
     now: i64,
 ) -> Step {
-    let Saved { values, system } = saved;
+    let Saved { values, system, .. } = saved;
     let id = SqlValue::Uuid(start.run);
     let mut open = match Batch::open(ctx, &plan.store, plan.isolation, system).await {
         Ok(open) => open,
@@ -1108,6 +1138,48 @@ pub async fn resume(
         out.push((start, ran));
     }
     (out, left)
+}
+
+/// Deletes, in each store the program keeps runs in, the runs that ended
+/// [`ENDED_KEPT_MS`] or more before `now`, with their problems and
+/// cancels, and the cancels as old of runs no store keeps (chunk 6.6a):
+/// what the runtime's minute tick runs, a thousand rows at a time, at
+/// most ten times a tick, as its other deletes. A run still going is
+/// never deleted. How many runs and cancels it deleted.
+pub async fn clean(executor: &dyn Executor, host: &dyn Host, now: i64) -> u64 {
+    use crate::schedules::{DELETE_BATCH, DELETE_BATCHES};
+    let Some(batches) = executor.batches() else {
+        return 0;
+    };
+    let mut stores: Vec<&str> = batches
+        .plans
+        .iter()
+        .map(|plan| plan.store.as_str())
+        .collect();
+    stores.sort_unstable();
+    stores.dedup();
+    let before = at(now.saturating_sub(ENDED_KEPT_MS));
+    let mut deleted = 0;
+    for store in stores {
+        let Some(database) = host.database(store) else {
+            continue;
+        };
+        for sql in [ENDED, UNKEPT_CANCELS] {
+            for _ in 0..DELETE_BATCHES {
+                let Ok(rows) = database
+                    .query_once(sql, &[before.clone(), SqlValue::Int8(DELETE_BATCH)])
+                    .await
+                else {
+                    break;
+                };
+                deleted += rows.len() as u64;
+                if (rows.len() as i64) < DELETE_BATCH {
+                    break;
+                }
+            }
+        }
+    }
+    deleted
 }
 
 #[cfg(test)]

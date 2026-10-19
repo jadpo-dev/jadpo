@@ -173,7 +173,8 @@ fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
 }
 
 /// The subscriber table (area 12, chunk 6.1b): each subscriber that reads
-/// cleanly, with the callable it runs and the store its action writes.
+/// cleanly, with the callable it runs and the store its handled record is
+/// kept in.
 fn events_plan(
     db: &dyn Db,
     project: Project,
@@ -199,9 +200,12 @@ fn events_plan(
                     Tenant::Field(field) => TenantFrom::Field(field.clone()),
                     Tenant::None => TenantFrom::Nowhere,
                 },
+                // The store its action writes, or, writing none, the one
+                // its events are kept in (chunk 6.6a).
                 store: written
                     .get(model.run.name())
-                    .and_then(|stores| stores.keys().next().cloned()),
+                    .and_then(|stores| stores.keys().next().cloned())
+                    .or_else(|| jadpo_check::events::outbox_store(db, project, model.run.name())),
                 file: model.path.clone(),
                 line: model.line,
             })
