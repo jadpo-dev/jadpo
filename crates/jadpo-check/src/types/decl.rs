@@ -353,7 +353,7 @@ impl Decls<'_> {
                 Diagnostic::new(&rule::TYPE_UNKNOWN_FIELD, format!("`{written}` isn't a type"))
                     .at(self.span(head), "a batch type's field")
                     .reason(format!(
-                        "A field type names a field an entity, an object or a standard object declares (`Todo.id`, `LocalTime.hour`); `{host}`'s fields are read from the value the runtime gives, never named as a type."
+                        "A field type names a field an entity, an object or a standard object declares, such as `LocalTime.hour`; `{host}`'s fields are read from the value the runtime gives, never named as a type."
                     ))
                     .next("Name the field's own type, or a type of your own built on it"),
             );

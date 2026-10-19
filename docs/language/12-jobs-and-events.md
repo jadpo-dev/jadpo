@@ -2599,7 +2599,7 @@ open, each the most conservative reading (area 9, "Background work"):
 - **The item, checked like any call.** Each item is one of the records
   `from:` finds, followed into what `each:`'s action stores, whether it
   is given the item or a field of it, as chunk 6.4d built; the review's
-  case, a diary's secret posted where anyone signed in reads it, is
+  case, a diary's confession posted where anyone signed in reads it, is
   refused, with or without a tenant.
 - **Every action a run reaches, by its own line.** What a schedule, a
   subscriber or a batch reaches is checked against the line under
@@ -2638,10 +2638,10 @@ open, each the most conservative reading (area 9, "Background work"):
   `BatchRun` to say which batch and tenant it is, which a later chunk
   would decide.
 
-The review's case: `post_item` puts a diary's secret, which only its
+The review's case: `post_item` puts a diary's confession, which only its
 owner reads, on a board anyone signed in reads:
 
-```jadpo check project=e-batch-item-secret file=journal.jadpo hidden
+```jadpo check project=e-batch-item-confession file=journal.jadpo hidden
 type Line = Text {
     min_length: 1
     max_length: 200
@@ -2656,7 +2656,7 @@ type DiaryPage = Input {
     }
 }
 
-entity Writer {
+entity Diarist {
     id: Uuid
     handle: Line {
         unique: true
@@ -2670,17 +2670,17 @@ entity Writer {
 
 principal {
     user: {
-        subject: Writer.handle
+        subject: Diarist.handle
     }
 }
 
 entity Diary {
     id: Uuid
-    owner_id: Writer.id {
+    owner_id: Diarist.id {
         on_delete: OnDelete.cascade
     }
     title: Line
-    secret: Line {
+    confession: Line {
         policy: {
             read: [owner_id, Access.system]
         }
@@ -2718,14 +2718,14 @@ authentication {
 }
 ```
 
-```jadpo check project=e-batch-item-secret expect=policy.output_field_unproved
+```jadpo check project=e-batch-item-confession expect=policy.output_field_unproved
 action post_item(diary: Diary) -> Unit {
-    var posted: Board = Board.create {
+    var board_post: Board = Board.create {
         set: {
-            text: diary.secret
+            text: diary.confession
         }
     }
-    assert posted.text == posted.text
+    assert board_post.text == board_post.text
 }
 
 action post_all(page: DiaryPage) -> BatchRun {
@@ -2734,13 +2734,13 @@ action post_all(page: DiaryPage) -> BatchRun {
 ```
 
 ```text output
-error: `post_all` passes `Diary.secret` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it
+error: `post_all` passes `Diary.confession` to `post_item`, which stores it in `Board.text`, though not everyone who may read `text` may read it
  --> main.jadpo:11:71
    |
 11 |     return batches.each(from: diaries(page), each: diary -> post_item(diary))
-   |                                                                       ^^^^^ from `Diary.secret`
-  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `secret`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
-  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `secret` (agent)
+   |                                                                       ^^^^^ from `Diary.confession`
+  reason: `post_item` stores what it is given here in `Board.text`, and everyone who may read `Board.text`, anyone signed in among them, reads what is stored there, from any request, and only the user `owner_id` points at and schedules and subscribers may read `confession`. A value stored in a field keeps its own field's rules, as one sent in an output does, so it is stored only where everyone who may read it may read the value.
+  next: Pass `post_item` what everyone who may read `Board.text` may read, or give `text`'s `read:` only those who may read `confession` (agent)
   rule: policy.output_field_unproved
   help: docs/language/09-policy.html#policy-output-field-unproved
 
@@ -2748,9 +2748,9 @@ check failed: 1 error, 2 files
 ```
 
 How many diaries a run refused shows what refused them, a diary's
-secret, to anyone signed in, whom `count_drafts`'s line lets in:
+confession, to anyone signed in, whom `count_drafts`'s line lets in:
 
-```jadpo check project=e-batch-status-secret file=journal.jadpo hidden
+```jadpo check project=e-batch-status-confession file=journal.jadpo hidden
 type Line = Text {
     min_length: 1
     max_length: 200
@@ -2765,7 +2765,7 @@ type DiaryPage = Input {
     }
 }
 
-entity Writer {
+entity Diarist {
     id: Uuid
     handle: Line {
         unique: true
@@ -2779,17 +2779,17 @@ entity Writer {
 
 principal {
     user: {
-        subject: Writer.handle
+        subject: Diarist.handle
     }
 }
 
 entity Diary {
     id: Uuid
-    owner_id: Writer.id {
+    owner_id: Diarist.id {
         on_delete: OnDelete.cascade
     }
     title: Line
-    secret: Line {
+    confession: Line {
         policy: {
             read: [owner_id, Access.system]
         }
@@ -2823,7 +2823,7 @@ policy {
 }
 ```
 
-```jadpo check project=e-batch-status-secret expect=policy.output_field_unproved
+```jadpo check project=e-batch-status-confession expect=policy.output_field_unproved
 type Draft = Failure {
     kind: FailureKind.rejected
     message: "This diary is a draft."
@@ -2834,7 +2834,7 @@ type DraftCount = Output {
 }
 
 action check_diary(diary: Diary) fails Draft -> Unit {
-    if (diary.secret == "draft") {
+    if (diary.confession == "draft") {
         reject Draft {}
     }
 }
@@ -2843,8 +2843,8 @@ action check_all(page: DiaryPage) -> BatchRun {
     return batches.each(from: diaries(page), each: diary -> check_diary(diary))
 }
 
-action count_drafts(run: BatchRun) -> DraftCount {
-    var at: BatchProgress = batches.status(run)
+action count_drafts(draft_walk: BatchRun) -> DraftCount {
+    var at: BatchProgress = batches.status(draft_walk)
     return DraftCount {
         drafts: at.problems
     }
@@ -2852,13 +2852,13 @@ action count_drafts(run: BatchRun) -> DraftCount {
 ```
 
 ```text output
-error: `DraftCount.drafts` carries `Diary.secret`, which not every caller of `count_drafts` may read
+error: `DraftCount.drafts` carries `Diary.confession`, which not every caller of `count_drafts` may read
  --> main.jadpo:23:17
    |
 23 |         drafts: at.problems
-   |                 ^^^^^^^^^^^ decided by `Diary.secret`
-  reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.secret` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `secret`.
-  next: Let only those who may read `secret` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
+   |                 ^^^^^^^^^^^ decided by `Diary.confession`
+  reason: `batches.status` finds a run by its `id` alone, so what it gives shows what decides the failures of every batch the application starts, `Diary.confession` among them, to anyone who may call `count_drafts`, and only the user `owner_id` points at and schedules and subscribers may read `confession`.
+  next: Let only those who may read `confession` call `count_drafts`, through its line under `actions:`, or decide which items fail by what its callers may read (agent)
   rule: policy.output_field_unproved
   help: docs/language/09-policy.html#policy-output-field-unproved
 

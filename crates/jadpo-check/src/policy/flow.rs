@@ -133,7 +133,7 @@ fn by_id(reached: &Reached) -> bool {
 }
 
 /// `src` as the caller who reached it as `reached` holds it.
-fn reread(src: &Src, reached: &Reached) -> Src {
+fn as_held_by(src: &Src, reached: &Reached) -> Src {
     match src {
         Src::Record {
             entity,
@@ -157,8 +157,8 @@ fn reread(src: &Src, reached: &Reached) -> Src {
             reached: reached.clone(),
             origin: *origin,
         },
-        Src::Decided(inner) => Src::Decided(Box::new(reread(inner, reached))),
-        Src::Deep(inner) => Src::Deep(Box::new(reread(inner, reached))),
+        Src::Decided(inner) => Src::Decided(Box::new(as_held_by(inner, reached))),
+        Src::Deep(inner) => Src::Deep(Box::new(as_held_by(inner, reached))),
         other => other.clone(),
     }
 }
@@ -2098,7 +2098,7 @@ impl Walk<'_> {
         let known = self.gated(Reached::by(vec![Vec::new()]));
         let mut out = Prov::default();
         for src in batch_failures(flow.db, flow.project) {
-            let src = reread(src, &known);
+            let src = as_held_by(src, &known);
             out.add(decided(src.clone()).unwrap_or(src));
         }
         out
