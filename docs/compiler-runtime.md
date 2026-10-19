@@ -2265,7 +2265,9 @@ alone and 80 s or more inside the gate) and `compiler tests`, which no
 thread setting tried shortened. In CI (four-core runners), the last 30
 successful runs of 19 October took a median of 353 s from start to end
 (265 to 486 s), the `tests` job 334 s (256 to 464 s), of which the gate
-was 280 s (203 to 432 s), and `docs` 162 s.
+was 280 s (203 to 432 s), and `docs` 162 s; this chunk's branch took 264
+s, the `tests` job 256 s and its gate 219 s, one run, so a sign rather
+than a measure.
 
 **CI.** GitHub Actions on Linux runs the gate's four groups as parallel
 jobs, each with the pinned toolchain and its own cargo cache: `lint`

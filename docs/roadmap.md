@@ -811,7 +811,7 @@ chunks below, taken before Phase 7, in this order.
   finding builds where cargo says. Full gate warm 86 to 107 s before
   (median 100 s), 89 and 96 s after, on a machine shared with two other
   gates; cold 219 s before, 316 s after under heavier load; CI's gate
-  step a median of 280 s.
+  step a median of 280 s before, 219 s in this branch's one run.
 - [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
   chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
   onwards) folded into the text they amend, as 5.10 did, and the code
