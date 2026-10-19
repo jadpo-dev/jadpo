@@ -35,7 +35,7 @@ use crate::case::to_snake;
 use crate::graph::{entity_field_key, registry};
 use crate::lookups::{Lookup, Name, NameView};
 use crate::tree::{self, node_span};
-use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView};
+use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView, json_form};
 
 pub use columns::column_type;
 
@@ -223,11 +223,12 @@ pub struct FieldModel {
     /// it holds (area 19, chunk 5.5w). A compound type's columns take
     /// theirs from its layout.
     pub comment: Option<String>,
-    /// A JSON-held standard type, by name (area 19, chunk 5.5w2b):
-    /// `RichText`, `RichTextBlock` or `LocalisedText`, stored as its
-    /// contract's JSON in the one `jsonb` column `sql_type` is, written and
-    /// read by the route codec.
-    pub json: Option<&'static str>,
+    /// A value stored whole as its type's JSON in the one `jsonb` column
+    /// `sql_type` is, written and read by the route codec, by its type as
+    /// written without `?` (area 5, "Storage types"): a standard collection
+    /// (`RichText`, `RichTextBlock`, `LocalisedText`, chunk 5.5w2b) or an
+    /// application's enum with data, object, list, set or map (chunk 5.9b).
+    pub json: Option<String>,
     /// The built-in type its type is built on, which a literal compared
     /// with it or backfilled into it is decoded for, as the plan decodes a
     /// body's (chunk 5.5w3b); `None` for an enum, an object or a container.
@@ -1012,11 +1013,9 @@ impl Reader<'_> {
             .into_iter()
             .find_map(|(_, rules)| rules.scale);
         // A token or a key is shown once and kept only as its verifier, by
-        // the runtime (area 8).
-        if let Ty::Prim(
-            credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey),
-        ) = self.lookup.structure(&ty)
-        {
+        // the runtime (area 8), in a column of its own or inside a value
+        // stored as JSON (chunk 5.9b).
+        if let Some(credential) = held_credential(self.lookup, &ty, &mut Vec::new()) {
             let what = if credential == jadpo_std::Builtin::ApiToken {
                 "An API token"
             } else {
@@ -1069,30 +1068,44 @@ impl Reader<'_> {
                 field.allows.min_length = None;
                 field.allows.max_length = None;
             }
-            // A JSON-held standard type is stored as its contract's JSON,
-            // written and read by the route codec (area 19, chunk 5.5w2b).
-            Ok(sql) if sql == "jsonb" && json_held(self.lookup, &ty).is_some() => {
-                field.json = json_held(self.lookup, &ty);
-                field.sql_type = Some(sql);
-            }
-            // Any other structured field is stored as `jsonb` in the API's
-            // JSON (area 5), whose codec structured fields don't have yet.
+            // A structured value is stored whole as its type's JSON, which
+            // the route codec writes and reads back with the field's rules
+            // (area 5, "Storage types"): a standard collection (chunk
+            // 5.5w2b), or an application's enum with data, object, list,
+            // set or map (chunk 5.9b), made of what that JSON can hold.
             Ok(sql) if sql == "jsonb" => {
                 let shown = ty.strip_nullable().to_string();
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("Storing a `{shown}` field isn't built yet"),
-                    )
-                    .at(node_span(path, value.syntax()), "structured, stored as `jsonb`")
-                    .reason(format!(
-                        "Area 5 stores an enum with data, an object, a list, a set or a map as `jsonb` holding the API's JSON, and that JSON comes with area 7; until then this compiler can't read or write `{entity}.{name}`."
-                    ))
-                    .next(format!(
-                        "Store what `{entity}.{name}` holds in fields of its own, or as records of an entity that refers to `{entity}`, for now"
-                    ))
-                    .help_at("05-data.html#storage-types"),
-                );
+                match json_form::no_json_form(
+                    self.lookup,
+                    &ty,
+                    &mut BTreeSet::new(),
+                    json_form::JsonUse::Store,
+                ) {
+                    Some((offending, what)) => {
+                        let held = if offending == shown {
+                            format!("`{entity}.{name}` is `{shown}`")
+                        } else {
+                            format!("`{entity}.{name}` holds `{offending}`")
+                        };
+                        self.out.push(
+                            Diagnostic::new(
+                                &rule::DATA_FIELD_WITHOUT_JSON,
+                                format!("`{entity}.{name}` can't be stored as JSON"),
+                            )
+                            .at(
+                                node_span(path, value.syntax()),
+                                format!("`{offending}` has no stored form"),
+                            )
+                            .reason(format!(
+                                "A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps. {held}, which is {what}."
+                            ))
+                            .next(format!(
+                                "Store what `{entity}.{name}` needs in an `Object` of the application's, or in fields of its own"
+                            )),
+                        );
+                    }
+                    None => field.json = Some(shown),
+                }
                 field.sql_type = Some(sql);
             }
             Ok(sql) => {
@@ -1208,6 +1221,17 @@ impl Reader<'_> {
                     ),
                 },
                 "unique" => match member.value().as_ref().map(Const::from_expr) {
+                    // A value stored whole as JSON is compared by no unique
+                    // rule yet (chunk 5.9b).
+                    Some(Const::Bool(true)) if field.json.is_some() => {
+                        self.out.push(json_keyed(
+                            entity,
+                            name,
+                            "A unique rule",
+                            key_span,
+                            format!("Remove `unique:` from `{name}` for now"),
+                        ));
+                    }
                     Some(Const::Bool(true)) => field.unique = true,
                     _ => self.setting_value(value_span, "unique", "`true`"),
                 },
@@ -1680,6 +1704,19 @@ impl Reader<'_> {
                     );
                     continue;
                 }
+                // A value stored whole as JSON is compared by no unique rule
+                // or index yet (chunk 5.9b).
+                if found.json.is_some() {
+                    broken = true;
+                    self.out.push(json_keyed(
+                        &entity.name,
+                        &field,
+                        if unique { "A unique rule" } else { "An index" },
+                        entry_span,
+                        format!("Leave `{field}` out of `{rule_name}` for now"),
+                    ));
+                    continue;
+                }
                 if unique && found.nullable {
                     broken = true;
                     self.out.push(
@@ -2135,31 +2172,61 @@ fn holds_presentation(lookup: &dyn TypeView, ty: &Ty, seen: &mut Vec<String>) ->
     }
 }
 
-/// The JSON-held standard type a value of `ty` is, by name: one stored as
-/// its contract's JSON in a `jsonb` column (`RichText`, `RichTextBlock`,
-/// `LocalisedText`; area 19, chunk 5.5w2b).
-pub fn json_held(lookup: &dyn TypeView, ty: &Ty) -> Option<&'static str> {
-    // A named collection is its own standard type, which its structure,
-    // a list or a map, no longer names (chunk 5.5o2).
-    lookup
-        .standard_text(ty)
-        .or_else(|| match lookup.structure(ty) {
-            Ty::Named(name) | Ty::Opaque(name, _) => jadpo_std::standard_type(&name),
-            _ => None,
-        })
-        .filter(|entry| {
-            entry.storage == jadpo_std::standard::Storage::Column(jadpo_std::read::SqlType::Json)
-        })
-        // A feature's JSON is its type arguments' too, which its name
-        // alone doesn't give, so it is structured JSON, not built yet (area
-        // 20, chunk 5.5u6).
-        .filter(|entry| {
-            !matches!(
-                entry.holds,
-                jadpo_std::standard::Holds::Feature | jadpo_std::standard::Holds::FeatureCollection
-            )
-        })
-        .map(|entry| entry.name)
+/// A unique rule or an index on `entity.field`, a value stored whole as
+/// JSON, which none covers yet (chunk 5.9b): PostgreSQL compares `jsonb` by
+/// its own rules rather than Jadpo's `==`, and no query compares it.
+fn json_keyed(entity: &str, field: &str, what: &str, at: Span, next: String) -> Diagnostic {
+    Diagnostic::new(
+        &rule::TOOLCHAIN_NOT_BUILT_YET,
+        format!("{what} on `{entity}.{field}` isn't built yet"),
+    )
+    .at(at, "stored as JSON")
+    .reason(format!(
+        "`{entity}.{field}` is stored whole as its JSON in one `jsonb` column (area 5, \"Storage types\"), which PostgreSQL compares by its own rules rather than Jadpo's `==`, and no query compares it yet."
+    ))
+    .next(next)
+}
+
+/// The API token or service key a value of `ty` is or holds, however
+/// deep: in a list, a set, a map or an option, in a field of an object, or
+/// in a variant's data (area 8; chunk 5.9b).
+fn held_credential(
+    lookup: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+) -> Option<jadpo_std::Builtin> {
+    match lookup.structure(ty) {
+        Ty::Prim(credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey)) => {
+            Some(credential)
+        }
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
+            held_credential(lookup, &inner, seen)
+        }
+        Ty::Map(key, value) => {
+            held_credential(lookup, &key, seen).or_else(|| held_credential(lookup, &value, seen))
+        }
+        Ty::Opaque(_, args) => args
+            .iter()
+            .find_map(|arg| held_credential(lookup, arg, seen)),
+        Ty::Named(name) => {
+            if seen.contains(&name) {
+                return None;
+            }
+            seen.push(name.clone());
+            match lookup.def(&name) {
+                Some(Def::Fields { fields, base, .. }) if *base != FieldsBase::Entity => fields
+                    .iter()
+                    .find_map(|field| held_credential(lookup, &field.declared, seen)),
+                Some(Def::Enum { variants }) => variants
+                    .iter()
+                    .filter_map(|variant| variant.fields.as_deref())
+                    .flatten()
+                    .find_map(|field| held_credential(lookup, &field.declared, seen)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 fn holds_entity(lookup: &dyn TypeView, ty: &Ty) -> Option<String> {

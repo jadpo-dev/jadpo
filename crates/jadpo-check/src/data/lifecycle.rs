@@ -608,6 +608,40 @@ impl<'a> Reader<'a, '_> {
         let expr = unparen(expr);
         let expected = field_ty(self.entity, field);
         let constant = Const::from_expr(&expr);
+        // A value stored whole as JSON is `NULL` when it is `none`, and
+        // otherwise compared and written only by Jadpo (chunk 5.9b).
+        if field.json.is_some() && !matches!(constant, Const::None) {
+            let (rule, label, does) = if set {
+                (
+                    &rule::DATA_LIFECYCLE_VALUE,
+                    "set as JSON",
+                    "a lifecycle sets it only to `none`, which is the column's `NULL`; any other value is written by an action's write, through the route codec",
+                )
+            } else {
+                (
+                    &rule::DATA_LIFECYCLE_CONDITION,
+                    "compared as JSON",
+                    "a lifecycle's condition tests it only for `none`, which is the column's `NULL`, since PostgreSQL compares `jsonb` by its own rules rather than Jadpo's `==`",
+                )
+            };
+            self.out.push(
+                Diagnostic::new(
+                    rule,
+                    format!("`{}` is stored as JSON", field.name),
+                )
+                .at(self.span(&expr), label)
+                .reason(format!(
+                    "`{}.{}` is stored whole as its JSON in one `jsonb` column (area 5, \"Storage types\"), so {does}.",
+                    self.entity.name, field.name
+                ))
+                .next(if set {
+                    format!("Set `{}` to `none`, or in an action's write", field.name)
+                } else {
+                    format!("Test `{}` with `== none` or `!= none`", field.name)
+                }),
+            );
+            return None;
+        }
         match &expr {
             Expr::Literal(_) | Expr::PrefixExpr(_)
                 if !matches!(constant, Const::Other | Const::Path(_)) =>
