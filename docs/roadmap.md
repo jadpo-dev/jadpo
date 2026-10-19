@@ -1846,6 +1846,12 @@ chunks below, taken before Phase 6.
   (no job takes arguments yet); live tests reading each back unchanged
   and faulting on rows edited to break a rule. Changing a stored type
   isn't migrated yet. Choices in area 5's "Chosen in chunk 5.9b".
+- [ ] **5.9c Migrating stored structured values** `opus · high` (area 5),
+  after 5.9b: the migration snapshot records what a JSON column's type
+  allows, so changing the stored type or the field's rules makes a
+  migration that rewrites or refuses stored values the new type can't
+  read, rather than a fault on read; and a required structured field
+  added to a table with rows taking a `backfill:` as any other field does.
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and
