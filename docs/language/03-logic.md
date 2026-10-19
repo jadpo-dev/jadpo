@@ -150,19 +150,20 @@ function delivery_fee(subtotal: Pence) -> Pence {
 ```
 
 - **Form.** `constant name: Type = value`. The name is lower_snake_case like
-  any value, and there is no mutable form: `constant mut` is an error whose
-  edit removes `mut`.
+  any value, and there is no mutable form: `constant mut` is
+  `syntax.expected_name`, whose edit removes `mut`.
 - **Only at the top of a file.** Inside a body a fixed value is always
   `var`, and at the top of a file always `constant`, so each place has one
-  way to write it. `constant` in a body is an error whose edit writes `var`.
-  A top-level `var` stays `syntax.expected_declaration`, whose `next:` says
-  to write `constant` (area 1). `const` at the top of a file is one error
+  way to write it. `constant` in a body is `syntax.expected_statement`,
+  whose edit writes `var`. A top-level `var` stays
+  `syntax.expected_declaration`, whose `next:` says to write `constant`
+  (area 1). `const` at the top of a file is `syntax.variable_keyword`,
   whose edit writes `constant`; in a body it stays
   [`syntax.variable_keyword`](#syntax-variable-keyword), whose edit writes
   `var`.
 - **A named type.** A constant's type follows the rule signatures follow
-  (area 2, "Signatures use named types"): `constant limit: Int = 5` is an
-  error, as `limit: Int` is in a parameter. A list of a named type, an
+  (area 2, "Signatures use named types"): `constant limit: Int = 5` is
+  `type.primitive_signature`, as `limit: Int` is in a parameter. A list of a named type, an
   object, an enum, `Email`, `Url` and the other types a signature may use
   are fine.
 - **A value the compiler can work out.** Literals, enum values, other
@@ -176,8 +177,13 @@ function delivery_fee(subtotal: Pence) -> Pence {
   constructs it back.
 - **Checked while compiling.** The value is checked against every rule of
   its type and the types it is built on, as a literal is
-  ([`type.invalid_literal`](02-values-and-types.md#type-invalid-literal)),
-  so a construction in a constant never needs `attempt`.
+  ([`type.invalid_literal`](02-values-and-types.md#type-invalid-literal),
+  naming the value worked out), so a construction in a constant never
+  needs `attempt`. The executors run the constant's typed body, which
+  can't fail, where it is read (docs/compiler-runtime.md §2.5).
+- **Kept together.** `jadpo fmt` keeps constants written one after
+  another on consecutive lines, as the source groups them, and puts a
+  blank line between every other pair of declarations.
 - **Unused is an error**, as for any other declaration: beside a primary
   declaration it is `layout.unused_declaration`, and in a library a
   constant nothing reads is unused as a function nothing calls is.
@@ -303,7 +309,8 @@ Placement and sharing follow helper functions exactly (area 1, "Sharing and
 promotion"). A constant used by one file lives at the top of that file,
 beside the declaration that uses it; it is never a file's primary
 declaration, so there is no `constants/` folder, and its name never clashes
-with a file name (`constant vat_rate: VatRate` is fine). When a second file
+with a file name (`constant vat_rate: VatRate` is fine;
+`naming.folded_collision` leaves constants out). When a second file
 uses it, `layout.promotion_required` moves it into a library, and it is read
 through the library like a library function, without brackets:
 
@@ -368,7 +375,8 @@ value are an error, [`constant.similar_exists`](#constant-similar-exists),
 modelled on
 [`library.similar_exists`](01-project-layout-and-modules.md#library-similar-exists),
 naming the other constant and its file so the agent reads that one and
-removes its own. It is declinable (area 1, decided 2026-10-17, built in
+removes its own. The first in file and source order is the one named; the
+others are reported. It is declinable (area 1, decided 2026-10-17, built in
 chunk 5.4b): a VAT rate and a fee can share a value by coincidence, so a
 `decline constant.similar_exists: "<why>"` line above the constant
 answers it instead. The library catalogue
@@ -483,27 +491,6 @@ function vat_rate_on(day: VatDate) -> VatRate {
   work in parallel.
 - **A root `constants { }` block.** A grab-bag, the one file every change
   touches, and against domains owning their code.
-
-### Chosen in chunk 5.3e
-
-- **Rules reused.** `constant` in a body is `syntax.expected_statement`,
-  `constant mut` is `syntax.expected_name` and `const` at the top of a
-  file is `syntax.variable_keyword`, each with its edit; a construction in
-  a constant that breaks a rule is `type.invalid_literal`, naming the
-  value worked out; a built-in type is `type.primitive_signature`. The
-  constants' own rules are `constant.value_not_fixed`, `constant.cycle`
-  and `constant.similar_exists`.
-- **No file name to clash with.** `naming.folded_collision` leaves
-  constants out, since a constant never has a file of its own.
-- **Kept together.** `jadpo fmt` keeps constants written one after another
-  on consecutive lines, as the source groups them, and puts a blank line
-  between every other pair of declarations.
-- **The first is kept.** Of two constants of one type holding one value,
-  the first in file and source order is the one named; the others are
-  reported.
-- **Run as a body.** The compiler works out and checks each value while
-  compiling, and the executors run the constant's typed body, which can't
-  fail, where it is read (docs/compiler-runtime.md §2.5).
 
 ## Statements
 
@@ -3743,7 +3730,7 @@ check failed: 1 error, 1 file
 The new compiler builds this area: roadmap chunk 1.5, with the failure side
 of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in
 chunk 2.1. Every example and error above is checked against it on each gate
-run, [Constants](#constants) since chunk 5.3e.
+run, [Constants](#constants) included (chunk 5.3e).
 
 ### Consistency with the rest of the language
 
