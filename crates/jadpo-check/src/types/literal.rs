@@ -24,10 +24,19 @@ pub enum Problem {
     /// A bare number where a percentage goes, which could be a ratio or a
     /// percentage already (area 19): written with `%` instead.
     PercentRequired(jadpo_std::Num),
+    /// Text where a standard object type with rules across its parts goes
+    /// (chunk 5.8c): its canonical text, which isn't read while compiling,
+    /// so its rules can't be checked against it.
+    Unread(String),
 }
 
 /// Checks a constant against the type it goes into.
 pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), Problem> {
+    if let Ty::Opaque(name, args) = expected
+        && args.is_empty()
+    {
+        return standard_object(name, value);
+    }
     if expected.has_error() || matches!(expected, Ty::Var(_) | Ty::Opaque(..)) {
         return Ok(());
     }
@@ -65,7 +74,7 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
             for (host, rules) in table.rule_chain(expected) {
                 check_rules(rules, value).map_err(|broken| Problem::Broken(host, broken))?;
             }
-            return Ok(());
+            return vector_holding(table, expected, items);
         }
         _ => {}
     }
@@ -164,6 +173,102 @@ pub fn check(table: &dyn TypeView, expected: &Ty, value: &Const) -> Result<(), P
     Ok(())
 }
 
+/// A literal where a standard object type goes (chunk 5.8c): only text,
+/// its canonical text, which the type's contract reads where the value is
+/// made, and only for a type with one text form and no rules across its
+/// parts, since the checker can't read the text to check them; anything
+/// else is the wrong kind of value, never a value kept as it was written.
+fn standard_object(name: &str, value: &Const) -> Result<(), Problem> {
+    let Some(entry) = jadpo_std::standard::standard_type(name) else {
+        return Ok(());
+    };
+    if !matches!(
+        entry.holds,
+        jadpo_std::standard::Holds::Object(_) | jadpo_std::standard::Holds::Range
+    ) {
+        return Ok(());
+    }
+    match value {
+        Const::Other | Const::Path(_) | Const::None => Ok(()),
+        Const::Str(_) if entry.text.is_none() => Err(Problem::Kind { fix: None }),
+        Const::Str(_) if !jadpo_std::standard::across::rules(name).is_empty() => {
+            Err(Problem::Unread(name.to_string()))
+        }
+        Const::Str(_) => Ok(()),
+        _ => Err(Problem::Kind { fix: None }),
+    }
+}
+
+/// A vector written out against what its type holds beyond its length
+/// (chunk 5.8c): items within a half-precision float where its index is
+/// one, and not all zeros where it compares by cosine.
+pub fn vector_holding(table: &dyn TypeView, expected: &Ty, items: &[Const]) -> Result<(), Problem> {
+    use jadpo_std::standard::ai;
+    let chain = table.rule_chain(expected);
+    if !chain
+        .iter()
+        .any(|(_, rules)| rules.standard.is_some_and(ai::rounds))
+    {
+        return Ok(());
+    }
+    let mut floats = Vec::with_capacity(items.len());
+    for item in items {
+        let Const::Number { value, .. } = item else {
+            return Ok(());
+        };
+        let Some(float) = ai::float(&value.to_string()).and_then(|kept| kept.parse::<f32>().ok())
+        else {
+            return Ok(());
+        };
+        floats.push(float);
+    }
+    let dimensions = chain.iter().find_map(|(_, rules)| rules.dimensions);
+    let metric = chain
+        .iter()
+        .find_map(|(_, rules)| rules.distance)
+        .unwrap_or(jadpo_std::VectorDistance::Cosine);
+    let Some((key, _)) = ai::holding(&floats, dimensions, metric) else {
+        return Ok(());
+    };
+    // The type that says so: the one writing `distance:` or
+    // `dimensions:`, or `Vector` itself, which compares by cosine unless
+    // told otherwise.
+    let host = chain
+        .iter()
+        .find(|(_, rules)| match key {
+            jadpo_std::RuleKey::Distance => rules.distance.is_some(),
+            _ => rules.dimensions.is_some(),
+        })
+        .or_else(|| {
+            chain
+                .iter()
+                .find(|(_, rules)| rules.standard.is_some_and(ai::rounds))
+        })
+        .map_or_else(String::new, |(host, _)| host.clone());
+    let (rule, why) = match key {
+        jadpo_std::RuleKey::Distance => (
+            ai::COSINE_WRITTEN,
+            "is a vector of zeros, which has no direction to compare by cosine",
+        ),
+        jadpo_std::RuleKey::Min => (
+            ai::HALF_MIN_WRITTEN,
+            "has an item below -65504, which its half-precision index can't hold",
+        ),
+        _ => (
+            ai::HALF_MAX_WRITTEN,
+            "has an item above 65504, which its half-precision index can't hold",
+        ),
+    };
+    Err(Problem::Broken(
+        host,
+        jadpo_std::Broken {
+            key,
+            rule: rule.to_string(),
+            why: why.to_string(),
+        },
+    ))
+}
+
 /// The first value a list literal gives twice, as written for a reason
 /// line (area 2, question 5).
 pub fn repeated(items: &[Const]) -> Option<String> {
@@ -253,6 +358,17 @@ pub fn diagnostic(
             }
         }
         Problem::UnitRequired(kind) => unit_required(kind, written, &expected.to_string(), span),
+        Problem::Unread(standard) => Diagnostic::new(
+            &rule::TYPE_INVALID_LITERAL,
+            format!("`{written}` can't be checked as a `{expected}` while compiling"),
+        )
+        .at(span, "canonical text")
+        .reason(format!(
+            "A `{standard}` has rules across its parts, which every literal is checked against while compiling; text written where one goes is its canonical text, which isn't read until the program runs, so its rules can't be checked."
+        ))
+        .next(format!(
+            "Write it out as `{standard} {{ ... }}`, or read the text with `text.parse(..., as: {standard})` and `attempt`"
+        )),
         Problem::PercentRequired(number) => {
             let headline = if constructor {
                 Diagnostic::new(

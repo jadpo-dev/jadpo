@@ -306,6 +306,32 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
             };
             SqlValue::Numeric(part.of(&west, &east).to_string())
         }
+        // The double a distance is compared with (chunk 5.8c).
+        Source::DistanceBound {
+            index,
+            path,
+            strict,
+        } => {
+            let bound = value_at(
+                &Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                },
+                env.args,
+            );
+            let written = match &bound {
+                Some(Value::Decimal(decimal)) => decimal.to_string(),
+                Some(Value::Int(n)) => n.to_string(),
+                _ => {
+                    return Err(Problem::Defect(
+                        "a distance bound that isn't a number".into(),
+                    ));
+                }
+            };
+            let found = jadpo_std::standard::ai::distance_bound(&written, *strict)
+                .ok_or_else(|| Problem::Defect("a distance bound that isn't a number".into()))?;
+            SqlValue::Float8(found.to_bits())
+        }
     })
 }
 
@@ -848,8 +874,16 @@ pub fn field_value(
         .iter()
         .map(|part| part_value(part, ty))
         .collect::<Result<Vec<Value>, String>>()?;
-    jadpo_value::standard::from_parts_of(ty, &values)
-        .map_err(|_| format!("columns that don't make a `{ty}`"))
+    let value = jadpo_value::standard::from_parts_of(ty, &values)
+        .map_err(|_| format!("columns that don't make a `{ty}`"))?;
+    // A value read from the store is made like any other, so its rules
+    // across its parts hold (area 2, "Rules across fields"; chunk 5.8c):
+    // Jadpo writes none that breaks one, so a row that does was written
+    // around it, and reading it is a defect, named by the rule alone.
+    if let Some(rule) = jadpo_value::across::broken_standard(&value) {
+        return Err(format!("a stored `{ty}` that breaks its rule `{rule}`"));
+    }
+    Ok(value)
 }
 
 /// A vector read back from pgvector: each float as the decimal a vector

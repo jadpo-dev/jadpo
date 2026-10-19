@@ -346,6 +346,60 @@ pub fn vector_rules() -> crate::Rules {
     }
 }
 
+/// The most dimensions pgvector indexes as a `vector`; a type of more, up
+/// to [`MOST_HALF_INDEXED`], is indexed through a half-precision `halfvec`
+/// (area 21, "The index"; chunk 5.5v1c).
+pub const MOST_INDEXED: u64 = 2_000;
+
+/// The most dimensions pgvector indexes as a half-precision `halfvec`.
+pub const MOST_HALF_INDEXED: u64 = 4_000;
+
+/// The largest item a half-precision float holds, `65504`: an item of a
+/// vector indexed at half precision is held to it, either way, so its
+/// index takes every vector its type holds (chunk 5.8c).
+pub const MOST_HALF: f32 = 65_504.0;
+
+/// The rule as written that a vector type indexed at half precision holds
+/// its items to, as `min` and `max` (chunk 5.8c).
+pub const HALF_MIN_WRITTEN: &str = "min: -65504";
+pub const HALF_MAX_WRITTEN: &str = "max: 65504";
+
+/// The rule as written that a vector compared by cosine breaks when all
+/// its items are zero, as `distance` (chunk 5.8c).
+pub const COSINE_WRITTEN: &str = "distance: VectorDistance.cosine";
+
+/// Whether a vector type of `dimensions` is indexed at half precision, so
+/// holds each item within [`MOST_HALF`] (chunk 5.8c).
+pub fn held_at_half(dimensions: Option<u64>) -> bool {
+    dimensions.is_some_and(|n| n > MOST_INDEXED && n <= MOST_HALF_INDEXED)
+}
+
+/// What a vector's items break beyond its length (chunk 5.8c): an item
+/// past [`MOST_HALF`] when its type is indexed at half precision
+/// (`min` or `max`, with the item's place), then all items zero when its
+/// type compares by cosine, which needs a direction (`distance`). Items
+/// are the floats the vector keeps.
+pub fn holding(
+    items: &[f32],
+    dimensions: Option<u64>,
+    metric: crate::VectorDistance,
+) -> Option<(crate::RuleKey, Option<usize>)> {
+    if held_at_half(dimensions) {
+        for (at, item) in items.iter().enumerate() {
+            if *item > MOST_HALF {
+                return Some((crate::RuleKey::Max, Some(at)));
+            }
+            if *item < -MOST_HALF {
+                return Some((crate::RuleKey::Min, Some(at)));
+            }
+        }
+    }
+    if metric == crate::VectorDistance::Cosine && items.iter().all(|item| *item == 0.0) {
+        return Some((crate::RuleKey::Distance, None));
+    }
+    None
+}
+
 /// Whether a value of standard type `name` keeps each of its items as the
 /// nearest single-precision float as it is built: a `Vector`'s, rounded
 /// rather than refused, so building one never breaks `format`.
@@ -446,6 +500,52 @@ pub fn distance(a: &[f32], b: &[f32], metric: crate::VectorDistance) -> Option<f
     found.is_finite().then_some(found)
 }
 
+/// The double a distance is compared with in SQL so that it meets the
+/// comparison exactly when its decimal ([`distance_text`]), which
+/// `ai.distance` gives in code, meets `bound` (chunk 5.8c): the largest
+/// double whose decimal is at most `bound`, or below it when `strict`. A
+/// distance meets `<= bound` when it is at most that double, `< bound`
+/// when it is at most the strict one, and `>` and `>=` when it is above
+/// them, so PostgreSQL never rounds a longer literal its own way. `None`
+/// when `bound` isn't a number.
+pub fn distance_bound(bound: &str, strict: bool) -> Option<f64> {
+    let limit = crate::Num::parse(bound)?;
+    let meets = |found: f64| -> bool {
+        if found.is_infinite() {
+            return found < 0.0;
+        }
+        match crate::Num::parse(&distance_text(found)) {
+            Some(written) => {
+                let order = written.compare(limit);
+                if strict { order.is_lt() } else { order.is_le() }
+            }
+            // Past a decimal's digits: above every bound, or below.
+            None => found < 0.0,
+        }
+    };
+    // Whether a double meets it only gets less likely as the double grows,
+    // so search the doubles in order: by their bits, negatives reversed.
+    let key = |found: f64| {
+        let bits = found.to_bits() as i64;
+        if bits < 0 { bits ^ i64::MAX } else { bits }
+    };
+    let double = |key: i64| f64::from_bits((if key < 0 { key ^ i64::MAX } else { key }) as u64);
+    let (mut low, mut high) = (key(f64::NEG_INFINITY), key(f64::MAX));
+    if meets(double(high)) {
+        return Some(f64::MAX);
+    }
+    // `low` meets, `high` doesn't.
+    while i128::from(high) - i128::from(low) > 1 {
+        let halfway = ((i128::from(low) + i128::from(high)) / 2) as i64;
+        if meets(double(halfway)) {
+            low = halfway;
+        } else {
+            high = halfway;
+        }
+    }
+    Some(double(low))
+}
+
 /// A double-precision distance as the decimal it is: the shortest decimal
 /// that reads back as the same double, as PostgreSQL writes a `float8`,
 /// or, for one with more than a decimal's 38 places (only a distance below
@@ -534,5 +634,62 @@ mod tests {
         // 1e38 has 39 digits, one past a decimal's.
         assert_eq!(float("1e38"), None);
         assert!(float("9e37").is_some());
+    }
+    #[test]
+    fn a_distance_bound_is_the_double_code_compares_the_same() {
+        // `ai.distance(a, b) <= 0.6` in code compares the distance's
+        // decimal with 0.6; the double that agrees is 0.6's own, and the
+        // next one up writes as more than 0.6.
+        assert_eq!(distance_bound("0.6", false), Some(0.6));
+        assert_eq!(distance_bound("0.6", true), Some(0.6f64.next_down()));
+        // A longer literal PostgreSQL would round up to the next double,
+        // whose decimal, 0.6000000000000001, is above it.
+        assert_eq!(distance_bound("0.60000000000000005", false), Some(0.6));
+        assert_eq!(distance_text(0.6f64.next_up()), "0.6000000000000001");
+        // Past a decimal's 38 digits a distance is no decimal at all.
+        let most =
+            distance_bound("99999999999999999999999999999999999999", false).expect("a double");
+        assert!(most > 9.9e37 && most < 1.0e38, "{most}");
+        let below =
+            distance_bound("-99999999999999999999999999999999999999", true).expect("a double");
+        assert!(below < -9.9e37, "{below}");
+        assert_eq!(distance_bound("not a number", false), None);
+        // Whole numbers too.
+        assert_eq!(distance_bound("1", false), Some(1.0));
+        // Below zero: a distance so small it writes as 0 isn't below it.
+        let under = distance_bound("0", true).expect("a double");
+        assert!(under < 0.0 && under > -1e-37, "{under}");
+    }
+
+    #[test]
+    fn a_vector_holds_its_items_to_its_index_and_its_metric() {
+        use crate::{RuleKey, VectorDistance};
+        let cosine = VectorDistance::Cosine;
+        assert_eq!(
+            holding(&[0.0, 0.0], Some(2), cosine),
+            Some((RuleKey::Distance, None))
+        );
+        assert_eq!(
+            holding(&[0.0, 0.0], Some(2), VectorDistance::Euclidean),
+            None
+        );
+        assert_eq!(holding(&[0.0, 1.0], Some(2), cosine), None);
+        // Past a half-precision float, only where the index is one.
+        assert_eq!(holding(&[1.0, 70_000.0], Some(2), cosine), None);
+        let long = |at: usize, item: f32| {
+            let mut items = vec![0.5f32; 3072];
+            items[at] = item;
+            items
+        };
+        assert_eq!(holding(&long(7, 65_504.0), Some(3072), cosine), None);
+        assert_eq!(
+            holding(&long(7, 65_505.0), Some(3072), cosine),
+            Some((RuleKey::Max, Some(7)))
+        );
+        assert_eq!(
+            holding(&long(9, -70_000.0), Some(3072), cosine),
+            Some((RuleKey::Min, Some(9)))
+        );
+        assert_eq!(holding(&long(9, -70_000.0), Some(4001), cosine), None);
     }
 }
