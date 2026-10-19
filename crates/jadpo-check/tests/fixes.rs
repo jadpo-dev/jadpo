@@ -394,3 +394,39 @@ fn a_name_with_nothing_to_fix_is_refused_with_the_nearest() {
         Some("Use `jadpo fix Uuid`")
     );
 }
+
+/// A list of points is a `LineString` or a `Polygon` (area 20, chunk
+/// 5.5u6); its swap makes it a `LineString`, its list read as `points`.
+#[test]
+fn a_list_of_points_swaps_to_a_line_string() {
+    let mut loaded = loaded(
+        Layout::Project,
+        &[
+            APP,
+            (
+                "domains/vans/types/van_round.jadpo",
+                "/// A van's round, stop to stop.\ntype VanRound = Object {\n    coordinates: List<Point>\n}\n",
+            ),
+            (
+                "domains/vans/types/round_length.jadpo",
+                "/// How far a van drives.\ntype RoundLength = Length {}\n",
+            ),
+            (
+                "domains/vans/actions/round_length_of.jadpo",
+                "use vans/types { RoundLength, VanRound }\n\n/// How far a van drives on its round.\naction round_length_of(round: VanRound) -> RoundLength {\n    return RoundLength(geo.length(LineString {\n        points: round.coordinates\n    }))\n}\n",
+            ),
+        ],
+    );
+    assert_eq!(
+        errors(&loaded),
+        [
+            "type.standard_exists: `VanRound` is the standard `LineString` or `Polygon` under another name"
+        ]
+    );
+    fixed(&mut loaded, "VanRound", Fix::Swap);
+    assert_eq!(
+        texts(&loaded)["domains/vans/actions/round_length_of.jadpo"],
+        "use vans/types { RoundLength }\n\n/// How far a van drives on its round.\naction round_length_of(round: LineString) -> RoundLength {\n    return RoundLength(geo.length(LineString {\n        points: round.points\n    }))\n}\n"
+    );
+    assert_eq!(errors(&loaded), Vec::<String>::new());
+}

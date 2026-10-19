@@ -220,8 +220,10 @@ pub enum Op {
     GeoCentroid,
     GeoContains,
     GeoDistance,
+    GeoFromWkt,
     GeoIntersects,
     GeoLength,
+    GeoToWkt,
     GeoWithin,
     HashSha256,
     IntegerAbs,
@@ -1548,6 +1550,21 @@ pub const OPERATIONS: &[Operation] = &[
         LENGTH_VALUE,
         "geo::distance",
     ),
+    // WKT and EWKT (area 20, "Interop", question 9): read by one reader,
+    // longitude first, `SRID=4326;` accepted, any other SRID or a
+    // coordinate out of its range `out_of_range`, anything else that isn't
+    // one of the six geometries `malformed`; written as PostGIS's
+    // `ST_AsText` writes it.
+    Operation {
+        conditions: &[ON_MALFORMED, ON_OUT_OF_RANGE],
+        ..geo(
+            Op::GeoFromWkt,
+            "from_wkt",
+            &[param("text", TEXT_VALUE)],
+            Kind::Enum(crate::standard::geo::GEOMETRY),
+            "geo::from_wkt",
+        )
+    },
     geo(
         Op::GeoIntersects,
         "intersects",
@@ -1567,6 +1584,13 @@ pub const OPERATIONS: &[Operation] = &[
         )],
         LENGTH_VALUE,
         "geo::length",
+    ),
+    geo(
+        Op::GeoToWkt,
+        "to_wkt",
+        &[shape("shape")],
+        TEXT_VALUE,
+        "geo::to_wkt",
     ),
     geo(
         Op::GeoWithin,
@@ -2888,6 +2912,10 @@ mod tests {
                     // running program knows, as is the price's (chunk
                     // 5.5i3).
                     None if operation.op == Op::MoneyApplyDiscount => true,
+                    // Whether WKT's coordinates are in range, or its SRID
+                    // WGS84's, is known only when the program runs, as
+                    // whether it is WKT at all is (chunk 5.5u6).
+                    None if operation.op == Op::GeoFromWkt => true,
                     // `ln`'s by a value proved above 0; the money
                     // operations' by a currency the types or the call fix,
                     // and `convert`'s by a rate's currency a condition

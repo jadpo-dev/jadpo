@@ -25,6 +25,7 @@ mod currency;
 mod expr;
 pub(crate) mod facts;
 mod failing;
+mod features;
 mod identity;
 mod json;
 mod known;
@@ -63,6 +64,7 @@ pub(crate) use expr::{members_of, range_unordered};
 use facts::{Facts, LocalFact};
 pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;
+pub(crate) use features::{is_feature, wrong_arguments as feature_arguments};
 pub(crate) use lower::transition_key;
 
 /// Which failures can leave one callable (area 4).

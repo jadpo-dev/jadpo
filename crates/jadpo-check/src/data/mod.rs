@@ -2150,6 +2150,15 @@ pub fn json_held(lookup: &dyn TypeView, ty: &Ty) -> Option<&'static str> {
         .filter(|entry| {
             entry.storage == jadpo_std::standard::Storage::Column(jadpo_std::read::SqlType::Json)
         })
+        // A feature's JSON is its type arguments' too, which its name
+        // alone doesn't give, so it is structured JSON, not built yet (area
+        // 20, chunk 5.5u6).
+        .filter(|entry| {
+            !matches!(
+                entry.holds,
+                jadpo_std::standard::Holds::Feature | jadpo_std::standard::Holds::FeatureCollection
+            )
+        })
         .map(|entry| entry.name)
 }
 

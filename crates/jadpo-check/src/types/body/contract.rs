@@ -128,6 +128,19 @@ impl Body<'_> {
                     ),
                 )
             }
+            // A feature is GeoJSON for a map, with no form for people
+            // (area 20, chunk 5.5u6).
+            (_, Contract::Standard(entry))
+                if matches!(entry.holds, Holds::Feature | Holds::FeatureCollection) =>
+            {
+                (
+                    false,
+                    None,
+                    format!(
+                        "`{ty}` is GeoJSON for a map, with no text and no form to show it in; its geometry and its properties each have theirs"
+                    ),
+                )
+            }
             (_, Contract::Standard(entry)) => (true, Some(entry), String::new()),
             (Op::TextFrom, Contract::Representation(Prim::Text)) => (
                 false,

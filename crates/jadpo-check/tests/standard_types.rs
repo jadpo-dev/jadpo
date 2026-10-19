@@ -215,6 +215,31 @@ fn every_stub_agrees_with_its_data_entry() {
                         .collect();
                 assert_eq!(members, &expected, "{}'s ends", entry.name);
             }
+            // A feature's geometry `G` and properties `P`, and a
+            // collection's features, each a `Feature<G, P>` (area 20).
+            Holds::Feature | Holds::FeatureCollection => {
+                use jadpo_check::types::TypeRef;
+                assert_eq!(base, "Object", "{}", entry.name);
+                let var = |name: &str| TypeRef::Path(vec![name.to_string()], Vec::new());
+                let expected: Vec<(String, Option<TypeRef>)> = if entry.holds == Holds::Feature {
+                    vec![
+                        ("geometry".to_string(), Some(var("G"))),
+                        ("properties".to_string(), Some(var("P"))),
+                    ]
+                } else {
+                    vec![(
+                        "features".to_string(),
+                        Some(TypeRef::Path(
+                            vec!["List".to_string()],
+                            vec![TypeRef::Path(
+                                vec!["Feature".to_string()],
+                                vec![var("G"), var("P")],
+                            )],
+                        )),
+                    )]
+                };
+                assert_eq!(members, &expected, "{}'s fields", entry.name);
+            }
         }
     }
 }
@@ -223,6 +248,11 @@ fn every_stub_agrees_with_its_data_entry() {
 fn every_standard_type_meets_the_contract_in_the_checker() {
     for entry in STANDARD_TYPES {
         let name = entry.name;
+        // A feature takes two type arguments and has no text or form for
+        // people; `geo_interop`'s tests check it (area 20).
+        if matches!(entry.holds, Holds::Feature | Holds::FeatureCollection) {
+            continue;
+        }
         let (declared, value) = types(entry);
         // `text.format`, with the options its entry takes, and none other:
         // a range's are its item type's.
@@ -538,8 +568,9 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
                 }
                 continue;
             }
-            // A range's schema is its item type's ends.
-            Holds::Range => continue,
+            // A range's schema is its item type's ends; a feature's, its
+            // type arguments' (area 20, `geo_interop`).
+            Holds::Range | Holds::Feature | Holds::FeatureCollection => continue,
             // A named collection's: an array of its items, an object of its
             // entries (chunk 5.5o2).
             Holds::List(_) | Holds::Map(..) => standard_object_schema(entry),
@@ -563,6 +594,7 @@ fn every_standard_type_is_described_in_openapi_as_it_is_sent() {
             }
             Json::Tagged => unreachable!("{name}: only a choice is sent tagged"),
             Json::GeoJson => unreachable!("{name}: a geometry's schema is above"),
+            Json::Feature => unreachable!("{name}: a feature's schema is its arguments'"),
             Json::Array => {
                 assert_eq!(kind.as_deref(), Some("array"), "{name}");
                 assert!(schema.get("items").is_some(), "{name}: its items");

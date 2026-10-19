@@ -148,7 +148,12 @@ fn mixes_altitudes(text: &str) -> bool {
 fn cases() -> Vec<Case> {
     let mut out = Vec::new();
     for entry in STANDARD_TYPES {
-        if !(stored_in_columns(entry) || stored_as_json(entry)) || entry.name == jadpo_std::RANGE {
+        // A feature isn't stored yet: its JSON is its type arguments' too
+        // (area 20, chunk 5.5u6).
+        if !(stored_in_columns(entry) || stored_as_json(entry))
+            || entry.name == jadpo_std::RANGE
+            || entry.json == jadpo_std::standard::Json::Feature
+        {
             continue;
         }
         // A built-in type is named in a signature by a type built on it.

@@ -1238,12 +1238,20 @@ reference only).
   examples are checked and run. A condition stands on its own line or in
   an `and`; one in an include isn't built yet. What the chunk chose is
   area 20's "Chosen in chunk 5.5u5".
-- [ ] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
+- [x] **5.5u6 Geospatial interop** `opus · high` (area 20, "Interop"),
   after 5.5u4: `Feature` and
   `FeatureCollection`, `geo.from_wkt` and `geo.to_wkt`, and
   `type.standard_exists`' shapes for `LineString` and `Polygon`. Done when
   a feature collection round-trips through JSON and a WKT polygon through
-  PostGIS unchanged.
+  PostGIS unchanged. Built: `Feature<G, P>` and `FeatureCollection<G, P>`
+  as standard types with two type arguments, read strictly through the one
+  JSON codec and described in OpenAPI; WKT and EWKT by one reader that
+  refuses at the character, written as `ST_AsText` writes it and held to
+  PostGIS live; a list of points named as `LineString` or `Polygon`, swapped
+  to `LineString`. Open for Richard: whether a geometry mixing altitudes is
+  valid (WKT mixing them is refused as `malformed`, provisionally), and
+  whether a route may send a `FeatureCollection` bare (area 20, "Chosen in
+  chunk 5.5u6").
 - [x] **5.5v AI: the plan** `opus · high` (area 19, question 20): write the
   AI area page from area 19's scope (the `ai` capability, typed
   `ai.generate`, streaming, embeddings with pgvector, checked prompt

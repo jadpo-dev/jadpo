@@ -55,6 +55,7 @@ const COLOUR_SHAPE: &[FieldMatch] = &[
         built_on: &[Builtin::Int, Builtin::Decimal],
         or_enum: false,
         optional: false,
+        list_of: None,
     },
     FieldMatch {
         meaning: "a green",
@@ -62,6 +63,7 @@ const COLOUR_SHAPE: &[FieldMatch] = &[
         built_on: &[Builtin::Int, Builtin::Decimal],
         or_enum: false,
         optional: false,
+        list_of: None,
     },
     FieldMatch {
         meaning: "a blue",
@@ -69,6 +71,7 @@ const COLOUR_SHAPE: &[FieldMatch] = &[
         built_on: &[Builtin::Int, Builtin::Decimal],
         or_enum: false,
         optional: false,
+        list_of: None,
     },
     FieldMatch {
         meaning: "an alpha",
@@ -76,6 +79,7 @@ const COLOUR_SHAPE: &[FieldMatch] = &[
         built_on: &[Builtin::Int, Builtin::Decimal],
         or_enum: false,
         optional: true,
+        list_of: None,
     },
 ];
 

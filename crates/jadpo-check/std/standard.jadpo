@@ -1752,3 +1752,19 @@ public type Circle = Object {
     centre: Point
     radius: Length
 }
+
+/// A GeoJSON `Feature` (area 20, "Interop"): a geometry of the type `G`,
+/// one of the six or `Geometry`, and properties of the application's
+/// `Object` type `P`, sent as RFC 7946 writes one, with no `id`:
+/// `Feature<Polygon, PatchProperties>`.
+public type Feature = Object {
+    geometry: G
+    properties: P
+}
+
+/// A GeoJSON `FeatureCollection` (area 20, "Interop"): features of one
+/// geometry type and one properties type, in order, as a map library takes
+/// a layer.
+public type FeatureCollection = Object {
+    features: List<Feature<G, P>>
+}

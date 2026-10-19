@@ -106,6 +106,18 @@ pub enum Codec {
     /// decimal that is the nearest single-precision float
     /// (`standard::ai::float`) and written as that decimal.
     Float,
+    /// A GeoJSON `Feature` (area 20, chunk 5.5u6): `{"type": "Feature",
+    /// "geometry": ..., "properties": {...}}`, its geometry and its
+    /// properties each read and written by its own codec; held as a
+    /// `Feature` record of the two.
+    Feature {
+        geometry: CodecId,
+        properties: CodecId,
+    },
+    /// A GeoJSON `FeatureCollection` (chunk 5.5u6): `{"type":
+    /// "FeatureCollection", "features": [...]}`, each feature read and
+    /// written by `feature`.
+    FeatureCollection { feature: CodecId },
 }
 
 /// One variant of an enum codec.

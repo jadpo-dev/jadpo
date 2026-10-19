@@ -241,8 +241,47 @@ impl Types {
                 Some(self.standard_shape(entry.name, fields))
             }
             jadpo_std::standard::Holds::Range => Some(self.range_shape()),
+            jadpo_std::standard::Holds::Feature => {
+                Some(self.generic_shape(entry.name, &jadpo_std::standard::geo::FEATURE_FIELDS))
+            }
+            jadpo_std::standard::Holds::FeatureCollection => Some(self.generic_shape(
+                entry.name,
+                &jadpo_std::standard::geo::FEATURE_COLLECTION_FIELDS,
+            )),
             _ => None,
         }
+    }
+
+    /// The shape of a feature or a feature collection (area 20, chunk
+    /// 5.5u6): its fields by name. One shape serves every pair of type
+    /// arguments, each field checked as its argument's type where it is
+    /// built or read, so the shape adds no rule of its own.
+    pub(crate) fn generic_shape(&mut self, name: &str, fields: &[&str]) -> ShapeId {
+        let key = Key::new(Kind::Type, name);
+        if let Some(id) = self.shape_ids.get(&key) {
+            return *id;
+        }
+        let validator = self.validator_id(&TypeRef::Std(name.to_string(), Vec::new()));
+        let fields = fields
+            .iter()
+            .map(|field| FieldPlan {
+                key: format!("field {name}.{field}"),
+                name: (*field).to_string(),
+                validator,
+                absent: None,
+                omittable: false,
+                none_left_out: false,
+                section: None,
+            })
+            .collect();
+        let id = ShapeId(self.shapes.len() as u32);
+        self.shapes.push(ShapePlan {
+            ty: name.to_string(),
+            variant: None,
+            fields,
+        });
+        self.shape_ids.insert(key, id);
+        id
     }
 
     /// The shape of `Range<T>` (area 19): its `start` and `end`, each a

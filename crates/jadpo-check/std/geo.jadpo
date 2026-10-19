@@ -11,7 +11,8 @@
 // geometry or a `Geometry` (chunk 5.5u3), `contains` a `BoundingBox` or a
 // `Circle` too. Edges are great circles, and inside includes the edge, as
 // PostGIS's `ST_Covers` and `ST_Intersects` on `geography`. WKT's two
-// operations are named in `names.txt` until chunk 5.5u6 builds them.
+// operations (chunk 5.5u6) are the one place outside GeoJSON where a
+// position's longitude comes first.
 
 public library geo {
     /// A `Polygon`'s or `MultiPolygon`'s area on the ellipsoid, each edge a
@@ -46,12 +47,26 @@ public library geo {
     /// half to even to the micrometre.
     function distance(from: Point, to: Point) -> Length {}
 
+    /// The geometry WKT or EWKT text writes, longitude first:
+    /// `POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.49))`, any of
+    /// the six, with `Z` for an altitude, held as the `Geometry` of its
+    /// kind. `SRID=4326;` may lead; another system, or a coordinate out of
+    /// its range, fails with `out_of_range`, and text that isn't one of
+    /// the six geometries, a polygon whose rings aren't valid included,
+    /// with `malformed`, which the call's `attempt` maps.
+    function from_wkt(text: Text) -> Geometry {}
+
     /// Whether the two share at least one point, edges included.
     function intersects(a: T, b: U) -> Bool {}
 
     /// A `LineString`'s or `MultiLineString`'s length: each edge measured
     /// as `distance` measures it, and summed.
     function length(line: T) -> Length {}
+
+    /// The shape as WKT, longitude first, as PostGIS's `ST_AsText` writes
+    /// it: `POINT(-0.1276 51.5072)`, `POINT Z (-0.1276 51.5072 35)` with an
+    /// altitude, each ring in the order it holds its points.
+    function to_wkt(shape: T) -> Text {}
 
     /// `geo.contains(b, a)`; or, with `distance:`, whether two points are
     /// at most that far apart, as `geo.distance` measures them.

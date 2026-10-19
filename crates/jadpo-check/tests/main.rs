@@ -31,6 +31,7 @@ mod examples;
 mod failures;
 mod fixes;
 mod formats;
+mod geo_interop;
 mod geo_shapes;
 mod geodesics;
 mod geospatial;

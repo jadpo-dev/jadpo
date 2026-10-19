@@ -476,6 +476,7 @@ doubled_order
 draft_name
 draft_reply
 draw_patch
+drawn_layer
 drawn_patch
 drift
 driven
@@ -779,6 +780,9 @@ lateness
 latest_due_at
 launch
 laurel
+layer
+layer_json
+layer_sent
 lead_id
 leaf_count
 leaflet_dose
@@ -980,10 +984,12 @@ not_a_call
 not_a_colour
 not_a_domain
 not_a_flight
+not_a_layer
 not_a_patch
 not_a_product_code
 not_a_rate
 not_a_rating
+not_a_shape
 not_a_vat_number
 not_a_version
 not_an_account
@@ -1097,6 +1103,7 @@ outlet_view
 outlet_with_menu
 outlets
 outline
+outline_from
 outsider
 oven
 oven_down
@@ -1405,6 +1412,7 @@ reserve_for_order
 reserve_item
 reserve_stock
 resolved_by_articles
+respaced
 rested
 restock
 restocked
@@ -1493,6 +1501,8 @@ severe
 share_code
 share_off
 shared_secret_forgery
+sheet_text
+sheet_text_for
 shelf
 shelf_card
 shelf_empty

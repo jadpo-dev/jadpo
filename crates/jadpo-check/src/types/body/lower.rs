@@ -1096,6 +1096,8 @@ impl Lower<'_> {
                             entry.holds,
                             jadpo_std::standard::Holds::Object(_)
                                 | jadpo_std::standard::Holds::Range
+                                | jadpo_std::standard::Holds::Feature
+                                | jadpo_std::standard::Holds::FeatureCollection
                         )
                     }) =>
                     {

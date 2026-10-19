@@ -21,8 +21,10 @@ use crate::value::Decimal;
 use crate::{Fault, Record, Value, present};
 
 mod shapes;
+pub mod wkt;
 
 pub use shapes::{bounding_box, centroid, contains, intersects, within};
+pub use wkt::{from_wkt, to_wkt};
 
 /// Why a GeoJSON geometry wasn't read: where in it, below the field being
 /// read (`coordinates.0.3.1`), and the rule it broke.
