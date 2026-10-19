@@ -1434,7 +1434,15 @@ current-thread tokio runtime per worker, each with its own handler, stores
 and rate-limit counters, so an address is always counted on one thread;
 hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name,
 the operating system's randomness and tokio's timer. `jadpo dev` runs the
-interpreter on it, swapping in each save that checks cleanly.
+interpreter on it, swapping in each save that checks cleanly. Since chunk
+6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
+its timer starts no more ticks, and each worker waits, at most
+`DRAIN_GRACE` (10 seconds), for its handler's background work
+(`Handler::drain`, `NativeHost::drain`, which counts what it runs with
+`NativeHost::track`) to stop and give back what it holds, its budget
+ended through `Host::stopping`. `stop_signals` turns SIGTERM and SIGINT
+into that stop, a second ending the process at once; `jadpo dev` stops
+on them.
 
 Built in chunk 4.2: the request guarantees, in the same component. A body
 over `BODY_LIMIT` (1 MB) is 413 before routing; the native host stops
@@ -1789,21 +1797,20 @@ on, each `Job` (a callable, its arguments and the system it runs as) in
 a boundary of its own:
 
 - **deferred**: a committed action's outbox is left on the context as
-  `Deferred::Events` (`Ctx::defer`), never delivered in the request
+  `Deferred::Deliveries` (`Ctx::defer`), never delivered in the request
   (`Host::deliver` is gone); `serve_request` moves what a request left
   to `Response::deferred`, and the host hands it to `runner::after_response`,
-  which gives `Host::defer` a future running `run_deferred` once the
+  which gives `Host::defer` a future running it once the
   response has been handed back: natively the HTTP worker takes it
   (`Handler::take_deferred`, `NativeHost::take_deferred`) and spawns it
   on its own thread's `LocalSet`, where it shares the worker's program,
   so no background thread needs a program of its own; on Workers,
-  `waitUntil` (chunk 8.2). Each run gets its own context under the
-  host's clock and no seed, as the system, raced against
-  `RUN_LIMIT_MS` (15 minutes, area 12) with a deadline the interpreter
-  yields at; what it sets off runs after it;
-- **inline**: `runner::settle` runs work in the invocation that left it,
-  then gives the context back to its caller (6.3's `settle:`, a test's
-  delivery after each commit);
+  `waitUntil` (chunk 8.2). Each piece gets its own context under the
+  host's clock and no seed, as the system; what it sets off runs after
+  it;
+- **while a route waits**: `runner::settle_within` runs a route's
+  follow-on work before it answers (6.3's `settle:`), then gives the
+  context back to its caller;
 - **per item**: `runner::items` runs a callable once per item, and
   inside a `runner::Batch` (a transaction of its own, begun as it opens)
   each item's action joins it in a savepoint and is undone alone when it
@@ -1812,8 +1819,34 @@ a boundary of its own:
   run resumes after the last committed batch (6.4).
 
 A host with nothing to run deferred work on (a test's, a tool's) drops
-it, and the outbox keeps what it held. Schedules (6.2) hand their runs
-to the same runner.
+it, and the outbox keeps what it held. Schedules (6.2) run their actions
+through the same runner.
+
+**Within a host's budget** (chunk 6.7, area 12's "Chosen in chunk 6.7").
+Each invocation of background work (`budget::Invocation`: after a
+response, the tick, or work handed on) runs within the budget its host
+gives it (`Host::budget_ms`, at most `RUN_LIMIT_MS`, 15 minutes; the
+runtime's default and the native host's is all of it, a test's host may
+give less, Workers' come in 8.2). `budget::Budget` measures it on the
+host's monotonic clock and keeps a tenth back, at most 5 seconds, for
+giving claims back: `runner::drive` takes a piece only while it isn't
+`spent`, and what it doesn't reach stays in the store (a delivery
+`pending`, a batch run on its row), handed on by `after_response` to a
+fresh invocation (`Host::hand_on`, natively a task of its own) when the
+invocation ran something, else left for the tick. One helper runs an
+action within it, `runner::within_budget`: the body raced against
+`Budget::cut` (the run limit or what is left before the time kept back,
+whichever is sooner, or the host shutting down, `Host::stopping`),
+never the commit (`held`, chunk 6.6a), with the interpreter's deadline
+set to the same limit; work that isn't an action (a purge, a batch's
+page) runs within it through `Budget::run`. A delivery or a schedule's
+run the limit stops ran out of time (`deadline_exceeded`), settled
+against its budget; one the host's shutdown stops is given back as it
+was. One lease helper, `lease::{claim, release, until}`, serves the
+three kinds of claimed row (`outbox::Leased`, `schedules::Leased`,
+`batches`' own), each lease lasting what is left of the claimer's
+budget and `lease::MARGIN_MS`, a minute; a batch run renews its own with
+each page's commit.
 
 **Events** (chunk 6.1b). The checker reads each subscriber
 (`jadpo_check::events`: `subscribers_in` per file, `subscribers` for
@@ -1852,10 +1885,11 @@ store its action writes or else its outbox store, so an action that
 only emits keeps one. `runner::attempt_delivery` claims at the host's
 time (a lost lease's last failure becoming `lease_expired`), gives up
 without running a delivery claimed over its budget or past `within:`
-(`outbox::GIVE_UP`), and takes a `Cut`: a route's `within:`, which gives
-the delivery back, or the run limit, which settles it as an attempt
-that timed out. Either races only the action's body (`runner::held`,
-`Ctx::hold` and `commit_held`, as a route does), never its commit.
+(`outbox::GIVE_UP`), and runs the action within the invocation's budget
+(chunk 6.7), or, while a route waits, against its `within:`, which
+gives the delivery back. Either races only the action's body
+(`runner::held`, `Ctx::hold` and `commit_held`, as a route does), never
+its commit.
 `runner::drive` reads the host's clock per piece, so the sweep never
 runs late work at the tick's time. A batch run's row keeps the chain
 depth it started at (`depth`), which each page's context takes; each
@@ -1878,7 +1912,10 @@ no tenant under the tick's clock and a new trace, records each run and
 skipped tick (`jadpo_schedule_runs`) and delivers what they emitted; then
 in each store it calls `runner::sweep` and deletes expired idempotency
 keys and events every subscriber has had, and runs `schedules::HOOKS`,
-which picks up batch runs whose lease lapsed (`batches::resume`). Natively the HTTP server's first
+which picks up batch runs whose lease lapsed (`batches::resume`). The
+whole tick runs within the budget its host gives a tick (chunk 6.7),
+each step starting only while it isn't spent, its runs' actions through
+`runner::within_budget`. Natively the HTTP server's first
 worker runs a timer that starts the tick at each whole minute of UTC, or
 each shortest `every:` (`Handler::tick`, `schedules::tick_every_ms`);
 `jadpo dev` ticks. On Workers the cron trigger calls the same function
@@ -1903,8 +1940,10 @@ batch walks): `start` writes the run's row in the action's transaction
 and leaves `Deferred::Batch` for after the response; `run` claims the
 run with a lease and walks it a page at a time on `runner::Batch`, each
 page's items through `runner::items` (an item undone alone on a failure
-or a fault, `boundary::Undo`), then `finished:`; `resume` picks up runs
-whose lease lapsed, for 6.2's minute tick; `status` and `cancel` read the
+or a fault, `boundary::Undo`), then `finished:`, while its invocation's
+budget lasts; once that is spent it gives its lease back and is handed
+on to a fresh invocation (`run_within`, `Ran::HandedOn`; chunk 6.7);
+`resume` picks up runs whose lease lapsed, for 6.2's minute tick; `status` and `cancel` read the
 row and keep a cancel. An executor gives the runner its batches through
 `Executor::batches`, so compiled code runs the same runner. In an
 application with a tenant the plan's `BatchTenant` names which saved
@@ -1963,7 +2002,10 @@ the same traits.
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in
-  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule.
+  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule,
+  each within the budget the host gives it (30 seconds after a response,
+  15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2),
+  and what one leaves goes on in a fresh invocation (`Host::hand_on`).
 - PostgreSQL goes through Hyperdrive over `connect()` sockets with
   tokio-postgres, as in workers-rs's
   [example](https://raw.githubusercontent.com/cloudflare/workers-rs/main/examples/tokio-postgres/src/lib.rs),

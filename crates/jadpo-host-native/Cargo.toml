@@ -14,7 +14,9 @@ license.workspace = true
 jadpo-runtime.workspace = true
 jadpo-std.workspace = true
 jadpo-drivers = { workspace = true, features = ["postgres"] }
-tokio = { workspace = true, features = ["rt", "net", "sync", "time"] }
+# `signal`: a server drains on SIGTERM, and on ctrl-c under `jadpo dev`
+# (chunk 6.7), which adds signal-hook-registry to the lock.
+tokio = { workspace = true, features = ["rt", "net", "sync", "time", "signal"] }
 bytes.workspace = true
 # HTTP/1.1 (docs/compiler-runtime.md §2.6), pinned exactly: hyper reads and
 # writes requests, hyper-util adapts tokio's sockets, http-body-util reads a

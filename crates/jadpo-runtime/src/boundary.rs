@@ -135,6 +135,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             ctx.held = Some(crate::ctx::Held {
                 transaction: boundary.transaction,
                 deliveries: boundary.sealed,
+                kept: boundary.kept,
                 session: boundary.session,
                 issued: boundary.issued,
             });
@@ -307,6 +308,7 @@ pub async fn commit_held(
     let crate::ctx::Held {
         transaction,
         deliveries,
+        kept,
         ..
     } = held;
     if let Some((store, sql, params)) = then {
@@ -335,12 +337,14 @@ pub async fn commit_held(
                 lapsed(changed.map(|rows| rows.len() as u64))?;
             }
         }
+        ctx.emitted = ctx.emitted.saturating_add(kept);
         committed(ctx, deliveries);
         return Ok(());
     }
     if let Some(open) = transaction {
         open.commit().await?;
     }
+    ctx.emitted = ctx.emitted.saturating_add(kept);
     committed(ctx, deliveries);
     Ok(())
 }

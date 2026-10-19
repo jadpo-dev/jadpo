@@ -6,19 +6,27 @@
 //!
 //! - **Deferred**, after the response that set it off is sent: what an
 //!   action left once it committed ([`Ctx::defer`]) goes to the host with
-//!   [`after_response`], which runs it with [`run_deferred`] through
-//!   [`Host::defer`] (Workers' `waitUntil`, natively a task on the
-//!   worker's thread), each run in a context of its own under the host's
-//!   clock and the 15-minute limit of one run (area 12, "Limits").
-//! - **Inline**, in the invocation that set it off, with [`settle`]: what a
-//!   route that waits for its follow-on work runs (area 7, `settle:`;
-//!   chunk 6.3), and a test's delivery after each commit (area 13).
+//!   [`after_response`], which runs it through [`Host::defer`] (Workers'
+//!   `waitUntil`, natively a task on the worker's thread), each piece in a
+//!   context of its own under the host's clock.
+//! - **While a route waits**, with [`settle_within`]: what a route that
+//!   waits for its follow-on work runs before it answers (area 7,
+//!   `settle:`; chunk 6.3).
 //! - **Per item**, with [`items`]: a callable run once for each of many
 //!   items, in order, each one undone alone when it fails inside a batch
 //!   ([`Batch`], a transaction of its own committing the items' writes and
 //!   the run's position together, so a run resumes after the last batch
 //!   that committed). A backfill worked out in Jadpo runs its rows this
-//!   way ([`InJadpo`]), and batches (area 12, chunk 6.4) will.
+//!   way ([`InJadpo`]), and so do batch runs (area 12, chunk 6.4).
+//!
+//! Each invocation runs within the budget its host gives it
+//! ([`crate::budget`]; chunk 6.7): it takes one piece at a time while
+//! enough is left, runs each action within its limit, the 15-minute limit
+//! of a run or what is left of the budget, never its commit
+//! ([`within_budget`]), and gives back what it holds before the budget
+//! ends, every claim it takes lasting what is left of the budget and a
+//! margin ([`crate::lease`]). What it didn't reach is handed on to a fresh
+//! invocation ([`Host::hand_on`]), or left for the minute tick.
 //!
 //! Work runs as the system ([`System`]), the caller `Access.system` grants
 //! (area 9): a schedule's run, or a subscriber's delivery limited to the
@@ -26,13 +34,13 @@
 //! component never calls the runner with a request's context, so no
 //! request can act as the system.
 //!
-//! What it runs is a [`Job`], or a [`Delivery`] of an event a committed
-//! action emitted to one of its subscribers ([`Deferred::Deliveries`],
-//! chunk 6.1b), which [`deliver`] claims, runs as the system limited to
-//! the event's tenant, and records as succeeded, retried later or failed
-//! ([`crate::outbox`]); [`sweep`] delivers what deferred work dropped.
-//! Schedules hand their runs here on each tick ([`crate::schedules`],
-//! chunk 6.2), and the tick calls [`sweep`].
+//! What it runs is a [`Delivery`] of an event a committed action emitted
+//! to one of its subscribers ([`Deferred::Deliveries`], chunk 6.1b), which
+//! [`deliver`] claims, runs as the system limited to the event's tenant,
+//! and records as succeeded, retried later or failed ([`crate::outbox`]),
+//! or a batch run ([`Deferred::Batch`]); [`sweep`] delivers what deferred
+//! work dropped. Schedules run their actions here on each tick
+//! ([`crate::schedules`], chunk 6.2), and the tick calls [`sweep`].
 
 use std::collections::VecDeque;
 use std::ops::ControlFlow;
@@ -40,17 +48,15 @@ use std::rc::Rc;
 
 use jadpo_value::{Validator, Value};
 
+pub use crate::budget::RUN_LIMIT_MS;
+use crate::budget::{Budget, Cut, Invocation};
 use crate::ctx::System;
 pub use crate::outbox::Delivery;
 use crate::race::{First, race};
 use crate::{
-    Clock, Ctx, Env, Executor, FaultKind, Frame, Host, Isolation, MemoryHost, Outcome, SqlType,
-    SqlValue, StoreError, Transaction,
+    Clock, Ctx, Env, Executor, FaultKind, Frame, Host, Isolation, LocalFuture, MemoryHost, Outcome,
+    SqlType, SqlValue, StoreError, Transaction,
 };
-
-/// The longest one run of a subscriber or a schedule takes before it is
-/// stopped as timed out (area 12, "Limits and runtime faults").
-pub const RUN_LIMIT_MS: u64 = 15 * 60 * 1000;
 
 /// A run of callable `callable` with `args`, as the system: a subscriber's
 /// delivery or a schedule's run (area 12), in a boundary of its own.
@@ -61,52 +67,19 @@ pub struct Job {
     pub system: System,
 }
 
-/// Work left for after a response (chunk 6.1a).
+/// Work left for after a response (chunk 6.1a): each piece with a record
+/// of its own in the store, so work an invocation never reached is never
+/// lost (chunk 6.7).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Deferred {
     /// The deliveries of what an action emitted, once it committed, in
     /// the order it emitted it: each event to each of its subscribers
     /// (chunk 6.1b).
     Deliveries(Vec<Delivery>),
-    /// A run of a callable as the system.
-    Run(Job),
     /// A batch run to go on with (area 12, chunk 6.4): one an action
     /// started, left as it was started and found only once that action
     /// has committed, or one a run handed on to carry it further.
     Batch(crate::batches::BatchStart),
-}
-
-/// Runs `work`, and the work it sets off in turn, in `ctx`, the
-/// invocation that left it, before that invocation answers: inline, as a
-/// route that waits for its follow-on work does (chunk 6.3). Each job runs
-/// as the system in a boundary of its own; whoever ran `ctx` before runs
-/// it again after. The outcome of each job, in the order they ran.
-pub async fn settle(
-    executor: &dyn Executor,
-    ctx: &mut Ctx<'_>,
-    work: Vec<Deferred>,
-) -> Vec<Outcome> {
-    let mut queue = VecDeque::from(work);
-    let mut outcomes = Vec::new();
-    // A batch run is long work no route waits on: it is left for after
-    // the response (chunk 6.4).
-    let mut later = Vec::new();
-    while let Some(next) = queue.pop_front() {
-        let before = ctx.deferred.len();
-        match next {
-            Deferred::Run(job) => outcomes.push(as_system(executor, ctx, job).await),
-            Deferred::Deliveries(deliveries) => {
-                for delivery in deliveries {
-                    outcomes.extend(deliver(executor, ctx, delivery).await);
-                }
-            }
-            Deferred::Batch(start) => later.push(Deferred::Batch(start)),
-        }
-        let after = before.min(ctx.deferred.len());
-        queue.extend(ctx.deferred.split_off(after));
-    }
-    ctx.deferred.extend(later);
-    outcomes
 }
 
 /// Whether the work a route's action set off settled before it answered
@@ -128,16 +101,18 @@ pub enum Settled {
 /// `within` (the route's `within:` timer) finishes first (area 7,
 /// "Waiting for follow-on work"; chunk 6.3). Each delivery runs as
 /// [`deliver`] runs one, as the system limited to its event's tenant, and
-/// whoever ran `ctx` runs it again after.
+/// whoever ran `ctx` runs it again after. A claim it takes lasts the
+/// longest deadline a route has and the margin, since the request waits
+/// no longer (chunk 6.7).
 ///
 /// It stops waiting at the first piece that hasn't settled, since the
 /// answer is 202 from then on: a delivery left to retry after a backoff,
 /// which can't be waited for; one this runner couldn't claim; a batch run,
 /// which is long work no route waits on; or the piece whose action's body
-/// was running when `within` finished, which is dropped unfinished,
-/// nothing it did kept, its claim given back as it was
-/// ([`crate::outbox::RELEASE`]). Only a body is raced, never its commit
-/// (chunk 6.6a), so work that committed is never given back.
+/// was running when `within` finished, or the host began to shut down,
+/// which is dropped unfinished, nothing it did kept, its claim given back
+/// as it was ([`crate::outbox::RELEASE`]). Only a body is raced, never its
+/// commit (chunk 6.6a), so work that committed is never given back.
 /// Whatever is left goes on `ctx`'s deferred work, for after the
 /// response, exactly as it would without `settle:`; a delivery waiting to
 /// retry is the sweep's.
@@ -148,6 +123,8 @@ pub async fn settle_within(
     within: &mut crate::LocalFuture<'_, ()>,
 ) -> Settled {
     use crate::outbox::{FAILED, SUCCEEDED};
+    let host = ctx.host();
+    let budget = Budget::of(host, u64::from(jadpo_std::http::MAX_DEADLINE_MS));
     let mut queue: VecDeque<Piece> = VecDeque::new();
     split(work, &mut queue);
     // Work left before it, which isn't this route's to wait for.
@@ -160,7 +137,7 @@ pub async fn settle_within(
         let passed =
             std::future::poll_fn(|cx| std::task::Poll::Ready(within.as_mut().poll(cx).is_ready()))
                 .await;
-        if passed {
+        if passed || budget.stopping() {
             queue.push_front(piece);
             break Settled::Unsettled;
         }
@@ -169,19 +146,18 @@ pub async fn settle_within(
                 queue.push_front(Piece::Batch(start));
                 false
             }
-            Piece::Job(job) => match held(executor, ctx, job.clone(), &mut *within).await {
-                // A job keeps no record: once it has run, it has settled.
-                Some(_) => true,
-                None => {
-                    queue.push_front(Piece::Job(job));
-                    false
-                }
-            },
             Piece::Delivery(delivery) => {
-                let cut = Some(Cut::Within(&mut *within));
-                match attempt_delivery(executor, ctx, delivery.clone(), cut).await {
+                // Given back if `within:` passes, or the host begins to
+                // shut down, while its subscriber's action runs.
+                let mut stop: LocalFuture<'_, ()> = Box::pin(async {
+                    let _ = race(within.as_mut(), host.stopping()).await;
+                });
+                let attempted =
+                    attempt_delivery(executor, ctx, &budget, delivery.clone(), Some(&mut stop))
+                        .await;
+                match attempted {
                     Some((_, state)) if state == SUCCEEDED || state == FAILED => true,
-                    Some((_, CUT_SHORT)) => {
+                    Some((_, GIVEN_BACK)) => {
                         queue.push_front(Piece::Delivery(delivery));
                         false
                     }
@@ -207,8 +183,10 @@ pub async fn settle_within(
     settled
 }
 
-/// Runs `job` in `ctx` as the system, then puts back whoever ran `ctx`.
-pub(crate) async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outcome {
+/// Runs `job` in `ctx` as the system, then puts back whoever ran `ctx`:
+/// how a schedule's run and a subscriber's delivery run their actions,
+/// and how a test runs one as the system would (area 9).
+pub async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outcome {
     if ctx.in_action() {
         return Outcome::Fault(ctx.fault(
             FaultKind::Defect("the runner's work inside a running action".into()),
@@ -222,41 +200,66 @@ pub(crate) async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: J
     outcome
 }
 
+/// Runs `job` in `ctx` as the system within `budget` (chunk 6.7): the one
+/// way the runner runs a subscriber's or a schedule's action. Its body is
+/// raced against its limit, the 15-minute limit of a run or what is left
+/// of the budget before the time it keeps back, whichever is sooner, and
+/// against the host shutting down, never its commit ([`held`]); a body
+/// that ends past its limit keeps nothing. Why it was cut, when it was.
+pub(crate) async fn within_budget(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    budget: &Budget<'_>,
+    job: Job,
+) -> Result<Outcome, Cut> {
+    // Work that never waits gives the thread back as it checks this, so
+    // the requests the worker answers carry on beside it.
+    ctx.set_deadline(Some(budget.limit_ms()));
+    let mut cut = budget.cut();
+    held(executor, ctx, job, &mut cut, Cut::OutOfTime).await
+}
+
 /// Runs `job` in `ctx` as [`as_system`] does with only its action's body
 /// raced against `stop`, never its commit (chunk 6.6a), as a route runs
 /// its action against its deadline ([`Ctx::hold`]): the transaction is
 /// held open until the body has its value, then committed outside the
 /// race, so work that committed is never taken for work that didn't. A
 /// concurrent change found at that commit runs the body again, as the
-/// boundary would, up to [`crate::RERUN_ATTEMPTS`] times. `None` when
-/// `stop` finished first: what the body had begun is dropped, nothing it
-/// did kept, and whoever ran `ctx` runs it again.
-async fn held(
+/// boundary would, up to [`crate::RERUN_ATTEMPTS`] times. What `stop`
+/// gave when it finished first, or `overran` when the body ended past
+/// `ctx`'s deadline: what the body had begun is dropped, nothing it did
+/// kept, and whoever ran `ctx` runs it again.
+async fn held<S: Copy>(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     job: Job,
-    stop: &mut crate::LocalFuture<'_, ()>,
-) -> Option<Outcome> {
+    stop: &mut crate::LocalFuture<'_, S>,
+    overran: S,
+) -> Result<Outcome, S> {
     let runner = ctx.runner();
     let mut attempt = 1;
     loop {
         ctx.hold();
         let outcome = match race(as_system(executor, ctx, job.clone()), &mut *stop).await {
             First::Left(outcome) => outcome,
-            First::Right(()) => {
+            First::Right(why) => {
                 ctx.abandon();
                 ctx.restore_runner(runner);
-                return None;
+                return Err(why);
             }
         };
+        if ctx.out_of_time() {
+            ctx.abandon();
+            return Err(overran);
+        }
         let Some(open) = ctx.take_held() else {
-            return Some(outcome);
+            return Ok(outcome);
         };
         match crate::commit_held(ctx, open, None).await {
-            Ok(()) => return Some(outcome),
+            Ok(()) => return Ok(outcome),
             Err(StoreError::ConcurrentChange) if attempt < crate::RERUN_ATTEMPTS => attempt += 1,
             Err(_) => {
-                return Some(Outcome::Failed(Box::new(crate::Failure {
+                return Ok(Outcome::Failed(Box::new(crate::Failure {
                     frames: ctx.frames(),
                     ..crate::unavailable()
                 })));
@@ -265,34 +268,34 @@ async fn held(
     }
 }
 
-/// Runs `work` as a deployable does after the response is sent: each job
-/// and delivery in a context of its own on `host`, under the host's clock
-/// and no seed, as the system, within [`RUN_LIMIT_MS`], and then the work
-/// it set off. A host with no clock runs nothing: each job is a fault
-/// saying so, and each delivery is left for the sweep. The outcome of
-/// each job and delivery, in the order they ran; a delivery's record
-/// keeps it too (chunk 6.1b).
+/// Runs `work` as a deployable does after the response is sent, within
+/// the budget its host gives an invocation after a response: each
+/// delivery and batch run in a context of its own on `host`, under the
+/// host's clock and no seed, as the system, and then the work it set off,
+/// while enough of the budget is left. A host with no clock runs nothing:
+/// each delivery is left for the sweep. The outcome of each delivery and
+/// batch run, in the order they ran; a delivery's record keeps it too
+/// (chunk 6.1b). What it didn't reach stays in the store.
 pub async fn run_deferred(
     executor: &dyn Executor,
     host: &dyn Host,
     work: Vec<Deferred>,
 ) -> Vec<Outcome> {
-    drive(executor, host, work, None).await
+    let budget = Budget::start(host, Invocation::AfterResponse);
+    drive(executor, host, &budget, work, None).await.outcomes
 }
 
 /// One piece of deferred work, run on its own.
 enum Piece {
-    Job(Job),
     Delivery(Delivery),
     Batch(crate::batches::BatchStart),
 }
 
-/// `work`'s jobs, deliveries and batch runs, each a piece of its own, at
-/// the back of `queue`.
+/// `work`'s deliveries and batch runs, each a piece of its own, at the
+/// back of `queue`.
 fn split(work: Vec<Deferred>, queue: &mut VecDeque<Piece>) {
     for next in work {
         match next {
-            Deferred::Run(job) => queue.push_back(Piece::Job(job)),
             Deferred::Deliveries(deliveries) => {
                 queue.extend(deliveries.into_iter().map(Piece::Delivery));
             }
@@ -306,66 +309,63 @@ fn unsplit(queue: VecDeque<Piece>) -> Vec<Deferred> {
     queue
         .into_iter()
         .map(|piece| match piece {
-            Piece::Job(job) => Deferred::Run(job),
             Piece::Delivery(delivery) => Deferred::Deliveries(vec![delivery]),
             Piece::Batch(start) => Deferred::Batch(start),
         })
         .collect()
 }
 
-/// Runs `work` as [`run_deferred`] does: each piece at the host's time
-/// as it starts, never one worked out before (chunk 6.6a), or at `now`
-/// on a host with no clock.
+/// What one invocation's run of work did.
+struct Worked {
+    /// The outcome of each piece that ran, in order.
+    outcomes: Vec<Outcome>,
+    /// What it didn't reach once its budget was spent, a batch run it
+    /// handed on among it.
+    left: Vec<Deferred>,
+    /// Whether it ran any piece.
+    ran: bool,
+}
+
+/// Runs `work` within `budget`: each piece at the host's time as it
+/// starts, never one worked out before (chunk 6.6a), or at `now` on a
+/// host with no clock; no piece once the budget is spent (chunk 6.7).
 async fn drive(
     executor: &dyn Executor,
     host: &dyn Host,
+    budget: &Budget<'_>,
     work: Vec<Deferred>,
     now: Option<i64>,
-) -> Vec<Outcome> {
+) -> Worked {
     let mut queue: VecDeque<Piece> = VecDeque::new();
     split(work, &mut queue);
     let mut outcomes = Vec::new();
+    let mut ran = false;
     while let Some(piece) = queue.pop_front() {
+        // Its budget spent, the invocation takes no more: a delivery waits
+        // in the outbox and a batch run on its row, for the next.
+        if budget.spent() {
+            queue.push_front(piece);
+            break;
+        }
         let Some(now) = host.now_ms().or(now) else {
-            if let Piece::Job(_) = piece {
-                outcomes.push(Outcome::Fault(Box::new(crate::Fault {
-                    kind: FaultKind::Defect("the host has no clock".into()),
-                    frames: Vec::new(),
-                })));
-            }
             continue;
         };
+        ran = true;
         let env = Env {
             seed: None,
             clock: Clock::fixed(now),
         };
         let mut ctx = Ctx::new(executor.places(), host, env);
-        // Work that never waits gives the thread back as it checks this,
-        // so the requests the worker answers carry on beside it.
-        ctx.set_deadline(Some(RUN_LIMIT_MS));
-        let mut limit = host.sleep(RUN_LIMIT_MS);
         let outcome = match piece {
-            Piece::Job(job) => match race(as_system(executor, &mut ctx, job), &mut limit).await {
-                First::Left(outcome) if !ctx.out_of_time() => Some(outcome),
-                First::Left(_) | First::Right(()) => {
-                    ctx.abandon();
-                    Some(Outcome::Fault(
-                        ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
-                    ))
-                }
-            },
-            // A delivery whose action runs out of time is an attempt that
-            // did, settled against its budget (chunk 6.6a).
             Piece::Delivery(delivery) => {
-                let cut = Some(Cut::Limit(&mut limit));
-                attempt_delivery(executor, &mut ctx, delivery, cut)
+                attempt_delivery(executor, &mut ctx, budget, delivery, None)
                     .await
                     .map(|(outcome, _)| outcome)
             }
-            // A batch run makes a context per batch and keeps within one
-            // run's time by handing itself on (chunk 6.4).
+            // A batch run makes a context per batch, and hands itself on
+            // once the budget is spent (chunk 6.7).
             Piece::Batch(start) => {
-                let (ran, more) = crate::batches::run(executor, host, &start).await;
+                let (ran, more) = crate::batches::run_within(executor, host, budget, &start).await;
                 split(more, &mut queue);
                 Some(match ran {
                     crate::batches::Ran::Failed(why) => Outcome::Fault(Box::new(crate::Fault {
@@ -379,11 +379,16 @@ async fn drive(
         split(ctx.take_deferred(), &mut queue);
         outcomes.extend(outcome);
     }
-    outcomes
+    Worked {
+        outcomes,
+        left: unsplit(queue),
+        ran,
+    }
 }
 
 /// Delivers `delivery` in `ctx`, which runs no action (area 12,
-/// "Delivery: at least once, safe to repeat"; chunk 6.1b): claims its
+/// "Delivery: at least once, safe to repeat"; chunk 6.1b), within the
+/// budget its host gives an invocation after a response: claims its
 /// record, unless another runner has it or it isn't due; finds whether
 /// its subscriber handled it already; runs the subscriber's action as the
 /// system limited to the event's tenant, continuing the event's trace,
@@ -395,42 +400,37 @@ pub async fn deliver(
     ctx: &mut Ctx<'_>,
     delivery: Delivery,
 ) -> Option<Outcome> {
-    attempt_delivery(executor, ctx, delivery, None)
+    let budget = Budget::start(ctx.host(), Invocation::AfterResponse);
+    attempt_delivery(executor, ctx, &budget, delivery, None)
         .await
         .map(|(outcome, _)| outcome)
 }
 
 /// The state [`attempt_delivery`] gives a delivery whose subscriber's run
-/// a route's `within:` cut short: given back `pending`, due at once.
-const CUT_SHORT: &str = "cut short";
+/// was stopped and given back: by a route's `within:`, or by its host
+/// shutting down. `pending` again, due at once, its attempt not counted.
+const GIVEN_BACK: &str = "given back";
 
-/// What may stop a subscriber's action before it ends, besides itself.
-/// Only the action's body is raced against it, never its commit nor the
-/// delivery's own statements ([`held`]), so a claim, and work that
-/// committed, are never left in doubt.
-enum Cut<'a, 'w> {
-    /// A route's `within:` (chunk 6.3): the delivery is given back as it
-    /// was, its attempt not counted, for deferred work to run again.
-    Within(&'a mut crate::LocalFuture<'w, ()>),
-    /// The 15-minute limit of one run: an attempt that ran out of time,
-    /// settled at once against its budget (chunk 6.6a).
-    Limit(&'a mut crate::LocalFuture<'w, ()>),
-}
-
-/// [`deliver`], with the state its record was left in: `succeeded`,
-/// `failed`, or `pending` to be tried again after a wait; or, when a
-/// route's `within:` finishes while the subscriber's action runs,
-/// [`CUT_SHORT`]. A delivery claimed over its `retry:` budget or past
-/// `within:` from its event fails without running (chunk 6.6a).
+/// [`deliver`] within `budget`, with the state its record was left in:
+/// `succeeded`, `failed`, or `pending` to be tried again after a wait; or
+/// [`GIVEN_BACK`]. Its claim lasts what is left of `budget` and the
+/// margin ([`crate::lease`]). The subscriber's action runs within
+/// `budget` ([`within_budget`]): one its limit stops is an attempt that
+/// ran out of time, settled against its `retry:` budget (chunk 6.6a); one
+/// its host's shutdown stops is given back. While a route waits for it,
+/// `within` races the action's body in place of the budget's limit, and
+/// one it stops is given back too. A delivery claimed over its `retry:`
+/// budget or past `within:` from its event fails without running (chunk
+/// 6.6a).
 async fn attempt_delivery(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
+    budget: &Budget<'_>,
     delivery: Delivery,
-    cut: Option<Cut<'_, '_>>,
+    within: Option<&mut crate::LocalFuture<'_, ()>>,
 ) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
-        self, After, CHAIN_LIMIT, FAILED, LEASE_EXPIRED, LEASE_MS, PENDING, SUCCEEDED,
-        failure_json, micros,
+        self, After, CHAIN_LIMIT, FAILED, PENDING, SUCCEEDED, failure_json, micros,
     };
     if ctx.in_action() {
         return Some((
@@ -448,22 +448,18 @@ async fn attempt_delivery(
     // host's time now, or the context's on a host with no clock.
     let now = host.now_ms().unwrap_or_else(|| ctx.now());
     let id = SqlValue::Uuid(delivery.id);
-    let claimed = database
-        .query_once(
-            outbox::CLAIM,
-            &[
-                id.clone(),
-                micros(now),
-                micros(now.saturating_add(LEASE_MS)),
-                failure_json(LEASE_EXPIRED, None),
-            ],
-        )
+    let mut lease = outbox::Leased {
+        id: delivery.id,
+        attempt: 0,
+    };
+    let claimed = crate::lease::claim(database, budget, &lease, now)
         .await
-        .ok()?;
-    let attempt = match claimed.first().and_then(|row| row.first()) {
+        .ok()??;
+    let attempt = match claimed.first() {
         Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(u32::MAX),
         _ => return None,
     };
+    lease.attempt = attempt;
     let counted = SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX));
     let settle = |status: &'static str, next: Option<i64>, failure: Option<SqlValue>| {
         let params = [
@@ -501,7 +497,7 @@ async fn attempt_delivery(
         return Some((Outcome::Failed(Box::new(failure)), FAILED));
     }
     // Its budget: how many attempts, and until when from its event.
-    let within = delivery
+    let within_ms = delivery
         .emitted_at
         .saturating_add(i64::try_from(subscriber.within_ms).unwrap_or(i64::MAX));
     // An attempt that ended in a failure worth retrying is tried again
@@ -509,7 +505,7 @@ async fn attempt_delivery(
     let retried = |code: &str, kind: Option<&str>| {
         let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
         let failure = Some(failure_json(code, kind));
-        let again = attempt < subscriber.attempts && next <= within;
+        let again = attempt < subscriber.attempts && next <= within_ms;
         async move {
             if again {
                 settle(PENDING, Some(next), failure).await;
@@ -543,7 +539,7 @@ async fn attempt_delivery(
     }
     // Claimed again over its budget, or past `within:`, as a lost worker
     // or a dropped run leaves it: it fails without running.
-    if attempt > subscriber.attempts || now > within {
+    if attempt > subscriber.attempts || now > within_ms {
         let _ = database
             .query_once(
                 outbox::GIVE_UP,
@@ -587,31 +583,32 @@ async fn attempt_delivery(
         store,
         id: delivery.id,
     });
-    let gives_back = matches!(cut, Some(Cut::Within(_)));
-    let ran = match cut {
-        None => Some(as_system(executor, ctx, job).await),
-        Some(Cut::Within(stop) | Cut::Limit(stop)) => held(executor, ctx, job, stop).await,
+    let ran = match within {
+        // A route stopping its wait gives the delivery back, as the host
+        // shutting down does.
+        Some(stop) => held(executor, ctx, job, stop, ())
+            .await
+            .map_err(|()| Cut::ShuttingDown),
+        None => within_budget(executor, ctx, budget, job).await,
     };
     ctx.handled = None;
     ctx.set_trace(trace);
     ctx.chain = chain;
     let outcome = match ran {
-        Some(outcome) => outcome,
-        // A route stopped waiting (chunk 6.3): what the subscriber's
-        // action had begun is dropped, nothing it did kept, and the
-        // delivery is given back as it was, for deferred work to run.
-        None if gives_back => {
-            let _ = database
-                .query_once(outbox::RELEASE, &[id.clone(), counted.clone(), micros(now)])
-                .await;
+        Ok(outcome) => outcome,
+        // What the subscriber's action had begun is dropped, nothing it
+        // did kept, and the delivery is given back as it was, for
+        // deferred work or the sweep to run.
+        Err(Cut::ShuttingDown) => {
+            crate::lease::release(database, &lease, now).await;
             return Some((
                 Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
-                CUT_SHORT,
+                GIVEN_BACK,
             ));
         }
-        // The run's time ran out: nothing it did kept, and the attempt is
+        // Its time ran out: nothing it did kept, and the attempt is
         // settled as one that timed out.
-        None => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
+        Err(Cut::OutOfTime) => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
     };
     let state = match outbox::after(&outcome) {
         After::Succeeded => {
@@ -635,20 +632,33 @@ fn jitter(host: &dyn Host) -> Option<[u8; 8]> {
 }
 
 /// Delivers what is due in `store`'s outbox at `now` (area 12, "Where
-/// events travel"; chunk 6.1b): every delivery still `pending` past its
-/// next attempt, or `running` past its lease, which a crash between the
-/// commit and the delivery, a host that dropped deferred work, or a
-/// worker that died holding a lease left; at most [`SWEEP_BATCH`] of
-/// them, oldest first, each as [`run_deferred`] runs one, at the host's
-/// time as it starts rather than `now` (chunk 6.6a), and the work they
-/// set off. A payload that no longer reads as its type is parked with its
-/// problem, never dropped. The once-a-minute tick that calls it is chunk
-/// 6.2's. The outcome of each delivery that ran.
+/// events travel"; chunk 6.1b), within the budget its host gives a tick:
+/// every delivery still `pending` past its next attempt, or `running`
+/// past its lease, which a crash between the commit and the delivery, a
+/// host that dropped deferred work, or a worker that died holding a lease
+/// left; at most [`SWEEP_BATCH`] of them, oldest first, each as
+/// [`run_deferred`] runs one, at the host's time as it starts rather than
+/// `now` (chunk 6.6a), and the work they set off. A payload that no
+/// longer reads as its type is parked with its problem, never dropped.
+/// The once-a-minute tick that calls it is chunk 6.2's. The outcome of
+/// each delivery that ran.
 ///
 /// [`SWEEP_BATCH`]: crate::outbox::SWEEP_BATCH
 pub async fn sweep(
     executor: &dyn Executor,
     host: &dyn Host,
+    store: &str,
+    now: i64,
+) -> Result<Vec<Outcome>, StoreError> {
+    let budget = Budget::start(host, Invocation::Tick);
+    sweep_within(executor, host, &budget, store, now).await
+}
+
+/// [`sweep`] within `budget`: the tick's own.
+pub(crate) async fn sweep_within(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    budget: &Budget<'_>,
     store: &str,
     now: i64,
 ) -> Result<Vec<Outcome>, StoreError> {
@@ -721,21 +731,72 @@ pub async fn sweep(
             }
         }
     }
-    Ok(drive(executor, host, vec![Deferred::Deliveries(work)], Some(now)).await)
+    let worked = drive(
+        executor,
+        host,
+        budget,
+        vec![Deferred::Deliveries(work)],
+        Some(now),
+    )
+    .await;
+    Ok(worked.outcomes)
+}
+
+/// Runs `work` and what it sets off within `budget`, as the tick runs
+/// what its schedules and hooks left (chunk 6.7): what it didn't reach
+/// stays in the store for the next tick. The outcome of each piece that
+/// ran.
+pub(crate) async fn run_within(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    budget: &Budget<'_>,
+    work: Vec<Deferred>,
+) -> Vec<Outcome> {
+    drive(executor, host, budget, work, None).await.outcomes
 }
 
 /// Gives `work` to `host` to run after the response it belongs to is
-/// sent ([`Host::defer`]), with [`run_deferred`]: what a deployable and
-/// `jadpo dev` do with the work a response left (`Response::deferred`).
-/// `executor` and `host` are kept until it has run.
+/// sent ([`Host::defer`]), within the budget the host gives an invocation
+/// after a response: what a deployable and `jadpo dev` do with the work a
+/// response left (`Response::deferred`). What it didn't reach is handed
+/// on into a fresh invocation ([`Host::hand_on`]). `executor` and `host`
+/// are kept until it has run.
 pub fn after_response(executor: Rc<dyn Executor>, host: Rc<dyn Host>, work: Vec<Deferred>) {
     if work.is_empty() {
         return;
     }
     let runs = Rc::clone(&host);
-    host.defer(Box::pin(async move {
-        run_deferred(executor.as_ref(), runs.as_ref(), work).await;
-    }));
+    host.defer(invocation(executor, runs, work, Invocation::AfterResponse));
+}
+
+/// `work` run as one invocation of kind `kind` on `host`, within the
+/// budget the host gives it (chunk 6.7). What it didn't reach once the
+/// budget was spent, a batch run handed on by time among it, goes on into
+/// a fresh invocation, unless the host is shutting down, or the
+/// invocation ran nothing, so work that can't start in a whole budget
+/// waits for the tick rather than hands itself on for ever.
+fn invocation(
+    executor: Rc<dyn Executor>,
+    host: Rc<dyn Host>,
+    work: Vec<Deferred>,
+    kind: Invocation,
+) -> LocalFuture<'static, ()> {
+    Box::pin(async move {
+        let budget = Budget::start(host.as_ref(), kind);
+        let worked = drive(executor.as_ref(), host.as_ref(), &budget, work, None).await;
+        let stopping = budget.stopping();
+        drop(budget);
+        if stopping || !worked.ran || worked.left.is_empty() {
+            return;
+        }
+        let fresh = Rc::clone(&host);
+        host.hand_on(invocation(
+            executor,
+            fresh,
+            worked.left,
+            Invocation::HandedOn,
+        ));
+    })
 }
 
 /// Runs `callable` once for each of `items`, its arguments, in order,
@@ -1132,13 +1193,13 @@ fn written(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     use jadpo_std::policy::CallerPart;
 
     use super::*;
-    use crate::{ActionBody, Caller, Database, Event, Failure, LocalFuture, Places, Row, block_on};
+    use crate::{ActionBody, Caller, Database, Event, Failure, Places, Row, block_on};
 
     /// What reached the store, and in which order.
     #[derive(Default)]
@@ -1221,12 +1282,17 @@ mod tests {
     }
 
     /// A host with one store that writes down what reaches it, a clock
-    /// when given one, and the work it was given to run after a response.
+    /// when given one, a budget and a monotonic clock that moves `step` on
+    /// every look when given them, and the work it was given to run after
+    /// a response or to hand on.
     #[derive(Default)]
     struct Fake {
         log: Rc<Log>,
         clock: Option<i64>,
+        paced: Option<(Cell<u64>, u64)>,
+        budget: Option<u64>,
         deferred: RefCell<Vec<LocalFuture<'static, ()>>>,
+        handed: RefCell<Vec<LocalFuture<'static, ()>>>,
     }
 
     impl Database for Fake {
@@ -1257,6 +1323,22 @@ mod tests {
         fn defer(&self, work: LocalFuture<'static, ()>) {
             self.deferred.borrow_mut().push(work);
         }
+
+        fn hand_on(&self, work: LocalFuture<'static, ()>) {
+            self.handed.borrow_mut().push(work);
+        }
+
+        fn monotonic_ms(&self) -> Option<u64> {
+            let (now, step) = self.paced.as_ref()?;
+            let then = now.get();
+            now.set(then + step);
+            Some(then)
+        }
+
+        fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
+            let _ = invocation;
+            self.budget.unwrap_or(crate::budget::GENEROUS_MS)
+        }
     }
 
     /// What each callable does: an action that writes `write <name>` and
@@ -1267,8 +1349,6 @@ mod tests {
         Writes,
         /// Writes, emits, then fails `not_found`.
         Fails,
-        /// Writes, and leaves callable 3 to run after it.
-        SetsOff,
         /// A function giving its argument back.
         Echoes,
         /// Writes, emits this many events, and faults when one is refused.
@@ -1317,7 +1397,7 @@ mod tests {
                 Deferred::Deliveries(deliveries) => {
                     deliveries.into_iter().map(|d| d.event).collect()
                 }
-                Deferred::Run(_) | Deferred::Batch(_) => Vec::new(),
+                Deferred::Batch(_) => Vec::new(),
             })
             .collect()
     }
@@ -1377,14 +1457,6 @@ mod tests {
                         failure.kind = Some("not_found".into());
                         Outcome::Failed(Box::new(failure))
                     }
-                    Does::SetsOff => {
-                        ctx.defer(Deferred::Run(Job {
-                            callable: 3,
-                            args: vec![Value::text("follow-on")],
-                            system: System::default(),
-                        }));
-                        Outcome::Value(Value::Unit)
-                    }
                     _ => Outcome::Value(Value::Unit),
                 }
             })
@@ -1429,14 +1501,14 @@ mod tests {
         }
     }
 
-    fn job(callable: u32, name: &str, tenant: Option<u8>) -> Deferred {
-        Deferred::Run(Job {
+    fn job(callable: u32, name: &str, tenant: Option<u8>) -> Job {
+        Job {
             callable,
             args: vec![Value::text(name)],
             system: System {
                 tenant: tenant.map(|byte| [byte; 16]),
             },
-        })
+        }
     }
 
     fn signed_in(ctx: &mut Ctx<'_>) {
@@ -1453,21 +1525,18 @@ mod tests {
         }));
     }
 
-    /// Inline: the work runs in the invocation that left it, each job as
-    /// the system in a boundary of its own, the work it sets off after it,
-    /// and whoever ran the invocation runs it again afterwards.
+    /// A job runs as the system in a boundary of its own, limited to the
+    /// tenant it names, and whoever ran the context runs it again after.
     #[test]
-    fn inline_work_runs_as_the_system_then_gives_the_caller_back() {
-        let program = Program::new(&[Does::Writes, Does::Fails, Does::SetsOff, Does::Writes]);
+    fn a_job_runs_as_the_system_then_gives_the_caller_back() {
+        let program = Program::new(&[Does::Writes, Does::Fails]);
         let host = Fake::default();
         let mut ctx = Ctx::new(&program.places, &host, Env::default());
         signed_in(&mut ctx);
-        let work = vec![
-            Deferred::Deliveries(vec![delivery("type Placed")]),
-            job(2, "order", Some(9)),
-            job(1, "refused", None),
-        ];
-        let outcomes = block_on(settle(&program, &mut ctx, work)).expect("nothing waits");
+        let wrote = block_on(as_system(&program, &mut ctx, job(0, "order", Some(9))))
+            .expect("nothing waits");
+        let refused = block_on(as_system(&program, &mut ctx, job(1, "refused", None)))
+            .expect("nothing waits");
         assert_eq!(
             host.log.take(),
             [
@@ -1479,107 +1548,80 @@ mod tests {
                 "begin repeatable_read",
                 "write refused as system",
                 "rollback",
-                "begin repeatable_read",
-                "write follow-on as system",
-                "outbox",
-                "deliveries",
-                "commit",
-            ],
-            "the follow-on runs after the work queued before it"
+            ]
         );
-        assert_eq!(outcomes.len(), 3);
-        assert!(matches!(&outcomes[1], Outcome::Failed(failure) if failure.code == "gone"));
+        assert!(matches!(wrote, Outcome::Value(_)));
+        assert!(matches!(&refused, Outcome::Failed(failure) if failure.code == "gone"));
         assert_eq!(ctx.system(), None);
         assert!(ctx.caller().is_some(), "the request's caller again");
-        // What the jobs emitted was settled too: nothing is left over.
-        assert!(ctx.take_deferred().is_empty());
+        assert_eq!(
+            deferred_events(ctx.take_deferred()),
+            ["type Wrote order"],
+            "what the failed job emitted is undone with it"
+        );
     }
 
-    /// A route waiting for its follow-on work (chunk 6.3): it runs the
-    /// work and what that sets off as the system, gives the request's
-    /// caller back for the answer, and stops at the first piece that
-    /// can't settle, or once `within:` has passed, leaving the rest for
-    /// after the response.
+    /// A route waiting for its follow-on work (chunk 6.3): work that leaves
+    /// nothing to wait for has settled; a delivery that can't be claimed
+    /// (this program has no subscribers) hasn't, and it and what follows
+    /// are left for after the response; once `within:` has passed nothing
+    /// more runs. Work left before isn't this route's to wait for, and the
+    /// request's caller is given back for the answer.
     #[test]
     fn waiting_for_follow_on_work_stops_at_what_has_not_settled() {
-        let program = Program::new(&[Does::Writes, Does::Echoes, Does::SetsOff, Does::Writes]);
+        let program = Program::new(&[Does::Writes]);
         let host = Fake::default();
         let mut ctx = Ctx::new(&program.places, &host, Env::default());
         signed_in(&mut ctx);
-        // Work that leaves nothing behind has settled.
-        // Work left before isn't this route's to wait for.
-        ctx.defer(job(0, "earlier", None));
+        let earlier = Deferred::Deliveries(vec![delivery("type Earlier")]);
+        ctx.defer(earlier.clone());
         let mut within: LocalFuture<'_, ()> = Box::pin(std::future::pending());
-        let settled = block_on(settle_within(
-            &program,
-            &mut ctx,
-            vec![job(1, "sum", None)],
-            &mut within,
-        ))
-        .expect("nothing waits");
+        let settled = block_on(settle_within(&program, &mut ctx, Vec::new(), &mut within))
+            .expect("nothing waits");
         assert_eq!(settled, Settled::Settled);
-        assert_eq!(ctx.take_deferred(), [job(0, "earlier", None)]);
-        // The job and the job it sets off run as the system; then the
-        // first delivery of what they emitted can't be claimed (this
-        // program has no subscribers), so the work hasn't settled, and
-        // the deliveries are left for after the response.
-        let settled = block_on(settle_within(
-            &program,
-            &mut ctx,
-            vec![job(2, "order", Some(9))],
-            &mut within,
-        ))
-        .expect("nothing waits");
+        assert_eq!(ctx.take_deferred(), [earlier]);
+        let work = vec![Deferred::Deliveries(vec![
+            delivery("type Placed"),
+            delivery("type Paid"),
+        ])];
+        let settled =
+            block_on(settle_within(&program, &mut ctx, work, &mut within)).expect("nothing waits");
         assert_eq!(settled, Settled::Unsettled);
         assert_eq!(
-            host.log.take(),
-            [
-                "begin repeatable_read",
-                "write order as system in 9",
-                "outbox",
-                "deliveries",
-                "commit",
-                "begin repeatable_read",
-                "write follow-on as system",
-                "outbox",
-                "deliveries",
-                "commit",
-            ]
+            deferred_events(ctx.take_deferred()),
+            ["type Placed", "type Paid"]
         );
         assert!(ctx.caller().is_some(), "the request's caller again");
         assert_eq!(ctx.system(), None);
-        assert_eq!(
-            deferred_events(ctx.take_deferred()),
-            ["type Wrote order", "type Wrote follow-on"]
-        );
         // Once `within:` has passed, nothing more runs.
         let mut passed: LocalFuture<'_, ()> = Box::pin(async {});
         let settled = block_on(settle_within(
             &program,
             &mut ctx,
-            vec![job(0, "late", None)],
+            vec![Deferred::Deliveries(vec![delivery("type Late")])],
             &mut passed,
         ))
         .expect("nothing waits");
         assert_eq!(settled, Settled::Unsettled);
         assert!(host.log.take().is_empty());
-        assert_eq!(ctx.take_deferred().len(), 1);
+        assert_eq!(deferred_events(ctx.take_deferred()), ["type Late"]);
         assert!(ctx.caller().is_some());
     }
 
     /// Deferred: the host is given the work to run once the response is
-    /// handed back, and it runs nothing before; then each job runs in a
-    /// context of its own, under the host's clock, as the system.
+    /// handed back, and nothing runs before (chunk 6.1a). Run, it works
+    /// within the budget its host gives it, and once that is spent hands
+    /// what it didn't reach on into a fresh invocation, which carries it
+    /// to its end (chunk 6.7); an invocation that could run nothing hands
+    /// nothing on, and a host with no clock runs nothing.
     #[test]
-    fn deferred_work_runs_only_when_the_host_runs_it_after_the_response() {
-        let program: Rc<dyn Executor> = Rc::new(Program::new(&[
-            Does::Writes,
-            Does::Fails,
-            Does::SetsOff,
-            Does::Writes,
-        ]));
+    fn deferred_work_runs_after_the_response_and_hands_on_what_its_budget_left() {
+        let program: Rc<dyn Executor> = Rc::new(Program::new(&[Does::Writes]));
+        // Ten seconds, and each look at the clock takes five.
         let fake = Rc::new(Fake {
             clock: Some(1_800_000_000_000),
+            paced: Some((Cell::new(0), 5_000)),
+            budget: Some(10_000),
             ..Fake::default()
         });
         let host: Rc<dyn Host> = Rc::clone(&fake) as Rc<dyn Host>;
@@ -1588,49 +1630,52 @@ mod tests {
             fake.deferred.borrow().is_empty(),
             "nothing to run, nothing handed over"
         );
-        after_response(
-            Rc::clone(&program),
-            Rc::clone(&host),
-            vec![job(2, "order", None)],
-        );
+        let work = vec![Deferred::Deliveries(vec![
+            delivery("type First"),
+            delivery("type Second"),
+        ])];
+        after_response(Rc::clone(&program), Rc::clone(&host), work);
         assert_eq!(fake.deferred.borrow().len(), 1);
-        assert!(
-            fake.log.take().is_empty(),
-            "nothing runs until the host runs it"
-        );
+        assert!(fake.handed.borrow().is_empty());
         let work: Vec<_> = fake.deferred.borrow_mut().drain(..).collect();
         for work in work {
             block_on(work).expect("nothing waits");
         }
-        assert_eq!(
-            fake.log.take(),
-            [
-                "begin repeatable_read",
-                "write order as system",
-                "at 1800000000000",
-                "outbox",
-                "deliveries",
-                "commit",
-                "begin repeatable_read",
-                "write follow-on as system",
-                "at 1800000000000",
-                "outbox",
-                "deliveries",
-                "commit",
-            ]
+        // It took the first delivery; then its budget was spent, and the
+        // second went on into a fresh invocation, which took it and left
+        // nothing.
+        let handed: Vec<_> = fake.handed.borrow_mut().drain(..).collect();
+        assert_eq!(handed.len(), 1);
+        for work in handed {
+            block_on(work).expect("nothing waits");
+        }
+        assert!(fake.handed.borrow().is_empty(), "nothing more to hand on");
+        // A budget spent before it could take anything hands nothing on.
+        let spent = Rc::new(Fake {
+            clock: Some(1_800_000_000_000),
+            paced: Some((Cell::new(0), 10_000)),
+            budget: Some(10_000),
+            ..Fake::default()
+        });
+        after_response(
+            Rc::clone(&program),
+            Rc::clone(&spent) as Rc<dyn Host>,
+            vec![Deferred::Deliveries(vec![delivery("type Placed")])],
         );
+        let work: Vec<_> = spent.deferred.borrow_mut().drain(..).collect();
+        for work in work {
+            block_on(work).expect("nothing waits");
+        }
+        assert!(spent.handed.borrow().is_empty());
         // A host with no clock runs nothing.
         let clockless = Fake::default();
         let outcomes = block_on(run_deferred(
             program.as_ref(),
             &clockless,
-            vec![job(0, "x", None)],
+            vec![Deferred::Deliveries(vec![delivery("type Placed")])],
         ))
         .expect("nothing waits");
-        assert!(matches!(
-            &outcomes[..],
-            [Outcome::Fault(fault)] if fault.kind == FaultKind::Defect("the host has no clock".into())
-        ));
+        assert!(outcomes.is_empty(), "{outcomes:?}");
         assert!(clockless.log.take().is_empty());
     }
 

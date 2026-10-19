@@ -712,11 +712,12 @@ fn a_crash_mid_batch_resumes_with_no_item_done_twice_and_none_skipped() {
         let (resumed, _) = jadpo_runtime::batches::resume(program, &host, START + 1_000).await;
         assert!(resumed.is_empty(), "{resumed:?}");
         // Once it has, a sweep picks the run up where it committed.
-        host.clock.set(START + jadpo_std::batch::LEASE_MS + 1_000);
+        host.clock
+            .set(START + jadpo_runtime::lease::LONGEST_MS + 1_000);
         let (resumed, _) = jadpo_runtime::batches::resume(
             program,
             &host,
-            START + jadpo_std::batch::LEASE_MS + 1_000,
+            START + jadpo_runtime::lease::LONGEST_MS + 1_000,
         )
         .await;
         assert_eq!(resumed.len(), 1, "{resumed:?}");
@@ -784,11 +785,12 @@ fn a_key_gives_a_second_start_the_same_run_and_cancel_stops_after_the_batch_in_h
         // once the lease lapses, finds the cancel at its next batch.
         let (ran, _) = jadpo_runtime::batches::run(program, &host, &starts(&second_work)[0]).await;
         assert_eq!(ran, Ran::NotClaimed);
-        host.clock.set(START + jadpo_std::batch::LEASE_MS + 1_000);
+        host.clock
+            .set(START + jadpo_runtime::lease::LONGEST_MS + 1_000);
         let (resumed, _) = jadpo_runtime::batches::resume(
             program,
             &host,
-            START + jadpo_std::batch::LEASE_MS + 1_000,
+            START + jadpo_runtime::lease::LONGEST_MS + 1_000,
         )
         .await;
         assert_eq!(resumed.len(), 1);

@@ -12,8 +12,12 @@
 //! their own on the worker's thread, which start only once the response
 //! has been handed to hyper and never hold it up (chunk 6.1a). The first
 //! worker also runs the server's timer, which starts the runtime's tick
-//! ([`Handler::tick`]) once a minute (chunk 6.2).
+//! ([`Handler::tick`]) once a minute (chunk 6.2). Stopped, the server
+//! drains: it accepts nothing more, starts no more ticks, and each worker
+//! waits for its handler's background work to give back what it holds
+//! ([`Handler::drain`]; chunk 6.7).
 
+use std::cell::Cell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io;
@@ -62,6 +66,13 @@ pub trait Handler {
     fn tick_every_ms(&self) -> u64 {
         60_000
     }
+
+    /// Stops the handler's background work, which gives back what it holds
+    /// and takes nothing more, and waits for it to end: what each worker
+    /// does as the server stops (chunk 6.7; [`crate::NativeHost::drain`]).
+    fn drain(&self) -> LocalFuture<'static, ()> {
+        Box::pin(async {})
+    }
 }
 
 /// Makes each worker's handler, on the worker's own thread.
@@ -82,7 +93,8 @@ impl Server {
         self.address
     }
 
-    /// Stops accepting, lets the workers finish and waits for them.
+    /// Stops accepting, lets the workers drain their background work, and
+    /// waits for them (chunk 6.7).
     pub fn stop(mut self) {
         self.stop.store(true, Ordering::SeqCst);
         for thread in self.threads.drain(..) {
@@ -175,8 +187,9 @@ fn worker(
     };
     let handler: Rc<dyn Handler> = Rc::from(make());
     runtime.block_on(async move {
+        let draining = Rc::new(Cell::new(false));
         if first {
-            tokio::task::spawn_local(ticker(Rc::clone(&handler)));
+            tokio::task::spawn_local(ticker(Rc::clone(&handler), Rc::clone(&draining)));
         }
         while let Some(stream) = receiver.recv().await {
             let counted = Open(Arc::clone(&open));
@@ -217,15 +230,19 @@ fn worker(
                     .await;
             });
         }
+        // The server is stopping: no more ticks, and the background work
+        // gives back what it holds before the worker ends.
+        draining.set(true);
+        handler.drain().await;
     });
 }
 
 /// The server's own timer (area 12, question 16: `ScheduleTrigger.native`,
 /// an in-process timer): at each whole period of UTC it starts the
-/// handler's tick as a task of its own. The lease each schedule's state
-/// row holds decides who runs it, so ticks from several processes, or a
-/// late one, are harmless.
-async fn ticker(handler: Rc<dyn Handler>) {
+/// handler's tick as a task of its own, until the server begins to drain.
+/// The lease each schedule's state row holds decides who runs it, so ticks
+/// from several processes, or a late one, are harmless.
+async fn ticker(handler: Rc<dyn Handler>, draining: Rc<Cell<bool>>) {
     loop {
         let every = handler.tick_every_ms().max(1_000);
         let now = std::time::SystemTime::now()
@@ -233,6 +250,9 @@ async fn ticker(handler: Rc<dyn Handler>) {
             .map_or(0, |since| since.as_millis());
         let wait = u128::from(every) - now % u128::from(every);
         tokio::time::sleep(Duration::from_millis(u64::try_from(wait).unwrap_or(every))).await;
+        if draining.get() {
+            return;
+        }
         if let Some(work) = handler.tick() {
             tokio::task::spawn_local(work);
         }

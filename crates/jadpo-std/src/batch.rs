@@ -137,11 +137,6 @@ pub const CANCELS: &str = "jadpo_batch_cancels";
 /// `jadpo_` prefix.
 pub const TABLES: [&str; 3] = ["batch_runs", "batch_problems", "batch_cancels"];
 
-/// How long a runner holds a run before another may take it over, in
-/// milliseconds: renewed with each batch's commit, so a run whose runner
-/// died is picked up again once this has passed.
-pub const LEASE_MS: i64 = 120_000;
-
 /// What the plan says of one `batches.each` call: what the runtime needs
 /// to start its run, walk `from:` a page at a time and run `each:` per
 /// item and `finished:` once.

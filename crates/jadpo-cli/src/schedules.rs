@@ -1462,8 +1462,9 @@ async fn wait_for(
         schedule.name
     ));
     let tick_wait = Duration::from_millis(period.saturating_mul(2));
-    let lease =
-        Duration::from_millis(u64::try_from(jadpo_runtime::schedules::LEASE_MS).unwrap_or(0));
+    // The longest a deployment's lease lasts, whatever budget its host
+    // gives a tick (chunk 6.7).
+    let lease = Duration::from_millis(u64::try_from(jadpo_runtime::lease::LONGEST_MS).unwrap_or(0));
     let began = Instant::now();
     let mut deadline = began + tick_wait;
     let mut taken: Option<Instant> = None;
