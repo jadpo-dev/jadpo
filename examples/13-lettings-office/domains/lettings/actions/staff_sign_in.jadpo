@@ -1,0 +1,24 @@
+use lettings/types { SignInOutcome, StaffPassword, StaffSignInResult }
+
+/// Signs a member of staff in with the password they typed. A hash made
+/// with older settings still signs in, and comes back made afresh for the
+/// office to store in its place.
+action staff_sign_in(
+    typed_password: StaffPassword,
+    stored_hash: PasswordHash
+) -> StaffSignInResult {
+    return match crypto.verify_password(typed_password, stored_hash) {
+        PasswordCheck.correct -> StaffSignInResult {
+            outcome: SignInOutcome.signed_in
+            fresh_hash: none
+        }
+        PasswordCheck.correct_outdated -> StaffSignInResult {
+            outcome: SignInOutcome.signed_in
+            fresh_hash: crypto.hash_password(typed_password)
+        }
+        PasswordCheck.wrong -> StaffSignInResult {
+            outcome: SignInOutcome.refused
+            fresh_hash: none
+        }
+    }
+}

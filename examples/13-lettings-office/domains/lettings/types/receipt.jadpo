@@ -1,0 +1,2 @@
+/// A rent receipt's text.
+type Receipt = Text {}

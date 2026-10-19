@@ -1,0 +1,2 @@
+/// Whether something is what it says it is.
+type Genuine = Bool {}

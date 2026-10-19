@@ -1,0 +1,22 @@
+use lettings/types { SignInOutcome, StaffSignInResult }
+use lettings/actions { set_password }
+
+test "the password a hash was made from signs in, and no other" {
+    var stored_hash: PasswordHash = set_password("correct horse battery staple")
+    var signed_in: StaffSignInResult = staff_sign_in("correct horse battery staple", stored_hash)
+    assert signed_in.outcome == SignInOutcome.signed_in
+    assert signed_in.fresh_hash == none
+    assert staff_sign_in(
+        "correct horse battery stapler",
+        stored_hash
+    ).outcome == SignInOutcome.refused
+}
+
+test "a hash made with older settings signs in and is made afresh" {
+    // The same password hashed at 4 MiB and 3 passes, before this
+    // release's settings.
+    var older_hash: PasswordHash = "$argon2id$v=19$m=4096,t=3,p=1$AAECAwQFBgcICQoLDA0ODw$VTsSHiMxkq48zEo8LUSymjr7JjaRSgsxGX2Z8HQE9Cw"
+    var result: StaffSignInResult = staff_sign_in("correct horse battery staple", older_hash)
+    assert result.outcome == SignInOutcome.signed_in
+    assert result.fresh_hash != none
+}

@@ -1,0 +1,33 @@
+use lettings/types { SignedReceipt }
+use lettings/actions { check_receipt, receipt_key }
+
+test "a receipt checks with the office's public key" {
+    var receipt_issued: SignedReceipt = issue_receipt("T-1042", 25000)
+    assert receipt_issued.receipt == "Harbour Lettings received 25000p for tenancy T-1042."
+    assert check_receipt(receipt_issued.receipt, receipt_issued.office_signature, receipt_key())
+    assert not check_receipt(
+        "Harbour Lettings received 99999p for tenancy T-1042.",
+        receipt_issued.office_signature,
+        receipt_key()
+    )
+}
+
+test "another office's key doesn't check the office's receipts" {
+    // RFC 8032's first test key: a public key, so not a secret.
+    var receipt_issued: SignedReceipt = issue_receipt("T-1042", 25000)
+    assert not check_receipt(
+        receipt_issued.receipt,
+        receipt_issued.office_signature,
+        "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+    )
+}
+
+test "a receipt names the office the deployment sets" {
+    config: {
+        office_name: "Quayside Homes"
+    }
+    assert issue_receipt(
+        "T-1042",
+        25000
+    ).receipt == "Quayside Homes received 25000p for tenancy T-1042."
+}

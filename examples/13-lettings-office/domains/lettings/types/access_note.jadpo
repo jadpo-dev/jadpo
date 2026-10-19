@@ -1,0 +1,5 @@
+/// How a contractor gets into a property: where the key is, the alarm
+/// code. Private to the tenant and the office.
+type AccessNote = Text {
+    max_length: 2000
+}

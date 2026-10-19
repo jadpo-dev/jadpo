@@ -46,6 +46,11 @@ README saying what it teaches, how to run it and what to try next.
     customers in one application: tenancy, membership roles, actions
     listed with who may run them, field restrictions, a role across the
     whole application and the permissions report.
+13. [13-lettings-office/](13-lettings-office/README.md): settings:
+    `config.jadpo`, a setting's types and defaults, the connections'
+    addresses, constants, test values, and the keys a `crypto` call takes
+    without code reading them: sealing, passwords, a shared secret, a
+    private key and another service's tokens.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

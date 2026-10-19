@@ -1,0 +1,4 @@
+/// A certificate that isn't DER in Base64.
+type CertificateUnreadable = Failure {
+    kind: FailureKind.invalid_value
+}

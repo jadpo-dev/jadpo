@@ -1,0 +1,4 @@
+/// The office's reference for a tenancy, such as `T-1042`.
+type TenancyRef = Text {
+    pattern: "^T-[0-9]{4}$"
+}

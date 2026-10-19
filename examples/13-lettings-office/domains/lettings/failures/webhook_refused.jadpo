@@ -1,0 +1,4 @@
+/// A webhook whose signature isn't the rent collector's, or whose body isn't a payment.
+type WebhookRefused = Failure {
+    kind: FailureKind.invalid_value
+}

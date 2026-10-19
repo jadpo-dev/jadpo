@@ -1,0 +1,6 @@
+/// How much an audit line says.
+type Verbosity = Enum {
+    verbose
+    normal
+    terse
+}

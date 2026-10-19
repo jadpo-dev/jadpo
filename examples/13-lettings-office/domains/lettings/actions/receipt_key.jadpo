@@ -1,0 +1,5 @@
+/// The office's public key, which it publishes so tenants and their banks
+/// can check its receipts. A `PublicKey` isn't secret.
+action receipt_key() -> PublicKey {
+    return crypto.public_key(key: config.receipt_key)
+}

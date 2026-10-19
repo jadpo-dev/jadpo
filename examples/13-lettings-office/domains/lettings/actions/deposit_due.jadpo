@@ -1,0 +1,15 @@
+// Reading a constant from a library, beside a constant of the file's own.
+
+use lettings/types { DepositAmount, DepositWeeks, WeeklyRent }
+use lettings/libraries { deposits }
+
+/// A holding deposit: a week's rent, taken while references are checked.
+constant holding_weeks: DepositWeeks = 1
+
+/// The deposit asked for when a tenancy starts: the cap, less the holding
+/// deposit already paid.
+action deposit_due(rent: WeeklyRent) -> DepositAmount {
+    var full: DepositAmount = deposits.largest_deposit(rent)
+    var holding_deposit: DepositAmount = DepositAmount(rent * holding_weeks)
+    return DepositAmount(integer.max(full - holding_deposit, 0))
+}

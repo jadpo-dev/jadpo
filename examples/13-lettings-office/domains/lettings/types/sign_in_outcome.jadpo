@@ -1,0 +1,5 @@
+/// How a member of staff's sign-in went.
+type SignInOutcome = Enum {
+    signed_in
+    refused
+}

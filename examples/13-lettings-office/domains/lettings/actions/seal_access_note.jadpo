@@ -1,0 +1,12 @@
+// A key setting used where the compiler owns it: a `crypto` call's
+// `key:`, written `key: config.notes_key`. Code never reads the key
+// itself, so nothing it logs, stores or returns can hold it.
+
+use lettings/types { AccessNote, SealedNote, TenancyRef }
+
+/// A tenant's access note sealed to their tenancy, so a copy moved to
+/// another tenancy's record can't be opened there. Sealing reads the
+/// random generator for a fresh nonce, so only an action may do it.
+action seal_access_note(note: AccessNote, tenancy_ref: TenancyRef) -> SealedNote {
+    return SealedNote(crypto.encrypt(note, key: config.notes_key, context: tenancy_ref))
+}

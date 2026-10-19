@@ -184,10 +184,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: schedules and subscribers (area 12)",
     ),
     // Layout places later areas fill.
-    (
-        "root file config.jadpo",
-        "not built: configuration (area 10)",
-    ),
     ("root file flags.jadpo", "not built: flags (area 16)"),
     ("domain folder schedules", "not built: schedules (area 12)"),
     ("domain folder events", "not built: events (area 12)"),
@@ -486,6 +482,9 @@ const BODY: &[&str] = &[
     "call entity operation",
     "call caller from a record",
     "call session",
+    "advance the test clock",
+    "call translation",
+    "render a prompt",
     "write create",
     "write update",
     "write update by id",
@@ -1179,6 +1178,13 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                     shapes(ty, &mut used);
                 }
             }
+        }
+    }
+    // Area 10's settings: no graph node holds a setting's type, so a key
+    // or an address type a setting declares is read from `config { }`.
+    for setting in &jadpo_check::config::config(db, project).settings {
+        if let jadpo_check::types::Ty::Prim(builtin) = &setting.ty {
+            used.insert(format!("builtin {}", builtin.name()));
         }
     }
     // Area 5's settings and decisions, as the checker read them.

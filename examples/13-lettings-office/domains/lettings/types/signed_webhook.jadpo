@@ -1,0 +1,7 @@
+use lettings/types { WebhookBody, WebhookSignature }
+
+/// A webhook the office sends, with the signature that goes in its header.
+type SignedWebhook = Object {
+    body: WebhookBody
+    webhook_mac: WebhookSignature
+}

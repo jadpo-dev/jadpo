@@ -1,0 +1,17 @@
+// Settings read like any value: `config.urgent_repair_within` is the
+// `RepairWindow` its field declares, checked when the app starts, so
+// nothing builds it again. `config.office_zone` is a `Zone` and
+// `config.log_level` a `Verbosity`, each with a default.
+
+use lettings/types { AuditLine, TenancyRef, Verbosity }
+
+/// The audit line for a repair reported now: the tenancy, and with
+/// `Verbosity.verbose` the local time it came in.
+action repair_audit_line(tenancy_ref: TenancyRef) -> AuditLine {
+    var line: Text = "repair reported for " + tenancy_ref
+    if (config.log_level == Verbosity.verbose) {
+        var local: ZonedTime = temporal.in_zone(clock.now, config.office_zone)
+        return AuditLine(line + " at " + text.from(temporal.hour(local)) + "h")
+    }
+    return AuditLine(line)
+}

@@ -1,0 +1,22 @@
+// A shared secret: the rent collector and the office both hold
+// `payments_webhook_secret`, a `SigningKey`, and each webhook carries an
+// HMAC of its body under it.
+
+use lettings/types { RentPayment, WebhookBody, WebhookSignature }
+use lettings/failures { WebhookRefused }
+
+/// The payment a webhook from the rent collector reports, once its
+/// signature holds: compared in constant time, against the current secret
+/// or, during a rotation, the previous one.
+action rent_paid(
+    body: WebhookBody,
+    webhook_mac: WebhookSignature
+) fails WebhookRefused -> RentPayment {
+    if (not crypto.verify_hmac(body, webhook_mac, key: config.payments_webhook_secret)) {
+        reject WebhookRefused
+    }
+    return attempt json.read(body, as: RentPayment) {
+        malformed: WebhookRefused
+        mismatch: WebhookRefused
+    }
+}

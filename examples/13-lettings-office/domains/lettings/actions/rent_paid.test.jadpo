@@ -1,0 +1,30 @@
+use lettings/types { RentPayment, SignedWebhook }
+use lettings/failures { WebhookRefused }
+use lettings/actions { acknowledge_payment }
+
+test "a webhook signed with the shared secret is read" {
+    // Each test run makes its own throwaway secret, so the test signs its
+    // webhook the way the office signs its own.
+    var acknowledgement: SignedWebhook = acknowledge_payment(
+        RentPayment {
+            tenancy_ref: "T-1042"
+            paid: 25000
+        }
+    )
+    assert acknowledgement.body == "{\"tenancy_ref\":\"T-1042\",\"paid\":25000}"
+    var payment: RentPayment = attempt rent_paid(acknowledgement.body, acknowledgement.webhook_mac)
+    assert payment.paid == 25000
+}
+
+test "a webhook whose body was changed is refused" {
+    var acknowledgement: SignedWebhook = acknowledge_payment(
+        RentPayment {
+            tenancy_ref: "T-1042"
+            paid: 25000
+        }
+    )
+    assert rent_paid(
+        "{\"tenancy_ref\":\"T-1042\",\"paid\":99999}",
+        acknowledgement.webhook_mac
+    ) fails WebhookRefused
+}

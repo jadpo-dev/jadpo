@@ -1,0 +1,17 @@
+// A setting read in a function: `config.office_name` is the `OfficeName`
+// its field declares. A setting can't change while the app runs, so a
+// function may read one, as it may never read the clock.
+
+use lettings/types { Receipt, TenancyRef, WeeklyRent }
+
+/// Rent receipts.
+library receipts {
+    /// A rent receipt's text.
+    function receipt_for(tenancy_ref: TenancyRef, rent: WeeklyRent) -> Receipt {
+        return Receipt(
+            config.office_name + " received " + text.from(
+                rent
+            ) + "p for tenancy " + tenancy_ref + "."
+        )
+    }
+}

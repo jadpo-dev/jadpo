@@ -1,0 +1,2 @@
+/// The signature on a rent receipt.
+type ReceiptSignature = Bytes {}

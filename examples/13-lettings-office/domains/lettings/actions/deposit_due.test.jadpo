@@ -1,0 +1,3 @@
+test "the deposit asked for is the cap less the holding deposit" {
+    assert deposit_due(25000) == 100000
+}

@@ -1,0 +1,30 @@
+// What the council publishes: its keys, and the certificate beside them.
+
+use lettings/types { CertificateText, CouncilKeySet, KeySetText }
+use lettings/failures { CertificateUnreadable, KeySetUnreadable }
+
+/// The council's sign-in service, as the office reads it.
+library council {
+    /// The council's public keys, from the key set it publishes.
+    function council_keys(published_keys: KeySetText) fails KeySetUnreadable -> List<Jwk> {
+        var key_set: CouncilKeySet = attempt json.read(published_keys, as: CouncilKeySet) {
+            malformed: KeySetUnreadable
+            mismatch: KeySetUnreadable
+        }
+        return key_set.keys
+    }
+
+    /// The certificate the council sends beside its keys, as a key set's
+    /// `x5c` carries one: its DER in Base64. Nothing here checks who signed
+    /// it; the office shows its subject to whoever sets the scheme up.
+    function read_council_certificate(
+        sent: CertificateText
+    ) fails CertificateUnreadable -> Certificate {
+        var der_bytes: Bytes = attempt encoding.from_base64(sent) {
+            malformed: CertificateUnreadable
+        }
+        return attempt crypto.read_certificate(der_bytes) {
+            malformed: CertificateUnreadable
+        }
+    }
+}

@@ -1,0 +1,2 @@
+/// An access note sealed to its tenancy.
+type SealedNote = Bytes {}

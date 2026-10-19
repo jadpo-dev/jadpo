@@ -1,0 +1,2 @@
+/// The body of a webhook between the office and the rent collector.
+type WebhookBody = Text {}

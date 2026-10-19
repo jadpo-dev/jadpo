@@ -1,0 +1,14 @@
+// Signing with a private key: anyone holding the office's public key can
+// check a receipt, and only the office can sign one.
+
+use lettings/types { Receipt, ReceiptSignature, SignedReceipt, TenancyRef, WeeklyRent }
+use lettings/libraries { receipts }
+
+/// A signed receipt for a week's rent.
+action issue_receipt(tenancy_ref: TenancyRef, rent: WeeklyRent) -> SignedReceipt {
+    var receipt: Receipt = receipts.receipt_for(tenancy_ref, rent)
+    return SignedReceipt {
+        receipt: receipt
+        office_signature: ReceiptSignature(crypto.sign(receipt, key: config.receipt_key))
+    }
+}
