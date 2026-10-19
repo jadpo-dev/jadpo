@@ -60,8 +60,19 @@ pub fn sql(value: &SqlValue) -> Option<String> {
             format!("'{date}{era}'::date")
         }
         SqlValue::Time(micros) => format!("'{}'::time", time_of_day(*micros)),
-        // A double is only read, never written (chunk 5.5v1b).
-        SqlValue::Float8(_) => return None,
+        // A distance condition's bound (chunk 5.8c): the shortest decimal
+        // that reads back as the same double, which PostgreSQL reads
+        // exactly.
+        SqlValue::Float8(bits) => {
+            let double = f64::from_bits(*bits);
+            if double.is_nan() {
+                "'NaN'::float8".to_string()
+            } else if double.is_infinite() {
+                format!("'{}Infinity'::float8", if double < 0.0 { "-" } else { "" })
+            } else {
+                format!("'{double:e}'::float8")
+            }
+        }
         SqlValue::Array(element, items) => {
             let ty = type_name(*element)?;
             if items.is_empty() {

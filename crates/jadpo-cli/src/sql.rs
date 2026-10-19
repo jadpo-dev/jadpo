@@ -652,6 +652,18 @@ impl Names<'_> {
                 };
                 format!("{side}, from {bounds}")
             }
+            Source::DistanceBound {
+                index,
+                path,
+                strict,
+            } => {
+                let bound = self.source(&Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                });
+                let below = if *strict { "below" } else { "at most" };
+                format!("the largest double whose decimal is {below} {bound}")
+            }
         }
     }
 }

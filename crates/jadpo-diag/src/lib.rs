@@ -560,6 +560,8 @@ rules! {
         "06-reads-and-writes.html#query-repeated-section", "Query section is given twice";
     QUERY_RESULT_FIELD: "query.result_field", area 6, Error, Agent,
         "06-reads-and-writes.html#query-result-field", "Result type has a field the entity cannot fill";
+    QUERY_RESULT_RULE: "query.result_rule", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-result-rule", "Query result type has rules across its fields";
     QUERY_RESULT_TYPE: "query.result_type", area 6, Error, Agent,
         "06-reads-and-writes.html#query-result-type", "Query result is not the entity or a type derived from it";
     QUERY_SECTION_REQUIRED: "query.section_required", area 6, Error, Agent,

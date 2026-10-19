@@ -85,6 +85,10 @@ pub enum RuleKey {
     /// A vector of another length than its type's `dimensions:` (area
     /// 19, chunk 5.5s2).
     Dimensions,
+    /// A vector of zeros of a type compared by cosine, which has no
+    /// direction to compare (area 21, chunk 5.8c): named for `distance:`,
+    /// whose default is cosine.
+    Distance,
     /// A local time a temporal operation makes falls in a daylight-saving
     /// gap or overlap, and its `dst:` didn't say which instant to take
     /// (area 10, "Zones and local times").
@@ -150,7 +154,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 27] = [
+    pub const ALL: [RuleKey; 28] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -163,6 +167,7 @@ impl RuleKey {
         RuleKey::From,
         RuleKey::To,
         RuleKey::Dimensions,
+        RuleKey::Distance,
         RuleKey::Dst,
         RuleKey::InvalidDay,
         RuleKey::Malformed,
@@ -195,6 +200,7 @@ impl RuleKey {
             RuleKey::From => "from",
             RuleKey::To => "to",
             RuleKey::Dimensions => "dimensions",
+            RuleKey::Distance => "distance",
             RuleKey::Dst => "dst",
             RuleKey::InvalidDay => "invalid_day",
             RuleKey::Malformed => "malformed",

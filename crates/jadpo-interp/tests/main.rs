@@ -43,6 +43,7 @@ mod quantities;
 mod randomness;
 mod records_measures;
 mod reports;
+mod rule_slice;
 mod schedules;
 mod secrets;
 mod security_records;

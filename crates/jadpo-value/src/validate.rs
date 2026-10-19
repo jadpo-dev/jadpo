@@ -229,6 +229,26 @@ impl Validator {
         })
     }
 
+    /// For a vector, what it breaks beyond its rules' lengths, with the
+    /// place of the item that breaks it ([`jadpo_std::standard::ai::holding`]).
+    pub fn vector_holding(&self, value: &Value) -> Option<(RuleKey, Option<usize>)> {
+        if !self
+            .rules
+            .iter()
+            .any(|(rules, _)| rules.standard.is_some_and(jadpo_std::standard::ai::rounds))
+        {
+            return None;
+        }
+        let items = crate::vector::floats(value).ok()?;
+        let dimensions = self.rules.iter().find_map(|(rules, _)| rules.dimensions);
+        let metric = self
+            .rules
+            .iter()
+            .find_map(|(rules, _)| rules.distance)
+            .unwrap_or(jadpo_std::VectorDistance::Cosine);
+        jadpo_std::standard::ai::holding(&items, dimensions, metric)
+    }
+
     /// Checks `value` against the built-in type and every rule.
     pub fn check(&self, value: &Value) -> Result<(), Invalid> {
         if let (Some(builtin), Value::Text(text) | Value::Uuid(text)) = (self.builtin, value) {
@@ -279,6 +299,31 @@ impl Validator {
                 _ => Ok(()),
             }
             .map_err(Invalid::Broken)?;
+        }
+        // A vector's holdings beyond its length (chunk 5.8c): its items
+        // within a half-precision float where its index is one, and some
+        // direction where it is compared by cosine.
+        if let Some((key, _)) = self.vector_holding(value) {
+            return Err(Invalid::Broken(match key {
+                RuleKey::Distance => Broken {
+                    key,
+                    rule: jadpo_std::standard::ai::COSINE_WRITTEN.to_string(),
+                    why: "is a vector of zeros, which has no direction to compare by cosine"
+                        .to_string(),
+                },
+                RuleKey::Min => Broken {
+                    key,
+                    rule: jadpo_std::standard::ai::HALF_MIN_WRITTEN.to_string(),
+                    why: "has an item below -65504, which its half-precision index can't hold"
+                        .to_string(),
+                },
+                _ => Broken {
+                    key,
+                    rule: jadpo_std::standard::ai::HALF_MAX_WRITTEN.to_string(),
+                    why: "has an item above 65504, which its half-precision index can't hold"
+                        .to_string(),
+                },
+            }));
         }
         // The rules across an object's fields, in the order written: the
         // first broken one is the one reported (area 2, "Rules across

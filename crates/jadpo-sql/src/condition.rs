@@ -279,6 +279,14 @@ pub trait Bind {
     fn envelope(&mut self, _bounds: &Value, _part: EnvelopePart) -> Option<String> {
         None
     }
+
+    /// `$n` for the double a distance is compared with, worked out from the
+    /// decimal or whole number `bound` holds when the statement runs
+    /// ([`jadpo_std::standard::ai::distance_bound`], chunk 5.8c). `None`
+    /// when the statement can't take it.
+    fn distance_bound(&mut self, _bound: &Value, _strict: bool) -> Option<String> {
+        None
+    }
 }
 
 /// For text that takes no parameters: a partial index's predicate, which
@@ -394,24 +402,37 @@ pub fn condition(
                 Value::Param { .. } => bind.bind(value, SqlType::Vector)?,
                 _ => return None,
             };
-            // The number it is compared with, as a decimal is sent; `none`
-            // never meets it, so a pushed-down `not` only flips the
+            // `none` never meets it, so a pushed-down `not` only flips the
             // comparison.
-            let number = Column {
-                name: field.name,
-                nullable: false,
-                ty: Some(SqlType::Numeric),
-                builtin: Some(Builtin::Decimal),
-                scale: None,
-            };
-            let bound = self::value(bind, bound, &number)?;
             let op = if negated { op.negated() } else { *op };
-            format!(
-                "{} {} {vector} {} {bound}",
-                ident(field.name),
-                metric.operator(),
-                op.sql()
-            )
+            // Each comparison is "at most" or "above" the double that
+            // agrees with code's decimal comparison (chunk 5.8c), sent as
+            // that double so PostgreSQL rounds nothing.
+            let (above, strict) = match op {
+                Compare::LessEqual => (false, false),
+                Compare::Less => (false, true),
+                Compare::Greater => (true, false),
+                Compare::GreaterEqual => (true, true),
+                Compare::Equal | Compare::NotEqual => return None,
+            };
+            let bound = match bound {
+                Value::Literal(Literal::Number { value, .. }) => bind.stored(SqlValue::Float8(
+                    jadpo_std::standard::ai::distance_bound(&value.to_string(), strict)?.to_bits(),
+                ))?,
+                Value::Param { .. } => bind.distance_bound(bound, strict)?,
+                _ => return None,
+            };
+            let distance = format!("{} {} {vector}", ident(field.name), metric.operator());
+            // PostgreSQL sorts `NaN` (a cosine from a vector of zeros) above
+            // infinity, and infinity above every number: neither meets any
+            // comparison, as in code, where neither is a decimal.
+            if above {
+                format!("({distance} > {bound} AND {distance} < 'Infinity'::float8)")
+            } else if *metric == jadpo_std::VectorDistance::InnerProduct {
+                format!("({distance} <= {bound} AND {distance} > '-Infinity'::float8)")
+            } else {
+                format!("{distance} <= {bound}")
+            }
         }
         Condition::Geo { field: name, test } => {
             // No index serves the negation, and the code's test is worked
@@ -767,6 +788,23 @@ mod tests {
     }
 
     /// A table of one optional vector field, `meaning`.
+    /// Binds every value as the next parameter, keeping the stored ones.
+    #[derive(Default)]
+    struct Sent(Vec<SqlValue>, usize);
+
+    impl Bind for Sent {
+        fn bind(&mut self, _value: &Value, _ty: SqlType) -> Option<String> {
+            self.1 += 1;
+            Some(format!("${}", self.1))
+        }
+
+        fn stored(&mut self, value: SqlValue) -> Option<String> {
+            self.0.push(value);
+            self.1 += 1;
+            Some(format!("${}", self.1))
+        }
+    }
+
     struct Meanings;
 
     impl Columns for Meanings {
@@ -796,12 +834,15 @@ mod tests {
                 decimal: true,
             }),
         };
+        // An inner product can be minus infinity, which no bound meets
+        // (chunk 5.8c).
         assert_eq!(
             condition(&mut Params::default(), &Meanings, &near, false).as_deref(),
-            Some("\"meaning\" <#> $1 <= $2")
+            Some("(\"meaning\" <#> $1 <= $2 AND \"meaning\" <#> $1 > '-Infinity'::float8)")
         );
         // `not` flips the comparison, with no `IS NULL`: a record without
-        // a vector meets neither.
+        // a vector meets neither, and nor does an infinite or `NaN`
+        // distance, which PostgreSQL sorts above every number.
         assert_eq!(
             condition(
                 &mut Params::default(),
@@ -810,8 +851,46 @@ mod tests {
                 false
             )
             .as_deref(),
-            Some("\"meaning\" <#> $1 > $2")
+            Some("(\"meaning\" <#> $1 > $2 AND \"meaning\" <#> $1 < 'Infinity'::float8)")
         );
+        // A cosine at most a bound can't be `NaN` or infinite, since both
+        // sort above it; at least one can.
+        let cosine = |op: Compare| Condition::Distance {
+            field: "meaning".into(),
+            metric: jadpo_std::VectorDistance::Cosine,
+            value: Value::Param {
+                index: 0,
+                path: Vec::new(),
+            },
+            op,
+            bound: Value::Literal(Literal::Number {
+                value: jadpo_std::Num::parse("0.60000000000000005").expect("a number"),
+                decimal: true,
+            }),
+        };
+        let mut sent = Sent::default();
+        assert_eq!(
+            condition(&mut sent, &Meanings, &cosine(Compare::LessEqual), false).as_deref(),
+            Some("\"meaning\" <=> $1 <= $2")
+        );
+        assert_eq!(
+            condition(&mut sent, &Meanings, &cosine(Compare::GreaterEqual), false).as_deref(),
+            Some("(\"meaning\" <=> $3 > $4 AND \"meaning\" <=> $3 < 'Infinity'::float8)")
+        );
+        // The bound is sent as the double code compares the same, never a
+        // decimal PostgreSQL rounds: 0.6's own for at most, and the one
+        // below it for at least, since `>=` is "not below".
+        assert_eq!(
+            sent.0,
+            [
+                SqlValue::Float8(0.6f64.to_bits()),
+                SqlValue::Float8(0.6f64.to_bits())
+            ]
+        );
+        // Below the bound: 0.6 writes as less than it too.
+        let mut sent = Sent::default();
+        condition(&mut sent, &Meanings, &cosine(Compare::Less), false);
+        assert_eq!(sent.0, [SqlValue::Float8(0.6f64.to_bits())]);
         assert_eq!(
             condition(&mut Fixed, &Meanings, &near, false),
             None,

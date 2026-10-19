@@ -40,6 +40,7 @@ function sample() -> ArticleVector {
 function from_model(numbers: ModelNumbers) fails WrongSize -> ArticleVector {
     return attempt ArticleVector(numbers) {
         dimensions: WrongSize
+        distance: WrongSize
     }
 }
 
@@ -193,6 +194,17 @@ fn a_vector_keeps_each_item_as_the_nearest_float() {
         )
         .name,
         "WrongSize"
+    );
+    // Compared by cosine, a vector of zeros has no direction (chunk 5.8c).
+    let zeros = failure(
+        &program,
+        "from_model",
+        vec![list(vec![decimal("0"), decimal("0.0"), decimal("0")])],
+    );
+    assert_eq!(zeros.name, "WrongSize");
+    assert_eq!(
+        zeros.broken.as_deref(),
+        Some("`distance: VectorDistance.cosine`")
     );
 }
 

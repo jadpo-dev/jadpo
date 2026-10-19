@@ -510,6 +510,11 @@ impl<'a> Reader<'a> {
             .map_or_else(|| span.clone(), |ty| Self::span(path, &ty));
         let (cardinality, element_ty, nearest_result, layer) =
             self.result(&name, &sig.result, entity, &result_span)?;
+        // A result type with rules across its fields (chunk 5.8c).
+        if let Some((ty, rule)) = self.result_rule(&element_ty, &mut Vec::new()) {
+            self.result_rule_refused(&name, &ty, &rule, &result_span);
+            return None;
+        }
         // A map layer (chunk 5.5u8) names its features' geometry field, and
         // only a map layer does.
         self.layer = layer.is_some();
@@ -962,6 +967,58 @@ impl<'a> Reader<'a> {
             )),
         );
         None
+    }
+
+    /// The first type among the records a query returns, `ty` and the
+    /// object types its fields hold (an include's records), that names a
+    /// rule across its fields, with that rule's name (chunk 5.8c).
+    fn result_rule(&self, ty: &str, seen: &mut Vec<String>) -> Option<(String, String)> {
+        if seen.iter().any(|s| s == ty) {
+            return None;
+        }
+        seen.push(ty.to_string());
+        let Some(Def::Fields { fields, rules, .. }) = self.lookup.def(ty) else {
+            return None;
+        };
+        if let Some(rule) = rules.first() {
+            return Some((ty.to_string(), rule.name.clone()));
+        }
+        let fields = fields.clone();
+        for field in &fields {
+            let mut inner = &field.declared;
+            loop {
+                inner = match inner {
+                    Ty::List(item) | Ty::Nullable(item) => item.as_ref(),
+                    Ty::Opaque(_, args) if args.len() == 1 => &args[0],
+                    _ => break,
+                };
+            }
+            if let Ty::Named(name) = inner
+                && let Some(found) = self.result_rule(name, seen)
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// `query.result_rule` (chunk 5.8c): a read makes its values from
+    /// stored records with no `attempt` around it, so it can't check, or
+    /// report, a rule across a result's fields.
+    fn result_rule_refused(&mut self, name: &str, ty: &str, rule: &str, span: &Span) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::QUERY_RESULT_RULE,
+                format!("`{name}` returns `{ty}`, whose rule `{rule}` no read can check"),
+            )
+            .at(span.clone(), format!("`{ty}` has rules"))
+            .reason(format!(
+                "A rule across an object's fields is checked whenever a value is made, and a value that breaks it is a failure an `attempt` maps; a query makes `{ty}` from stored records with no `attempt` around it, so its result type has no rules across its fields."
+            ))
+            .next(format!(
+                "Return a type without rules, and build `{ty}` from it with `attempt` where its rules are checked"
+            )),
+        );
     }
 
     fn section_required(
