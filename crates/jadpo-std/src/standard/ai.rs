@@ -3,8 +3,8 @@
 //! in a conversation with a model, and vectors and the embeddings a model
 //! makes. A vector is stored in a pgvector `vector` column
 //! ([`Storage::Vector`], chunk 5.5v1, area 21), and compared as its type's
-//! `distance:` says ([`distance`]). What the page left open is area 19's
-//! "Chosen in chunk 5.5s2" and area 21's "Chosen in chunk 5.5v1".
+//! `distance:` says ([`distance`]). What the page left open is settled in
+//! area 19's "AI: a future area" and area 21's "Storing a vector".
 
 use super::across::{Order, StandardRule, in_order};
 use super::{

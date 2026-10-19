@@ -580,12 +580,11 @@ chunks below, taken before Phase 6.
 - [x] **5.11 Geo constructions** `opus · high`. Built: `geo.from_geojson`,
   `geo.from_lng_lat` and `geo.from_lat_lng`.
 
-- [ ] **5.12 Leftovers from consolidation** `opus · high`: `Bic`'s
-  country checked against `Country` as decided; the code comments that
-  name deleted "Chosen in chunk" notes repointed to their sections; area
-  14's two record examples shown in format 2; area 12's open question 16
-  marked superseded by its 2026-10-19 decision; and the notes Phase 6
-  added (6.1a onwards) folded once Phase 6's chunks have merged.
+- [x] **5.12 Leftovers from consolidation** `opus · high`. Built: `Bic`'s
+  country checked against `Country`, the comments and cross-references
+  naming deleted "Chosen in chunk" notes repointed to their sections, area
+  14's record examples in format 2 and area 12's open question 16 marked
+  superseded. Folding Phase 6's notes is 5.12b.
 
 ## Phase 6 — Events and schedules (area 12)
 
@@ -679,6 +678,10 @@ chunks below, taken before Phase 6.
   `Access.public` grants refused as `policy.system_grant_missing`.
 - [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
   schedules and batches, passing `--require-examples`.
+- [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
+  chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
+  onwards) folded into the text they amend, as 5.10 did, and the code
+  comments and roadmap lines naming them repointed to their sections.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 

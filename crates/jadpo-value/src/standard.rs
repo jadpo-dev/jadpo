@@ -799,7 +799,8 @@ pub(crate) fn decimal(raw: &str) -> Option<Decimal> {
 }
 
 /// An `Instant`'s canonical text: ISO 8601 ending in `Z`, never with an
-/// offset (area 19, "Chosen in chunk 5.5a"), as every boundary reads one.
+/// offset (area 19, "Every boundary through the contract"), as every
+/// boundary reads one.
 pub(crate) fn instant(raw: &str) -> Option<i64> {
     jadpo_std::instant_millis(raw).filter(|_| raw.ends_with('Z'))
 }

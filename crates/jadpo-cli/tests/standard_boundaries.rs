@@ -75,7 +75,7 @@ impl Case {
     }
 
     /// Whether it is built on `Text`, so `text.from` has nothing to give
-    /// (area 19, "Chosen in chunk 5.5a").
+    /// (area 19, "Text").
     fn is_text(&self) -> bool {
         match self.entry.holds {
             Holds::Text { .. } => true,

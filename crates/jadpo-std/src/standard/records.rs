@@ -7,8 +7,8 @@
 //! country, a `FlightNumber` on 5.5m's `IataAirline`, a `Jurisdiction` of a
 //! country or a subdivision, and an AI `ModelId`; with `ClothingSizeSystem`
 //! and `ShoeSizeSystem`, the systems the sizes are in. Each is an entry
-//! like the rest; what the page left open is area 19's "Chosen in chunk
-//! 5.5m2".
+//! like the rest; what the page left open is settled in area 19's "Groups
+//! with the baseline only".
 
 use super::across::{Order, StandardRule, in_order};
 use super::{
