@@ -223,9 +223,10 @@ fn new(call: &Call) -> Reply {
     };
     let folder = loaded.root.join(records::FOLDER).join(&name);
     let relative = format!("{}/{name}/", records::FOLDER);
+    // A decision that may be left out (chunk 5.9c) is never pending.
     let pending: Vec<&Needed> = needed
         .iter()
-        .filter(|need| decide(need).is_none())
+        .filter(|need| !need.kind.optional() && decide(need).is_none())
         .collect();
     let misfits: BTreeMap<String, String> = pending
         .iter()
@@ -278,7 +279,10 @@ use jadpo_syntax::ast::AstNode as _;
 /// Whether every decision a migration needs is made and its SQL holds them.
 fn finished(decide: &Decide<'_>, before: &Schema, after: &Schema, migration: &Migration) -> bool {
     let needed = decisions_needed(before, after);
-    if needed.iter().any(|need| decide.decided(need).is_none()) {
+    if needed
+        .iter()
+        .any(|need| !need.kind.optional() && decide.decided(need).is_none())
+    {
         return false;
     }
     let decide = |need: &Needed| decide.decided(need);
@@ -454,10 +458,17 @@ fn write(
                 }
             }
         }
+        let optional = needed.iter().all(|need| need.kind.optional());
         files.push((
             "changes.jadpo".to_string(),
             // A decision written but not one that fits is still open.
             match open {
+                // Only a structured field's stored values to check, which
+                // a `backfill:` rewrites instead (chunk 5.9c).
+                0 if optional => {
+                    "no decision needed: a `backfill:` rewrites the values its type no longer reads"
+                        .to_string()
+                }
                 0 => "every decision made".to_string(),
                 1 => "1 decision to make".to_string(),
                 n => format!("{n} decisions to make"),
@@ -479,6 +490,17 @@ fn changes_file(
     let mut added = String::new();
     for need in needed {
         let key = need.key();
+        // A decision that may be left out (chunk 5.9c) is said in a
+        // comment, once, and never open.
+        if need.kind.optional() {
+            if existing.is_some_and(|text| text.contains(&format!("`{key}"))) {
+                continue;
+            }
+            added.push_str(&format!(
+                "    // `{key}`'s type may not read every value stored before, so\n    // `jadpo migrate apply` checks each one and refuses the migration\n    // while one doesn't read. To rewrite those instead, write\n    // `{key}: {{ backfill: <value> }}` and run `jadpo migrate new`.\n"
+            ));
+            continue;
+        }
         let present = existing.is_some_and(|text| {
             text.lines()
                 .any(|line| line.trim_start().starts_with(&format!("{key}:")))
@@ -509,6 +531,7 @@ fn changes_file(
             NeededKind::Retire => format!(
                 "    // `{key}` is gone. `FieldChange.retired` keeps its column\n    // and data while code stops using it.\n    {key}: {{}}\n"
             ),
+            NeededKind::Unreadable => continue,
             NeededKind::Refit => {
                 let example = field_type(model, &need.entity, &need.field)
                     .and_then(|ty| example_backfill(lookup, ty))
@@ -596,6 +619,13 @@ fn screen_for_new(
                 format!("`{key}` is gone: retire its column"),
                 format!("Write `{key}: FieldChange.retired`"),
             ),
+            NeededKind::Unreadable => (
+                format!(
+                    "existing `{}` records may hold a `{}` its type no longer reads",
+                    need.entity, need.field
+                ),
+                format!("Set `backfill:` for `{key}`"),
+            ),
             NeededKind::Refit => {
                 let example = field_type(model, &need.entity, &need.field)
                     .and_then(|ty| example_backfill(lookup, ty));
@@ -638,6 +668,7 @@ fn screen_for_new(
                     NeededKind::Backfill => "backfill",
                     NeededKind::Retire => "retire",
                     NeededKind::Refit => "refit",
+                    NeededKind::Unreadable => "rewrite",
                 }
                 .into(),
             ),
@@ -990,7 +1021,7 @@ fn apply(call: &Call) -> Reply {
         migration
             .steps()
             .iter()
-            .any(|step| matches!(step, jadpo_std::Step::Batches(b) if b.write.is_some()))
+            .any(|step| matches!(step, jadpo_std::Step::Batches(b) if b.how == jadpo_std::IN_JADPO))
     });
     let (prepared, code_errors) = match in_jadpo
         .then(|| jadpo_interp::Prepared::with_backfills(&loaded.db, loaded.project))
@@ -1028,9 +1059,10 @@ fn apply(call: &Call) -> Reply {
         Ok(Ok(Ok((ran, filled)))) => applied(&store, &ran, &filled),
         // The latest migration's backfill can't run while the code doesn't
         // check: its errors are what to fix.
-        Ok(Ok(Err(jadpo_runtime::MigrateError::Unworked { name, .. })))
-            if Some(&name) == latest.as_ref() && !code_errors.is_empty() =>
-        {
+        Ok(Ok(Err(
+            jadpo_runtime::MigrateError::Unworked { name, .. }
+            | jadpo_runtime::MigrateError::Unchecked { name, .. },
+        ))) if Some(&name) == latest.as_ref() && !code_errors.is_empty() => {
             blocked(&loaded, &cwd, code_errors, "migrate apply stopped")
         }
         Ok(Ok(Err(error))) => Reply::failed(migrate_failed(&store, error)),
@@ -1053,10 +1085,10 @@ pub(crate) fn with_backfills<T>(
     apply: impl FnOnce(&dyn jadpo_runtime::Backfills) -> T,
 ) -> T {
     match program {
-        Some(program) => apply(&jadpo_runtime::runner::InJadpo::new(
-            program,
-            program.backfills(),
-        )),
+        Some(program) => apply(
+            &jadpo_runtime::runner::InJadpo::new(program, program.backfills())
+                .with_json(program.stored_json(), program.migration_json()),
+        ),
         None => apply(&jadpo_runtime::NoBackfills),
     }
 }
@@ -1066,6 +1098,7 @@ pub(crate) fn with_backfills<T>(
 struct Filled {
     migration: String,
     field: String,
+    work: jadpo_std::Work,
     how: String,
     /// The rows left when this run began it.
     left: u64,
@@ -1082,6 +1115,7 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
         Progress::Filling {
             migration,
             field,
+            work,
             how,
             left,
             resumed,
@@ -1089,6 +1123,7 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
             filled.push(Filled {
                 migration: migration.to_string(),
                 field: field.to_string(),
+                work: *work,
                 how: how.to_string(),
                 left: *left,
                 rows: 0,
@@ -1096,7 +1131,8 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
                 resumed: *resumed,
             });
             crate::run::say(&format!(
-                "Filling {field}{}  0 of {}",
+                "{} {field}{}  0 of {}",
+                doing(*work),
                 in_jadpo_words(how),
                 rows(*left)
             ));
@@ -1114,7 +1150,8 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
                 found.rows += batch;
                 found.batches += 1;
                 crate::run::say(&format!(
-                    "Filling {field}{}  {} of {}",
+                    "{} {field}{}  {} of {}",
+                    doing(found.work),
                     in_jadpo_words(&found.how),
                     found.rows,
                     rows(found.left.max(found.rows))
@@ -1122,6 +1159,15 @@ fn track(filled: &mut Vec<Filled>, progress: &jadpo_runtime::Progress<'_>) {
             }
         }
         Progress::Applied { .. } => crate::run::say("Applying migrations"),
+    }
+}
+
+/// What the live line says a step in batches is doing.
+fn doing(work: jadpo_std::Work) -> &'static str {
+    match work {
+        jadpo_std::Work::Fill => "Filling",
+        jadpo_std::Work::Check => "Checking",
+        jadpo_std::Work::Rewrite => "Rewriting",
     }
 }
 
@@ -1169,10 +1215,16 @@ fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
             } else {
                 format!("{} batches", fill.batches)
             };
-            let mut said = format!("{} filled in {batches} {}", rows(fill.rows), fill.how);
+            let done = match fill.work {
+                jadpo_std::Work::Fill => "filled",
+                jadpo_std::Work::Check => "checked",
+                jadpo_std::Work::Rewrite => "rewritten",
+            };
+            let mut said = format!("{} {done} in {batches} {}", rows(fill.rows), fill.how);
             // Worked out row by row in Jadpo, which is slower (chunk
-            // 5.6b2).
-            if fill.how == jadpo_std::IN_JADPO {
+            // 5.6b2); a structured field's stored values are read only
+            // that way (chunk 5.9c).
+            if fill.how == jadpo_std::IN_JADPO && fill.work == jadpo_std::Work::Fill {
                 said.push_str(" (slower than SQL)");
             }
             if fill.resumed {
@@ -1191,6 +1243,15 @@ fn applied(store: &str, ran: &[String], filled: &[Filled]) -> Reply {
             ("migration", fill.migration.as_str().into()),
             ("field", fill.field.as_str().into()),
             ("how", fill.how.as_str().into()),
+            (
+                "work",
+                match fill.work {
+                    jadpo_std::Work::Fill => "fill",
+                    jadpo_std::Work::Check => "check",
+                    jadpo_std::Work::Rewrite => "rewrite",
+                }
+                .into(),
+            ),
             ("rows", Json::from(fill.rows as i64)),
             ("batches", Json::from(fill.batches as i64)),
             ("resumed", fill.resumed.into()),
@@ -1274,6 +1335,49 @@ pub(crate) fn migrate_failed(store: &str, error: jadpo_runtime::MigrateError) ->
         )
         .reason(format!(
             "`{field}`'s backfill has an operation with no SQL form, so `jadpo migrate apply` works it out in Jadpo with the project's code, and only the latest migration's backfills are checked against that code; `{name}` isn't the latest, so the values it would give with this build are unchecked. Nothing of `{name}` past its last committed step was applied, and `{field}` stays optional."
+        ))
+        .next_for(
+            format!("Run `jadpo migrate apply` with the build that wrote `{name}` (its commit), then with this one"),
+            Decider::Human,
+        ),
+        // A structured field's stored values its type no longer reads
+        // (chunk 5.9c), by count and rule, never a value.
+        MigrateError::Unreadable {
+            name,
+            field,
+            rows: unread,
+            first,
+        } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!(
+                "`{field}` holds {} its type no longer reads",
+                if unread == 1 {
+                    "1 stored value".to_string()
+                } else {
+                    format!("{unread} stored values")
+                }
+            ),
+        )
+        .reason(format!(
+            "`{name}` changes `{field}`'s type so it may not read every value stored before, so `jadpo migrate apply` read each one with it first: {} {} read, the first breaking {first}. Nothing of `{name}` was applied.",
+            unread,
+            if unread == 1 { "doesn't" } else { "don't" },
+        ))
+        .next_for(
+            format!(
+                "Write `{field}: {{ backfill: <value> }}` in `{}/{name}/changes.jadpo` to rewrite them, run `jadpo migrate new`, then apply again",
+                records::FOLDER
+            ),
+            Decider::Human,
+        ),
+        // Only the latest migration is checked against the code whose
+        // types read a structured field's stored values (chunk 5.9c).
+        MigrateError::Unchecked { name, field } => Diagnostic::new(
+            &rule::MIGRATION_APPLY_FAILED,
+            format!("Checking `{field}` for `{name}` needs the build it was written in"),
+        )
+        .reason(format!(
+            "`{name}` changes `{field}`'s type so it may not read every value stored before, so `jadpo migrate apply` reads each one with that type as the project's code declares it, and only the latest migration is checked against that code; `{name}` isn't the latest. Nothing of `{name}` past its last committed step was applied."
         ))
         .next_for(
             format!("Run `jadpo migrate apply` with the build that wrote `{name}` (its commit), then with this one"),

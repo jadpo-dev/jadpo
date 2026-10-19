@@ -588,7 +588,7 @@ impl Decide<'_> {
     pub fn decided(&self, need: &Needed) -> Option<Decided> {
         let decision = self.decisions.iter().find(|d| d.key == need.key())?;
         match (&decision.value, need.kind) {
-            (DecisionValue::Backfill(value, _), NeededKind::Backfill)
+            (DecisionValue::Backfill(value, _), NeededKind::Backfill | NeededKind::Unreadable)
                 if self.is_computed(need, value) =>
             {
                 let computed = self.computed(decision, need)?;
@@ -643,6 +643,12 @@ impl Decide<'_> {
     /// written out: anything but a literal or an enum's variant
     /// (`Priority.normal`), which a backfill has given since chunk 3.1.
     pub fn is_computed(&self, need: &Needed, value: &Const) -> bool {
+        // A structured value stored as JSON is written through the route
+        // codec, so even a literal or a variant is worked out in Jadpo
+        // (chunk 5.9c).
+        if field_model(self.model, &need.entity, &need.field).is_some_and(|f| f.json.is_some()) {
+            return true;
+        }
         match value {
             Const::Other => true,
             Const::Path(path) => {
@@ -713,7 +719,13 @@ impl Decide<'_> {
             table: &need.table,
             columns: &columns,
         };
-        let sql = super::backfill::sql(self.db, self.project, &checked.body, &row, scale);
+        // A structured value has no SQL form: its JSON is the route
+        // codec's, written in Jadpo (chunk 5.9c).
+        let json =
+            field_model(self.model, &need.entity, &need.field).is_some_and(|f| f.json.is_some());
+        let sql = (!json)
+            .then(|| super::backfill::sql(self.db, self.project, &checked.body, &row, scale))
+            .flatten();
         let jadpo = match sql {
             Some(_) => None,
             None => self.in_jadpo(need, &checked.body, &columns, scale),
@@ -727,9 +739,11 @@ impl Decide<'_> {
 
     /// How `jadpo migrate apply` works out in Jadpo a computed backfill
     /// with no SQL form (chunk 5.6b2), whose typed body is `body` and which
-    /// reads the row's `columns` (by born name): `None` when it reads or
-    /// fills a value held in several columns or as JSON, which this
-    /// compiler doesn't read or write one value at a time yet.
+    /// reads the row's `columns` (by born name): `None` when it reads a
+    /// value held in several columns or as JSON, or fills one held in
+    /// several columns, which this compiler doesn't read or write one value
+    /// at a time yet. A structured value it fills is written through the
+    /// route codec (chunk 5.9c).
     fn in_jadpo(
         &self,
         need: &Needed,
@@ -739,7 +753,11 @@ impl Decide<'_> {
     ) -> Option<super::backfill::InJadpo> {
         let entity = self.model.entities.iter().find(|e| e.born == need.entity)?;
         let field = field_model(self.model, &need.entity, &need.field)?;
-        decode_column(self.lookup, &entity.name, field)?;
+        // A structured value is written through the route codec (chunk
+        // 5.9c); any other only when held in one column.
+        if field.json.is_none() {
+            decode_column(self.lookup, &entity.name, field)?;
+        }
         let sql_type = field.sql_type.clone()?;
         let write = jadpo_std::SqlType::of_column(&sql_type)?;
         let (function, names) = super::backfill::as_function(body);
@@ -857,7 +875,9 @@ pub fn jadpo_backfills(db: &dyn Db, project: Project) -> Vec<JadpoBackfill> {
         let DecisionValue::Backfill(value, span) = &decision.value else {
             continue;
         };
-        if need.kind != NeededKind::Backfill || !decide.is_computed(&need, value) {
+        if !matches!(need.kind, NeededKind::Backfill | NeededKind::Unreadable)
+            || !decide.is_computed(&need, value)
+        {
             continue;
         }
         let Some(computed) = decide.computed(decision, &need) else {
@@ -880,6 +900,97 @@ pub fn jadpo_backfills(db: &dyn Db, project: Project) -> Vec<JadpoBackfill> {
         }
     }
     out
+}
+
+/// The structured fields the latest migration reads or writes as JSON
+/// in Jadpo (chunk 5.9c): those whose stored values it checks or
+/// rewrites, since their type may no longer read them, and those a
+/// backfill fills. `jadpo migrate apply` reads and writes each through
+/// the route codec of the field's type now, which only the latest
+/// migration is checked against.
+pub fn stored_json_fields(db: &dyn Db, project: Project) -> Vec<StoredJson> {
+    let mut out: Vec<StoredJson> = Vec::new();
+    if project.layout(db) != Layout::Project {
+        return out;
+    }
+    let set = migrations(db, project);
+    let Some(migration) = set.list.last() else {
+        return out;
+    };
+    let Some(after) = migration.schema() else {
+        return out;
+    };
+    let before = set.before_latest();
+    let model = data_model(db, project);
+    for change in schema::changes(&before, after) {
+        let (Change::AlterColumn {
+            store,
+            table,
+            column,
+        }
+        | Change::AddColumn {
+            store,
+            table,
+            column,
+        }) = &change
+        else {
+            continue;
+        };
+        fn find<'s>(
+            schema: &'s Schema,
+            store: &str,
+            table: &str,
+            column: &str,
+        ) -> Option<(&'s schema::Table, &'s schema::Column)> {
+            let table = schema.stores.get(store)?.tables.get(table)?;
+            Some((table, table.columns.get(column)?))
+        }
+        let was = find(&before, store, table, column).map(|(_, was)| was);
+        let Some((now_table, now)) = find(after, store, table, column) else {
+            continue;
+        };
+        let (Holds::Entity(entity), Some(field)) = (&now_table.holds, &now.field) else {
+            continue;
+        };
+        let read = was.is_some_and(|was| jadpo_graph::migration::reads_less(was, now));
+        let filled = was.is_none_or(|was| was.nullable && !now.nullable);
+        if !(read || filled) || now.sql_type != "jsonb" {
+            continue;
+        }
+        let Some(current) = model.entities.iter().find(|e| &e.born == entity) else {
+            continue;
+        };
+        let Some(found) = current.fields.iter().find(|f| &f.born == field) else {
+            continue;
+        };
+        if found.json.is_none() {
+            continue;
+        }
+        let key = format!("{entity}.{field}");
+        if out.iter().any(|known| known.field == key) {
+            continue;
+        }
+        out.push(StoredJson {
+            migration: migration.name.clone(),
+            field: key,
+            entity: current.name.clone(),
+            name: found.name.clone(),
+        });
+    }
+    out
+}
+
+/// A structured field the latest migration reads or writes as JSON in
+/// Jadpo (chunk 5.9c).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredJson {
+    /// The migration's folder name.
+    pub migration: String,
+    /// `Parcel.label`, by born names, as the migration's SQL names it.
+    pub field: String,
+    /// The entity and the field as code names them now.
+    pub entity: String,
+    pub name: String,
 }
 
 /// A backfill `jadpo migrate apply` works out in Jadpo (chunk 5.6b2).
@@ -1160,6 +1271,11 @@ fn decision_problems(
             written.map(|d| &d.value),
             None | Some(DecisionValue::Pending)
         ) {
+            // A structured field's stored values are checked when no
+            // `backfill:` rewrites them (chunk 5.9c).
+            if need.kind.optional() {
+                continue;
+            }
             let span = written.map_or_else(|| at.clone(), |d| d.span.clone());
             let example = field_type(model, &need.entity, &need.field)
                 .and_then(|ty| example_backfill(&lookup, ty));
@@ -1185,7 +1301,7 @@ fn decision_problems(
                 .at(span, "doesn't fit")
                 .reason(reason)
                 .next(match need.kind {
-                    NeededKind::Backfill | NeededKind::Refit => {
+                    NeededKind::Backfill | NeededKind::Refit | NeededKind::Unreadable => {
                         format!("Write `{key}: {{ backfill: <value> }}` with a value of its type")
                     }
                     NeededKind::Retire => format!("Write `{key}: FieldChange.retired`"),
@@ -1289,7 +1405,7 @@ fn computed_problems(
         )
         .at(span.clone(), "no SQL form")
         .reason(format!(
-            "Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads and writes values held in one column, and `{key}` or a field it reads is held in several columns or as JSON."
+            "Something in this backfill has no SQL form (area 19), so `jadpo migrate apply` would work its values out in Jadpo, row by row; it reads values held in one column, and fills those or a structured value held as JSON, and `{key}` is held in several columns or reads a field held so or as JSON."
         ))
         .next(format!(
             "Work `{key}`'s value out with operators, `if`, `match` and standard operations that have a SQL form for now"
@@ -1306,7 +1422,10 @@ fn misfit(
 ) -> Option<(Span, String)> {
     let key = need.key();
     match (&decision.value, need.kind) {
-        (DecisionValue::Backfill(value, span), NeededKind::Backfill | NeededKind::Refit) => {
+        (
+            DecisionValue::Backfill(value, span),
+            NeededKind::Backfill | NeededKind::Refit | NeededKind::Unreadable,
+        ) => {
             field_type(model, &need.entity, &need.field)
                 .and_then(|ty| backfill_problem(lookup, ty, value))
                 .map(|why| (span.clone(), format!("This value can't fill `{key}`: {why}.")))
@@ -1331,6 +1450,10 @@ fn misfit(
         (_, NeededKind::Refit) => Some((
             decision.span.clone(),
             format!("`{key}` allows less than it did, so its decision is `{{ backfill: <value> }}`, the value stored records it no longer allows get."),
+        )),
+        (_, NeededKind::Unreadable) => Some((
+            decision.span.clone(),
+            format!("`{key}`'s type may not read every value stored before, so its decision, which may be left out, is `{{ backfill: <value> }}`, the value stored records it doesn't read get."),
         )),
     }
 }
@@ -1368,6 +1491,14 @@ fn required(
                 }
                 None => format!("Set `backfill:` for `{key}`, the value those records get"),
             },
+        ),
+        // Never required: its stored values are checked instead.
+        NeededKind::Unreadable => (
+            format!(
+                "`{key}`'s type may not read every value stored before, and `{}` records already stored may hold one it doesn't read.",
+                need.entity
+            ),
+            format!("Set `backfill:` for `{key}`, the value those records get"),
         ),
         NeededKind::Retire => (
             format!(

@@ -24,6 +24,7 @@ pub mod manifest;
 pub mod migration;
 mod node;
 pub mod schema;
+pub mod stored_json;
 mod types;
 
 pub use graph::{Builder, Edge, Graph, NodeId};

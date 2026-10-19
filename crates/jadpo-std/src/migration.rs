@@ -35,6 +35,19 @@ pub const IN_JADPO: &str = "in Jadpo";
 /// writes, in the transaction that makes the column required.
 pub const FILL_MARKER: &str = "-- fill ";
 
+/// The line that opens the check of a structured field's stored values
+/// (area 5, "Storage types"; chunk 5.9c), when its type may no longer
+/// read them: `jadpo migrate apply` reads each batch's values with the
+/// field's type now and refuses the migration while one doesn't read.
+/// Its marker is followed by two statements: the count and the read.
+pub const CHECK_MARKER: &str = "-- check ";
+
+/// The line that opens the rewrite of the stored values a structured
+/// field's type no longer reads (chunk 5.9c), with a backfill worked out
+/// in Jadpo: followed by the count, the read and the write, as a backfill
+/// in Jadpo's marker is.
+pub const REWRITE_MARKER: &str = "-- rewrite ";
+
 /// The line that opens a step of statements of its own (chunk 5.8b),
 /// followed by what it does: a backfill's last steps, each its own
 /// transaction, so the one that reads every row holds no lock that keeps
@@ -77,11 +90,27 @@ pub struct Fill {
     pub write: String,
 }
 
-/// A backfill filled in batches until a batch finds no row left.
+/// What a step in batches does with each batch's rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Work {
+    /// Fills the rows still without a value (chunks 5.6b and 5.6b2).
+    Fill,
+    /// Reads every stored value with the field's type now, changing
+    /// nothing, and refuses the migration while one doesn't read (chunk
+    /// 5.9c).
+    Check,
+    /// Rewrites the stored values the field's type no longer reads with
+    /// its backfill (chunk 5.9c).
+    Rewrite,
+}
+
+/// A backfill filled in batches until a batch finds no row left, or a
+/// structured field's stored values checked or rewritten so.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Batches {
     /// The field it fills, `Todo.priority`.
     pub field: String,
+    pub work: Work,
     /// How each batch is worked out, in the marker's words: `by UPDATE`,
     /// or [`IN_JADPO`].
     pub how: String,
@@ -190,7 +219,14 @@ impl Migration {
                 }));
                 continue;
             }
-            let Some(rest) = line.strip_prefix(BACKFILL_MARKER) else {
+            let marked = [
+                (BACKFILL_MARKER, Work::Fill),
+                (CHECK_MARKER, Work::Check),
+                (REWRITE_MARKER, Work::Rewrite),
+            ]
+            .into_iter()
+            .find_map(|(marker, work)| line.strip_prefix(marker).map(|rest| (rest, work)));
+            let Some((rest, work)) = marked else {
                 once.push_str(line);
                 once.push('\n');
                 continue;
@@ -200,9 +236,10 @@ impl Migration {
             let how = how.split(',').next().unwrap_or_default().trim();
             let count = statement(&mut lines);
             let batch = statement(&mut lines);
-            let write = (how == IN_JADPO).then(|| statement(&mut lines));
+            let write = (how == IN_JADPO && work != Work::Check).then(|| statement(&mut lines));
             out.push(Step::Batches(Batches {
                 field: field.to_string(),
+                work,
                 how: how.to_string(),
                 count,
                 batch,
@@ -213,11 +250,14 @@ impl Migration {
         out
     }
 
-    /// Whether it fills a backfill in batches.
+    /// Whether it fills a backfill in batches, or checks or rewrites a
+    /// structured field's stored values so.
     pub fn has_batches(&self) -> bool {
-        self.sql
-            .lines()
-            .any(|line| line.starts_with(BACKFILL_MARKER))
+        self.sql.lines().any(|line| {
+            line.starts_with(BACKFILL_MARKER)
+                || line.starts_with(CHECK_MARKER)
+                || line.starts_with(REWRITE_MARKER)
+        })
     }
     /// The least version of each extension it needs, beyond having it:
     /// pgvector 0.8.0 for a migration that builds an HNSW index, which only
@@ -318,6 +358,7 @@ mod tests {
                 Step::Once("ALTER TABLE \"todo\" ADD COLUMN \"priority\" text;".into()),
                 Step::Batches(Batches {
                     field: "Todo.priority".into(),
+                    work: Work::Fill,
                     how: "by UPDATE".into(),
                     count: "SELECT count(*) FROM \"todo\"".into(),
                     batch: "WITH batch AS (\nSELECT 1\n) SELECT 2".into(),
@@ -358,6 +399,7 @@ mod tests {
                 Step::Once("ALTER TABLE \"todo\" ADD COLUMN \"priority\" text;".into()),
                 Step::Batches(Batches {
                     field: "Todo.priority".into(),
+                    work: Work::Fill,
                     how: IN_JADPO.into(),
                     count: "SELECT count(*) FROM \"todo\"".into(),
                     batch: "SELECT \"id\" FROM \"todo\"".into(),
@@ -374,6 +416,37 @@ mod tests {
                         "ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()
                     ),
                 ]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_check_reads_its_batches_and_a_rewrite_writes_them_back() {
+        let migration = Migration {
+            name: "20261101T0900_shorten_tags".into(),
+            digest: "0".into(),
+            sql: "-- check Parcel.label: in Jadpo, 1000 rows a batch\nSELECT count(*) FROM \"parcel\";\nSELECT \"id\", \"label\" FROM \"parcel\";\n-- rewrite Parcel.delivery: in Jadpo, 1000 rows a batch\nSELECT count(*) FROM \"parcel\";\nSELECT \"id\", \"delivery\" FROM \"parcel\";\nUPDATE \"parcel\" SET x;".into(),
+        };
+        assert!(migration.has_batches());
+        assert_eq!(
+            migration.steps(),
+            vec![
+                Step::Batches(Batches {
+                    field: "Parcel.label".into(),
+                    work: Work::Check,
+                    how: IN_JADPO.into(),
+                    count: "SELECT count(*) FROM \"parcel\"".into(),
+                    batch: "SELECT \"id\", \"label\" FROM \"parcel\"".into(),
+                    write: None,
+                }),
+                Step::Batches(Batches {
+                    field: "Parcel.delivery".into(),
+                    work: Work::Rewrite,
+                    how: IN_JADPO.into(),
+                    count: "SELECT count(*) FROM \"parcel\"".into(),
+                    batch: "SELECT \"id\", \"delivery\" FROM \"parcel\"".into(),
+                    write: Some("UPDATE \"parcel\" SET x".into()),
+                }),
             ]
         );
     }

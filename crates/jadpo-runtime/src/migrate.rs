@@ -32,11 +32,20 @@
 //! chunk 6.1a the runtime works them out itself, on the runner's per-item
 //! mode with the program's executor ([`crate::runner::InJadpo`]), each
 //! value kept and checked by its field's rules.
+//!
+//! A structured field whose type may no longer read the values stored as
+//! its JSON (chunk 5.9c) has them checked first, in batches, each read in
+//! a transaction of its own and changing nothing: [`Backfills`] reads each
+//! with the field's type now, and while any doesn't read the migration is
+//! refused, naming how many and the first rule broken, never a value, with
+//! nothing of it applied. A run stopped during a check starts it again,
+//! since a check records nothing. With a backfill, those values are
+//! rewritten instead, in batches recorded as a backfill's are.
 
 use std::ops::ControlFlow;
 
 use jadpo_std::migration::Part;
-use jadpo_std::{Isolation, SqlType, Step};
+use jadpo_std::{Isolation, SqlType, Step, Work};
 
 use crate::{Database, SqlValue, StoreError, Transaction};
 
@@ -68,6 +77,19 @@ pub trait Backfills {
         field: &str,
         rows: &[&[SqlValue]],
     ) -> Result<Vec<SqlValue>, Unworked>;
+
+    /// For each of `values`, a value of the structured field `field` as
+    /// its JSON column holds it, `None` when the field's type as of
+    /// `migration` reads it, and otherwise the first rule it breaks and
+    /// where, never the value (chunk 5.9c).
+    fn unreadable(
+        &self,
+        _migration: &str,
+        _field: &str,
+        _values: &[&SqlValue],
+    ) -> Result<Vec<Option<String>>, Unworked> {
+        Err(Unworked::Unavailable)
+    }
 }
 
 /// Why [`Backfills`] gave no values.
@@ -99,10 +121,14 @@ impl Backfills for NoBackfills {
 /// What applying migrations reports as it goes (chunk 5.6b).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Progress<'a> {
-    /// A backfill's batches begin, or carry on from an earlier run.
+    /// A backfill's batches begin, or carry on from an earlier run; or a
+    /// structured field's check or rewrite of its stored values (chunk
+    /// 5.9c).
     Filling {
         migration: &'a str,
         field: &'a str,
+        /// What each batch does with its rows.
+        work: Work,
         /// How each batch is worked out: `by UPDATE`, or `in Jadpo`.
         how: &'a str,
         /// The rows left to fill.
@@ -114,7 +140,7 @@ pub enum Progress<'a> {
     Filled {
         migration: &'a str,
         field: &'a str,
-        /// The rows this batch filled.
+        /// The rows this batch filled, checked or rewrote.
         rows: u64,
     },
     /// A migration was applied and recorded.
@@ -176,6 +202,13 @@ pub enum MigrateError {
         name: String,
         field: String,
     },
+    /// `name` reads the stored values of the structured field `field` with
+    /// its type as the project's code declares it, rows need it, and
+    /// nothing given can read them (chunk 5.9c).
+    Unchecked {
+        name: String,
+        field: String,
+    },
     /// Working out `name`'s backfill of `field` in Jadpo stopped at the
     /// row whose key is `record`, for `reason` (chunk 5.6b2): its batch
     /// rolled back.
@@ -184,6 +217,16 @@ pub enum MigrateError {
         field: String,
         record: String,
         reason: String,
+    },
+    /// `name` changes the type of the structured field `field`, which reads
+    /// less than it did, and `rows` of its stored values don't read with
+    /// it, the first breaking `first` (`` `max_length` on `line` ``), never
+    /// a value (chunk 5.9c): nothing of `name` was applied.
+    Unreadable {
+        name: String,
+        field: String,
+        rows: u64,
+        first: String,
     },
     /// A migration needs `extension` at version `least` or later, and the
     /// database server offers `found`: pgvector 0.8.0 for an HNSW index,
@@ -259,6 +302,8 @@ pub async fn migrate_with(
     let mut ran = Vec::new();
     // The backfills whose rows left have been counted in this run.
     let mut counted: Vec<(String, usize)> = Vec::new();
+    // How far each check of stored values got in this run (chunk 5.9c).
+    let mut checking: Vec<Checking> = Vec::new();
     loop {
         let mut transaction = database.begin().await?;
         let step = next(transaction.as_mut(), migrations).await;
@@ -280,7 +325,10 @@ pub async fn migrate_with(
                 migration,
                 migrations,
                 backfills,
-                &mut counted,
+                &mut Tally {
+                    counted: &mut counted,
+                    checking: &mut checking,
+                },
                 report,
             )
             .await?
@@ -343,6 +391,26 @@ async fn record(
     Ok(())
 }
 
+/// How far a check of a structured field's stored values got in this
+/// run (chunk 5.9c): it records nothing in the store, so a run stopped
+/// during it checks every value again.
+struct Checking {
+    migration: String,
+    step: usize,
+    /// The key the last batch ended at.
+    after: Option<[u8; 16]>,
+    /// The values that didn't read, and the first one's problem.
+    unread: u64,
+    first: Option<String>,
+}
+
+/// What a run keeps between a migration's steps.
+struct Tally<'t> {
+    /// The steps in batches whose rows left have been counted.
+    counted: &'t mut Vec<(String, usize)>,
+    checking: &'t mut Vec<Checking>,
+}
+
 /// What one step of a migration filled in batches left to do.
 enum Stepped {
     /// The migration is applied and recorded.
@@ -363,7 +431,7 @@ async fn in_steps(
     migration: &Migration,
     migrations: &[Migration],
     backfills: &dyn Backfills,
-    counted: &mut Vec<(String, usize)>,
+    tally: &mut Tally<'_>,
     report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
 ) -> Result<Stepped, MigrateError> {
     let steps = migration.steps();
@@ -377,7 +445,7 @@ async fn in_steps(
             migrations,
             &steps,
             backfills,
-            counted,
+            tally,
             report,
         )
         .await;
@@ -410,6 +478,25 @@ async fn in_steps(
             Err(MigrateError::Store(StoreError::ConcurrentChange)) if attempt < BATCH_ATTEMPTS => {
                 let _ = transaction.rollback().await;
             }
+            // Refused for a stored value its type no longer reads (chunk
+            // 5.9c): every step before is a check, which changed nothing,
+            // so the migration starts again from its first, and the next
+            // run checks every value again.
+            Err(error @ MigrateError::Unreadable { .. }) => {
+                let _ = transaction.rollback().await;
+                let mut transaction = database.begin_at(Isolation::ReadCommitted).await?;
+                transaction
+                    .batch("LOCK TABLE jadpo_migrations IN EXCLUSIVE MODE")
+                    .await?;
+                transaction
+                    .execute(
+                        "DELETE FROM jadpo_migration_steps WHERE name = $1",
+                        &[SqlValue::Text(migration.name.clone())],
+                    )
+                    .await?;
+                transaction.commit().await?;
+                return Err(error);
+            }
             Err(error) => {
                 let _ = transaction.rollback().await;
                 return Err(error);
@@ -435,7 +522,7 @@ async fn one_step<'s>(
     migrations: &[Migration],
     steps: &'s [Step],
     backfills: &dyn Backfills,
-    counted: &mut Vec<(String, usize)>,
+    tally: &mut Tally<'_>,
     report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
 ) -> Result<Option<OneStep<'s>>, MigrateError> {
     // The lock is the transaction's first statement, so nothing it reads
@@ -518,7 +605,21 @@ async fn one_step<'s>(
                 filled: None,
             }))
         }
+        Step::Batches(batches) if batches.work == Work::Check => {
+            check_batch(
+                transaction,
+                migration,
+                at,
+                last,
+                batches,
+                backfills,
+                tally,
+                report,
+            )
+            .await
+        }
         Step::Batches(batches) => {
+            let counted = &mut *tally.counted;
             let key = (migration.name.clone(), at);
             if !counted.contains(&key) {
                 let rows = transaction.query(&batches.count, &[]).await?;
@@ -530,6 +631,7 @@ async fn one_step<'s>(
                 if report(&Progress::Filling {
                     migration: &migration.name,
                     field: &batches.field,
+                    work: batches.work,
                     how: &batches.how,
                     left,
                     resumed: after.is_some(),
@@ -553,15 +655,30 @@ async fn one_step<'s>(
                         Some(SqlValue::Uuid(key)) => SqlValue::Uuid(*key),
                         _ => SqlValue::Null(SqlType::Uuid),
                     };
-                    let filled = in_jadpo(
-                        transaction,
-                        backfills,
-                        &migration.name,
-                        &batches.field,
-                        &rows,
-                        write,
-                    )
-                    .await?;
+                    let filled = match batches.work {
+                        Work::Rewrite => {
+                            rewrite(
+                                transaction,
+                                backfills,
+                                &migration.name,
+                                &batches.field,
+                                &rows,
+                                write,
+                            )
+                            .await?
+                        }
+                        Work::Fill | Work::Check => {
+                            in_jadpo(
+                                transaction,
+                                backfills,
+                                &migration.name,
+                                &batches.field,
+                                &rows,
+                                write,
+                            )
+                            .await?
+                        }
+                    };
                     vec![vec![ended, SqlValue::Int8(filled as i64)]]
                 }
             };
@@ -605,6 +722,180 @@ async fn one_step<'s>(
             }
         }
     }
+}
+
+/// One batch of the check of a structured field's stored values (chunk
+/// 5.9c): the next rows past where this run's last batch ended, each its
+/// key and its value, read with the field's type now. Once no row is left
+/// the step is done, or, when a value didn't read, the migration is
+/// refused, with nothing of it applied, since its check is its first step.
+#[allow(clippy::too_many_arguments)]
+async fn check_batch<'s>(
+    transaction: &mut dyn Transaction,
+    migration: &Migration,
+    at: usize,
+    last: bool,
+    batches: &'s jadpo_std::Batches,
+    backfills: &dyn Backfills,
+    tally: &mut Tally<'_>,
+    report: &mut dyn FnMut(&Progress<'_>) -> ControlFlow<()>,
+) -> Result<Option<OneStep<'s>>, MigrateError> {
+    let found = tally
+        .checking
+        .iter()
+        .position(|c| c.migration == migration.name && c.step == at);
+    let index = match found {
+        Some(index) => index,
+        None => {
+            let rows = transaction.query(&batches.count, &[]).await?;
+            let left = match rows.first().and_then(|row| row.first()) {
+                Some(SqlValue::Int8(n)) => u64::try_from(*n).unwrap_or(0),
+                _ => 0,
+            };
+            if report(&Progress::Filling {
+                migration: &migration.name,
+                field: &batches.field,
+                work: Work::Check,
+                how: &batches.how,
+                left,
+                resumed: false,
+            })
+            .is_break()
+            {
+                return Err(MigrateError::Stopped {
+                    name: migration.name.clone(),
+                });
+            }
+            tally.checking.push(Checking {
+                migration: migration.name.clone(),
+                step: at,
+                after: None,
+                unread: 0,
+                first: None,
+            });
+            tally.checking.len() - 1
+        }
+    };
+    let after = tally.checking.get(index).and_then(|c| c.after);
+    let rows = transaction
+        .query(&batches.batch, &[SqlValue::Uuid(after.unwrap_or([0; 16]))])
+        .await?;
+    let Some(ended) = rows.last().and_then(|row| match row.first() {
+        Some(SqlValue::Uuid(key)) => Some(*key),
+        _ => None,
+    }) else {
+        // Every value is read: refused while one didn't read.
+        let done = tally.checking.remove(index);
+        if done.unread > 0 {
+            return Err(MigrateError::Unreadable {
+                name: migration.name.clone(),
+                field: batches.field.clone(),
+                rows: done.unread,
+                first: done.first.unwrap_or_default(),
+            });
+        }
+        if last {
+            finish(transaction, migration).await?;
+        } else {
+            progress(transaction, migration, at + 1, None).await?;
+        }
+        return Ok(Some(OneStep {
+            applied: last,
+            field: None,
+            filled: None,
+        }));
+    };
+    let mut values: Vec<&SqlValue> = Vec::with_capacity(rows.len());
+    for row in &rows {
+        match row.get(1) {
+            Some(value) => values.push(value),
+            None => {
+                return Err(MigrateError::Store(StoreError::Fault(format!(
+                    "a check of `{}` gave a row without its value",
+                    batches.field
+                ))));
+            }
+        }
+    }
+    let unread = unread(backfills, &migration.name, &batches.field, &values)?;
+    if let Some(checking) = tally.checking.get_mut(index) {
+        for problem in unread.into_iter().flatten() {
+            checking.unread += 1;
+            checking.first.get_or_insert(problem);
+        }
+        checking.after = Some(ended);
+    }
+    Ok(Some(OneStep {
+        applied: false,
+        field: Some(&batches.field),
+        filled: Some(rows.len() as u64),
+    }))
+}
+
+/// Which of `values`, a structured field's stored JSON, its type as of
+/// `migration` doesn't read, each with its problem (chunk 5.9c).
+fn unread(
+    backfills: &dyn Backfills,
+    migration: &str,
+    field: &str,
+    values: &[&SqlValue],
+) -> Result<Vec<Option<String>>, MigrateError> {
+    let unread =
+        backfills
+            .unreadable(migration, field, values)
+            .map_err(|unworked| match unworked {
+                Unworked::Unavailable => MigrateError::Unchecked {
+                    name: migration.to_string(),
+                    field: field.to_string(),
+                },
+                Unworked::Stopped { reason, .. } => MigrateError::Store(StoreError::Fault(reason)),
+            })?;
+    if unread.len() != values.len() {
+        return Err(MigrateError::Store(StoreError::Fault(format!(
+            "`{field}`'s check gave {} answers for {} values",
+            unread.len(),
+            values.len()
+        ))));
+    }
+    Ok(unread)
+}
+
+/// Rewrites, with `migration`'s backfill of `field` worked out in Jadpo,
+/// the values among `rows` that the field's type doesn't read (chunk
+/// 5.9c): each row its key, its value and then the columns the backfill
+/// reads. How many it rewrote.
+async fn rewrite(
+    transaction: &mut dyn Transaction,
+    backfills: &dyn Backfills,
+    migration: &str,
+    field: &str,
+    rows: &[crate::Row],
+    write: &str,
+) -> Result<u64, MigrateError> {
+    let mut values: Vec<&SqlValue> = Vec::with_capacity(rows.len());
+    for row in rows {
+        match row.get(1) {
+            Some(value) => values.push(value),
+            None => {
+                return Err(MigrateError::Store(StoreError::Fault(format!(
+                    "a rewrite of `{field}` gave a row without its value"
+                ))));
+            }
+        }
+    }
+    let unread = unread(backfills, migration, field, &values)?;
+    // The rows to rewrite, each its key and then the columns it reads.
+    let chosen: Vec<crate::Row> = rows
+        .iter()
+        .zip(&unread)
+        .filter(|(_, problem)| problem.is_some())
+        .map(|(row, _)| {
+            let mut kept = row.clone();
+            kept.remove(1);
+            kept
+        })
+        .collect();
+    in_jadpo(transaction, backfills, migration, field, &chosen, write).await
 }
 
 /// Works out in Jadpo the values of `migration`'s backfill of `field` for

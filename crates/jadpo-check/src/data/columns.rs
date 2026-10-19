@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 
 use jadpo_graph::schema::{Allows, Column, Holds, Key, Table, object_name};
+use jadpo_graph::stored_json;
 use jadpo_std::{Builtin, Num};
 
 use crate::types::{Def, Ty, TypeView};
@@ -150,6 +151,208 @@ pub fn allows(table: &dyn TypeView, field: &Ty) -> Allows {
         }
     }
     out.patterns.sort();
+    out
+}
+
+/// What a structured field typed `field` (`Parcel.label`, so its own
+/// settings count) reads when stored whole as its type's JSON (area 5,
+/// "Storage types"; chunk 5.9c): the value's shape and every object and
+/// enum of the application's inside it, with the rules along each part's
+/// chain, as the route codec reads it back. Its `?` is the column's
+/// `NULL`, so the value itself is never `none`.
+pub fn json_reads(table: &dyn TypeView, field: &Ty) -> stored_json::Reads {
+    let mut types = BTreeMap::new();
+    let shape = match json_shape(table, field, &mut types) {
+        stored_json::Shape::Optional(inner) => *inner,
+        shape => shape,
+    };
+    stored_json::Reads { shape, types }
+}
+
+fn json_shape(
+    table: &dyn TypeView,
+    ty: &Ty,
+    types: &mut BTreeMap<String, stored_json::Named>,
+) -> stored_json::Shape {
+    use stored_json::Shape;
+    let optional = match ty {
+        Ty::Nullable(_) => true,
+        Ty::Field(host, path) => table
+            .field(host, path)
+            .is_some_and(|f| matches!(f.declared, Ty::Nullable(_))),
+        _ => false,
+    };
+    if optional {
+        let inner = match ty {
+            Ty::Nullable(inner) => (**inner).clone(),
+            other => other.strip_nullable().clone(),
+        };
+        let shape = match &inner {
+            // A field's own rules are kept with the type it is.
+            Ty::Field(..) => json_shape_of(table, &inner, types),
+            _ => json_shape(table, &inner, types),
+        };
+        return Shape::Optional(Box::new(shape));
+    }
+    json_shape_of(table, ty, types)
+}
+
+/// [`json_shape`] of a type that isn't `none`.
+fn json_shape_of(
+    table: &dyn TypeView,
+    ty: &Ty,
+    types: &mut BTreeMap<String, stored_json::Named>,
+) -> stored_json::Shape {
+    use stored_json::{Named, Shape};
+    let rules: Vec<&jadpo_std::Rules> = table.rule_chain(ty).into_iter().map(|(_, r)| r).collect();
+    let lengths = || {
+        (
+            rules.iter().find_map(|r| r.min_length),
+            rules.iter().find_map(|r| r.max_length),
+        )
+    };
+    let structure = table.structure(ty);
+    match &structure {
+        Ty::List(item) | Ty::Set(item) => {
+            let (min_length, max_length) = lengths();
+            Shape::List {
+                set: matches!(structure, Ty::Set(_)),
+                item: Box::new(json_shape(table, item, types)),
+                min_length,
+                max_length,
+            }
+        }
+        Ty::Map(key, value) => {
+            let (min_length, max_length) = lengths();
+            Shape::Map {
+                key: Box::new(json_shape(table, key, types)),
+                value: Box::new(json_shape(table, value, types)),
+                min_length,
+                max_length,
+            }
+        }
+        Ty::Named(name) if jadpo_std::standard_type(name).is_none() => match table.def(name) {
+            Some(Def::Fields { fields, rules, .. }) => {
+                if !types.contains_key(name) {
+                    // Held first, so a type that holds itself stops here.
+                    types.insert(
+                        name.clone(),
+                        Named::Object {
+                            fields: BTreeMap::new(),
+                            rules: Vec::new(),
+                        },
+                    );
+                    let fields: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+                    let mut written: Vec<String> = rules
+                        .iter()
+                        .map(|rule| format!("{}: {}", rule.name, rule.written))
+                        .collect();
+                    written.sort();
+                    let fields = fields
+                        .into_iter()
+                        .map(|field| {
+                            let at = Ty::Field(name.clone(), vec![field.clone()]);
+                            (field, json_shape(table, &at, types))
+                        })
+                        .collect();
+                    types.insert(
+                        name.clone(),
+                        Named::Object {
+                            fields,
+                            rules: written,
+                        },
+                    );
+                }
+                Shape::Named(name.clone())
+            }
+            Some(Def::Enum { variants }) => {
+                if !types.contains_key(name) {
+                    types.insert(
+                        name.clone(),
+                        Named::Enum {
+                            variants: BTreeMap::new(),
+                        },
+                    );
+                    let variants: Vec<(String, Option<Vec<String>>)> = variants
+                        .iter()
+                        .map(|v| {
+                            (
+                                v.name.clone(),
+                                v.fields
+                                    .as_ref()
+                                    .map(|fields| fields.iter().map(|f| f.name.clone()).collect()),
+                            )
+                        })
+                        .collect();
+                    let variants = variants
+                        .into_iter()
+                        .map(|(variant, fields)| {
+                            let fields = fields.map(|fields| {
+                                fields
+                                    .into_iter()
+                                    .map(|field| {
+                                        let at = Ty::Field(
+                                            name.clone(),
+                                            vec![variant.clone(), field.clone()],
+                                        );
+                                        (field, json_shape(table, &at, types))
+                                    })
+                                    .collect()
+                            });
+                            (variant, fields)
+                        })
+                        .collect();
+                    types.insert(name.clone(), Named::Enum { variants });
+                }
+                Shape::Named(name.clone())
+            }
+            _ => Shape::Value(json_scalar(structure.to_string(), &rules)),
+        },
+        _ => Shape::Value(json_scalar(structure.to_string(), &rules)),
+    }
+}
+
+/// A value built on a built-in or standard type `ty`, with the rules along
+/// its chain, most specific first: the first bound and length found hold,
+/// since a refinement only narrows, and every pattern and other rule.
+fn json_scalar(ty: String, chain: &[&jadpo_std::Rules]) -> stored_json::Scalar {
+    let mut out = stored_json::Scalar {
+        ty,
+        ..stored_json::Scalar::default()
+    };
+    for rules in chain {
+        if out.min.is_none() {
+            out.min = rules.min.map(|n| n.to_string());
+        }
+        if out.max.is_none() {
+            out.max = rules.max.map(|n| n.to_string());
+        }
+        out.min_length = out.min_length.or(rules.min_length);
+        out.max_length = out.max_length.or(rules.max_length);
+        out.scale = out.scale.or(rules.scale);
+        if let Some(pattern) = &rules.pattern
+            && !out.patterns.contains(pattern)
+        {
+            out.patterns.push(pattern.clone());
+        }
+        let other = jadpo_std::Rules {
+            min: None,
+            max: None,
+            min_length: None,
+            max_length: None,
+            pattern: None,
+            scale: None,
+            ..(*rules).clone()
+        };
+        if other != jadpo_std::Rules::default() {
+            let text = format!("{other:?}");
+            if !out.other.contains(&text) {
+                out.other.push(text);
+            }
+        }
+    }
+    out.patterns.sort();
+    out.other.sort();
     out
 }
 

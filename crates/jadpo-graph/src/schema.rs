@@ -131,6 +131,11 @@ pub struct Allows {
     pub max_length: Option<u64>,
     /// The regular expressions the whole text must match, sorted.
     pub patterns: Vec<String>,
+    /// For a column holding a structured value as its JSON, what its type
+    /// reads (chunk 5.9c): the value's shape with every rule inside it.
+    /// `None` for any other column, and in a snapshot written before chunk
+    /// 5.9c, which recorded nothing of it.
+    pub json: Option<crate::stored_json::Reads>,
 }
 
 impl Allows {
@@ -150,23 +155,30 @@ impl Allows {
             value.set("max_length", i64::try_from(n).unwrap_or(i64::MAX));
         }
         value.set_some("patterns", strings(&self.patterns));
+        if let Some(json) = &self.json {
+            value.set("json", json.to_value());
+        }
         value
     }
 
-    fn from_value(value: &Value) -> Allows {
+    fn from_value(value: &Value) -> Result<Allows, String> {
         let text = |key: &str| value.get(key).and_then(Value::as_str).map(String::from);
         let count = |key: &str| match value.get(key) {
             Some(Value::Int(n)) => u64::try_from(*n).ok(),
             _ => None,
         };
-        Allows {
+        Ok(Allows {
             values: list_of(value, "values").unwrap_or_default(),
             min: text("min"),
             max: text("max"),
             min_length: count("min_length"),
             max_length: count("max_length"),
             patterns: list_of(value, "patterns").unwrap_or_default(),
-        }
+            json: value
+                .get("json")
+                .map(crate::stored_json::Reads::from_value)
+                .transpose()?,
+        })
     }
 }
 
@@ -471,7 +483,11 @@ impl Table {
                     sql_type: text_of(entry, "type")?,
                     nullable: flag(entry, "nullable"),
                     retired: flag(entry, "retired"),
-                    allows: entry.get("allows").map(Allows::from_value),
+                    allows: entry
+                        .get("allows")
+                        .map(Allows::from_value)
+                        .transpose()
+                        .map_err(|e| format!("column `{name}`: {e}"))?,
                     comment: entry
                         .get("comment")
                         .and_then(Value::as_str)

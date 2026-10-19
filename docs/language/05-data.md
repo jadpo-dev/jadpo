@@ -653,6 +653,75 @@ A parcel going by courier keeps `{"tag": "courier", "company": "Swift",
 "weight": 920}` in `delivery`, one to be picked up `"pickup"`, and its
 `weights` `{"box": 120, "loaf": 800}`, keys in their canonical order.
 
+Built in chunk 5.9c: each migration's snapshot records what a JSON
+column's type reads, its shape and every rule inside it, so changing the
+stored type, or the field's own rules, is drift like any other. A change
+that only widens what is read (a longer `max_length`, a variant added, a
+part made optional) is a migration with nothing to run. One that may read
+less (a tighter rule, a variant gone, a field added to or removed from an
+object, whose JSON is read member for member) checks every stored value
+in batches, before anything else in the migration, and `jadpo migrate
+apply` refuses it while any doesn't read, naming how many and the first
+rule broken, never a value. A `backfill:` rewrites those values instead,
+and needs writing only then:
+
+```jadpo check project=structured-migration file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=structured-migration file=domains/shipping/types/tag.jadpo hidden
+type Tag = Text {
+    max_length: 20
+}
+```
+
+```jadpo check project=structured-migration file=domains/shipping/types/label.jadpo hidden
+use shipping/types { Tag }
+
+/// What is printed on a parcel.
+type Label = Object {
+    line: Tag
+    note: Tag?
+}
+```
+
+```jadpo check project=structured-migration file=domains/shipping/entities/parcel.jadpo hidden migrate=initial
+use shipping/types { Label }
+
+entity Parcel {
+    id: Uuid
+    label: Label
+}
+```
+
+```jadpo check project=structured-migration file=domains/shipping/types/tag.jadpo migrate=shorten_tags
+type Tag = Text {
+    max_length: 12
+}
+```
+
+```jadpo check project=structured-migration file=database/migrations/20261020T1401_shorten_tags/changes.jadpo migrate=finish
+// changes.jadpo
+/// Shortens tags, relabelling parcels whose line no longer fits.
+migration {
+    Parcel.label: {
+        backfill: Label {
+            line: "Unlabelled"
+            note: none
+        }
+    }
+}
+```
+
+Without the decision, the migration's SQL reads each batch of labels
+(`-- check Parcel.label: in Jadpo, 1000 rows a batch, …`); with it, it
+rewrites those the new `Tag` doesn't read (`-- rewrite Parcel.label: …`)
+and leaves the rest as they are. A required structured field added to a
+table with rows takes a `backfill:` as any other field does, a literal
+or one worked out from the row, worked out in Jadpo and written through
+the codec. What the page left open is "Chosen in chunk 5.9c", under
+"Review".
+
 ## Migrations
 
 Entities describe the schema you want; a migration records each step from
@@ -2418,6 +2487,14 @@ Jadpo by `jadpo migrate apply`, in the same batches, transactions and
 resume marker, with values identical to the runtime's, tested against
 live PostgreSQL in the same file.
 
+Built in chunk 5.9c: **structured values stored as JSON are migrated.**
+The snapshot records what each JSON column's type reads; a change that
+only widens it runs nothing, and one that may read less checks every
+stored value in batches and is refused while any doesn't read, or
+rewrites those with a `backfill:`; a required structured field added to a
+table with rows takes a `backfill:`, written through the codec. Tested
+against live PostgreSQL (`crates/jadpo-cli/tests/json_migrations.rs`).
+
 Not built yet, and said so where it is used (`toolchain.not_built_yet`):
 
 - Removing an entity, moving one between stores, dropping a retired column
@@ -2438,11 +2515,6 @@ Not built yet, and said so where it is used (`toolchain.not_built_yet`):
   `jadpo migrate` takes it with `--url`, and the application's refusal to
   start against a database that doesn't match comes with the compiled
   deployables (Phase 8).
-- Changing the type of a field stored as JSON isn't migrated: the
-  snapshot records the column as `jsonb` and nothing its type allows, so
-  a stored value the new type no longer reads is a fault when read; and a
-  required structured field added to an entity with records takes no
-  `backfill:` yet, so it is added as `T?` ("Chosen in chunk 5.9b").
 
 ### Chosen in chunk 5.6b
 
@@ -2690,14 +2762,8 @@ values, each the most conservative reading:
   As chunk 5.9 chose for an entity's columns, a JSON column records no
   encoding of its own: a release that changed what a standard type's JSON
   holds would give the migration that rewrites stored values.
-- **Not built yet.** The migration snapshot records a JSON column as
-  `jsonb` and nothing its type allows, since its rules hold inside the
-  JSON, which no migration's SQL reads; so changing a stored type, or the
-  field's own rules, is no migration, and a stored value the new type no
-  longer reads is a fault when read. A required structured field added to
-  an entity with records takes no `backfill:` yet: a literal can't be
-  written for one, and a backfill worked out in Jadpo fills no JSON
-  (chunk 5.6b2); it is added as `T?`.
+- **Migrating them** was left for chunk 5.9c, which built it ("Chosen in
+  chunk 5.9c").
 - **Event payloads through the same table.** Every event type is
   numbered in the plan's JSON table, by the identity key the outbox's
   `event` column records (`JsonTable::events`), so chunk 6.1b writes and
@@ -2706,6 +2772,80 @@ values, each the most conservative reading:
   arguments yet (a schedule's `run:` takes none), and a batch's captures
   come with batches (chunk 6.4), so event types are all a payload is
   kept as today.
+
+### Chosen in chunk 5.9c
+
+What the page left open about migrating structured values stored as
+JSON, each the most conservative reading:
+
+- **What the snapshot records.** A JSON column's `allows` holds `json`:
+  the value's shape (a value built on a built-in or standard type, with
+  the bounds, lengths, patterns and places along its chain and any other
+  rule as text; a part that may be `none`; a list, a set or a map with
+  its lengths) and each object and enum of the application's it names,
+  by name, an object's fields and rules across its fields, an enum's
+  variants and their fields. The field's own settings count, as they do
+  for any column.
+- **Only widening runs nothing.** A type reads every value another wrote
+  only when that can be shown: the same built-in or standard type and
+  places, every other rule the same, no bound or length tighter or new,
+  no pattern new, a part made optional but never required, a list never
+  made a set, rules across fields only removed, variants only added,
+  each with the fields it had. An object's JSON is read member for
+  member, every field required and no other allowed, so a field added,
+  even one that may be `none`, or a field removed may read less. A type
+  renamed reads as its shape. Anything else may read less.
+- **A snapshot from before chunk 5.9c** recorded nothing of what a JSON
+  column read, so the next migration checks its stored values rather
+  than recording the type with nothing to do as chunk 3.10 did, since
+  nothing shows that the values stored then read now; on an empty table
+  the check reads nothing.
+- **The check** comes before anything else in the store's section, so a
+  refusal applies nothing of the migration (the migrations before it
+  stay). It reads the rows with a value, `NULL` being `none`, 1000 a
+  batch in key order, each batch its own read-committed transaction
+  under `jadpo_migrations`' lock, locking no row and changing nothing,
+  and reads each value with the codec of the field's type now, as a
+  query reads it. It records nothing as it goes: a run stopped during it
+  starts it again, and a refusal clears the migration's progress, so the
+  next run reads every value again. The refusal is
+  `migration.apply_failed`, naming how many values don't read and the
+  first rule broken and where (`` `max_length` on `line` ``), never a
+  value.
+- **The decision may be left out.** No decision is required
+  (`NeededKind::Unreadable`): `jadpo migrate new` finishes the migration
+  and writes a `changes.jadpo` holding only a comment saying how to give
+  one. Writing `backfill:` there and running `jadpo migrate new` again
+  replaces that field's check with a rewrite.
+- **The rewrite** runs in batches as a backfill worked out in Jadpo does
+  (chunk 5.6b2), recorded in the resume marker: each batch reads the
+  rows with a value, locked `FOR NO KEY UPDATE`, reads each with the new
+  type, works the backfill out for those that don't read and writes them
+  back through the codec, leaving the rest as they are. The backfill may
+  be written out or worked out from the row, as any backfill in Jadpo
+  may; a narrowed column's refit outside JSON still takes only a value
+  written out. A backfill still reads no field held as JSON, its own
+  included, whose old type is gone.
+- **Values written meanwhile.** A server still on the old build may write
+  a value the new type doesn't read after the check or the rewrite has
+  passed its row; as with a narrowed column's refit since chunk 3.10, no
+  lock holds writes to the whole table out for that long, and such a
+  value is a fault when read, as chunk 5.9b chose for any stored value
+  that doesn't read.
+- **A required structured field with a `backfill:`.** Its value, written
+  out (a construction such as `Label { … }`, or a variant) or worked out
+  from the row, has no SQL form, so it is always worked out in Jadpo and
+  written by the codec of the field's type, as a write keeps it, then
+  made required in 5.8b's last steps.
+- **Only the latest migration** is read with the project's code, as chunk
+  5.6b2 chose for backfills: an earlier migration's check or rewrite with
+  rows to read stops `jadpo migrate apply` (`Checking Parcel.label for
+  <migration> needs the build it was written in`).
+- **Output.** `jadpo migrate new` lists "check stored values in batches in
+  Jadpo" or "rewrite values no longer read in batches in Jadpo"; the live
+  line says `Checking Parcel.label in Jadpo  2000 of 5000 rows`; the
+  result says `1200 rows checked in 2 batches in Jadpo` or `3 rows
+  rewritten in 2 batches in Jadpo`, and `--json` gives each its `work`.
 
 ### Carried to later areas
 

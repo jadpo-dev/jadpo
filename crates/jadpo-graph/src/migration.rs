@@ -40,6 +40,18 @@ pub enum NeededKind {
     /// shorter `max_length`, a narrower range): stored rows it no longer
     /// allows need a value it does.
     Refit,
+    /// A structured field stored as JSON whose type may no longer read
+    /// every value stored under the type it had (chunk 5.9c): the
+    /// migration checks them and refuses while one doesn't read, so the
+    /// decision may be left out; a `backfill:` rewrites them instead.
+    Unreadable,
+}
+
+impl NeededKind {
+    /// Whether a migration is finished without this decision.
+    pub fn optional(self) -> bool {
+        self == NeededKind::Unreadable
+    }
 }
 
 impl Needed {
@@ -146,6 +158,7 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
             Some(was) if !was.retired && now.retired => NeededKind::Retire,
             Some(was) if was.nullable && !now.nullable && !now.retired => NeededKind::Backfill,
             Some(was) if !now.retired && narrowed(was, now) => NeededKind::Refit,
+            Some(was) if reads_less(was, now) => NeededKind::Unreadable,
             _ => continue,
         };
         let needed = Needed {
@@ -176,6 +189,25 @@ pub fn decisions_needed(before: &Schema, after: &Schema) -> Vec<Needed> {
 pub fn narrowed(was: &Column, now: &Column) -> bool {
     match (&was.allows, &now.allows) {
         (Some(was), Some(now)) => narrows(was, now),
+        _ => false,
+    }
+}
+
+/// Whether column `now` holds a structured value as JSON whose type may
+/// not read every value stored under `was`'s (chunk 5.9c): never for a
+/// change that only widens what is read; always when `was` comes from a
+/// snapshot that recorded nothing of what it read, before chunk 5.9c,
+/// since nothing shows the values stored then read now.
+pub fn reads_less(was: &Column, now: &Column) -> bool {
+    if now.retired || was.retired || was.sql_type != now.sql_type {
+        return false;
+    }
+    fn reads(column: &Column) -> Option<&crate::stored_json::Reads> {
+        column.allows.as_ref().and_then(|a| a.json.as_ref())
+    }
+    match (reads(was), reads(now)) {
+        (Some(was), Some(now)) => !crate::stored_json::reads_every(now, was),
+        (None, Some(_)) => true,
         _ => false,
     }
 }
@@ -233,6 +265,14 @@ fn allowed(allows: &Allows) -> table::Allowed<'_> {
         max: allows.max.as_deref(),
         min_length: allows.min_length,
         max_length: allows.max_length,
+    }
+}
+
+/// The born name of the entity `table` holds, for a field's name.
+fn entity_of(table: Option<&Table>) -> String {
+    match table.map(|t| &t.holds) {
+        Some(Holds::Entity(entity)) => entity.clone(),
+        _ => String::new(),
     }
 }
 
@@ -486,7 +526,36 @@ pub fn migration_sql(
                 let need = needed
                     .iter()
                     .find(|n| &n.table == table && &n.column == column);
+                // A structured value's type that may read less (chunk
+                // 5.9c): its stored values are checked first, or, with a
+                // backfill, those it doesn't read are rewritten.
+                if reads_less(was, now)
+                    && let Some(key) = new.map(|t| &t.primary_key.columns)
+                    && let [key] = key.as_slice()
+                {
+                    let field =
+                        need.map_or_else(|| format!("{}.{column}", entity_of(new)), Needed::key);
+                    match need.and_then(decided) {
+                        Some(Decided::InJadpo { reads, code }) => plan.batches.push(Statement {
+                            sql: table::rewrite_in_jadpo(
+                                &field,
+                                table,
+                                key,
+                                column,
+                                &now.sql_type,
+                                &reads,
+                                &code,
+                            ),
+                            does: "rewrite values no longer read in batches in Jadpo",
+                        }),
+                        _ => plan.checks.push(Statement {
+                            sql: table::check_in_jadpo(&field, table, key, column),
+                            does: "check stored values in batches in Jadpo",
+                        }),
+                    }
+                }
                 match need {
+                    Some(need) if need.kind == NeededKind::Unreadable => {}
                     Some(need) => {
                         let key = new
                             .map(|t| t.primary_key.columns.clone())
@@ -566,8 +635,12 @@ pub fn migration_sql(
             })
             .collect();
         let last = plan.last_steps();
-        let statements: Vec<Statement> = created
+        // Checks come first, so a migration refused for a stored value its
+        // type no longer reads has applied nothing (chunk 5.9c).
+        let statements: Vec<Statement> = plan
+            .checks
             .into_iter()
+            .chain(created)
             .chain(plan.drop)
             .chain(plan.create)
             .chain(plan.columns)
@@ -617,6 +690,8 @@ pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
 /// steps make any column required (chunk 5.8b).
 #[derive(Default)]
 struct Plan {
+    /// Each structured field's check of its stored values (chunk 5.9c).
+    checks: Vec<Statement>,
     drop: Vec<Statement>,
     create: Vec<Statement>,
     columns: Vec<Statement>,
@@ -1257,5 +1332,86 @@ mod tests {
         }
         let sql = migration_sql(&wider, &indexed, &|_| None).expect("sql");
         assert_eq!(sql.summary(), vec!["create index"]);
+    }
+
+    /// `Todo` with a `label` stored as JSON, a `Text` of at most `max`
+    /// characters, or recorded without what it reads (before chunk 5.9c).
+    fn labelled(max: Option<u64>) -> Schema {
+        let mut out = schema(&[
+            ("id", "uuid", false, false),
+            ("label", "jsonb", false, false),
+        ]);
+        let column = out
+            .stores
+            .get_mut("main")
+            .and_then(|s| s.tables.get_mut("todo"))
+            .and_then(|t| t.columns.get_mut("label"))
+            .expect("label");
+        column.allows = Some(Allows {
+            json: max.map(|max| crate::stored_json::Reads {
+                shape: crate::stored_json::Shape::Value(crate::stored_json::Scalar {
+                    ty: "Text".into(),
+                    max_length: Some(max),
+                    ..Default::default()
+                }),
+                types: BTreeMap::new(),
+            }),
+            ..Allows::default()
+        });
+        out
+    }
+
+    #[test]
+    fn a_json_column_that_reads_less_is_checked_first_or_rewritten() {
+        let before = labelled(Some(20));
+        // Wider: recorded, with nothing to run.
+        let wider = labelled(Some(40));
+        assert!(decisions_needed(&before, &wider).is_empty());
+        assert_eq!(
+            migration_sql(&before, &wider, &|_| None)
+                .expect("sql")
+                .count(),
+            0
+        );
+        // Narrower: a decision that may be left out, and a check first.
+        let narrower = labelled(Some(5));
+        let needed = decisions_needed(&before, &narrower);
+        assert_eq!(needed.len(), 1);
+        assert_eq!(needed[0].kind, NeededKind::Unreadable);
+        assert!(needed[0].kind.optional());
+        let sql = migration_sql(&before, &narrower, &|_| None).expect("sql");
+        assert_eq!(
+            sql.summary(),
+            vec!["check stored values in batches in Jadpo"]
+        );
+        let document = sql.to_document("20261101T0900_shorten");
+        assert!(
+            document.contains("-- store: main\n-- check Todo.label: in Jadpo, 1000 rows a batch"),
+            "{document}"
+        );
+        // With a backfill, a rewrite instead.
+        let decided = |_: &Needed| {
+            Some(Decided::InJadpo {
+                reads: Vec::new(),
+                code: "abc".into(),
+            })
+        };
+        let sql = migration_sql(&before, &narrower, &decided).expect("sql");
+        assert_eq!(
+            sql.summary(),
+            vec!["rewrite values no longer read in batches in Jadpo"]
+        );
+        let document = sql.to_document("20261101T0900_shorten");
+        assert!(
+            document.contains("-- rewrite Todo.label: in Jadpo"),
+            "{document}"
+        );
+        assert!(document.contains("$2::jsonb[]"), "{document}");
+        // A snapshot that recorded nothing of what it read: checked.
+        let unrecorded = labelled(None);
+        assert_eq!(
+            decisions_needed(&unrecorded, &wider)[0].kind,
+            NeededKind::Unreadable
+        );
     }
 }
