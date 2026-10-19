@@ -15,11 +15,8 @@ use super::Signal;
 /// The record's file name, at the project root.
 pub const FILE: &str = "ignored_suggestions.jadpo_record";
 
-/// The first line of the record.
-pub const HEADER: &str = "// Written by `jadpo suggest ignore`; `jadpo suggest` drops entries whose code has gone. Never edit it by hand.";
-
-/// The second line.
-const KIND: &str = "record ignored_suggestions 1";
+/// What the header says the record is generated from.
+const FROM: &str = "the suggestions this project ignores";
 
 /// One ignored suggestion.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +43,7 @@ pub fn render(entries: &[Ignore]) -> String {
         (&a.hash, a.signal.word(), &a.suggestion).cmp(&(&b.hash, b.signal.word(), &b.suggestion))
     });
     sorted.dedup_by(|a, b| a.covers(&b.hash, b.signal, &b.suggestion));
-    let mut out = format!("{HEADER}\n{KIND}\n");
+    let mut out = jadpo_db::record::header(&jadpo_db::record::IGNORED_SUGGESTIONS, FROM);
     if !sorted.is_empty() {
         out.push('\n');
     }
@@ -80,24 +77,10 @@ pub(crate) fn quote(text: &str) -> String {
 /// The lines of a record, or what is wrong with it and on which line
 /// (from 0).
 pub fn parse(text: &str) -> Result<Vec<Ignore>, (usize, String)> {
-    let mut lines = text.lines().enumerate();
-    match lines.next() {
-        Some((_, line)) if line == HEADER => {}
-        Some((at, _)) => {
-            return Err((at, "the first line is not the header Jadpo writes".into()));
-        }
-        None => return Err((0, "the file is empty".into())),
-    }
-    match lines.next() {
-        Some((_, line)) if line == KIND => {}
-        Some((at, line)) if line.starts_with("record ignored_suggestions ") => {
-            return Err((at, "this record was written by a newer Jadpo".into()));
-        }
-        Some((at, _)) => {
-            return Err((at, format!("the second line is not `{KIND}`")));
-        }
-        None => return Err((1, "the file ends after the header".into())),
-    }
+    let kind = &jadpo_db::record::IGNORED_SUGGESTIONS;
+    jadpo_db::record::read_header(&jadpo_db::record::normalise(text), kind, FROM)
+        .map_err(|problem| (problem.line(), problem.describe(kind)))?;
+    let lines = text.lines().enumerate().skip(2);
     let mut entries = Vec::new();
     for (at, line) in lines {
         if line.is_empty() {

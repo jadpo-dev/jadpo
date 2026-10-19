@@ -208,12 +208,27 @@ pub(crate) fn separator(style: &Style) -> &'static str {
 }
 
 /// One row of a list: a name, a description, and an optional muted third
-/// column (subcommands or values) that drops below 80 columns.
+/// column (subcommands or values) that drops below 80 columns. A row with
+/// a state shows its symbol in column 0, before the name, as a status
+/// line does; its description is the state's word, so plain output, which
+/// has no symbols, says the same.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Row {
     pub name: String,
     pub description: String,
     pub extra: Vec<String>,
+    pub state: Option<RowState>,
+}
+
+/// The state a row's symbol shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RowState {
+    /// `✓`, in the success colour.
+    Done,
+    /// `✗`, in the failure colour.
+    Failed,
+    /// `–`, muted: not looked at.
+    Skipped,
 }
 
 impl Row {
@@ -222,7 +237,14 @@ impl Row {
             name: name.into(),
             description: description.into(),
             extra: Vec::new(),
+            state: None,
         }
+    }
+
+    /// The row with a state symbol before its name.
+    pub fn state(mut self, state: RowState) -> Row {
+        self.state = Some(state);
+        self
     }
 
     pub fn extra<S: Into<String>>(mut self, extra: impl IntoIterator<Item = S>) -> Row {
@@ -907,6 +929,20 @@ fn list_row(row: &Row, grid: &Grid, style: &Style) -> Line {
     let name = format!("  {:<width$}", row.name, width = grid.name);
     let room = style.width.saturating_sub(width(&name));
     let extra = row.extra.join(separator(style));
+    let mut line = match (row.state, rich(style)) {
+        (Some(state), true) => {
+            let (symbol, token) = match state {
+                RowState::Done => (Symbol::Success, Token::Success),
+                RowState::Failed => (Symbol::Failure, Token::Failure),
+                RowState::Skipped => (Symbol::Skipped, Token::Muted),
+            };
+            vec![
+                paint(token, symbol.text(style.symbols)),
+                raw(format!(" {:<width$}", row.name, width = grid.name)),
+            ]
+        }
+        _ => vec![raw(name.clone())],
+    };
     match grid.description {
         Some(column)
             if !row.extra.is_empty()
@@ -914,10 +950,11 @@ fn list_row(row: &Row, grid: &Grid, style: &Style) -> Line {
                 && width(&name) + column + width(&extra) <= style.width =>
         {
             let description = format!("{:<column$}", row.description);
-            vec![raw(name), raw(description), paint(Token::Muted, extra)]
+            line.extend([raw(description), paint(Token::Muted, extra)]);
         }
-        _ => vec![raw(name), raw(cut(&row.description, room, style))],
+        _ => line.push(raw(cut(&row.description, room, style))),
     }
+    line
 }
 
 /// A label in columns 2–9 and its value from column 12, wrapped as prose.

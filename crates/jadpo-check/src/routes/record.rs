@@ -1,25 +1,29 @@
 //! The public API record (areas 7 and 18): each API's committed, readable
-//! record, `api/<api>.api`, of its routes, the fields they take and send,
-//! and the failure codes they can answer with. `jadpo check` fails while a
-//! record disagrees with the routes ([`record_problems`]) and `jadpo api
-//! update` rewrites it, so every change to the API is a diff of one file.
+//! record, `api/<api>.jadpo_record`, of its routes, the fields they take
+//! and send, and the failure codes they can answer with, in the record
+//! format (`record api 1`). `jadpo check` fails while a record disagrees
+//! with the routes (`record.out_of_date`, [`crate::records`]) and `jadpo
+//! api update` rewrites it, so every change to the API is a diff of one
+//! file.
 //!
-//! An API says at the top how clients sign in to it (`authentication:
-//! browser_session, api_token`, chunk 4.9) and whether its writes must
-//! send an `Idempotency-Key` (`idempotency: required`); a route for one
-//! kind of caller says which (`caller: user`).
+//! An entry `api <name>` says how clients sign in to it (one
+//! `authentication` fact per method, chunk 4.9) and whether its writes
+//! must send an `Idempotency-Key` (`idempotency required`); a route for
+//! one kind of caller says which (`caller user`).
 //!
 //! The record is the wire contract, so a field shows what a client sends
 //! or reads (`Text { max_length: 200 }`), not the name of the type behind
-//! it; objects and enums have a section of their own, by name. Its
-//! `version:` rises by one each time `jadpo api update` changes it and is
-//! the OpenAPI document's version. A breaking change also needs a person's
+//! it; objects and enums have an entry of their own. Everything is sorted
+//! (routes by path, then method; types, fields and variants by born name;
+//! failures by code), so reordering source changes nothing. It holds no
+//! version: the OpenAPI document's version is a hash of the record
+//! ([`openapi_version`]). A breaking change also needs a person's
 //! acceptance (area 18), which comes after the first build.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use jadpo_db::record::{self as format, Entry};
 use jadpo_db::{Db, Project};
-use jadpo_diag::{Diagnostic, rule};
 use jadpo_graph::{Base, Detail, Key, Kind, Section};
 
 use super::wire::Wire;
@@ -30,42 +34,33 @@ use crate::lookups::Lookup;
 /// The folder records live in.
 pub const FOLDER: &str = "api";
 
-/// An API's record file: `api/main.api`.
+/// An API's record file: `api/main.jadpo_record`.
 pub fn path(api: &str) -> String {
-    format!("{FOLDER}/{api}.api")
+    format!("{FOLDER}/{api}{}", format::EXTENSION)
 }
 
-/// The two lines every record starts with.
-const HEADER: &str = "// Written by `jadpo api update` from the routes; never edit it by hand.\n// `jadpo check` fails while it disagrees with them.\n";
-
-/// The record file for `body` at `version`.
-pub fn file(body: &str, version: u64) -> String {
-    format!("{HEADER}version: {version}\n\n{body}")
+/// What an API's record header says it is generated from.
+pub fn from(api: &str) -> String {
+    format!("the routes of API {api}")
 }
 
-/// The version a record says it is at.
-pub fn version(text: &str) -> Option<u64> {
-    text.lines()
-        .find_map(|line| line.strip_prefix("version: "))
-        .and_then(|version| version.trim().parse().ok())
+/// The OpenAPI document's version for a record: the first 12 hex digits
+/// of the SHA-256 of its text, computed at build and never stored, so two
+/// branches changing the API never conflict on a counter.
+pub fn openapi_version(text: &str) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(format::normalise(text).as_bytes());
+    digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()[..12]
+        .to_string()
 }
 
-/// A record's text after its version line: what is compared.
-pub fn body(text: &str) -> &str {
-    match text.find("\nversion: ") {
-        Some(at) => {
-            let rest = &text[at + 1..];
-            let after = rest.find('\n').map_or(rest.len(), |end| end + 1);
-            rest[after..].trim_start_matches('\n')
-        }
-        None => text,
-    }
-}
-
-/// Each API's record body, by API name, for every API that has routes.
-/// Empty unless every route reads cleanly.
+/// Each API's record, by API name, for every API that has routes. Empty
+/// unless every route reads cleanly.
 #[salsa::tracked(returns(ref))]
-pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
+pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
     if !routes_clean(db, project) {
         return BTreeMap::new();
     }
@@ -117,24 +112,26 @@ pub fn record_bodies(db: &dyn Db, project: Project) -> BTreeMap<String, String> 
             {
                 generated.extend(passkey_entries(&passkey.path));
             }
-            let mut body = write(&wire, &lookup, routes, generated);
-            let mut head = String::new();
-            if !methods.is_empty() {
-                let names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
-                head.push_str(&format!("authentication: {}\n", names.join(", ")));
+            let mut head = Entry::new(format!("api {api}"));
+            let mut names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
+            names.sort_unstable();
+            for name in names {
+                head.push(format!("authentication {name}"));
             }
             // Requiring a key changes what every write must send.
             if apis
                 .get(&api)
                 .is_some_and(|api| api.idempotency == jadpo_std::Idempotency::Required)
             {
-                head.push_str("idempotency: required\n");
+                head.push("idempotency required");
             }
-            if !head.is_empty() {
-                head.push('\n');
-                body.insert_str(0, &head);
+            let mut entries = Vec::new();
+            if !head.members.is_empty() {
+                entries.push(head);
             }
-            (api, body)
+            entries.extend(write(&wire, &lookup, routes, generated));
+            let text = format::write(&format::API, &from(&api), &entries);
+            (api, text)
         })
         .collect()
 }
@@ -147,12 +144,12 @@ fn method_order(route: &RouteModel) -> usize {
 }
 
 /// A route the runtime answers itself, as its API's record lists it:
-/// where it sorts among the routes, its entry, and the sections of what
-/// it answers with.
+/// where it sorts among the routes, its entry, and the entries of what it
+/// answers with.
 struct Generated {
     at: (String, usize),
-    entry: String,
-    sections: Vec<(String, String)>,
+    entry: Entry,
+    sections: Vec<(String, Entry)>,
 }
 
 fn order_of(method: jadpo_std::HttpMethod) -> usize {
@@ -166,18 +163,19 @@ fn order_of(method: jadpo_std::HttpMethod) -> usize {
 /// its record lists it: the runtime's, for services.
 fn exchange_entry() -> Generated {
     let path = format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/"));
+    let token = jadpo_std::http::EXCHANGED_TOKEN;
     Generated {
-        entry: format!(
-            "POST {path}\n    generated: exchange\n    caller: service\n    output: {}\n    status: 200\n\n",
-            jadpo_std::http::EXCHANGED_TOKEN
-        ),
+        entry: Entry::new(format!("POST {path}"))
+            .with("generated exchange")
+            .with("caller service")
+            .with(format!("output {token}"))
+            .with("status 200"),
         at: (path, order_of(jadpo_std::HttpMethod::Post)),
         sections: vec![(
-            jadpo_std::http::EXCHANGED_TOKEN.to_string(),
-            format!(
-                "output {}\n    token: ServiceToken\n    expires_at: Instant\n",
-                jadpo_std::http::EXCHANGED_TOKEN
-            ),
+            token.to_string(),
+            Entry::new(format!("output {token}"))
+                .with("expires_at: Instant")
+                .with("token: ServiceToken"),
         )],
     }
 }
@@ -205,14 +203,12 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
                 .iter()
                 .map(|text| format!("/{text}"))
                 .collect();
-            let mut entry = format!(
-                "{} {shown}\n    generated: passkey\n",
-                step.method().word()
-            );
+            let mut entry = Entry::new(format!("{} {shown}", step.method().word()))
+                .with("generated passkey");
             if step.authentication().needs_caller() {
-                entry.push_str("    caller: user\n");
+                entry.push("caller user");
             } else {
-                entry.push_str("    authentication: none\n");
+                entry.push("authentication none");
             }
             let input = match step {
                 PasskeyStep::SignIn => Some("PasskeyAnswer"),
@@ -221,19 +217,21 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
                 _ => None,
             };
             if let Some(input) = input {
-                entry.push_str(&format!("    input: {input} (body)\n"));
+                entry.push(format!("input {input} (body)"));
             }
             if let Some(output) = step.output() {
-                entry.push_str(&format!("    output: {output}\n"));
+                entry.push(format!("output {output}"));
             }
-            entry.push_str(&format!("    status: {}\n\n", step.status().code()));
+            entry.push(format!("status {}", step.status().code()));
             let mut sections = Vec::new();
             if step.output().is_some_and(|output| output.contains(PASSKEY_VIEW)) {
                 sections.push((
                     PASSKEY_VIEW.to_string(),
-                    format!(
-                        "output {PASSKEY_VIEW}\n    id: Uuid\n    name: Text\n    registered_at: Instant\n    last_used_at: Instant?\n"
-                    ),
+                    Entry::new(format!("output {PASSKEY_VIEW}"))
+                        .with("id: Uuid")
+                        .with("last_used_at: Instant?")
+                        .with("name: Text")
+                        .with("registered_at: Instant"),
                 ));
             }
             Generated {
@@ -245,25 +243,65 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
         .collect()
 }
 
+/// What a declaration sorts by in the record: its born name without its
+/// domain (`Todo` for a type renamed to `Task`; `Address` for
+/// `billing.Address`), then its name now.
+fn born_order(wire: &Wire<'_>, key: &Key) -> (String, String) {
+    let born = key.name().rsplit('.').next().unwrap_or(key.name());
+    (born.to_string(), wire.name(key))
+}
+
+/// A field's line: its name, the type a client sends or reads, and how it
+/// is sent (`header "X-Request-Tag"`, `default 20`, `optional`).
+fn field_line(wire: &Wire<'_>, field: &jadpo_graph::Node, refs: &mut BTreeSet<Key>) -> Option<String> {
+    let Detail::Field {
+        ty,
+        optional,
+        default,
+        header,
+        ..
+    } = &field.detail
+    else {
+        return None;
+    };
+    let name = field.name.rsplit('.').next().unwrap_or(&field.name);
+    let mut line = format!("{name}: {}", wire.render(ty, refs));
+    if let Some(header) = header {
+        line.push_str(&format!(" header {}", format::quote(header)));
+    }
+    if let Some(default) = default {
+        line.push_str(&format!(" default {}", default.render(&|key| wire.name(key))));
+    } else if *optional {
+        line.push_str(" optional");
+    }
+    Some(line)
+}
+
+/// The fields of `fields`, sorted by born name.
+fn sorted_fields<'g>(wire: &Wire<'g>, mut fields: Vec<&'g jadpo_graph::Node>) -> Vec<&'g jadpo_graph::Node> {
+    fields.sort_by_cached_key(|field| born_order(wire, &field.key));
+    fields
+}
+
 fn write(
     wire: &Wire<'_>,
     lookup: &Lookup<'_>,
     mut routes: Vec<(&GroupModel, &RouteModel)>,
     mut generated: Vec<Generated>,
-) -> String {
+) -> Vec<Entry> {
     routes.sort_by_key(|(_, route)| (route.path(), method_order(route)));
     generated.sort_by(|a, b| a.at.cmp(&b.at));
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failures: BTreeSet<Key> = BTreeSet::new();
-    let mut out = String::new();
-    let mut generated_sections: Vec<(String, String)> = generated
+    let mut out: Vec<Entry> = Vec::new();
+    let mut generated_sections: Vec<(String, Entry)> = generated
         .iter()
         .flat_map(|generated| generated.sections.clone())
         .collect();
     let mut due = generated.into_iter().peekable();
     for (_, route) in &routes {
         while let Some(next) = due.next_if(|next| (route.path(), method_order(route)) > next.at) {
-            out.push_str(&next.entry);
+            out.push(next.entry);
         }
         let path: String = route
             .segments
@@ -283,15 +321,15 @@ fn write(
         } else {
             path
         };
-        out.push_str(&format!("{} {path}\n", route.method.word()));
+        let mut entry = Entry::new(format!("{} {path}", route.method.word()));
         // A route anyone may call says so: opening one is a change a
         // reviewer must see (area 8).
         if !route.authentication.needs_caller() {
-            out.push_str("    authentication: none\n");
+            entry.push("authentication none");
         }
         // A route for one kind of caller refuses the other.
         if let Some(kind) = route.caller {
-            out.push_str(&format!("    caller: {}\n", kind.name()));
+            entry.push(format!("caller {}", kind.name()));
         }
         if let Some(input) = &route.input {
             if let Some(key) = declaration_key(lookup, input) {
@@ -302,16 +340,16 @@ fn write(
             } else {
                 "body"
             };
-            out.push_str(&format!("    input: {input} ({source})\n"));
+            entry.push(format!("input {input} ({source})"));
         }
         if let Some(output) = &route.output {
-            out.push_str(&format!(
-                "    output: {}\n",
+            entry.push(format!(
+                "output {}",
                 wire.render(&type_ref(lookup, output), &mut refs)
             ));
         }
-        out.push_str(&format!("    status: {}\n", route.status.code()));
-        let mut fails: Vec<(String, String)> = Vec::new();
+        entry.push(format!("status {}", route.status.code()));
+        let mut codes: Vec<String> = Vec::new();
         for failure in &route.fails {
             let Some(key) = declaration_key(lookup, failure) else {
                 continue;
@@ -321,57 +359,36 @@ fn write(
                 ..
             }) = wire.node(&key).map(|node| &node.detail)
             {
-                fails.push((
-                    detail.code.clone(),
-                    detail.status.map_or_else(String::new, |s| s.to_string()),
-                ));
+                codes.push(detail.code.clone());
                 failures.insert(key);
             }
         }
-        if !fails.is_empty() {
-            fails.sort();
-            let shown: Vec<String> = fails
-                .into_iter()
-                .map(|(code, status)| format!("{code} {status}").trim_end().to_string())
-                .collect();
-            out.push_str(&format!("    fails: {}\n", shown.join(", ")));
+        codes.sort();
+        codes.dedup();
+        for code in codes {
+            entry.push(format!("fails {code}"));
         }
-        out.push('\n');
+        out.push(entry);
     }
-    for rest in due {
-        out.push_str(&rest.entry);
-    }
+    out.extend(due.map(|rest| rest.entry));
     // Failures' client fields name types too.
-    let mut failure_text = String::new();
-    let mut by_code: Vec<(String, Key)> = failures
-        .iter()
-        .filter_map(|key| match wire.node(key).map(|node| &node.detail) {
-            Some(Detail::Type {
-                failure: Some(detail),
-                ..
-            }) => Some((detail.code.clone(), key.clone())),
-            _ => None,
-        })
-        .collect();
-    by_code.sort();
-    for (code, key) in by_code {
+    let mut failure_entries: Vec<(String, Entry)> = Vec::new();
+    for key in &failures {
         let Some(Detail::Type {
             failure: Some(detail),
             ..
-        }) = wire.node(&key).map(|node| &node.detail)
+        }) = wire.node(key).map(|node| &node.detail)
         else {
             continue;
         };
-        let mut line = format!("failure {code}");
+        let mut entry = Entry::new(format!("failure {}", detail.code));
         if let Some(status) = detail.status {
-            line.push_str(&format!(" {status}"));
+            entry.push(format!("status {status}"));
         }
         if let Some(message) = &detail.message {
-            line.push_str(&format!(" \"{message}\""));
+            entry.push(format!("message {}", format::quote(message)));
         }
-        failure_text.push_str(&line);
-        failure_text.push('\n');
-        for field in wire.fields(&key) {
+        for field in sorted_fields(wire, wire.fields(key)) {
             if let Detail::Field {
                 ty,
                 section: Some(Section::Client),
@@ -379,42 +396,43 @@ fn write(
             } = &field.detail
             {
                 let name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                failure_text.push_str(&format!("    {name}: {}\n", wire.render(ty, &mut refs)));
+                entry.push(format!("{name}: {}", wire.render(ty, &mut refs)));
             }
         }
-        failure_text.push('\n');
+        failure_entries.push((detail.code.clone(), entry));
     }
+    failure_entries.sort_by(|a, b| a.0.cmp(&b.0));
     // Each type a route, a field or a failure names, until none is new.
     let mut done: BTreeSet<Key> = BTreeSet::new();
-    let mut sections: BTreeMap<String, String> = BTreeMap::new();
+    let mut sections: BTreeMap<(String, String), Entry> = BTreeMap::new();
     while let Some(key) = refs.iter().find(|key| !done.contains(*key)).cloned() {
         done.insert(key.clone());
         let name = wire.name(&key);
         if let Some(issued) = super::wire::issued_of(&key) {
-            sections.insert(name, super::wire::issued_section(issued));
+            sections.insert((name.clone(), name), super::wire::issued_entry(issued));
             continue;
         }
         let Some(node) = wire.node(&key) else {
             continue;
         };
-        let mut text = String::new();
+        let order = born_order(wire, &key);
         match &node.detail {
             Detail::Type {
                 base: Base::Enum, ..
             } => {
-                text.push_str(&format!("enum {name}\n"));
-                for (variant, fields) in wire.variants(&key) {
-                    text.push_str(&format!("    {variant}\n"));
-                    for field in fields {
+                let mut entry = Entry::new(format!("enum {name}"));
+                let mut variants = wire.variants(&key);
+                variants.sort_by(|a, b| a.0.cmp(&b.0));
+                for (variant, fields) in variants {
+                    entry.push(format!("variant {variant}"));
+                    for field in sorted_fields(wire, fields) {
                         if let Detail::Field { ty, .. } = &field.detail {
                             let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                            text.push_str(&format!(
-                                "        {field_name}: {}\n",
-                                wire.render(ty, &mut refs)
-                            ));
+                            entry.push_nested(format!("{field_name}: {}", wire.render(ty, &mut refs)));
                         }
                     }
                 }
+                sections.insert(order, entry);
             }
             detail => {
                 let word = match detail {
@@ -427,162 +445,22 @@ fn write(
                     _ if node.kind == Kind::Entity => "entity",
                     _ => "object",
                 };
-                text.push_str(&format!("{word} {name}\n"));
-                for field in wire.fields(&key) {
-                    let Detail::Field {
-                        ty,
-                        optional,
-                        default,
-                        header,
-                        ..
-                    } = &field.detail
-                    else {
-                        continue;
-                    };
-                    let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                    let mut line = format!("    {field_name}: {}", wire.render(ty, &mut refs));
-                    if let Some(header) = header {
-                        line.push_str(&format!(" header \"{header}\""));
+                let mut entry = Entry::new(format!("{word} {name}"));
+                for field in sorted_fields(wire, wire.fields(&key)) {
+                    if let Some(line) = field_line(wire, field, &mut refs) {
+                        entry.push(line);
                     }
-                    if let Some(default) = default {
-                        line.push_str(&format!(
-                            " default {}",
-                            default.render(&|key| wire.name(key))
-                        ));
-                    } else if *optional {
-                        line.push_str(" optional");
-                    }
-                    text.push_str(&line);
-                    text.push('\n');
                 }
+                sections.insert(order, entry);
             }
         }
-        sections.insert(name, text);
     }
     generated_sections.dedup();
-    for (name, text) in generated_sections {
-        sections.insert(name, text);
+    for (name, entry) in generated_sections {
+        sections.insert((name.clone(), name), entry);
     }
-    for text in sections.values() {
-        out.push_str(text);
-        out.push('\n');
-    }
-    out.push_str(&failure_text);
-    let trimmed = out.trim_end_matches('\n');
-    format!("{trimmed}\n")
-}
-
-/// `api.record_out_of_date`: each record that disagrees with the routes,
-/// is missing, or records an API with no routes. Only once every route
-/// reads cleanly, so a mistake in a route is reported once, where it is.
-#[salsa::tracked(returns(ref))]
-pub fn record_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
-    if project.layout(db) != jadpo_db::Layout::Project || !routes_clean(db, project) {
-        return Vec::new();
-    }
-    let expected = record_bodies(db, project);
-    let written: BTreeMap<String, Result<String, String>> = project
-        .records(db)
-        .iter()
-        .filter(|record| record.path.starts_with("api/") && record.path.ends_with(".api"))
-        .map(|record| (record.path.clone(), record.text.clone()))
-        .collect();
-    let mut out = Vec::new();
-    for (api, body) in expected {
-        let file = path(api);
-        let span = crate::tree::file_span(&file);
-        match written.get(&file) {
-            None => out.push(
-                Diagnostic::new(&rule::API_RECORD_OUT_OF_DATE, format!("`{file}` is missing"))
-                    .at(span, "no record")
-                    .reason(format!(
-                        "Each API with routes has a committed record of its routes, fields and failure codes, so every change to API `{api}` shows as a diff of one file."
-                    ))
-                    .next("Run `jadpo api update`, and commit the record with the code"),
-            ),
-            Some(Err(error)) => out.push(
-                Diagnostic::new(&rule::API_RECORD_OUT_OF_DATE, format!("`{file}` can't be read"))
-                    .at(span, "unreadable")
-                    .reason(format!("Reading it failed: {error}."))
-                    .next("Run `jadpo api update` to write it again"),
-            ),
-            Some(Ok(text)) if super::record::body(text) != body => {
-                let changes = changes(super::record::body(text), body);
-                out.push(
-                    Diagnostic::new(&rule::API_RECORD_OUT_OF_DATE, format!("`{file}` is out of date"))
-                        .at(span, "disagrees with the routes")
-                        .reason(format!(
-                            "The record is a promise to API `{api}`'s clients, and the routes now say otherwise: {}.",
-                            changes
-                        ))
-                        .next("Run `jadpo api update`, and commit the record with the code"),
-                );
-            }
-            Some(Ok(_)) => {}
-        }
-    }
-    for file in written.keys() {
-        let api = file
-            .trim_start_matches("api/")
-            .trim_end_matches(".api")
-            .to_string();
-        if !expected.contains_key(&api) {
-            out.push(
-                Diagnostic::new(&rule::API_RECORD_OUT_OF_DATE, format!("`{file}` records no routes"))
-                    .at(crate::tree::file_span(file), "nothing to record")
-                    .reason(format!("No route belongs to API `{api}` any more, so its record promises routes that are gone."))
-                    .next("Run `jadpo api update`, which removes it"),
-            );
-        }
-    }
+    out.extend(sections.into_values());
+    out.extend(failure_entries.into_iter().map(|(_, entry)| entry));
     out
 }
 
-/// What changed between two record bodies, by section (a route, a type or
-/// a failure): `added GET /todos, changed output TodoView`.
-fn changes(before: &str, after: &str) -> String {
-    let sections = |text: &str| -> BTreeMap<String, String> {
-        let mut out: BTreeMap<String, String> = BTreeMap::new();
-        let mut current: Option<String> = None;
-        for line in text.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            if !line.starts_with(' ') {
-                let head = match line.split_once(" \"") {
-                    Some((head, _)) if line.starts_with("failure ") => head.to_string(),
-                    _ => line.to_string(),
-                };
-                let head = if head.starts_with("failure ") {
-                    head.split(' ').take(2).collect::<Vec<_>>().join(" ")
-                } else {
-                    head
-                };
-                current = Some(head.clone());
-                out.entry(head).or_default().push_str(line);
-            } else if let Some(head) = &current {
-                out.entry(head.clone()).or_default().push_str(line);
-            }
-        }
-        out
-    };
-    let before = sections(before);
-    let after = sections(after);
-    let mut said = Vec::new();
-    for (head, text) in &after {
-        match before.get(head) {
-            None => said.push(format!("added `{head}`")),
-            Some(old) if old != text => said.push(format!("changed `{head}`")),
-            Some(_) => {}
-        }
-    }
-    for head in before.keys() {
-        if !after.contains_key(head) {
-            said.push(format!("removed `{head}`"));
-        }
-    }
-    if said.is_empty() {
-        return "its text differs".to_string();
-    }
-    crate::and_list(&said)
-}

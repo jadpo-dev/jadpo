@@ -28,6 +28,7 @@ mod naming;
 mod not_value;
 pub mod policy;
 pub mod prompts;
+pub mod records;
 mod resolve;
 pub mod routes;
 pub mod setting_move;
@@ -169,7 +170,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
-        out.extend(routes::record::record_problems(db, project).iter().cloned());
+        out.extend(records::record_problems(db, project).iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)
@@ -208,11 +209,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
 }
 
 /// Whether `diagnostic` stops a program running (`jadpo test`, `jadpo
-/// dev`): every error but an API record out of date, which is a promise
-/// to clients that `jadpo check` and CI hold to (area 7), not a reason
-/// the program can't run.
+/// dev`): every error but a record out of date or edited, which is a
+/// promise that `jadpo check` and CI hold to (area 18), not a reason the
+/// program can't run.
 pub fn blocks_running(diagnostic: &Diagnostic) -> bool {
-    diagnostic.rule.id != rule::API_RECORD_OUT_OF_DATE.id
+    diagnostic.rule.id != rule::RECORD_OUT_OF_DATE.id && diagnostic.rule.id != rule::RECORD_EDITED.id
 }
 
 /// The zero-based line `offset` is on.

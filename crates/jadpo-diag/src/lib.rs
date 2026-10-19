@@ -102,8 +102,6 @@ rules! {
         "07-http.html#api-prefix-overlap", "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "07-http.html#api-prefix-required", "Declared API has no prefix";
-    API_RECORD_OUT_OF_DATE: "api.record_out_of_date", area 7, Error, Agent,
-        "07-http.html#api-record-out-of-date", "API record disagrees with the routes";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "07-http.html#api-setting-unknown", "API setting is not one an API takes";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
@@ -140,6 +138,8 @@ rules! {
         "14-tooling.html#command-errors", "Migrate command has invalid arguments";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
+    CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Records command has invalid arguments";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Routes command has invalid arguments";
     CLI_SQL_ARGUMENTS: "cli.sql_arguments", area 14, Error, Agent,
@@ -570,6 +570,12 @@ rules! {
         "06-reads-and-writes.html#query-unknown-section", "Query has a section Jadpo does not know";
     QUERY_VALUE_UNSUPPORTED: "query.value_unsupported", area 6, Error, Agent,
         "06-reads-and-writes.html#query-value-unsupported", "Query value is computed rather than a parameter, literal or enum value";
+    RECORD_EDITED: "record.edited", area 18, Error, Agent,
+        "18-records-and-manifest.html#record-edited", "Generated record was edited by hand";
+    RECORD_FORMAT_NEWER: "record.format_newer", area 18, Error, Human,
+        "18-records-and-manifest.html#record-format-newer", "Record was written by a newer Jadpo";
+    RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
+        "18-records-and-manifest.html#record-out-of-date", "Generated record disagrees with the source";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,

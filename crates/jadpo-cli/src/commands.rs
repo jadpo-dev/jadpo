@@ -16,6 +16,7 @@ pub use crate::fix::fix;
 pub use crate::fmt::fmt;
 use crate::help::{self, VERSION};
 pub use crate::migrate::migrate;
+pub use crate::records::records;
 pub use crate::routes::routes;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
 pub use crate::sql::sql;
