@@ -416,6 +416,7 @@ impl Reader<'_> {
                     .collect(),
                 order: order.unwrap_or_default(),
             }),
+            geometry: None,
         })
     }
 

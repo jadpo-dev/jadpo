@@ -505,6 +505,9 @@ pub struct ReadPlan {
     /// test each row the statement found is held to again, in Jadpo's own
     /// code, before it becomes a record (area 20, chunk 5.5u5).
     pub recheck: Option<Recheck>,
+    /// For a map layer (area 6, chunk 5.5u8): the list's records are
+    /// `Feature`s, given as one `FeatureCollection`.
+    pub layer: bool,
 }
 
 /// How far, in metres, the statement of a query with `geo.` conditions

@@ -467,6 +467,12 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
         // A nearest-neighbour query's records, each with its distance
         // (area 21, chunk 5.5v1b).
         "list" if query.nearest.is_some() => format!("a list of Nearest<{}>", query.element.ty),
+        // A map layer's features (chunk 5.5u8).
+        "list" if query.geometry.is_some() => format!(
+            "a map layer, each feature's geometry its {} and properties a {}",
+            query.geometry.as_deref().unwrap_or_default(),
+            query.element.ty
+        ),
         "list" => format!("a list of {}", query.element.ty),
         _ => format!("a page of {}", query.element.ty),
     };
