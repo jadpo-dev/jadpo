@@ -1618,13 +1618,21 @@ reference only).
   What the page left open is area 6's "Chosen in chunk 5.6c"; a bucket
   of an instant, which needs a zone PostgreSQL may not see as Jadpo
   does, is left for Richard.
-- [ ] **5.7 Teaching examples for Phase 5: settings, time and words**
+- [x] **5.7 Teaching examples for Phase 5: settings, time and words**
   `opus · high`: new numbered examples for configuration (`config.jadpo`,
   constants, the key and address settings and what `crypto` does with
   them), time (dates, instants, zones, periods and recurring times) and
   translations and locales. Split on 2026-10-19 because the phase left
   1,646 built features no example uses, more than a session: the rest are
-  5.7b to 5.7d.
+  5.7b to 5.7d. Built: `13-lettings-office` (settings, constants,
+  connection addresses, test values, and every `crypto` operation with
+  its key), `14-studio-timetable` (every `temporal` operation, ranges of
+  time, `TimeFormat`, the clock-change night) and `15-parcel-tracker`
+  (messages, plural forms, enums with wording, shared and Jadpo's own
+  wording, an in-progress locale). The coverage test now reads the types
+  settings declare, a declared format's base, the enums operations give
+  and std enum values matched; 1,569 features remain, 1,377 of them the
+  closed lists' values.
 - [ ] **5.7b Teaching examples: money, quantities and the standard
   vocabulary** `opus · high`, after 5.7: money and discounts, physical
   quantities and percentages, and the standard types (identifiers,
