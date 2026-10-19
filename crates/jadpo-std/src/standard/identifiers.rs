@@ -578,10 +578,11 @@ pub fn is_iban(text: &str) -> bool {
 }
 
 /// A BIC's country, its fifth and sixth letters: a current ISO 3166-1
-/// code, as `Country` holds them (ISO 9362).
+/// code, as `Country` holds them (ISO 9362), or Kosovo's user-assigned
+/// `XK`, which SWIFT issues BICs under as it does IBANs.
 pub fn is_bic(text: &str) -> bool {
     text.get(4..6)
-        .is_some_and(super::places::is_current_country)
+        .is_some_and(|code| code == "XK" || super::places::is_current_country(code))
 }
 
 /// A Legal Entity Identifier: mod-97 1 as it is (ISO 7064 mod 97-10).
@@ -690,6 +691,7 @@ mod tests {
         assert!(bic("NWBKGB2L500"));
         assert!(!bic("DEUTZZFF"), "ZZ isn't an ISO 3166-1 code");
         assert!(!bic("DEUTYUFF"), "Yugoslavia's YU is withdrawn");
+        assert!(bic("RBKOXKPR"), "SWIFT issues Kosovo's BICs under XK");
     }
 
     #[test]

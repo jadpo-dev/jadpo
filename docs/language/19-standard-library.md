@@ -8200,8 +8200,8 @@ and `NhsNumber`.
   of 10 is never issued), a National Insurance number's prefix rules
   from HMRC's NIM39110 (suffix A to D only), and a BIC's country, its
   fifth and sixth letters, which must be a current ISO 3166-1 code as
-  `Country` holds them (so `YU`, withdrawn, and `XK`, user-assigned, are
-  refused). The rest are patterns: a card BIN of 6 or 8 digits, a
+  `Country` holds them, or Kosovo's user-assigned `XK`, which SWIFT
+  issues BICs under as it does IBANs (so `YU`, withdrawn, is refused). The rest are patterns: a card BIN of 6 or 8 digits, a
   payment reference of up to 18 of Bacs's characters, an invoice number of 1 to 200 characters with no control
   character and no space at either end, a sort code, an account number,
   a UTR, a company number, an EIN, and an SSN with the areas, groups and
