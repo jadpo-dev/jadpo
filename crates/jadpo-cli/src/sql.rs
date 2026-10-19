@@ -498,15 +498,38 @@ fn render(query: &QueryModel, plan: &QueryPlan, place: &str) -> Reply {
     for setting in &plan.read.settings {
         fields.push(("first".to_string(), setting.clone()));
     }
-    // What the runtime works out again on the rows found (area 20, chunk
-    // 5.5u5).
+    // What the runtime works out again on the rows found (chunk 6.3b;
+    // area 20, chunk 5.5u5), named by its operations.
     if let Some(recheck) = &plan.read.recheck {
+        let operation = |op: jadpo_std::Op| {
+            jadpo_std::OPERATIONS
+                .iter()
+                .find(|operation| operation.op == op)
+                .map(|operation| (operation.namespace, operation.name))
+        };
         let mut then = Vec::new();
         if !recheck.checks.is_empty() {
-            then.push("each row is held to its `geo.` conditions in Jadpo's own code".to_string());
+            let mut namespaces: Vec<String> = Vec::new();
+            for check in &recheck.checks {
+                if let Some((namespace, _)) = operation(check.op)
+                    && !namespaces.contains(&format!("`{namespace}.`"))
+                {
+                    namespaces.push(format!("`{namespace}.`"));
+                }
+            }
+            then.push(format!(
+                "each row is held to its {} conditions in Jadpo's own code",
+                namespaces.join(" and ")
+            ));
         }
-        if recheck.order.is_some() {
-            then.push("sorted by `geo.distance` as the code works it out, then `id`".to_string());
+        if let Some((namespace, name)) = recheck
+            .order
+            .as_ref()
+            .and_then(|order| operation(order.key.op))
+        {
+            then.push(format!(
+                "sorted by `{namespace}.{name}` as the code works it out, then `id`"
+            ));
         }
         fields.push(("then".to_string(), then.join("; ")));
     }

@@ -259,9 +259,9 @@ impl Planner<'_> {
                 {
                     let member = self.value_of(entity, &held.member, row)?;
                     let caller = bind.caller(CallerPart::User);
-                    let mut founding = vec![format!("{member} = {caller}")];
+                    let mut founding = vec![jadpo_sql::policy::names_caller(&member, &caller)];
                     founding.extend(self.nobody_in(&at)?);
-                    tenants.push(Who::Condition(format!("({})", founding.join(" AND "))));
+                    tenants.push(Who::Condition(jadpo_sql::policy::grouped(&founding)));
                 }
                 if system {
                     let system = bind.caller(CallerPart::System);
@@ -274,7 +274,7 @@ impl Planner<'_> {
                 condition = if anyone {
                     tenants
                 } else {
-                    format!("{condition} AND {tenants}")
+                    jadpo_sql::policy::all_of(&[condition, tenants])
                 };
             }
         }
@@ -479,7 +479,7 @@ impl Planner<'_> {
         }
         Some(Callers::Roles {
             store: store?,
-            sql: format!("SELECT 1 WHERE {}", any_of(&whos)),
+            sql: jadpo_sql::policy::gate(&whos),
             params: statement.into_params(),
         })
     }
@@ -503,16 +503,15 @@ impl Planner<'_> {
         ))
     }
 
-    /// A credential statement limited by its holder's grants: `sql`, whose
-    /// own parameters are the first `own`, with `AND <holders>` where it
-    /// says `{held}`.
+    /// A credential statement limited by its holder's grants: `statement`
+    /// written with them, its own parameters the first `own`.
     pub(crate) fn gated(
         &self,
         entity: &EntityModel,
         effect: Effect,
         own: usize,
         holder: &str,
-        sql: &str,
+        statement: fn(&str) -> String,
     ) -> Option<jadpo_std::policy::Gated> {
         let mut bind = After {
             own,
@@ -520,7 +519,7 @@ impl Planner<'_> {
         };
         let held = self.holders(&mut bind, entity, effect, holder)?;
         Some(jadpo_std::policy::Gated {
-            sql: sql.replace("{held}", &held),
+            sql: statement(&held),
             extra: bind.params,
         })
     }

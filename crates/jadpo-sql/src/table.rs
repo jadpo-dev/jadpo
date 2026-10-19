@@ -494,6 +494,25 @@ pub fn create_index(
     )
 }
 
+/// `CREATE INDEX` of `expression` on `table` (area 6, "Operations in
+/// conditions", chunk 6.3b): a B-tree of an operation's SQL form, the
+/// expression a query's condition compares, partial with `predicate`.
+pub fn create_expression_index(
+    table: &str,
+    name: &str,
+    expression: &str,
+    predicate: Option<&str>,
+) -> String {
+    let partial = predicate
+        .map(|predicate| format!(" WHERE {predicate}"))
+        .unwrap_or_default();
+    format!(
+        "CREATE INDEX {} ON {} (({expression})){partial}",
+        ident(name),
+        ident(table)
+    )
+}
+
 /// Creates the extension `name` unless the database has it: pgvector's
 /// `vector` for a store's first vector column (area 21, chunk 5.5v1).
 /// `jadpo migrate apply` checks it is available before running anything.

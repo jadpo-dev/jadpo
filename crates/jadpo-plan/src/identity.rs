@@ -9,37 +9,19 @@
 use jadpo_check::policy::Effect;
 use jadpo_db::{Db, Project};
 use jadpo_graph::TypeRef;
-use jadpo_sql::{Bind, Value, ident};
+use jadpo_sql::identity as statements;
+use jadpo_sql::{Bind, Value};
 use jadpo_std::http::{GatedStatements, IdentityPlan, PasskeyPlan, PrincipalKind, PrincipalPlan};
 use jadpo_std::read::SqlType;
 
 use crate::queries::{Planner, Reach};
-
-/// A user's API tokens that haven't ended, oldest first, whose user the
-/// caller may read.
-const TOKENS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_sessions\" WHERE \"principal_id\" = $1 AND \"csrf_verifier\" IS NULL AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\"";
-
-/// Ends one API token, never a browser session, whose user the caller may
-/// update.
-const REVOKE_TOKEN: &str =
-    "DELETE FROM \"jadpo_sessions\" WHERE \"id\" = $1 AND \"csrf_verifier\" IS NULL AND {held}";
-
-/// Keeps a new service key, for a service the caller may update.
-const ISSUE_KEY: &str = "INSERT INTO \"jadpo_service_keys\" (\"id\", \"principal_id\", \"verifier\", \"started_at\", \"ends_at\") SELECT $1, $2, $3, $4, $5 WHERE {held}";
-
-/// A service's keys that haven't expired, oldest first, whose service the
-/// caller may read.
-const KEYS: &str = "SELECT \"id\", \"started_at\", \"ends_at\" FROM \"jadpo_service_keys\" WHERE \"principal_id\" = $1 AND \"ends_at\" > $2 AND {held} ORDER BY \"started_at\", \"id\"";
-
-/// Deletes one service key, whose service the caller may update.
-const REVOKE_KEY: &str = "DELETE FROM \"jadpo_service_keys\" WHERE \"id\" = $1 AND {held}";
 
 /// Binds `clock.now` in a caller's lookup to its `$2`, the time now.
 struct Lookup;
 
 impl Bind for Lookup {
     fn bind(&mut self, value: &Value, _ty: SqlType) -> Option<String> {
-        matches!(value, Value::Now).then(|| "$2".to_string())
+        matches!(value, Value::Now).then(|| jadpo_sql::placeholder(1))
     }
 
     /// Written into the statement, whose parameters are fixed (`$1` and
@@ -62,17 +44,27 @@ impl Planner<'_> {
         if let Some(entity) = user.and_then(|variant| self.model.entity(&variant.entity))
             && sessions
         {
-            gated.tokens = self.gated(entity, Effect::Read, 2, "\"principal_id\"", TOKENS);
+            let holder = statements::holder();
+            gated.tokens = self.gated(entity, Effect::Read, 2, &holder, statements::tokens);
             gated.revoke_token =
-                self.gated(entity, Effect::Update, 1, "\"principal_id\"", REVOKE_TOKEN);
+                self.gated(entity, Effect::Update, 1, &holder, statements::revoke_token);
         }
         if let Some(entity) = service.and_then(|variant| self.model.entity(&variant.entity))
             && keys
         {
-            gated.issue_key = self.gated(entity, Effect::Update, 5, "$2", ISSUE_KEY);
-            gated.keys = self.gated(entity, Effect::Read, 2, "\"principal_id\"", KEYS);
+            let holder = statements::holder();
+            // A new key's service is its second parameter.
+            let new_holder = jadpo_sql::placeholder(1);
+            gated.issue_key = self.gated(
+                entity,
+                Effect::Update,
+                5,
+                &new_holder,
+                statements::issue_key,
+            );
+            gated.keys = self.gated(entity, Effect::Read, 2, &holder, statements::keys);
             gated.revoke_key =
-                self.gated(entity, Effect::Update, 1, "\"principal_id\"", REVOKE_KEY);
+                self.gated(entity, Effect::Update, 1, &holder, statements::revoke_key);
         }
         Some(IdentityPlan {
             store,
@@ -112,26 +104,16 @@ impl Planner<'_> {
         let entity = self.model.entity(&variant.entity)?;
         let mut bind = Lookup;
         let active = match &variant.active {
-            Some(condition) => format!(
-                "({}) IS TRUE",
-                jadpo_sql::condition(&mut bind, entity, condition, false)?
-            ),
-            None => "TRUE".to_string(),
+            Some(condition) => Some(jadpo_sql::condition(&mut bind, entity, condition, false)?),
+            None => None,
         };
-        let mut wheres = vec![format!("{} = s.{}", ident("id"), ident("principal_id"))];
+        let mut wheres = vec![statements::held_by_credential()];
         wheres.extend(self.access(&mut bind, entity, Reach::Read)?);
-        Some(format!(
-            "SELECT s.{id}, s.{credential}, s.{encoding}, s.{handle}, u.{id}, u.{active} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{credential_id} = $1 AND $2::timestamptz IS NOT NULL",
-            id = ident("id"),
-            credential = ident("credential"),
-            encoding = ident("encoding"),
-            handle = ident("user_handle"),
-            active = ident("active"),
-            table = ident(jadpo_check::data::PASSKEYS),
-            active_sql = active,
-            entity_table = ident(&entity.table),
-            wheres = wheres.join(" AND "),
-            credential_id = ident("credential_id"),
+        Some(statements::passkey_lookup(
+            jadpo_check::data::PASSKEYS,
+            &entity.table,
+            &statements::active(active.as_deref()),
+            &wheres,
         ))
     }
 
@@ -159,35 +141,22 @@ impl Planner<'_> {
         }
         let mut bind = Lookup;
         let active = match &variant.active {
-            Some(condition) => {
-                format!(
-                    "({}) IS TRUE",
-                    jadpo_sql::condition(&mut bind, entity, condition, false)?
-                )
-            }
-            None => "TRUE".to_string(),
+            Some(condition) => Some(jadpo_sql::condition(&mut bind, entity, condition, false)?),
+            None => None,
         };
-        let mut wheres = vec![format!("{} = s.{}", ident("id"), ident("principal_id"))];
+        let mut wheres = vec![statements::held_by_credential()];
         wheres.extend(self.access(&mut bind, entity, Reach::Read)?);
         let (table, csrf) = match variant.kind {
-            PrincipalKind::User => (
-                jadpo_check::data::SESSIONS,
-                format!("s.{}, ", ident("csrf_verifier")),
-            ),
-            PrincipalKind::Service => (jadpo_check::data::SERVICE_KEYS, String::new()),
+            PrincipalKind::User => (jadpo_check::data::SESSIONS, true),
+            PrincipalKind::Service => (jadpo_check::data::SERVICE_KEYS, false),
         };
-        plan.lookup = Some(format!(
-            "SELECT s.{id}, {csrf}u.{id}, u.{subject}, u.{active}, s.{ends} FROM {table} AS s CROSS JOIN LATERAL (SELECT {id}, {column} AS {subject}, {active_sql} AS {active} FROM {entity_table} WHERE {wheres}) AS u WHERE s.{verifier} = $1 AND s.{ends} > $2",
-            id = ident("id"),
-            subject = ident("subject"),
-            active = ident("active"),
-            table = ident(table),
-            column = ident(&subject.born),
-            active_sql = active,
-            entity_table = ident(&entity.table),
-            wheres = wheres.join(" AND "),
-            verifier = ident("verifier"),
-            ends = ident("ends_at"),
+        plan.lookup = Some(statements::caller_lookup(
+            table,
+            csrf,
+            &entity.table,
+            &subject.born,
+            &statements::active(active.as_deref()),
+            &wheres,
         ));
         Some(plan)
     }

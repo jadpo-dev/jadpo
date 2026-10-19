@@ -11,4 +11,4 @@ LIMIT $3
 -- $3: rows to fetch as Int8
 -- columns: uuid, uuid, geography("polygon")
 -- record DeliveryPatch: id = column 0, bakery_id = column 1, outline = column 2
--- recheck: Intersects column 2 with argument 0
+-- recheck: geo.intersects(column 2, argument 0)
