@@ -2499,8 +2499,19 @@ impl Body<'_> {
         if matches!(value, Expr::ListExpr(_)) && is_collection(&self.table.structure(&target)) {
             // A list written here takes the collection's type, and its
             // length is checked while compiling, as a literal's is.
+            let before = self.out.len();
             self.check(value, &target);
-            return (target, Fallible::Never);
+            // A vector's items only the running program knows may break
+            // what its type holds beyond its length (chunk 5.8c).
+            let breaks = if self.out.len() == before {
+                self.written_vector_breaks(value, &target)
+            } else {
+                Vec::new()
+            };
+            if breaks.is_empty() {
+                return (target, Fallible::Never);
+            }
+            return (target, Fallible::Construction(breaks));
         }
         let before = self.out.len();
         let mut actual = self.infer(value);

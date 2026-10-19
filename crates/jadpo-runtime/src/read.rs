@@ -21,7 +21,8 @@ use jadpo_std::read::{
 use jadpo_value::Value;
 
 use crate::{
-    Ctx, Failure, Fault, FaultKind, LocalFuture, Row, SqlType, SqlValue, StoreError, Transaction,
+    Ctx, Failure, Fault, FaultKind, JSON_KEPT_DEPTH, JSON_KEPT_LIMIT, LocalFuture, Row, SqlType,
+    SqlValue, StoreError, Transaction,
 };
 
 /// What a read found.
@@ -309,6 +310,32 @@ fn bind(param: &jadpo_std::read::Param, env: &Env<'_>) -> Result<SqlValue, Probl
                 return Err(Problem::Defect("a box without its sides".into()));
             };
             SqlValue::Numeric(part.of(&west, &east).to_string())
+        }
+        // The double a distance is compared with (chunk 5.8c).
+        Source::DistanceBound {
+            index,
+            path,
+            strict,
+        } => {
+            let bound = value_at(
+                &Source::Arg {
+                    index: *index,
+                    path: path.clone(),
+                },
+                env.args,
+            );
+            let written = match &bound {
+                Some(Value::Decimal(decimal)) => decimal.to_string(),
+                Some(Value::Int(n)) => n.to_string(),
+                _ => {
+                    return Err(Problem::Defect(
+                        "a distance bound that isn't a number".into(),
+                    ));
+                }
+            };
+            let found = jadpo_std::standard::ai::distance_bound(&written, *strict)
+                .ok_or_else(|| Problem::Defect("a distance bound that isn't a number".into()))?;
+            SqlValue::Float8(found.to_bits())
         }
     })
 }
@@ -653,20 +680,26 @@ impl JsonCodecs<'_> {
             .ok_or_else(|| "a JSON-held column the plan gave no codec".to_string())
     }
 
-    /// `value` as the JSON its column keeps; `NULL` for no value.
+    /// `value` as the JSON its column keeps; `NULL` for no value. A value
+    /// past [`JSON_KEPT_LIMIT`] bytes or [`JSON_KEPT_DEPTH`] levels, which
+    /// couldn't be read back as a request's body is, is never kept (chunk
+    /// 5.9b).
     pub fn write(&self, number: u32, value: &Value) -> Result<SqlValue, String> {
         if matches!(value, Value::None) {
             return Ok(SqlValue::Null(SqlType::Json));
         }
-        Ok(SqlValue::Json(
-            self.codecs.write_value(self.codec(number)?, value),
-        ))
+        let text = self.codecs.write_value(self.codec(number)?, value);
+        kept_within_limits(&text)?;
+        Ok(SqlValue::Json(text))
     }
 
     /// The value the JSON `stored` holds, read as a request's body is.
     /// What doesn't read back is named by its field's path and the rule,
-    /// never the value (chunk 5.5w2).
+    /// never the value (chunk 5.5w2); so is JSON past the limits a value
+    /// is kept within, which only a write outside Jadpo leaves (chunk
+    /// 5.9b).
     pub fn read(&self, number: u32, stored: &str) -> Result<Value, String> {
+        kept_within_limits(stored)?;
         let codec = self.codec(number)?;
         self.codecs
             .read_value(codec, &Value::text(stored))
@@ -686,6 +719,44 @@ impl JsonCodecs<'_> {
                 ),
             })
     }
+}
+
+/// Whether `json` is within the limits a value kept as JSON is held to
+/// (chunk 5.9b): at most [`JSON_KEPT_LIMIT`] bytes, and arrays and objects
+/// nested at most [`JSON_KEPT_DEPTH`] deep, counted outside strings.
+fn kept_within_limits(json: &str) -> Result<(), String> {
+    if json.len() > JSON_KEPT_LIMIT {
+        return Err(format!(
+            "a value kept as JSON of more than {JSON_KEPT_LIMIT} bytes"
+        ));
+    }
+    let (mut depth, mut deepest, mut quoted, mut escaped) = (0usize, 0usize, false, false);
+    for byte in json.bytes() {
+        if quoted {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => quoted = false,
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => quoted = true,
+            b'[' | b'{' => {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+            b']' | b'}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    if deepest > JSON_KEPT_DEPTH {
+        return Err(format!(
+            "a value kept as JSON nested deeper than {JSON_KEPT_DEPTH} levels"
+        ));
+    }
+    Ok(())
 }
 
 /// A value as a parameter of type `ty`, through the contract's storage
@@ -777,7 +848,13 @@ pub fn field_value(
     };
     if let Column::Json(number) = column {
         return match sql {
+            // `none` is the column's `NULL`; JSON's own `null` is never
+            // written there, so one is a row written outside Jadpo (chunk
+            // 5.9b).
             SqlValue::Null(_) => Ok(Value::None),
+            SqlValue::Json(stored) if stored.trim() == "null" => Err(
+                "a JSON-held column holding JSON's `null`, which is never kept for `none`".into(),
+            ),
             SqlValue::Json(stored) => json.read(*number, stored),
             other => Err(format!("a `{:?}` column read as JSON", other.ty())),
         };
@@ -852,8 +929,16 @@ pub fn field_value(
         .iter()
         .map(|part| part_value(part, ty))
         .collect::<Result<Vec<Value>, String>>()?;
-    jadpo_value::standard::from_parts_of(ty, &values)
-        .map_err(|_| format!("columns that don't make a `{ty}`"))
+    let value = jadpo_value::standard::from_parts_of(ty, &values)
+        .map_err(|_| format!("columns that don't make a `{ty}`"))?;
+    // A value read from the store is made like any other, so its rules
+    // across its parts hold (area 2, "Rules across fields"; chunk 5.8c):
+    // Jadpo writes none that breaks one, so a row that does was written
+    // around it, and reading it is a defect, named by the rule alone.
+    if let Some(rule) = jadpo_value::across::broken_standard(&value) {
+        return Err(format!("a stored `{ty}` that breaks its rule `{rule}`"));
+    }
+    Ok(value)
 }
 
 /// A vector read back from pgvector: each float as the decimal a vector
@@ -1144,5 +1229,67 @@ mod tests {
             SqlValue::Null(SqlType::Text)
         );
         assert!(from_sql(&SqlValue::Text("gone".into()), &column).is_err());
+    }
+
+    /// A value kept as JSON is as large and as deep as a request's body
+    /// may be, and no more, so every kept value reads back (chunk 5.9b):
+    /// nested exactly [`JSON_KEPT_DEPTH`] deep it is kept, and read as a
+    /// request's body is; one level deeper it is refused, as is one past
+    /// [`JSON_KEPT_LIMIT`] bytes, by what it is and never its value.
+    #[test]
+    fn a_value_kept_as_json_reads_back_within_the_limits() {
+        let nested = |depth: usize| format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let deepest = nested(JSON_KEPT_DEPTH);
+        assert_eq!(kept_within_limits(&deepest), Ok(()));
+        assert!(
+            jadpo_value::json::parse(deepest.as_bytes()).is_some(),
+            "read back as a request's body is"
+        );
+        assert_eq!(
+            kept_within_limits(&nested(JSON_KEPT_DEPTH + 1)),
+            Err(format!(
+                "a value kept as JSON nested deeper than {JSON_KEPT_DEPTH} levels"
+            ))
+        );
+        assert!(
+            jadpo_value::json::parse(nested(JSON_KEPT_DEPTH + 1).as_bytes()).is_none(),
+            "deeper than a request's body is read"
+        );
+        // Brackets inside text, escaped quotes among them, aren't nesting.
+        let text = format!("[\"{}\\\"{}\"]", "[".repeat(200), "{".repeat(200));
+        assert!(jadpo_value::json::parse(text.as_bytes()).is_some());
+        assert_eq!(kept_within_limits(&text), Ok(()));
+        let secret = "hunter2-correct-horse";
+        let large = format!("[\"{secret}{}\"]", "x".repeat(JSON_KEPT_LIMIT));
+        let why = kept_within_limits(&large).expect_err("too large");
+        assert!(!why.contains(secret), "{why}");
+        assert_eq!(
+            kept_within_limits(&format!("\"{}\"", "x".repeat(JSON_KEPT_LIMIT - 2))),
+            Ok(())
+        );
+    }
+
+    /// `none` is a JSON column's `NULL`, and JSON's own `null` there is a
+    /// row written outside Jadpo (chunk 5.9b).
+    #[test]
+    fn a_json_columns_none_is_its_null() {
+        let columns = [Column::Json(0)];
+        assert_eq!(
+            field_value(
+                &[SqlValue::Null(SqlType::Json)],
+                &columns,
+                0,
+                JsonCodecs::NONE
+            ),
+            Ok(Value::None)
+        );
+        let why = field_value(
+            &[SqlValue::Json("null".into())],
+            &columns,
+            0,
+            JsonCodecs::NONE,
+        )
+        .expect_err("never written");
+        assert!(why.contains("`null`"), "{why}");
     }
 }

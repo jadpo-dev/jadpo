@@ -59,10 +59,20 @@ pub struct Codecs<'a> {
     pub shapes: &'a [Shape],
 }
 
+mod document;
+
+pub use document::{Numbers, parse};
+
 /// Where in the input a value is: field names, list positions and
-/// [`MAP_ENTRY`] for a map's entry.
+/// [`MAP_ENTRY`] for a map's entry, as a problem shows it; with where it
+/// stands in the document itself and the document's numbers as written,
+/// when it was read from text (chunk 5.8c).
 #[derive(Clone, Debug, Default)]
-pub struct Path(Vec<String>);
+pub struct Path {
+    shown: Vec<String>,
+    at: Vec<String>,
+    numbers: Option<Rc<Numbers>>,
+}
 
 /// What names a map's entry in a problem's path, in place of its key
 /// (chunk 5.8a).
@@ -70,18 +80,44 @@ pub const MAP_ENTRY: &str = "<key>";
 
 impl Path {
     fn with(&self, part: impl Into<String>) -> Path {
-        let mut parts = self.0.clone();
-        parts.push(part.into());
-        Path(parts)
+        let part = part.into();
+        let mut path = self.clone();
+        path.shown.push(part.clone());
+        path.at.push(part);
+        path
+    }
+
+    /// A map's entry under `key`: shown as [`MAP_ENTRY`], never its key.
+    fn entry(&self, key: &str) -> Path {
+        let mut path = self.clone();
+        path.shown.push(MAP_ENTRY.to_string());
+        path.at.push(key.to_string());
+        path
     }
 
     fn shown(&self) -> String {
-        self.0.join(".")
+        self.shown.join(".")
+    }
+
+    /// The text of the number here as the document wrote it.
+    fn written_number(&self) -> Option<&str> {
+        self.numbers.as_ref()?.get(&self.at)
     }
 
     /// The path of field `name` at the top of the input.
     pub fn field(name: &str) -> Path {
-        Path(vec![name.to_string()])
+        Path {
+            shown: vec![name.to_string()],
+            at: vec![name.to_string()],
+            numbers: None,
+        }
+    }
+
+    /// The same place in a document whose numbers were written as
+    /// `numbers` says ([`parse`]).
+    pub fn numbered(mut self, numbers: &Numbers) -> Path {
+        self.numbers = Some(Rc::new(numbers.clone()));
+        self
     }
 }
 
@@ -187,7 +223,11 @@ impl Codecs<'_> {
             // number, past which a decimal can't hold it (chunk 5.5s2).
             Codec::Float => match json {
                 serde_json::Value::Number(number) => {
-                    let written = number.to_string();
+                    // The number's own text where the document's is known,
+                    // so it is rounded to a float once (chunk 5.8c).
+                    let written = path
+                        .written_number()
+                        .map_or_else(|| number.to_string(), str::to_string);
                     match jadpo_std::standard::ai::float(&written)
                         .and_then(|text| Value::decimal(&text))
                     {
@@ -315,8 +355,8 @@ impl Codecs<'_> {
                 // or its value broke the rule: a key is a value, an email
                 // address as often as not, and a problem never holds one
                 // (chunk 5.8a).
-                let at = path.with(MAP_ENTRY);
                 for (name, entry) in entries {
+                    let at = path.entry(name);
                     let Some(k) = self.read_text(*key, name, &at, problems) else {
                         continue;
                     };
@@ -728,9 +768,16 @@ impl Codecs<'_> {
             // A rule across an object's fields is reported by its name, at
             // the object's path (area 2, "Rules across fields").
             Err(invalid) => {
+                // A vector's item past what its half-precision index holds
+                // is reported at its place, as one past a decimal's digits
+                // is (chunk 5.8c).
+                let at = match validator.vector_holding(&value) {
+                    Some((key, Some(item))) if key == invalid.key() => path.with(item.to_string()),
+                    _ => path.clone(),
+                };
                 Self::problem(
                     problems,
-                    path,
+                    &at,
                     invalid.name().unwrap_or(invalid.key().word()),
                 );
                 None
@@ -751,9 +798,15 @@ impl Codecs<'_> {
             Value::Bytes(bytes) => std::str::from_utf8(bytes).map_err(|_| Unread::Malformed)?,
             _ => return Err(Unread::Malformed),
         };
-        let json: serde_json::Value = serde_json::from_str(text).map_err(|_| Unread::Malformed)?;
+        // A member named twice makes a document unreadable (chunk 5.8c).
+        let (json, numbers) = parse(text.as_bytes()).ok_or(Unread::Malformed)?;
         let mut problems = Vec::new();
-        let value = self.read(id, &json, &Path::default(), &mut problems);
+        let value = self.read(
+            id,
+            &json,
+            &Path::default().numbered(&numbers),
+            &mut problems,
+        );
         match (value, problems.into_iter().next()) {
             (Some(value), None) => Ok(value),
             (_, Some(problem)) => Err(Unread::Mismatch(problem)),
@@ -1327,5 +1380,206 @@ mod tests {
         let mut out = String::new();
         write_string("say \"hi\"\n\u{1}", &mut out);
         assert_eq!(out, "\"say \\\"hi\\\"\\n\\u0001\"");
+    }
+    /// Codecs for vectors: 0 an item, 1 a 2-item vector compared by
+    /// cosine, 2 a 2,001-item one indexed at half precision, by euclidean
+    /// distance, 3 a map's key, 4 a map of 2-item vectors.
+    fn vector_codecs() -> (Vec<Codec>, Vec<Validator>) {
+        use jadpo_std::types::ValidatorId;
+        use jadpo_std::{Rules, VectorDistance};
+        let vector = |dimensions: u64, distance: VectorDistance| {
+            Validator::new(
+                None,
+                vec![
+                    Rules {
+                        dimensions: Some(dimensions),
+                        distance: Some(distance),
+                        ..Rules::default()
+                    },
+                    jadpo_std::standard::ai::vector_rules(),
+                ],
+            )
+        };
+        let codecs = vec![
+            Codec::Float,
+            Codec::List {
+                item: CodecId(0),
+                validator: ValidatorId(0),
+            },
+            Codec::List {
+                item: CodecId(0),
+                validator: ValidatorId(1),
+            },
+            Codec::Scalar {
+                builtin: Builtin::Text,
+                validator: ValidatorId(2),
+                int_as_number: false,
+            },
+            Codec::Map {
+                key: CodecId(3),
+                value: CodecId(1),
+                validator: ValidatorId(2),
+            },
+        ];
+        let validators = vec![
+            vector(2, VectorDistance::Cosine),
+            vector(2001, VectorDistance::Euclidean),
+            Validator::new(Some(Builtin::Text), Vec::new()),
+        ];
+        (codecs, validators)
+    }
+
+    #[test]
+    fn a_vector_s_item_is_the_float_nearest_its_own_text() {
+        let (codecs, validators) = vector_codecs();
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        // Just above the midpoint of 1 and the float after it, but nearer
+        // the midpoint than any other double: read as a double first, the
+        // tie goes to 1; its own text is nearer the float after.
+        let read = codecs.read_value(
+            CodecId(1),
+            &Value::text("[1.00000005960464477539062501, 0.5]"),
+        );
+        assert_eq!(
+            read.map(|vector| vector.to_string()),
+            Ok(Value::list(vec![
+                Value::decimal("1.0000001").unwrap(),
+                Value::decimal("0.5").unwrap()
+            ])
+            .to_string())
+        );
+        // A request's body is read the same way.
+        let (json, numbers) =
+            super::parse(br#"{"m": [1.00000005960464477539062501, 0.5]}"#).expect("a document");
+        let mut problems = Vec::new();
+        let read = codecs.read(
+            CodecId(1),
+            &json["m"],
+            &Path::field("m").numbered(&numbers),
+            &mut problems,
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(
+            read.map(|vector| vector.to_string()),
+            Some(
+                Value::list(vec![
+                    Value::decimal("1.0000001").unwrap(),
+                    Value::decimal("0.5").unwrap()
+                ])
+                .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn a_vector_holds_what_its_index_and_its_metric_need() {
+        let (codecs, validators) = vector_codecs();
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        let problem = |id: u32, text: &str| match codecs.read_value(CodecId(id), &Value::text(text))
+        {
+            Err(Unread::Mismatch(problem)) => (problem.field, problem.rule),
+            other => panic!("{text}: {other:?}"),
+        };
+        // A vector of zeros has no direction to compare by cosine.
+        assert_eq!(
+            problem(1, "[0, 0.0]"),
+            (String::new(), "distance".to_string())
+        );
+        // An item past a half-precision float, at its place.
+        let mut items = vec!["0.5"; 2001];
+        items[7] = "70000";
+        assert_eq!(
+            problem(2, &format!("[{}]", items.join(","))),
+            ("7".to_string(), "max".to_string())
+        );
+        items[7] = "-65505";
+        assert_eq!(
+            problem(2, &format!("[{}]", items.join(","))),
+            ("7".to_string(), "min".to_string())
+        );
+        items[7] = "65504";
+        assert!(
+            codecs
+                .read_value(CodecId(2), &Value::text(&format!("[{}]", items.join(","))))
+                .is_ok()
+        );
+        // Zeros by straight-line distance are a vector like any other.
+        items = vec!["0"; 2001];
+        assert!(
+            codecs
+                .read_value(CodecId(2), &Value::text(&format!("[{}]", items.join(","))))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_member_named_twice_makes_a_document_unreadable() {
+        let (codecs, validators) = vector_codecs();
+        let codecs = Codecs {
+            codecs: &codecs,
+            validators: &validators,
+            shapes: &[],
+        };
+        assert!(
+            codecs
+                .read_value(CodecId(4), &Value::text(r#"{"a": [1, 0], "b": [0, 1]}"#))
+                .is_ok()
+        );
+        // Last one winning would read a value its sender may not have
+        // meant; a JWT's claims refuse it too.
+        assert_eq!(
+            codecs.read_value(CodecId(4), &Value::text(r#"{"a": [1, 0], "a": [0, 1]}"#)),
+            Err(Unread::Malformed)
+        );
+        assert_eq!(super::parse(br#"{"x": {"y": 1, "y": 2}}"#), None);
+        assert!(super::parse(br#"[{"y": 1}, {"y": 2}]"#).is_some());
+        // What serde_json reads and refuses, it reads and refuses.
+        for text in [
+            "",
+            " ",
+            "[1,]",
+            "{\"a\" 1}",
+            "01",
+            "1.",
+            ".5",
+            "-",
+            "1e",
+            "+1",
+            "NaN",
+            "\"\\x\"",
+            "\"\u{1}\"",
+            "[1] 2",
+            "1e400",
+            "\"\\ud800\"",
+        ] {
+            assert_eq!(super::parse(text.as_bytes()), None, "{text:?}");
+        }
+        for text in [
+            "0",
+            "-0",
+            "1.5e-3",
+            "18446744073709551615",
+            "-9223372036854775808",
+            "123456789012345678901234567890",
+            "\"\\u00e9\\ud83d\\ude00\\n\"",
+            "true",
+            "null",
+            " {\"a\": [false, null, \"\"]} ",
+        ] {
+            let ours = super::parse(text.as_bytes()).map(|(json, _)| json);
+            let theirs: Option<serde_json::Value> = serde_json::from_str(text).ok();
+            assert_eq!(ours, theirs, "{text:?}");
+        }
+        // Too deep, as serde_json's limit.
+        let deep = format!("{}{}", "[".repeat(200), "]".repeat(200));
+        assert_eq!(super::parse(deep.as_bytes()), None);
     }
 }

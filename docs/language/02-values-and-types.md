@@ -3111,6 +3111,32 @@ chunk that built them chose the rest, as conservatively as it could:
   is written, as any literal is. Kept past 38 digits, it is
   `type.invalid_literal`, as arithmetic past them is.
 
+### Chosen in chunk 5.8c
+
+The Phase 5 soundness review's slice of "checked whenever a value is
+made", each the most conservative reading:
+
+- **A query's result type has no rules across its fields**
+  (`query.result_rule`, area 6, "Chosen in chunk 5.8c"): a read has no
+  `attempt` to map a broken one, so the type is refused rather than each
+  row checked as it is read.
+- **Where a value is made, its rules are checked:** an object literal, a
+  construction, `json.read` and a request's body, in an object, a list's
+  item or a map's entry, at its path; a query string, as a body is;
+  `text.parse` of a standard type's text; and a standard object read from
+  the store, where a broken rule is a defect, since Jadpo writes none (area
+  19, "Chosen in chunk 5.8c"). A setting never holds an object, so never
+  one with rules (`configuration.type_unsupported`).
+- **A literal is checked or refused, never kept unchecked:** text where a
+  standard object type with rules across its parts goes is
+  `type.invalid_literal`, since the checker can't read its text, and any
+  other literal a standard object can't be is `type.mismatch` (area 19).
+- **Storage reads check only standard types' rules across their parts.**
+  An application's object types can't be stored yet (chunk 5.9), and a
+  field's own rules (`max:` on an `Int`) aren't checked as a row is read;
+  whether the store should hold them, as `CHECK` constraints, or the read
+  check them is left for Richard, since nothing on the pages says either.
+
 ### Decided changes in examples
 
 Every decision on this page, shown as code with all the others applied.

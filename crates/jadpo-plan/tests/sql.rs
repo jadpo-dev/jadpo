@@ -57,6 +57,18 @@ fn source(source: &Source) -> String {
                 path: path.clone()
             })
         ),
+        Source::DistanceBound {
+            index,
+            path,
+            strict,
+        } => format!(
+            "distance bound{} of {}",
+            if *strict { " (strict)" } else { "" },
+            self::source(&Source::Arg {
+                index: *index,
+                path: path.clone()
+            })
+        ),
     }
 }
 

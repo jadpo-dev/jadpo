@@ -305,7 +305,7 @@ pub(super) struct Dev {
 }
 
 impl Dev {
-    fn start(root: &Path) -> Dev {
+    pub(super) fn start(root: &Path) -> Dev {
         let server = jadpo_test::database::server().expect("a PostgreSQL server");
         let url = server.create_database("http").expect("a database");
         Dev::launch(root, Some(url))

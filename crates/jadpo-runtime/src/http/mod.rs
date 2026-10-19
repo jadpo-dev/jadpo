@@ -740,6 +740,9 @@ async fn run_with_caller(
         None => None,
         Some(plan) => {
             let mut object = serde_json::Map::new();
+            // The body's numbers as written, so a vector's items are read
+            // from their own text (chunk 5.8c).
+            let mut numbers = jadpo_value::json::Numbers::default();
             if plan.query {
                 let Some(values) = query_values(request.query.as_deref().unwrap_or("")) else {
                     return runtime_failure(INVALID_REQUEST, request_id, None);
@@ -770,15 +773,20 @@ async fn run_with_caller(
                 if request.body.iter().all(u8::is_ascii_whitespace) {
                     return runtime_failure(INVALID_REQUEST, request_id, None);
                 }
-                match serde_json::from_slice::<serde_json::Value>(&request.body) {
-                    Ok(serde_json::Value::Object(entries)) => object = entries,
-                    Ok(_) => {
+                // A member named twice makes the body unreadable, as
+                // `json.read` reads it (chunk 5.8c).
+                match jadpo_value::json::parse(&request.body) {
+                    Some((serde_json::Value::Object(entries), written)) => {
+                        object = entries;
+                        numbers = written;
+                    }
+                    Some(_) => {
                         problems.push(Problem {
                             field: String::new(),
                             rule: "type".to_string(),
                         });
                     }
-                    Err(_) => return runtime_failure(INVALID_REQUEST, request_id, None),
+                    None => return runtime_failure(INVALID_REQUEST, request_id, None),
                 }
             }
             // Fields read from headers never come in the body or the query.
@@ -798,7 +806,7 @@ async fn run_with_caller(
             let value = codecs.read(
                 plan.codec,
                 &serde_json::Value::Object(object),
-                &Path::default(),
+                &Path::default().numbered(&numbers),
                 &mut problems,
             );
             if problems.len() > before { None } else { value }
@@ -1352,11 +1360,14 @@ pub fn response_value(app: &App<'_>, route: u32, response: &Response) -> Value {
     let plan = app.table.routes.get(route as usize);
     let output = match plan.and_then(|plan| plan.output) {
         Some(codec) if (200..300).contains(&response.status) => {
-            serde_json::from_slice::<serde_json::Value>(&response.body)
-                .ok()
-                .and_then(|json| {
-                    app.codecs
-                        .read(codec, &json, &Path::default(), &mut Vec::new())
+            jadpo_value::json::parse(&response.body)
+                .and_then(|(json, numbers)| {
+                    app.codecs.read(
+                        codec,
+                        &json,
+                        &Path::default().numbered(&numbers),
+                        &mut Vec::new(),
+                    )
                 })
                 .unwrap_or(Value::None)
         }

@@ -833,18 +833,46 @@ impl RouteTable {
 /// The codecs `json.read` and `json.write` run with (area 19, "Data
 /// formats"): the wire's codec for each type a call reads or writes,
 /// numbered as [`RouteTable`]'s are, so a document in memory is read and
-/// written exactly as a request and a response are.
+/// written exactly as a request and a response are. The same table holds
+/// every type the runtime keeps as its contract's JSON: a field stored as
+/// JSON (area 5, chunks 5.5w2b and 5.9b), a passkey's credential (chunk
+/// 5.9), and each event type, whose payload the outbox keeps (area 12,
+/// chunk 5.9b).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct JsonTable {
     pub codecs: Vec<Codec>,
     /// Each call's type's codec, by the number its site gives it.
     pub types: Vec<CodecId>,
+    /// Each event type's number in `types`, by the identity key its
+    /// outbox row records (area 12, "A payload is the contract's JSON"),
+    /// in key order.
+    pub events: Vec<EventJson>,
+}
+
+/// An event type's place in the [`JsonTable`]: its payload is written and
+/// read as its type's contract JSON (area 12; chunk 5.9b).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EventJson {
+    /// The event type's identity key, which survives a rename: what the
+    /// outbox's `event` column holds.
+    pub key: String,
+    /// Its number in [`JsonTable::types`].
+    pub number: u32,
 }
 
 impl JsonTable {
     /// The codec of the type numbered `at`.
     pub fn codec_of(&self, at: u32) -> Option<CodecId> {
         self.types.get(at as usize).copied()
+    }
+
+    /// The number of the event type whose identity key is `key`, which
+    /// its payload is written and read by.
+    pub fn event(&self, key: &str) -> Option<u32> {
+        self.events
+            .iter()
+            .find(|event| event.key == key)
+            .map(|event| event.number)
     }
 }
 

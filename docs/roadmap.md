@@ -1773,7 +1773,7 @@ chunks below, taken before Phase 6.
   `backfills.rs` has a live test per finding; reads in Jadpo share
   `Column::of_builtin` with queries, so a percentage can be filled. The
   choices are area 5's and area 2's "Chosen in chunk 5.8b".
-- [ ] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
+- [x] **5.8c Phase 5 review fixes: rules and vectors** `opus · high`: a
   query result type with cross-field rules checked row by row as it is
   read, or refused; `ai.distance` in `where:` never keeping a NaN or
   infinite distance and comparing against the bound's exact double, and a
@@ -1786,6 +1786,20 @@ chunks below, taken before Phase 6.
   way a value is made (JSON, query strings, `text.parse`, settings,
   storage reads), standard types' named rules, `altitudes_agree`, and
   `prompts.render` with restricted fields.
+  Built: a result type with rules is refused (`query.result_rule`, area 6,
+  "Chosen in chunk 5.8c"); a cosine vector of zeros breaks `distance`, a
+  type indexed at half precision holds its items within ±65,504 (`min`,
+  `max`), `where:` distances never meet `NaN` or an infinity and compare
+  against the double that agrees with code's decimal, and nearest queries
+  set `hnsw.max_scan_tuples` to pgvector's most (area 21); JSON is read by
+  Jadpo's own reader, refusing a member named twice as malformed and
+  rounding a vector's item from its own text (area 19). The slice found
+  text literals of standard objects kept unchecked (a backwards range,
+  WKT with mixed altitudes, any number where a `Rating` goes), now
+  `type.invalid_literal` or `type.mismatch`, and standard objects read
+  from the store unchecked, now a defect naming the rule (areas 2 and
+  19); query strings, `text.parse`, settings and `prompts.render` with
+  restricted fields already held.
 - [x] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
   query giving a map layer", decided 2026-10-19): a query returning its
   records as a `FeatureCollection<G, P>`, naming the geometry field and
@@ -1815,7 +1829,7 @@ chunks below, taken before Phase 6.
   `WebAuthnCredential`'s contract JSON through the plan's JSON table;
   parts and passkeys kept before encodings read as they were written, as
   area 19's "Chosen in chunk 5.9" records.
-- [ ] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
+- [x] **5.9b JSON columns** `opus · xhigh` (area 5, "Storage types";
   split from 5.9), after 5.9: JSON columns for any type the route codec
   handles, so an application's objects, lists, maps and enums with data
   can be stored as `jsonb` (today `toolchain.not_built_yet`), read
@@ -1823,7 +1837,21 @@ chunks below, taken before Phase 6.
   event and job types numbered in the plan's JSON table, so 6.1b writes
   the outbox's payload through it. Done when an entity storing an object,
   a list, a map and an enum with data reads each back unchanged on live
-  PostgreSQL, its rules enforced.
+  PostgreSQL, its rules enforced. *Built:* chunk 5.5w2b's column path
+  for any structured type, its parts with no stored form
+  `data.field_without_json`; a value kept as JSON held to a request
+  body's 1 MiB and 128 levels, `none` the column's `NULL`; no query
+  condition, order, unique rule, index or lifecycle value but `none` on
+  one; every event type numbered in the JSON table by its identity key
+  (no job takes arguments yet); live tests reading each back unchanged
+  and faulting on rows edited to break a rule. Changing a stored type
+  isn't migrated yet. Choices in area 5's "Chosen in chunk 5.9b".
+- [ ] **5.9c Migrating stored structured values** `opus · high` (area 5),
+  after 5.9b: the migration snapshot records what a JSON column's type
+  allows, so changing the stored type or the field's rules makes a
+  migration that rewrites or refuses stored values the new type can't
+  read, rather than a fault on read; and a required structured field
+  added to a table with rows taking a `backfill:` as any other field does.
 - [ ] **5.10 Docs consolidation** `opus · high`: each "Chosen in chunk"
   note folded into the text it amends and what it supersedes deleted
   (they contradict each other and the code: area 19's `ai.embed` and

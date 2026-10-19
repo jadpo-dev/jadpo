@@ -614,7 +614,9 @@ impl Reader<'_> {
         }
         if let Err(problem) = literal::check(&self.lookup, ty, constant) {
             let diagnostic = match problem {
-                Problem::Kind { .. } => Diagnostic::new(
+                // A setting never holds a standard object, so its text is
+                // never unread (chunk 5.8c).
+                Problem::Kind { .. } | Problem::Unread(_) => Diagnostic::new(
                     &rule::CONFIGURATION_DEFAULT_TYPE,
                     format!("`{shown}` can't be the {word} of `{name}`"),
                 )

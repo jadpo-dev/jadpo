@@ -242,6 +242,8 @@ rules! {
         "05-data.html#data-entity-in-field", "Field holds an entity instead of a reference to one";
     DATA_FIELD_LIST_REQUIRED: "data.field_list_required", area 5, Error, Agent,
         "05-data.html#data-field-list-required", "Unique rule or index is not a list of fields";
+    DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,
+        "05-data.html#data-field-without-json", "Structured field holds a type with no stored JSON form";
     DATA_GENERATED_TYPE: "data.generated_type", area 5, Error, Agent,
         "05-data.html#data-generated-type", "Generated field is not a required `Instant`";
     DATA_IDENTITY_MISSING: "data.identity_missing", area 5, Error, Agent,
@@ -558,6 +560,8 @@ rules! {
         "06-reads-and-writes.html#query-repeated-section", "Query section is given twice";
     QUERY_RESULT_FIELD: "query.result_field", area 6, Error, Agent,
         "06-reads-and-writes.html#query-result-field", "Result type has a field the entity cannot fill";
+    QUERY_RESULT_RULE: "query.result_rule", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-result-rule", "Query result type has rules across its fields";
     QUERY_RESULT_TYPE: "query.result_type", area 6, Error, Agent,
         "06-reads-and-writes.html#query-result-type", "Query result is not the entity or a type derived from it";
     QUERY_SECTION_REQUIRED: "query.section_required", area 6, Error, Agent,

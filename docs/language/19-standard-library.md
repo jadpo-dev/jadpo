@@ -320,8 +320,10 @@ that instruction, each the most conservative reading:
 > OpenAPI one encoder for every standard type, read from its entry
 > ("Chosen in chunk 5.5w3"), and chunk 5.5w3b made every SQL literal
 > the value the runtime's storage codec binds ("Chosen in chunk 5.5w3b");
-> the boundaries not built yet take these encodings in the chunks that
-> build them.
+> chunk 5.9b stored an application's structured values as their
+> contract's JSON too, and numbered each event type in the plan's JSON
+> table for the outbox (area 5, "Chosen in chunk 5.9b"); the boundaries
+> not built yet take these encodings in the chunks that build them.
 
 ### Changing a standard type's encoding
 
@@ -5174,7 +5176,7 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
 
 | Operation | Gives | Fails | SQL form |
 |---|---|---|---|
-| `json.read(text, as: T)` | `T`, decoded and checked against every rule of `T`; `text` is `Text`, or `Bytes` in UTF-8 | `malformed` (not JSON), `mismatch` (a field missing, unknown or breaking a rule) | none |
+| `json.read(text, as: T)` | `T`, decoded and checked against every rule of `T`; `text` is `Text`, or `Bytes` in UTF-8 | `malformed` (not JSON, or an object naming a member twice), `mismatch` (a field missing, unknown or breaking a rule) | none |
 | `json.write(value)` | `Text`, compact; fields in declared order, sets and map keys in canonical order, so the same value always gives the same text | | none |
 | `json.read(file, items_at:, as:, each:, finished:, key:)` | `BatchRun` over a large JSON list in a stored `File`, `items_at:` naming where the list sits in the document; each item an `Input` of `as:`, handed to `each:` | As `csv.read` | none |
 | `json.write(store, name:, from:, each:, finished:, key:)` | `BatchRun` writing a large JSON list, each item of `from:` turned into an `Output` by `each:` | As `csv.write` | none |
@@ -11075,6 +11077,8 @@ session, 2026-10-18):
   `toolchain.not_built_yet`, as one on a compound type is, and ordering by
   one was already refused; an application's own structured fields stay
   refused where they are declared, since their codec isn't built.
+  *Since built: chunk 5.9b stores them the same way (area 5, "Chosen in
+  chunk 5.9b").*
 
 ### Chosen in chunk 5.5w3
 
@@ -11254,6 +11258,80 @@ From the Phase 5 soundness review, each the most conservative reading:
   seals with a nonce a production run used under the same key. A
   password's salt is not secret and stays on the tape, so a replayed
   `hash_password` gives the hash the recorded run made.
+
+### Chosen in chunk 5.8c
+
+From the Phase 5 soundness review, each the most conservative reading:
+
+- **A JSON object that names a member twice is no document Jadpo
+  reads:** `json.read` is `malformed`, and a request's body is refused as
+  any body that isn't JSON is, whether the object is an `Object`'s, an
+  `Input`'s or a map's. Reading kept the last one, which another reader
+  might not, so the value read could be one the sender didn't mean;
+  `crypto.verify_jwt` already refuses a token whose claims do the same
+  (chunk 5.5r). A set's repeated item stays a `duplicate` problem, since
+  it is a value, not the document's shape.
+- **A vector's item is the float nearest its own text.** JSON was read
+  as a double, then rounded to the float, which is a different float for
+  a number near the midpoint of two; each number's text as written is now
+  kept beside the document, so an item is rounded once, as 5.5s2 says.
+  The reader is Jadpo's own, RFC 8259's grammar as `serde_json` reads it,
+  with the same 128 levels of nesting, and reads every number's double
+  correctly rounded.
+- **What a vector type holds beyond its length** (area 21, "Chosen in
+  chunk 5.8c"): not all zeros when compared by cosine, `distance`, and its
+  items within ±65,504 when indexed at half precision, `min` and `max`.
+- **Text written where a standard object type with rules across its parts
+  goes is refused.** Such text is the type's canonical text, which the
+  contract reads only when the program runs, so a backwards range or a
+  week past its year's last was kept, its rules never checked. The checker
+  doesn't hold the contract's readers, so it can't read the text either;
+  the literal is `type.invalid_literal`, and the type is written out as an
+  object literal, whose rules are checked, or read with `text.parse` and
+  `attempt`. A type with one text form and no such rules
+  (`SemanticVersion`, `CardExpiry`, `Colour`) still takes its text.
+- **Any other literal where a standard object type goes is
+  `type.mismatch`:** a number, a `Bool`, or text where a type with no
+  single text form goes (`PostalAddress`, or WKT where a geometry goes,
+  mixed altitudes included). Each was kept as written and faulted where
+  it was used.
+- **A standard object read from the store is checked against its rules
+  across its parts,** as a value made anywhere else is; Jadpo writes none
+  that breaks one, so a row that does was written around it, and reading
+  it is a defect naming the rule, never the values.
+
+```jadpo check project=e-unread-text expect=type.invalid_literal
+/// When the shop's winter sale runs.
+function winter_sale() -> DateRange {
+    return "2026-12-27/2027-01-03"
+}
+```
+
+```text output
+error: `"2026-12-27/2027-01-03"` can't be checked as a `DateRange` while compiling
+ --> main.jadpo:3:12
+  |
+3 |     return "2026-12-27/2027-01-03"
+  |            ^^^^^^^^^^^^^^^^^^^^^^^ canonical text
+  reason: A `DateRange` has rules across its parts, which every literal is checked against while compiling; text written where one goes is its canonical text, which isn't read until the program runs, so its rules can't be checked.
+  next: Write it out as `DateRange { ... }`, or read the text with `text.parse(..., as: DateRange)` and `attempt` (agent)
+  rule: type.invalid_literal
+  help: docs/language/02-values-and-types.html#type-invalid-literal
+
+check failed: 1 error, 1 file
+```
+
+Written out, the sale's rules are checked while compiling:
+
+```jadpo check project=unread-text-written
+/// When the shop's winter sale runs.
+function winter_sale() -> DateRange {
+    return DateRange {
+        start: "2026-12-27"
+        end: "2027-01-03"
+    }
+}
+```
 
 ### Chosen in chunk 5.9
 

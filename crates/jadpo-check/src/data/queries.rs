@@ -510,6 +510,11 @@ impl<'a> Reader<'a> {
             .map_or_else(|| span.clone(), |ty| Self::span(path, &ty));
         let (cardinality, element_ty, nearest_result, layer) =
             self.result(&name, &sig.result, entity, &result_span)?;
+        // A result type with rules across its fields (chunk 5.8c).
+        if let Some((ty, rule)) = self.result_rule(&element_ty, &mut Vec::new()) {
+            self.result_rule_refused(&name, &ty, &rule, &result_span);
+            return None;
+        }
         // A map layer (chunk 5.5u8) names its features' geometry field, and
         // only a map layer does.
         self.layer = layer.is_some();
@@ -962,6 +967,58 @@ impl<'a> Reader<'a> {
             )),
         );
         None
+    }
+
+    /// The first type among the records a query returns, `ty` and the
+    /// object types its fields hold (an include's records), that names a
+    /// rule across its fields, with that rule's name (chunk 5.8c).
+    fn result_rule(&self, ty: &str, seen: &mut Vec<String>) -> Option<(String, String)> {
+        if seen.iter().any(|s| s == ty) {
+            return None;
+        }
+        seen.push(ty.to_string());
+        let Some(Def::Fields { fields, rules, .. }) = self.lookup.def(ty) else {
+            return None;
+        };
+        if let Some(rule) = rules.first() {
+            return Some((ty.to_string(), rule.name.clone()));
+        }
+        let fields = fields.clone();
+        for field in &fields {
+            let mut inner = &field.declared;
+            loop {
+                inner = match inner {
+                    Ty::List(item) | Ty::Nullable(item) => item.as_ref(),
+                    Ty::Opaque(_, args) if args.len() == 1 => &args[0],
+                    _ => break,
+                };
+            }
+            if let Ty::Named(name) = inner
+                && let Some(found) = self.result_rule(name, seen)
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// `query.result_rule` (chunk 5.8c): a read makes its values from
+    /// stored records with no `attempt` around it, so it can't check, or
+    /// report, a rule across a result's fields.
+    fn result_rule_refused(&mut self, name: &str, ty: &str, rule: &str, span: &Span) {
+        self.out.push(
+            Diagnostic::new(
+                &rule::QUERY_RESULT_RULE,
+                format!("`{name}` returns `{ty}`, whose rule `{rule}` no read can check"),
+            )
+            .at(span.clone(), format!("`{ty}` has rules"))
+            .reason(format!(
+                "A rule across an object's fields is checked whenever a value is made, and a value that breaks it is a failure an `attempt` maps; a query makes `{ty}` from stored records with no `attempt` around it, so its result type has no rules across its fields."
+            ))
+            .next(format!(
+                "Return a type without rules, and build `{ty}` from it with `attempt` where its rules are checked"
+            )),
+        );
     }
 
     fn section_required(
@@ -1498,9 +1555,11 @@ impl<'a> Reader<'a> {
                 );
                 return None;
             }
-            // A JSON-held value is stored whole as its JSON, which a
-            // query's condition doesn't compare yet (chunk 5.5w2b).
-            if let Some(held) = field.json {
+            // A structured value is stored whole as its JSON, which a
+            // query's condition doesn't compare yet (chunks 5.5w2b and
+            // 5.9b): PostgreSQL compares `jsonb` by its own rules, not by
+            // Jadpo's `==`.
+            if let Some(held) = &field.json {
                 self.out.push(
                     Diagnostic::new(
                         &rule::TOOLCHAIN_NOT_BUILT_YET,
@@ -1508,7 +1567,7 @@ impl<'a> Reader<'a> {
                     )
                     .at(Self::span(scope.path, whole), format!("a `{held}`"))
                     .reason(format!(
-                        "`{}.{}` is a `{held}`, stored whole as its JSON in one `jsonb` column (area 19), and this compiler's queries don't compare such a column yet.",
+                        "`{}.{}` is a `{held}`, stored whole as its JSON in one `jsonb` column (area 5), and this compiler's queries don't compare such a column yet.",
                         entity.name, field.name
                     ))
                     .next("Filter the records after the query for now"),
@@ -2948,12 +3007,6 @@ impl<'a> Reader<'a> {
                 .iter()
                 .map(|f| (f.name.clone(), Source::Column(f.name.clone())))
                 .collect();
-            self.structured(
-                span,
-                ty,
-                entity,
-                entity.fields.iter().map(|f| f.name.as_str()),
-            );
             return Some((
                 Element {
                     ty: ty.to_string(),
@@ -2990,7 +3043,6 @@ impl<'a> Reader<'a> {
                 );
             }
         }
-        let mut columns = Vec::new();
         for field in &declared {
             if let Some(at) = includes.iter().position(|i| i.name == field.name) {
                 let include = &includes[at];
@@ -3078,10 +3130,8 @@ impl<'a> Reader<'a> {
                 );
                 continue;
             }
-            columns.push(column.name.as_str());
             fields.push((field.name.clone(), Source::Column(column.name.clone())));
         }
-        self.structured(span, ty, entity, columns.into_iter());
         ok.then(|| {
             (
                 Element {
@@ -3091,37 +3141,6 @@ impl<'a> Reader<'a> {
                 filled,
             )
         })
-    }
-
-    /// A stored field kept as `jsonb` can't be read yet: its codec is the
-    /// API's JSON, which comes with area 7.
-    fn structured<'f>(
-        &mut self,
-        span: &Span,
-        ty: &str,
-        entity: &EntityModel,
-        columns: impl Iterator<Item = &'f str>,
-    ) {
-        let structured: Vec<String> = columns
-            .filter(|c| {
-                entity.fields.iter().any(|f| {
-                    f.name == *c && f.sql_type.as_deref() == Some("jsonb") && f.json.is_none()
-                })
-            })
-            .map(|c| format!("`{}.{c}`", entity.name))
-            .collect();
-        if structured.is_empty() {
-            return;
-        }
-        self.out.push(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!("Reading {} isn't built yet", crate::and_list(&structured)),
-            )
-            .at(span.clone(), format!("`{ty}` reads a structured field"))
-            .reason("A structured field (an object, a list, a set, a map or an enum with data) is stored whole as `jsonb` in the API's JSON (area 5), and that codec comes with routes (area 7).")
-            .next(format!("Leave the structured fields out of `{ty}` for now")),
-        );
     }
 
     /// The result field an include fills: the shape its kind gives, of the
