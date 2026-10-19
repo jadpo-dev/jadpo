@@ -140,6 +140,7 @@ impl Planner<'_> {
                 page: None,
                 missing: None,
                 recheck: None,
+                layer: false,
             },
         })
     }

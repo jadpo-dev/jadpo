@@ -1467,7 +1467,9 @@ impl Walk<'_> {
         ) else {
             return Prov::default();
         };
-        if is_output(&flow.lookup, &model.element.ty) {
+        // A map layer is proved where it is declared, as an `Output` is
+        // (chunk 5.5u8).
+        if model.geometry.is_some() || is_output(&flow.lookup, &model.element.ty) {
             return Prov::default();
         }
         let reached = self.gated(flow.prover.read(&model.entity));

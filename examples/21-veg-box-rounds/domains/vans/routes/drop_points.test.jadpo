@@ -1,24 +1,19 @@
 use vans/entities { DropPoint }
-use vans/types { MapView }
-use vans/actions { drop_point_map }
+use vans/queries { drop_points_layer }
 use vans/fixtures { keswick_drop_points }
 
-test "the map fetches the drop points in view as GeoJSON" {
+test "the map fetches the drop points as GeoJSON" {
     var all_three: List<DropPoint> = keswick_drop_points()
     assert list.count(all_three) == 3
-    var keswick_view: BoundingBox = BoundingBox {
-        south: 54.59
-        west: -3.14
-        north: 54.61
-        east: -3.12
-    }
     var response: Response = request {
-        method: HttpMethod.post
-        path: "/drop-points/in-view"
-        input: MapView {
-            view: keswick_view
-        }
+        method: HttpMethod.get
+        path: "/drop-points"
     }
     assert response.status == 200
-    assert response.output == drop_point_map(keswick_view)
+    assert response.output == drop_points_layer()
+    assert list.map(response.output.features, pin -> pin.properties.name) == [
+        "Braithwaite Stores",
+        "Keswick Market",
+        "Threlkeld Village Hall"
+    ]
 }

@@ -17,7 +17,7 @@ other geometries and `Geometry`, all in WGS84 and sent as GeoJSON. This
 page adds what they were waiting for: the `geo.` operations, storage in
 PostGIS, query conditions and indexes, and the formats other systems use.
 
-> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunk 5.5u5 built the query conditions, the order by distance and the derived indexes, as "Chosen in chunk 5.5u5" records; chunk 5.5u6 built interop, as "Chosen in chunk 5.5u6" records; chunk 5.5u7 built altitudes all or nothing and a layer sent from a route, as "Chosen in chunk 5.5u7" records. Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
+> Decided 2026-10-18 (Richard), as recommended, with one clarification to question 5: PostGIS is needed only once an application has a geometry column or index, and an application with none never needs it. Chunk 5.5u wrote the page; the "Decisions" table under "Review" records each decision. Chunk 5.5u2 built the measures, `geo.distance`, `length`, `bearing` and `area`, and every coordinate held as the shortest decimal of the nearest double, as "Chosen in chunk 5.5u2" records; chunk 5.5u3 built the predicates, `centroid`, `bounding_box` and `rings_valid`, as "Chosen in chunk 5.5u3" records; chunk 5.5u4 built storage and the declared index, as "Chosen in chunk 5.5u4" records; chunk 5.5u5 built the query conditions, the order by distance and the derived indexes, as "Chosen in chunk 5.5u5" records; chunk 5.5u6 built interop, as "Chosen in chunk 5.5u6" records; chunk 5.5u7 built altitudes all or nothing and a layer sent from a route, as "Chosen in chunk 5.5u7" records. Chunk 5.5u8 let a query give a layer, so a `GET` route sends one (area 6, "A query giving a map layer"). Where this page changes another area (questions 2, 3 and 7 amend area 19's scope and chunk 5.5s's choices), that page is amended by the chunk that builds the change. Facts marked "verified" were checked against PostGIS 3.4.2 on PostgreSQL 16 (Postgres.app, this machine); "estimate" marks a number the build measures.
 
 | Part | Decided | Builds on |
 |---|---|---|
@@ -1157,8 +1157,10 @@ test "the map fetches its pins as GeoJSON" {
 }
 ```
 
-The route answers `POST`: a `GET` runs a query, and a query can't build
-a layer yet ("Chosen in chunk 5.5u7").
+This route answers `POST`, since an action builds its layer. A layer of
+stored records comes from a query, which a `GET` route runs, so a mapping
+library fetches it from the route's address: area 6, "A query giving a
+map layer" (chunk 5.5u8).
 
 
 WKT, built in chunk 5.5u6, from the planner's spreadsheet, which holds
@@ -1353,7 +1355,7 @@ test "a pasted patch is read longitude first" {
 | Box filter | On `Point` fields only, through an index on the column cast to `geometry` (Richard, as recommended, question 11) | 2026-10-18 |
 | The rest of the page | Operations, storage, queries, precision, interop and what is left out, as written (Richard, as recommended) | 2026-10-18 |
 | Altitudes | Every position in a geometry has an altitude or none does: `format` when read, the rule `altitudes_agree` when built (Richard, as recommended, after chunk 5.5u4) | 2026-10-19 |
-| A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7; Richard, as recommended, after chunk 5.5u6) | 2026-10-19 |
+| A layer from a route | A route may send a `FeatureCollection<G, P>` bare, as it sends a `List` or `Page` of an `Output`, so a mapping library fetches the layer itself; `P` holds only what clients may see (area 7; Richard, as recommended, after chunk 5.5u6). A query gives one for a `GET` route since chunk 5.5u8 (area 6) | 2026-10-19 |
 
 ### Chosen in chunk 5.5u2
 
@@ -1857,7 +1859,9 @@ test "a pasted patch is read longitude first" {
   or an `Output`, never a layer, so a route sending one runs an action,
   with `POST`. Open for Richard: a mapping library fetches its layer
   with `GET`, so letting a query build one would let it point at the
-  route directly.
+  route directly. *Decided 2026-10-19 and built in chunk 5.5u8:*
+  a query gives a layer, which a `GET` route sends (area 6, "A query
+  giving a map layer").
 - **Example values.** `LineString`'s accepted example with one point at a
   height became one with every point at a height, and each geometry's
   refused examples gained a mix, which the per-type tests read through

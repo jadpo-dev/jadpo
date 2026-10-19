@@ -4,6 +4,6 @@ use vans/types { DropPointName }
 /// What a drop point's pin on the map says: a feature's identity goes in
 /// its properties.
 type DropPointPin = Object {
-    drop_point_id: DropPoint.id
+    id: DropPoint.id
     name: DropPointName
 }

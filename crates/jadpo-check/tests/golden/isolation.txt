@@ -45,7 +45,6 @@
   fixture northwind                  read_committed
 21-veg-box-rounds
   action draw_round                  read_committed
-  action drop_point_map              repeatable_read: calls the query `drop_points_in_view`
   action open_drop_point             read_committed
   action record_delivery             repeatable_read: is handed a record in `drop_point`
   fixture keswick_drop_points        read_committed

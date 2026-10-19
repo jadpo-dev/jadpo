@@ -1,0 +1,15 @@
+// A query can give a map layer: a `FeatureCollection` whose features are
+// its records, each one's geometry the field `geometry:` names and its
+// properties filled from the record's fields of the same names. It picks
+// fields and computes nothing, so a `GET` route can send it as it is.
+
+use vans/entities { DropPoint }
+use vans/types { DropPointPin }
+
+/// Every drop point, as the layer the customer map draws.
+query drop_points_layer() -> FeatureCollection<Point, DropPointPin> {
+    from: DropPoint
+    geometry: DropPoint.spot
+    order: [DropPoint.name asc]
+    limit: 500
+}

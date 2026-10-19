@@ -22,7 +22,7 @@ same records would give.
 3. **Inside a box or a circle.** `geo.within` of a `BoundingBox` or a `Circle` parameter. See `domains/vans/queries/drop_points_in_view.jadpo` and `domains/vans/queries/drop_points_around.jadpo`.
 4. **Areas that hold or touch.** `geo.contains` and `geo.intersects` on a stored polygon, the edge counting as inside. See `domains/vans/queries/rounds_serving.jadpo` and `domains/vans/queries/rounds_crossed.jadpo`.
 5. **The indexes the queries need.** A GiST index for `outline` and a box index for `spot`, derived by the compiler, and none for `spot` itself, which the declared index already holds. See `database/migrations/20261102T0900_initial/postgres.sql` and [area 20, Indexes](../../docs/language/20-geospatial.md#indexes).
-6. **A layer from a route.** An action builds a `FeatureCollection` from what a query found, and a `POST` route sends it bare, as plain GeoJSON. See `domains/vans/actions/drop_point_map.jadpo`, `domains/vans/routes/drop_points.jadpo` and [area 20, Interop](../../docs/language/20-geospatial.md#interop).
+6. **A layer from a query.** A query returning a `FeatureCollection` names each feature's geometry field in `geometry:` and fills its properties from the record's fields, and a `GET` route sends it bare, as plain GeoJSON a mapping library fetches. See `domains/vans/queries/drop_points_layer.jadpo`, `domains/vans/routes/drop_points.jadpo` and [area 6, A query giving a map layer](../../docs/language/06-reads-and-writes.md#a-query-giving-a-map-layer).
 7. **Counts, sums and time buckets.** `group:` by `temporal.year` and `temporal.month` of a date, and `count`, `sum`, `min`, `max` and `average`, a `Money` sum among them. See `domains/vans/queries/monthly_deliveries.jadpo`, `domains/vans/types/month_of_deliveries.jadpo` and [area 6, Counts, sums and groups](../../docs/language/06-reads-and-writes.md#counts-sums-and-groups).
 8. **A computed backfill.** A required field added to deliveries already stored, each row's value worked out from its own boxes by the library function the action uses. See `database/migrations/20261116T0900_pack_in_crates/`, `domains/vans/libraries/crates.jadpo` and [area 5, Computed backfills](../../docs/language/05-data.md#computed-backfills).
 
@@ -51,6 +51,8 @@ cd examples/21-veg-box-rounds && ../../target/release/jadpo sql drop_points_near
 
 - In `drop_points_near.jadpo`, delete the `where:` line. `jadpo check` reports `query.order_field`: nearest first needs the radius the index searches.
   <!-- try {"file": "domains/vans/queries/drop_points_near.jadpo", "replace": "    where: geo.within(DropPoint.spot, doorstep, distance: max_walk)\n", "with": "", "check": ["query.order_field"]} -->
+- In `drop_points_layer.jadpo`, write `geometry: DropPoint.name`. `jadpo check` reports `query.geometry_field`: each feature's geometry is a stored `Point`.
+  <!-- try {"file": "domains/vans/queries/drop_points_layer.jadpo", "replace": "geometry: DropPoint.spot", "with": "geometry: DropPoint.name", "check": ["query.geometry_field"]} -->
 - In `monthly_deliveries.jadpo`, average the boxes to `scale: 0`. The month test fails with `test.assertion_failed`: November's 9.7 boxes a delivery is now 10.
   <!-- try {"file": "domains/vans/queries/monthly_deliveries.jadpo", "replace": "scale: 1,", "with": "scale: 0,", "test": ["test.assertion_failed"], "failed": 1} -->
 - Then read [22-plant-helpline](../22-plant-helpline/README.md), which stores what text means and searches by it.
