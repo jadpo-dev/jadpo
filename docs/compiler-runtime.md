@@ -2570,7 +2570,11 @@ page's items through `runner::items` (an item undone alone on a failure
 or a fault, `boundary::Undo`), then `finished:`; `resume` picks up runs
 whose lease lapsed, for 6.2's minute tick; `status` and `cancel` read the
 row and keep a cancel. An executor gives the runner its batches through
-`Executor::batches`, so compiled code runs the same runner.
+`Executor::batches`, so compiled code runs the same runner. In an
+application with a tenant the plan's `BatchTenant` names which saved
+values hold the tenant's id, and each page runs as the system limited to
+the one tenant they name, or to none (`outbox::named_tenant`, shared
+with a subscriber's delivery; chunk 6.4c).
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

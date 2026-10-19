@@ -2034,11 +2034,19 @@ chunks below, taken before Phase 6.
   deploy. Choices in area 12's "Chosen in chunk 6.4"; flagged there:
   tenancy (`batches.each` refused where `policy` names a `tenant:`) and
   the `Access.public` check for a batch's reach.
-- [ ] **6.4c Batches with tenants and grants** `opus · high` (areas 12 and
+- [x] **6.4c Batches with tenants and grants** `opus · high` (areas 12 and
   9, decided 2026-10-19): `batches.each` in an application with
   `tenant:`, a run limited to the tenant its one saved tenant id names
   (none or several reaching no tenant's records), and a batch reaching
   what only `Access.public` grants refused as `policy.system_grant_missing`.
+  Built: the plan's `BatchTenant`, the saved values (a `from:` argument,
+  a capture or `key:`) whose type is the tenant's `id`, read back as each
+  runner claims the run and passed as the system's tenant, with 6.1b's
+  rule for an event's field shared (`outbox::named_tenant`); the
+  `Access.public` check at a batch's query and actions; a live test of
+  one, none and two saved tenant ids, and both errors as checked
+  examples. Choices in area 12's "Chosen in chunk 6.4c"; flagged there:
+  two saved ids naming the same tenant limit the run to it.
 - [ ] **6.5 Teaching examples for Phase 6** `opus · high`: events,
   schedules and batches, passing `--require-examples`.
 
