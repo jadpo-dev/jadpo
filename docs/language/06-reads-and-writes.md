@@ -276,20 +276,22 @@ query due_todos(owner_id: User.id, filter: ListTodos) -> List<TodoView> {
 ```
 
 A condition must be one the database can use an index for: a field,
-named first, compared with a value. A function applied to a field, two
-fields compared, and a value worked out in the query are refused; values
+named first, compared with a value. Two fields compared and a value
+worked out in the query are refused, and so is a function applied to a
+field, but for the operations below; values
 are parameters and their fields, literals, enum values, lists of those and
 `clock.now`. A constant (area 3, [Constants](03-logic.md#constants)) is
 accepted wherever a literal is, since it is a value fixed while compiling
 (decided 2026-10-16, built in chunk 5.3e). `<` and the other orderings take numbers, times, dates and
-durations, as they do in a body (area 3). Besides `ai.distance` (area
-21), the one function a field may be passed to is a `geo.` test, which a
-GiST index serves: `geo.within`,
+durations, as they do in a body (area 3). A field may be passed to three
+kinds of operation. `ai.distance` (area 21) is compared with a bound. A
+`geo.` test, which a GiST index serves: `geo.within`,
 `geo.contains` or `geo.intersects` with a geometry field first and a
 parameter after, on a `where:` line of its own or joined by `and`; the
 index finds the records and Jadpo's own code decides each, so the query
 gives the code's answer ([area 20](20-geospatial.md), "Queries", built
-in chunk 5.5u5). A field that is `none` meets no
+in chunk 5.5u5). And a standard operation with an exact SQL form, which
+stands where the field would ("Operations in conditions", below). A field that is `none` meets no
 comparison but `!=`, and `not` keeps that meaning, so SQL's `NULL` never
 shows through. A `where:` line can't compare with a value that may be
 absent; that is what `where_present:` is for. The compiler creates the
@@ -303,6 +305,172 @@ accepts exactly one `field == value`, and a nullable field cannot be tested
 at all. The page example is under the next section.
 
 :::
+
+### Operations in conditions
+
+A standard operation may stand where a field does when area 19 gives it
+an exact SQL form ([area 19](19-standard-library.md), "SQL forms"): the
+field is its first argument, and every other argument is written out, a
+literal, a constant or an enum value such as `Rounding.half_even`. The
+database works the operation out with that form, which gives exactly what
+the operation gives in code, so the query keeps the records `list.filter`
+would keep with the same operation (decided 2026-10-19, built in chunk
+6.3b). Its result is compared with a value as a field's is, by `==`, `!=`,
+`in` and, for numbers, times, dates and durations, the orderings; an
+operation that gives a `Bool` is the condition itself.
+
+```jadpo check project=operation-conditions file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/book_title.jadpo hidden
+/// A book's title, as printed on its cover.
+type BookTitle = Text {
+    max_length: 200
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/publication_year.jadpo hidden
+/// A year a book can have been first published in.
+type PublicationYear = Int {
+    min: 1450
+    max: 2100
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/entities/book.jadpo
+use library/types { BookTitle }
+
+/// A book in the catalogue.
+entity Book {
+    id: Uuid
+    title: BookTitle
+    published_on: CalendarDate
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/types/book_card.jadpo hidden
+use library/entities { Book }
+
+/// A book in a list.
+type BookCard = Output {
+    pick: [Book.id, Book.title]
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/actions/add_book.jadpo hidden
+use library/entities { Book }
+use library/types { BookTitle }
+
+/// Adds a book to the catalogue.
+action add_book(title: BookTitle, published_on: CalendarDate) -> Book {
+    return Book.create {
+        set: {
+            title: title
+            published_on: published_on
+        }
+    }
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/queries/spine_titles.jadpo
+use library/entities { Book }
+use library/types { BookCard }
+
+/// The books whose title fits on a spine label.
+query spine_titles() -> List<BookCard> {
+    from: Book
+    where: text.length(Book.title) <= 24
+    order: [Book.title asc]
+    limit: 50
+}
+```
+
+```jadpo check project=operation-conditions file=domains/library/queries/published_in.jadpo migrate=initial
+use library/entities { Book }
+use library/types { BookCard, PublicationYear }
+
+/// The books first published in a year.
+query published_in(year: PublicationYear) -> List<BookCard> {
+    from: Book
+    where: temporal.year(Book.published_on) == year
+    order: [Book.title asc]
+    limit: 100
+}
+```
+
+A title is counted in code points, as `text.length` counts it, however
+many bytes it takes, and a year ends where `temporal.year` says, run on
+PostgreSQL:
+
+```jadpo check project=operation-conditions file=domains/library/queries/spine_titles.test.jadpo
+use library/actions { add_book }
+use library/entities { Book }
+use library/queries { published_in, spine_titles }
+use library/types { BookCard, BookTitle }
+
+test "a query keeps the books its operation keeps in code" {
+    var dune: Book = add_book(BookTitle("Dune"), "1965-08-01")
+    var cafe: Book = add_book(BookTitle("Café Society à la Plage!"), "1965-12-31")
+    var left_hand: Book = add_book(BookTitle("The Left Hand of Darkness"), "1969-03-01")
+    var spine: List<BookCard> = spine_titles()
+    assert text.join(list.map(spine, card -> card.title), ", ") == text.join(
+        [cafe.title, dune.title],
+        ", "
+    )
+    assert text.length(cafe.title) == 24
+    assert text.length(left_hand.title) == 25
+    var sixty_five: List<BookCard> = published_in(1965)
+    assert list.count(sixty_five) == 2
+    assert list.count(published_in(1969)) == 1
+}
+```
+
+- **Every other argument is written out.** The compiler derives an index
+  on the operation's result for each record, `CREATE INDEX ... ((form))`,
+  one for each operation of a field however many queries test it, as it
+  derives one for a field's test (area 5, "Indexes"); a value given when
+  the query runs would change what the index holds, so a parameter as
+  another argument is `query.condition_unsupported`.
+- **Only an exact form, and one an index can hold.** An operation without
+  a SQL form (`text.lower`, whose result PostgreSQL's collation would
+  decide) is `query.condition_unsupported`, and so is one whose form an
+  index can't hold: `map.count` and `temporal.period_between` read a
+  subquery, and `hash.sha256` and `encoding.to_utf8` of text convert
+  through the database's encoding, which PostgreSQL won't index. A field
+  kept in several columns, such as an amount of money, or as a range, isn't
+  compared in a query yet, its operations included.
+- **The field first, once.** The field is the operation's first argument,
+  given as it is; an operation of another operation's result, or with the
+  field anywhere else, is `query.condition_unsupported`.
+- **`none`.** A record whose field is `none` meets no condition on an
+  operation of it, `not` included, as code can't call the operation on
+  `none`.
+- **Anywhere a comparison stands.** Under `not` and `or`, on a
+  `where_present:` line, in an include's `where:` and in an aggregate
+  query, since the database works the operation out exactly; `order:`
+  still takes fields only.
+
+The statements (`jadpo sql`) and the indexes derived for them:
+
+```sql
+-- spine_titles
+SELECT "id", "title"
+FROM "book"
+WHERE char_length("title")::bigint <= $1
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT 50
+
+-- published_in
+SELECT "id", "title"
+FROM "book"
+WHERE (CASE WHEN extract(year FROM "published_on") < 0 THEN extract(year FROM "published_on") + 1 ELSE extract(year FROM "published_on") END)::bigint = $1
+ORDER BY "title" COLLATE "C" ASC, "id" ASC
+LIMIT 100
+
+CREATE INDEX "book_published_on_year_idx" ON "book" (((CASE WHEN extract(year FROM "published_on") < 0 THEN extract(year FROM "published_on") + 1 ELSE extract(year FROM "published_on") END)::bigint));
+CREATE INDEX "book_title_length_idx" ON "book" ((char_length("title")::bigint));
+```
 
 ## Order and pages
 
@@ -2477,6 +2645,42 @@ error: `Book.title > title` isn't a condition a query can use
    |            ^^^^^^^^^^^^^^^^^^ not an indexable condition
   reason: `>` orders numbers, times, dates, durations and quantities, as it does in a body, and `Book.title` is `Title`.
   next: Compare `Book.title` with `==`, `!=` or `in` (agent)
+  rule: query.condition_unsupported
+  help: docs/language/06-reads-and-writes.html#query-condition-unsupported
+
+check failed: 1 error, 1 file
+```
+
+A standard operation stands where a field does only when it has an exact
+SQL form ("Operations in conditions", chunk 6.3b). `text.lower` has none,
+since PostgreSQL's would follow the database's collation:
+
+```jadpo check project=e-condition-no-form expect=query.condition_unsupported
+type Title = Text {
+    max_length: 80
+}
+
+entity Book {
+    id: Uuid
+    title: Title
+}
+
+query books_titled(title: Book.title) -> List<Book> {
+    from: Book
+    where: text.lower(Book.title) == title
+    order: [Book.title asc]
+    limit: 20
+}
+```
+
+```text output
+error: `text.lower(Book.title) == title` isn't a condition a query can use
+ --> main.jadpo:12:12
+   |
+12 |     where: text.lower(Book.title) == title
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ not an indexable condition
+  reason: `text.lower` has no SQL form, an expression PostgreSQL works out exactly as the code does (area 19, "SQL forms"), so the database can't decide this condition.
+  next: Compare `Book.title` itself, or keep what the condition needs in a field of its own (agent)
   rule: query.condition_unsupported
   help: docs/language/06-reads-and-writes.html#query-condition-unsupported
 
