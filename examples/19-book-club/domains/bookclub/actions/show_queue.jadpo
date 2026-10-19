@@ -1,0 +1,21 @@
+use bookclub/types { Book, Genre, ReadingQueue }
+
+/// The noticeboard's view of the queue, with `added` just joined at the
+/// end and `requests` after it.
+action show_queue(
+    reading_line: List<Book>,
+    joining_book: Book,
+    member_requests: List<Book>
+) -> ReadingQueue {
+    var whole: List<Book> = list.concat(list.append(reading_line, joining_book), member_requests)
+    return ReadingQueue {
+        now_reading: list.first(whole)
+        after_that: list.at(whole, 1)
+        last_in_line: list.last(whole)
+        next_three: list.slice(whole, 1, 3)
+        later: list.drop_first(whole, 4)
+        newest_first: list.reverse(list.keep_last(whole, 3))
+        all_short: list.all(list.drop_last(whole, 1), book -> book.length_in_pages <= 400)
+        first_poetry: list.find(list.keep_first(whole, 10), book -> book.genre == Genre.poetry)
+    }
+}

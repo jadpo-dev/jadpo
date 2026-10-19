@@ -1,0 +1,14 @@
+use bookclub/types { Book, BookTitle, ShelfKey }
+
+/// A title as a shelf sorts it: "The Hobbit" goes under H.
+function filing_key(title: BookTitle) -> ShelfKey {
+    if (text.starts_with(title, "The ")) {
+        return ShelfKey(text.drop_first(title, 4))
+    }
+    return ShelfKey(title)
+}
+
+/// The club's books in shelf order.
+action sort_shelf(books: List<Book>) -> List<Book> {
+    return list.sort_by(books, book -> filing_key(book.title))
+}

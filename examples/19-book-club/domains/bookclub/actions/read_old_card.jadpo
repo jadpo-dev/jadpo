@@ -1,0 +1,29 @@
+// A closed list of codes has other code systems besides its own: a
+// country's three-letter and numeric codes, a book's ISBN-10. `form:`
+// says which one is read or written.
+
+use bookclub/types { CatalogueCard, ScannedText }
+use bookclub/failures { NotABook }
+
+/// A book from the old card catalogue, which gave an ISBN-10 and the
+/// author's country in three letters.
+action read_old_card(
+    isbn_10: ScannedText,
+    country_code: ScannedText
+) fails NotABook -> CatalogueCard {
+    var isbn: Isbn = attempt text.parse(isbn_10, as: Isbn, form: CodeForm.isbn10) {
+        malformed: NotABook
+    }
+    var author_land: Country = attempt text.parse(
+        country_code,
+        as: Country,
+        form: CodeForm.alpha3
+    ) {
+        malformed: NotABook
+    }
+    return CatalogueCard {
+        isbn: isbn
+        author_country: author_land
+        country_number: text.from(author_land, form: CodeForm.numeric)
+    }
+}

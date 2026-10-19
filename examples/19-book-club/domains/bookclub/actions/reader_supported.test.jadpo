@@ -1,0 +1,5 @@
+test "reading lists work from 2.1 up to, not including, 3" {
+    assert reader_supported("2.4.1")
+    assert not reader_supported("2.0.9")
+    assert not reader_supported("3.0.0")
+}

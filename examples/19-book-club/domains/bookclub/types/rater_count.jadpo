@@ -1,0 +1,4 @@
+/// How many members rated a book, when any did.
+type RaterCount = Int {
+    min: 1
+}

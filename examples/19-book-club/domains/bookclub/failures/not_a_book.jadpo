@@ -1,0 +1,4 @@
+/// An ISBN or a country code that isn't one.
+type NotABook = Failure {
+    kind: FailureKind.invalid_value
+}

@@ -1,0 +1,5 @@
+/// How many pages a book has.
+type PageCount = Int {
+    min: 1
+    max: 5000
+}

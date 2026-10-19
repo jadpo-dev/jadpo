@@ -1,0 +1,14 @@
+use bookclub/types { CatalogueCard }
+use bookclub/failures { NotABook }
+
+test "an old card's codes are read as today's" {
+    var card: CatalogueCard = attempt read_old_card("0306406152", "GBR")
+    assert card.isbn == "9780306406157"
+    assert card.author_country == Country.gb
+    assert card.country_number == "826"
+}
+
+test "a code that isn't one is refused" {
+    assert read_old_card("0306406153", "GBR") fails NotABook
+    assert read_old_card("0306406152", "XXX") fails NotABook
+}

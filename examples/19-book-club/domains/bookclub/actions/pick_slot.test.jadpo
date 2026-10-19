@@ -1,0 +1,14 @@
+use bookclub/types { ProposedSlot }
+
+test "the earliest proposal wins" {
+    var thursday_slot: ProposedSlot = ProposedSlot {
+        starts_at: "2026-11-05T19:00:00Z"
+        ends_at: "2026-11-05T21:00:00Z"
+    }
+    var tuesday_slot: ProposedSlot = ProposedSlot {
+        starts_at: "2026-11-03T19:00:00Z"
+        ends_at: "2026-11-03T21:00:00Z"
+    }
+    assert pick_slot([thursday_slot, tuesday_slot]) == tuesday_slot
+    assert pick_slot([]) == none
+}

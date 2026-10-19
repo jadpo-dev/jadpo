@@ -1,0 +1,15 @@
+use bookclub/types { Book }
+use bookclub/fixtures { cosmos, hobbit, middlemarch, odes, room_of_ones_own }
+
+test "a shelf sorts \"The Hobbit\" under H" {
+    var shelf: List<Book> = sort_shelf(
+        [hobbit(), middlemarch(), room_of_ones_own(), cosmos(), odes()]
+    )
+    assert list.map(shelf, book -> book.title) == [
+        "A Room of One's Own",
+        "Cosmos",
+        "The Hobbit",
+        "Middlemarch",
+        "Odes"
+    ]
+}

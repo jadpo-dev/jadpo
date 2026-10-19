@@ -1,0 +1,14 @@
+use bookclub/types { Genre, Shortlist }
+use bookclub/fixtures { cosmos, hobbit, odes, room_of_ones_own }
+
+test "members' wishes make one shortlist" {
+    var wish_list: Shortlist = make_shortlist(
+        [[hobbit(), room_of_ones_own()], [room_of_ones_own(), cosmos()], [odes()]]
+    )
+    assert wish_list.books == [hobbit(), room_of_ones_own(), cosmos(), odes()]
+    assert wish_list.longest_book == cosmos()
+    assert wish_list.shortest_book == odes()
+    assert wish_list.total_pages == 974
+    assert map.count(wish_list.by_genre) == 4
+    assert map.get(wish_list.by_genre, Genre.fiction) == [hobbit()]
+}

@@ -1,0 +1,23 @@
+use bookclub/types { Attendance, ClubMemberName }
+
+/// Who came, against who said they would: the no-shows, those who came
+/// as planned, everyone there with `guest`, and whether `host` came.
+action take_register(
+    said_yes: Set<ClubMemberName>,
+    came: Set<ClubMemberName>,
+    guest: ClubMemberName,
+    host: ClubMemberName,
+    left_early: ClubMemberName
+) -> Attendance {
+    var everyone_present: Set<ClubMemberName> = set.without(
+        set.with(set.union(said_yes, came), guest),
+        left_early
+    )
+    return Attendance {
+        no_shows: set.difference(said_yes, came)
+        came_as_planned: set.intersection(said_yes, came)
+        everyone_there: everyone_present
+        headcount: set.count(everyone_present)
+        host_came: set.contains(came, host)
+    }
+}

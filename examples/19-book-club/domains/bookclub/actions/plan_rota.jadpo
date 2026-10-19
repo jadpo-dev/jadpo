@@ -1,0 +1,14 @@
+use bookclub/types { Book, ClubMemberName, RotaEntry }
+
+/// Who leads which book: the members in turn against the books in
+/// order, as many as there are of the fewer.
+action plan_rota(leaders: List<ClubMemberName>, books: List<Book>) -> List<RotaEntry> {
+    return list.zip_with(
+        leaders,
+        books,
+        (leader, book) -> RotaEntry {
+            leader: leader
+            book: book
+        }
+    )
+}

@@ -1,0 +1,7 @@
+use bookclub/types { Book, ClubMemberName }
+
+/// Who leads the discussion of which book.
+type RotaEntry = Object {
+    leader: ClubMemberName
+    book: Book
+}

@@ -1,0 +1,10 @@
+use bookclub/types { MeetingTime }
+
+/// A meeting about a book. Its end comes after its start, a rule across
+/// its fields that every way of building one keeps.
+type ClubMeeting = Object {
+    book: Isbn
+    starts: MeetingTime
+    ends: MeetingTime
+    rule ends_after_start: ends > starts
+}

@@ -1,0 +1,6 @@
+/// A book from the old card catalogue, in today's codes.
+type CatalogueCard = Output {
+    isbn: Isbn
+    author_country: Country
+    country_number: Text
+}

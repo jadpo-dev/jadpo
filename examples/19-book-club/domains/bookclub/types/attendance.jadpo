@@ -1,0 +1,10 @@
+use bookclub/types { ClubMemberName }
+
+/// Who came to a meeting, against who said they would.
+type Attendance = Output {
+    no_shows: Set<ClubMemberName>
+    came_as_planned: Set<ClubMemberName>
+    everyone_there: Set<ClubMemberName>
+    headcount: Int
+    host_came: Bool
+}

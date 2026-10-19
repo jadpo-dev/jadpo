@@ -1,0 +1,20 @@
+use bookclub/types { MeetingRatings, RatingTally }
+
+test "both halves' ratings, after a member leaves" {
+    var first_half: MeetingRatings = map.with(map.with([], "Ann", 5), "Bea", 3)
+    var second_half: MeetingRatings = map.with(map.with([], "Cal", 4), "Dee", 2)
+    var this_tally: RatingTally = tally_ratings(first_half, second_half, "Bea")
+    assert this_tally.raters == 4
+    assert set.count(this_tally.who_rated) == 4
+    assert this_tally.mean_stars == 3.50
+    assert map.count(this_tally.fans) == 2
+    assert map.has(this_tally.fans, "Ann")
+    assert map.get(this_tally.star_labels, "Ann") == "5/5"
+    assert this_tally.leaver_rating == 3
+    assert map.count(this_tally.kept_ratings) == 3
+    assert not map.has(this_tally.kept_ratings, "Bea")
+}
+
+test "a book nobody rated averages the lowest" {
+    assert tally_ratings([], [], "Bea").mean_stars == 1.0
+}

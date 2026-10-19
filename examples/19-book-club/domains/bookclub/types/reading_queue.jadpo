@@ -1,0 +1,13 @@
+use bookclub/types { Book }
+
+/// The club's queue of books, as the noticeboard shows it.
+type ReadingQueue = Output {
+    now_reading: Book?
+    after_that: Book?
+    last_in_line: Book?
+    next_three: List<Book>
+    later: List<Book>
+    newest_first: List<Book>
+    all_short: Bool
+    first_poetry: Book?
+}

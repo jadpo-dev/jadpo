@@ -1,0 +1,18 @@
+use bookclub/types { ReadingQueue }
+use bookclub/fixtures { cosmos, hobbit, middlemarch, odes, room_of_ones_own }
+
+test "the queue as the noticeboard shows it" {
+    var board: ReadingQueue = show_queue(
+        [hobbit(), middlemarch()],
+        room_of_ones_own(),
+        [cosmos(), odes()]
+    )
+    assert board.now_reading == hobbit()
+    assert board.after_that == middlemarch()
+    assert board.last_in_line == odes()
+    assert board.next_three == [middlemarch(), room_of_ones_own(), cosmos()]
+    assert board.later == [odes()]
+    assert board.newest_first == [odes(), cosmos(), room_of_ones_own()]
+    assert not board.all_short
+    assert board.first_poetry == odes()
+}

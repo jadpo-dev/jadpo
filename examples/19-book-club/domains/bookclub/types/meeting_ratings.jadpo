@@ -1,0 +1,4 @@
+use bookclub/types { ClubMemberName, Stars }
+
+/// Each member's rating of a book.
+type MeetingRatings = Map<ClubMemberName, Stars> {}

@@ -1,0 +1,5 @@
+/// A member's rating of a book.
+type Stars = Int {
+    min: 1
+    max: 5
+}

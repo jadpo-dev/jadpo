@@ -1,0 +1,14 @@
+// Randomness is read only in actions, as the clock is. In a test the
+// generator is seeded, so the same test gives the same draw every run.
+
+use bookclub/types { Book, ClubMemberName, PrizeDraw }
+
+/// The month's draw: three books from the shortlist to vote on, the
+/// seating, and which member hosts.
+action hold_draw(shortlist: List<Book>, members: List<ClubMemberName>) -> PrizeDraw {
+    return PrizeDraw {
+        vote_on: random.sample(shortlist, 3)
+        seating: random.shuffle(members)
+        host_number: random.integer(1, 12)
+    }
+}

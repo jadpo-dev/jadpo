@@ -1,0 +1,7 @@
+use bookclub/types { YesNo }
+
+/// Whether a member's e-reader app is a version the club's reading lists
+/// work in: 2.1 or later, before 3.
+action reader_supported(app_version: SemanticVersion) -> YesNo {
+    return YesNo(semver.satisfies(app_version, "^2.1.0"))
+}

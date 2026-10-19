@@ -1,0 +1,11 @@
+use bookclub/types { Book, Genre }
+
+/// "Odes", for the club's tests.
+fixture odes() -> Book {
+    return Book {
+        isbn: "9780000000057"
+        title: "Odes"
+        genre: Genre.poetry
+        length_in_pages: 96
+    }
+}

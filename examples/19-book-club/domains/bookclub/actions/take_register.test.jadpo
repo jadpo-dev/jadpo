@@ -1,0 +1,16 @@
+use bookclub/types { Attendance }
+
+test "who came, against who said they would" {
+    var register: Attendance = take_register(
+        ["Ann", "Bea", "Cal"],
+        ["Bea", "Cal", "Dee"],
+        "Eve",
+        "Ann",
+        "Dee"
+    )
+    assert register.no_shows == ["Ann"]
+    assert register.came_as_planned == ["Bea", "Cal"]
+    assert register.everyone_there == ["Ann", "Bea", "Cal", "Eve"]
+    assert register.headcount == 4
+    assert not register.host_came
+}

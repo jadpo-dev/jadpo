@@ -1,0 +1,32 @@
+// A map from each member to their rating: merged, counted, filtered and
+// mapped like a list, each operation giving a new map.
+
+use bookclub/types { ClubMemberName, MeetingRatings, RaterCount, RatingTally }
+
+/// A book's ratings from both halves of a meeting, after `leaver` has
+/// left the club and asked for theirs to go.
+action tally_ratings(
+    first_half: MeetingRatings,
+    second_half: MeetingRatings,
+    leaver: ClubMemberName
+) -> RatingTally {
+    var all: MeetingRatings = MeetingRatings(map.merge(first_half, second_half))
+    var total: Int = list.sum(map.values(all))
+    var raters: Int = map.count(all)
+    var mut mean: Decimal = 0.0
+    if (raters > 0) {
+        // The condition proves the count isn't zero, so it builds a
+        // `RaterCount`, which a division takes.
+        var how_many: RaterCount = RaterCount(raters)
+        mean = decimal.divide(total * 1.00, how_many, rounding: Rounding.half_even)
+    }
+    return RatingTally {
+        raters: raters
+        who_rated: map.keys(all)
+        mean_stars: decimal.max(decimal.min(mean, 5.0), 1.0)
+        fans: MeetingRatings(map.filter(all, (member, stars) -> stars >= 4))
+        star_labels: map.map_values(all, (member, stars) -> text.from(stars) + "/5")
+        leaver_rating: map.get(all, leaver)
+        kept_ratings: MeetingRatings(map.without(all, leaver))
+    }
+}

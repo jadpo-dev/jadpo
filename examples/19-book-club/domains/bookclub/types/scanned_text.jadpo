@@ -1,0 +1,4 @@
+/// A code as it was typed or scanned from an old card.
+type ScannedText = Text {
+    max_length: 40
+}
