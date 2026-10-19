@@ -72,6 +72,7 @@ async fn body(
                         signed,
                     } => request(program, ctx, route, &args, keyed, signed).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
+                    Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
                 step = machine.resume(ctx, result);
@@ -127,16 +128,20 @@ fn store<'a, 'p: 'a>(
             Target::Query(id) => plan.query(id).map(|query| StoreOp::Read(&query.read)),
             Target::Get(id) => plan.entity(id).map(|entity| StoreOp::Read(&entity.get)),
             Target::Write(id) => plan.write(id).map(|write| StoreOp::Write(&write.plan)),
-            Target::Callable(_) | Target::Request { .. } | Target::Session(_) => None,
+            Target::Callable(_)
+            | Target::Request { .. }
+            | Target::Session(_)
+            | Target::Batch(..) => None,
         };
         let Some(op) = op else {
             let what = match target {
                 Target::Query(_) => "a query with no plan",
                 Target::Get(_) => "an entity with no plan",
                 Target::Write(_) => "a write with no plan",
-                Target::Callable(_) | Target::Request { .. } | Target::Session(_) => {
-                    "a call run as a read"
-                }
+                Target::Callable(_)
+                | Target::Request { .. }
+                | Target::Session(_)
+                | Target::Batch(..) => "a call run as a read",
             };
             return Err(Stop::Fault(
                 ctx.fault(FaultKind::Defect(what.to_string()), at),
@@ -207,6 +212,54 @@ async fn session(
         _ => {
             return Err(Stop::Fault(ctx.fault(
                 FaultKind::Defect(format!("`{}` called with the wrong arguments", op.name())),
+                at,
+            )));
+        }
+    };
+    match stored {
+        Stored::Value(value) => Ok(value),
+        Stored::Failed(failure) => Err(Stop::Failed(failure)),
+        Stored::Conflict { cause, .. } => Err(Stop::Failed(cause)),
+        Stored::Fault(fault) => Err(Stop::Fault(fault)),
+    }
+}
+
+/// `batches.each`, `batches.status` or `batches.cancel` at site `at` (area
+/// 12, chunk 6.4): the runtime keeps the run, reads it or asks it to stop,
+/// in the running action's transaction.
+async fn batch(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    op: jadpo_std::batch::BatchOp,
+    number: Option<u32>,
+    args: &[Value],
+    at: u32,
+) -> Result<Value, Stop> {
+    use jadpo_runtime::batches;
+    use jadpo_std::batch::BatchOp;
+    let Some(program_batches) = jadpo_runtime::Executor::batches(program) else {
+        return Err(Stop::Fault(ctx.fault(
+            FaultKind::Defect("a batch in a program that runs none".into()),
+            at,
+        )));
+    };
+    let stored = match (op, number, args) {
+        (BatchOp::Each, Some(number), _) => match program.plan().batch(number) {
+            Some(plan) => batches::start(ctx, program_batches, plan, args, at).await,
+            None => {
+                return Err(Stop::Fault(
+                    ctx.fault(FaultKind::Defect("a batch with no plan".into()), at),
+                ));
+            }
+        },
+        (BatchOp::Status, _, [run]) => batches::status(ctx, program_batches, run, at).await,
+        (BatchOp::Cancel, _, [run]) => batches::cancel(ctx, program_batches, run, at).await,
+        _ => {
+            return Err(Stop::Fault(ctx.fault(
+                FaultKind::Defect(format!(
+                    "`batches.{}` called with the wrong arguments",
+                    op.name()
+                )),
                 at,
             )));
         }

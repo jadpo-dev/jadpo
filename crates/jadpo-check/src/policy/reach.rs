@@ -94,7 +94,9 @@ pub fn acts_of<'db>(db: &'db dyn Db, project: Project, name: Name<'db>) -> BTree
                         None => continue,
                     }
                 }
-                Fact::Fixture(_) | Fact::Function(_) => continue,
+                // A batch's run works as the system, after the action
+                // commits (area 12), so nothing it does is the caller's.
+                Fact::Fixture(_) | Fact::Function(_) | Fact::Batch(_) | Fact::Runs(_) => continue,
             };
             found.insert(act);
         }

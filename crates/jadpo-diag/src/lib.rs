@@ -922,6 +922,14 @@ rules! {
         "08-identity.html#type-auth-sessions-context", "Session, API token or service key operation outside an action, or without its sign-in method";
     TYPE_BASE_OUTSIDE_DECLARATION: "type.base_outside_declaration", area 2, Error, Agent,
         "02-values-and-types.html#type-base-outside-declaration", "Base is used outside a type declaration";
+    TYPE_BATCH_CAPTURE_NOT_STORABLE: "type.batch_capture_not_storable", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-capture-not-storable", "A batch saves a value that can't be stored";
+    TYPE_BATCH_CONTEXT: "type.batch_context", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-context", "Batch operation called outside an action";
+    TYPE_BATCH_EACH_INVALID: "type.batch_each_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-each-invalid", "A batch's `each:` or `finished:` is not one call of an action in its domain";
+    TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-from-invalid", "A batch's `from:` is not a call of a named query giving a `Page`";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
         "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,

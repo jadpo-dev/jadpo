@@ -283,10 +283,11 @@ impl Undo {
         Ok(undo)
     }
 
-    /// The call ended in `outcome`: what it did stands when it didn't
-    /// fail, and is undone when it did.
+    /// The call ended in `outcome`: what it did stands when it gave its
+    /// value, and is undone when it failed or faulted, so a batch's item
+    /// that faulted leaves nothing behind either (chunk 6.4).
     pub(crate) async fn settle(self, ctx: &mut Ctx<'_>, outcome: Outcome) -> Outcome {
-        let failed = matches!(outcome, Outcome::Failed(_));
+        let failed = !matches!(outcome, Outcome::Value(_));
         if self.open {
             let mark = if failed { Mark::Return } else { Mark::Release };
             if let Some(Err(error)) = savepoint(ctx, mark).await {

@@ -351,6 +351,11 @@ impl Body<'_> {
             {
                 return self.session_call(op, call, callee, &written);
             }
+            if head == "batches"
+                && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)
+            {
+                return self.batch_call(op, call, callee, &written);
+            }
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);
             }

@@ -10,10 +10,14 @@
 # Built-in types that later areas define (areas 3 to 19), and the setting
 # options they use. `DecodeProblem` is what a failure mapped from
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
+# The batch types are what `batches` gives and `finished:` receives (area
+# 12), their fields in `jadpo-std`'s `batch`; `BatchState` is an enum
+# there.
 [types]
 Page Nearest
 File Principal Response Access
 IssuedToken IssuedKey DecodeProblem
+BatchRun BatchProgress RowProblem ImportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
 ApiChange PersonalData Erasure SearchLanguage RateLimitKey
@@ -39,6 +43,7 @@ clock: now advance
 config:
 translations:
 sessions:
+batches:
 oauth:
 prompts: render
 

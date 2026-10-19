@@ -132,6 +132,17 @@ pub(crate) fn no_json_form(
                 {
                     None
                 }
+                // A batch run, kept in an entity field or saved with
+                // another run, is its type's JSON on the server (area 12);
+                // nothing of a batch crosses a boundary.
+                None if jadpo_std::batch::object_fields(name).is_some() => (used != JsonUse::Store)
+                    .then(|| {
+                        (
+                            found.to_string(),
+                            "a batch's, which the runtime keeps and no request or document carries"
+                                .to_string(),
+                        )
+                    }),
                 None => Some((
                     found.to_string(),
                     "a built-in type that crosses no boundary as JSON".to_string(),

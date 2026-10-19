@@ -19,6 +19,7 @@
 
 mod across;
 pub(crate) mod backfill;
+mod batches;
 mod calls;
 mod contract;
 mod currency;

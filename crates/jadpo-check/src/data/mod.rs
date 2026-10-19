@@ -2304,6 +2304,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 .insert(format!("jadpo_{name}"), columns::system_table(name));
         }
     }
+    // Batch runs live in the store each run's query reads, beside the
+    // writes of its items (area 12; chunk 6.4).
+    for store in crate::types::batch_stores(db, project) {
+        if let Some(found) = schema.stores.get_mut(store) {
+            for name in jadpo_std::batch::TABLES {
+                found
+                    .tables
+                    .insert(format!("jadpo_{name}"), columns::system_table(name));
+            }
+        }
+    }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).
     if let Some(store) = crate::identity::identity(db, project).sessions_store()

@@ -141,7 +141,9 @@ pub fn file_loading(db: &dyn Db, project: Project, file: File) -> BTreeMap<Key, 
                         found(Loads::Guarded(transition.name().to_string()), &mut loading);
                     }
                 }
-                Fact::Function(_) | Fact::Session(_) => {}
+                // A run's own calls are the run's, never the action's
+                // (area 12).
+                Fact::Function(_) | Fact::Session(_) | Fact::Batch(_) | Fact::Runs(_) => {}
             }
         }
         out.insert(key, loading);

@@ -56,6 +56,7 @@
     )
 )]
 
+pub mod batches;
 mod boundary;
 pub mod config;
 mod ctx;
