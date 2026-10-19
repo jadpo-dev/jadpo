@@ -691,6 +691,15 @@ chunks below, taken before Phase 6.
   record, since the summary is given the walked records' and items'
   provenance without the run's tenant; 6.2c's schedule tests need an
   example when it is built.
+- [ ] **6.4d A batch's summary under policy** `opus · xhigh` (found in
+  chunk 6.5): in an application with a tenant, a batch's `finished:`
+  action can store nothing from its `ImportSummary` in a tenant's record,
+  since the checker takes the summary as holding the walked records and
+  each item's result (naming fields that don't exist) and drops the run's
+  tenant; the summary carries counts and problems only, and the run's
+  tenant proves what it reaches, as 6.1c does for an event, in
+  `jadpo-check/src/policy/flow.rs`. Then example 25's tenanted batch gains
+  its `finished:`.
 - [ ] **5.12b Fold Phase 6's notes** `opus · high`, after Phase 6's
   chunks have merged: the "Chosen in chunk" notes Phase 6 added (6.1a
   onwards) folded into the text they amend, as 5.10 did, and the code
