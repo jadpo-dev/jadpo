@@ -866,9 +866,9 @@ impl Walk<'_> {
                         let prov = self.with_pc(prov);
                         if self.report
                             && self.action
-                            && let Some(layer) = layer_type(&self.body.site(*value).ty)
+                            && let Some(collection) = collection_type(&self.body.site(*value).ty)
                         {
-                            self.layer(flow, &layer, *value, &prov);
+                            self.collection(flow, &collection, *value, &prov);
                         }
                         self.returns.union(&prov);
                     }
@@ -1664,10 +1664,10 @@ impl Walk<'_> {
         );
     }
 
-    /// A map layer `layer` an action returns from `value`, which a route
+    /// A feature collection `collection` an action returns from `value`, which a route
     /// sends bare (area 7, "A map layer as output", chunk 5.5u7): what its
     /// caller is shown, as an `Output` is.
-    fn layer(&mut self, flow: &Flow<'_>, layer: &str, value: SiteId, prov: &Prov) {
+    fn collection(&mut self, flow: &Flow<'_>, collection: &str, value: SiteId, prov: &Prov) {
         self.params_in(prov);
         let Some((entity, from, reached, decided)) = self.first_unread(flow, prov) else {
             return;
@@ -1677,19 +1677,19 @@ impl Walk<'_> {
         let (label, keeps) = if decided {
             (
                 format!("decided by `{entity}.{from}`"),
-                "Which features are sent shows what decided them, so a layer made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.",
+                "Which features are sent shows what decided them, so a collection made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.",
             )
         } else {
             (
                 format!("from `{entity}.{from}`"),
-                "A route sends the layer an action returns as it is, so its properties have one shape for everyone, as an `Output` has.",
+                "A route sends the feature collection an action returns as it is, so its properties have one shape for everyone, as an `Output` has.",
             )
         };
         self.problems.push(
             Diagnostic::new(
                 &rule::POLICY_OUTPUT_FIELD_UNPROVED,
                 format!(
-                    "The `{layer}` `{}` returns carries `{entity}.{from}`, which not every caller may read",
+                    "The `{collection}` `{}` returns carries `{entity}.{from}`, which not every caller may read",
                     self.name
                 ),
             )
@@ -1699,7 +1699,7 @@ impl Walk<'_> {
                 self.name
             ))
             .next(format!(
-                "Leave `{entity}.{from}` out of the layer's properties, or decide them by what every caller of `{}` may read",
+                "Leave `{entity}.{from}` out of the features' properties, or decide them by what every caller of `{}` may read",
                 self.name
             )),
         );
@@ -2008,9 +2008,9 @@ fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
 /// Whether the type called `name` is an `Output`.
 /// A map layer's type as written, `FeatureCollection<Point, PinProperties>`,
 /// when `ty` is one (area 20).
-fn layer_type(ty: &TypeRef) -> Option<String> {
+fn collection_type(ty: &TypeRef) -> Option<String> {
     match ty {
-        TypeRef::Nullable(inner) => layer_type(inner),
+        TypeRef::Nullable(inner) => collection_type(inner),
         TypeRef::Std(name, args)
             if name == jadpo_std::standard::geo::FEATURE_COLLECTION && args.len() == 2 =>
         {

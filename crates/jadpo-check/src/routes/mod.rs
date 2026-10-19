@@ -28,9 +28,6 @@ use std::sync::Arc;
 
 use jadpo_db::{Db, File, ItemKind, Project, Symbol, item_tree, location};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
-
-/// Why a route sends only an `Output` (`route.output_not_output`).
-const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a map layer, a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.";
 use jadpo_graph::{Key, Kind};
 use jadpo_std::http::{Authentication, PrincipalKind, SessionOp};
 use jadpo_std::{HttpMethod, RouteAuthentication, SuccessStatus};
@@ -43,6 +40,9 @@ use crate::resolve::{Names, Want};
 use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 use crate::types::{Def, FieldsBase, Prim, Ty, TypeRef, TypeView};
+
+/// Why a route sends only an `Output` (`route.output_not_output`).
+const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.";
 
 /// What a route entry may hold, in the order `jadpo fmt` writes them
 /// (area 14, "Formatting").
@@ -1590,7 +1590,7 @@ impl Reader<'_> {
                             "{OUTPUT_ONLY} `{properties}` holds {what}, which an `Output` may not hold, so it would leave the server."
                         ))
                         .next(format!(
-                            "Give the layer properties with only the fields clients see, in place of `{properties}`"
+                            "Give the features properties with only the fields clients see, in place of `{properties}`"
                         )),
                     );
                     None
@@ -1623,7 +1623,7 @@ impl Reader<'_> {
     /// or a secret value, however deep, as an `Output`'s own fields are
     /// refused them; `None` when they hold nothing of the kind.
     fn withheld(&self, properties: &Ty) -> Option<String> {
-        let table: &dyn crate::types::TypeView = self.lookup;
+        let table: &dyn TypeView = self.lookup;
         if crate::types::decl::holds_principal(table, properties, &mut Vec::new()) {
             return Some("a caller".to_string());
         }

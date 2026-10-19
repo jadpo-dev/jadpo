@@ -1190,7 +1190,7 @@ error: `MemoRecord` isn't an `Output`
    |
 36 |         output: MemoRecord
    |                 ^^^^^^^^^^ not an `Output`
-  reason: A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a map layer, a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.
+  reason: A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.
   next: Declare `type <Name> = Output { ... }` with the fields clients see, and return it (agent)
   rule: route.output_not_output
   help: docs/language/07-http.html#route-output-not-output

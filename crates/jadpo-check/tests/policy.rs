@@ -2165,7 +2165,9 @@ action project_map(project_id: Project.id) fails ProjectNotFound -> FeatureColle
         "{found:#?}"
     );
     assert!(
-        found[0].contains("`project_map` returns carries `Project.budget`, which not every caller may read"),
+        found[0].contains(
+            "`project_map` returns carries `Project.budget`, which not every caller may read"
+        ),
         "{found:#?}"
     );
     assert_eq!(rules_of(&layer("name")), Vec::<&str>::new());

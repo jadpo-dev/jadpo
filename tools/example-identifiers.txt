@@ -116,6 +116,7 @@ bakery_day
 bakery_id
 bakery_name
 bakery_names
+bakery_pins
 bakery_recipes
 bakery_view
 baking
@@ -360,6 +361,7 @@ contact_text
 container_label
 contoso
 copy_name
+corner
 cost_bun
 cost_recipe
 count_in_house_use
@@ -1212,9 +1214,12 @@ photo_bytes
 photo_key
 pickup_outlet
 piece_count
+pin_label
 pin_note
+pin_properties
 ping
 pinned_fingerprint
+pins
 place_order
 place_request
 placed_label
