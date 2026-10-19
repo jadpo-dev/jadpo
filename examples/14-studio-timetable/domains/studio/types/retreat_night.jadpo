@@ -1,0 +1,2 @@
+/// The night an overnight retreat begins.
+type RetreatNight = CalendarDate {}

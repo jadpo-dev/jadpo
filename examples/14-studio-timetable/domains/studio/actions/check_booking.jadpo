@@ -1,0 +1,22 @@
+// An `InstantRange` holds every instant from its start up to, not
+// including, its end, so two bookings that meet on the hour don't clash.
+
+use studio/types { BookingCheck }
+
+/// Whether `wanted` clashes with any booking of the room already made,
+/// and for how long in all.
+action check_booking(requested: InstantRange, existing: List<InstantRange>) -> BookingCheck {
+    var mut clash_length: Duration = 0s
+    for other in existing {
+        match range.intersection(requested, other) {
+            some(shared) -> {
+                clash_length = clash_length + temporal.between(shared.start, shared.end)
+            }
+            none -> {}
+        }
+    }
+    return BookingCheck {
+        has_clash: list.any(existing, other -> range.overlaps(requested, other))
+        clash_length: clash_length
+    }
+}

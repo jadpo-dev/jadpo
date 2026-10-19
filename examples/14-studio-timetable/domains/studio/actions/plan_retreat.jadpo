@@ -1,0 +1,30 @@
+// From a date and a clock time to an instant: on the night the clocks go
+// back 01:30 happens twice, and on the night they go forward not at all.
+// `dst:` says which instant to take; a `Dst` passed in might be
+// `Dst.reject`, so the call can still fail, and `attempt` maps it.
+
+use studio/types { RetreatNight, RetreatStart }
+use studio/failures { UnclearTime }
+
+/// When the overnight retreat on `night` starts: 01:30 by the studio's
+/// clocks, chosen by `choice` when the clocks change that night.
+action plan_retreat(retreat_night: RetreatNight, choice: Dst) fails UnclearTime -> RetreatStart {
+    var starts: ZonedTime = attempt temporal.resolve(
+        retreat_night,
+        at: "01:30",
+        zone: config.studio_zone,
+        dst: choice
+    ) {
+        dst: UnclearTime
+    }
+    return RetreatStart {
+        retreat_date: temporal.date(starts)
+        retreat_year: temporal.year(starts)
+        retreat_month: temporal.month(starts)
+        retreat_day: temporal.day(starts)
+        start_hour: temporal.hour(starts)
+        start_minute: temporal.minute(starts)
+        start_zone: temporal.zone(starts)
+        starts_at: temporal.instant(starts)
+    }
+}

@@ -1,0 +1,42 @@
+use studio/types { ClassListing }
+
+test "a Monday class keeps its local time when the clocks go back" {
+    clock: "2026-10-19T00:00:00Z"
+
+    var mondays: List<ClassListing> = upcoming_classes(
+        "DTSTART;TZID=Europe/London:20261019T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO",
+        3,
+        Locale.en_gb
+    )
+    assert list.map(mondays, listing -> listing.starts) == [
+        "Mon 19 Oct, 09:30",
+        "Mon 26 Oct, 09:30",
+        "Mon 2 Nov, 09:30"
+    ]
+    var lundis: List<ClassListing> = upcoming_classes(
+        "DTSTART;TZID=Europe/London:20261019T093000\nRRULE:FREQ=WEEKLY;BYDAY=MO",
+        1,
+        Locale.fr_fr
+    )
+    assert list.map(lundis, listing -> listing.starts) == ["lun. 19 oct., 09:30"]
+}
+
+test "a daily class runs Monday to Sunday" {
+    clock: "2026-10-19T00:00:00Z"
+
+    var this_week_bounds: List<ClassListing> = upcoming_classes(
+        "DTSTART;TZID=Europe/London:20261019T070000\nRRULE:FREQ=DAILY",
+        7,
+        Locale.en_gb
+    )
+    var class_weekdays: List<Weekday> = list.map(this_week_bounds, listing -> listing.class_weekday)
+    assert class_weekdays == [
+        Weekday.monday,
+        Weekday.tuesday,
+        Weekday.wednesday,
+        Weekday.thursday,
+        Weekday.friday,
+        Weekday.saturday,
+        Weekday.sunday
+    ]
+}

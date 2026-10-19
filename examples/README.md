@@ -51,6 +51,10 @@ README saying what it teaches, how to run it and what to try next.
     addresses, constants, test values, and the keys a `crypto` call takes
     without code reading them: sealing, passwords, a shared secret, a
     private key and another service's tokens.
+14. [14-studio-timetable/](14-studio-timetable/README.md): time: zones,
+    times a rule repeats on, opening hours, ranges of time, a day's,
+    week's, month's and year's bounds, calendar arithmetic and periods,
+    the night the clocks change, and times shown to people.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

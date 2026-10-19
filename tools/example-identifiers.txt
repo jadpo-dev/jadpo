@@ -50,6 +50,9 @@ amount_too_precise
 animal_free
 ann
 ann_on_bob
+anniversary_card
+anniversary_day
+anniversary_years
 anns
 answer_customer
 answer_question
@@ -179,8 +182,14 @@ book_view
 booked
 booked_at
 booked_flight
+booked_text
+booked_today
 booking_backwards
+booking_check
+booking_counts
+booking_tally
 booking_time
+booking_window
 bookings
 books
 books_after
@@ -267,6 +276,7 @@ cards
 carrot
 cart
 cart_id
+carte
 casual
 catalogue_filter
 catalogue_name
@@ -291,6 +301,7 @@ charge_card
 charged
 chart_reading
 check_allergens
+check_booking
 check_delivery
 check_due
 check_health
@@ -320,9 +331,14 @@ citation_id
 citation_view
 cited_slugs
 citizen_of
+clash_length
 class_count
+class_listing
 class_schedule
+class_start_format
 class_time
+class_weekday
+class_weekdays
 clear_cart
 clear_landing
 clearance
@@ -356,6 +372,7 @@ company_name
 company_not_found
 company_projects
 company_role
+compatible_choice
 complete_todo
 completed_at
 confirm_discount
@@ -381,6 +398,8 @@ council_keys
 council_sign_in
 council_token_expired
 council_token_refused
+count_bookings
+count_in
 count_in_house_use
 count_ingredients
 count_missing
@@ -589,6 +608,7 @@ first_loan
 first_page
 first_placed
 first_quantity
+first_renewal
 first_use
 fits_shop
 fitted
@@ -662,6 +682,7 @@ handover
 handover_charge
 handovers
 harbour
+has_clash
 has_urgent
 hashed_password
 hazard
@@ -740,6 +761,7 @@ invoice_transfer
 is_open
 is_overdue
 is_pinned
+is_studio_open
 issue_card
 issue_outlet_key
 issue_receipt
@@ -757,7 +779,9 @@ jadpo_audit
 jar_label
 jar_name
 job_run_at
+join_day
 joined_at
+joined_on
 jot_down
 jp_parcel
 judge_note
@@ -854,6 +878,7 @@ list_products
 list_todos
 list_view
 listed_name
+listing_count
 listing_pages
 listing_preview
 load_customer
@@ -905,6 +930,7 @@ lowest
 loyalty
 lunch
 lunch_overlap
+lundis
 made_in
 made_on
 made_up
@@ -920,6 +946,7 @@ may_change
 mean_leaves
 mean_tokens
 member_by_email
+member_for
 member_handle
 member_id
 member_loans
@@ -928,6 +955,8 @@ member_page
 member_status
 member_view
 members_named
+membership_dates
+membership_rules
 memo
 memo_id
 memo_locked
@@ -960,6 +989,7 @@ mixed_currencies
 mobile
 model_reply
 monday_classes
+mondays
 monitor_text
 monitored_pulse
 month_of_calls
@@ -1008,6 +1038,7 @@ nine
 no_guests
 no_stock
 no_subtitle
+no_such_day
 none_yet
 normal
 northing_after
@@ -1125,6 +1156,7 @@ order_unreadable
 order_view
 ordered_at
 ordered_quantity
+ordinary_start
 out_of_stock
 outbound_signature
 outcome_label
@@ -1259,6 +1291,7 @@ placed_label
 placed_text
 placed_with
 plan_effort
+plan_retreat
 plank
 plank_label
 planned_shift
@@ -1469,6 +1502,12 @@ rested
 restock
 restocked
 retag_todo
+retreat_date
+retreat_day
+retreat_month
+retreat_night
+retreat_start
+retreat_year
 return_book
 returned_at
 review_stage
@@ -1604,6 +1643,8 @@ short_date
 short_product_name
 shortbread
 shout
+show_booked
+show_membership
 show_note
 show_on_menu
 show_placed
@@ -1671,9 +1712,12 @@ standard_shelf
 standard_vat
 starred
 stars
+start_hour
+start_minute
 start_project
 start_subscription
 start_unclear
+start_zone
 starting_quantity
 status_text
 stay_date
@@ -1697,6 +1741,10 @@ street_address
 stripe_v2024
 stroll
 stroll_time
+studio
+studio_hours
+studio_open
+studio_today
 subscribe
 subscribed
 subscription
@@ -1752,7 +1800,11 @@ terse
 test_configuration
 text_colour
 the_date_this_note_was_last_shown_to_its_owner_in_the_weekly_digest
+this_month
 this_partner
+this_week
+this_week_bounds
+this_year
 throttled
 throw_die
 thumbnail
@@ -1820,6 +1872,8 @@ tray_warnings
 trays
 trays_out
 trays_to_bake
+trial_end
+trial_ends
 trip_length
 turned_down
 twenty_in_threes
@@ -1839,6 +1893,7 @@ typed_text
 typed_version
 uk_bands
 uk_rate
+unclear_time
 unknown_country
 unknown_failure
 unknown_trade_term
@@ -1846,6 +1901,7 @@ unlink_phone
 unlinked
 unpacked
 untaxed
+upcoming_classes
 update_profile
 update_statistics
 updated_at
@@ -1952,5 +2008,6 @@ wrong_currency
 wrong_rate
 wrong_total
 yamada
+years_on
 yes_no
 zopf

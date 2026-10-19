@@ -1,0 +1,22 @@
+use studio/types { BookingCounts }
+
+test "days, weeks, months and years start at midnight in London" {
+    // Sunday 25 October 2026: the clocks go back at 02:00, so the day runs
+    // 25 hours, from 23:00 UTC on the 24th to midnight UTC on the 26th.
+    clock: "2026-10-25T12:00:00Z"
+
+    var tallies: BookingCounts = count_bookings(
+        [
+            "2026-10-24T23:30:00Z",
+            "2026-10-25T23:30:00Z",
+            "2026-10-18T23:30:00Z",
+            "2026-10-01T09:00:00Z",
+            "2026-03-01T09:00:00Z",
+            "2025-12-31T23:30:00Z"
+        ]
+    )
+    assert tallies.booked_today == 2
+    assert tallies.this_week == 3
+    assert tallies.this_month == 4
+    assert tallies.this_year == 5
+}

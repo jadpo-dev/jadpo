@@ -1,0 +1,5 @@
+/// How many years a member has been with the studio.
+type AnniversaryYears = Int {
+    min: 1
+    max: 100
+}

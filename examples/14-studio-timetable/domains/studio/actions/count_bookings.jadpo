@@ -1,0 +1,27 @@
+// A day, a week, a month and a year each start at midnight in the
+// studio's zone, and run 23, 24 or 25 hours a day whatever the clocks do.
+// Each bound is an `InstantRange`, which `range.contains` reads.
+
+use studio/types { BookedAt, BookingCounts, BookingTally }
+
+/// How many of `bookings` fall in `period`.
+function count_in(bookings: List<BookedAt>, booking_window: InstantRange) -> BookingTally {
+    return BookingTally(list.count(list.filter(bookings, at -> range.contains(booking_window, at))))
+}
+
+/// How many classes were booked today, this week (from Monday), this
+/// month and this year, by the studio's clocks.
+action count_bookings(bookings: List<BookedAt>) -> BookingCounts {
+    var studio_today: CalendarDate = temporal.date(temporal.in_zone(clock.now, config.studio_zone))
+    var this_week_bounds: InstantRange = temporal.week_bounds(
+        studio_today,
+        config.studio_zone,
+        starts_on: Weekday.monday
+    )
+    return BookingCounts {
+        booked_today: count_in(bookings, temporal.day_bounds(studio_today, config.studio_zone))
+        this_week: count_in(bookings, this_week_bounds)
+        this_month: count_in(bookings, temporal.month_bounds(studio_today, config.studio_zone))
+        this_year: count_in(bookings, temporal.year_bounds(studio_today, config.studio_zone))
+    }
+}

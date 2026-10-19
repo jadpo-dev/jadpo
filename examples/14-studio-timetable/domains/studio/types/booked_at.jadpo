@@ -1,0 +1,2 @@
+/// When a member booked a class.
+type BookedAt = Instant {}

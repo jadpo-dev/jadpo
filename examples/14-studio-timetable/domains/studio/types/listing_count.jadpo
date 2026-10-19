@@ -1,0 +1,5 @@
+/// How many classes a listing shows.
+type ListingCount = Int {
+    min: 1
+    max: 20
+}

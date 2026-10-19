@@ -1,0 +1,22 @@
+// A class that repeats is one `RecurrenceRule`, and its next times are
+// worked out from it in the rule's zone, so a Monday 09:30 class stays at
+// 09:30 when the clocks change. Each is shown with a declared format.
+
+use studio/types { ClassListing, ClassSchedule, ClassStartFormat, ListingCount }
+
+/// The next classes on `timetable` from now, as `reader_locale` reads
+/// them.
+action upcoming_classes(
+    timetable: ClassSchedule,
+    count: ListingCount,
+    reader_locale: Locale
+) -> List<ClassListing> {
+    var starts: List<ZonedTime> = temporal.occurrences(timetable, from: clock.now, count: count)
+    return list.map(
+        starts,
+        at -> ClassListing {
+            starts: text.format(at, locale: reader_locale, format: ClassStartFormat)
+            class_weekday: temporal.weekday(at)
+        }
+    )
+}

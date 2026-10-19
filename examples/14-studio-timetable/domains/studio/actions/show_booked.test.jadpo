@@ -1,0 +1,8 @@
+test "a booking is shown against now" {
+    clock: "2026-10-19T12:00:00Z"
+
+    assert show_booked("2026-10-19T11:59:40Z", Locale.en_gb).booked == "just now"
+    assert show_booked("2026-10-19T11:56:00Z", Locale.en_gb).booked == "4 minutes ago"
+    assert show_booked("2026-10-18T13:30:00Z", Locale.en_gb).booked == "Yesterday at 14:30"
+    assert show_booked("2026-10-19T11:56:00Z", Locale.fr_fr).booked == "il y a 4 minutes"
+}

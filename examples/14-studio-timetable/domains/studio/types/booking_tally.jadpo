@@ -1,0 +1,4 @@
+/// How many classes were booked in a period.
+type BookingTally = Int {
+    min: 0
+}

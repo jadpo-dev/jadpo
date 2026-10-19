@@ -1,0 +1,10 @@
+use studio/types { BookingTally }
+
+/// How many classes were booked today, this week, this month and this
+/// year, by the studio's clocks.
+type BookingCounts = Output {
+    booked_today: BookingTally
+    this_week: BookingTally
+    this_month: BookingTally
+    this_year: BookingTally
+}

@@ -1,0 +1,4 @@
+/// When a class was booked, as its member reads it.
+type BookedText = Output {
+    booked: PresentationText
+}

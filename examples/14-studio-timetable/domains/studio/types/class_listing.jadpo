@@ -1,0 +1,5 @@
+/// One class on the timetable, as a member reads it.
+type ClassListing = Output {
+    starts: PresentationText
+    class_weekday: Weekday
+}

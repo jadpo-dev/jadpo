@@ -1,0 +1,9 @@
+/// A class's start as "Mon 19 Oct, 09:30" in `Locale.en_gb`: the parts
+/// it shows, with the locale choosing their order and punctuation.
+type ClassStartFormat = TimeFormat {
+    weekday: ComponentStyle.short
+    day: ComponentStyle.numeric
+    month: ComponentStyle.short
+    hour: ComponentStyle.two_digit
+    minute: ComponentStyle.two_digit
+}

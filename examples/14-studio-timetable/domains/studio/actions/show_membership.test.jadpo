@@ -1,0 +1,21 @@
+use studio/types { MembershipDates }
+
+test "a membership's days count on the calendar" {
+    clock: "2026-10-19T09:00:00Z"
+
+    var membership: MembershipDates = show_membership("2025-08-12")
+    assert membership.trial_ends == "2025-08-26"
+    assert membership.first_renewal == "2025-09-12"
+    assert membership.member_for == CalendarPeriod {
+        years: 1
+        months: 2
+        days: 7
+    }
+    assert text.format(membership.member_for, locale: Locale.en_gb) == "1 year, 2 months, 7 days"
+}
+
+test "a month on from the 31st is the month's last day" {
+    clock: "2026-10-19T09:00:00Z"
+
+    assert show_membership("2026-01-31").first_renewal == "2026-02-28"
+}

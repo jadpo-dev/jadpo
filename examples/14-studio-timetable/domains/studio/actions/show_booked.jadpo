@@ -1,0 +1,14 @@
+use studio/types { BookedAt, BookedText }
+
+/// When a class was booked, against now: "just now", "4 minutes ago",
+/// "Yesterday at 14:30", in the member's language and the studio's zone.
+action show_booked(booked_at: BookedAt, reader_locale: Locale) -> BookedText {
+    return BookedText {
+        booked: temporal.format_relative(
+            booked_at,
+            now: clock.now,
+            zone: config.studio_zone,
+            locale: reader_locale
+        )
+    }
+}
