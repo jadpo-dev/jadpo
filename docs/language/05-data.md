@@ -339,7 +339,7 @@ below):
   stays until nothing holds it, and never stops the rest going.
   Purge is the compiler's own operation, outside every action and policy:
   the runtime's purge entry point runs it, and area 12's built-in hourly
-  purge schedule calls it (chunk 6.2c, "Chosen in chunk 6.2c" in area 12).
+  purge schedule calls it (chunk 6.2c; area 12, "The purge schedule").
   Each run reports how many records each batch deleted, which the
   schedule logs.
 

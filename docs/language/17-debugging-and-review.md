@@ -460,7 +460,7 @@ Almost nothing on this page is built yet. Mapped `.jadpo` stacks, `jadpo inciden
 after the first build (roadmap, areas 17 and 18); the developer console, MCP
 and the review web view come after that, as product work (E11 and E06).
 Since chunk 6.2b, `jadpo why <schedule>` answers why a schedule didn't run
-(area 12, "Chosen in chunk 6.2b"); its other forms come with this page.
+(area 12, "Watching schedules"); its other forms come with this page.
 
 ### Consistency with the rest of the language
 

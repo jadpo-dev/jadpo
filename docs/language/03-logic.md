@@ -932,7 +932,7 @@ csv.read(
   storable values may be captured (those an entity field could hold).
   Capturing anything else is a compile error naming the value.
 
-> Built in chunk 6.4 for `batches.each` (area 12, "Chosen in chunk 6.4"):
+> Built in chunk 6.4 for `batches.each` (area 12, "How a run is kept"):
 > an inline function is a named argument's value too, and the body's
 > arguments are the item, a field inside it, or a captured value, which
 > `type.batch_each_invalid` and `type.batch_capture_not_storable` hold
