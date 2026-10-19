@@ -405,7 +405,11 @@ What counts as proof, exactly (built in chunk 2.6):
   value rounded half to even, so its bounds are compared after rounding: a
   value of at most 10.004 fits `max: 10.00` with `scale: 2`, and one of at
   most 10.07 doesn't fit `max: 10.07` with `scale: 1`, since 10.07 is kept
-  as 10.1.
+  as 10.1. A constant's construction rounds the same way, as the runtime
+  builds it: `constant rate: Rate = Rate(0.10 * 1.25)` with `scale: 2` is
+  0.12, not an error. A literal written with more places than its type
+  keeps is still refused where it is written, and a computed constant kept
+  past 38 digits is `type.invalid_literal`, as arithmetic past them is.
 
 Changing a range or a condition flips call sites, and each one says so
 where it is written (area 4, question 6): a construction that can now fail
@@ -666,8 +670,7 @@ it came from the billing or the shipping address.
 
 ### Rules across fields
 
-> **Decided on 2026-10-17 (area 19, question 15), designed and built in
-> chunk 5.5t.**
+> **Decided on 2026-10-17 (area 19, question 15), built in chunk 5.5t.**
 
 A field's rules say what one value may be. A rule across fields says how
 the values of one object relate: a booking ends after it starts, a
@@ -726,19 +729,32 @@ test "a booking that ends before it starts is refused" {
   variants, operators, `match` and the standard operations that always
   give a result from their arguments alone. Nothing else: no function or
   action of the application, constant, setting, clock, random value, key or
-  record (`type.rule_outside_fields`). It is a `Bool`
+  record (`type.rule_outside_fields`). Not even a constant: a rule means
+  the same wherever its type is read. It is a `Bool`
   (`type.rule_not_condition`). A field that may be `none` is read with
   `match`, as anywhere else.
-- **Checked whenever a value is made,** once every field has its value: an
-  object literal, `json.read`, a request's input and the output a route
-  test reads. The rules run in the order they are written, and the first
-  one broken is the one reported.
+- **Checked whenever a value is made,** once every field has its value, in
+  an object, a list's item or a map's entry, at its path: an object
+  literal, a construction, `json.read`, a request's body or query string,
+  the output a route test reads, `text.parse` of a standard type's text,
+  and a value read from the store, where a broken rule is a defect, since
+  Jadpo writes none (area 5). The field rules run first, then each rule in
+  the order written, and the first one broken is the one reported, so a
+  report never depends on more than one rule. A setting never holds an
+  object, so never one with rules (`configuration.type_unsupported`).
+- **A query's result type has none** (`query.result_rule`, area 6): a read
+  has no `attempt` to map a broken rule, so the type is refused rather
+  than each row checked as it is read.
 - **An object literal can break one.** Building a type with rules is a
   construction, mapped as `Type(value)` is ("Construction failures by
   rule"): each rule neither the declared ranges nor a condition proves
   needs an arm keyed by its name, or `invalid:` covers it. A literal whose
   values are all literals is worked out while compiling, so a booking
-  written backwards is `type.invalid_literal`.
+  written backwards is `type.invalid_literal`. A literal is checked or
+  refused, never kept unchecked: text where a standard object type with
+  rules across its parts goes is `type.invalid_literal`, since the checker
+  can't read its text, and any other literal a standard object can't be is
+  `type.mismatch` (area 19).
 - **Proof reads the values given.** A rule is read with each field
   replaced by the value given for it, so `ends > starts`, built with
   `starts: begin` and `ends: finish`, is proved after `if (finish <= begin)
@@ -758,11 +774,13 @@ test "a booking that ends before it starts is refused" {
 - **A rule belongs to the type that writes it.** `include` and `pick` copy
   fields, never rules: a type built from `Booking` writes the rule again if
   it holds there too. Only an `Object`, `Input` or `Output` has rules
-  (`type.rule_outside_object`).
+  (`type.rule_outside_object`); events, failures, messages, enums and
+  refinements have none, and a rule on an entity, which the database would
+  check and a write would map, is left for Richard.
 - **The standard object types have rules too** (area 19, chunk 5.5t2): an
   `InstantRange`'s `start_not_after_end`, a `PostalAddress`'s
   `postal_code_of_country`, each named, proved, attempted and reported as
-  a rule written here is. Area 19's "Chosen in chunk 5.5t2" lists them.
+  a rule written here is. Area 19 lists them.
 
 Numbers are proved by their ranges as a field's rules are, and a field
 that may be `none` is matched:
@@ -3073,73 +3091,6 @@ Rules:
 - `include`, `pick`, `omit` and `optional` are reserved and cannot be field
   names.
 
-### Chosen in chunk 5.5t
-
-Area 19's question 15 decided named rules across an object's fields; the
-chunk that built them chose the rest, as conservatively as it could:
-
-- **The form is the roadmap's,** `rule name: condition` in the type's
-  block. `rule` is read as a word only before a name and `:`, so a field
-  may still be called `rule`.
-- **Only `Object`, `Input` and `Output`.** An entity's records are made by
-  writes, whose conditions area 6 decides, so a rule on an entity, which
-  would need the database to check it and a write to map it, is left for
-  Richard to decide; events, failures, messages, enums and refinements
-  have none.
-- **The condition reads the type's own fields and nothing else:** no
-  constant either, though a constant can't change, so a rule means the same
-  wherever its type is read. `match` is allowed, since it is how a field
-  that may be `none` is read.
-- **The order is the field rules, then each rule as written,** the first
-  broken one reported, so a report never depends on more than one rule.
-- **An object literal is a construction like `Type(value)`,** with the
-  same `attempt` block, arms keyed by the rules' names, `invalid:` and
-  errors; no new failure form.
-- **A comparison between any two values written the same way is proof**
-  of a rule that compares them, not only numbers, since a booking's
-  instants are what the rules compare most.
-- **Decoding reports the rule at the object's path,** with the rule's name
-  as the problem's rule, the way a field's broken rule is reported.
-- **`include` and `pick` don't copy rules:** a rule reads fields its own
-  type has, and a copy may leave one out.
-
-### Chosen in chunk 5.8b
-
-- **A constant's construction rounds as `scale` says.** "A fixed `scale`
-  rounds first" holds for a constant too: `Type(value)` keeps a computed
-  decimal at the type's fixed scale, rounded half to even, before its
-  rules are checked, as the runtime builds it, so `constant rate: Rate =
-  Rate(0.10 * 1.25)` with `scale: 2` is 0.12, not an error. A literal
-  written with more places than its type keeps is still refused where it
-  is written, as any literal is. Kept past 38 digits, it is
-  `type.invalid_literal`, as arithmetic past them is.
-
-### Chosen in chunk 5.8c
-
-The Phase 5 soundness review's slice of "checked whenever a value is
-made", each the most conservative reading:
-
-- **A query's result type has no rules across its fields**
-  (`query.result_rule`, area 6, "Chosen in chunk 5.8c"): a read has no
-  `attempt` to map a broken one, so the type is refused rather than each
-  row checked as it is read.
-- **Where a value is made, its rules are checked:** an object literal, a
-  construction, `json.read` and a request's body, in an object, a list's
-  item or a map's entry, at its path; a query string, as a body is;
-  `text.parse` of a standard type's text; and a standard object read from
-  the store, where a broken rule is a defect, since Jadpo writes none (area
-  19, "Chosen in chunk 5.8c"). A setting never holds an object, so never
-  one with rules (`configuration.type_unsupported`).
-- **A literal is checked or refused, never kept unchecked:** text where a
-  standard object type with rules across its parts goes is
-  `type.invalid_literal`, since the checker can't read its text, and any
-  other literal a standard object can't be is `type.mismatch` (area 19).
-- **Storage reads check only standard types' rules across their parts.**
-  An application's object types can't be stored yet (chunk 5.9), and a
-  field's own rules (`max:` on an `Int`) aren't checked as a row is read;
-  whether the store should hold them, as `CHECK` constraints, or the read
-  check them is left for Richard, since nothing on the pages says either.
-
 ### Decided changes in examples
 
 Every decision on this page, shown as code with all the others applied.
@@ -3638,7 +3589,7 @@ Decided by Richard from 2026-10-12, each on the date shown. Status, above, says 
 | Runtime construction failure | A runtime `Type(value)` check needs `attempt ... invalid: SomeFailure` naming an `invalid_value` failure; literal construction is checked while compiling and never fails at runtime. The mapping's form was revised on 2026-10-14 (below) | 2026-10-12 |
 | Object construction | Building an object or creating an entity accepts the declared type or anything that widens to it, and runs each field's own rules at that point. Since 2026-10-14 an object literal never fails: a field whose value might break its rules is built first (built in chunk 2.5) | 2026-10-12 |
 | Construction failures by rule | A runtime construction maps its failures in a block, the form writes and integration calls use: `attempt CakeCount(n) { max: OrderTooLarge }`. Keys are the rules of the type and the types it builds on that the declared ranges can't prove hold; each needs an arm, or `invalid:` covers every rule without its own; an arm for a rule that can't break, or an `invalid:` covering nothing, is an error; every failure is `invalid_value`; a rule the compiler can't reason about (`pattern`) can always break. An `if` condition counts as proof, so after `if (n > 12) { reject OrderTooLarge }` `CakeCount(n)` is plain. Object literals never fail: a field that might break its rules is built first, on its own line. Replaces the trailing `invalid:` clause (Richard). `invalid:` covers only a construction's rules, never a write's or an integration call's conditions (Richard). Built in chunk 2.5, and conditions as proof in chunk 2.6, as "Conditions as proof" describes | 2026-10-14 |
-| Rules across fields | An `Object`, `Input` or `Output` names rules across its fields, `rule ends_after_start: ends > starts`: a `Bool` over its own fields only, checked whenever a value is made, the first broken one reported; an object literal that may break one is mapped with `attempt` by the rule's name or `invalid:`, and a rule the declared ranges or a condition prove needs no arm (Richard, area 19's question 15; the chunk's choices are under "Chosen in chunk 5.5t") | 2026-10-17 |
+| Rules across fields | An `Object`, `Input` or `Output` names rules across its fields, `rule ends_after_start: ends > starts`: a `Bool` over its own fields only, checked whenever a value is made, the first broken one reported; an object literal that may break one is mapped with `attempt` by the rule's name or `invalid:`, and a rule the declared ranges or a condition prove needs no arm (Richard, area 19's question 15; built as "Rules across fields" says) | 2026-10-17 |
 | `optional` and `default` | Only on `Input` fields; reading an optional field gives `T?`; only the update `patch:` form keeps omitted and `none` apart | 2026-10-12 |
 | Collection operations | List literals, `for item in items`, `list.count` and `list.contains` first; `map` and `filter` follow area 3's answer on passing functions; collections stay invariant | 2026-10-12 |
 | Set order | A set has no order code can use: no index and no first item; where order matters, sort explicitly or use a `List`. Everything that shows a set (JSON, reports, iteration once `for` takes sets) uses one guaranteed canonical order, the same in interpreted and compiled code: by value, numbers numerically, text by Unicode code point, enum variants in declaration order, objects and tagged unions field by field in declared order (Richard) | 2026-10-14 |
