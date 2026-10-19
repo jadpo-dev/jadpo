@@ -396,8 +396,9 @@ fn built() -> BTreeSet<String> {
     out.insert("data migration decision backfill".to_string());
     // Area 12: what a subscriber and a schedule hold, a subscriber limited
     // to its event's tenant, the outbox's store, the event record, a
-    // route that waits for follow-on work, and a batch limited to a
-    // tenant (chunks 6.1b to 6.4c).
+    // route that waits for follow-on work, a batch limited to a tenant
+    // (chunks 6.1b to 6.4c), an entity's built-in purge schedule and a
+    // schedule test, which `--kind schedule` runs (chunk 6.2c).
     out.extend(
         jadpo_check::events::SUBSCRIBER_ITEMS
             .iter()
@@ -425,6 +426,8 @@ const AREA_12: &[&str] = &[
     "record events",
     "route settle",
     "batch limited to a tenant",
+    "purge schedule",
+    "schedule test kind",
 ];
 
 /// The enums whose values a route, an API, `authentication`, a grant or a
@@ -1479,9 +1482,23 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             used.insert("subscriber limited to its event's tenant".to_string());
         }
     }
-    if !jadpo_check::schedules::schedules(db, project).is_empty() {
-        used.insert("schedule item every".to_string());
-        used.insert("schedule item run".to_string());
+    // A declared schedule holds its items; an entity's built-in purge
+    // schedule is written as `purge:` (chunk 6.2c).
+    for schedule in jadpo_check::schedules::schedules(db, project).iter() {
+        match schedule.run {
+            jadpo_check::schedules::ScheduleRun::Action(_) => {
+                used.insert("schedule item every".to_string());
+                used.insert("schedule item run".to_string());
+            }
+            jadpo_check::schedules::ScheduleRun::Purge(_) => {
+                used.insert("purge schedule".to_string());
+            }
+        }
+    }
+    // A test that runs a schedule is a schedule test, which `jadpo test
+    // --kind schedule` picks.
+    if used.contains("body run a schedule in a test") {
+        used.insert("schedule test kind".to_string());
     }
     if jadpo_check::events::events_settings(db, project)
         .store

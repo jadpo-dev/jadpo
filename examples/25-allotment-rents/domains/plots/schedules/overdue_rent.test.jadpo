@@ -5,7 +5,7 @@ use plots/fixtures { two_societies }
 test "one run flags the overdue plots of every society" {
     clock: "2026-10-19T07:00:00Z"
     var allotments: SocietySites = two_societies()
-    flag_overdue_rent()
+    overdue_rent.run()
     var ada: Plot = attempt Plot.get(allotments.ada_overdue.id)
     var ben: Plot = attempt Plot.get(allotments.ben_overdue.id)
     var cy: Plot = attempt Plot.get(allotments.cy_not_due.id)
@@ -17,9 +17,9 @@ test "one run flags the overdue plots of every society" {
 test "a plot flagged once isn't flagged again the next day" {
     clock: "2026-10-19T07:00:00Z"
     var allotments: SocietySites = two_societies()
-    flag_overdue_rent()
+    overdue_rent.run()
     clock.advance(1d)
-    flag_overdue_rent()
+    overdue_rent.run()
     var ada: Plot = attempt Plot.get(allotments.ada_overdue.id)
     assert ada.reminded_on == "2026-10-19"
 }
