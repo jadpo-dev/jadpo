@@ -1633,15 +1633,26 @@ reference only).
   settings declare, a declared format's base, the enums operations give
   and std enum values matched; 1,569 features remain, 1,377 of them the
   closed lists' values.
-- [ ] **5.7b Teaching examples: money, quantities and the standard
+- [x] **5.7b Teaching examples: money, quantities and the standard
   vocabulary** `opus · high`, after 5.7: money and discounts, physical
   quantities and percentages, and the standard types (identifiers,
   contact, web, colour, text formats) with text, collections, numbers,
-  encodings, JSON and randomness, each in a realistic app.
+  encodings, JSON and randomness, each in a realistic app. Built:
+  `16-market-hall` (money), `17-ebike-hire` (quantities and exact
+  decimal maths), `18-village-newsletter` (text, text formats, colour,
+  links, digests and encodings) and `19-book-club` (lists, sets, maps,
+  randomness, code forms, versions, a rule across fields, a declined
+  standard type). Two compiler bugs the examples found are fixed: a
+  named collection built from `map.with([], ...)` skipped its rules,
+  and a text literal of a standard object type (`SemanticVersion`,
+  `CardExpiry`, `Colour`) stayed text at runtime. 1,410 features
+  remain, 1,373 of them the closed lists' values.
 - [ ] **5.7c Teaching examples: geography and stored data** `opus · high`,
   after 5.7b: points, shapes and queries by distance, aggregate queries
   with time buckets, stored vectors and the nearest query (without the
-  `ai` capability), and prompts.
+  `ai` capability), and prompts; and example 09's `Pence` and its
+  percentage discount moved to `Money`, as area 19 ("Money and
+  payments") says.
 - [ ] **5.7d Teaching examples: the closed lists** `opus · high`, after
   5.7c, **needs Richard** first: the coverage test counts every value of
   `Locale`, `Zone`, `Country` and `Currency` that a standard operation
