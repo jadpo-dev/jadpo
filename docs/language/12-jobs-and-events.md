@@ -1560,8 +1560,9 @@ stops short.
   `waitUntil` (roadmap 8.2). What a host does with a request (answer it,
   hand on what it left) and with a tick is one runtime type every host
   wraps, so a native server and `jadpo dev` serve through the same
-  handler, `jadpo dev` only listening to print its lines. Each piece gets a context of its own, under
-  the host's clock as it starts and with no seed. A host with nothing to
+  handler, `jadpo dev` only listening to print its lines. Each piece
+  gets a context of its own, under the host's clock as it starts and
+  with no seed. A host with nothing to
   run it on, a test's or a tool's, drops it, and the tick picks up what a
   dropped piece left.
 - **A budget for each invocation.** Every invocation that runs background
