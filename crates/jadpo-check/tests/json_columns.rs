@@ -183,6 +183,25 @@ fn a_query_neither_compares_nor_sorts_a_stored_value() {
 }
 
 #[test]
+fn the_database_works_out_no_stored_value_in_one_step() {
+    let entity = "type ParcelNotFound = Failure {\n    kind: FailureKind.not_found\n}\n\nentity Parcel {\n    id: Uuid\n    label: Label\n    spare: Label?\n}\n\n";
+    assert_eq!(
+        checked(&format!(
+            "{entity}action copy_label(parcel_id: Parcel.id) fails ParcelNotFound -> Parcel {{\n    return attempt Parcel.update(parcel_id) {{\n        set: {{\n            spare: Parcel.label\n        }}\n    }}\n}}\n"
+        )),
+        ["toolchain.not_built_yet"],
+        "an update by `id` copying one stored value into another"
+    );
+    // A value the action is given is written through the codec.
+    assert_eq!(
+        checked(&format!(
+            "{entity}action relabel(parcel_id: Parcel.id, label: Label) fails ParcelNotFound -> Parcel {{\n    return attempt Parcel.update(parcel_id) {{\n        set: {{\n            spare: label\n        }}\n    }}\n}}\n"
+        )),
+        NONE
+    );
+}
+
+#[test]
 fn no_unique_rule_or_index_covers_a_stored_value() {
     assert_eq!(
         checked(

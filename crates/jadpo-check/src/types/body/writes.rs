@@ -1338,6 +1338,31 @@ impl Body<'_> {
                 }
             }
             if self.facts.stored.contains(&node_key(&node)) {
+                // A value stored whole as JSON is written through the
+                // route codec, which the database doesn't run (chunk
+                // 5.9b).
+                let json = self.facts.types.get(&node_key(&node)).is_some_and(|ty| {
+                    crate::data::column_type(self.table, ty).as_deref() == Ok("jsonb")
+                });
+                if json {
+                    let span = crate::tree::node_span(self.path, &node);
+                    let shown = crate::tree::written(&node);
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TOOLCHAIN_NOT_BUILT_YET,
+                            format!("`{written}` by `id` working out `{shown}` isn't built yet"),
+                        )
+                        .at(span, "stored as JSON")
+                        .reason(format!(
+                            "`{shown}` is stored whole as its JSON in one `jsonb` column (area 5), which Jadpo writes through its type's codec and the database doesn't work out in one step yet."
+                        ))
+                        .next(format!(
+                            "Load the record and update it, `{written}({}) {{ set: {{ ... }} }}`, for now",
+                            crate::case::to_snake(entity)
+                        )),
+                    );
+                    return;
+                }
                 // An amount of money is stored in two columns, which the
                 // database doesn't work out in one step yet (area 19).
                 let money = self

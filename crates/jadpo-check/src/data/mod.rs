@@ -1097,7 +1097,7 @@ impl Reader<'_> {
                                 format!("`{offending}` has no stored form"),
                             )
                             .reason(format!(
-                                "A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps. {held}, which is {what}."
+                                "A structured field is stored whole as `jsonb` holding its type's JSON, made of values built on the built-in and standard types, enums, and objects made of them, in lists, sets and maps; {held}, {what}."
                             ))
                             .next(format!(
                                 "Store what `{entity}.{name}` needs in an `Object` of the application's, or in fields of its own"

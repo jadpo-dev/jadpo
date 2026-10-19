@@ -408,7 +408,10 @@ compare them.
   parked with its problem, never dropped, as a message that keeps failing
   is ("Events from outside"). Decided by the lead session, 2026-10-18,
   under Richard's instruction of 2026-10-17 that every boundary goes
-  through the contract; built with the outbox (roadmap 6.1).
+  through the contract; built with the outbox (roadmap 6.1). Chunk 5.9b
+  numbered every event type in the plan's JSON table, by its identity
+  key, for the outbox to write and read its payload through (area 5,
+  "Chosen in chunk 5.9b").
 
 ## Several changing calls in one action
 
