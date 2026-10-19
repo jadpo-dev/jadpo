@@ -308,6 +308,34 @@ pub fn retired_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<(Strin
     out
 }
 
+/// The fields of `entity` the latest migration adds: what its computed
+/// backfills may not read, since no stored record has a value for them
+/// while the backfill runs (chunk 5.8b).
+pub fn added_fields(db: &dyn Db, project: Project, entity: &str) -> Vec<String> {
+    let set = migrations(db, project);
+    let (before, after) = (set.before_latest(), set.latest_schema());
+    let mut out = Vec::new();
+    for (store, tables) in &after.stores {
+        for (name, table) in &tables.tables {
+            if table.holds != Holds::Entity(entity.to_string()) {
+                continue;
+            }
+            let was = before.stores.get(store).and_then(|s| s.tables.get(name));
+            for (column, now) in &table.columns {
+                if now.retired || was.is_some_and(|t| t.columns.contains_key(column)) {
+                    continue;
+                }
+                if let Some(field) = &now.field
+                    && !out.contains(field)
+                {
+                    out.push(field.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
 /// The built-in type a column of `sql_type` holds, when it holds one.
 fn retired_type(sql_type: &str) -> Option<Builtin> {
     Some(match sql_type.split('(').next()?.trim() {
@@ -637,6 +665,29 @@ impl Decide<'_> {
         let checked = crate::types::typed_body(self.db, self.project, callable);
         let mut problems: Vec<Diagnostic> = checked.problems.clone();
         problems.extend(checked.deferred.iter().map(|(_, problem)| problem.clone()));
+        // A setting read through a function it calls, which `jadpo migrate
+        // apply` has none of (chunk 5.8b).
+        let path = file.path(self.db);
+        for (at, function, setting) in
+            super::backfill::settings_reached(self.db, self.project, &checked.body)
+        {
+            let site = checked.body.site(at);
+            let entity = &need.entity;
+            problems.push(
+                super::backfill::outside_row(
+                    &need.key(),
+                    &setting,
+                    Span::new(path.clone(), site.start, site.end),
+                    &format!("reads a setting, through `{function}`"),
+                )
+                .reason(format!(
+                    "A backfill gives each `{entity}` record the value its own fields give, whenever and wherever the migration runs, and `{function}` reads `{setting}`, which each deployment sets for itself."
+                ))
+                .next(format!(
+                    "Work the value out without `{setting}`: from `{entity}`'s own fields, or a constant"
+                )),
+            );
+        }
         if !problems.is_empty() {
             return Some(Computed {
                 problems,

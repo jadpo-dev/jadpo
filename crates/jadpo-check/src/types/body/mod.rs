@@ -291,6 +291,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         pending_block: None,
         stored: None,
         retired: Vec::new(),
+        added: Vec::new(),
         action: None,
     };
     let Some(target) = checker.target(&decl, callable.function(db)) else {
@@ -611,6 +612,10 @@ struct Body<'a> {
     /// types, which the backfill may read though the entity no longer
     /// declares them.
     retired: Vec<(String, Ty)>,
+    /// While a computed backfill is checked (chunk 5.8b): the fields of
+    /// `stored`'s entity this migration adds, which no stored record has
+    /// a value for yet.
+    added: Vec<String>,
     /// The action being checked, by name: whether root `policy {
     /// actions: }` lists it decides which fields its updates may change
     /// (area 9).
@@ -644,12 +649,14 @@ struct Target {
 }
 
 /// A computed backfill to check: the field it fills, its type, its value,
-/// and the fields this migration retires that it may read.
+/// the fields this migration retires that it may read, and those it adds,
+/// which it may not.
 struct BackfillTarget {
     entity: String,
     ty: Ty,
     value: ast::Expr,
     retired: Vec<(String, Ty)>,
+    added: Vec<String>,
 }
 
 fn text(name: &ast::NameRef) -> String {
@@ -885,6 +892,7 @@ impl Body<'_> {
                 };
                 let retired =
                     crate::data::migrations::retired_fields(self.db, self.project, &entity);
+                let added = crate::data::migrations::added_fields(self.db, self.project, &entity);
                 Target {
                     syntax: value.syntax().clone(),
                     context: Context::Backfill,
@@ -902,6 +910,7 @@ impl Body<'_> {
                         ty,
                         value,
                         retired,
+                        added,
                     }),
                 }
             }

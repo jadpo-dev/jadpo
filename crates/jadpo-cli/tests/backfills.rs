@@ -752,3 +752,497 @@ fn an_earlier_migrations_backfill_in_jadpo_waits_for_the_build_it_was_written_in
     let applied = jadpo(&root, &["migrate", "apply", "--url", &fresh]);
     assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
 }
+
+const ITEM: &str = "domains/shop/entities/item.jadpo";
+
+/// A shop whose items have a cost to the penny, then a second migration
+/// adding `total`, an `Amount` to four places, worked out by `backfill`
+/// through the `totals` library `library` holds, with the types `types`
+/// beside it: the migration, finished.
+fn shop(name: &str, types: &[(&str, &str)], library: &str, backfill: &str) -> (PathBuf, String) {
+    let root = folder(name);
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/shop/types/cost.jadpo",
+        "type Cost = Decimal {\n    scale: 2\n}\n",
+    );
+    write(
+        &root,
+        ITEM,
+        "use shop/types { Cost }\n\nentity Item {\n    id: Uuid\n    cost: Cost\n}\n",
+    );
+    let made = jadpo(&root, &["migrate", "new", "initial"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    write(
+        &root,
+        "domains/shop/types/amount.jadpo",
+        "type Amount = Decimal {\n    scale: 4\n}\n",
+    );
+    write(
+        &root,
+        ITEM,
+        "use shop/types { Amount, Cost }\n\nentity Item {\n    id: Uuid\n    cost: Cost\n    total: Amount\n}\n",
+    );
+    let made = jadpo(&root, &["migrate", "new", "add_total"]);
+    assert_eq!(made.code, 0, "{}{}", made.stdout, made.stderr);
+    for (file, text) in types {
+        write(&root, &format!("domains/shop/types/{file}.jadpo"), text);
+    }
+    write(&root, "domains/shop/libraries/totals.jadpo", library);
+    let name = latest(&root);
+    write(
+        &root,
+        &format!("database/migrations/{name}/changes.jadpo"),
+        &format!("migration {{\n    Item.total: {{\n        backfill: {backfill}\n    }}\n}}\n"),
+    );
+    let finished = jadpo(&root, &["migrate", "new"]);
+    assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    (root, name)
+}
+
+/// Applies the shop's first migration, stores items costing `costs`, then
+/// applies the rest with `jadpo migrate apply`: each item's cost and total
+/// as text, by cost.
+fn shop_totals(root: &Path, database: &str, costs: &[&str]) -> Vec<Vec<String>> {
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server.create_database(database).expect("database");
+    let migrations = steps(root);
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    runtime
+        .block_on(jadpo_runtime::migrate(&store, &migrations[..1]))
+        .expect("the first migration");
+    let values: Vec<String> = costs
+        .iter()
+        .map(|cost| format!("(gen_random_uuid(), {cost})"))
+        .collect();
+    statement(
+        &url,
+        &format!(
+            "INSERT INTO \"item\" (\"id\", \"cost\") VALUES {}",
+            values.join(", ")
+        ),
+    );
+    let applied = jadpo(root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    rows(
+        &url,
+        "SELECT \"cost\"::text, \"total\"::text FROM \"item\" ORDER BY \"item\".\"cost\"",
+    )
+}
+
+/// Costs either side of each half, both signs.
+const HALVES: [&str; 9] = [
+    "-3.50", "-2.50", "0.00", "0.50", "1.50", "2.49", "2.50", "2.51", "3.50",
+];
+
+#[test]
+fn a_scaled_construction_by_update_rounds_half_to_even_as_the_runtime_does() {
+    // The review's `Amount(Whole(cost))`: `Whole` keeps no places, so the
+    // runtime keeps 2.50 as 2 and 3.50 as 4.
+    let (root, name) = shop(
+        "scaled",
+        &[("whole", "type Whole = Decimal {\n    scale: 0\n}\n")],
+        "use shop/types { Amount, Cost, Whole }\n\nlibrary totals {\n    function whole_total(cost: Cost) -> Amount {\n        var whole: Whole = Whole(cost)\n        return Amount(whole)\n    }\n}\n",
+        "totals.whole_total(Item.cost)",
+    );
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{name}/postgres.sql")))
+        .expect("postgres.sql");
+    assert!(sql.contains("-- backfill Item.total: by UPDATE, "), "{sql}");
+    if !jadpo_test::live() {
+        return;
+    }
+    let totals = shop_totals(&root, "backfill_scaled", &HALVES);
+    let runtime = |cost: &str| -> String {
+        let cost = jadpo_value::Decimal::parse(cost).expect("a cost");
+        let whole = cost
+            .rescale(0, jadpo_value::Rounding::HalfEven)
+            .expect("a whole number");
+        whole
+            .rescale(4, jadpo_value::Rounding::HalfEven)
+            .expect("an amount")
+            .to_string()
+    };
+    let expected: Vec<Vec<String>> = HALVES
+        .iter()
+        .map(|cost| vec![cost.to_string(), runtime(cost)])
+        .collect();
+    assert_eq!(totals, expected);
+    assert_eq!(totals[1], vec!["-2.50".to_string(), "-2.0000".to_string()]);
+    assert_eq!(totals[8], vec!["3.50".to_string(), "4.0000".to_string()]);
+}
+
+#[test]
+fn a_constant_built_with_a_scale_rounds_as_area_2_says() {
+    // The review's `Rate(0.10 * 1.25)`: 0.125 kept at two places is 0.12.
+    let (root, _) = shop(
+        "constant-scale",
+        &[("rate", "type Rate = Decimal {\n    scale: 2\n}\n")],
+        "use shop/types { Amount, Cost, Rate }\n\nlibrary totals {\n    constant rate: Rate = Rate(0.10 * 1.25)\n\n    function rated(cost: Cost) -> Amount {\n        return Amount(rate)\n    }\n}\n",
+        "totals.rated(Item.cost)",
+    );
+    if !jadpo_test::live() {
+        return;
+    }
+    let totals = shop_totals(&root, "backfill_constant_scale", &["1.00", "2.00"]);
+    assert_eq!(
+        totals,
+        vec![
+            vec!["1.00".to_string(), "0.1200".to_string()],
+            vec!["2.00".to_string(), "0.1200".to_string()],
+        ]
+    );
+}
+
+#[test]
+fn a_backfill_in_jadpos_digest_covers_the_types_it_reaches() {
+    // The review's `var mut` total: worked out in Jadpo, through `Whole`.
+    let whole = |scale: u32| format!("type Whole = Decimal {{\n    scale: {scale}\n}}\n");
+    let (root, name) = shop(
+        "digest-types",
+        &[("whole", &whole(1))],
+        "use shop/types { Amount, Cost, Whole }\n\nlibrary totals {\n    function whole_total(cost: Cost) -> Amount {\n        var mut whole: Whole = Whole(cost)\n        whole = Whole(cost)\n        return Amount(whole)\n    }\n}\n",
+        "totals.whole_total(Item.cost)",
+    );
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{name}/postgres.sql")))
+        .expect("postgres.sql");
+    assert!(sql.contains("-- backfill Item.total: in Jadpo, "), "{sql}");
+    // `Whole` keeps fewer places now: rows filled before would hold
+    // values the rows filled after don't, so the migration must change.
+    write(&root, "domains/shop/types/whole.jadpo", &whole(0));
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    assert!(
+        checked.stdout.contains("doesn't hold its decisions yet"),
+        "{}",
+        checked.stdout
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new"]).code, 0);
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+}
+
+/// `Item` with two whole numbers, then a migration adding two more, each
+/// worked out from one of them by `UPDATE`.
+fn two_backfills(name: &str) -> (PathBuf, String) {
+    let root = folder(name);
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        ITEM,
+        "entity Item {\n    id: Uuid\n    a: Int\n    b: Int\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    write(
+        &root,
+        ITEM,
+        "entity Item {\n    id: Uuid\n    a: Int\n    b: Int\n    q: Int\n    r: Int\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "add_qr"]).code, 0);
+    let name = latest(&root);
+    write(
+        &root,
+        &format!("database/migrations/{name}/changes.jadpo"),
+        "migration {\n    Item.q: {\n        backfill: Item.a + 1\n    }\n    Item.r: {\n        backfill: Item.b * 2\n    }\n}\n",
+    );
+    let finished = jadpo(&root, &["migrate", "new"]);
+    assert_eq!(finished.code, 0, "{}{}", finished.stdout, finished.stderr);
+    assert_eq!(jadpo(&root, &["check"]).code, 0);
+    (root, name)
+}
+
+#[test]
+fn every_backfill_on_a_table_fills_before_any_of_its_columns_is_required() {
+    let (root, name) = two_backfills("two");
+    let sql = fs::read_to_string(root.join(format!("database/migrations/{name}/postgres.sql")))
+        .expect("postgres.sql");
+    // Both backfills' batches come before the one step that locks the
+    // table and requires a value.
+    let lock = sql.find("LOCK TABLE").expect("a lock");
+    assert!(sql.matches("LOCK TABLE").count() == 1, "{sql}");
+    assert!(sql.find("-- backfill Item.q").expect("q") < lock, "{sql}");
+    assert!(sql.find("-- backfill Item.r").expect("r") < lock, "{sql}");
+    assert!(sql.find("SET NOT NULL").expect("required") > lock, "{sql}");
+    if !jadpo_test::live() {
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server.create_database("backfill_two").expect("database");
+    let migrations = steps(&root);
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    runtime
+        .block_on(jadpo_runtime::migrate(&store, &migrations[..1]))
+        .expect("the first migration");
+    statement(
+        &url,
+        "INSERT INTO \"item\" (\"id\", \"a\", \"b\") SELECT gen_random_uuid(), n, n + 1 FROM generate_series(1, 2500) AS n",
+    );
+    // Stopped as the second backfill starts: the first has filled every
+    // row it found.
+    let mut started = 0;
+    let stopped = runtime.block_on(jadpo_runtime::migrate_reporting(
+        &store,
+        &migrations,
+        &mut |progress| {
+            if matches!(progress, jadpo_runtime::Progress::Filling { .. }) {
+                started += 1;
+                if started == 2 {
+                    return ControlFlow::Break(());
+                }
+            }
+            ControlFlow::Continue(())
+        },
+    ));
+    assert!(
+        matches!(stopped, Err(jadpo_runtime::MigrateError::Stopped { .. })),
+        "{stopped:?}"
+    );
+    let nullable = |column: &str| {
+        rows(
+            &url,
+            &format!("SELECT is_nullable::text FROM information_schema.columns WHERE table_name = 'item' AND column_name = '{column}'"),
+        )[0][0]
+            .clone()
+    };
+    assert_eq!(nullable("q"), "YES", "no column is required yet");
+    assert_eq!(nullable("r"), "YES");
+    // A server still on the old build writes an item meanwhile, knowing
+    // neither new field; nothing refuses it.
+    statement(
+        &url,
+        "INSERT INTO \"item\" (\"id\", \"a\", \"b\") VALUES ('00000000-0000-0000-0000-00000000000a', 7, 8)",
+    );
+    let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    assert_eq!(
+        rows(
+            &url,
+            "SELECT count(*) FROM \"item\" WHERE \"q\" IS DISTINCT FROM \"a\" + 1 OR \"r\" IS DISTINCT FROM \"b\" * 2"
+        ),
+        vec![vec!["0".to_string()]]
+    );
+    assert_eq!(
+        rows(&url, "SELECT count(*) FROM \"item\""),
+        vec![vec!["2501".to_string()]]
+    );
+    assert_eq!(nullable("q"), "NO");
+    assert_eq!(nullable("r"), "NO");
+}
+
+/// What `seq_scan` says this transaction has read of `todo` so far.
+async fn scans(transaction: &mut dyn jadpo_runtime::Transaction) -> i64 {
+    let found = transaction
+        .query(
+            "SELECT seq_scan FROM pg_stat_xact_user_tables WHERE relname = 'todo'",
+            &[],
+        )
+        .await
+        .expect("scans");
+    match found.first().map(Vec::as_slice) {
+        Some([SqlValue::Int8(n)]) => *n,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn the_last_step_locks_writes_and_requires_a_value_without_reading_the_table() {
+    let root = project("last-step");
+    let name = priority_from_flag(&root, "priorities.from_flag(LegacyFlag(Todo.legacy_flag))");
+    assert_eq!(jadpo(&root, &["migrate", "new"]).code, 0);
+    let migrations = steps(&root);
+    let second = migrations
+        .iter()
+        .find(|migration| migration.name == name)
+        .expect("the second migration");
+    // The rows written meanwhile are filled with writes locked out and a
+    // check that every row has a value added unchecked; the check is then
+    // proved in a step of its own, which locks out neither reads nor
+    // writes; then the column is required, which the proved check lets
+    // PostgreSQL do without reading a row, and the check goes.
+    let parts = second.steps();
+    let once = |at: usize| match parts.get(at) {
+        Some(jadpo_std::Step::Once(sql)) => sql.clone(),
+        other => panic!("step {at}: {other:?}"),
+    };
+    assert_eq!(parts.len(), 5, "{parts:?}");
+    let fill = once(2);
+    assert!(
+        fill.starts_with(
+            "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nUPDATE \"todo\" SET \"priority\" = "
+        ),
+        "{fill}"
+    );
+    assert!(
+        fill.ends_with("ALTER TABLE \"todo\" ADD CONSTRAINT \"todo_priority_filled\" CHECK (\"priority\" IS NOT NULL) NOT VALID;"),
+        "{fill}"
+    );
+    assert_eq!(
+        once(3),
+        "ALTER TABLE \"todo\" VALIDATE CONSTRAINT \"todo_priority_filled\";"
+    );
+    assert_eq!(
+        once(4),
+        "ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;\nALTER TABLE \"todo\" DROP CONSTRAINT \"todo_priority_filled\";"
+    );
+    if !jadpo_test::live() {
+        return;
+    }
+    let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
+    let url = server
+        .create_database("backfill_last_step")
+        .expect("database");
+    let runtime = jadpo_host_native::Runtime::new().expect("runtime");
+    let store = jadpo_host_native::postgres(&url).expect("store");
+    runtime
+        .block_on(jadpo_runtime::migrate(&store, &migrations[..1]))
+        .expect("the first migration");
+    todos(&url, 1500);
+    let applied = jadpo(&root, &["migrate", "apply", "--url", &url]);
+    assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
+    let (counts, nullable) = priorities(&url);
+    assert_eq!(counts.len(), 2, "{counts:?}");
+    assert_eq!(nullable, "NO");
+    assert_eq!(
+        rows(
+            &url,
+            "SELECT count(*) FROM pg_constraint WHERE conname = 'todo_priority_filled'"
+        ),
+        vec![vec!["0".to_string()]],
+        "the check goes once the column is required"
+    );
+    // The last three steps again, each in its transaction as `migrate
+    // apply` runs it, watched from inside.
+    statement(
+        &url,
+        "ALTER TABLE \"todo\" ALTER COLUMN \"priority\" DROP NOT NULL",
+    );
+    runtime.block_on(async {
+        let mut transaction = store.begin().await.expect("begin");
+        transaction.batch(&fill).await.expect("fill");
+        transaction.commit().await.expect("commit");
+        // Proving the check reads every row, holding only the lock that
+        // lets reads and writes go on.
+        let mut transaction = store.begin().await.expect("begin");
+        transaction.batch(&once(3)).await.expect("validate");
+        let locks = transaction
+            .query(
+                "SELECT mode FROM pg_locks WHERE relation = 'todo'::regclass AND pid = pg_backend_pid() ORDER BY mode",
+                &[],
+            )
+            .await
+            .expect("locks");
+        assert_eq!(
+            locks,
+            vec![vec![SqlValue::Text("ShareUpdateExclusiveLock".into())]]
+        );
+        transaction.commit().await.expect("commit");
+        // Requiring a value reads no row.
+        let mut transaction = store.begin().await.expect("begin");
+        let before = scans(transaction.as_mut()).await;
+        transaction.batch(&once(4)).await.expect("require");
+        assert_eq!(scans(transaction.as_mut()).await, before);
+        transaction.commit().await.expect("commit");
+        // Without the check, it reads the table.
+        let mut transaction = store.begin().await.expect("begin");
+        transaction
+            .batch("ALTER TABLE \"todo\" ALTER COLUMN \"priority\" DROP NOT NULL")
+            .await
+            .expect("optional");
+        let before = scans(transaction.as_mut()).await;
+        transaction
+            .batch("ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL")
+            .await
+            .expect("required");
+        assert_eq!(scans(transaction.as_mut()).await, before + 1);
+        transaction.rollback().await.expect("rollback");
+    });
+}
+
+#[test]
+fn a_backfill_reaching_a_setting_a_key_or_a_field_its_migration_adds_is_refused() {
+    let root = folder("outside-row");
+    write(&root, "app.jadpo", "application {}\n");
+    write(
+        &root,
+        "domains/planning/types/label.jadpo",
+        "type Label = Text {}\n",
+    );
+    write(
+        &root,
+        "domains/planning/types/title.jadpo",
+        "type Title = Text {}\n",
+    );
+    write(
+        &root,
+        "config.jadpo",
+        "use planning/types { Label }\n\nconfig {\n    hook_key: SigningKey\n    label_prefix: Label {\n        default: \"todo\"\n    }\n}\n",
+    );
+    write(
+        &root,
+        TODO,
+        "use planning/types { Title }\n\nentity Todo {\n    id: Uuid\n    title: Title\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "initial"]).code, 0);
+    write(
+        &root,
+        "domains/planning/types/mac.jadpo",
+        "type Mac = Bytes {}\n",
+    );
+    write(
+        &root,
+        TODO,
+        "use planning/types { Label, Mac, Title }\n\nentity Todo {\n    id: Uuid\n    title: Title\n    label: Label\n    heading: Label\n    mac: Mac\n}\n",
+    );
+    assert_eq!(jadpo(&root, &["migrate", "new", "add_label"]).code, 0);
+    write(
+        &root,
+        "domains/planning/libraries/labels.jadpo",
+        "use planning/types { Label, Mac, Title }\n\nlibrary labels {\n    function prefix(title: Title) -> Label {\n        return config.label_prefix\n    }\n\n    function signed(title: Title) -> Mac {\n        return Mac(crypto.hmac(title, key: config.hook_key))\n    }\n}\n",
+    );
+    let name = latest(&root);
+    write(
+        &root,
+        &format!("database/migrations/{name}/changes.jadpo"),
+        "migration {\n    Todo.label: {\n        backfill: labels.prefix(Todo.title)\n    }\n    Todo.heading: {\n        backfill: Todo.label\n    }\n    Todo.mac: {\n        backfill: labels.signed(Todo.title)\n    }\n}\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 1, "{}", checked.stdout);
+    for (field, read, label) in [
+        (
+            "Todo.label",
+            "config.label_prefix",
+            "reads a setting, through `labels.prefix`",
+        ),
+        (
+            "Todo.mac",
+            "config.hook_key",
+            "reads a setting, through `labels.signed`",
+        ),
+        ("Todo.heading", "Todo.label", "a field this migration adds"),
+    ] {
+        assert!(
+            checked.stdout.contains(&format!(
+                "error: The backfill for `{field}` can't read `{read}`\n"
+            )) && checked.stdout.contains(label),
+            "{field}: {}",
+            checked.stdout
+        );
+    }
+    assert_eq!(
+        checked
+            .stdout
+            .matches("rule: migration.backfill_outside_row")
+            .count(),
+        3,
+        "{}",
+        checked.stdout
+    );
+    assert!(
+        !checked.stdout.contains("not_built_yet"),
+        "{}",
+        checked.stdout
+    );
+}

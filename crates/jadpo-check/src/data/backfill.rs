@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use jadpo_db::{Db, Project};
+use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::body::{
     ArmBody, BinaryOp, Body, Callee, Expr, Literal, Local, LocalId, LocalKind, Node, Pattern,
     SiteId, Stmt, UnaryOp,
@@ -60,15 +61,7 @@ pub fn sql(
     // the runtime rounds a value made for a type with a fixed scale.
     match (held, scale) {
         (Held::Builtin(builtin), Some(scale)) if builtin.representation() == Builtin::Decimal => {
-            form::operation(
-                Op::DecimalRound,
-                &[
-                    Arg::Value(&value, held),
-                    Arg::Whole(i64::from(scale)),
-                    Arg::Rounding(Rounding::HalfEven),
-                ],
-            )
-            .and_then(|form| form.value().map(str::to_string))
+            form::kept_at_scale(&value, scale)
         }
         _ => Some(value),
     }
@@ -142,20 +135,29 @@ pub fn as_function(body: &Body) -> (Body, Vec<String>) {
 
 /// The digest of the code a backfill worked out in Jadpo runs: its body
 /// and every function it reaches, with where each is written left out,
-/// and the value of every constant they read. A change to any of them
-/// changes the migration's SQL, as a change to a backfill by `UPDATE`
-/// does, so `jadpo check` asks for the migration to be written again
-/// before it runs anywhere, and a database that ran the old code refuses
-/// the new one as changed.
+/// the value of every constant they read, every type they name, along
+/// its chain and with its fields and variants, rules and scales included
+/// (chunk 5.8b), and the toolchain's version, whose runtime works the
+/// values out. A change to any of them changes the migration's SQL, as a
+/// change to a backfill by `UPDATE` does, so `jadpo check` asks for the
+/// migration to be written again before it runs anywhere, and a database
+/// that ran the old code refuses the new one as changed, rather than
+/// filling some rows one way and the rest another.
 pub fn fingerprint(db: &dyn Db, project: Project, body: &Body) -> String {
     let bodies = bodies(db, project);
     let table = crate::constants::constant_table(db, project);
-    let mut text = canonical(body);
+    let graph = crate::graph::graph(db, project);
+    let mut text = format!("jadpo {}\n{}", env!("CARGO_PKG_VERSION"), canonical(body));
     let mut seen: Vec<Key> = Vec::new();
     let mut constants: Vec<Key> = Vec::new();
+    let mut types: Vec<Key> = Vec::new();
     let mut queue: Vec<Arc<Body>> = vec![Arc::new(body.clone())];
     while let Some(next) = queue.pop() {
+        for local in &next.locals {
+            types.extend(local.ty.keys().into_iter().cloned());
+        }
         for site in &next.sites {
+            types.extend(site.ty.keys().into_iter().cloned());
             match &site.node {
                 Node::Expr(Expr::Call {
                     callee: Callee::Function(key) | Callee::LibraryFunction(key),
@@ -166,6 +168,10 @@ pub fn fingerprint(db: &dyn Db, project: Project, body: &Body) -> String {
                         queue.push(Arc::clone(found));
                     }
                 }
+                Node::Expr(Expr::Call {
+                    callee: Callee::Construct(ty),
+                    ..
+                }) => types.extend(ty.keys().into_iter().cloned()),
                 Node::Expr(Expr::Constant { constant }) if !constants.contains(constant) => {
                     constants.push(constant.clone());
                 }
@@ -191,7 +197,118 @@ pub fn fingerprint(db: &dyn Db, project: Project, body: &Body) -> String {
             .map(|evaluated| format!("{:?}", evaluated.value));
         text.push_str(&format!("\n{}: {value:?}", key.as_str()));
     }
+    for (key, detail) in declarations(graph, types) {
+        text.push_str(&format!("\n{}: {detail}", key.as_str()));
+    }
     jadpo_graph::migration::section_digest(&text)
+}
+
+/// Each type `named` names, the types along its chain, and its fields,
+/// variants and rules with the types they name, each with what its
+/// declaration says (its base, rules and scale; a field's type), in key
+/// order: what a value of one of them is worked out by.
+fn declarations(graph: &Graph, named: Vec<Key>) -> BTreeMap<Key, String> {
+    let mut out: BTreeMap<Key, String> = BTreeMap::new();
+    let mut queue = named;
+    while let Some(key) = queue.pop() {
+        if out.contains_key(&key) {
+            continue;
+        }
+        let Some(id) = graph.find(&key) else {
+            out.insert(key, String::new());
+            continue;
+        };
+        let node = graph.node(id);
+        match &node.detail {
+            Detail::Type {
+                base: Base::Refines(parent),
+                ..
+            } => queue.extend(parent.keys().into_iter().cloned()),
+            Detail::Field { ty, .. } => queue.extend(ty.keys().into_iter().cloned()),
+            _ => {}
+        }
+        queue.extend(
+            graph
+                .children(id)
+                .map(|child| graph.node(child).key.clone()),
+        );
+        out.insert(key, format!("{:?}", node.detail));
+    }
+    out
+}
+
+/// The error for a backfill of `key` (`Todo.label`) that reads more than
+/// its row, `written`, at `span` (area 5, `migration.backfill_outside_row`).
+pub fn outside_row(key: &str, written: &str, span: Span, label: &str) -> Diagnostic {
+    let entity = key.split('.').next().unwrap_or_default();
+    Diagnostic::new(
+        &rule::MIGRATION_BACKFILL_OUTSIDE_ROW,
+        format!("The backfill for `{key}` can't read `{written}`"),
+    )
+    .at(span, label)
+    .reason(format!(
+        "A backfill works each `{entity}` record's value out from that record's own fields, constants and pure functions, so it gives the same value whenever and wherever the migration runs."
+    ))
+    .next(format!(
+        "Work the value out from `{entity}`'s own fields, or a constant"
+    ))
+}
+
+/// What a backfill reads through the functions it calls that `jadpo
+/// migrate apply` has none of (chunk 5.8b): for each call in its own body
+/// whose function, or one that function calls, reads a setting, a key a
+/// `crypto` operation takes included, the call, the function as code
+/// writes it, and the first setting found (`config.notes_key`).
+pub fn settings_reached(
+    db: &dyn Db,
+    project: Project,
+    body: &Body,
+) -> Vec<(SiteId, String, String)> {
+    let mut out = Vec::new();
+    let mut bodies: Option<HashMap<Key, Arc<Body>>> = None;
+    for (at, site) in body.sites.iter().enumerate() {
+        let Node::Expr(Expr::Call {
+            callee: Callee::Function(key) | Callee::LibraryFunction(key),
+            ..
+        }) = &site.node
+        else {
+            continue;
+        };
+        let bodies = bodies.get_or_insert_with(|| self::bodies(db, project));
+        if let Some(setting) = setting_in(bodies, key) {
+            out.push((SiteId(at as u32), key.written().to_string(), setting));
+        }
+    }
+    out
+}
+
+/// The first setting the function with key `start` reads, itself or
+/// through a function it calls.
+fn setting_in(bodies: &HashMap<Key, Arc<Body>>, start: &Key) -> Option<String> {
+    let mut seen = vec![start.clone()];
+    let mut queue = vec![start.clone()];
+    while let Some(key) = queue.pop() {
+        let Some(body) = bodies.get(&key) else {
+            continue;
+        };
+        for site in &body.sites {
+            match &site.node {
+                Node::Expr(Expr::Config { field }) => {
+                    let name = field.name().rsplit('.').next().unwrap_or_default();
+                    return Some(format!("config.{name}"));
+                }
+                Node::Expr(Expr::Call {
+                    callee: Callee::Function(next) | Callee::LibraryFunction(next),
+                    ..
+                }) if !seen.contains(next) => {
+                    seen.push(next.clone());
+                    queue.push(next.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// A body as text, without where anything in it is written.
@@ -453,11 +570,11 @@ impl Render<'_> {
                 Some((value.value()?.to_string(), self.held(ty)?))
             }
             // A construction an `if` proves, or a re-check that can't
-            // fail: the value itself.
-            Callee::Construct(_) => {
+            // fail: the value as the type keeps it (chunk 5.8b).
+            Callee::Construct(target) => {
                 let [Some(arg)] = args else { return None };
                 let (value, _) = self.expr(frame, *arg)?;
-                Some((value, self.held(ty)?))
+                Some((self.kept(value, target)?, self.held(ty)?))
             }
             Callee::Function(key) | Callee::LibraryFunction(key) => {
                 if self.depth >= DEPTH {
@@ -478,6 +595,23 @@ impl Render<'_> {
                 written
             }
             _ => None,
+        }
+    }
+
+    /// `value` as a value of `ty` keeps it once built, as the runtime's
+    /// construction does (area 2, "A fixed `scale` rounds first"; chunk
+    /// 5.8b): a decimal at the type's fixed scale, rounded half to even;
+    /// anything else as it is, since a construction a backfill makes
+    /// can't fail and only a scale changes the value of a type built on a
+    /// built-in one. A standard type, which may change a value as it is
+    /// built (`Html` made safe, a coordinate kept as its double), has no
+    /// form, so a backfill building one is worked out in Jadpo.
+    fn kept(&self, value: String, ty: &TypeRef) -> Option<String> {
+        match self.builtin(ty)? {
+            (builtin, Some(scale)) if builtin.representation() == Builtin::Decimal => {
+                form::kept_at_scale(&value, scale)
+            }
+            _ => Some(value),
         }
     }
 

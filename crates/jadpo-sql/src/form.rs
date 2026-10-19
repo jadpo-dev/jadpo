@@ -617,6 +617,22 @@ fn decimal_round(x: &str, scale: u32, rounding: Rounding) -> String {
     format!("(CASE WHEN scale({x}) <= {scale} THEN {x} ELSE {rounded} END)")
 }
 
+/// A decimal as a type with a fixed `scale` keeps it (area 2, "A fixed
+/// `scale` rounds first"; chunk 5.8b): exactly `scale` places, rounded
+/// half to even, as the runtime keeps a value it builds or stores, so
+/// 2.50 kept with no places is 2 and 3.50 is 4; a whole number becomes a
+/// decimal with that many places. Where the runtime stops, past 38 digits,
+/// the cast to `numeric(38, scale)` stops the statement. The value is
+/// named once in a subquery, since rounding reads it several times.
+pub fn kept_at_scale(x: &str, scale: u32) -> Option<String> {
+    (scale <= 38).then(|| {
+        let rounded = decimal_round("\"k\".\"x\"", scale, Rounding::HalfEven);
+        format!(
+            "(SELECT ({rounded})::numeric(38, {scale}) FROM (SELECT ({x})::numeric AS \"x\") AS \"k\")"
+        )
+    })
+}
+
 /// `digit` in the `places`th place after the point, as a literal:
 /// `place_literal(2, "1")` is `0.01`, and with no places `1`.
 fn place_literal(places: u32, digit: &str) -> String {

@@ -330,6 +330,27 @@ pub fn migration_sql(
 ) -> Result<Sql, Vec<Refusal>> {
     let all = changes(before, after);
     let needed = decisions_needed(before, after);
+    // Each decision worked out once: a computed backfill's is a body
+    // checked and written as SQL.
+    let made: Vec<Option<Decided>> = needed.iter().map(decided).collect();
+    let decided = |need: &Needed| -> Option<Decided> {
+        needed
+            .iter()
+            .position(|n| n == need)
+            .and_then(|at| made[at].clone())
+    };
+    // The stores whose section fills a backfill in batches: there every
+    // column a backfill fills is made required in the section's last
+    // steps, once every batch is filled (chunk 5.8b).
+    let batched: BTreeSet<&str> = needed
+        .iter()
+        .zip(&made)
+        .filter(|(need, made)| {
+            need.kind == NeededKind::Backfill
+                && matches!(made, Some(Decided::Computed(_) | Decided::InJadpo { .. }))
+        })
+        .map(|(need, _)| need.store.as_str())
+        .collect();
     let mut refusals = Vec::new();
     let mut plans: BTreeMap<String, Plan> = BTreeMap::new();
     for change in &all {
@@ -400,14 +421,16 @@ pub fn migration_sql(
                     let key = new
                         .map(|t| t.primary_key.columns.clone())
                         .unwrap_or_default();
-                    plan.columns.extend(backfill(
+                    let filled = backfill(
                         table,
                         &key,
                         (column, &col.sql_type),
                         &[],
                         need,
-                        decided,
-                    ));
+                        &decided,
+                        batched.contains(store),
+                    );
+                    plan.fill(table, filled);
                 }
             }
             Change::AlterColumn { table, column, .. } => {
@@ -468,14 +491,16 @@ pub fn migration_sql(
                         let key = new
                             .map(|t| t.primary_key.columns.clone())
                             .unwrap_or_default();
-                        plan.columns.extend(backfill(
+                        let filled = backfill(
                             table,
                             &key,
                             (column, &now.sql_type),
                             &refit(was, now, column),
                             need,
-                            decided,
-                        ));
+                            &decided,
+                            batched.contains(store),
+                        );
+                        plan.fill(table, filled);
                     }
                     None if !was.nullable && now.nullable => plan.columns.push(Statement {
                         sql: table::drop_not_null(table, column),
@@ -528,7 +553,7 @@ pub fn migration_sql(
         return Err(refusals);
     }
     let mut out = Sql::default();
-    for (store, plan) in plans {
+    for (store, mut plan) in plans {
         // An extension the store's columns need now and didn't before,
         // created first (area 21, chunk 5.5v1).
         let had = extensions(before, &store);
@@ -540,11 +565,14 @@ pub fn migration_sql(
                 does: "create extension",
             })
             .collect();
+        let last = plan.last_steps();
         let statements: Vec<Statement> = created
             .into_iter()
             .chain(plan.drop)
             .chain(plan.create)
             .chain(plan.columns)
+            .chain(plan.batches)
+            .chain(last)
             .chain(plan.constraints)
             .chain(plan.references)
             .chain(plan.indexes)
@@ -584,17 +612,120 @@ pub fn extensions(schema: &Schema, store: &str) -> BTreeSet<&'static str> {
 
 /// One store's statements, grouped so each can depend on the ones before:
 /// constraints are dropped first, tables made before columns change, and
-/// references added once every table they name exists.
+/// references added once every table they name exists. A section that
+/// fills backfills in batches fills every one of them before its last
+/// steps make any column required (chunk 5.8b).
 #[derive(Default)]
 struct Plan {
     drop: Vec<Statement>,
     create: Vec<Statement>,
     columns: Vec<Statement>,
+    /// Each computed backfill's batches.
+    batches: Vec<Statement>,
+    /// The columns a backfill fills that become required only in the
+    /// last steps, by table in the order first filled: each with what
+    /// fills the rows written meanwhile.
+    required: Vec<(String, Vec<(String, Statement)>)>,
     constraints: Vec<Statement>,
     references: Vec<Statement>,
     indexes: Vec<Statement>,
 }
 
+impl Plan {
+    fn fill(&mut self, table: &str, filled: Filled) {
+        self.columns.extend(filled.now);
+        self.batches.extend(filled.batches);
+        if let Some((column, meanwhile)) = filled.required {
+            match self.required.iter_mut().find(|(t, _)| t == table) {
+                Some((_, columns)) => columns.push((column, meanwhile)),
+                None => self
+                    .required
+                    .push((table.to_string(), vec![(column, meanwhile)])),
+            }
+        }
+    }
+
+    /// The last steps of a section that fills backfills in batches (area
+    /// 5, "Computed backfills"; chunk 5.8b), once every batch is filled.
+    /// First, in one transaction, each table is locked against writes and
+    /// never reads (`SHARE ROW EXCLUSIVE`), the rows servers still on the
+    /// old build wrote meanwhile are filled, and a check that every row
+    /// has a value is added `NOT VALID`, reading no row, so every row
+    /// written from then on is held to it. Then, in a step of its own,
+    /// each check is proved, reading every row under `SHARE UPDATE
+    /// EXCLUSIVE`, which lets reads and writes go on. Last, each column is
+    /// made required, which PostgreSQL does without reading a row since
+    /// the proved check already says so, and the check goes; the step
+    /// that records the migration.
+    fn last_steps(&mut self) -> Vec<Statement> {
+        let required = std::mem::take(&mut self.required);
+        let mut fill = Vec::new();
+        let mut checks = Vec::new();
+        let mut proofs = Vec::new();
+        let mut columns = Vec::new();
+        let mut drops = Vec::new();
+        for (table, filled) in &required {
+            fill.push(Statement {
+                sql: table::lock_against_writes(table),
+                does: "lock against writes",
+            });
+            for (column, meanwhile) in filled {
+                fill.push(meanwhile.clone());
+                let name = crate::schema::object_name(&[table.as_str(), column.as_str()], "filled");
+                checks.push(Statement {
+                    sql: table::add_filled_check(table, &name, column),
+                    does: "add check",
+                });
+                proofs.push(Statement {
+                    sql: table::validate_constraint(table, &name),
+                    does: "check every row has a value",
+                });
+                columns.push(Statement {
+                    sql: table::set_not_null(table, column),
+                    does: "require a value",
+                });
+                drops.push(Statement {
+                    sql: table::drop_constraint(table, &name),
+                    does: "drop constraint",
+                });
+            }
+        }
+        let opening = |statements: &mut Vec<Statement>, what: &str| {
+            if let Some(first) = statements.first_mut() {
+                first.sql = table::in_a_step(what, &first.sql);
+            }
+        };
+        opening(
+            &mut proofs,
+            "check every row has a value, locking out neither reads nor writes",
+        );
+        opening(
+            &mut columns,
+            "require a value, which the proved check lets PostgreSQL do without reading a row",
+        );
+        fill.into_iter()
+            .chain(checks)
+            .chain(proofs)
+            .chain(columns)
+            .chain(drops)
+            .collect()
+    }
+}
+
+/// What a decision about one column runs, and where.
+#[derive(Default)]
+struct Filled {
+    /// With the section's other column changes.
+    now: Vec<Statement>,
+    /// A computed backfill's batches.
+    batches: Vec<Statement>,
+    /// In a section that fills backfills in batches, the column made
+    /// required in its last steps, and what fills the rows written
+    /// meanwhile there, with the table locked against writes.
+    required: Option<(String, Statement)>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn backfill(
     table: &str,
     key: &[String],
@@ -602,88 +733,119 @@ fn backfill(
     broken: &[String],
     need: &Needed,
     decided: &dyn Fn(&Needed) -> Option<Decided>,
-) -> Vec<Statement> {
+    batched: bool,
+) -> Filled {
     match (need.kind, decided(need)) {
         // The same steps, each batch read, worked out in Jadpo and written
         // back by `jadpo migrate apply`, and the rows written meanwhile
         // too (chunk 5.6b2).
-        (NeededKind::Backfill, Some(Decided::InJadpo { reads, code })) if key.len() == 1 => vec![
-            Statement {
-                sql: table::backfill_in_jadpo(
-                    &need.key(),
-                    table,
-                    &key[0],
-                    column,
-                    sql_type,
-                    &reads,
-                    &code,
-                ),
-                does: "fill existing rows in batches in Jadpo",
-            },
-            Statement {
-                sql: table::lock_against_writes(table),
-                does: "lock against writes",
-            },
-            Statement {
-                sql: table::fill_in_jadpo(&need.key(), table, &key[0], column, sql_type, &reads),
-                does: "fill rows written meanwhile in Jadpo",
-            },
-            Statement {
-                sql: table::set_not_null(table, column),
-                does: "require a value",
-            },
-        ],
+        (NeededKind::Backfill, Some(Decided::InJadpo { reads, code })) if key.len() == 1 => {
+            Filled {
+                batches: vec![Statement {
+                    sql: table::backfill_in_jadpo(
+                        &need.key(),
+                        table,
+                        &key[0],
+                        column,
+                        sql_type,
+                        &reads,
+                        &code,
+                    ),
+                    does: "fill existing rows in batches in Jadpo",
+                }],
+                required: Some((
+                    column.to_string(),
+                    Statement {
+                        sql: table::fill_in_jadpo(
+                            &need.key(),
+                            table,
+                            &key[0],
+                            column,
+                            sql_type,
+                            &reads,
+                        ),
+                        does: "fill rows written meanwhile in Jadpo",
+                    },
+                )),
+                ..Filled::default()
+            }
+        }
         // Filled in batches, each its own transaction, then the rows
         // written meanwhile filled with the table locked against writes,
-        // and the column made required, in the migration's last step
-        // (chunk 5.6b). An entity's key is its one `id`.
-        (NeededKind::Backfill, Some(Decided::Computed(value))) if key.len() == 1 => vec![
-            Statement {
+        // and the column made required, in the migration's last steps
+        // (chunks 5.6b and 5.8b). An entity's key is its one `id`.
+        (NeededKind::Backfill, Some(Decided::Computed(value))) if key.len() == 1 => Filled {
+            batches: vec![Statement {
                 sql: table::backfill_in_batches(&need.key(), table, &key[0], column, &value),
                 does: "fill existing rows in batches",
-            },
-            Statement {
-                sql: table::lock_against_writes(table),
-                does: "lock against writes",
-            },
-            Statement {
-                sql: table::fill(table, column, &value, &[table::is_null(column)]),
-                does: "fill rows written meanwhile",
-            },
-            Statement {
-                sql: table::set_not_null(table, column),
-                does: "require a value",
-            },
-        ],
+            }],
+            required: Some((
+                column.to_string(),
+                Statement {
+                    sql: table::fill(table, column, &value, &[table::is_null(column)]),
+                    does: "fill rows written meanwhile",
+                },
+            )),
+            ..Filled::default()
+        },
         (NeededKind::Backfill, Some(Decided::Backfill(value))) => {
             let mut empty = vec![table::is_null(column)];
             empty.extend(broken.iter().cloned());
-            vec![
-                Statement {
-                    sql: table::fill(table, column, &value, &empty),
-                    does: "fill existing rows",
-                },
-                Statement {
-                    sql: table::set_not_null(table, column),
-                    does: "require a value",
-                },
-            ]
+            let now = Statement {
+                sql: table::fill(table, column, &value, &empty),
+                does: "fill existing rows",
+            };
+            // Beside backfills filled in batches, it too is required only
+            // once they are filled, its rows written meanwhile filled
+            // again in the last step (chunk 5.8b).
+            if batched {
+                return Filled {
+                    now: vec![now],
+                    required: Some((
+                        column.to_string(),
+                        Statement {
+                            sql: table::fill(table, column, &value, &empty),
+                            does: "fill rows written meanwhile",
+                        },
+                    )),
+                    ..Filled::default()
+                };
+            }
+            Filled {
+                now: vec![
+                    now,
+                    Statement {
+                        sql: table::set_not_null(table, column),
+                        does: "require a value",
+                    },
+                ],
+                ..Filled::default()
+            }
         }
-        (NeededKind::Refit, Some(Decided::Backfill(value))) => vec![Statement {
-            sql: table::fill(table, column, &value, broken),
-            does: "replace values no longer allowed",
-        }],
-        (NeededKind::Retire, Some(Decided::Retired)) => vec![Statement {
-            sql: table::drop_not_null(table, column),
-            does: "retire column",
-        }],
-        _ => vec![Statement {
-            sql: table::comment(&format!(
-                "waiting for the decision about {} in changes.jadpo",
-                need.key()
-            )),
-            does: "decision to make",
-        }],
+        (NeededKind::Refit, Some(Decided::Backfill(value))) => Filled {
+            now: vec![Statement {
+                sql: table::fill(table, column, &value, broken),
+                does: "replace values no longer allowed",
+            }],
+            ..Filled::default()
+        },
+        (NeededKind::Retire, Some(Decided::Retired)) => Filled {
+            now: vec![Statement {
+                sql: table::drop_not_null(table, column),
+                does: "retire column",
+            }],
+            ..Filled::default()
+        },
+        _ => Filled {
+            now: vec![Statement {
+                sql: table::comment(&format!(
+                    "waiting for the decision about {} in changes.jadpo",
+                    need.key()
+                )),
+                does: "decision to make",
+            }],
+            ..Filled::default()
+        },
     }
 }
 
@@ -892,7 +1054,7 @@ mod tests {
             sql: section.sql.clone(),
         }
         .steps();
-        assert_eq!(steps.len(), 3, "{document}");
+        assert_eq!(steps.len(), 5, "{document}");
         assert_eq!(
             steps[0],
             jadpo_std::Step::Once("ALTER TABLE \"todo\" ADD COLUMN \"rank\" bigint;".into())
@@ -916,11 +1078,78 @@ mod tests {
             "{}",
             batches.batch
         );
+        // The last steps (chunk 5.8b): the rows written meanwhile filled
+        // with writes locked out and a check added that reads no row; the
+        // check proved, locking out neither reads nor writes; the column
+        // required, which the proved check lets PostgreSQL do without
+        // reading a row, and the check dropped.
         assert_eq!(
             steps[2],
             jadpo_std::Step::Once(format!(
-                "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nUPDATE \"todo\" SET \"rank\" = {value} WHERE \"rank\" IS NULL;\nALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;"
+                "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nUPDATE \"todo\" SET \"rank\" = {value} WHERE \"rank\" IS NULL;\nALTER TABLE \"todo\" ADD CONSTRAINT \"todo_rank_filled\" CHECK (\"rank\" IS NOT NULL) NOT VALID;"
             ))
+        );
+        assert_eq!(
+            steps[3],
+            jadpo_std::Step::Once(
+                "ALTER TABLE \"todo\" VALIDATE CONSTRAINT \"todo_rank_filled\";".into()
+            )
+        );
+        assert_eq!(
+            steps[4],
+            jadpo_std::Step::Once(
+                "ALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;\nALTER TABLE \"todo\" DROP CONSTRAINT \"todo_rank_filled\";".into()
+            )
+        );
+    }
+
+    #[test]
+    fn a_literal_backfill_beside_one_in_batches_is_required_in_the_last_steps_too() {
+        let before = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+        ]);
+        let after = schema(&[
+            ("id", "uuid", false, false),
+            ("flag", "boolean", false, false),
+            ("rank", "bigint", false, false),
+            ("size", "bigint", false, false),
+        ]);
+        let decided = |need: &Needed| {
+            Some(if need.column == "rank" {
+                Decided::Computed("(\"todo\".\"flag\")::bigint".into())
+            } else {
+                Decided::Backfill("3".into())
+            })
+        };
+        let document = migration_sql(&before, &after, &decided)
+            .expect("sql")
+            .to_document("x");
+        let filled = document
+            .find("UPDATE \"todo\" SET \"size\" = 3 WHERE \"size\" IS NULL;\n-- backfill")
+            .expect(&document);
+        let lock = document.find("LOCK TABLE").expect(&document);
+        assert!(filled < lock, "{document}");
+        assert!(
+            document[lock..].contains("UPDATE \"todo\" SET \"size\" = 3 WHERE \"size\" IS NULL;"),
+            "{document}"
+        );
+        assert!(
+            document
+                .find("ALTER COLUMN \"size\" SET NOT NULL")
+                .expect(&document)
+                > lock,
+            "{document}"
+        );
+        // Alone, it is filled and required in one transaction, as since
+        // chunk 3.1.
+        let alone = migration_sql(&before, &after, &|_| Some(Decided::Backfill("3".into())))
+            .expect("sql")
+            .to_document("x");
+        assert!(!alone.contains("LOCK TABLE"), "{alone}");
+        assert!(
+            alone.contains("UPDATE \"todo\" SET \"size\" = 3 WHERE \"size\" IS NULL;\nALTER TABLE \"todo\" ALTER COLUMN \"size\" SET NOT NULL;"),
+            "{alone}"
         );
     }
 
@@ -954,7 +1183,7 @@ mod tests {
             sql: section.sql.clone(),
         }
         .steps();
-        assert_eq!(steps.len(), 3, "{document}");
+        assert_eq!(steps.len(), 5, "{document}");
         let jadpo_std::Step::Batches(batches) = &steps[1] else {
             panic!("{document}");
         };
@@ -979,9 +1208,15 @@ mod tests {
                     write: write.into(),
                 }),
                 jadpo_std::migration::Part::Sql(
-                    "ALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;".into()
+                    "ALTER TABLE \"todo\" ADD CONSTRAINT \"todo_rank_filled\" CHECK (\"rank\" IS NOT NULL) NOT VALID;".into()
                 ),
             ])
+        );
+        assert_eq!(
+            steps[4],
+            jadpo_std::Step::Once(
+                "ALTER TABLE \"todo\" ALTER COLUMN \"rank\" SET NOT NULL;\nALTER TABLE \"todo\" DROP CONSTRAINT \"todo_rank_filled\";".into()
+            )
         );
     }
 
