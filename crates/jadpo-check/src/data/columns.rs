@@ -523,7 +523,7 @@ pub fn system_table(name: &str) -> Table {
             // tick that reached it. In `schedules: { store: }`.
             add("schedule", "text", false);
             add("every_ms", "bigint", false);
-            add("next_due_at", "timestamptz(3)", false);
+            add("next_run_at", "timestamptz(3)", false);
             add("paused", "boolean", false);
             add("lease_until", "timestamptz(3)", true);
             add("run_id", "uuid", true);
@@ -538,7 +538,7 @@ pub fn system_table(name: &str) -> Table {
             // trace. Kept 30 days.
             add("id", "uuid", false);
             add("schedule", "text", false);
-            add("due_at", "timestamptz(3)", false);
+            add("due_slot", "timestamptz(3)", false);
             add("started_at", "timestamptz(3)", false);
             add("ended_at", "timestamptz(3)", true);
             add("outcome", "text", false);

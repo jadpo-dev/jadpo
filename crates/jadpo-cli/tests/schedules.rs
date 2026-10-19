@@ -512,7 +512,7 @@ impl Store {
     /// Each run record's outcome, the reason a tick skipped it, its due
     /// time as minutes after `T0` and its events, oldest first.
     async fn runs(&self) -> Vec<(String, Option<String>, i64, Option<i32>)> {
-        self.rows("SELECT \"outcome\", \"reason\", ((extract(epoch FROM \"due_at\") * 1000 - 1792400400000) / 60000)::int8, \"events\" FROM \"jadpo_schedule_runs\" ORDER BY \"started_at\", \"due_at\"")
+        self.rows("SELECT \"outcome\", \"reason\", ((extract(epoch FROM \"due_slot\") * 1000 - 1792400400000) / 60000)::int8, \"events\" FROM \"jadpo_schedule_runs\" ORDER BY \"started_at\", \"due_slot\"")
             .await
             .into_iter()
             .map(|row| match row.as_slice() {
@@ -535,7 +535,7 @@ impl Store {
 
     /// When the census is next due, as minutes after `T0`.
     async fn next_due(&self) -> i64 {
-        self.count("SELECT ((extract(epoch FROM \"next_due_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"jadpo_schedules\"")
+        self.count("SELECT ((extract(epoch FROM \"next_run_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"jadpo_schedules\"")
             .await
     }
 
@@ -685,7 +685,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         let ran: Vec<_> = one.due.iter().chain(&two.due).collect();
         assert_eq!(ran.len(), 1, "{ran:?}");
         assert_eq!(ran[0].ran, Ran::Succeeded { events: 1 });
-        assert_eq!(ran[0].due_at, now);
+        assert_eq!(ran[0].due_slot, now);
         // As the system with no tenant, the run sees both households'
         // chores, and `clock.now` is the tick's time.
         assert_eq!(host.censuses().await, [(2, 15)]);
@@ -701,7 +701,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
 
         // A run still holding the lease when the next one is due: the tick
         // is skipped, recorded, and the due time moves on, not queued.
-        host.rows("INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_at\", \"started_at\", \"outcome\") VALUES ('00000000-0000-7000-8000-000000000001', 'schedule home.chore_census', '2026-10-19T09:30:00Z', '2026-10-19T09:25:00Z', 'running') RETURNING 1")
+        host.rows("INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_slot\", \"started_at\", \"outcome\") VALUES ('00000000-0000-7000-8000-000000000001', 'schedule home.chore_census', '2026-10-19T09:30:00Z', '2026-10-19T09:25:00Z', 'running') RETURNING 1")
             .await;
         host.rows("UPDATE \"jadpo_schedules\" SET \"lease_until\" = '2026-10-19T09:40:00Z', \"run_id\" = '00000000-0000-7000-8000-000000000001' RETURNING 1")
             .await;
@@ -727,7 +727,7 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         // the next due time stays on the grid.
         let caught = tick(&program, &host, at(185)).await;
         assert_eq!(caught.due.len(), 1, "{:?}", caught.due);
-        assert_eq!(caught.due[0].due_at, T0 + 60 * MINUTE);
+        assert_eq!(caught.due[0].due_slot, T0 + 60 * MINUTE);
         assert_eq!(host.next_due().await, 195);
         assert_eq!(host.censuses().await, [(2, 15), (2, 45), (2, 185)]);
 
@@ -754,10 +754,10 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
         host.rows("UPDATE \"jadpo_deliveries\" SET \"status\" = 'running', \"next_attempt_at\" = '2026-10-19T12:20:00Z' WHERE \"id\" = (SELECT \"d\".\"id\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" ORDER BY \"o\".\"emitted_at\" DESC LIMIT 1) RETURNING 1")
             .await;
         let early = tick(&program, &host, at(196)).await;
-        assert!(early.due.is_empty() && early.delivered.is_empty(), "{early:?}");
+        assert!(early.due.is_empty() && early.deliveries.is_empty(), "{early:?}");
         let swept = tick(&program, &host, at(207)).await;
         assert!(swept.due.is_empty());
-        assert_eq!(swept.delivered.len(), 1, "{swept:?}");
+        assert_eq!(swept.deliveries.len(), 1, "{swept:?}");
         assert_eq!(
             host.deliveries().await,
             [
