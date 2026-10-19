@@ -19,9 +19,10 @@
 //!   runtime answering with its own handler (chunk 4.1).
 //!
 //! Built so far: the runtime and the transport the PostgreSQL driver needs
-//! (chunk 3.1), serving HTTP (chunk 4.1), and running a response's
-//! follow-on work in the background (chunk 6.1a). Schedule ticks, local
-//! disk and inbox come with their areas.
+//! (chunk 3.1), serving HTTP (chunk 4.1), running a response's
+//! follow-on work in the background (chunk 6.1a), and the timer that
+//! ticks the runtime's schedules and sweeps (chunk 6.2). Local disk and
+//! inbox come with their areas.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
