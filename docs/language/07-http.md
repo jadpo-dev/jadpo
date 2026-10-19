@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8). `settle:` comes with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20). `settle:` comes with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -139,6 +139,11 @@ POST / {
     run: create_todo(input, current_principal.user)
 }
 ```
+
+A route may also send a map layer, a `FeatureCollection<G, P>` (area 20),
+bare, so a mapping library fetches it as the whole response, plain RFC
+7946 GeoJSON. Its properties type `P` is held to what an `Output` may
+hold: never a caller, a password's hash or a secret value.
 
 Only the output's declared fields are sent. `IssuedToken` and `IssuedKey`
 (area 8) are built in and sent as the objects they are: an `id`,
@@ -1135,7 +1140,7 @@ check failed: 1 error, 1 file
 
 ### `route.output_not_output`
 
-A route sends only an `Output`, so only fields declared for clients leave the server:
+A route sends only an `Output`, or a map layer whose properties hold only what an `Output` may, so only fields declared for clients leave the server:
 
 ```jadpo check project=e-output-not-output expect=route.output_not_output
 type Memo = Text {
@@ -1185,7 +1190,7 @@ error: `MemoRecord` isn't an `Output`
    |
 36 |         output: MemoRecord
    |                 ^^^^^^^^^^ not an `Output`
-  reason: A route returns only an `Output` type (area 2), or a `List` or `Page` of one as a query gives them, so only fields declared for clients are ever sent.
+  reason: A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a map layer, a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.
   next: Declare `type <Name> = Output { ... }` with the fields clients see, and return it (agent)
   rule: route.output_not_output
   help: docs/language/07-http.html#route-output-not-output
@@ -2409,6 +2414,12 @@ API's sign-in methods. Natively, a client has 10 seconds for its headers
 and 30 for its body, and the server holds at most 1,024 connections and 10
 database connections per store per worker.
 
+Since chunk 5.5u7 (area 20) a route may send a `FeatureCollection<G, P>`
+bare, its properties held to what an `Output` may hold and, where an
+action returns it, to the fields every caller may read (area 9); OpenAPI
+describes RFC 7946's object and the record names it with its type
+arguments.
+
 Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
 `serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
 with the importer in chunk 7.2, the served route with no chunk yet); the
@@ -2420,6 +2431,36 @@ store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
 is written.
+
+### Chosen in chunk 5.5u7
+
+- **Only a collection, only bare.** `output:` may be
+  `FeatureCollection<G, P>` itself; a `List` or `Page` of them, and a lone
+  `Feature<G, P>`, stay `route.output_not_output`, since a mapping library
+  takes a collection as its source and nothing asks for the others.
+- **What `P` may not hold** is what an `Output`'s fields may not: a
+  caller, a password's hash, a secret value, however deep. A layer whose
+  properties hold one is `route.output_not_output` at `output:`, naming
+  what and where. Since `P` is an `Object`, which may hold any of them,
+  the check is the route's, not `P`'s declaration's. The same search now
+  follows a feature's properties wherever it looks, so an `Output` with
+  a layer field whose properties hold a password's hash is refused at
+  that field as before 5.5u7 it wasn't.
+- **Field policy.** A layer an action returns is what its caller is
+  shown, as an `Output` it builds is: every `return` of a
+  `FeatureCollection` in an action carries only fields every caller of
+  the action may read, or it is `policy.output_field_unproved` at the
+  value returned (area 9, "Field restrictions"). It is checked in every
+  action that returns one, whichever route or action calls it, as an
+  `Output` is checked wherever it is built.
+- **Fetched as GeoJSON.** The response's body is the collection as
+  `json.write` writes it, `{"type":"FeatureCollection","features":[...]}`,
+  and a route test reads it back through the same codec, so
+  `response.output` is the layer the action returned (area 20's
+  example).
+- **A `GET` can't send one yet.** A `GET` runs a query, which gives
+  records or an `Output`; a layer comes from an action, behind `POST`.
+  Open for Richard, with area 20's same note: a query building a layer.
 
 ### Consistency with the rest of the language
 
