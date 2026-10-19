@@ -1755,10 +1755,16 @@ chunks below, taken before Phase 6.
   way a value is made (JSON, query strings, `text.parse`, settings,
   storage reads), standard types' named rules, `altitudes_agree`, and
   `prompts.render` with restricted fields.
-- [ ] **5.9 Durable values** `opus · xhigh`, **needs Richard** first on
-  whether a release may change how a standard type is sent or stored
-  (recommended: only with a reader for the old form and a release note,
-  enforced by a golden file): a golden file per standard type, from its
+- [ ] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
+  query giving a map layer", decided 2026-10-19): a query returning its
+  records as a `FeatureCollection<G, P>`, naming the geometry field and
+  the properties type, held to field policy as any query, so a `GET`
+  route sends a layer; example 21's layer route moved to `GET`. Done when
+  a mapping library's `GET` of the layer gets plain GeoJSON in a route
+  test, on PostGIS, with the page's example checked.
+- [ ] **5.9 Durable values** `opus · xhigh` (area 19, "Changing a
+  standard type's encoding", decided 2026-10-19: only with a reader for
+  the old form and a release note, enforced by a golden file): a golden file per standard type, from its
   examples, pinning its text, JSON, storage columns and SQL literal; an
   encoding version on every durable row and token (session tokens, the
   outbox row, the stored passkey credential, now `WebAuthnCredential`'s
@@ -1773,8 +1779,8 @@ chunks below, taken before Phase 6.
   now stored in columns, `ZonedTime`'s storage, mixed altitudes in
   `compiler-runtime.md`, a quantity's JSON); `compiler-runtime.md` §2.1
   cut to the crate table; finished roadmap chunks collapsed to one line
-  each. Area 12's outbox and schedule-state placement once Richard decides
-  (6.1b).
+  each. Area 12's outbox and schedule-state text brought in line with
+  its 2026-10-19 decision.
 - [ ] **5.11 Geo constructions** `opus · high` (area 20): `geo.from_geojson`,
   `geo.from_lng_lat` and `geo.from_lat_lng`, decided and used by area 20's
   pages but marked not built.
@@ -1800,13 +1806,12 @@ chunks below, taken before Phase 6.
   inline (for 6.3's `settle:`) and per item (for 6.4); and 5.6b2's
   backfill row loop moved from the CLI into the runtime on that runner,
   writing through each field's validator.
-- [ ] **6.1b Events** `opus · high`, after 6.1a, **needs Richard** first on
-  where the outbox lives (area 12 says both the main store and each store
-  an action writes; recommended: each store the action writes, delivery
-  records beside it, a subscriber's handled record in its own store,
-  schedule leases in `schedules: { store: }` defaulting to the only
-  store) and on event records (recommended: recorded and diffed as API
-  records are, acceptance waiting for area 18 with the API record's):
+- [ ] **6.1b Events** `opus · high`, after 6.1a (area 12, "Outbox
+  placement, settled" and "Event records", decided 2026-10-19: each
+  store an action writes keeps its outbox and delivery records, a
+  subscriber's handled record in its own store, schedule leases in
+  `schedules: { store: }`; event shapes recorded and diffed as API
+  records are):
   outbox, subscribers, retries and trace context on 6.1a's runner and
   system caller, and `events: { store: }`, with the compile error for an
   action that writes no store but needs one for its outbox or idempotency
@@ -1827,9 +1832,8 @@ chunks below, taken before Phase 6.
   standard operations, `geo.` and `ai.distance`; all SQL text written in
   `jadpo-sql` (today `jadpo-plan` writes the vector, `ST_Distance` and
   `SET LOCAL hnsw.*` SQL itself); `data/queries.rs` split along the way.
-  Standard operations in `where:` stay refused until Richard decides
-  (recommended: allowed with an exact SQL form and a derived expression
-  index, after this chunk).
+  Then standard operations with an exact SQL form allowed in `where:`,
+  with a derived expression index (area 6, decided 2026-10-19).
 - [ ] **6.4 Batches** `opus · xhigh` (area 12, decided 2026-10-16):
   `batches.each`, `batches.status`, `cancel` and `key:`, items grouped into
   transactions that commit their writes and position together, problems

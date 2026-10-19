@@ -11249,6 +11249,7 @@ testing every form against the runtime changed:
 | `ChatRole` | Accepted as a standard type: a `ChatMessage`'s role, `system`, `user`, `assistant` or `tool`, added in chunk 5.5s2 as `IdentityDocumentKind` was (lead session, chunk 5.5s2) | 2026-10-18 |
 | A chat message is sensitive personal data | `ChatMessage` is personal data whatever field holds it, in area 15's sensitive `health` category, the most protective that fits free text, since a transcript can hold health or other special-category details (lead session, chunk 5.5s2) | 2026-10-18 |
 | `TokenUsage` keeps no total | Its `input`, `output` and optional `cached`, as the page's catalogue gives it; the total is `input + output`, worked out where needed, and a `total` member is refused (lead session, chunk 5.5s2) | 2026-10-18 |
+| Changing a standard type's encoding (Phase 5 review) | A Jadpo release changes how a standard type is sent, stored or written as text only together with a reader for the old form and a release note; a golden file per type, built from its examples, pins every form so a change can't pass unnoticed (Richard, as recommended; built in 5.9) | 2026-10-19 |
 
 ### Open questions
 
