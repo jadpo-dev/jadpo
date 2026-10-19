@@ -101,13 +101,15 @@ fn query(
 ) -> Vec<Diagnostic> {
     let prover = Prover::new(db, project);
     let lookup = Lookup::new(db, project);
-    let output = matches!(
-        lookup.def(&model.element.ty),
-        Some(Def::Fields {
-            base: FieldsBase::Output,
-            ..
-        })
-    );
+    // A map layer is sent as it is, as an `Output` is (chunk 5.5u8).
+    let output = model.geometry.is_some()
+        || matches!(
+            lookup.def(&model.element.ty),
+            Some(Def::Fields {
+                base: FieldsBase::Output,
+                ..
+            })
+        );
     let mut found = Vec::new();
     let reached = prover.read(&model.entity);
     // A `nearest` order and a `geo.distance` one stand in place of
@@ -115,6 +117,15 @@ fn query(
     let mut sorted = written(&model.order);
     sorted.extend(model.nearest.iter().map(|nearest| nearest.field.clone()));
     sorted.extend(model.distance.iter().map(|distance| distance.field.clone()));
+    if let Some(geometry) = &model.geometry
+        && !prover.field_proved(&model.entity, geometry, &reached)
+    {
+        found.push(Unproved::Field {
+            entity: model.entity.clone(),
+            field: geometry.clone(),
+            reached: reached.clone(),
+        });
+    }
     conditions(
         &prover,
         &model.entity,
@@ -309,10 +320,20 @@ fn query(
             )
             .at(result, format!("carries `{field}`"))
             .reason(reason)
-            .next(format!(
-                "Return an output without `{field}` from `{}`",
-                model.name
-            )),
+            .next(match &model.geometry {
+                // A map layer (chunk 5.5u8): its geometry, or a property.
+                Some(geometry) if geometry == field => format!(
+                    "Give the features a geometry field every caller may read, in place of `{entity}.{field}`"
+                ),
+                Some(_) => format!(
+                    "Leave `{field}` out of `{}`, the features' properties",
+                    model.element.ty
+                ),
+                None => format!(
+                    "Return an output without `{field}` from `{}`",
+                    model.name
+                ),
+            }),
         );
     }
     out

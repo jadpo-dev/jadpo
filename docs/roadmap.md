@@ -1773,13 +1773,18 @@ chunks below, taken before Phase 6.
   way a value is made (JSON, query strings, `text.parse`, settings,
   storage reads), standard types' named rules, `altitudes_agree`, and
   `prompts.render` with restricted fields.
-- [ ] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
+- [x] **5.5u8 A query giving a map layer** `opus · high` (area 6, "A
   query giving a map layer", decided 2026-10-19): a query returning its
   records as a `FeatureCollection<G, P>`, naming the geometry field and
   the properties type, held to field policy as any query, so a `GET`
   route sends a layer; example 21's layer route moved to `GET`. Done when
   a mapping library's `GET` of the layer gets plain GeoJSON in a route
-  test, on PostGIS, with the page's example checked.
+  test, on PostGIS, with the page's example checked. *Built:*
+  `geometry: Entity.field` beside a `FeatureCollection<G, P>` result,
+  the field exactly `G` and never `none` (`query.geometry_field`), a
+  bounded list without includes, groups or pages, held to field policy
+  as an `Output`; example 21's whole layer behind `GET /drop-points`, as
+  area 6's "Chosen in chunk 5.5u8" records.
 - [ ] **5.9 Durable values** `opus · xhigh` (area 19, "Changing a
   standard type's encoding", decided 2026-10-19: only with a reader for
   the old form and a release note, enforced by a golden file): a golden file per standard type, from its

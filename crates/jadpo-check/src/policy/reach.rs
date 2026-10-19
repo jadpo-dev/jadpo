@@ -366,6 +366,20 @@ pub fn reach_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
             else {
                 continue;
             };
+            // A query with problems of its own reaches nothing known; its
+            // problems are reported where it is declared.
+            if route.run.query
+                && route.run.generated.is_none()
+                && crate::data::queries::query_read(
+                    db,
+                    project,
+                    Name::new(db, route.run.name.clone()),
+                )
+                .as_ref()
+                .is_some_and(|read| read.model.is_none())
+            {
+                continue;
+            }
             let anyone = !route.authentication.needs_caller();
             let run = if route.run.query {
                 route.run.name.clone()

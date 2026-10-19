@@ -19,6 +19,7 @@ mod declines;
 mod decode_problems;
 mod fix;
 mod fmt;
+mod geo_layers;
 mod geo_queries;
 mod geography;
 mod http;

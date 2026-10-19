@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20). `settle:` comes with 6.3.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20), and from a `GET` running a query that gives one in chunk 5.5u8 (area 6). `settle:` comes with 6.3.
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -142,7 +142,8 @@ POST / {
 
 A route may also send a map layer, a `FeatureCollection<G, P>` (area 20),
 bare, so a mapping library fetches it as the whole response, plain RFC
-7946 GeoJSON. Its properties type `P` is held to what an `Output` may
+7946 GeoJSON. A query gives one for a `GET` (area 6, "A query giving a
+map layer"); an action builds one behind another method. Its properties type `P` is held to what an `Output` may
 hold: never a caller, a password's hash or a secret value.
 
 Only the output's declared fields are sent. `IssuedToken` and `IssuedKey`
@@ -2418,7 +2419,9 @@ Since chunk 5.5u7 (area 20) a route may send a `FeatureCollection<G, P>`
 bare, its properties held to what an `Output` may hold and, where an
 action returns it, to the fields every caller may read (area 9); OpenAPI
 describes RFC 7946's object and the record names it with its type
-arguments.
+arguments. Since chunk 5.5u8 a `GET` sends one a query gives (area 6, "A
+query giving a map layer"), held to field policy where the query is
+declared.
 
 Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
 `serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
@@ -2498,7 +2501,9 @@ From the Phase 5 soundness review:
   example).
 - **A `GET` can't send one yet.** A `GET` runs a query, which gives
   records or an `Output`; a layer comes from an action, behind `POST`.
-  Open for Richard, with area 20's same note: a query building a layer.
+  Open for Richard, with area 20's same note: a query building a layer. *Decided 2026-10-19 and built in chunk 5.5u8:* a query
+  returning a `FeatureCollection<G, P>` gives one, so a `GET` route sends
+  it (area 6, "A query giving a map layer").
 
 ### Consistency with the rest of the language
 

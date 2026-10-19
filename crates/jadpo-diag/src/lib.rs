@@ -520,6 +520,8 @@ rules! {
         "06-reads-and-writes.html#query-condition-unsupported", "Query condition is not one an index can serve";
     QUERY_FROM_NOT_ENTITY: "query.from_not_entity", area 6, Error, Agent,
         "06-reads-and-writes.html#query-from-not-entity", "Query reads something that is not an entity";
+    QUERY_GEOMETRY_FIELD: "query.geometry_field", area 6, Error, Agent,
+        "06-reads-and-writes.html#query-geometry-field", "Map layer's geometry field is not a stored geometry of its type";
     QUERY_GROUP_KEY: "query.group_key", area 6, Error, Agent,
         "06-reads-and-writes.html#query-group-key", "Records cannot be grouped by this";
     QUERY_INCLUDE_DEPTH: "query.include_depth", area 6, Error, Human,
