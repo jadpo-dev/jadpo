@@ -269,9 +269,11 @@ const EWKB_SRID: u32 = 0x2000_0000;
 /// positions have altitudes and with SRID 4326, then its parts, each
 /// member of a multi-geometry a whole WKB geometry of its own.
 fn geography_to_wire(shape: &Shape, out: &mut Vec<u8>) -> Result<(), String> {
-    let z = shape.has_altitude().ok_or(
-        "a geometry whose points mix with and without an altitude, which PostGIS can't hold",
-    )?;
+    // No geometry is made that mixes them (area 20, `altitudes_agree`);
+    // a shape put together otherwise isn't sent.
+    let z = shape
+        .has_altitude()
+        .ok_or("a geometry whose positions mix with and without an altitude")?;
     shape_to_wire(shape, z, true, out);
     Ok(())
 }

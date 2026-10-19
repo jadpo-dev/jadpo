@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_std::standard::across::{Check, Given, Known, Listed, StandardRule, Verdict};
+use jadpo_std::standard::across::{Altitudes, Check, Given, Known, Listed, StandardRule, Verdict};
 use jadpo_std::standard::recurrence::LocalAt;
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
@@ -218,6 +218,56 @@ fn owned(value: &Expr, prim: Option<Prim>, standard: Option<&str>) -> Option<Own
 }
 
 impl Body<'_> {
+    /// What a literal shows of a geometry's part holding positions, as
+    /// `altitudes_agree` reads it (area 20): each `Point` written out with
+    /// an altitude, with `none`, or with a value that may be `none`, at any
+    /// depth; anything else written there is a position only the running
+    /// program knows.
+    fn altitudes_shown(&self, value: Option<&Expr>) -> Known<Altitudes> {
+        let Some(value) = value else {
+            return Known::Unknown;
+        };
+        let mut out = Vec::new();
+        self.positions_shown(value, &mut out);
+        Known::Given(Some(out))
+    }
+
+    fn positions_shown(&self, value: &Expr, out: &mut Altitudes) {
+        use jadpo_std::standard::geo::{LINE_STRING, POINT, POLYGON};
+        let part = |name: &str, record: &ast::RecordExpr, out: &mut Altitudes| match value_of(
+            record, name,
+        ) {
+            Some(inner) => self.positions_shown(&inner, out),
+            None => out.push(None),
+        };
+        match value {
+            Expr::ListExpr(list) => {
+                for item in list.exprs() {
+                    self.positions_shown(&item, out);
+                }
+            }
+            Expr::RecordExpr(record) => {
+                let head = record.expr().map(|head| tree::written(head.syntax()));
+                match head.as_deref() {
+                    Some(POINT) => out.push(
+                        match self.shown(value_of(record, "altitude").as_ref(), None, None) {
+                            Shown::Absent => Some(false),
+                            Shown::Given(_) => Some(true),
+                            Shown::Unknown => None,
+                        },
+                    ),
+                    Some(LINE_STRING) => part("points", record, out),
+                    Some(POLYGON) => {
+                        part("outer", record, out);
+                        part("holes", record, out);
+                    }
+                    _ => out.push(None),
+                }
+            }
+            _ => out.push(None),
+        }
+    }
+
     /// What a literal shows of one of its parts.
     fn shown(&self, value: Option<&Expr>, prim: Option<Prim>, standard: Option<&str>) -> Shown {
         let Some(value) = value else {
@@ -302,6 +352,11 @@ impl Body<'_> {
                 Some((*name, rings_shown(value_of(record, name).as_ref(), depth)))
             })
             .collect();
+        let altitudes = shown
+            .iter()
+            .filter(|(name, _)| jadpo_std::standard::across::holds_positions(host, name))
+            .map(|(name, _)| (*name, self.altitudes_shown(value_of(record, name).as_ref())))
+            .collect();
         let parts = Listed {
             parts: shown
                 .iter()
@@ -317,6 +372,7 @@ impl Body<'_> {
                 })
                 .collect(),
             rings,
+            altitudes,
         };
         let given: BTreeMap<String, Expr> = tree::members(record.member_list())
             .into_iter()

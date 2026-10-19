@@ -3,7 +3,8 @@
 //! pins are in view, near enough, or within a circle; a patch's label and
 //! box; and a polygon built in code or read from JSON refused when its
 //! rings aren't valid, `rings_valid` mapped by its `attempt`, `format`
-//! read at the ring. The runtime holds the same operations to PostGIS's
+//! read at the ring; and a geometry mixing positions with and without an
+//! altitude refused the same ways, by `altitudes_agree` (chunk 5.5u7). The runtime holds the same operations to PostGIS's
 //! answers (crates/jadpo-runtime/tests/geodesics.rs).
 
 use crate::support;
@@ -76,6 +77,33 @@ function patch_from(corners: List<Point>, first: Point) fails NotAPatch -> Polyg
         holes: []
     } {
         rings_valid: NotAPatch
+        altitudes_agree: NotAPatch
+    }
+}
+
+/// A van's round from its stops, in order.
+function round_from(stops: List<Point>) fails NotAPatch -> LineString {
+    return attempt LineString {
+        points: stops
+    } {
+        altitudes_agree: NotAPatch
+    }
+}
+
+/// Two rounds as one.
+function both_rounds(first: LineString, second: LineString) fails NotAPatch -> MultiLineString {
+    return attempt MultiLineString {
+        lines: [first, second]
+    } {
+        altitudes_agree: NotAPatch
+    }
+}
+
+/// A round as a planner's map sends it.
+function drawn_round(shape: DrawnShape) fails Unreadable -> LineString {
+    return attempt json.read(shape, as: LineString) {
+        malformed: Unreadable
+        mismatch: Unreadable
     }
 }
 
@@ -294,4 +322,89 @@ fn a_drawn_patch_that_isn_t_valid_is_refused() {
         failure(&program, "drawn", vec![drawn(bow_tie)]).name,
         "Unreadable"
     );
+}
+
+/// A point at a height, in metres.
+fn high(latitude: &str, longitude: &str, metres: i128) -> Value {
+    let Value::Record(record) = point(latitude, longitude) else {
+        unreachable!("a point is a record");
+    };
+    Value::record(
+        "Point",
+        vec![
+            (
+                "latitude".into(),
+                record.get("latitude").cloned().expect("latitude"),
+            ),
+            (
+                "longitude".into(),
+                record.get("longitude").cloned().expect("longitude"),
+            ),
+            (
+                "altitude".into(),
+                Value::Quantity(jadpo_value::Quantity {
+                    kind: jadpo_std::QuantityKind::Length,
+                    amount: metres * 1_000_000,
+                }),
+            ),
+        ],
+    )
+}
+
+/// Every position with an altitude or none (area 20, "Altitudes are all
+/// or nothing", chunk 5.5u7): built in code, a mix breaks
+/// `altitudes_agree`, which the `attempt` maps, a multi-geometry's parts
+/// with each other too; read from JSON, it is refused.
+#[test]
+fn a_geometry_mixing_altitudes_is_refused_at_each_door() {
+    let program = main(BAKERY);
+    let ground = points(&["0 0", "1 1"]);
+    let up = Value::list(vec![high("0", "0", 35), high("1", "1", 40)]);
+    let mixed = Value::list(vec![point("0", "0"), high("1", "1", 35)]);
+    let flat = value(&program, "round_from", vec![ground]);
+    let climbing = value(&program, "round_from", vec![up]);
+    assert!(matches!(flat, Value::Record(_)));
+    assert!(matches!(climbing, Value::Record(_)));
+    assert_eq!(
+        failure(&program, "round_from", vec![mixed]).name,
+        "NotAPatch"
+    );
+    assert!(matches!(
+        value(&program, "both_rounds", vec![flat.clone(), flat.clone()]),
+        Value::Record(_)
+    ));
+    assert_eq!(
+        failure(&program, "both_rounds", vec![flat, climbing]).name,
+        "NotAPatch"
+    );
+    let corners = Value::list(vec![
+        point("0", "0"),
+        high("0", "10", 35),
+        point("10", "10"),
+    ]);
+    assert_eq!(
+        failure(&program, "patch_from", vec![corners, point("0", "0")]).name,
+        "NotAPatch"
+    );
+    assert_eq!(
+        failure(
+            &program,
+            "drawn_round",
+            vec![text(
+                r#"{"type":"LineString","coordinates":[[0,0],[1,1,35]]}"#
+            )]
+        )
+        .name,
+        "Unreadable"
+    );
+    assert!(matches!(
+        value(
+            &program,
+            "drawn_round",
+            vec![text(
+                r#"{"type":"LineString","coordinates":[[0,0,35],[1,1,35]]}"#
+            )]
+        ),
+        Value::Record(_)
+    ));
 }

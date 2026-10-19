@@ -10623,6 +10623,8 @@ in the order they are checked, and as OpenAPI's description lists them:
 | `PasswordPolicy` | `min_not_above_max` | `min_length <= max_length` |
 | `BoundingBox` | `south_not_above_north` | `south <= north` |
 | `Polygon` | `rings_valid` | each ring closed and simple, no rings touching, holes inside the outer ring, every edge under half the globe (area 20, chunk 5.5u3) |
+| | `altitudes_agree` | every position with an altitude, or none (area 20, chunk 5.5u7) |
+| `LineString`, `MultiPoint`, `MultiLineString`, `MultiPolygon` | `altitudes_agree` | every position with an altitude, or none, a multi-geometry's parts with each other (area 20, chunk 5.5u7) |
 
 A slot built from two instants a form sent is attempted by its rule, and
 one a condition orders needs no `attempt`:

@@ -73,6 +73,12 @@ impl<T> Known<T> {
 /// latitude and a longitude in degrees as held (area 20).
 pub type Rings = Vec<Vec<(Num, Num)>>;
 
+/// Whether each position a geometry's part holds has an altitude, in
+/// order, as `altitudes_agree` reads it (area 20, "Altitudes are all or
+/// nothing"): `Some(true)` with one, `Some(false)` without, `None` where
+/// only the running program knows.
+pub type Altitudes = Vec<Option<bool>>;
+
 /// A part's value, as a rule reads it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Given<'a> {
@@ -193,6 +199,15 @@ pub trait Parts {
         let _ = name;
         Known::Unknown
     }
+
+    /// Whether each position a geometry's part holds has an altitude,
+    /// however deep (a line's points, a polygon's rings, a multi-polygon's
+    /// polygons), as `altitudes_agree` reads it; unknown for any other
+    /// part.
+    fn altitudes(&self, name: &str) -> Known<Altitudes> {
+        let _ = name;
+        Known::Unknown
+    }
 }
 
 /// Parts listed by name; any not listed is unknown.
@@ -201,6 +216,8 @@ pub struct Listed<'a> {
     pub parts: Vec<(&'a str, Known<Given<'a>>)>,
     /// The parts that are rings, as [`Parts::rings`] reads them.
     pub rings: Vec<(&'a str, Known<Rings>)>,
+    /// The parts that hold positions, as [`Parts::altitudes`] reads them.
+    pub altitudes: Vec<(&'a str, Known<Altitudes>)>,
 }
 
 impl Parts for Listed<'_> {
@@ -213,6 +230,13 @@ impl Parts for Listed<'_> {
 
     fn rings(&self, name: &str) -> Known<Rings> {
         self.rings
+            .iter()
+            .find(|(listed, _)| *listed == name)
+            .map_or(Known::Unknown, |(_, known)| known.clone())
+    }
+
+    fn altitudes(&self, name: &str) -> Known<Altitudes> {
+        self.altitudes
             .iter()
             .find(|(listed, _)| *listed == name)
             .map_or(Known::Unknown, |(_, known)| known.clone())
@@ -426,6 +450,31 @@ pub fn ring_depth(ty: &str, part: &str) -> Option<usize> {
     (part == super::Part::Standard(super::geo::POINT) && depth > 0).then_some(depth)
 }
 
+/// Whether part `part` of standard object `ty` holds positions, however
+/// deep: a line's or a multi-point's `points`, a polygon's `outer` and
+/// `holes`, a multi-line's `lines` and a multi-polygon's `polygons` (area
+/// 20), which [`Parts::altitudes`] reads.
+pub fn holds_positions(ty: &str, part: &str) -> bool {
+    use super::geo::{LINE_STRING, POINT, POLYGON};
+    let Some(super::Holds::Object(fields)) = super::standard_type(ty).map(|entry| entry.holds)
+    else {
+        return false;
+    };
+    let Some(mut part) = fields
+        .iter()
+        .find(|(name, _)| *name == part)
+        .map(|(_, part)| part.required().0)
+    else {
+        return false;
+    };
+    let mut depth = 0;
+    while let super::Part::List(inner) = part {
+        depth += 1;
+        part = *inner;
+    }
+    depth > 0 && matches!(part, super::Part::Standard(POINT | LINE_STRING | POLYGON))
+}
+
 /// `Range<T>`, `InstantRange` and `DateRange`: a start not after the end.
 /// An open end of a `Range<T>` keeps it.
 pub const RANGE_RULES: &[StandardRule] = &[StandardRule {
@@ -453,6 +502,9 @@ pub fn rules(ty: &str) -> &'static [StandardRule] {
         super::geo::MAP_TILE => super::geo::MAP_TILE_RULES,
         super::geo::BOUNDING_BOX => super::geo::BOUNDING_BOX_RULES,
         super::geo::POLYGON => super::geo::POLYGON_RULES,
+        super::geo::LINE_STRING | super::geo::MULTI_POINT => super::geo::POINTS_RULES,
+        super::geo::MULTI_LINE_STRING => super::geo::MULTI_LINE_STRING_RULES,
+        super::geo::MULTI_POLYGON => super::geo::MULTI_POLYGON_RULES,
         super::ai::TOKEN_USAGE => super::ai::TOKEN_USAGE_RULES,
         super::security::PASSWORD_POLICY => super::security::PASSWORD_POLICY_RULES,
         super::security::JWK => super::jwk::RULES,

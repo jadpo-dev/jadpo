@@ -41,6 +41,9 @@ use crate::std_lib::StdNames;
 use crate::tree::{self, node_span};
 use crate::types::{Def, FieldsBase, Prim, Ty, TypeRef, TypeView};
 
+/// Why a route sends only an `Output` (`route.output_not_output`).
+const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.";
+
 /// What a route entry may hold, in the order `jadpo fmt` writes them
 /// (area 14, "Formatting").
 pub const ROUTE_ITEMS: [&str; 8] = [
@@ -1554,7 +1557,9 @@ impl Reader<'_> {
     }
 
     /// `output:`: an `Output`, or a list or page of one, as a query returns
-    /// them. `Some(None)` when it is wrong, which is reported.
+    /// them, or a map layer, a `FeatureCollection<G, P>` sent bare (area 7,
+    /// "A map layer as output", chunk 5.5u7). `Some(None)` when it is
+    /// wrong, which is reported.
     fn output(&mut self, member: &ast::Member) -> Option<Ty> {
         let value = member.value()?;
         let span = self.span(&value);
@@ -1567,6 +1572,30 @@ impl Reader<'_> {
         let ty = self.lookup.resolve(&TypeRef::from_expr(&value));
         if ty.has_error() {
             return None;
+        }
+        if let Ty::Opaque(name, args) = &ty
+            && name == jadpo_std::standard::geo::FEATURE_COLLECTION
+            && let [_, properties] = args.as_slice()
+        {
+            return match self.withheld(properties) {
+                None => Some(ty),
+                Some(what) => {
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::ROUTE_OUTPUT_NOT_OUTPUT,
+                            format!("`{ty}`'s properties hold {what}"),
+                        )
+                        .at(span, format!("its properties hold {what}"))
+                        .reason(format!(
+                            "{OUTPUT_ONLY} `{properties}` holds {what}, which an `Output` may not hold, so it would leave the server."
+                        ))
+                        .next(format!(
+                            "Give the features properties with only the fields clients see, in place of `{properties}`"
+                        )),
+                    );
+                    None
+                }
+            };
         }
         let element = match &ty {
             Ty::List(inner) => inner.as_ref(),
@@ -1581,12 +1610,28 @@ impl Reader<'_> {
                 self.out.push(
                     Diagnostic::new(&rule::ROUTE_OUTPUT_NOT_OUTPUT, format!("`{other}` isn't an `Output`"))
                         .at(span, "not an `Output`")
-                        .reason("A route returns only an `Output` type (area 2), or a `List` or `Page` of one as a query gives them, so only fields declared for clients are ever sent.")
+                        .reason(OUTPUT_ONLY)
                         .next("Declare `type <Name> = Output { ... }` with the fields clients see, and return it"),
                 );
                 None
             }
         }
+    }
+
+    /// What a layer's properties `properties` hold that an `Output` may
+    /// not (area 7, "A map layer as output"): a caller, a password's hash
+    /// or a secret value, however deep, as an `Output`'s own fields are
+    /// refused them; `None` when they hold nothing of the kind.
+    fn withheld(&self, properties: &Ty) -> Option<String> {
+        let table: &dyn TypeView = self.lookup;
+        if crate::types::decl::holds_principal(table, properties, &mut Vec::new()) {
+            return Some("a caller".to_string());
+        }
+        if crate::types::decl::holds_password_hash(table, properties, &mut Vec::new()) {
+            return Some("a password's hash".to_string());
+        }
+        crate::types::secrets::held_secret(table, properties, &mut Vec::new())
+            .map(|secret| format!("a secret value, `{secret}`"))
     }
 
     fn run_span(&self, member: &ast::Member) -> Span {

@@ -552,6 +552,7 @@ impl<'a> Flow<'a> {
             gate: None,
             returns: Prov::default(),
             sends: BTreeSet::new(),
+            action: listed,
             report: false,
             problems: Vec::new(),
             pc: Vec::new(),
@@ -661,6 +662,9 @@ struct Walk<'b> {
     locals: Vec<Prov>,
     returns: Prov,
     sends: BTreeSet<(usize, Vec<String>)>,
+    /// Whether it is an action, whose map layer a route may send bare
+    /// (area 7, "A map layer as output").
+    action: bool,
     /// The last walk, which reports.
     report: bool,
     problems: Vec<Diagnostic>,
@@ -860,6 +864,12 @@ impl Walk<'_> {
                     if let Some(value) = value {
                         let prov = self.eval(flow, *value);
                         let prov = self.with_pc(prov);
+                        if self.report
+                            && self.action
+                            && let Some(collection) = collection_type(&self.body.site(*value).ty)
+                        {
+                            self.collection(flow, &collection, *value, &prov);
+                        }
                         self.returns.union(&prov);
                     }
                 }
@@ -1654,6 +1664,47 @@ impl Walk<'_> {
         );
     }
 
+    /// A feature collection `collection` an action returns from `value`, which a route
+    /// sends bare (area 7, "A map layer as output", chunk 5.5u7): what its
+    /// caller is shown, as an `Output` is.
+    fn collection(&mut self, flow: &Flow<'_>, collection: &str, value: SiteId, prov: &Prov) {
+        self.params_in(prov);
+        let Some((entity, from, reached, decided)) = self.first_unread(flow, prov) else {
+            return;
+        };
+        let among = among(flow, &entity, &from, &reached);
+        let readers = flow.prover.readers(&entity, &from);
+        let (label, keeps) = if decided {
+            (
+                format!("decided by `{entity}.{from}`"),
+                "Which features are sent shows what decided them, so a collection made under an `if`, a `match` or a loop, or kept by a filter, keeps the rules of the fields they test.",
+            )
+        } else {
+            (
+                format!("from `{entity}.{from}`"),
+                "A route sends the feature collection an action returns as it is, so its properties have one shape for everyone, as an `Output` has.",
+            )
+        };
+        self.problems.push(
+            Diagnostic::new(
+                &rule::POLICY_OUTPUT_FIELD_UNPROVED,
+                format!(
+                    "The `{collection}` `{}` returns carries `{entity}.{from}`, which not every caller may read",
+                    self.name
+                ),
+            )
+            .at(self.span(value), label)
+            .reason(format!(
+                "`{}` reaches the `{entity}` it comes from for anyone its grants let in{among} and {readers} `{from}`. {keeps}",
+                self.name
+            ))
+            .next(format!(
+                "Leave `{entity}.{from}` out of the features' properties, or decide them by what every caller of `{}` may read",
+                self.name
+            )),
+        );
+    }
+
     /// A call passing `value` to the action `callee`, whose parameter
     /// reaches an output it builds.
     /// Whether it reported a problem.
@@ -1955,6 +2006,20 @@ fn client_field(flow: &Flow<'_>, key: &Key) -> bool {
 }
 
 /// Whether the type called `name` is an `Output`.
+/// A map layer's type as written, `FeatureCollection<Point, PinProperties>`,
+/// when `ty` is one (area 20).
+fn collection_type(ty: &TypeRef) -> Option<String> {
+    match ty {
+        TypeRef::Nullable(inner) => collection_type(inner),
+        TypeRef::Std(name, args)
+            if name == jadpo_std::standard::geo::FEATURE_COLLECTION && args.len() == 2 =>
+        {
+            Some(ty.to_string())
+        }
+        _ => None,
+    }
+}
+
 fn is_output(lookup: &Lookup<'_>, name: &str) -> bool {
     matches!(
         lookup.def(name),
