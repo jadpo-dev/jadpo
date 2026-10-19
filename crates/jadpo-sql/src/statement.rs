@@ -94,6 +94,38 @@ pub fn nearest<S: AsRef<str>>(
     )
 }
 
+/// The distance by `metric` from `from` (a parameter) to `column`'s vector
+/// of `dimensions` items, both cast to half precision, as an index on a
+/// vector of 2,001 to 4,000 dimensions holds it (area 21, chunk 5.5v1c):
+/// the parameter is cast to `vector(n)` first, so the server infers
+/// `vector` for it, the binary format the runtime sends.
+pub fn half_precision_distance(
+    column: &str,
+    metric: jadpo_std::VectorDistance,
+    from: &str,
+    dimensions: u64,
+) -> String {
+    let n = dimensions;
+    format!(
+        "{}::halfvec({n}) {} {from}::vector({n})::halfvec({n})",
+        ident(column),
+        metric.operator()
+    )
+}
+
+/// The settings a nearest-neighbour read runs with first, for the rest of
+/// its transaction (area 21, chunks 5.5v1b and 5.8c): `ef_search`
+/// candidates, and pgvector's iterative scans in strict order, visiting at
+/// most `max_scan_tuples` records, so a filtered search still fills its
+/// limit (pgvector 0.8.0 and later).
+pub fn search_settings(ef_search: u64, max_scan_tuples: u32) -> Vec<String> {
+    vec![
+        format!("SET LOCAL hnsw.ef_search = {ef_search}"),
+        "SET LOCAL hnsw.iterative_scan = strict_order".to_string(),
+        format!("SET LOCAL hnsw.max_scan_tuples = {max_scan_tuples}"),
+    ]
+}
+
 /// An exact nearest-neighbour read, for a vector too long for an index
 /// (area 21, chunk 5.5v1c): every row where `conditions` hold measured,
 /// then ordered by the distance and `tie` in one statement, since no

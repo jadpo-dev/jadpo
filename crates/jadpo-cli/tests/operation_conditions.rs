@@ -48,13 +48,13 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
 const QUERIES: &[(&str, &str, &str, &str)] = &[
     (
         "spine",
-        "longest: Int",
+        "longest: Count",
         "where: text.length(Book.title) <= longest",
         "book_title_length_idx",
     ),
     (
         "of_year",
-        "year: Int",
+        "year: Count",
         "where: temporal.year(Book.published_on) == year",
         "book_published_on_year_idx",
     ),
@@ -78,33 +78,27 @@ const QUERIES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "short_subtitles",
-        "n: Int",
+        "n: Count",
         "where: text.length(Book.subtitle) < n",
         "book_subtitle_length_idx",
     ),
     (
         "long_subtitles",
-        "n: Int",
+        "n: Count",
         "where: not (text.length(Book.subtitle) < n)",
         "book_subtitle_length_idx",
     ),
     (
         "hundreds",
-        "n: Int",
+        "n: Count",
         "where: integer.divide(Book.pages, 100, rounding: Rounding.half_even) == n",
         "book_pages_divide_idx",
     ),
     (
         "rounded",
-        "most: Decimal",
+        "most: BookPrice",
         "where: decimal.round(Book.price, 0, rounding: Rounding.half_up) <= most",
         "book_price_round_idx",
-    ),
-    (
-        "tagged",
-        "n: Int",
-        "where: list.count(Book.tags) >= n",
-        "book_tags_count_idx",
     ),
     (
         "trimmed",
@@ -134,8 +128,8 @@ fn project(name: &str) -> PathBuf {
             "/// What a book costs.\ntype BookPrice = Decimal {\n    scale: 2\n    min: -1000.00\n    max: 1000.00\n}\n",
         ),
         (
-            "shelf_tag",
-            "/// A shelf a book is on.\ntype ShelfTag = Text {\n    max_length: 20\n}\n",
+            "count",
+            "/// A count or a year a query is given.\ntype Count = Int {}\n",
         ),
         (
             "book_card",
@@ -146,7 +140,7 @@ fn project(name: &str) -> PathBuf {
     }
     domain(
         "entities/book.jadpo",
-        "use library/types { BookPrice, BookTitle, PageCount, ShelfTag }\n\n/// A book in the catalogue.\nentity Book {\n    id: Uuid\n    title: BookTitle\n    subtitle: BookTitle?\n    pages: PageCount\n    price: BookPrice\n    published_on: CalendarDate\n    tags: List<ShelfTag>\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
+        "use library/types { BookPrice, BookTitle, PageCount }\n\n/// A book in the catalogue.\nentity Book {\n    id: Uuid\n    title: BookTitle\n    subtitle: BookTitle?\n    pages: PageCount\n    price: BookPrice\n    published_on: CalendarDate\n\n    policy: {\n        read: [Access.public]\n    }\n}\n",
     );
     for (name, params, condition, _) in QUERIES {
         let args: Vec<&str> = params
@@ -194,7 +188,6 @@ fn each_operation_derives_the_index_on_its_expression() {
         "CREATE INDEX \"book_title_length_idx\" ON \"book\" ((char_length(\"title\")::bigint));",
         "CREATE INDEX \"book_published_on_year_idx\" ON \"book\" (((CASE WHEN extract(year FROM \"published_on\") < 0 THEN extract(year FROM \"published_on\") + 1 ELSE extract(year FROM \"published_on\") END)::bigint));",
         "CREATE INDEX \"book_title_keep_first_idx\" ON \"book\" ((left(\"title\", LEAST(3, 2147483647)::integer)));",
-        "CREATE INDEX \"book_tags_count_idx\" ON \"book\" ((jsonb_array_length(\"tags\")::bigint));",
     ] {
         assert!(sql.contains(index), "{index}\n{sql}");
     }
@@ -309,8 +302,10 @@ impl Live {
     }
 
     /// The plan PostgreSQL makes for the query's statement with `args`, with
-    /// sequential scans off, so it shows whether an index serves it at all
-    /// whatever a small table's costs say.
+    /// sequential scans and plain index scans off, so it shows whether an
+    /// index serves its condition at all, whatever a small table's costs
+    /// say: a bitmap scan needs an index the condition matches, which the
+    /// primary key, read for the order alone, isn't.
     fn explain(&self, query: &str, args: &[Value]) -> String {
         let plan = self
             .program
@@ -331,7 +326,10 @@ impl Live {
             })
             .collect();
         let rows = self.rows(
-            &["SET LOCAL enable_seqscan = off"],
+            &[
+                "SET LOCAL enable_seqscan = off",
+                "SET LOCAL enable_indexscan = off",
+            ],
             &format!("EXPLAIN {}", plan.read.select.sql),
             &params,
         );
@@ -374,7 +372,6 @@ struct Book {
     pages: i64,
     price: &'static str,
     day: i32,
-    tags: usize,
 }
 
 /// What operation `op` gives on `args` in code.
@@ -461,7 +458,6 @@ fn catalogue() -> Vec<Book> {
                     pages: pages[at % pages.len()],
                     price: prices[at % prices.len()],
                     day: days[at % days.len()],
-                    tags: at % 5,
                 });
                 n += 1;
             }
@@ -479,11 +475,10 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
     let live = Live::new(&root, "operation_conditions_live");
     let books = catalogue();
     live.insert(
-        "INSERT INTO book (id, title, subtitle, pages, price, published_on, tags) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO book (id, title, subtitle, pages, price, published_on) VALUES ($1, $2, $3, $4, $5, $6)",
         &books
             .iter()
             .map(|book| {
-                let tags: Vec<String> = (0..book.tags).map(|i| format!("\"shelf {i}\"")).collect();
                 vec![
                     SqlValue::Uuid(uuid(book.n)),
                     SqlValue::Text(book.title.clone()),
@@ -494,7 +489,6 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
                     SqlValue::Int8(book.pages),
                     SqlValue::Numeric(book.price.to_string()),
                     SqlValue::Date(book.day),
-                    SqlValue::Json(format!("[{}]", tags.join(","))),
                 ]
             })
             .collect::<Vec<_>>(),
@@ -582,7 +576,11 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
             Box::new(move |book: &Book| {
                 int(ran(
                     Op::IntegerDivide,
-                    &[Value::Int(book.pages), Value::Int(100), rounding("half_even", 0)],
+                    &[
+                        Value::Int(book.pages),
+                        Value::Int(100),
+                        rounding("half_even", 0),
+                    ],
                 )) == 2
             }),
         ),
@@ -592,7 +590,11 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
             Box::new(move |book: &Book| {
                 int(ran(
                     Op::IntegerDivide,
-                    &[Value::Int(book.pages), Value::Int(100), rounding("half_even", 0)],
+                    &[
+                        Value::Int(book.pages),
+                        Value::Int(100),
+                        rounding("half_even", 0),
+                    ],
                 )) == 0
             }),
         ),
@@ -609,11 +611,6 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
                     Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
                 )
             }),
-        ),
-        (
-            "tagged",
-            vec![Value::Int(3)],
-            Box::new(move |book: &Book| book.tags >= 3),
         ),
         (
             "trimmed",
@@ -657,13 +654,173 @@ fn each_operation_gives_the_code_s_answer_through_its_index() {
 }
 
 /// Every form an operation in a condition is lowered to, applied to a
-/// column of the type its first argument is held in, builds an index on
-/// PostgreSQL: an immutable expression with no subquery. One the
-/// checker refuses for its form fails to.
+/// column of the type its first argument is held in, its other arguments
+/// written out, builds an index on PostgreSQL exactly when
+/// `jadpo_sql::form::indexable` says it does: an immutable expression with
+/// no subquery. A range's operations are left out, since a query can't
+/// write a range out, whatever PostgreSQL would index.
 #[test]
 fn every_indexable_form_can_be_indexed() {
+    use jadpo_sql::form::{Arg, Held, indexable, operation};
+    use jadpo_std::{Builtin, Rounding};
     if !jadpo_test::live() {
         return;
+    }
+    let held = |b: Builtin| Held::Builtin(b);
+    let (t, i, d, b, day) = (
+        held(Builtin::Text),
+        held(Builtin::Int),
+        held(Builtin::Decimal),
+        held(Builtin::Bytes),
+        held(Builtin::CalendarDate),
+    );
+    let parts = ["\"i\"".to_string(), "\"t\"".to_string()];
+    let examples: Vec<(Op, Vec<Arg<'_>>)> = vec![
+        (Op::ListCount, vec![Arg::Value("\"j\"", Held::Json)]),
+        (Op::SetCount, vec![Arg::Value("\"j\"", Held::Json)]),
+        (Op::MapCount, vec![Arg::Value("\"j\"", Held::Json)]),
+        (
+            Op::IntegerDivide,
+            vec![
+                Arg::Value("\"i\"", i),
+                Arg::Value("7", i),
+                Arg::Rounding(Rounding::HalfEven),
+            ],
+        ),
+        (Op::IntegerAbs, vec![Arg::Value("\"i\"", i)]),
+        (
+            Op::IntegerMin,
+            vec![Arg::Value("\"i\"", i), Arg::Value("5", i)],
+        ),
+        (
+            Op::IntegerMax,
+            vec![Arg::Value("\"i\"", i), Arg::Value("5", i)],
+        ),
+        (
+            Op::IntegerFromDecimal,
+            vec![Arg::Value("\"d\"", d), Arg::Rounding(Rounding::Up)],
+        ),
+        (
+            Op::DecimalDivide,
+            vec![
+                Arg::Value("\"d\"", d),
+                Arg::Value("3", d),
+                Arg::Rounding(Rounding::HalfUp),
+            ],
+        ),
+        (Op::DecimalAbs, vec![Arg::Value("\"d\"", d)]),
+        (
+            Op::DecimalMin,
+            vec![Arg::Value("\"d\"", d), Arg::Value("1.5", d)],
+        ),
+        (
+            Op::DecimalMax,
+            vec![Arg::Value("\"d\"", d), Arg::Value("1.5", d)],
+        ),
+        (
+            Op::DecimalRound,
+            vec![
+                Arg::Value("\"d\"", d),
+                Arg::Whole(1),
+                Arg::Rounding(Rounding::HalfEven),
+            ],
+        ),
+        (Op::MoneyMinor, vec![Arg::Parts(&parts)]),
+        (Op::MoneyCurrency, vec![Arg::Parts(&parts)]),
+        (Op::TemporalYear, vec![Arg::Value("\"day\"", day)]),
+        (Op::TemporalMonth, vec![Arg::Value("\"day\"", day)]),
+        (Op::TemporalDay, vec![Arg::Value("\"day\"", day)]),
+        (Op::TextLength, vec![Arg::Value("\"t\"", t)]),
+        (Op::TextTrim, vec![Arg::Value("\"t\"", t)]),
+        (
+            Op::TextContains,
+            vec![Arg::Value("\"t\"", t), Arg::Value("'x'", t)],
+        ),
+        (
+            Op::TextStartsWith,
+            vec![Arg::Value("\"t\"", t), Arg::Value("'x'", t)],
+        ),
+        (
+            Op::TextEndsWith,
+            vec![Arg::Value("\"t\"", t), Arg::Value("'x'", t)],
+        ),
+        (
+            Op::TextReplace,
+            vec![
+                Arg::Value("\"t\"", t),
+                Arg::Value("'a'", t),
+                Arg::Value("'b'", t),
+            ],
+        ),
+        (
+            Op::TextSlice,
+            vec![
+                Arg::Value("\"t\"", t),
+                Arg::Value("1", i),
+                Arg::Value("2", i),
+            ],
+        ),
+        (
+            Op::TextKeepFirst,
+            vec![Arg::Value("\"t\"", t), Arg::Value("2", i)],
+        ),
+        (
+            Op::TextKeepLast,
+            vec![Arg::Value("\"t\"", t), Arg::Value("2", i)],
+        ),
+        (
+            Op::TextDropFirst,
+            vec![Arg::Value("\"t\"", t), Arg::Value("2", i)],
+        ),
+        (
+            Op::TextDropLast,
+            vec![Arg::Value("\"t\"", t), Arg::Value("2", i)],
+        ),
+        (
+            Op::TextPadStart,
+            vec![
+                Arg::Value("\"t\"", t),
+                Arg::Value("5", i),
+                Arg::Character('0'),
+            ],
+        ),
+        (Op::TextFrom, vec![Arg::Value("\"i\"", i), Arg::Absent]),
+        (Op::TextFrom, vec![Arg::Value("\"d\"", d), Arg::Absent]),
+        (
+            Op::TextFrom,
+            vec![Arg::Value("\"u\"", held(Builtin::Uuid)), Arg::Absent],
+        ),
+        (
+            Op::TextFrom,
+            vec![Arg::Value("\"f\"", held(Builtin::Bool)), Arg::Absent],
+        ),
+        (Op::HashSha256, vec![Arg::Value("\"t\"", t)]),
+        (Op::HashSha256, vec![Arg::Value("\"b\"", b)]),
+        (Op::EncodingToBase64, vec![Arg::Value("\"b\"", b)]),
+        (Op::EncodingToBase64url, vec![Arg::Value("\"b\"", b)]),
+        (Op::EncodingToHex, vec![Arg::Value("\"b\"", b)]),
+        (Op::EncodingToUtf8, vec![Arg::Value("\"t\"", t)]),
+        (
+            Op::WebCidrContains,
+            vec![Arg::Value("\"c\"", t), Arg::Value("'10.0.0.1'", t)],
+        ),
+    ];
+    // Every operation with a form but a range's, and a period's, whose
+    // form is three columns no condition compares.
+    let tried: std::collections::BTreeSet<Op> = examples.iter().map(|(op, _)| *op).collect();
+    for op in jadpo_std::OPERATIONS.iter().map(|o| o.op) {
+        let left_out = matches!(
+            op,
+            Op::RangeContains
+                | Op::RangeOverlaps
+                | Op::RangeIntersection
+                | Op::TemporalPeriodBetween
+        );
+        assert_eq!(
+            tried.contains(&op),
+            jadpo_sql::form::has_form(op) && !left_out,
+            "{op:?}"
+        );
     }
     let server = jadpo_test::database::server().unwrap_or_else(|e| panic!("{e}"));
     let url = server
@@ -671,8 +828,6 @@ fn every_indexable_form_can_be_indexed() {
         .expect("database");
     let store = jadpo_host_native::postgres(&url).expect("store");
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
-    let tried = jadpo_sql::form::indexable_examples();
-    assert!(tried.len() > 30, "every form tried: {}", tried.len());
     runtime.block_on(async {
         let mut transaction = store.begin().await.expect("begin");
         transaction
@@ -680,7 +835,14 @@ fn every_indexable_form_can_be_indexed() {
             .await
             .expect("a table");
         transaction.commit().await.expect("commit");
-        for (at, (op, expression, indexable)) in tried.iter().enumerate() {
+        for (at, (op, args)) in examples.iter().enumerate() {
+            let expression = operation(*op, args)
+                .and_then(|form| form.value().map(str::to_string))
+                .unwrap_or_else(|| panic!("{op:?} has a form"));
+            let first = match args.first() {
+                Some(Arg::Value(_, held)) => *held,
+                _ => Held::Builtin(Builtin::Int),
+            };
             let mut transaction = store.begin().await.expect("begin");
             let made = transaction
                 .batch(&format!(
@@ -689,7 +851,7 @@ fn every_indexable_form_can_be_indexed() {
                 .await;
             assert_eq!(
                 made.is_ok(),
-                *indexable,
+                indexable(*op, first),
                 "{op:?}: {expression} ({made:?})"
             );
             if made.is_ok() {

@@ -13,13 +13,14 @@ use jadpo_std::Op;
 
 const NONE: &[&str] = &[];
 
-/// A book with a field of each kind an operation reads.
-const BOOK: &str = "type Title = Text {\n    max_length: 80\n}\n\ntype Pages = Int {\n    min: 1\n    max: 5000\n}\n\ntype Price = Decimal {\n    scale: 2\n}\n\ntype Tag = Text {\n    max_length: 20\n}\n\nentity Book {\n    id: Uuid\n    title: Title\n    subtitle: Title?\n    pages: Pages\n    price: Price\n    published_on: CalendarDate\n    cover: Bytes\n    tags: List<Tag>\n    sold: Money\n}\n\ntype Filter = Input {\n    longest: Int {\n        optional: true\n    }\n}\n\n";
+/// A book with a field of each kind an operation reads, and the types a
+/// query's parameters take.
+const BOOK: &str = "type Title = Text {\n    max_length: 80\n}\n\ntype Pages = Int {\n    min: 1\n    max: 5000\n}\n\ntype ShelfPrice = Decimal {\n    scale: 2\n}\n\ntype Count = Int {}\n\ntype CoverHash = Bytes {}\n\nentity Book {\n    id: Uuid\n    title: Title\n    subtitle: Title?\n    pages: Pages\n    price: ShelfPrice\n    published_on: CalendarDate\n    cover: Bytes\n    sold: Money\n}\n\ntype Filter = Input {\n    longest: Count {\n        optional: true\n    }\n}\n\n";
 
 /// A query of books with `lines` as its conditions.
 fn source(lines: &str) -> String {
     format!(
-        "{BOOK}query found(title: Book.title, n: Int, year: Int, digest: Bytes, filter: Filter) -> List<Book> {{\n    from: Book\n{lines}    order: [Book.id asc]\n    limit: 20\n}}\n"
+        "{BOOK}query found(title: Book.title, n: Count, year: Count, digest: CoverHash, filter: Filter) -> List<Book> {{\n    from: Book\n{lines}    order: [Book.id asc]\n    limit: 20\n}}\n"
     )
 }
 
@@ -51,11 +52,10 @@ fn an_operation_with_an_exact_form_stands_where_a_field_does() {
         "    where: text.length(Book.title) > 3 or Book.pages > 100\n",
         // Options written out, a whole number and a rounding mode.
         "    where: integer.divide(Book.pages, 100, rounding: Rounding.down) == n\n",
-        "    where: decimal.round(Book.price, 0, rounding: Rounding.half_even) <= 10\n",
+        "    where: decimal.round(Book.price, 0, rounding: Rounding.half_even) <= 10.0\n",
         "    where: text.pad_start(Book.title, 5, fill: \"0\") == title\n",
-        // A field that may be `none`, a list and bytes.
+        // A field that may be `none`, and bytes.
         "    where: text.length(Book.subtitle) < 10\n",
-        "    where: list.count(Book.tags) >= 2\n",
         "    where: encoding.to_hex(Book.cover) == title\n",
         // A value that may be absent, on a `where_present:` line.
         "    where_present: text.length(Book.title) <= filter.longest\n",
@@ -173,7 +173,7 @@ fn each_operation_derives_an_index_on_its_expression() {
         &[(
             "main.jadpo",
             &format!(
-                "{BOOK}/// Short titles.\nquery short() -> List<Book> {{\n    from: Book\n    where: text.length(Book.title) <= 24\n    order: [Book.id asc]\n    limit: 20\n}}\n\n/// Shorter titles, by the same expression.\nquery shorter() -> List<Book> {{\n    from: Book\n    where: text.length(Book.title) <= 12\n    order: [Book.id asc]\n    limit: 20\n}}\n\n/// A year's books.\nquery of_year(year: Int) -> List<Book> {{\n    from: Book\n    where: temporal.year(Book.published_on) == year\n    order: [Book.id asc]\n    limit: 20\n}}\n"
+                "{BOOK}/// Short titles.\nquery short() -> List<Book> {{\n    from: Book\n    where: text.length(Book.title) <= 24\n    order: [Book.id asc]\n    limit: 20\n}}\n\n/// Shorter titles, by the same expression.\nquery shorter() -> List<Book> {{\n    from: Book\n    where: text.length(Book.title) <= 12\n    order: [Book.id asc]\n    limit: 20\n}}\n\n/// A year's books.\nquery of_year(year: Count) -> List<Book> {{\n    from: Book\n    where: temporal.year(Book.published_on) == year\n    order: [Book.id asc]\n    limit: 20\n}}\n"
             ),
         )],
     );

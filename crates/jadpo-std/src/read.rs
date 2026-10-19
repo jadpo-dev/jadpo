@@ -271,9 +271,9 @@ pub enum Source {
     /// A literal or an enum value the statement's condition compares with,
     /// as the storage codec binds it (area 19, chunk 5.5w3b).
     Stored(SqlValue),
-    /// How many rows a read whose `geo.` conditions are rechecked asks for
-    /// (area 20, chunk 5.5u5): the records it keeps at first, and more each
-    /// time the recheck leaves it short ([`Recheck`]).
+    /// How many rows a read whose conditions are rechecked asks for (chunk
+    /// 6.3b; area 20, chunk 5.5u5): the records it keeps at first, and more
+    /// each time the recheck leaves it short ([`Recheck`]).
     Fetch,
     /// One side of an envelope a `BoundingBox` filter searches (area 20,
     /// chunk 5.5u5), worked out from the box the read's argument at
@@ -536,9 +536,10 @@ pub struct ReadPlan {
     /// For a read of exactly one record: the failure when nothing matches,
     /// the query's `missing:` or the entity's not-found failure for `get`.
     pub missing: Option<MissingPlan>,
-    /// For a query with `geo.` conditions or ordered by `geo.distance`: the
-    /// test each row the statement found is held to again, in Jadpo's own
-    /// code, before it becomes a record (area 20, chunk 5.5u5).
+    /// For a query whose conditions search an index (`geo.` tests), or
+    /// that is ordered by `geo.distance`: what each row the statement found
+    /// is held to again, in Jadpo's own code, before it becomes a record
+    /// (chunk 6.3b; area 20, chunk 5.5u5).
     pub recheck: Option<Recheck>,
     /// For a map layer (area 6, chunk 5.5u8): the list's records are
     /// `Feature`s, given as one `FeatureCollection`.
@@ -550,66 +551,73 @@ pub struct ReadPlan {
 /// 5.5u5): PostGIS measures in doubles, good to some nanometres, and Jadpo
 /// exactly, so a record the code finds within a radius, or touching a
 /// shape, is always among the rows the index finds; the recheck then
-/// decides each. Written into the statement's text as it is here.
+/// decides each. Written into the statement's text as it is here, by
+/// `jadpo_sql::condition`.
 pub const GEO_MARGIN: &str = "0.001";
 
 /// [`GEO_MARGIN`] as a double, for comparing with a distance PostGIS
 /// measured.
 pub const GEO_MARGIN_METRES: f64 = 0.001;
 
-/// A `geo.` condition worked out again in Jadpo's own code (area 20,
-/// "Queries", chunk 5.5u5): `geo.within`, `geo.contains` or
-/// `geo.intersects` with the field's value first, as the query wrote it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum GeoOp {
-    Within,
-    Contains,
-    Intersects,
+/// One condition a row is held to in Jadpo's own code (chunk 6.3b): a
+/// standard operation on the row's columns and the read's values, run by
+/// `jadpo_value::run`, the code a function body's call of it runs, which
+/// must give `true`. A `geo.` test is one (area 20, "Queries", chunk
+/// 5.5u5): `geo.within(spot, doorstep, distance: max_trip)` is
+/// `GeoWithin` of the column holding `spot`, the read's argument and its
+/// other.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Check {
+    pub op: crate::Op,
+    /// Its arguments, in the operation's parameter order.
+    pub args: Vec<Operand>,
 }
 
-/// One `geo.` condition a row is held to again.
+/// One of a [`Check`]'s arguments.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GeoCheck {
-    pub op: GeoOp,
-    /// The statement's column holding the field's geometry; a record whose
-    /// field is `none` never meets the condition.
-    pub column: u32,
-    /// What the field is compared with: a geometry, a `BoundingBox` or a
-    /// `Circle`, from the read's arguments.
-    pub value: Source,
-    /// `within`'s `distance:`, a `Length`: an argument, or a literal as
-    /// the storage codec binds it, in metres.
-    pub distance: Option<Source>,
+pub enum Operand {
+    /// The statement's column at this position: a field's stored value. A
+    /// record whose field is `none` meets no condition on it.
+    Column(u32),
+    /// A value from the read's arguments (a parameter, or a field inside
+    /// one), or `clock.now`.
+    Value(Source),
+    /// A value written in the query, as code builds it.
+    Constant(Constant),
+    /// An option the call leaves out, given as `none`.
+    Absent,
 }
 
-/// A query ordered by `geo.distance(field, point) asc` (area 20,
-/// question 4): records nearest first by the distance `geo.distance`
-/// gives, rounded to the micrometre, then by `id`.
+/// A read ordered by an operation's result, nearest first (area 20,
+/// question 4: `geo.distance(field, point) asc`): records by the result as
+/// the code works it out, then by `id`. The statement orders the rows it
+/// finds by the database's own measure of it, which may differ from the
+/// code's by up to [`GEO_MARGIN_METRES`], the margin a search keeps.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GeoOrder {
-    /// The statement's column holding the field's point.
-    pub column: u32,
-    /// The point it measures from.
-    pub point: Source,
-    /// The statement's column holding the distance PostGIS measured, which
-    /// it is ordered by.
+pub struct RecheckOrder {
+    /// The operation whose result orders the records: a physical quantity,
+    /// compared in its kind's base unit with the database's measure.
+    pub key: Check,
+    /// The statement's column holding the database's measure, which it is
+    /// ordered by.
     pub measured: u32,
     /// The statement's column holding the record's `id`.
     pub id: u32,
 }
 
-/// What a read with `geo.` conditions works out again in Jadpo's own code
-/// (area 20, "Queries", chunk 5.5u5). Its statement finds, through the
-/// index, every row the code could keep and perhaps a few more; each row
-/// is then held to the code's own test, and a query ordered by
-/// `geo.distance` is sorted by the code's distances. The statement asks
-/// for as many rows as the read keeps ([`Source::Fetch`]), and asks again
-/// for four times as many while the recheck leaves it short, or while a
-/// row it didn't fetch could still come before the last it keeps.
+/// What a read whose conditions search an index works out again in
+/// Jadpo's own code (chunk 6.3b; area 20, "Queries", chunk 5.5u5). Its
+/// statement finds, through the index, every row the code could keep and
+/// perhaps a few more; each row is then held to each check, and a read
+/// ordered by an operation's result is sorted by the code's results. The
+/// statement asks for as many rows as the read keeps ([`Source::Fetch`]),
+/// and asks again for four times as many while the checks leave it short,
+/// or while a row it didn't fetch could still come before the last it
+/// keeps.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Recheck {
-    pub checks: Vec<GeoCheck>,
-    pub order: Option<GeoOrder>,
+    pub checks: Vec<Check>,
+    pub order: Option<RecheckOrder>,
     /// How many records a list keeps: its `limit:`. A page keeps its size
     /// and one more; a read of one record, found by a unique field, keeps
     /// every row that passes.

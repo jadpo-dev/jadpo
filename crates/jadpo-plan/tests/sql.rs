@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 
 use jadpo_db::{Database, File, Layout, Project};
 use jadpo_plan::{Decoded, Plan, PurgePlan, Raises, WriteSitePlan};
-use jadpo_std::read::{Column, Field, IncludeShape, ReadPlan, Select, Size, Source};
+use jadpo_std::read::{
+    Check, Column, Field, IncludeShape, Operand, ReadPlan, Select, Size, Source,
+};
 use jadpo_std::write::WriteSource;
 
 fn folder() -> PathBuf {
@@ -70,6 +72,29 @@ fn source(source: &Source) -> String {
             })
         ),
     }
+}
+
+/// A check the runtime holds each row to, as code calls it:
+/// `geo.within(column 2, argument 0, argument 1)`.
+fn check(check: &Check) -> String {
+    let name = jadpo_std::OPERATIONS
+        .iter()
+        .find(|operation| operation.op == check.op)
+        .map_or_else(
+            || format!("{:?}", check.op),
+            |o| format!("{}.{}", o.namespace, o.name),
+        );
+    let args: Vec<String> = check
+        .args
+        .iter()
+        .map(|arg| match arg {
+            Operand::Column(at) => format!("column {at}"),
+            Operand::Value(from) => source(from),
+            Operand::Constant(value) => format!("{value:?}"),
+            Operand::Absent => "none".to_string(),
+        })
+        .collect();
+    format!("{name}({})", args.join(", "))
 }
 
 fn column(column: &Column) -> String {
@@ -151,23 +176,12 @@ fn read(name: &str, read: &ReadPlan) -> String {
     select(&mut out, &read.select, 0);
     if let Some(recheck) = &read.recheck {
         for check in &recheck.checks {
-            let distance = check
-                .distance
-                .as_ref()
-                .map(|d| format!(", distance {}", source(d)))
-                .unwrap_or_default();
-            out.push_str(&format!(
-                "-- recheck: {:?} column {} with {}{distance}\n",
-                check.op,
-                check.column,
-                source(&check.value)
-            ));
+            out.push_str(&format!("-- recheck: {}\n", self::check(check)));
         }
         if let Some(order) = &recheck.order {
             out.push_str(&format!(
-                "-- recheck order: geo.distance of column {} from {}, PostGIS's in column {}, ties by column {}\n",
-                order.column,
-                source(&order.point),
+                "-- recheck order: {}, the database's in column {}, ties by column {}\n",
+                self::check(&order.key),
                 order.measured,
                 order.id
             ));

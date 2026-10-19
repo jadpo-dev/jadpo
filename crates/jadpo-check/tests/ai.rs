@@ -396,9 +396,15 @@ fn a_nearest_query_orders_by_a_vector_and_returns_its_distance() {
     assert_eq!(query.element.ty, "ArticleExcerpt");
     assert!(matches!(
         query.filter.last(),
-        Some(jadpo_check::data::queries::Condition::Distance {
-            op: jadpo_check::data::queries::Compare::LessEqual,
-            ..
+        Some(jadpo_check::data::queries::Condition::Call {
+            call: jadpo_check::data::queries::Call {
+                op: jadpo_std::Op::AiDistance,
+                ..
+            },
+            test: jadpo_check::data::queries::Test::Compare {
+                op: jadpo_check::data::queries::Compare::LessEqual,
+                ..
+            },
         })
     ));
     // A value whose type has a `max:` of at most 100 bounds it too.

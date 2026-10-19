@@ -286,7 +286,7 @@ impl Reader<'_> {
         let mut filter = Vec::new();
         for (present, member) in &sections.filters {
             if let Some(condition) = self.filter_line(scope, entity, member, *present) {
-                if holds_geo(&condition) {
+                if condition.searches() {
                     ok = false;
                     let at = member.value().map_or_else(
                         || Self::span(path, member),

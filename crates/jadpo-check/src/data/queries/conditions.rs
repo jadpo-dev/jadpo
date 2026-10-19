@@ -77,9 +77,15 @@ impl Reader<'_> {
         }
         let condition = self.condition(scope, entity, &expr, true)?;
         let (value_ref, value_expr) = match (&condition, &expr) {
-            (Condition::Compare { value, .. } | Condition::In { value, .. }, Expr::BinExpr(b)) => {
-                (value.clone(), b.rhs())
-            }
+            (
+                Condition::Compare { value, .. }
+                | Condition::In { value, .. }
+                | Condition::Call {
+                    test: Test::Compare { value, .. } | Test::In { value },
+                    ..
+                },
+                Expr::BinExpr(b),
+            ) => (value.clone(), b.rhs()),
             _ => return None,
         };
         let optional = value_expr
@@ -158,6 +164,22 @@ impl Reader<'_> {
                         })
                     }
                     "in" => {
+                        // An operation's result among a list's values
+                        // (chunk 6.3b).
+                        if let Expr::CallExpr(call) = unparen(&lhs)
+                            && standard_operation(&call).is_some()
+                            && !is_distance(&call)
+                            && geo_condition_name(&call).is_none()
+                        {
+                            return self.operation_condition(
+                                scope,
+                                entity,
+                                &call,
+                                Asked::In(&rhs),
+                                &expr,
+                                optional,
+                            );
+                        }
                         let field = self.condition_field(scope, entity, &lhs, &expr)?;
                         let field_ty = self.field_ty(entity, field);
                         let wanted = Ty::List(Box::new(field_ty.strip_nullable().clone()));
@@ -198,6 +220,21 @@ impl Reader<'_> {
                         {
                             return self
                                 .distance_condition(scope, entity, &call, compare, &rhs, &expr);
+                        }
+                        // A standard operation where a field would stand
+                        // (area 6, "Operations in conditions", chunk 6.3b).
+                        if let Expr::CallExpr(call) = unparen(&lhs)
+                            && standard_operation(&call).is_some()
+                            && geo_condition_name(&call).is_none()
+                        {
+                            return self.operation_condition(
+                                scope,
+                                entity,
+                                &call,
+                                Asked::Compare(compare, &rhs),
+                                &expr,
+                                optional,
+                            );
                         }
                         let field = self.condition_field(scope, entity, &lhs, &expr)?;
                         let field_ty = self.field_ty(entity, field);
@@ -264,6 +301,11 @@ impl Reader<'_> {
             // "Queries").
             Expr::CallExpr(call) if geo_condition_name(call).is_some() => {
                 self.geo_condition(scope, entity, call, &expr)
+            }
+            // A standard operation that gives a `Bool`, as the condition
+            // itself (chunk 6.3b).
+            Expr::CallExpr(call) if standard_operation(call).is_some() && !is_distance(call) => {
+                self.operation_condition(scope, entity, call, Asked::Holds, &expr, optional)
             }
             _ => {
                 let (reason, next) = match self.field_named(entity, &expr) {

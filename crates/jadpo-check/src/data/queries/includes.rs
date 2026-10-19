@@ -253,7 +253,7 @@ impl Reader<'_> {
                 if let Some(condition) = self.filter_line(scope, target, member, *present) {
                     // An include's records aren't rechecked in code, which
                     // a `geo.` condition needs (area 20, chunk 5.5u5).
-                    if holds_geo(&condition) {
+                    if condition.searches() {
                         let at = member.value().map_or_else(
                             || name_span.clone(),
                             |value| Self::span(scope.path, &value),

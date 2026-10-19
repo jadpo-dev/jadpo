@@ -843,6 +843,11 @@ type BookTitle = Text {
     max_length: 200
 }
 
+type PublicationYear = Int {
+    min: 1450
+    max: 2100
+}
+
 entity Book {
     id: Uuid
     title: BookTitle
@@ -867,7 +872,7 @@ query spine_titles() -> List<BookCard> {
     limit: 50
 }
 
-query published_in(year: Int) -> List<BookCard> {
+query published_in(year: PublicationYear) -> List<BookCard> {
     from: Book
     where: temporal.year(Book.published_on) == year
     order: [Book.title asc]

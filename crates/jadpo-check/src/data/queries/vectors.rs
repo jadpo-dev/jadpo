@@ -470,12 +470,22 @@ impl Reader<'_> {
             self.mismatch(scope, bound, &ty, &Ty::Prim(Prim::Decimal));
             return None;
         }
-        Some(Condition::Distance {
-            field: field.name.clone(),
-            metric: metric(self.lookup, &vector),
-            value,
-            op: compare,
-            bound: number,
+        // `ai.distance`'s form, pgvector's operator by the type's metric,
+        // compared with the bound (chunk 6.3b).
+        Some(Condition::Call {
+            call: Call {
+                op: jadpo_std::Op::AiDistance,
+                field: field.name.clone(),
+                args: vec![
+                    CallArg::Value(value, Held::Vector),
+                    CallArg::Metric(metric(self.lookup, &vector)),
+                ],
+                result: Held::Double,
+            },
+            test: Test::Compare {
+                op: compare,
+                value: number,
+            },
         })
     }
 }

@@ -3,6 +3,7 @@
 //! `geo.distance` in `order:`.
 
 use super::*;
+use jadpo_std::Op;
 
 /// The `geo.` operation a call names, when it is one a `where:` line takes:
 /// `within`, `contains` or `intersects`.
@@ -43,33 +44,6 @@ pub(super) fn distance_entry(member: &ast::Member) -> Option<ast::OrderedExpr> {
         }
         _ => None,
     })
-}
-
-/// Whether a condition holds a `geo.` test anywhere.
-pub fn holds_geo(condition: &Condition) -> bool {
-    match condition {
-        Condition::Geo { .. } => true,
-        Condition::And(all) | Condition::Or(all) => all.iter().any(holds_geo),
-        Condition::Not(inner)
-        | Condition::Present {
-            condition: inner, ..
-        } => holds_geo(inner),
-        _ => false,
-    }
-}
-
-/// The `geo.` tests a query's lines hold, each with its field: every one
-/// is a line of its own or a part of an `and`.
-pub fn geo_tests(filter: &[Condition]) -> Vec<(&str, &GeoTest)> {
-    let mut out = Vec::new();
-    for line in filter {
-        match line {
-            Condition::Geo { field, test } => out.push((field.as_str(), test)),
-            Condition::And(parts) => out.extend(geo_tests(parts)),
-            _ => {}
-        }
-    }
-    out
 }
 
 /// The geospatial standard type a value of `ty` is: one of the six
@@ -289,16 +263,22 @@ impl Reader<'_> {
                 }
                 let point = test_value(self)?;
                 let distance = self.geo_reach(scope, reach)?;
-                GeoTest::Near {
-                    point,
-                    distance,
-                    measure: Prim::Quantity(jadpo_std::QuantityKind::Length),
-                }
+                (
+                    Op::GeoWithin,
+                    vec![
+                        CallArg::Value(point, Held::Shape(POINT)),
+                        CallArg::Value(
+                            distance,
+                            Held::Builtin(Prim::Quantity(jadpo_std::QuantityKind::Length)),
+                        ),
+                    ],
+                )
             }
             ("within", None) => match kind {
-                Some(POLYGON | MULTI_POLYGON) => GeoTest::Within {
-                    area: test_value(self)?,
-                },
+                Some(area @ (POLYGON | MULTI_POLYGON)) => (
+                    Op::GeoWithin,
+                    vec![CallArg::Value(test_value(self)?, Held::Shape(area))],
+                ),
                 Some(BOUNDING_BOX) => {
                     if !point_field {
                         self.unsupported(
@@ -309,9 +289,10 @@ impl Reader<'_> {
                         );
                         return None;
                     }
-                    GeoTest::InBox {
-                        bounds: test_value(self)?,
-                    }
+                    (
+                        Op::GeoWithin,
+                        vec![CallArg::Value(test_value(self)?, Held::Shape(BOUNDING_BOX))],
+                    )
                 }
                 Some(CIRCLE) => {
                     if !point_field {
@@ -324,9 +305,10 @@ impl Reader<'_> {
                         );
                         return None;
                     }
-                    GeoTest::InCircle {
-                        circle: test_value(self)?,
-                    }
+                    (
+                        Op::GeoWithin,
+                        vec![CallArg::Value(test_value(self)?, Held::Shape(CIRCLE))],
+                    )
                 }
                 _ => {
                     mismatch(
@@ -340,7 +322,7 @@ impl Reader<'_> {
                 }
             },
             ("contains" | "intersects", None) => {
-                if !kind.is_some_and(is_geometry) {
+                let Some(shape_kind) = kind.filter(|kind| is_geometry(kind)) else {
                     mismatch(
                         self,
                         second,
@@ -349,19 +331,26 @@ impl Reader<'_> {
                         "a `Point`, a `LineString`, a `Polygon`, one of the three multi-part geometries, or a `Geometry` holding one (area 20, \"Operations\")",
                     );
                     return None;
-                }
+                };
                 let shape = test_value(self)?;
-                if name == "contains" {
-                    GeoTest::Contains { shape }
+                let op = if name == "contains" {
+                    Op::GeoContains
                 } else {
-                    GeoTest::Intersects { shape }
-                }
+                    Op::GeoIntersects
+                };
+                (op, vec![CallArg::Value(shape, Held::Shape(shape_kind))])
             }
             _ => return None,
         };
-        Some(Condition::Geo {
-            field: field.name.clone(),
-            test,
+        let (op, args) = test;
+        Some(Condition::Call {
+            call: Call {
+                op,
+                field: field.name.clone(),
+                args,
+                result: Held::Builtin(Prim::Bool),
+            },
+            test: Test::Holds,
         })
     }
 
@@ -556,9 +545,15 @@ impl Reader<'_> {
             Some((point @ Value::Param { .. }, _)) => point,
             _ => return None,
         };
-        let bounded = geo_tests(filter).iter().any(|(tested, test)| {
-            *tested == field.name
-                && matches!(test, GeoTest::Near { point: near, .. } if *near == point)
+        // A radius from the same point on the same field: `within` with
+        // its `distance:`.
+        let bounded = jadpo_sql::condition::searched(filter).iter().any(|call| {
+            call.field == field.name
+                && call.op == Op::GeoWithin
+                && matches!(
+                    call.args.as_slice(),
+                    [CallArg::Value(near, Held::Shape(jadpo_std::standard::geo::POINT)), CallArg::Value(..)] if *near == point
+                )
         });
         if !bounded {
             let shown_point = shown(second.syntax());

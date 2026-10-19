@@ -15,8 +15,8 @@ use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
-    Cardinality, Column, Field, GeoOp, IncludeShape, ReadPlan, Recheck, Record, Select, Size,
-    Source,
+    Cardinality, Check, Column, Field, IncludeShape, Operand, ReadPlan, Recheck, Record, Select,
+    Size, Source,
 };
 use jadpo_value::Value;
 
@@ -364,15 +364,15 @@ async fn run_read(
     Ok((rows, values, hidden))
 }
 
-/// The rows of a read with `geo.` conditions (area 20, "Queries", chunk
-/// 5.5u5): those its statement finds that pass each condition as Jadpo's
-/// own code works it out, sorted by the code's distance when the query is
-/// ordered by `geo.distance`, as many as the read keeps. The statement
-/// searches a margin wider than the conditions, so it never leaves out a
-/// row the code keeps; it asks for as many rows as the read keeps, and
-/// again for four times as many while the recheck leaves the read short,
-/// or while a row past those fetched could, by PostGIS's distance less the
-/// margin, still come before the last kept.
+/// The rows of a read whose conditions search an index (chunk 6.3b; area
+/// 20, "Queries", chunk 5.5u5): those its statement finds that pass each
+/// check as Jadpo's own code works it out, sorted by the code's result when
+/// the read is ordered by an operation's, as many as the read keeps. The
+/// statement searches a margin wider than the conditions, so it never
+/// leaves out a row the code keeps; it asks for as many rows as the read
+/// keeps, and again for four times as many while the checks leave the read
+/// short, or while a row past those fetched could, by the database's
+/// measure less the margin, still come before the last kept.
 async fn rechecked(
     transaction: &mut dyn Transaction,
     plan: &ReadPlan,
@@ -402,8 +402,8 @@ async fn rechecked(
         });
         let mut kept = Vec::new();
         for row in rows {
-            if let Some(distance) = passes(recheck, &plan.select, &row, env)? {
-                kept.push((distance, row));
+            if let Some(key) = passes(recheck, &plan.select, &row, env)? {
+                kept.push((key, row));
             }
         }
         if let Some(order) = &recheck.order {
@@ -416,13 +416,14 @@ async fn rechecked(
         let exhausted = found < fetch;
         let enough = kept.len() >= keep
             && match (&recheck.order, last_measured) {
-                // The last row kept by the code's distance is nearer than
+                // The last row kept by the code's result is nearer than
                 // any row not fetched could be.
                 (Some(_), Some(measured)) => kept
                     .get(keep.saturating_sub(1))
-                    .and_then(|(distance, _)| *distance)
-                    .is_some_and(|micrometres| {
-                        (micrometres as f64) / 1e6 < measured - jadpo_std::read::GEO_MARGIN_METRES
+                    .and_then(|(key, _)| *key)
+                    .is_some_and(|(amount, scale)| {
+                        (amount as f64) / 10f64.powi(scale as i32)
+                            < measured - jadpo_std::read::GEO_MARGIN_METRES
                     }),
                 (Some(_), None) => false,
                 (None, _) => true,
@@ -435,71 +436,63 @@ async fn rechecked(
     }
 }
 
-/// Whether `row` passes each of the read's `geo.` conditions as Jadpo's
-/// code works them out: `None` when it doesn't, and when it does, the
-/// code's distance, in micrometres, for a query ordered by one.
+/// Whether `row` passes each of the read's checks as Jadpo's code works
+/// them out: `None` when it doesn't, and when it does, the code's result
+/// for a read ordered by one, a physical quantity's amount and its kind's
+/// scale.
 fn passes(
     recheck: &Recheck,
     select: &Select,
     row: &Row,
     env: &Env<'_>,
-) -> Result<Option<Option<i128>>, Problem> {
-    let column = |at: u32| field_value(row, &select.columns, at, env.json).map_err(Problem::Defect);
-    let argument = |source: &Source| -> Result<Value, Problem> {
-        match source {
-            Source::Stored(stored) => {
-                from_sql(stored, &Column::Quantity(jadpo_std::QuantityKind::Length))
-                    .map_err(Problem::Defect)
-            }
-            other => value_at(other, env.args)
-                .ok_or_else(|| Problem::Defect("a value the read wasn't given".into())),
-        }
-    };
-    let fault = |fault: jadpo_value::Fault| Problem::Defect(format!("{fault:?}"));
-    let mut distance = None;
+) -> Result<Option<Option<(i128, u32)>>, Problem> {
+    let mut key = None;
     if let Some(order) = &recheck.order {
-        let point = column(order.column)?;
-        if point == Value::None {
+        let Some(found) = checked(&order.key, select, row, env)? else {
             return Ok(None);
-        }
-        match jadpo_value::geo::distance(&point, &argument(&order.point)?).map_err(fault)? {
-            Value::Quantity(length) => distance = Some(length.amount),
-            _ => return Err(Problem::Defect("a distance that isn't a length".into())),
+        };
+        match found {
+            Value::Quantity(quantity) => key = Some((quantity.amount, quantity.kind.scale())),
+            _ => return Err(Problem::Defect("an order that isn't a quantity".into())),
         }
     }
     for check in &recheck.checks {
-        let field = column(check.column)?;
-        // A record whose field is `none` meets no `geo.` condition.
-        if field == Value::None {
-            return Ok(None);
-        }
-        let value = argument(&check.value)?;
-        let held = match (check.op, &check.distance) {
-            (GeoOp::Within, Some(reach)) => {
-                let reach = argument(reach)?;
-                match (&recheck.order, distance, &reach) {
-                    // Measured already, from the same point.
-                    (Some(order), Some(apart), Value::Quantity(reach))
-                        if order.column == check.column && order.point == check.value =>
-                    {
-                        Value::Bool(apart <= reach.amount)
-                    }
-                    _ => jadpo_value::geo::within(&field, &value, &reach).map_err(fault)?,
-                }
-            }
-            (GeoOp::Within, None) => {
-                jadpo_value::geo::within(&field, &value, &Value::None).map_err(fault)?
-            }
-            (GeoOp::Contains, _) => jadpo_value::geo::contains(&field, &value).map_err(fault)?,
-            (GeoOp::Intersects, _) => {
-                jadpo_value::geo::intersects(&field, &value).map_err(fault)?
-            }
-        };
-        if held != Value::Bool(true) {
+        if checked(check, select, row, env)? != Some(Value::Bool(true)) {
             return Ok(None);
         }
     }
-    Ok(Some(distance))
+    Ok(Some(key))
+}
+
+/// What `check` gives on `row`, run by the code a function body's call of
+/// its operation runs; `None` when a column it reads is `none`, which no
+/// condition on an operation of a field meets.
+fn checked(
+    check: &Check,
+    select: &Select,
+    row: &Row,
+    env: &Env<'_>,
+) -> Result<Option<Value>, Problem> {
+    let mut args = Vec::with_capacity(check.args.len());
+    for operand in &check.args {
+        args.push(match operand {
+            Operand::Column(at) => {
+                let value =
+                    field_value(row, &select.columns, *at, env.json).map_err(Problem::Defect)?;
+                if value == Value::None {
+                    return Ok(None);
+                }
+                value
+            }
+            Operand::Value(source) => value_at(source, env.args)
+                .ok_or_else(|| Problem::Defect("a value the read wasn't given".into()))?,
+            Operand::Constant(constant) => Value::constant(constant),
+            Operand::Absent => Value::None,
+        });
+    }
+    jadpo_value::run(check.op, &args, None, &mut |_| None)
+        .map(Some)
+        .map_err(|fault| Problem::Defect(format!("{fault:?}")))
 }
 
 async fn run(

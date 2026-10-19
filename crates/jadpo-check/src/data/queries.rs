@@ -41,13 +41,14 @@ mod conditions;
 mod geo;
 mod includes;
 mod missing;
+mod operations;
 mod order;
 mod read;
 mod values;
 mod vectors;
 
 use geo::{distance_entry, geo_condition_name, geo_kind};
-pub use geo::{geo_tests, holds_geo};
+use operations::{Asked, standard_operation};
 use vectors::{is_distance, nearest_entry};
 pub(crate) use vectors::{metric, vector_type};
 
@@ -144,7 +145,8 @@ pub use jadpo_std::read::Cardinality;
 /// A condition on one entity's fields, its comparisons and the values it
 /// reads: the SQL renderer's model, which the plan's statements and the
 /// partial indexes render (`jadpo-sql`).
-pub use jadpo_sql::{Compare, Condition, GeoTest, Value};
+pub use jadpo_sql::form::Held;
+pub use jadpo_sql::{Call, CallArg, Compare, Condition, Lowering, Test, Value, lowering};
 
 /// A comparison's operator from its token: `==`, `<=`.
 fn compare_token(token: &str) -> Option<Compare> {

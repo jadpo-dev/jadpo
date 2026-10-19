@@ -252,6 +252,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "emitted_at"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["emitted_at".into()],
                     reason: "system outbox".into(),
                     predicate: None,
@@ -287,6 +288,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "status", "next_attempt_at"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["status".into(), "next_attempt_at".into()],
                     reason: "system deliveries".into(),
                     predicate: None,
@@ -315,6 +317,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "principal_id"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["principal_id".into()],
                     reason: "system sessions".into(),
                     predicate: None,
@@ -325,6 +328,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "ends_at"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["ends_at".into()],
                     reason: "system sessions".into(),
                     predicate: None,
@@ -351,6 +355,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "principal_id"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["principal_id".into()],
                     reason: "system service keys".into(),
                     predicate: None,
@@ -383,6 +388,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "principal_id"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["principal_id".into()],
                     reason: "system passkeys".into(),
                     predicate: None,
@@ -421,6 +427,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "expires_at"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["expires_at".into()],
                     reason: "system passkey challenges".into(),
                     predicate: None,
@@ -442,6 +449,7 @@ pub fn system_table(name: &str) -> Table {
             indexes.insert(
                 object_name(&[&table, "kept_until"], "idx"),
                 jadpo_graph::schema::Index {
+                    expression: None,
                     columns: vec!["kept_until".into()],
                     reason: "system idempotency keys".into(),
                     predicate: None,

@@ -226,7 +226,7 @@ impl Planner<'_> {
                     };
                     let value = new.iter().find(|(n, _)| n == name)?.1.clone();
                     narrowed.push(if field(entity_model, name)?.nullable {
-                        format!("({value} IS NULL OR {who})")
+                        jadpo_sql::policy::unless_none(&value, &who)
                     } else {
                         who
                     });
@@ -413,7 +413,8 @@ impl Planner<'_> {
                                 Effect::Update,
                                 &Row::Table,
                             )? {
-                                narrowed.push(format!("(NOT {supplied} OR {who})"));
+                                narrowed
+                                    .push(jadpo_sql::policy::unless_unsupplied(&supplied, &who));
                             }
                             if field.reference.is_some() {
                                 written_refs.push((
@@ -474,7 +475,9 @@ impl Planner<'_> {
                                     Effect::Update,
                                     &Row::Table,
                                 )? {
-                                    narrowed.push(format!("(NOT {supplied} OR {who})"));
+                                    narrowed.push(jadpo_sql::policy::unless_unsupplied(
+                                        &supplied, &who,
+                                    ));
                                 }
                             }
                         }
@@ -853,10 +856,7 @@ impl Planner<'_> {
 /// A patched field's value once written, as the `WHERE` of its update
 /// reads it: the value when the request supplies it, the column otherwise.
 fn supplied_value(table: &str, column: &str, supplied: &str, value: &str) -> String {
-    format!(
-        "CASE WHEN {supplied} THEN {value} ELSE {} END",
-        jadpo_sql::policy::qualified(table, column)
-    )
+    jadpo_sql::policy::supplied_value(table, column, supplied, value)
 }
 
 /// `condition` and each of `fields`: [`jadpo_sql::policy::ANYONE`] when
@@ -867,11 +867,7 @@ fn all_of(condition: String, fields: Vec<String>) -> String {
         parts.push(condition);
     }
     parts.extend(fields);
-    if parts.is_empty() {
-        jadpo_sql::policy::ANYONE.to_string()
-    } else {
-        parts.join(" AND ")
-    }
+    jadpo_sql::policy::all_of(&parts)
 }
 
 /// Every column of an entity, as `RETURNING` lists them: a compound

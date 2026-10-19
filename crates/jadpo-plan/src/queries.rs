@@ -22,7 +22,7 @@
 //!   [`Planner::access`], which adds none yet.
 
 use jadpo_check::data::queries::{
-    self as model, Bound, Condition, GeoTest, Include, IncludeKind, OrderField, QueryModel,
+    self as model, Bound, Call, CallArg, Condition, Include, IncludeKind, OrderField, QueryModel,
     Source as From, Value, VectorSearch,
 };
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
@@ -32,11 +32,13 @@ use std::cell::RefCell;
 
 use jadpo_graph::{Key, Kind, TypeRef};
 use jadpo_sql::Bind;
+use jadpo_sql::form::Held;
 use jadpo_sql::statement::{self as text, After, Order};
+use jadpo_std::Op;
 use jadpo_std::read::{
-    Cardinality, Column, EnvelopePart, Field, GeoCheck, GeoOp, GeoOrder, IncludeRead, IncludeShape,
-    MissingPlan, MissingValue, PageRead, Param, ReadPlan, Recheck, Record, Select, Size, Source,
-    SqlType,
+    Cardinality, Check, Column, EnvelopePart, Field, IncludeRead, IncludeShape, MissingPlan,
+    MissingValue, Operand, PageRead, Param, ReadPlan, Recheck, RecheckOrder, Record, Select, Size,
+    Source, SqlType,
 };
 
 use crate::constant::Constant;
@@ -184,6 +186,11 @@ struct Columns {
     kinds: Vec<Column>,
 }
 
+/// How a later column of a compound standard type (`Money`, area 19) is
+/// named among a statement's columns, after its field's name and before
+/// its place among the type's columns: `total#part1`.
+const PART_COLUMN: &str = "#part";
+
 /// `hnsw.max_scan_tuples` for a nearest-neighbour query (chunk 5.8c):
 /// pgvector's most, so an iterative scan ends only when it has filled the
 /// query's limit or run out of records, as area 21 says a filtered search
@@ -196,11 +203,6 @@ const MAX_SCAN_TUPLES: u32 = 2_147_483_647;
 /// pgvector's default `hnsw.ef_search`: a nearest-neighbour query never
 /// searches fewer candidates than this (area 21, chunk 5.5v1b).
 const EF_SEARCH: u64 = 40;
-
-/// How a later column of a compound standard type (`Money`, area 19) is
-/// named among a statement's columns, after its field's name and before
-/// its place among the type's columns: `total#part1`.
-const PART_COLUMN: &str = "#part";
 
 impl Columns {
     /// The field's column, added once; a compound type's every column.
@@ -272,18 +274,32 @@ impl Planner<'_> {
                 let vector = field(entity, &nearest.field)?;
                 let id = field(entity, "id")?;
                 columns.add(&id.name, self.column(entity, id)?);
-                let from = statement.bind(&nearest.value, SqlType::Vector)?;
-                let column = jadpo_sql::ident(&vector.born);
-                let operator = nearest.metric.operator();
-                let distance = format!("{column} {operator} {from}");
+                // The distance is `ai.distance`'s form, as a condition on it
+                // is (chunk 6.3b).
+                let measure = Call {
+                    op: Op::AiDistance,
+                    field: vector.name.clone(),
+                    args: vec![
+                        CallArg::Value(nearest.value.clone(), Held::Vector),
+                        CallArg::Metric(nearest.metric),
+                    ],
+                    result: Held::Double,
+                };
+                let distance = jadpo_sql::condition::expression(&mut statement, entity, &measure)?;
                 // A vector of 2,001 to 4,000 dimensions is ordered by the
                 // distance between `halfvec` casts, the expression its
                 // index holds; the distance read back stays the full
                 // one, as `ai.distance` gives it (chunk 5.5v1c).
                 let order = match nearest.search {
-                    VectorSearch::HalfPrecision(n) => Some(format!(
-                        "{column}::halfvec({n}) {operator} {from}::vector({n})::halfvec({n})"
-                    )),
+                    VectorSearch::HalfPrecision(n) => {
+                        let from = statement.bind(&nearest.value, SqlType::Vector)?;
+                        Some(text::half_precision_distance(
+                            &vector.born,
+                            nearest.metric,
+                            &from,
+                            n,
+                        ))
+                    }
                     VectorSearch::Index => Some(distance.clone()),
                     VectorSearch::Exact => None,
                 };
@@ -299,36 +315,16 @@ impl Planner<'_> {
             }
             None => None,
         };
-        // The `geo.` conditions, each worked out again in code on the rows
-        // the statement finds, from the field's own column (area 20, chunk
-        // 5.5u5); and an order by `geo.distance`, by PostGIS's distance in
-        // the statement and the code's after.
+        // The calls the statement searches an index for (the `geo.` tests,
+        // chunk 6.3b), each worked out again in code on the rows the
+        // statement finds, from the field's own column; and an order by
+        // `geo.distance`, by PostGIS's distance in the statement and the
+        // code's after (area 20, chunk 5.5u5).
         let mut checks = Vec::new();
-        for (name, test) in model::geo_tests(&query.filter) {
-            let tested = field(entity, name)?;
+        for call in jadpo_sql::condition::searched(&query.filter) {
+            let tested = field(entity, &call.field)?;
             let column = columns.add(&tested.name, self.column(entity, tested)?);
-            let (op, value, distance) = match test {
-                GeoTest::Near {
-                    point,
-                    distance,
-                    measure,
-                } => (GeoOp::Within, point, Some((distance, *measure))),
-                GeoTest::Within { area: value }
-                | GeoTest::InBox { bounds: value }
-                | GeoTest::InCircle { circle: value } => (GeoOp::Within, value, None),
-                GeoTest::Contains { shape } => (GeoOp::Contains, shape, None),
-                GeoTest::Intersects { shape } => (GeoOp::Intersects, shape, None),
-            };
-            let distance = match distance {
-                Some((distance, measure)) => Some(self.length_source(distance, measure)?),
-                None => None,
-            };
-            checks.push(GeoCheck {
-                op,
-                column,
-                value: self.source(value)?,
-                distance,
-            });
+            checks.push(self.check(call, column)?);
         }
         let by_distance = match &query.distance {
             Some(order) => {
@@ -336,12 +332,19 @@ impl Planner<'_> {
                 let column = columns.add(&point_field.name, self.column(entity, point_field)?);
                 let id = field(entity, "id")?;
                 let id_at = columns.add(&id.name, self.column(entity, id)?);
-                let from = statement.bind(&order.point, SqlType::Geography)?;
-                let measured = format!(
-                    "ST_Distance({}, {from})",
-                    jadpo_sql::ident(&point_field.born)
-                );
-                Some((measured, column, id_at, self.source(&order.point)?))
+                let measured = jadpo_sql::condition::measured(
+                    &mut statement,
+                    &point_field.born,
+                    &order.point,
+                )?;
+                let key = Check {
+                    op: Op::GeoDistance,
+                    args: vec![
+                        Operand::Column(column),
+                        Operand::Value(self.source(&order.point)?),
+                    ],
+                };
+                Some((measured, key, id_at))
             }
             None => None,
         };
@@ -361,7 +364,7 @@ impl Planner<'_> {
         }
         // A record whose vector is `none` is never near anything.
         if let Some((_, _, column, _)) = &nearest {
-            conditions.push(format!("{} IS NOT NULL", jadpo_sql::ident(column)));
+            conditions.push(jadpo_sql::condition::present(column));
         }
         conditions.extend(self.access(&mut statement, entity, Reach::Read)?);
         let policy = self.policy(&mut statement, entity, Effect::Read, &Row::Table)?;
@@ -469,9 +472,8 @@ impl Planner<'_> {
         }
         let recheck = rechecked.then(|| Recheck {
             checks,
-            order: by_distance.map(|(_, column, id, point)| GeoOrder {
-                column,
-                point,
+            order: by_distance.map(|(_, key, id)| RecheckOrder {
+                key,
                 measured: measured_at,
                 id,
             }),
@@ -493,11 +495,9 @@ impl Planner<'_> {
         // that takes rather than stopping at 20,000 (chunk 5.8c).
         // An exact search reads no index, and needs none of them.
         let settings = match &nearest {
-            Some((_, Some(_), _, most)) => vec![
-                format!("SET LOCAL hnsw.ef_search = {}", (*most).max(EF_SEARCH)),
-                "SET LOCAL hnsw.iterative_scan = strict_order".to_string(),
-                format!("SET LOCAL hnsw.max_scan_tuples = {MAX_SCAN_TUPLES}"),
-            ],
+            Some((_, Some(_), _, most)) => {
+                text::search_settings((*most).max(EF_SEARCH), MAX_SCAN_TUPLES)
+            }
             _ => Vec::new(),
         };
         let select = Select {
@@ -748,24 +748,28 @@ impl Planner<'_> {
         })
     }
 
-    /// Where `within`'s `distance:` comes from when a row is rechecked: an
-    /// argument, or a literal as the storage codec binds it, in metres.
-    fn length_source(&self, value: &Value, measure: jadpo_std::Builtin) -> Option<Source> {
-        match value {
-            Value::Literal(literal) => {
-                let metres = jadpo_sql::Column {
-                    name: "",
-                    nullable: false,
-                    ty: Some(SqlType::Numeric),
-                    builtin: Some(measure),
-                    scale: None,
-                };
-                Some(Source::Stored(jadpo_sql::condition::literal(
-                    literal, &metres,
-                )?))
-            }
-            other => self.source(other),
+    /// What the runtime holds each row a search found to (chunk 6.3b): the
+    /// call's operation on the field's column at `column` and its other
+    /// arguments, a value from the read's arguments or one written out, as
+    /// code builds it.
+    fn check(&self, call: &Call, column: u32) -> Option<Check> {
+        let mut args = vec![Operand::Column(column)];
+        for arg in &call.args {
+            args.push(match arg {
+                CallArg::Value(Value::Literal(literal), held) => {
+                    let builtin = match held {
+                        Held::Builtin(builtin) => Some(*builtin),
+                        _ => None,
+                    };
+                    Operand::Constant(jadpo_std::constant::literal(literal, builtin, None)?)
+                }
+                CallArg::Value(value, _) => Operand::Value(self.source(value)?),
+                CallArg::Absent => Operand::Absent,
+                // A search's operation takes values only.
+                _ => return None,
+            });
         }
+        Some(Check { op: call.op, args })
     }
 
     /// The condition that starts a page after its cursor: the rows past

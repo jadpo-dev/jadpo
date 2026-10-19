@@ -14,13 +14,25 @@
 //! parameter, and a predicate, which takes none, writes it into its text
 //! ([`crate::literal`]). Anything else (a parameter, `clock.now`) is a
 //! parameter the statement binds, through [`Bind`].
+//!
+//! A standard operation of a field ([`Condition::Call`]) is lowered one
+//! way for every operation (chunk 6.3b), by [`lowering`]: either its SQL
+//! form ([`crate::form`]), which gives exactly what the code gives and is
+//! compared in the statement (an operation with an exact form, and
+//! `ai.distance` as pgvector works it out, area 21), or a search an index
+//! serves that never leaves out a record the code keeps, each row it finds
+//! then held to the operation by the runtime, in the same code a function
+//! body runs (the `geo.` tests, area 20), as the read plan's
+//! `jadpo_std::read::Recheck` says.
 
 use std::collections::BTreeSet;
 
 use jadpo_std::read::{EnvelopePart, GEO_MARGIN, SqlType};
+use jadpo_std::standard::geo::{BOUNDING_BOX, CIRCLE, POINT};
 use jadpo_std::standard::storage::{self, Stored};
-use jadpo_std::{Builtin, Literal, SqlValue};
+use jadpo_std::{Builtin, Literal, Op, Rounding, SqlValue, VectorDistance};
 
+use crate::form::{self, Arg, Held};
 use crate::ident;
 
 /// A value a condition reads: never computed.
@@ -51,6 +63,16 @@ impl Value {
             Value::Param { .. } => true,
             Value::List(items) => items.iter().any(Value::reads_param),
             _ => false,
+        }
+    }
+
+    /// Whether it is written out, fixed while compiling: a literal, an
+    /// enum value or a list of those, never a parameter or `clock.now`.
+    pub fn written_out(&self) -> bool {
+        match self {
+            Value::Literal(_) | Value::Variant { .. } => true,
+            Value::List(items) => items.iter().all(Value::written_out),
+            Value::Param { .. } | Value::Now => false,
         }
     }
 }
@@ -126,69 +148,127 @@ pub enum Condition {
         value: Value,
         condition: Box<Condition>,
     },
-    /// `ai.distance(Entity.field, value) <op> bound` (area 21, chunk
-    /// 5.5v1b): the distance the field's vector type measures by, as
-    /// pgvector's operator for `metric`, compared with a number. A record
-    /// whose vector is `none` never meets it, whichever way it is compared.
-    Distance {
-        field: String,
-        metric: jadpo_std::VectorDistance,
-        value: Value,
-        op: Compare,
-        bound: Value,
-    },
-    /// A `geo.` condition on a geometry field (area 20, "Queries", chunk
-    /// 5.5u5), written as a test an index serves that never leaves out a
-    /// record the code's test keeps; the read works the code's test out
-    /// again on each row it finds (`jadpo_std::read::Recheck`). It stands
-    /// on its own `where:` line or joined by `and`, never under `not` or
-    /// `or`, and a record whose field is `none` never meets it.
-    Geo {
-        field: String,
-        test: GeoTest,
+    /// A standard operation of one of the entity's fields and what it asks
+    /// of the result (chunk 6.3b): `ai.distance(Entity.field, value) <=
+    /// bound` (area 21), a `geo.` test (area 20), or an operation with an
+    /// exact SQL form where a field would stand (area 6, "Operations in
+    /// conditions"), each lowered as [`lowering`] says. A record whose
+    /// field is `none` never meets one, `not` included, since code can't
+    /// call the operation on `none`.
+    Call {
+        call: Call,
+        test: Test,
     },
 }
 
-/// What a `geo.` condition tests its field against (area 20, "Queries").
+/// A standard operation called on one of an entity's fields, its first
+/// argument (chunk 6.3b).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum GeoTest {
-    /// `geo.within(F, point, distance: d)`: a `Point` field within `d`, a
-    /// `Length`, of a point; `measure` is the built-in type the checker
-    /// found `d` to be, which a literal is decoded for.
-    Near {
-        point: Value,
-        distance: Value,
-        measure: Builtin,
-    },
-    /// `geo.within(F, area)`: inside a `Polygon` or a `MultiPolygon`.
-    Within { area: Value },
-    /// `geo.within(F, view)`: a `Point` field inside a `BoundingBox`.
-    InBox { bounds: Value },
-    /// `geo.within(F, circle)`: a `Point` field inside a `Circle`.
-    InCircle { circle: Value },
-    /// `geo.contains(F, shape)`: no point of a geometry outside the field.
-    Contains { shape: Value },
-    /// `geo.intersects(F, shape)`: the field and a geometry share a point.
-    Intersects { shape: Value },
+pub struct Call {
+    pub op: Op,
+    /// The field it is called on.
+    pub field: String,
+    /// Its other arguments, in the operation's parameter order.
+    pub args: Vec<CallArg>,
+    /// How its result is held, which a value compared with it is decoded
+    /// and sent for.
+    pub result: Held,
 }
 
-impl GeoTest {
-    /// The value the field is compared with, as the code's test takes it.
-    pub fn value(&self) -> &Value {
-        match self {
-            GeoTest::Near { point: value, .. }
-            | GeoTest::Within { area: value }
-            | GeoTest::InBox { bounds: value }
-            | GeoTest::InCircle { circle: value }
-            | GeoTest::Contains { shape: value }
-            | GeoTest::Intersects { shape: value } => value,
-        }
+/// One of a call's arguments after the field.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum CallArg {
+    /// A value, held as its parameter's type says: written out (a literal,
+    /// an enum value), or given when the query runs (a parameter, or a
+    /// field inside one).
+    Value(Value, Held),
+    /// A rounding mode written out.
+    Rounding(Rounding),
+    /// A whole number written out (`decimal.round`'s `scale:`).
+    Whole(i64),
+    /// One character written out (`text.pad_start`'s `fill:`).
+    Character(char),
+    /// How `ai.distance` compares its vectors, from their type.
+    Metric(VectorDistance),
+    /// An option the call leaves out.
+    Absent,
+}
+
+/// What a condition asks of an operation's result.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Test {
+    /// That it is `true`: an operation that gives a `Bool`, standing as
+    /// the condition itself.
+    Holds,
+    /// That it compares with a value: `text.length(Book.title) <= 24`.
+    Compare { op: Compare, value: Value },
+    /// That it is one of a list's values.
+    In { value: Value },
+}
+
+/// How the database decides a condition on an operation (chunk 6.3b): one
+/// of two ways, for every operation a condition may call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Lowering {
+    /// Its SQL form, compared in the statement: area 19's form, which
+    /// gives exactly what the code gives, or `ai.distance` as pgvector
+    /// works it out, which area 21 decided a query's distance is.
+    Exact,
+    /// A search an index serves, a margin wider than the condition, so it
+    /// never leaves out a record the code keeps; the runtime holds each row
+    /// it finds to the operation, run by the code a function body runs, and
+    /// asks again when that leaves the read short (area 20, "Queries",
+    /// chunk 5.5u5).
+    Search,
+}
+
+/// How a condition calling `op` is decided; `None` for an operation no
+/// condition may call.
+pub fn lowering(op: Op) -> Option<Lowering> {
+    match op {
+        Op::GeoWithin | Op::GeoContains | Op::GeoIntersects => Some(Lowering::Search),
+        Op::AiDistance => Some(Lowering::Exact),
+        other if form::has_form(other) => Some(Lowering::Exact),
+        _ => None,
+    }
+}
+
+impl Call {
+    /// The value it is compared with, or searched against, first: what a
+    /// `geo.` test tests its field against.
+    pub fn value(&self) -> Option<&Value> {
+        self.args.iter().find_map(|arg| match arg {
+            CallArg::Value(value, _) => Some(value),
+            _ => None,
+        })
     }
 
-    /// Whether only a `BoundingBox` test, which searches the column cast to
-    /// `geometry`, and so its own index (area 20, "Indexes").
+    /// Whether every argument but the field is written out, so its
+    /// expression is fixed while compiling and an index can hold it.
+    pub fn written_out(&self) -> bool {
+        self.args.iter().all(|arg| match arg {
+            CallArg::Value(value, _) => value.written_out(),
+            _ => true,
+        })
+    }
+
+    /// Whether a `BoundingBox` search, which searches the column cast to
+    /// `geometry`, and so an index of its own (area 20, "Indexes").
     pub fn is_box(&self) -> bool {
-        matches!(self, GeoTest::InBox { .. })
+        self.op == Op::GeoWithin
+            && matches!(
+                self.args.first(),
+                Some(CallArg::Value(_, Held::Shape(BOUNDING_BOX)))
+            )
+    }
+
+    /// The operation's name in the namespace it is called through:
+    /// `length` for `text.length`.
+    pub fn name(&self) -> &'static str {
+        jadpo_std::OPERATIONS
+            .iter()
+            .find(|operation| operation.op == self.op)
+            .map_or("call", |operation| operation.name)
     }
 }
 
@@ -215,8 +295,10 @@ impl Condition {
             Condition::Compare { field, .. }
             | Condition::IsNone { field, .. }
             | Condition::In { field, .. }
-            | Condition::Distance { field, .. }
-            | Condition::Geo { field, .. } => {
+            | Condition::Call {
+                call: Call { field, .. },
+                ..
+            } => {
                 out.insert(field.clone());
             }
             Condition::And(all) | Condition::Or(all) => {
@@ -228,6 +310,48 @@ impl Condition {
             } => inner.fields(out),
         }
     }
+
+    /// The calls it holds, each with its lowering, anywhere inside.
+    pub fn calls<'c>(&'c self, out: &mut Vec<&'c Call>) {
+        match self {
+            Condition::Call { call, .. } => out.push(call),
+            Condition::And(all) | Condition::Or(all) => {
+                all.iter().for_each(|c| c.calls(out));
+            }
+            Condition::Not(inner)
+            | Condition::Present {
+                condition: inner, ..
+            } => inner.calls(out),
+            _ => {}
+        }
+    }
+
+    /// Whether the runtime decides any part of it on the rows a search
+    /// finds ([`Lowering::Search`]).
+    pub fn searches(&self) -> bool {
+        let mut calls = Vec::new();
+        self.calls(&mut calls);
+        calls
+            .iter()
+            .any(|call| lowering(call.op) == Some(Lowering::Search))
+    }
+}
+
+/// The calls a query's lines search for, which the runtime holds each row
+/// it finds to: each is a line of its own or a part of an `and`, which is
+/// where the checker lets a search stand (area 20, "Queries").
+pub fn searched(filter: &[Condition]) -> Vec<&Call> {
+    let mut out = Vec::new();
+    for line in filter {
+        match line {
+            Condition::Call { call, .. } if lowering(call.op) == Some(Lowering::Search) => {
+                out.push(call)
+            }
+            Condition::And(parts) => out.extend(searched(parts)),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// What a condition needs of the column that holds one field.
@@ -252,6 +376,19 @@ impl Column<'_> {
     /// The type a value compared with the column is sent as.
     fn param(&self) -> Option<SqlType> {
         self.ty.map(SqlType::param)
+    }
+
+    /// How an operation's form is given the column's value: the built-in
+    /// type it is built on, text for an enum, `jsonb` for a list, a set or
+    /// a map, and a vector.
+    fn held(&self) -> Option<Held> {
+        Some(match (self.ty?, self.builtin) {
+            (SqlType::Json, _) => Held::Json,
+            (SqlType::Vector, _) => Held::Vector,
+            (_, Some(builtin)) => Held::Builtin(builtin),
+            (SqlType::Text, None) => Held::Builtin(Builtin::Text),
+            _ => return None,
+        })
     }
 }
 
@@ -290,7 +427,8 @@ pub trait Bind {
 }
 
 /// For text that takes no parameters: a partial index's predicate, which
-/// must mean the same at every moment. A literal is written into it.
+/// must mean the same at every moment, and an index's expression. A literal
+/// is written into it.
 #[derive(Debug)]
 pub struct Fixed;
 
@@ -348,31 +486,7 @@ pub fn condition(
         Condition::In { field: name, value } => {
             let field = entity.column(name)?;
             let column = ident(field.name);
-            let ty = field.param()?;
-            let text = match value {
-                Value::List(items) => {
-                    if items.is_empty() {
-                        return Some(if negated { "TRUE" } else { "FALSE" }.to_string());
-                    }
-                    let mut rendered = Vec::new();
-                    for item in items {
-                        rendered.push(self::value(bind, item, &field)?);
-                    }
-                    format!(
-                        "{column} {}IN ({})",
-                        if negated { "NOT " } else { "" },
-                        rendered.join(", ")
-                    )
-                }
-                other => {
-                    let n = bind.bind(other, ty.array())?;
-                    if negated {
-                        format!("{column} <> ALL({n})")
-                    } else {
-                        format!("{column} = ANY({n})")
-                    }
-                }
-            };
+            let text = among(bind, &column, value, &field, negated)?;
             if negated && field.nullable {
                 format!("({text} OR {column} IS NULL)")
             } else {
@@ -390,64 +504,46 @@ pub fn condition(
         Condition::Not(inner) => {
             return self::condition(bind, entity, inner, !negated);
         }
-        Condition::Distance {
-            field: name,
-            metric,
-            value,
-            op,
-            bound,
-        } => {
-            let field = entity.column(name)?;
-            let vector = match value {
-                Value::Param { .. } => bind.bind(value, SqlType::Vector)?,
-                _ => return None,
-            };
-            // `none` never meets it, so a pushed-down `not` only flips the
-            // comparison.
-            let op = if negated { op.negated() } else { *op };
-            // Each comparison is "at most" or "above" the double that
-            // agrees with code's decimal comparison (chunk 5.8c), sent as
-            // that double so PostgreSQL rounds nothing.
-            let (above, strict) = match op {
-                Compare::LessEqual => (false, false),
-                Compare::Less => (false, true),
-                Compare::Greater => (true, false),
-                Compare::GreaterEqual => (true, true),
-                Compare::Equal | Compare::NotEqual => return None,
-            };
-            let bound = match bound {
-                Value::Literal(Literal::Number { value, .. }) => bind.stored(SqlValue::Float8(
-                    jadpo_std::standard::ai::distance_bound(&value.to_string(), strict)?.to_bits(),
-                ))?,
-                Value::Param { .. } => bind.distance_bound(bound, strict)?,
-                _ => return None,
-            };
-            let distance = format!("{} {} {vector}", ident(field.name), metric.operator());
-            // PostgreSQL sorts `NaN` (a cosine from a vector of zeros) above
-            // infinity, and infinity above every number: neither meets any
-            // comparison, as in code, where neither is a decimal.
-            if above {
-                format!("({distance} > {bound} AND {distance} < 'Infinity'::float8)")
-            } else if *metric == jadpo_std::VectorDistance::InnerProduct {
-                format!("({distance} <= {bound} AND {distance} > '-Infinity'::float8)")
-            } else {
-                format!("{distance} <= {bound}")
+        Condition::Call { call, test } => {
+            let field = entity.column(&call.field)?;
+            let column = ident(field.name);
+            match lowering(call.op)? {
+                // No index serves the negation, and the code's test is
+                // worked out again anyway: the checker keeps a search out
+                // from under `not`.
+                Lowering::Search => {
+                    if negated || *test != Test::Holds {
+                        return None;
+                    }
+                    search(bind, &column, call)?
+                }
+                Lowering::Exact => {
+                    let expression = expression(bind, entity, call)?;
+                    let text = tested(bind, &expression, call, test, negated)?;
+                    // A record whose field is `none` meets nothing, `not`
+                    // included. pgvector's operators are strict, so its
+                    // distance of `NULL` is `NULL` and meets nothing
+                    // already; a form is given values, never `NULL`.
+                    if field.nullable && call.op != Op::AiDistance {
+                        format!("({column} IS NOT NULL AND {text})")
+                    } else {
+                        text
+                    }
+                }
             }
-        }
-        Condition::Geo { field: name, test } => {
-            // No index serves the negation, and the code's test is worked
-            // out again anyway: the checker keeps `geo.` conditions out
-            // from under `not`.
-            if negated {
-                return None;
-            }
-            let field = entity.column(name)?;
-            geo(bind, &ident(field.name), test)?
         }
         Condition::Present { value, condition } => {
             let ty = match condition.as_ref() {
                 Condition::Compare { field: name, .. } => entity.column(name)?.param()?,
                 Condition::In { field: name, .. } => entity.column(name)?.param()?.array(),
+                Condition::Call {
+                    call,
+                    test: Test::Compare { .. },
+                } => result_column(call).param()?,
+                Condition::Call {
+                    call,
+                    test: Test::In { .. },
+                } => result_column(call).param()?.array(),
                 _ => return None,
             };
             let n = bind.bind(value, ty)?;
@@ -457,58 +553,320 @@ pub fn condition(
     })
 }
 
+/// `column` among the values `value` holds: a list written out, or a
+/// parameter holding one.
+fn among(
+    bind: &mut dyn Bind,
+    column: &str,
+    value: &Value,
+    field: &Column<'_>,
+    negated: bool,
+) -> Option<String> {
+    let ty = field.param()?;
+    Some(match value {
+        Value::List(items) => {
+            if items.is_empty() {
+                return Some(if negated { "TRUE" } else { "FALSE" }.to_string());
+            }
+            let mut rendered = Vec::new();
+            for item in items {
+                rendered.push(self::value(bind, item, field)?);
+            }
+            format!(
+                "{column} {}IN ({})",
+                if negated { "NOT " } else { "" },
+                rendered.join(", ")
+            )
+        }
+        other => {
+            let n = bind.bind(other, ty.array())?;
+            if negated {
+                format!("{column} <> ALL({n})")
+            } else {
+                format!("{column} = ANY({n})")
+            }
+        }
+    })
+}
+
+/// The column a call's result is compared as: of the type its result is
+/// held in, the literal it is compared with decoded for that type.
+fn result_column(call: &Call) -> Column<'static> {
+    let (ty, builtin) = match call.result {
+        Held::Builtin(builtin) => (
+            storage::builtin_column(builtin.representation()),
+            Some(builtin),
+        ),
+        Held::Double => (Some(SqlType::Float8), None),
+        Held::Json => (Some(SqlType::Json), None),
+        Held::Vector => (Some(SqlType::Vector), None),
+        Held::Range(_) | Held::Shape(_) => (None, None),
+    };
+    Column {
+        name: "",
+        nullable: false,
+        ty,
+        builtin,
+        scale: None,
+    }
+}
+
+/// What `test` asks of a call's `expression`, `negated` when a `not` above
+/// it was pushed down: the expression is never `NULL` here, the field
+/// being present, so `not` turns each comparison round.
+fn tested(
+    bind: &mut dyn Bind,
+    expression: &str,
+    call: &Call,
+    test: &Test,
+    negated: bool,
+) -> Option<String> {
+    Some(match test {
+        // `IS FALSE` rather than `NOT`: PostgreSQL turns `NOT (a = b)` into
+        // `a <> b` before it looks for an index, which then no longer
+        // matches the index on `(a = b)`; it serves `IS FALSE` as it serves
+        // the expression itself. The expression is never `NULL` here.
+        Test::Holds => {
+            if negated {
+                format!("({expression}) IS FALSE")
+            } else {
+                expression.to_string()
+            }
+        }
+        Test::Compare { op, value } if call.result == Held::Double => {
+            distance(bind, expression, call, *op, value, negated)?
+        }
+        Test::Compare { op, value } => {
+            let op = if negated { op.negated() } else { *op };
+            let rendered = self::value(bind, value, &result_column(call))?;
+            format!("{expression} {} {rendered}", op.sql())
+        }
+        Test::In { value } => among(bind, expression, value, &result_column(call), negated)?,
+    })
+}
+
+/// A distance pgvector worked out compared with a bound (area 21, chunk
+/// 5.8c): each comparison is "at most" or "above" the double that agrees
+/// with code's decimal comparison, sent as that double so PostgreSQL
+/// rounds nothing; `NaN` (a cosine from a vector of zeros) and an infinity
+/// meet none of them, as in code, where neither is a decimal.
+fn distance(
+    bind: &mut dyn Bind,
+    distance: &str,
+    call: &Call,
+    op: Compare,
+    bound: &Value,
+    negated: bool,
+) -> Option<String> {
+    // `none` never meets it, so a pushed-down `not` only flips the
+    // comparison.
+    let op = if negated { op.negated() } else { op };
+    let (above, strict) = match op {
+        Compare::LessEqual => (false, false),
+        Compare::Less => (false, true),
+        Compare::Greater => (true, false),
+        Compare::GreaterEqual => (true, true),
+        Compare::Equal | Compare::NotEqual => return None,
+    };
+    let bound = match bound {
+        Value::Literal(Literal::Number { value, .. }) => bind.stored(SqlValue::Float8(
+            jadpo_std::standard::ai::distance_bound(&value.to_string(), strict)?.to_bits(),
+        ))?,
+        Value::Param { .. } => bind.distance_bound(bound, strict)?,
+        _ => return None,
+    };
+    let metric = call.args.iter().find_map(|arg| match arg {
+        CallArg::Metric(metric) => Some(*metric),
+        _ => None,
+    })?;
+    // PostgreSQL sorts `NaN` above infinity, and infinity above every
+    // number: neither meets any comparison.
+    Some(if above {
+        format!("({distance} > {bound} AND {distance} < 'Infinity'::float8)")
+    } else if metric == VectorDistance::InnerProduct {
+        format!("({distance} <= {bound} AND {distance} > '-Infinity'::float8)")
+    } else {
+        format!("{distance} <= {bound}")
+    })
+}
+
+/// A call's SQL form on its field's column, its other arguments as SQL: a
+/// value given when the query runs bound as a parameter, and one written
+/// out written into the text, so an index on the expression and the
+/// statement's own are the same text (chunk 6.3b). `None` when the
+/// operation has no form for these arguments.
+pub fn expression(bind: &mut dyn Bind, entity: &dyn Columns, call: &Call) -> Option<String> {
+    let field = entity.column(&call.field)?;
+    let column = ident(field.name);
+    let mut rendered: Vec<Option<String>> = Vec::with_capacity(call.args.len());
+    for arg in &call.args {
+        rendered.push(match arg {
+            CallArg::Value(value, held) => Some(argument(bind, value, *held)?),
+            _ => None,
+        });
+    }
+    let mut args = vec![Arg::Value(&column, field.held()?)];
+    for (arg, sql) in call.args.iter().zip(&rendered) {
+        args.push(match (arg, sql) {
+            (CallArg::Value(_, held), Some(sql)) => Arg::Value(sql, *held),
+            (CallArg::Rounding(rounding), _) => Arg::Rounding(*rounding),
+            (CallArg::Whole(n), _) => Arg::Whole(*n),
+            (CallArg::Character(c), _) => Arg::Character(*c),
+            (CallArg::Metric(metric), _) => Arg::Metric(*metric),
+            _ => Arg::Absent,
+        });
+    }
+    form::operation(call.op, &args)?.value().map(str::to_string)
+}
+
+/// An argument after the field as SQL: written out, as the storage codec
+/// makes it, when it is fixed while compiling; bound when it is given as
+/// the query runs.
+fn argument(bind: &mut dyn Bind, value: &Value, held: Held) -> Option<String> {
+    let ty = match held {
+        Held::Builtin(builtin) => storage::builtin_column(builtin.representation())?,
+        Held::Vector => SqlType::Vector,
+        Held::Shape(_) => SqlType::Geography,
+        Held::Json => SqlType::Json,
+        Held::Double => SqlType::Float8,
+        Held::Range(_) => return None,
+    };
+    let builtin = match held {
+        Held::Builtin(builtin) => Some(builtin),
+        _ => None,
+    };
+    let fixed = |stored: SqlValue| crate::literal::sql(&stored);
+    match value {
+        Value::Literal(literal) => {
+            let decoded = jadpo_std::constant::literal(literal, builtin, None)?;
+            fixed(storage::bind(&decoded.stored()?, ty).ok()?)
+        }
+        Value::Variant {
+            ty: enum_ty,
+            variant,
+        } => fixed(
+            storage::bind(
+                &Stored::Variant {
+                    ty: enum_ty,
+                    name: variant,
+                },
+                ty,
+            )
+            .ok()?,
+        ),
+        Value::List(_) => None,
+        other => bind.bind(other, ty),
+    }
+}
+
+/// The expression an index on a call holds (area 6, "Operations in
+/// conditions", chunk 6.3b): its SQL form on its field's column, every
+/// other argument written out. `None` for a call an index can't hold: a
+/// search, which its own index serves, one given a value when the query
+/// runs, or one whose form PostgreSQL won't index ([`form::indexable`]).
+pub fn index_expression(entity: &dyn Columns, call: &Call) -> Option<String> {
+    if lowering(call.op)? != Lowering::Exact || !call.written_out() {
+        return None;
+    }
+    let field = entity.column(&call.field)?;
+    if !form::indexable(call.op, field.held()?) {
+        return None;
+    }
+    expression(&mut Fixed, entity, call)
+}
+
+/// The index a search reads (area 20, "Indexes", chunk 5.5u5): a GiST
+/// index on the field's column, cast to `geometry` for a box, whose
+/// envelopes compare longitude and latitude directly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SearchIndex {
+    /// The index's method.
+    pub method: &'static str,
+    /// The type the column is cast to, when it is.
+    pub cast: Option<&'static str>,
+}
+
+/// The index `call`'s search reads; `None` for a call decided in SQL.
+pub fn search_index(call: &Call) -> Option<SearchIndex> {
+    (lowering(call.op)? == Lowering::Search).then(|| SearchIndex {
+        method: "gist",
+        cast: call.is_box().then_some("geometry"),
+    })
+}
+
 /// A `geo.` test on `column` as a condition an index serves, which never
 /// leaves out a record the code's test keeps (area 20, "Queries", chunk
 /// 5.5u5): a distance searched [`GEO_MARGIN`] further, a shape searched
 /// for anything within [`GEO_MARGIN`] of it (whatever is inside it or on
 /// its edge, and whatever `ST_Covers` would wrongly leave out), and a box
 /// by its envelopes on the column cast to `geometry`.
-fn geo(bind: &mut dyn Bind, column: &str, test: &GeoTest) -> Option<String> {
-    Some(match test {
-        GeoTest::Near {
-            point,
-            distance,
-            measure,
-        } => {
+fn search(bind: &mut dyn Bind, column: &str, call: &Call) -> Option<String> {
+    let value = call.value()?;
+    let reach = match call.args.get(1) {
+        Some(CallArg::Value(reach, held)) => Some((reach, *held)),
+        _ => None,
+    };
+    let shape = match call.args.first() {
+        Some(CallArg::Value(_, Held::Shape(shape))) => *shape,
+        _ => return None,
+    };
+    Some(match (call.op, shape, reach) {
+        (Op::GeoWithin, POINT, Some((distance, held))) => {
             let length = Column {
                 name: column,
                 nullable: false,
                 ty: Some(SqlType::Numeric),
-                builtin: Some(*measure),
+                builtin: match held {
+                    Held::Builtin(builtin) => Some(builtin),
+                    _ => None,
+                },
                 scale: None,
             };
-            let point = bind.bind(point, SqlType::Geography)?;
+            let point = bind.bind(value, SqlType::Geography)?;
             let distance = self::value(bind, distance, &length)?;
             format!("ST_DWithin({column}, {point}, {distance} + {GEO_MARGIN})")
         }
-        GeoTest::InCircle { circle } => {
-            let centre = bind.bind(&inside(circle, "centre")?, SqlType::Geography)?;
-            let radius = bind.bind(&inside(circle, "radius")?, SqlType::Numeric)?;
+        (Op::GeoWithin, CIRCLE, None) => {
+            let centre = bind.bind(&inside(value, "centre")?, SqlType::Geography)?;
+            let radius = bind.bind(&inside(value, "radius")?, SqlType::Numeric)?;
             format!("ST_DWithin({column}, {centre}, {radius} + {GEO_MARGIN})")
         }
-        GeoTest::Within { area: shape }
-        | GeoTest::Contains { shape }
-        | GeoTest::Intersects { shape } => {
-            let shape = bind.bind(shape, SqlType::Geography)?;
-            format!("ST_DWithin({column}, {shape}, {GEO_MARGIN})")
-        }
-        GeoTest::InBox { bounds } => {
-            let south = bind.bind(&inside(bounds, "south")?, SqlType::Numeric)?;
-            let north = bind.bind(&inside(bounds, "north")?, SqlType::Numeric)?;
+        (Op::GeoWithin, BOUNDING_BOX, None) => {
+            let south = bind.bind(&inside(value, "south")?, SqlType::Numeric)?;
+            let north = bind.bind(&inside(value, "north")?, SqlType::Numeric)?;
             let mut envelopes = Vec::new();
             for (west, east) in [
                 (EnvelopePart::FirstWest, EnvelopePart::FirstEast),
                 (EnvelopePart::SecondWest, EnvelopePart::SecondEast),
             ] {
-                let west = bind.envelope(bounds, west)?;
-                let east = bind.envelope(bounds, east)?;
+                let west = bind.envelope(value, west)?;
+                let east = bind.envelope(value, east)?;
                 envelopes.push(format!(
                     "{column}::geometry && ST_MakeEnvelope({west}, {south}, {east}, {north}, 4326)"
                 ));
             }
             format!("({})", envelopes.join(" OR "))
         }
+        (Op::GeoWithin | Op::GeoContains | Op::GeoIntersects, _, None) => {
+            let shape = bind.bind(value, SqlType::Geography)?;
+            format!("ST_DWithin({column}, {shape}, {GEO_MARGIN})")
+        }
+        _ => return None,
     })
+}
+
+/// PostGIS's distance from `point` to `column`'s point, which a read
+/// ordered by `geo.distance` orders the rows it finds by before the
+/// runtime sorts them by the code's (area 20, question 4; chunk 5.5u5).
+pub fn measured(bind: &mut dyn Bind, column: &str, point: &Value) -> Option<String> {
+    let from = bind.bind(point, SqlType::Geography)?;
+    Some(format!("ST_Distance({}, {from})", ident(column)))
+}
+
+/// `column` holding a value: a nearest-neighbour read leaves out a record
+/// whose vector is `none`, which is near nothing (area 21).
+pub fn present(column: &str) -> String {
+    format!("{} IS NOT NULL", ident(column))
 }
 
 /// A value as SQL, given to `column`: a literal or an enum value as the
@@ -819,21 +1177,41 @@ mod tests {
         }
     }
 
+    /// `ai.distance(Meanings.meaning, $1) <op> bound`.
+    fn distance(metric: jadpo_std::VectorDistance, op: Compare, bound: &str) -> Condition {
+        Condition::Call {
+            call: Call {
+                op: Op::AiDistance,
+                field: "meaning".into(),
+                args: vec![
+                    CallArg::Value(
+                        Value::Param {
+                            index: 0,
+                            path: Vec::new(),
+                        },
+                        Held::Vector,
+                    ),
+                    CallArg::Metric(metric),
+                ],
+                result: Held::Double,
+            },
+            test: Test::Compare {
+                op,
+                value: Value::Literal(Literal::Number {
+                    value: jadpo_std::Num::parse(bound).expect("a number"),
+                    decimal: true,
+                }),
+            },
+        }
+    }
+
     #[test]
     fn a_distance_is_pgvector_s_operator_and_none_never_meets_it() {
-        let near = Condition::Distance {
-            field: "meaning".into(),
-            metric: jadpo_std::VectorDistance::InnerProduct,
-            value: Value::Param {
-                index: 0,
-                path: Vec::new(),
-            },
-            op: Compare::LessEqual,
-            bound: Value::Literal(Literal::Number {
-                value: jadpo_std::Num::parse("0.6").expect("a number"),
-                decimal: true,
-            }),
-        };
+        let near = distance(
+            jadpo_std::VectorDistance::InnerProduct,
+            Compare::LessEqual,
+            "0.6",
+        );
         // An inner product can be minus infinity, which no bound meets
         // (chunk 5.8c).
         assert_eq!(
@@ -855,19 +1233,8 @@ mod tests {
         );
         // A cosine at most a bound can't be `NaN` or infinite, since both
         // sort above it; at least one can.
-        let cosine = |op: Compare| Condition::Distance {
-            field: "meaning".into(),
-            metric: jadpo_std::VectorDistance::Cosine,
-            value: Value::Param {
-                index: 0,
-                path: Vec::new(),
-            },
-            op,
-            bound: Value::Literal(Literal::Number {
-                value: jadpo_std::Num::parse("0.60000000000000005").expect("a number"),
-                decimal: true,
-            }),
-        };
+        let cosine =
+            |op: Compare| distance(jadpo_std::VectorDistance::Cosine, op, "0.60000000000000005");
         let mut sent = Sent::default();
         assert_eq!(
             condition(&mut sent, &Meanings, &cosine(Compare::LessEqual), false).as_deref(),
@@ -919,14 +1286,22 @@ mod tests {
             index,
             path: Vec::new(),
         };
-        let near = Condition::Geo {
-            field: "spot".into(),
-            test: GeoTest::Near {
-                point: param(0),
-                distance: param(1),
-                measure: Builtin::Decimal,
+        let geo = |op: Op, args: Vec<CallArg>| Condition::Call {
+            call: Call {
+                op,
+                field: "spot".into(),
+                args,
+                result: Held::Builtin(Builtin::Bool),
             },
+            test: Test::Holds,
         };
+        let near = geo(
+            Op::GeoWithin,
+            vec![
+                CallArg::Value(param(0), Held::Shape(POINT)),
+                CallArg::Value(param(1), Held::Builtin(Builtin::Decimal)),
+            ],
+        );
         let mut params = Collected::default();
         assert_eq!(
             condition(&mut Params::default(), &Spots, &near, false).as_deref(),
@@ -942,10 +1317,10 @@ mod tests {
             None,
             "no index serves the negation"
         );
-        let inside = Condition::Geo {
-            field: "spot".into(),
-            test: GeoTest::Contains { shape: param(0) },
-        };
+        let inside = geo(
+            Op::GeoContains,
+            vec![CallArg::Value(param(0), Held::Shape(POINT))],
+        );
         assert_eq!(
             condition(&mut Params::default(), &Spots, &inside, false).as_deref(),
             Some("ST_DWithin(\"spot\", $1, 0.001)")
@@ -955,5 +1330,94 @@ mod tests {
             None,
             "a predicate takes no parameters"
         );
+    }
+
+    /// An operation with an exact form stands where a field would (chunk
+    /// 6.3b): its form compared in the statement, `not` turning the
+    /// comparison round, a record whose field is `none` meeting nothing.
+    #[test]
+    fn an_operation_s_form_is_compared_and_indexed() {
+        let length = |op: Compare| Condition::Call {
+            call: Call {
+                op: Op::TextLength,
+                field: "title".into(),
+                args: Vec::new(),
+                result: Held::Builtin(Builtin::Int),
+            },
+            test: Test::Compare {
+                op,
+                value: Value::Literal(number("24")),
+            },
+        };
+        let mut params = Collected::default();
+        assert_eq!(
+            condition(&mut params, &Notes, &length(Compare::LessEqual), false).as_deref(),
+            Some("(\"name\" IS NOT NULL AND char_length(\"name\")::bigint <= $1)")
+        );
+        assert_eq!(params.0, [SqlValue::Int8(24)], "the bound as an `Int`");
+        assert_eq!(
+            condition(
+                &mut Collected::default(),
+                &Notes,
+                &Condition::Not(Box::new(length(Compare::LessEqual))),
+                false
+            )
+            .as_deref(),
+            Some("(\"name\" IS NOT NULL AND char_length(\"name\")::bigint > $1)"),
+            "`none` meets neither"
+        );
+        let starts = |value: Value| Condition::Call {
+            call: Call {
+                op: Op::TextStartsWith,
+                field: "title".into(),
+                args: vec![CallArg::Value(value, Held::Builtin(Builtin::Text))],
+                result: Held::Builtin(Builtin::Bool),
+            },
+            test: Test::Holds,
+        };
+        let the = starts(Value::Literal(Literal::Text("The ".into())));
+        assert_eq!(
+            condition(
+                &mut Params::default(),
+                &Notes,
+                &Condition::Not(Box::new(the.clone())),
+                false
+            )
+            .as_deref(),
+            Some("(\"name\" IS NOT NULL AND (starts_with(\"name\", 'The ')) IS FALSE)"),
+            "an argument written out is written into the expression"
+        );
+        let Condition::Call { call, .. } = &the else {
+            unreachable!()
+        };
+        assert_eq!(
+            index_expression(&Notes, call).as_deref(),
+            Some("starts_with(\"name\", 'The ')"),
+            "the index holds the same expression"
+        );
+        let given = starts(Value::Param {
+            index: 0,
+            path: Vec::new(),
+        });
+        let Condition::Call { call, .. } = &given else {
+            unreachable!()
+        };
+        assert_eq!(
+            index_expression(&Notes, call),
+            None,
+            "a value given as the query runs isn't indexed"
+        );
+        assert_eq!(lowering(Op::TextLower), None, "no form");
+        assert_eq!(lowering(Op::GeoWithin), Some(Lowering::Search));
+        assert_eq!(lowering(Op::AiDistance), Some(Lowering::Exact));
+        assert!(!form::indexable(Op::MapCount, Held::Json));
+        assert!(!form::indexable(
+            Op::HashSha256,
+            Held::Builtin(Builtin::Text)
+        ));
+        assert!(form::indexable(
+            Op::HashSha256,
+            Held::Builtin(Builtin::Bytes)
+        ));
     }
 }
