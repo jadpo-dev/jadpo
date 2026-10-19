@@ -276,6 +276,8 @@ struct Fake {
     still: Option<Cell<u64>>,
     /// No wall clock: `now_ms` gives nothing.
     no_wall_clock: bool,
+    /// Gives random bytes, which an emitted event's identity takes.
+    random: bool,
 }
 
 impl Host for Fake {
@@ -283,8 +285,13 @@ impl Host for Fake {
         (store == "main" && !self.no_store).then_some(&self.store as &dyn Database)
     }
 
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
+    fn random(&self, bytes: &mut [u8]) -> bool {
+        if self.random {
+            for (at, byte) in bytes.iter_mut().enumerate() {
+                *byte = u8::try_from(at % 251).unwrap_or(0) + 1;
+            }
+        }
+        self.random
     }
 
     fn sleep(&self, _millis: u64) -> LocalFuture<'_, ()> {
@@ -390,9 +397,11 @@ impl<'p> ActionBody<'p> for Body {
                         let line = format!("system {}", system == SqlValue::Bool(true));
                         let _ = transaction.execute(&line, &[]).await;
                     }
-                    ctx.emit(crate::Event {
+                    let _ = ctx.emit(crate::Event {
                         key: "type Done".into(),
                         value: Value::Unit,
+                        payload: "null".into(),
+                        subscribers: vec!["subscriber s".into()],
                     });
                     Outcome::Value(Value::Unit)
                 }
@@ -1113,7 +1122,10 @@ fn what_a_request_emits_is_left_for_after_its_response() {
     };
     let worker = super::Worker::default();
     let program = Program::new(Ends::Emits);
-    let host = Fake::default();
+    let host = Fake {
+        random: true,
+        ..Fake::default()
+    };
     let response = block_on(super::serve_request(
         &app,
         &program,
@@ -1123,13 +1135,17 @@ fn what_a_request_emits_is_left_for_after_its_response() {
     ))
     .expect("nothing waits");
     assert_eq!(response.status, 204);
+    let [crate::runner::Deferred::Deliveries(deliveries)] = response.deferred.as_slice() else {
+        panic!("one event's deliveries: {:?}", response.deferred);
+    };
     assert_eq!(
-        response.deferred,
-        [crate::runner::Deferred::Events(vec![crate::Event {
-            key: "type Done".into(),
-            value: Value::Unit,
-        }])]
+        deliveries
+            .iter()
+            .map(|d| (d.event.as_str(), d.subscriber.as_str(), d.store.as_str()))
+            .collect::<Vec<_>>(),
+        [("type Done", "subscriber s", "main")]
     );
+    assert!(deliveries[0].trace.is_some(), "the request's trace carried");
     let lines = host.store.lines();
     assert_eq!(
         lines.last().map(String::as_str),
@@ -1159,7 +1175,10 @@ fn what_a_request_emits_is_left_for_after_its_response() {
 fn no_request_is_ever_the_system() {
     let table = table(Some("main"), false);
     let program = Program::new(Ends::Emits);
-    let host = Fake::default();
+    let host = Fake {
+        random: true,
+        ..Fake::default()
+    };
     let app = App {
         auth: &super::signed::AuthSettings::NONE,
         client: &super::address::ClientAddress::CONNECTION,

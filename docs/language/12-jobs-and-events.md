@@ -4,6 +4,8 @@ area: 12
 status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
+  - event.*
+  - subscriber.*
   - syntax.job_*
   - type.job_delivery_authority_invalid
   - type.job_delivery_binding_not_implemented
@@ -19,7 +21,7 @@ Work that does not happen inside a request: schedules that run an action on a
 timer, events an action announces, subscribers that react to them, and what
 happens when that work fails.
 
-> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Events and subscribers come in chunk 6.1b, schedules in chunk 6.2.
+> Decided on 2026-10-13. Code on this page applies the decisions from areas 1 to 12. Built in chunk 6.1a: the runner that runs background work, deferred after a response, inline or per item, as the system caller `Access.system` grants (area 9). Built in chunk 6.1b: events kept in the outbox with the action's writes, subscribers delivered to after the response as the system limited to the event's tenant, handled records, retries, trace context and the outbox sweep. Event records come in chunk 6.1c, schedules in chunk 6.2.
 
 Three things start work, and each one calls an ordinary action (decided in
 area 1):
@@ -754,9 +756,379 @@ and 6 type rules (question 2).
 
 ## Errors
 
-> These examples predate the decisions above and are rewritten or removed when the area is built (roadmap Phase 6).
+Built in chunk 6.1b: the errors of events and subscribers.
 
-Every error this area can produce, with an example that triggers it.
+### `event.emit_invalid`
+
+Only an action emits, and only an event; a function emits by calling an action:
+
+```jadpo check project=e-emit-invalid expect=event.emit_invalid
+type Note = Text {
+    max_length: 200
+}
+
+type NoteSeen = Event {
+    note: Note
+}
+
+function seen(note: Note) -> NoteSeen {
+    emit NoteSeen {
+        note: note
+    }
+    return NoteSeen {
+        note: note
+    }
+}
+```
+
+```text output
+error: A function can't emit `NoteSeen`
+ --> main.jadpo:10:5
+   |
+10 |     emit NoteSeen {
+   |     ^^^^^^^^^^^^^^^ only actions emit
+  reason: An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; a function emits by calling an action.
+  next: Move the `emit` into the action this code calls, or make this an action (agent)
+  rule: event.emit_invalid
+  help: docs/language/12-jobs-and-events.html#event-emit-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `event.settings_invalid`
+
+`events: { store: }` names a database:
+
+```jadpo check project=e-events-settings file=app.jadpo expect=event.settings_invalid
+application {
+    events: {
+        store: archive
+    }
+}
+```
+
+```text output
+error: `store: archive` isn't a database
+ --> app.jadpo:3:16
+  |
+3 |         store: archive
+  |                ^^^^^^^ not a database
+  reason: An event is kept in a database's outbox until its subscribers have it; this application's databases are `main`.
+  next: Name a database connection (agent)
+  rule: event.settings_invalid
+  help: docs/language/12-jobs-and-events.html#event-settings-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `event.store_required`
+
+An action that emits and writes no store has nowhere to keep its events until `events: { store: }` names one:
+
+```jadpo check project=e-store-required expect=event.store_required
+type Note = Text {
+    max_length: 200
+}
+
+type NoteSeen = Event {
+    note: Note
+}
+
+action glance(note: Note) -> Unit {
+    emit NoteSeen {
+        note: note
+    }
+}
+```
+
+```text output
+error: `glance` emits `NoteSeen` but writes no store to keep it in
+ --> main.jadpo:10:5
+   |
+10 |     emit NoteSeen {
+   |     ^^^^^^^^^^^^^^^ no outbox
+  reason: An event is kept in the outbox of the store its action writes, in the same transaction, until its subscribers have it; `glance` writes no store, itself or through what it calls, and `app.jadpo` names none with `events: { store: }`.
+  next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
+  rule: event.store_required
+  help: docs/language/12-jobs-and-events.html#event-store-required
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.argument_invalid`
+
+A subscriber passes its event or the event's fields:
+
+```jadpo check project=e-subscriber-argument expect=subscriber.argument_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(Reminder.id)
+}
+```
+
+```text output
+error: A subscriber passes its event, not `Reminder`
+ --> main.jadpo:31:24
+   |
+31 |     run: send_reminder(Reminder.id)
+   |                        ^^^^^^^^ `Reminder`
+  reason: A subscriber's `run:` passes `event` or fields read through it, as written; the action works out anything else itself.
+  next: Pass `event` or a field of it, and move the rest into the action (agent)
+  rule: subscriber.argument_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-argument-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.event_invalid`
+
+`on:` names an event, not an entity:
+
+```jadpo check project=e-subscriber-event expect=subscriber.event_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: Reminder
+    run: send_reminder(event.reminder_id)
+}
+```
+
+```text output
+error: `on: Reminder` isn't an event
+ --> main.jadpo:30:9
+   |
+30 |     on: Reminder
+   |         ^^^^^^^^ not an event
+  reason: A subscriber listens for one event, a type with the `Event` base that an action emits.
+  next: Name an event, declared as `type <Name> = Event { ... }` in a domain's `events/` folder (agent)
+  rule: subscriber.event_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-event-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.item_invalid`
+
+A subscriber holds `on:`, `run:` and `retry:` only:
+
+```jadpo check project=e-subscriber-item expect=subscriber.item_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(event.reminder_id)
+    timeout: 5m
+}
+```
+
+```text output
+error: `timeout` isn't something a subscriber holds
+ --> main.jadpo:32:5
+   |
+32 |     timeout: 5m
+   |     ^^^^^^^ not a subscriber item
+  reason: A subscriber names the event it listens for with `on:` and the action it runs with `run:`, and may change how it is retried with `retry: { attempts: within: }`; nothing else.
+  next: Write `on: <Event>` and `run: <action>(event)`, once each (agent)
+  rule: subscriber.item_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-item-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.retry_invalid`
+
+`attempts:` is from 1 to 100:
+
+```jadpo check project=e-subscriber-retry expect=subscriber.retry_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder(event.reminder_id)
+    retry: {
+        attempts: 500
+    }
+}
+```
+
+```text output
+error: `attempts: 500` can't be how often it is tried
+ --> main.jadpo:33:19
+   |
+33 |         attempts: 500
+   |                   ^^^ not 1 to 100
+  reason: `retry:` holds `attempts:`, how many times a delivery is tried, from 1 to 100 (10 by default), and `within:`, a duration up to 30 days after the event was emitted (24 hours by default).
+  next: Write `retry: { attempts: 20  within: 3d }`, or leave `retry:` out for the default (agent)
+  rule: subscriber.retry_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-retry-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `subscriber.run_invalid`
+
+`run:` calls the action:
+
+```jadpo check project=e-subscriber-run expect=subscriber.run_invalid
+type Note = Text {
+    max_length: 200
+}
+
+entity Reminder {
+    id: Uuid
+    note: Note
+    sent: Bool
+
+    policy: {
+        create: [Access.authenticated]
+        read: [Access.system]
+        update: [Access.system]
+    }
+}
+
+type ReminderDue = Event {
+    reminder_id: Reminder.id
+}
+
+action send_reminder(reminder_id: Reminder.id) fails ReminderNotFound -> Unit {
+    attempt Reminder.update(reminder_id) {
+        set: {
+            sent: true
+        }
+    }
+}
+
+subscriber send_due {
+    on: ReminderDue
+    run: send_reminder
+}
+```
+
+```text output
+error: `run: send_reminder` isn't a call
+ --> main.jadpo:31:10
+   |
+31 |     run: send_reminder
+   |          ^^^^^^^^^^^^^ not a call
+  reason: `run:` calls one action of the subscriber's own domain, passing the event or its fields; all the logic lives in the action.
+  next: Write `run: <action>(event)` (agent)
+  rule: subscriber.run_invalid
+  help: docs/language/12-jobs-and-events.html#subscriber-run-invalid
+
+check failed: 1 error, 1 file
+```
+
+### Errors of the archived compiler
+
+> These examples predate the decisions above and are rewritten or removed when schedules are built (roadmap chunk 6.2).
+
+The archived compiler's `job` declarations, each error with an example that triggered it.
 
 ### `syntax.job_every_required`
 
@@ -1317,9 +1689,13 @@ job overdue_reminders every 15m {
 Built in chunk 6.1a: the runtime's runner, which drives an executor for
 work no request waits on, as the system caller (area 9): deferred until
 after a response, inline, or once per item in batches; "Chosen in chunk
-6.1a" below. Nothing the language declares runs on it yet. Events,
-subscribers and retries come in chunk 6.1b, and schedules, their leases
-and monitoring basics in chunk 6.2;
+6.1a" below. Built in chunk 6.1b: `emit` and the outbox, subscribers,
+delivery after the response, handled records, retries, trace context,
+`events: { store: }` and the outbox sweep, with the errors below that
+name `event.` and `subscriber.`; "Chosen in chunk 6.1b" below. Event
+records and what a subscriber stores from an event come in chunk 6.1c,
+and schedules, their leases, the minute tick that calls the sweep and
+monitoring basics in chunk 6.2;
 on Cloudflare Workers, the cron tick and outbox delivery after commit come in
 chunk 8.2. Webhooks and a package's own events come with packages (Phase
 7). Batches, several changing calls in one action, polls and `receiving`
@@ -1360,6 +1736,90 @@ each the most conservative reading:
   the commit keeps nothing, and the run runs the batch again. A backfill
   worked out in Jadpo (area 5) runs its rows this way, each value kept
   and checked by its field's rules as any value of the field's type is.
+
+### Chosen in chunk 6.1b
+
+What the page leaves to the build about events, each the most
+conservative reading:
+
+- **Where an event is kept.** In the outbox of the store the action's
+  transaction is in, written as the action commits, with a delivery
+  record for each subscriber, `pending` and due at once, so nothing is
+  written for an action that rolls back. An action that began no
+  transaction keeps them in the store it writes, or, writing none, the
+  one `events: { store: }` names, beginning its transaction there for
+  them. An action that emits and writes no store, itself or through what
+  it calls, with no `events: { store: }`, is `event.store_required`, even
+  when it reads one, as the decision says "writes". An event nothing
+  subscribes to is still written. Its row keeps its type's key, its
+  payload as the contract's JSON, when it was emitted, the emitting
+  action's `traceparent`, the encoding and how deep in a chain it is.
+- **Emitting.** Only an action emits (`event.emit_invalid` in a function,
+  test, fixture or seed), and only an event. Past 1,000 events in one
+  action, or an event's JSON past 64 KB, is a defect as it is emitted, and
+  the action rolls back.
+- **Delivery.** Once the action commits, each delivery is the runner's,
+  after the response: it claims its record in one statement (`running`,
+  its lease the 15-minute limit of a run and a minute), so a delivery
+  another runner holds, or one not due, is left alone; runs the
+  subscriber's action as the system, in a boundary of its own; and
+  records how it ended. No order is promised. A delivery to a subscriber
+  the build no longer has fails as a defect, and an event 16 deep in a
+  chain fails with `event_chain_limit`.
+- **Handled records.** `jadpo_handled_deliveries`, keyed by the
+  delivery's `id`, in the store the subscriber's action writes, inserted
+  in its transaction when it opened one there, so it commits with the
+  writes and references nothing in another store. Before the action runs
+  the runner looks for it, and a delivery already handled is marked
+  succeeded without running again. An action that writes no store keeps
+  none, since running it again changes nothing in a database.
+- **A subscriber's tenant.** The tenant its event came from is the
+  event's one field holding the tenant's id (`household_id:
+  Household.id`). An event of an application with a tenant that holds no
+  such field, or more than one, limits its subscribers to no tenant: they
+  reach only records every tenant shares. *Flagged:* the pages say the
+  subscriber is limited to its event's tenant without saying how an event
+  knows it; reading it from the event's own field is what a reviewer
+  sees, as `by: User.id` carries who. Recommended as built; the
+  alternative, the tenant of the emitting request's records, depends on
+  data the event doesn't carry.
+- **Retries.** As "Retries and giving up" tables them: a failure of kind
+  `unavailable` or `rate_limited`, a fault reaching a store or a run out
+  of time is retried; any other failure or defect fails at once. Each
+  wait is drawn evenly from zero to a ceiling that starts at 30 seconds
+  and doubles with each attempt up to 6 hours (full jitter), and is never
+  under a second; a delivery past its attempts, or whose next attempt
+  would fall after `within:` from when the event was emitted, fails.
+  `retry:` takes `attempts:` from 1 to 100 and `within:` up to 30 days
+  (`subscriber.retry_invalid`). A record keeps the failure's code and
+  kind, never its fields. `Retry-After` comes with provider calls
+  (Phase 7).
+- **The sweep.** `runner::sweep` delivers up to 100 deliveries of one
+  store that are `pending` past their next attempt or `running` past
+  their lease, oldest first: what a crash between the commit and the
+  delivery, a host that dropped deferred work, or a worker that died
+  holding a lease left. A payload that no longer reads as its type is
+  parked as `failed` with its problem (the rule and the field, never the
+  value). The minute tick that calls it, and deleting delivered events,
+  are chunk 6.2's.
+- **Trace context.** A request continues a valid W3C `traceparent` it
+  brings, in a span of its own, or starts a trace; an event keeps the
+  context of the action that emitted it, and each delivery runs in a new
+  span of that trace, so what it emits keeps it too.
+- **Idempotency keys.** A route whose action writes no store but emits
+  keeps its `Idempotency-Key`s beside its events; one that does neither
+  still keeps none (area 7, chunk 4.2).
+- **What a subscriber holds.** `on:` an event type (another domain's
+  public one, imported), `run:` a call of an action of the subscriber's
+  own domain (`subscriber.run_invalid`) whose arguments are `event` or
+  fields read through it (`subscriber.argument_invalid`), typed against
+  its parameters, and `retry:`; anything else is
+  `subscriber.item_invalid`.
+- **Not yet.** Delivering in tests after each commit and failing a
+  subscriber with a fake (area 13), `jadpo deliveries` and the operator's
+  retry and dismiss (area 14), the circuit breaker, publishing outward,
+  and events from outside (Phase 7) are not built; event records and
+  what a subscriber stores from an event are chunk 6.1c's.
 
 ### Consistency with the rest of the language
 

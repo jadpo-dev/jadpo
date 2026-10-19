@@ -1382,7 +1382,11 @@ impl Body<'_> {
             }
             Stmt::EmitStmt(emit) => {
                 if let Some(expr) = emit.expr() {
-                    self.infer(&expr);
+                    let before = self.out.len();
+                    let ty = self.infer(&expr);
+                    if self.out.len() == before {
+                        self.emitted(emit, &expr, &ty);
+                    }
                 }
                 true
             }
@@ -1413,6 +1417,54 @@ impl Body<'_> {
                 Some(expr) => self.standalone(&expr),
                 None => true,
             },
+        }
+    }
+
+    /// `emit` (area 12, "Emitting an event"): only an action emits, and
+    /// only an event, a type with the `Event` base.
+    fn emitted(&mut self, emit: &ast::EmitStmt, expr: &Expr, ty: &Ty) {
+        if ty.has_error() {
+            return;
+        }
+        let event = match ty {
+            Ty::Named(name) => {
+                (self.table.base(name) == Some(crate::types::FieldsBase::Event)).then_some(name)
+            }
+            _ => None,
+        };
+        let Some(event) = event else {
+            self.out.push(
+                Diagnostic::new(&rule::EVENT_EMIT_INVALID, format!("`emit` is given a `{ty}`"))
+                    .at(self.span(expr), "not an event")
+                    .reason("`emit` announces that something happened: its value is an event, a type with the `Event` base declared in a domain's `events/` folder, built where it is emitted.")
+                    .next("Emit an event, `emit <Name> { ... }`, declaring it as `type <Name> = Event { ... }`"),
+            );
+            return;
+        };
+        if self.context != Context::Action {
+            let caller = self.context_word();
+            self.out.push(
+                Diagnostic::new(
+                    &rule::EVENT_EMIT_INVALID,
+                    format!("{} can't emit `{event}`", capital(caller)),
+                )
+                .at(self.span(emit), "only actions emit")
+                .reason(format!(
+                    "An event is kept in the same transaction as an action's writes and handed to its subscribers once it commits, so only actions emit; {caller} emits by calling an action."
+                ))
+                .next("Move the `emit` into the action this code calls, or make this an action"),
+            );
+        }
+    }
+
+    /// What is being checked, with an article: `a function`, `a test`.
+    fn context_word(&self) -> &'static str {
+        match self.word {
+            "action" => "an action",
+            "test" => "a test",
+            "fixture" => "a fixture",
+            "seed" => "a seed",
+            _ => "a function",
         }
     }
 

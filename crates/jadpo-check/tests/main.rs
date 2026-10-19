@@ -27,6 +27,7 @@ mod declines;
 mod decode_problems;
 mod determinism;
 mod domain_names;
+mod events;
 mod examples;
 mod failures;
 mod fixes;

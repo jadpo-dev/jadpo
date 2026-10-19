@@ -26,10 +26,13 @@
 //! component never calls the runner with a request's context, so no
 //! request can act as the system.
 //!
-//! What it runs is a [`Job`]; what committed actions emitted
-//! ([`Deferred::Events`]) has nothing to deliver to until subscribers
-//! (chunk 6.1b) turn each event into the jobs of its subscribers, and
-//! schedules (chunk 6.2) hand their runs here on each tick.
+//! What it runs is a [`Job`], or a [`Delivery`] of an event a committed
+//! action emitted to one of its subscribers ([`Deferred::Deliveries`],
+//! chunk 6.1b), which [`deliver`] claims, runs as the system limited to
+//! the event's tenant, and records as succeeded, retried later or failed
+//! ([`crate::outbox`]); [`sweep`] delivers what deferred work dropped.
+//! Schedules (chunk 6.2) hand their runs here on each tick, and the tick
+//! calls [`sweep`].
 
 use std::collections::VecDeque;
 use std::ops::ControlFlow;
@@ -38,10 +41,11 @@ use std::rc::Rc;
 use jadpo_value::{Validator, Value};
 
 use crate::ctx::System;
+pub use crate::outbox::Delivery;
 use crate::race::{First, race};
 use crate::{
-    Clock, Ctx, Env, Event, Executor, FaultKind, Frame, Host, Isolation, MemoryHost, Outcome,
-    SqlType, SqlValue, StoreError, Transaction,
+    Clock, Ctx, Env, Executor, FaultKind, Frame, Host, Isolation, MemoryHost, Outcome, SqlType,
+    SqlValue, StoreError, Transaction,
 };
 
 /// The longest one run of a subscriber or a schedule takes before it is
@@ -60,10 +64,10 @@ pub struct Job {
 /// Work left for after a response (chunk 6.1a).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Deferred {
-    /// What an action emitted, once it committed, in the order it emitted
-    /// it: each event delivered to each of its subscribers (chunk 6.1b).
-    /// Until subscribers run, nothing receives them.
-    Events(Vec<Event>),
+    /// The deliveries of what an action emitted, once it committed, in
+    /// the order it emitted it: each event to each of its subscribers
+    /// (chunk 6.1b).
+    Deliveries(Vec<Delivery>),
     /// A run of a callable as the system.
     Run(Job),
 }
@@ -81,14 +85,17 @@ pub async fn settle(
     let mut queue = VecDeque::from(work);
     let mut outcomes = Vec::new();
     while let Some(next) = queue.pop_front() {
-        let Deferred::Run(job) = next else {
-            continue;
-        };
         let before = ctx.deferred.len();
-        let outcome = as_system(executor, ctx, job).await;
+        match next {
+            Deferred::Run(job) => outcomes.push(as_system(executor, ctx, job).await),
+            Deferred::Deliveries(deliveries) => {
+                for delivery in deliveries {
+                    outcomes.extend(deliver(executor, ctx, delivery).await);
+                }
+            }
+        }
         let after = before.min(ctx.deferred.len());
         queue.extend(ctx.deferred.split_off(after));
-        outcomes.push(outcome);
     }
     outcomes
 }
@@ -109,27 +116,55 @@ async fn as_system(executor: &dyn Executor, ctx: &mut Ctx<'_>, job: Job) -> Outc
 }
 
 /// Runs `work` as a deployable does after the response is sent: each job
-/// in a context of its own on `host`, under the host's clock and no seed,
-/// as the system, within [`RUN_LIMIT_MS`], and then the work it set off.
-/// A host with no clock runs nothing: each job is a fault saying so. The
-/// outcome of each job, in the order they ran; delivery records keep them
-/// from chunk 6.1b.
+/// and delivery in a context of its own on `host`, under the host's clock
+/// and no seed, as the system, within [`RUN_LIMIT_MS`], and then the work
+/// it set off. A host with no clock runs nothing: each job is a fault
+/// saying so, and each delivery is left for the sweep. The outcome of
+/// each job and delivery, in the order they ran; a delivery's record
+/// keeps it too (chunk 6.1b).
 pub async fn run_deferred(
     executor: &dyn Executor,
     host: &dyn Host,
     work: Vec<Deferred>,
 ) -> Vec<Outcome> {
-    let mut queue = VecDeque::from(work);
+    drive(executor, host, work, None).await
+}
+
+/// One piece of deferred work, run on its own.
+enum Piece {
+    Job(Job),
+    Delivery(Delivery),
+}
+
+/// Runs `work` as [`run_deferred`] does, at `now` when it is given and
+/// at the host's time otherwise.
+async fn drive(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    work: Vec<Deferred>,
+    now: Option<i64>,
+) -> Vec<Outcome> {
+    let mut queue: VecDeque<Piece> = VecDeque::new();
+    let split = |work: Vec<Deferred>, queue: &mut VecDeque<Piece>| {
+        for next in work {
+            match next {
+                Deferred::Run(job) => queue.push_back(Piece::Job(job)),
+                Deferred::Deliveries(deliveries) => {
+                    queue.extend(deliveries.into_iter().map(Piece::Delivery));
+                }
+            }
+        }
+    };
+    split(work, &mut queue);
     let mut outcomes = Vec::new();
-    while let Some(next) = queue.pop_front() {
-        let Deferred::Run(job) = next else {
-            continue;
-        };
-        let Some(now) = host.now_ms() else {
-            outcomes.push(Outcome::Fault(Box::new(crate::Fault {
-                kind: FaultKind::Defect("the host has no clock".into()),
-                frames: Vec::new(),
-            })));
+    while let Some(piece) = queue.pop_front() {
+        let Some(now) = now.or_else(|| host.now_ms()) else {
+            if let Piece::Job(_) = piece {
+                outcomes.push(Outcome::Fault(Box::new(crate::Fault {
+                    kind: FaultKind::Defect("the host has no clock".into()),
+                    frames: Vec::new(),
+                })));
+            }
             continue;
         };
         let env = Env {
@@ -141,17 +176,281 @@ pub async fn run_deferred(
         // so the requests the worker answers carry on beside it.
         ctx.set_deadline(Some(RUN_LIMIT_MS));
         let limit = host.sleep(RUN_LIMIT_MS);
-        let outcome = match race(as_system(executor, &mut ctx, job), limit).await {
-            First::Left(outcome) if !ctx.out_of_time() => outcome,
-            First::Left(_) | First::Right(()) => {
-                ctx.abandon();
-                Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY))
+        let outcome = match piece {
+            Piece::Job(job) => match race(as_system(executor, &mut ctx, job), limit).await {
+                First::Left(outcome) if !ctx.out_of_time() => Some(outcome),
+                First::Left(_) | First::Right(()) => {
+                    ctx.abandon();
+                    Some(Outcome::Fault(
+                        ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
+                    ))
+                }
+            },
+            // A delivery that runs out of time keeps its claim until its
+            // lease passes, and the sweep tries it again.
+            Piece::Delivery(delivery) => {
+                match race(deliver(executor, &mut ctx, delivery), limit).await {
+                    First::Left(outcome) => outcome,
+                    First::Right(()) => {
+                        ctx.abandon();
+                        Some(Outcome::Fault(
+                            ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY),
+                        ))
+                    }
+                }
             }
         };
-        queue.extend(ctx.take_deferred());
-        outcomes.push(outcome);
+        split(ctx.take_deferred(), &mut queue);
+        outcomes.extend(outcome);
     }
     outcomes
+}
+
+/// Delivers `delivery` in `ctx`, which runs no action (area 12,
+/// "Delivery: at least once, safe to repeat"; chunk 6.1b): claims its
+/// record, unless another runner has it or it isn't due; finds whether
+/// its subscriber handled it already; runs the subscriber's action as the
+/// system limited to the event's tenant, continuing the event's trace,
+/// its handled record committing with its writes; then records how it
+/// ended. `None` when it wasn't this runner's to deliver, or the program
+/// has no subscribers to deliver it to.
+pub async fn deliver(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    delivery: Delivery,
+) -> Option<Outcome> {
+    use crate::outbox::{
+        self, After, CHAIN_LIMIT, FAILED, LEASE_MS, PENDING, SUCCEEDED, failure_json, micros,
+    };
+    if ctx.in_action() {
+        return Some(Outcome::Fault(ctx.fault(
+            FaultKind::Defect("a delivery inside a running action".into()),
+            Frame::ENTRY,
+        )));
+    }
+    let events = executor.events()?;
+    let host = ctx.host();
+    let database = host.database(&delivery.store)?;
+    let now = ctx.now();
+    let id = SqlValue::Uuid(delivery.id);
+    let claimed = database
+        .query_once(
+            outbox::CLAIM,
+            &[
+                id.clone(),
+                micros(now),
+                micros(now.saturating_add(LEASE_MS)),
+            ],
+        )
+        .await
+        .ok()?;
+    let attempt = match claimed.first().and_then(|row| row.first()) {
+        Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(u32::MAX),
+        _ => return None,
+    };
+    let settle = |status: &'static str, next: Option<i64>, failure: Option<SqlValue>| {
+        let params = [
+            SqlValue::Uuid(delivery.id),
+            SqlValue::Int4(i32::try_from(attempt).unwrap_or(i32::MAX)),
+            SqlValue::Text(status.to_string()),
+            next.map_or(SqlValue::Null(SqlType::Timestamp), micros),
+            failure.unwrap_or(SqlValue::Null(SqlType::Json)),
+        ];
+        async move {
+            let _ = database.query_once(outbox::SETTLE, &params).await;
+        }
+    };
+    let Some(subscriber) = events.plan.subscriber(&delivery.subscriber) else {
+        settle(FAILED, None, Some(failure_json("subscriber_removed", None))).await;
+        return Some(Outcome::Fault(ctx.fault(
+            FaultKind::Defect(format!(
+                "a delivery to `{}`, which this build doesn't have",
+                delivery.subscriber
+            )),
+            Frame::ENTRY,
+        )));
+    };
+    if delivery.depth >= CHAIN_LIMIT {
+        settle(FAILED, None, Some(failure_json("event_chain_limit", None))).await;
+        let mut failure = crate::Failure::new(
+            "runtime event_chain_limit",
+            "EventChainLimit",
+            "event_chain_limit",
+        );
+        failure.kind = Some("rejected".to_string());
+        return Some(Outcome::Failed(Box::new(failure)));
+    }
+    // A repeated delivery its subscriber handled already does nothing.
+    if let Some(store) = &subscriber.store {
+        let handled = match host.database(store) {
+            Some(own) => {
+                own.query_once(outbox::FIND_HANDLED, std::slice::from_ref(&id))
+                    .await
+            }
+            None => Err(StoreError::Unavailable),
+        };
+        match handled {
+            Ok(rows) if !rows.is_empty() => {
+                settle(SUCCEEDED, None, None).await;
+                return Some(Outcome::Value(Value::Unit));
+            }
+            Ok(_) => {}
+            Err(_) => {
+                let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
+                settle(
+                    PENDING,
+                    Some(next),
+                    Some(failure_json("unavailable", Some("unavailable"))),
+                )
+                .await;
+                return Some(Outcome::Failed(Box::new(crate::unavailable())));
+            }
+        }
+    }
+    let Some(args) = outbox::arguments(subscriber, &delivery.value) else {
+        settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
+        return Some(Outcome::Fault(ctx.fault(
+            FaultKind::Defect("an event without the fields its subscriber reads".into()),
+            Frame::ENTRY,
+        )));
+    };
+    let job = Job {
+        callable: subscriber.callable,
+        args,
+        system: System {
+            tenant: outbox::tenant(subscriber, &delivery.value),
+        },
+    };
+    let (trace, chain) = (ctx.trace(), ctx.chain);
+    let continued = match delivery.trace {
+        Some(parent) => ctx.new_span(parent),
+        None => ctx.new_trace(),
+    };
+    ctx.set_trace(Some(continued));
+    ctx.chain = delivery.depth.saturating_add(1);
+    ctx.handled = subscriber.store.clone().map(|store| crate::ctx::Handled {
+        store,
+        id: delivery.id,
+    });
+    let outcome = as_system(executor, ctx, job).await;
+    ctx.handled = None;
+    ctx.set_trace(trace);
+    ctx.chain = chain;
+    match outbox::after(&outcome) {
+        After::Succeeded => settle(SUCCEEDED, None, None).await,
+        After::Retry { code, kind } => {
+            let next = now.saturating_add(outbox::backoff(attempt, jitter(host)));
+            let within = delivery
+                .emitted_at
+                .saturating_add(i64::try_from(subscriber.within_ms).unwrap_or(i64::MAX));
+            let failure = Some(failure_json(&code, kind.as_deref()));
+            if attempt < subscriber.attempts && next <= within {
+                settle(PENDING, Some(next), failure).await;
+            } else {
+                settle(FAILED, None, failure).await;
+            }
+        }
+        After::Fail { code, kind } => {
+            settle(FAILED, None, Some(failure_json(&code, kind.as_deref()))).await;
+        }
+    }
+    Some(outcome)
+}
+
+/// Eight random bytes for a retry's jitter, from the host; none from a
+/// host with no randomness, as a test's, whose waits are their ceilings.
+fn jitter(host: &dyn Host) -> Option<[u8; 8]> {
+    let mut bytes = [0u8; 8];
+    host.random(&mut bytes).then_some(bytes)
+}
+
+/// Delivers what is due in `store`'s outbox at `now` (area 12, "Where
+/// events travel"; chunk 6.1b): every delivery still `pending` past its
+/// next attempt, or `running` past its lease, which a crash between the
+/// commit and the delivery, a host that dropped deferred work, or a
+/// worker that died holding a lease left; at most [`SWEEP_BATCH`] of
+/// them, oldest first, each as [`run_deferred`] runs one, and the work
+/// they set off. A payload that no longer reads as its type is parked
+/// with its problem, never dropped. The once-a-minute tick that calls it
+/// is chunk 6.2's. The outcome of each delivery that ran.
+///
+/// [`SWEEP_BATCH`]: crate::outbox::SWEEP_BATCH
+pub async fn sweep(
+    executor: &dyn Executor,
+    host: &dyn Host,
+    store: &str,
+    now: i64,
+) -> Result<Vec<Outcome>, StoreError> {
+    use crate::outbox::{DUE, PARK, SWEEP_BATCH, Trace, failure_json, micros};
+    let Some(events) = executor.events() else {
+        return Ok(Vec::new());
+    };
+    let database = host
+        .database(store)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+    let rows = database
+        .query_once(DUE, &[micros(now), SqlValue::Int8(i64::from(SWEEP_BATCH))])
+        .await?;
+    let mut work = Vec::new();
+    for row in rows {
+        let (
+            Some(SqlValue::Uuid(id)),
+            Some(SqlValue::Uuid(outbox_id)),
+            Some(SqlValue::Text(subscriber)),
+            Some(SqlValue::Text(event)),
+            Some(SqlValue::Text(payload)),
+            Some(SqlValue::Timestamp(emitted)),
+        ) = (
+            row.first(),
+            row.get(1),
+            row.get(2),
+            row.get(3),
+            row.get(4),
+            row.get(5),
+        )
+        else {
+            continue;
+        };
+        let trace = match row.get(6) {
+            Some(SqlValue::Text(header)) => Trace::parse(header),
+            _ => None,
+        };
+        let depth = match row.get(7) {
+            Some(SqlValue::Int4(depth)) => u32::try_from(*depth).unwrap_or(0),
+            _ => 0,
+        };
+        match events.read(event, payload) {
+            Ok(value) => work.push(Delivery {
+                store: store.to_string(),
+                id: *id,
+                outbox: *outbox_id,
+                subscriber: subscriber.clone(),
+                event: event.clone(),
+                value,
+                emitted_at: emitted.div_euclid(1000),
+                trace,
+                depth,
+            }),
+            Err(problem) => {
+                let mut failure = match failure_json("payload_unreadable", None) {
+                    SqlValue::Json(text) => {
+                        serde_json::from_str::<serde_json::Value>(&text).unwrap_or_default()
+                    }
+                    _ => serde_json::Value::Null,
+                };
+                if let Some(object) = failure.as_object_mut() {
+                    object.insert("problem".into(), problem.into());
+                }
+                let _ = database
+                    .query_once(
+                        PARK,
+                        &[SqlValue::Uuid(*id), SqlValue::Json(failure.to_string())],
+                    )
+                    .await;
+            }
+        }
+    }
+    Ok(drive(executor, host, vec![Deferred::Deliveries(work)], Some(now)).await)
 }
 
 /// Gives `work` to `host` to run after the response it belongs to is
@@ -270,7 +569,15 @@ impl<'c, 'p> Batch<'c, 'p> {
     /// runs the batch again.
     pub async fn commit(self) -> Result<(), StoreError> {
         let Batch { ctx, saved } = self;
-        let boundary = ctx.boundary.take().unwrap_or_default();
+        let written = crate::boundary::seal(ctx, None).await;
+        let mut boundary = ctx.boundary.take().unwrap_or_default();
+        if let Err(error) = written {
+            ctx.restore_runner(saved);
+            if let Some(transaction) = boundary.transaction.take() {
+                let _ = transaction.rollback().await;
+            }
+            return Err(error);
+        }
         ctx.restore_runner(saved);
         let Some(transaction) = boundary.transaction else {
             return Err(StoreError::Fault("a batch without its transaction".into()));
@@ -280,7 +587,7 @@ impl<'c, 'p> Batch<'c, 'p> {
             return Err(StoreError::ConcurrentChange);
         }
         transaction.commit().await?;
-        crate::boundary::committed(ctx, boundary.outbox);
+        crate::boundary::committed(ctx, boundary.sealed);
         Ok(())
     }
 
@@ -540,7 +847,7 @@ mod tests {
     use jadpo_std::policy::CallerPart;
 
     use super::*;
-    use crate::{ActionBody, Caller, Database, Failure, LocalFuture, Places, Row, block_on};
+    use crate::{ActionBody, Caller, Database, Event, Failure, LocalFuture, Places, Row, block_on};
 
     /// What reached the store, and in which order.
     #[derive(Default)]
@@ -577,7 +884,12 @@ mod tests {
             sql: &'a str,
             _params: &'a [SqlValue],
         ) -> LocalFuture<'a, Result<u64, StoreError>> {
-            self.0.line(sql);
+            let line = match sql {
+                crate::outbox::INSERT_OUTBOX => "outbox",
+                crate::outbox::INSERT_DELIVERIES => "deliveries",
+                other => other,
+            };
+            self.0.line(line);
             Box::pin(async { Ok(1) })
         }
 
@@ -642,8 +954,9 @@ mod tests {
             Some(self)
         }
 
-        fn random(&self, _bytes: &mut [u8]) -> bool {
-            false
+        fn random(&self, bytes: &mut [u8]) -> bool {
+            bytes.fill(7);
+            true
         }
 
         fn now_ms(&self) -> Option<i64> {
@@ -689,6 +1002,33 @@ mod tests {
         args: Vec<Value>,
     }
 
+    /// A delivery of an event of type `key` to `subscriber s`.
+    fn delivery(key: &str) -> Delivery {
+        Delivery {
+            store: "main".into(),
+            id: [1; 16],
+            outbox: [2; 16],
+            subscriber: "subscriber s".into(),
+            event: key.into(),
+            value: Value::Unit,
+            emitted_at: Clock::TEST.now(),
+            trace: None,
+            depth: 0,
+        }
+    }
+
+    /// The event types of the deliveries `work` holds, in order.
+    fn deferred_events(work: Vec<Deferred>) -> Vec<String> {
+        work.into_iter()
+            .flat_map(|work| match work {
+                Deferred::Deliveries(deliveries) => {
+                    deliveries.into_iter().map(|d| d.event).collect()
+                }
+                Deferred::Run(_) => Vec::new(),
+            })
+            .collect()
+    }
+
     /// Who runs the action, as policy binds it.
     fn who(ctx: &Ctx<'_>) -> String {
         let system = ctx.caller_param(CallerPart::System) == SqlValue::Bool(true);
@@ -720,9 +1060,11 @@ mod tests {
                 if now != Clock::TEST.now() {
                     let _ = transaction.execute(&format!("at {now}"), &[]).await;
                 }
-                ctx.emit(Event {
+                let _ = ctx.emit(Event {
                     key: format!("type Wrote {name}"),
                     value: Value::Unit,
+                    payload: "null".into(),
+                    subscribers: vec!["subscriber s".into()],
                 });
                 match self.does {
                     Does::Fails => {
@@ -816,10 +1158,7 @@ mod tests {
         let mut ctx = Ctx::new(&program.places, &host, Env::default());
         signed_in(&mut ctx);
         let work = vec![
-            Deferred::Events(vec![Event {
-                key: "type Placed".into(),
-                value: Value::Unit,
-            }]),
+            Deferred::Deliveries(vec![delivery("type Placed")]),
             job(2, "order", Some(9)),
             job(1, "refused", None),
         ];
@@ -829,12 +1168,16 @@ mod tests {
             [
                 "begin repeatable_read",
                 "write order as system in 9",
+                "outbox",
+                "deliveries",
                 "commit",
                 "begin repeatable_read",
                 "write refused as system",
                 "rollback",
                 "begin repeatable_read",
                 "write follow-on as system",
+                "outbox",
+                "deliveries",
                 "commit",
             ],
             "the follow-on runs after the work queued before it"
@@ -888,10 +1231,14 @@ mod tests {
                 "begin repeatable_read",
                 "write order as system",
                 "at 1800000000000",
+                "outbox",
+                "deliveries",
                 "commit",
                 "begin repeatable_read",
                 "write follow-on as system",
                 "at 1800000000000",
+                "outbox",
+                "deliveries",
                 "commit",
             ]
         );
@@ -973,21 +1320,14 @@ mod tests {
                 "write c as system",
                 "back to savepoint",
                 "position 3",
+                "outbox",
+                "deliveries",
                 "commit",
             ]
         );
         assert_eq!(
-            ctx.take_deferred(),
-            [Deferred::Events(vec![
-                Event {
-                    key: "type Wrote a".into(),
-                    value: Value::Unit
-                },
-                Event {
-                    key: "type Wrote b".into(),
-                    value: Value::Unit
-                },
-            ])],
+            deferred_events(ctx.take_deferred()),
+            ["type Wrote a", "type Wrote b"],
             "the failed item's event is undone with it"
         );
         assert_eq!(ctx.system(), None, "the batch's caller is given back");

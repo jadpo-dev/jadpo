@@ -55,7 +55,7 @@ fn reach_of(fact: &Fact) -> Option<Reach> {
         Fact::Queries(query) => Reach::Queries(query.clone()),
         Fact::Session(op) if op.reads_only() => Reach::ReadsSessions(op.on_service()),
         Fact::Session(op) => Reach::Sessions(op.on_service()),
-        Fact::Fixture(_) | Fact::Function(_) => return None,
+        Fact::Fixture(_) | Fact::Function(_) | Fact::Emits(_) => return None,
     })
 }
 

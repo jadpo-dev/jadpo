@@ -2493,11 +2493,39 @@ a boundary of its own:
   position in `Batch::transaction` before `Batch::commit`, so a stopped
   run resumes after the last committed batch (6.4).
 
-Until subscribers (6.1b) turn an event into their jobs, a
-`Deferred::Events` reaches no one, and a host with nothing to run
-deferred work on (a test's, a tool's) drops it: the outbox will keep
-events durable and the minute tick sweep them. Schedules (6.2) hand
-their runs to the same runner.
+A host with nothing to run deferred work on (a test's, a tool's) drops
+it, and the outbox keeps what it held. Schedules (6.2) hand their runs
+to the same runner.
+
+**Events** (chunk 6.1b). The checker reads each subscriber
+(`jadpo_check::events`: `subscribers_in` per file, `subscribers` for
+the plan; `on:` an event type, `run:` an action of its own domain with
+`event` paths as its arguments, `retry:`, and the event's field holding
+the tenant's id), which actions emit through what they call
+(`emitting`, from a `Fact::Emits` in each body's facts) and where each
+keeps its outbox (`outbox_store`: the store it writes, else
+`events: { store: }`, else `event.store_required`); a subscriber whose
+action reaches a grant naming `Access.public` but not `Access.system`
+is `policy.system_grant_missing` (`policy::reach::public_only`). The
+plan holds the subscriber table (`jadpo_std::subscriber::EventsPlan`,
+`Plan::events`) and each emitting action's `CallablePlan::outbox`. The
+interpreter's `emit` writes the event's payload through the JSON table
+and hands the runtime an `Event` with its subscribers' keys
+(`Ctx::emit`, refusing past 1,000 events or 64 KB). The boundary seals
+a succeeding body (`boundary::seal`): in its transaction, beginning one
+in `ActionBody::outbox` when it has none, it writes one `jadpo_outbox`
+row per event and one `jadpo_deliveries` row per subscriber (two
+statements, `unnest`ed arrays), and for a subscriber's delivery its
+handled record (`jadpo_handled_deliveries`); once it commits, the
+deliveries are `Deferred::Deliveries`. `runner::deliver` claims a
+delivery's record in one statement, finds its handled record or runs
+the subscriber's action as the system limited to the event's tenant,
+in a new span of the event's trace (`outbox::Trace`, `Ctx::trace`,
+which the HTTP component starts or continues from `traceparent`), and
+records `succeeded`, `pending` with a backoff (`outbox::backoff`, full
+jitter) or `failed`; `runner::sweep` delivers what is due in a store,
+for 6.2's minute tick. The statements are `jadpo_runtime::outbox`'s,
+on its own system tables, as the idempotency keys' are.
 
 **Single-threaded by design.** Runtime futures need not be `Send`. A
 Workers isolate is single-threaded anyway; natively, `jadpo-host-native`

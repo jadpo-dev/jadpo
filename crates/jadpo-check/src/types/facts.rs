@@ -38,6 +38,8 @@ pub enum Fact {
     Writes(Write),
     /// A session or key operation (area 8).
     Session(SessionOp),
+    /// `emit`: the event type's key (area 12).
+    Emits(Key),
 }
 
 /// One write, without positions.
@@ -71,6 +73,18 @@ impl BodyFacts {
             .as_ref()
             .filter(|key| key.kind().is_some_and(|kind| kinds.contains(&kind)))
     }
+}
+
+/// The fact site `site` of `body` holds, if any: an `emit` names the
+/// event type its value is.
+fn fact_in(body: &Body, site: &jadpo_graph::body::Site) -> Option<Fact> {
+    if let Node::Stmt(jadpo_graph::body::Stmt::Emit { value: Some(value) }) = &site.node {
+        return match &body.site(*value).ty {
+            jadpo_graph::TypeRef::Node(key) => Some(Fact::Emits(key.clone())),
+            _ => None,
+        };
+    }
+    fact_of(&site.node)
 }
 
 /// The fact a site holds, if any.
@@ -123,7 +137,7 @@ pub fn fact_of(node: &Node) -> Option<Fact> {
 pub fn facts_at(body: &Body) -> Vec<(Fact, (u32, u32))> {
     body.sites
         .iter()
-        .filter_map(|site| Some((fact_of(&site.node)?, (site.start, site.end))))
+        .filter_map(|site| Some((fact_in(body, site)?, (site.start, site.end))))
         .collect()
 }
 
@@ -137,7 +151,7 @@ pub fn body_facts<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
             .body
             .sites
             .iter()
-            .filter_map(|site| fact_of(&site.node))
+            .filter_map(|site| fact_in(&checked.body, site))
             .collect(),
     }
 }

@@ -190,10 +190,14 @@ pub(crate) fn table(
             let Some(id) = callable(&key) else {
                 continue;
             };
-            // Its keys go in the store it writes (area 5, "System tables").
+            // Its keys go in the store it writes (area 5, "System tables"),
+            // or, writing none, beside the events it emits (area 12, chunk
+            // 6.1b); an action that does neither keeps none, since running
+            // it again changes nothing.
             let keys = written
                 .get(key.name())
-                .and_then(|stores| stores.keys().next().cloned());
+                .and_then(|stores| stores.keys().next().cloned())
+                .or_else(|| jadpo_check::events::outbox_store(db, project, key.name()));
             (Run::Action(id), keys)
         };
         let args = route
