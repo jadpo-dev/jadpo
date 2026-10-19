@@ -118,8 +118,8 @@ pub(crate) fn invoke<'a, 'p: 'a>(
 /// A test's run of a schedule (area 13, "Kinds of test"; chunk 6.2c):
 /// its action, `action`, called with nothing as the system with no tenant,
 /// as the tick runs it, at the test's clock, which stays fixed through
-/// the run; what it emits is delivered after it, as after any step of a
-/// test. It gives nothing, and fails as its action fails.
+/// the run; what it emits is left as any step's is. It gives nothing, and
+/// fails as its action fails.
 async fn schedule(
     program: &Program,
     ctx: &mut Ctx<'_>,

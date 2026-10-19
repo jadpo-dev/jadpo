@@ -1156,8 +1156,12 @@ component in the test's own context and database, and reads the response
 back as a `Response` value (`response_value`); a defect behind a 500 ends
 the test with that fault. Since chunk 4.10 all of that is the runtime's
 `http::route_test`, which takes the test's `Idempotency-Key` and caller
-too, so the interpreter only hands over the site's values. Schedule tests (`--kind
-schedule`) are `toolchain.not_built_yet`.
+too, so the interpreter only hands over the site's values. Since chunk
+6.2c a test that runs a schedule, `schedule.run()`, is a schedule test
+(`--kind schedule`): its `Schedule` site pauses like a call into the
+boundary, and the interpreter calls the schedule's action through it as
+the system with no tenant (`jadpo_runtime::schedules::test_run`), at the
+test's clock.
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
@@ -1399,9 +1403,11 @@ a run stops after `batches` batches (`PURGE_BATCHES`, 20, for the
 schedule) and says whether it `finished`, so a Workers cron run can't
 overrun however much is due, and the next run carries on; the budget is a
 batch count. Area 12's
-hourly purge schedule will call it (chunk 6.2); a live test calls it
+hourly purge schedule calls it since chunk 6.2c, through the executor's
+`purge`, which gives the plan and its period; a live test calls it
 directly (`crates/jadpo-cli/tests/lifecycle.rs`), stopping one run at its
-budget.
+budget, and another runs it on the tick
+(`crates/jadpo-cli/tests/purge_schedule.rs`).
 
 Built in chunk 4.1: the HTTP component (`jadpo_runtime::http`). A host
 hands it a `Request` (method, path, query string, headers, body, the
