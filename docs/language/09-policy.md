@@ -14,7 +14,7 @@ Who may do what to which records: grants on entities and fields, tenancy,
 actions that need their own permission, the generated permissions report, and
 what a caller sees when policy says no.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "Chosen in chunk 6.4d"). Built in chunk 6.6b: every action background work reaches checked against its own line under `actions:`, a listed action's line deciding its own body's writes wherever it is called from, and what `batches.status` gives held to what decides every batch's failures (area 12, "Chosen in chunk 6.6b"). Built in chunk 6.6c: the tenant an event or a batch's run names proved to be one its action reached under its caller's policy (`policy.event_tenant_unproved`; area 12, "Chosen in chunk 6.6c"). "Status" below lists the rest.
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 9. Built in the new compiler in roadmap chunk 4.4: grants compiled into every read and write, membership roles, tenancy, actions listed under `actions:`, the permissions report, and the grants on revoking tokens and keys. Built in chunk 4.4b: a field's own `policy:` and `FieldAccess.server_only`, the proofs that every output and include is readable by everyone who may call it, writes refused for a field the caller may not change, and policy in the graph and manifest. Built in chunk 4.7: references kept inside the tenant, and conditions and orders proved like outputs. Built in chunk 4.8: founding a tenant, moving a record between tenants, listed lines no record lets in, and values followed through functions, the conditions that decide them, the records writes give back and the ids that find records. Built in chunk 5.1d: a value stored only in a field everyone who may read it may read. Built in chunk 6.1a: the system caller `Access.system` lets in, for schedules and subscribers. Built in chunk 6.1b: a subscriber reaching what only `Access.public` grants refused (`policy.system_grant_missing`). Built in chunk 6.2: a schedule reaching it refused the same way, and a schedule's run reaching every tenant. Built in chunk 6.1c: what a subscriber stores from its event, checked against what every `emit` of it put there. Built in chunk 6.4c: a batch's query or actions reaching it refused the same way, and a batch's run limited to the tenant its saved tenant id names. Built in chunk 6.4d: what a batch's run stores, from its items, what it saved and its summary, proved as a call's arguments are, by the tenant it is limited to (area 12, "What a run reaches under policy"). Built in chunk 6.6b: every action background work reaches checked against its own line under `actions:`, a listed action's line deciding its own body's writes wherever it is called from, and what `batches.status` gives held to what decides every batch's failures (area 12, "What a run reaches under policy"). Built in chunk 6.6c: the tenant an event or a batch's run names proved to be one its action reached under its caller's policy (`policy.event_tenant_unproved`; "Background work"). "Status" below lists the rest.
 
 **Each entity lists, for each thing you can do to it, who may do it, and the
 compiler applies that list to every read and write.**
@@ -180,9 +180,15 @@ error, as `policy.effect_ungranted` refuses a route, so the runtime, where
 such a statement tests no caller and runs for the system as for everyone,
 never has to tell the two apart.
 
-On a tenant's records, a grant naming `Access.system` lets a subscriber in
-within the tenant its event came from, and a schedule's run, which no
-tenant's event starts, in every tenant. The system never moves a record to
+On a tenant's records, a grant naming `Access.system` lets a schedule's
+run, which no tenant's event starts, in every tenant; a subscriber within
+the tenant its event's field of the tenant's `id` type names; and a
+batch's run within the tenant its saved values of that type name. A
+subscriber or a batch whose value names no tenant (none, `none`, or
+values naming different tenants) reaches no tenant's records, only those
+every tenant shares: "no tenant" means every tenant for a schedule, which
+names none by design, and none for work that names its tenant by a value
+(area 12, "Background work and tenants"). The system never moves a record to
 another tenant, which needs a membership there, and founds no tenant's
 first membership. A listed action's line naming `Access.system` lets the
 system in beside whoever else it names; a line naming only `Access.system`
@@ -194,9 +200,34 @@ Which tenant a subscriber or a batch's run works in is named by a value:
 the event's field of the tenant's `id` type, or what the run saves of it.
 A caller could pass the id of a tenant they don't belong to, so that value
 must come from a record of that tenant the action read or wrote under its
-caller's policy; otherwise it is `policy.event_tenant_unproved` (decided
-2026-10-19). Reading the tenant first, `attempt Household.get(household_id)`,
-or naming the tenant of a record the action changes, proves it.
+caller's policy; otherwise it is `policy.event_tenant_unproved` at the
+value (decided 2026-10-19). Reading the tenant first,
+`attempt Household.get(household_id)`, or naming the tenant of a record
+the action changes, proves it. In full, a value proves its tenant when it
+is:
+
+- the tenant's own `id`, or the tenancy reference of a record of it, that
+  the action, or an action or query it calls, read, created or changed;
+- the same of a record the action is handed whole, which counts as read:
+  a route passes placeholders, `input` and the caller, and a subscriber
+  its event's fields, so only a body that read a record, with the same
+  caller, or a run limited to its tenant, can hand one to an action
+  (example 25's `invoice_round(rent_round: RentRound)` names its run's
+  society from `rent_round.society_id`);
+- or what a create that runs whenever the action does set a record's
+  tenancy reference from, since the create needs the caller's membership
+  there and the action fails with it. A create inside an `if`, a `match`,
+  a loop or after a `return` that may leave first proves nothing.
+
+Anything else, a parameter holding an id among them, is refused; what
+decided the value is no part of it. It is checked in the action whose
+`emit` or `batches.each` it is, never at its callers: an action that emits
+from a parameter is refused even when every action calling it passes a
+proved id, since a route may call it too, so pass it the record instead.
+One rule holds for every action, so a subscriber's action passing its
+event's tenant on, to another `emit` or a batch, reads a record of it
+first, as area 12's "Declaring an event" advises for anything more than
+ids.
 
 ## Tenancy
 
@@ -3795,7 +3826,7 @@ error: `post_circulated` passes `Note.appraisal` to `post_bulletin`, which store
 check failed: 1 error, 1 file
 ```
 
-With only the summary, which anyone signed in may read, in the event, the bulletin may hold it. A value an event carries has left its record, which may change before the delivery, so it is proved as one from any record of its entity, or from a record of the event's tenant when the event's tenant field came from that record, since the subscriber is limited to that tenant (area 12, "Chosen in chunk 6.1c"):
+With only the summary, which anyone signed in may read, in the event, the bulletin may hold it. A value an event carries has left its record, which may change before the delivery, so it is proved as one from any record of its entity, or from a record of the event's tenant when the event's tenant field came from that record, since the subscriber is limited to that tenant (area 12, "Subscribers"):
 
 ```jadpo check project=event-stored-allowed
 type Handle = Text {
@@ -4042,19 +4073,16 @@ holds no positions, as 4.11's do.
 
 Built in chunk 6.6c: the tenant an event or a batch's run names proved
 to be one the action reached under its caller's policy
-(`policy.event_tenant_unproved` at the value): the tenant's own `id`, or
-the tenancy reference of a record of it, that the action read, created or
-changed, itself or through what it calls; the same of a record it is
-handed whole; or what a create that runs whenever the action does set a
-record's tenancy reference from. Area 12's "Chosen in chunk 6.6c" has
-the choices.
+(`policy.event_tenant_unproved` at the value), as "Background work" sets
+out.
 
 Not yet:
 
 - A restricted field read only in an event isn't an output: an event's
   subscribers (area 12) are server work, so `emit` stores nothing a caller
-  reads. What a subscriber stores from an event is checked in chunk
-  6.1c. Area 15's log redaction covers what a log holds.
+  reads; what a subscriber stores from an event is checked where it
+  stores it (area 12, "Subscribers"). Area 15's log redaction covers what
+  a log holds.
 - `scopes:`, with the tokens issued to other applications (`oauth_token`,
   `external_token`), after the first build.
 - An acceptance for a change that widens access, and the approval review
