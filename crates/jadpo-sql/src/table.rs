@@ -207,6 +207,37 @@ pub fn lock_against_writes(table: &str) -> String {
     format!("LOCK TABLE {} IN SHARE ROW EXCLUSIVE MODE", ident(table))
 }
 
+/// Adds the check `name` that every row of `table` has a value in
+/// `column`, `NOT VALID`, so adding it reads no row: what a backfill's
+/// last step adds once it has filled the rows written meanwhile, holding
+/// every row written from then on to it (chunk 5.8b).
+pub fn add_filled_check(table: &str, name: &str, column: &str) -> String {
+    format!(
+        "ALTER TABLE {} ADD CONSTRAINT {} CHECK ({} IS NOT NULL) NOT VALID",
+        ident(table),
+        ident(name),
+        ident(column)
+    )
+}
+
+/// Proves the check `name`, added `NOT VALID`, against every row: it
+/// takes `SHARE UPDATE EXCLUSIVE`, so reads and writes go on while it
+/// reads the table (chunk 5.8b).
+pub fn validate_constraint(table: &str, name: &str) -> String {
+    format!(
+        "ALTER TABLE {} VALIDATE CONSTRAINT {}",
+        ident(table),
+        ident(name)
+    )
+}
+
+/// `sql` opening a step of a migration of its own, run in a transaction of
+/// its own after the step before commits: the line saying what it does,
+/// then the statement (chunk 5.8b).
+pub fn in_a_step(what: &str, sql: &str) -> String {
+    format!("{}{what}\n{sql}", jadpo_std::STEP_MARKER)
+}
+
 /// `column IS NULL`: a row a new required column has no value in.
 pub fn is_null(column: &str) -> String {
     format!("{} IS NULL", ident(column))

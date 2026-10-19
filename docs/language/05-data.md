@@ -2156,6 +2156,127 @@ error: The backfill for `Draft.starred` can't read `Note.starred`
 check failed: 1 error, 4 files
 ```
 
+Nor does it read a setting through a function it calls, a `crypto`
+operation's `key:` included, since each deployment sets its own and
+`jadpo migrate apply` is given none (chosen in chunk 5.8b):
+
+```jadpo check project=e-backfill-setting file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-backfill-setting file=domains/notes/types/label.jadpo hidden
+type Label = Text {}
+```
+
+```jadpo check project=e-backfill-setting file=config.jadpo hidden
+use notes/types { Label }
+
+config {
+    draft_label: Label {
+        default: "draft"
+    }
+}
+```
+
+```jadpo check project=e-backfill-setting file=domains/notes/entities/draft.jadpo hidden migrate=initial
+entity Draft {
+    id: Uuid
+}
+```
+
+```jadpo check project=e-backfill-setting file=domains/notes/entities/draft.jadpo hidden migrate=add_label
+use notes/types { Label }
+
+entity Draft {
+    id: Uuid
+    label: Label
+}
+```
+
+```jadpo check project=e-backfill-setting file=domains/notes/libraries/draft_labels.jadpo
+use notes/types { Label }
+
+library draft_labels {
+    function default_label() -> Label {
+        return config.draft_label
+    }
+}
+```
+
+```jadpo check project=e-backfill-setting file=database/migrations/20261020T1401_add_label/changes.jadpo expect=migration.backfill_outside_row
+migration {
+    Draft.label: {
+        backfill: draft_labels.default_label()
+    }
+}
+```
+
+```text output
+error: The backfill for `Draft.label` can't read `config.draft_label`
+ --> database/migrations/20261020T1401_add_label/changes.jadpo:3:19
+  |
+3 |         backfill: draft_labels.default_label()
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads a setting, through `draft_labels.default_label`
+  reason: A backfill gives each `Draft` record the value its own fields give, whenever and wherever the migration runs, and `draft_labels.default_label` reads `config.draft_label`, which each deployment sets for itself.
+  next: Work the value out without `config.draft_label`: from `Draft`'s own fields, or a constant (agent)
+  rule: migration.backfill_outside_row
+  help: docs/language/05-data.html#migration-backfill-outside-row
+
+check failed: 1 error, 6 files
+```
+
+Nor a field the same migration adds, which no record already stored has
+a value for while the backfill runs (chosen in chunk 5.8b):
+
+```jadpo check project=e-backfill-added-field file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e-backfill-added-field file=domains/notes/entities/draft.jadpo hidden migrate=initial
+entity Draft {
+    id: Uuid
+}
+```
+
+```jadpo check project=e-backfill-added-field file=domains/notes/types/title.jadpo hidden
+type Title = Text {}
+```
+
+```jadpo check project=e-backfill-added-field file=domains/notes/entities/draft.jadpo hidden migrate=add_titles
+use notes/types { Title }
+
+entity Draft {
+    id: Uuid
+    title: Title
+    subheading: Title
+}
+```
+
+```jadpo check project=e-backfill-added-field file=database/migrations/20261020T1401_add_titles/changes.jadpo expect=migration.backfill_outside_row
+migration {
+    Draft.title: {
+        backfill: "Untitled"
+    }
+    Draft.subheading: {
+        backfill: Draft.title
+    }
+}
+```
+
+```text output
+error: The backfill for `Draft.subheading` can't read `Draft.title`
+ --> database/migrations/20261020T1401_add_titles/changes.jadpo:6:19
+  |
+6 |         backfill: Draft.title
+  |                   ^^^^^^^^^^^ a field this migration adds
+  reason: `Draft.title` is added by this same migration, so no `Draft` record already stored has a value for it while the backfill runs.
+  next: Work the value out from the fields `Draft` had before this migration, or a constant (agent)
+  rule: migration.backfill_outside_row
+  help: docs/language/05-data.html#migration-backfill-outside-row
+
+check failed: 1 error, 4 files
+```
+
 ## Review
 
 ### Status
@@ -2363,6 +2484,61 @@ most conservative reading:
 - **`jadpo dev`** applies migrations with the same interpreter; `jadpo
   test` builds its database on empty tables, so nothing needs it.
 
+### Chosen in chunk 5.8b
+
+What the Phase 5 review found computed backfills doing that the page
+doesn't allow, and how each now works, as conservatively as it could:
+
+- **A construction keeps its value as the runtime keeps it.** By
+  `UPDATE`, building a type with a fixed `scale` keeps exactly that many
+  places, rounded half to even (`decimal.round`'s form, then a cast to
+  `numeric(38, scale)`, which stops the statement past 38 digits where
+  the runtime faults): `Amount(Whole(cost))` with `Whole` at `scale: 0`
+  keeps 2.50 as 2 and 3.50 as 4, as `jadpo test` does. No other rule
+  changes a value built on `Bool`, `Int`, `Decimal`, `Text`, `Bytes`,
+  `Uuid`, a date, an instant or a duration: ranges, lengths and patterns
+  only refuse, and a backfill's constructions are proved not to, and text
+  isn't normalised as it is built. A standard type that changes a value
+  as it is built (`Html` made safe, a coordinate kept as its double, a
+  secret) has no SQL form, so a backfill building one runs in Jadpo.
+- **The digest of a backfill worked out in Jadpo** also covers every type
+  its body and the functions it reaches name, along their chains and with
+  their fields and variants (rules and scales included), and the
+  toolchain's version, whose runtime works the values out; changing any
+  of them changes the migration, so a resumed backfill can't fill some
+  rows one way and the rest another.
+- **What it may read.** No setting through a function it calls, a
+  `crypto` operation's `key:` included, since `jadpo migrate apply` is
+  given none and each deployment sets its own; no field the same
+  migration adds, which no stored record has a value for yet. Both are
+  `migration.backfill_outside_row` (examples under Errors).
+- **Every backfill fills before any column is required.** A store's
+  section that fills a backfill in batches runs every backfill's batches
+  first, in the order their columns are added; one step then locks each
+  table against writes, fills the rows written meanwhile for each of
+  them, and adds a check per column that it has a value. A backfill
+  written out as one value beside them fills the existing rows in the
+  section's first step, and again in that step the rows written
+  meanwhile, and is required with the rest; alone, it keeps chunk 3.1's
+  one transaction.
+- **The last steps lock out writes and make no read wait on a scan.**
+  The check is added `NOT VALID`, reading no row, so every row written
+  from then on is held to it. The next step, a transaction of its own,
+  proves it (`VALIDATE CONSTRAINT`), reading every row under `SHARE
+  UPDATE EXCLUSIVE`, which lets reads and writes go on. The last makes
+  each column required, which PostgreSQL 12 and later do without reading
+  a row once a proved check says every row has a value, drops the check
+  and records the migration. Adding the check, requiring the column and
+  dropping the check each take `ACCESS EXCLUSIVE` for a moment, which
+  waits for reads already running and holds new ones back meanwhile; no
+  form of `SET NOT NULL` avoids that. `postgres.sql` opens each such step
+  with a `-- step:` line saying what it does, and names the check
+  `<table>_<column>_filled`.
+- **Columns read and filled in Jadpo** are read through the one table a
+  query's read uses (`jadpo_std::read::Column::of_builtin`), and literals
+  bound for a form's column through the storage table's, so a backfill in
+  Jadpo also reads and fills a percentage or a quantity.
+
 ### Carried to later areas
 
 | Item | Area | Status |
@@ -2520,5 +2696,5 @@ Decided by Richard on 2026-10-12. Built in chunk 3.1 except where Status says ot
 | Deleting a record with a lifecycle | Chosen in chunk 3.4: `delete` runs the `delete` transition; with none, code can't delete the record, nor remove one whose delete would cascade to an entity with a lifecycle; only purge removes them | 2026-10-15 |
 | Purge's period and batches | Chosen in chunk 3.4: `after:` takes a duration in place, or a `Duration` setting (chunk 5.1; `jadpo_runtime::purge_after` is given its value); a batch deletes at most 500 hidden records, oldest `since:` first, each batch its own transaction; a record a `restricted` reference holds stays without stopping the rest; the runtime's entry point runs it, area 12's hourly schedule calls it (chunk 6.2) | 2026-10-15 |
 | Partial indexes | Chosen in chunk 3.4: the indexes an entity's queries need hold only the records `visible:` lets through, unless it reads `clock.now`; a reference's own index stays beside a partial one | 2026-10-15 |
-| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b", and what working one out in Jadpo left open is "Chosen in chunk 5.6b2" | 2026-10-15 |
+| Computed backfills | `backfill:` may be an expression over each row's own stored fields (`Todo.legacy_flag`), constants and pure functions, including a field this migration retires; filled in batches, one `UPDATE` each where the expression has a SQL form and by `jadpo migrate apply` otherwise, then made required; no freeform SQL (Richard, from an outside review). Built in chunk 5.6b where every operation has a SQL form, and in Jadpo in chunk 5.6b2; batches, locking, the resume marker, failing rows and progress are "Chosen in chunk 5.6b", what working one out in Jadpo left open is "Chosen in chunk 5.6b2", and the Phase 5 review's fixes (constructions rounded as the runtime rounds, the digest's types, what it may read, every backfill filled before any column is required, a last step that proves a check before `SET NOT NULL`) are "Chosen in chunk 5.8b" | 2026-10-15 |
 | Redis entity updates | Updates by `id` include counters, done as one Redis `increment`; no lifecycles on a Redis entity, expiry taking their place (decided for Richard) | 2026-10-16 |

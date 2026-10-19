@@ -35,6 +35,12 @@ pub const IN_JADPO: &str = "in Jadpo";
 /// writes, in the transaction that makes the column required.
 pub const FILL_MARKER: &str = "-- fill ";
 
+/// The line that opens a step of statements of its own (chunk 5.8b),
+/// followed by what it does: a backfill's last steps, each its own
+/// transaction, so the one that reads every row holds no lock that keeps
+/// reads out, and the one that takes such a lock reads no row.
+pub const STEP_MARKER: &str = "-- step: ";
+
 /// What a store's section of a migration does, step by step: statements
 /// run together in one transaction, and backfills filled in batches,
 /// each batch in its own transaction (chunk 5.6b).
@@ -129,8 +135,9 @@ impl Migration {
     }
 
     /// Its steps, in order: everything up to a backfill's marker is one
-    /// step, the backfill's statements another, and so on. A fill worked
-    /// out in Jadpo joins the statements around it in one step.
+    /// step, the backfill's statements another, and so on; a step's
+    /// marker starts another. A fill worked out in Jadpo joins the
+    /// statements around it in one step.
     pub fn steps(&self) -> Vec<Step> {
         let mut out = Vec::new();
         let mut once = String::new();
@@ -163,6 +170,10 @@ impl Migration {
             text
         }
         while let Some(line) = lines.next() {
+            if line.starts_with(STEP_MARKER) {
+                close(&mut once, &mut parts, &mut out);
+                continue;
+            }
             if let Some(rest) = line.strip_prefix(FILL_MARKER) {
                 let sql = once.trim();
                 if !sql.is_empty() {
@@ -312,6 +323,23 @@ mod tests {
                     batch: "WITH batch AS (\nSELECT 1\n) SELECT 2".into(),
                     write: None,
                 }),
+                Step::Once("ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_step_marker_starts_a_step_of_its_own() {
+        let migration = Migration {
+            name: "20261101T0900_priority".into(),
+            digest: "0".into(),
+            sql: "LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nALTER TABLE \"todo\" ADD CONSTRAINT \"todo_priority_filled\" CHECK (\"priority\" IS NOT NULL) NOT VALID;\n-- step: check every row has a value\nALTER TABLE \"todo\" VALIDATE CONSTRAINT \"todo_priority_filled\";\n-- step: require a value\nALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into(),
+        };
+        assert_eq!(
+            migration.steps(),
+            vec![
+                Step::Once("LOCK TABLE \"todo\" IN SHARE ROW EXCLUSIVE MODE;\nALTER TABLE \"todo\" ADD CONSTRAINT \"todo_priority_filled\" CHECK (\"priority\" IS NOT NULL) NOT VALID;".into()),
+                Step::Once("ALTER TABLE \"todo\" VALIDATE CONSTRAINT \"todo_priority_filled\";".into()),
                 Step::Once("ALTER TABLE \"todo\" ALTER COLUMN \"priority\" SET NOT NULL;".into()),
             ]
         );

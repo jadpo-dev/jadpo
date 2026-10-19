@@ -470,3 +470,114 @@ fn an_output_holding_a_layer_holds_what_its_properties_hold() {
         "{found:#?}"
     );
 }
+
+/// `geo.from_geojson` (area 19, "Shared vocabulary types"; area 20,
+/// "Interop"; chunk 5.11): GeoJSON text read into the `Geometry` of the
+/// kind it names, as `geo.from_wkt` reads WKT, failing `malformed` or
+/// `out_of_range`, which its `attempt` maps.
+#[test]
+fn geojson_text_is_read_into_a_geometry_whose_conditions_are_mapped() {
+    let read = |arms: &str| {
+        rules(&format!(
+            "function shape(cell: Exported) fails Unreadable -> Geometry {{\n    return attempt geo.from_geojson(cell) {{\n{arms}    }}\n}}\n"
+        ))
+    };
+    assert_eq!(
+        read("        malformed: Unreadable\n        out_of_range: Unreadable\n"),
+        NONE
+    );
+    assert_eq!(read("        invalid: Unreadable\n"), NONE);
+    assert_ne!(
+        read("        malformed: Unreadable\n"),
+        NONE,
+        "out_of_range unmapped"
+    );
+    assert_ne!(
+        read("        out_of_range: Unreadable\n"),
+        NONE,
+        "malformed unmapped"
+    );
+    assert_ne!(
+        rules(
+            "function shape(cell: Exported) -> Geometry {\n    return geo.from_geojson(cell)\n}\n"
+        ),
+        NONE,
+        "a call that can fail, outside `attempt`"
+    );
+    assert_ne!(
+        rules(
+            "function shape(cell: Exported) fails Unreadable -> Polygon {\n    return attempt geo.from_geojson(cell) {\n        invalid: Unreadable\n    }\n}\n"
+        ),
+        NONE,
+        "a `Geometry`, not a `Polygon`"
+    );
+    assert_eq!(
+        rules(
+            "type Count = Int {}\n\nfunction shape(cell: Count) fails Unreadable -> Geometry {\n    return attempt geo.from_geojson(cell) {\n        invalid: Unreadable\n    }\n}\n"
+        ),
+        ["type.mismatch"],
+        "text only"
+    );
+}
+
+const READINGS: &str =
+    "type Reading = Decimal {\n    scale: 15\n}\n\ntype WholeReading = Int {}\n\n";
+
+/// `geo.from_lng_lat` and `geo.from_lat_lng` (chunk 5.11): a pair, or a
+/// triple with an altitude, in the order the name says, made a `Point`;
+/// each fails `malformed` or `out_of_range`, which its `attempt` maps.
+#[test]
+fn a_pair_of_numbers_is_a_point_in_the_order_its_name_says() {
+    for name in ["from_lng_lat", "from_lat_lng"] {
+        let read = |given: &str, arms: &str| {
+            rules(&format!(
+                "{READINGS}function spot(pair: {given}) fails Unreadable -> Point {{\n    return attempt geo.{name}(pair) {{\n{arms}    }}\n}}\n"
+            ))
+        };
+        let both = "        malformed: Unreadable\n        out_of_range: Unreadable\n";
+        assert_eq!(read("List<Reading>", both), NONE, "{name}");
+        assert_eq!(
+            read("List<WholeReading>", both),
+            NONE,
+            "{name}: whole degrees"
+        );
+        assert_eq!(
+            read("List<Reading>", "        invalid: Unreadable\n"),
+            NONE,
+            "{name}"
+        );
+        assert_ne!(
+            read("List<Reading>", "        malformed: Unreadable\n"),
+            NONE,
+            "{name}: out_of_range unmapped"
+        );
+        assert_ne!(
+            read("List<Reading>", "        out_of_range: Unreadable\n"),
+            NONE,
+            "{name}: malformed unmapped"
+        );
+        for given in ["List<Exported>", "Reading", "List<Reading?>"] {
+            assert_eq!(
+                read(given, both),
+                ["type.mismatch"],
+                "{name}: {given} isn't a list of numbers"
+            );
+        }
+        // A list written out is attempted too: what it holds is known
+        // only when the program runs, as a `Point` from values is.
+        assert_eq!(
+            rules(&format!(
+                "function spot() fails Unreadable -> Point {{\n    return attempt geo.{name}([51.5072, -0.1276]) {{\n        invalid: Unreadable\n    }}\n}}\n"
+            )),
+            NONE,
+            "{name}"
+        );
+        assert_ne!(
+            rules(&format!(
+                "{READINGS}function spot(pair: List<Reading>) -> Point {{\n    return geo.{name}(pair)\n}}\n"
+            )),
+            NONE,
+            "{name}: a call that can fail, outside `attempt`"
+        );
+    }
+}

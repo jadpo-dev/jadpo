@@ -27,7 +27,7 @@ use jadpo_check::data::queries::{
 };
 use jadpo_check::data::{DataModel, EntityModel, FieldModel};
 use jadpo_check::lookups::Lookup;
-use jadpo_check::types::{Def, Prim, Ty, TypeView};
+use jadpo_check::types::{Def, Ty, TypeView};
 use std::cell::RefCell;
 
 use jadpo_graph::{Key, Kind, TypeRef};
@@ -831,21 +831,7 @@ impl Planner<'_> {
         }
         let ty = Ty::Field(entity.name.clone(), vec![field.name.clone()]);
         if let Some(prim) = self.lookup.representation(&ty) {
-            return Some(match prim {
-                Prim::Bool => Column::Bool,
-                Prim::Int => Column::Int,
-                Prim::Decimal => Column::Decimal,
-                Prim::Text => Column::Text,
-                Prim::Bytes => Column::Bytes,
-                Prim::Uuid => Column::Uuid,
-                Prim::Instant => Column::Instant,
-                Prim::CalendarDate => Column::Date,
-                Prim::Duration => Column::Duration,
-                // In its kind's base unit (area 19).
-                Prim::Quantity(kind) => Column::Quantity(kind),
-                Prim::Percentage => Column::Percentage,
-                _ => return None,
-            });
+            return Column::of_builtin(prim);
         }
         match self.lookup.structure(&ty) {
             Ty::Named(name) => match self.lookup.def(&name) {

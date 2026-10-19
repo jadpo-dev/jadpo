@@ -1587,6 +1587,13 @@ impl Body<'_> {
             return None;
         }
         if self.stored.as_deref() == Some(head) {
+            // A field this migration adds has no stored value yet (chunk
+            // 5.8b).
+            if self.context == super::Context::Backfill && self.added.contains(&field) {
+                let span = self.span(expr);
+                self.backfill_reads_added(span, &format!("{head}.{field}"));
+                return Some(Ty::Error);
+            }
             self.facts.stored.insert(node_key(expr.syntax()));
             return Some(self.table.field_type(head, &[field]));
         }

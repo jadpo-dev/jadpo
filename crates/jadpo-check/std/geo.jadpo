@@ -10,9 +10,9 @@
 // `Polygon` or a `MultiPolygon`, and the predicates and shapes any
 // geometry or a `Geometry` (chunk 5.5u3), `contains` a `BoundingBox` or a
 // `Circle` too. Edges are great circles, and inside includes the edge, as
-// PostGIS's `ST_Covers` and `ST_Intersects` on `geography`. WKT's two
-// operations (chunk 5.5u6) are the one place outside GeoJSON where a
-// position's longitude comes first.
+// PostGIS's `ST_Covers` and `ST_Intersects` on `geography`. An axis order
+// exists only in an operation that names it: `from_geojson`, `from_lng_lat`
+// and `from_lat_lng` (chunk 5.11), and WKT's two (chunk 5.5u6).
 
 public library geo {
     /// A `Polygon`'s or `MultiPolygon`'s area on the ellipsoid, each edge a
@@ -46,6 +46,29 @@ public library geo {
     /// The geodesic distance between two points on the ellipsoid, rounded
     /// half to even to the micrometre.
     function distance(from: Point, to: Point) -> Length {}
+
+    /// The geometry GeoJSON text (RFC 7946) writes, each position longitude
+    /// first: `{"type":"Point","coordinates":[-0.1276,51.5072]}`, any of
+    /// the six, held as the `Geometry` of its kind, each ring wound by the
+    /// right-hand rule. A coordinate out of its range fails with
+    /// `out_of_range`, and text that isn't one of the six geometries, a
+    /// polygon whose rings aren't valid or a geometry mixing altitudes
+    /// included, with `malformed`, which the call's `attempt` maps.
+    function from_geojson(text: Text) -> Geometry {}
+
+    /// The `Point` two numbers give, latitude first, as `[51.5072,
+    /// -0.1276]`, or three, the third its altitude in metres. A latitude
+    /// past 90 or a longitude past 180 fails with `out_of_range`, and
+    /// any other count of numbers with `malformed`, which the call's
+    /// `attempt` maps.
+    function from_lat_lng(numbers: List<Number>) -> Point {}
+
+    /// The `Point` two numbers give, longitude first, as GeoJSON writes a
+    /// position, `[-0.1276, 51.5072]`, or three, the third its altitude in
+    /// metres. A longitude past 180 or a latitude past 90 fails with
+    /// `out_of_range`, and any other count of numbers with `malformed`,
+    /// which the call's `attempt` maps.
+    function from_lng_lat(numbers: List<Number>) -> Point {}
 
     /// The geometry WKT or EWKT text writes, longitude first:
     /// `POLYGON((-0.2 51.49,-0.05 51.49,-0.05 51.54,-0.2 51.49))`, any of
