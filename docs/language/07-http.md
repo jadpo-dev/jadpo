@@ -253,24 +253,61 @@ POST /orders {
 
 - After the action commits, the runtime delivers the events it emitted at
   once, and the events their subscribers emit in turn, while the request
-  waits.
+  waits: in the request's own invocation, each delivery as any is
+  delivered (area 12), as the system limited to its event's tenant, the
+  request's caller given back before the answer runs.
 - The work has settled when every one of those deliveries has succeeded,
-  failed for good or been parked as `outcome_unknown`. A delivery waiting
-  to retry (`unavailable`, `rate_limited`) has not.
+  failed for good or been parked as `outcome_unknown`: a failure that
+  isn't retried, a defect, a subscriber the build no longer has, or an
+  event 16 deep in a chain (`event_chain_limit`), so a loop settles too.
+  A delivery left to retry after a backoff (`unavailable`, `rate_limited`,
+  a store that couldn't be reached) has not, and can't be waited for, so
+  the route stops waiting at once and answers 202; so does a delivery the
+  request couldn't claim, and a batch run the action started, which is
+  long work no route waits on, so a route whose action starts a batch
+  answers 202 (area 12, "Schedule and batch defaults", 2026-10-19).
+  Waiting stops at the first such piece, and the rest is left for after
+  the response, the retry to the outbox's sweep.
 - Then the route runs `answer:`, a named query given `result` (the
-  action's result), and answers with its result and the route's `status:`.
-  If `within:` passes first, it runs the same query and answers `202`, so
-  the client gets the same `output:` either way and knows from the status
-  whether the work finished. The work carries on in the background either
-  way, exactly as it would without `settle:`.
+  action's result) or fields read through it, and nothing else: the query
+  reads who is asking through its policy. It runs as the request's caller
+  and under the query's policy, as a `GET` running it would, and answers
+  with its result and the route's `status:`. If `within:` passes first, it
+  runs the same query and answers `202`, so the client gets the same
+  `output:` either way and knows from the status whether the work
+  finished. The work carries on in the background either way, exactly as
+  it would without `settle:`. The query's failures are the route's too,
+  beside the action's, in OpenAPI and the record; a query that fails (its
+  `missing:`, say) answers with that failure, though the action committed.
 - With `settle:`, `output:` is the query's result type, not the action's.
-  `within:` must fit inside the route's `deadline:`, and waiting never ends
-  in a 504, because the action has already committed.
+  `within:` counts from when the request came in, as `deadline:` does, and
+  must be shorter than the deadline, leaving the answer time to run; the
+  answer isn't held to the deadline, so waiting never ends in a 504,
+  because the action has already committed (`route.settle_invalid`).
+- When `within:` passes, the subscriber's action that is running is
+  dropped, nothing it did kept, and its delivery given back `pending` and
+  due at once, that attempt not counted; only its body is raced, never
+  its commit, and the delivery's own statements are never cut short, so a
+  claim is never left in doubt.
+- `settle:` goes only on a route that runs an action and answers
+  `SuccessStatus.ok` or `.created`: a `GET` sets off nothing to wait for,
+  `.accepted` would make both answers 202, and `.no_content` sends no
+  answer (`route.settle_invalid`).
 - Only work this action set off is waited for, never other requests' work
   or published copies of events (area 12).
 - A repeat with the same `Idempotency-Key` runs the answer query again
   rather than replaying a stored body, so it shows how far the work has
-  got.
+  got: the key keeps the query's arguments, each written by its
+  parameter's codec, with 202 until the work is known to have settled and
+  then the route's status, so a process that stops between the commit and
+  the answer never has a repeat say the work finished.
+- OpenAPI lists the route's status, "once the work it set off has
+  settled", and 202, each sending the query's result, and says a repeat
+  runs the answer again; the API record adds a `settle within <duration>`
+  line to the route.
+- A route test's request waits in the same way. A test host's timers
+  never end, so `within:` never passes in a test, and a follow-on left to
+  retry gives 202.
 
 ## Health
 
@@ -2545,8 +2582,8 @@ Since chunk 6.3 a route waits for the work its action set off with
 follow-ons while the request waits, then answers with `answer:`'s query
 and the route's status, or 202 past `within:` or while a delivery waits
 to retry; OpenAPI and the record show both answers, and a repeat with
-the same `Idempotency-Key` runs the query again ("Chosen in chunk 6.3"
-below, and `route.settle_invalid`).
+the same `Idempotency-Key` runs the query again ("Waiting for follow-on
+work", and `route.settle_invalid`).
 
 Not yet: serving each API's OpenAPI document at `<prefix>/openapi.json`,
 `serve_openapi:` and the `x-jadpo` fields (decided 2026-10-16; the fields
@@ -2555,65 +2592,6 @@ store for rate limits (area 16); classifying breaking changes and their
 acceptances (after the first build, area 18); the `Jadpo-Revision` header,
 which comes with caches (area 6). Each is `toolchain.not_built_yet` where it
 is written.
-
-### Chosen in chunk 6.3
-
-What the page leaves to the build about waiting for follow-on work,
-each the most conservative reading:
-
-- **Settled.** The work has settled when every delivery of the events
-  the action emitted, and of the events their subscribers emit in turn,
-  has succeeded or failed for good: a failure that isn't retried, a
-  defect, a subscriber the build no longer has, or an event 16 deep in a
-  chain (`event_chain_limit`), so a loop settles too. It runs inline, in
-  the request's own invocation (chunk 6.1a's runner), each delivery as
-  6.1b delivers one, as the system limited to its event's tenant, and
-  the request's caller is given back before the answer runs.
-- **What hasn't.** A delivery left to retry after a backoff
-  (`unavailable`, `rate_limited`, a store that couldn't be reached)
-  can't be waited for inline, so the route stops waiting at once and
-  answers 202, the retry left to the sweep; so does a delivery the
-  request couldn't claim, and a batch run the action started, which is
-  long work no route waits on. Waiting stops at the first such piece,
-  and the rest is left for after the response. *Flagged:* a route whose
-  action starts a batch always answers 202; recommended as built, since
-  the batch's work hasn't finished.
-- **`within:`** counts from when the request came in, as `deadline:`
-  does, and must be shorter than the deadline, leaving the answer time
-  to run (`route.settle_invalid`). When it passes, the subscriber's
-  action that is running is dropped, nothing it did kept, and its
-  delivery given back `pending` and due at once, that attempt not
-  counted; the delivery's own statements are never cut short, so a
-  claim is never left in doubt. What is left goes to the host after the
-  response, exactly as without `settle:`, and the outbox's sweep picks
-  up what a host drops (chunk 6.1b).
-- **The answer.** `answer:` calls a named query given `result` or
-  fields read through it, and nothing else: the query reads who is
-  asking through its policy. It runs after the waiting, as the
-  request's caller and under the query's policy, as a `GET` running it
-  would, and policy checks what it reaches as it checks a route's
-  query. Its failures are the route's too, beside the action's, in
-  OpenAPI and the record; a query that fails (its `missing:`, say)
-  answers with that failure, though the action committed. The answer is
-  not held to the deadline, so a committed action is never answered
-  504.
-- **Where it applies.** Only on a route that runs an action and answers
-  `SuccessStatus.ok` or `.created`: a `GET` sets off nothing to wait
-  for, `.accepted` would make both answers 202, and `.no_content` sends
-  no answer (`route.settle_invalid`).
-- **Repeats.** An `Idempotency-Key` keeps the answer query's arguments,
-  each written by its parameter's codec, rather than a body, with 202
-  until the work is known to have settled and then the route's status.
-  A repeat runs the query again and answers with that status, so a
-  process that stops between the commit and the answer never has a
-  repeat say the work finished.
-- **OpenAPI and the record.** OpenAPI lists the route's status, "once
-  the work it set off has settled", and 202, each sending the query's
-  result, and says a repeat runs the answer again; the API record adds
-  a `settle within <duration>` line to the route.
-- **Route tests.** A route test's request waits in the same way. A test
-  host's timers never end, so `within:` never passes in a test, and a
-  follow-on left to retry gives 202.
 
 ### Consistency with the rest of the language
 
