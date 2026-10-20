@@ -884,12 +884,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   package's names are scoped to it; and `jadpo dev` and `jadpo test
   --watch` watching a linked checkout, not only reading it at start.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
-  7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
-  `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
-  settings), the network report, lazy loading of a package's
-  resources by file name with the check cached per digest, and two
-  versions of one package side by side, names carrying the version. The
-  public registry stays after the first build.
+  7.1b2 (split from 7.1c Connections, the network report, lazy loading
+  and versions side by side on 2026-10-20): `connections:` entries naming
+  a package (`package:`, `domains:`, `credential:`, `environment:`,
+  `host:` against `hosts:` and `runs:`, settings), the network report,
+  and the dev and test hosts answering a connection only with its
+  declared driver. The public registry stays after the first build.
+- [ ] **7.1c2 Lazy loading and two versions side by side** `opus · high`,
+  after 7.1c and 7.1d (both touch how names through a package resolve):
+  lazy loading of a package's resources by file name with the check
+  cached per digest, and two versions of one package side by side, names
+  carrying the version (`Postcodes.v3.UkPostcode`).
 - [x] **7.2 Served OpenAPI and the importer** `opus · high` (split from
   7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
   every API's OpenAPI document, and each API serving it at
