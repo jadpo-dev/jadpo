@@ -655,65 +655,12 @@ pub fn sent_email(message: &Value) -> Value {
 
 /// Every `href` in `html`, its character references read back, in order.
 pub fn html_links(html: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let lower = html.to_ascii_lowercase();
-    let mut from = 0;
-    while let Some(at) = lower[from..].find("href=") {
-        let start = from + at + "href=".len();
-        from = start;
-        let rest = &html[start..];
-        let (value, used) = match rest.chars().next() {
-            Some(quote @ ('"' | '\'')) => match rest[1..].find(quote) {
-                Some(end) => (&rest[1..=end], end + 2),
-                None => continue,
-            },
-            Some(_) => {
-                let end = rest
-                    .find(|c: char| c.is_whitespace() || c == '>')
-                    .unwrap_or(rest.len());
-                (&rest[..end], end)
-            }
-            None => continue,
-        };
-        from = start + used;
-        let link = unescape_html(value.trim());
-        if !link.is_empty() {
-            out.push(link);
-        }
-    }
-    out
+    jadpo_std::email_health::html_links(html)
 }
 
 /// Every `http://` or `https://` address written in `text`, in order.
 pub fn text_links(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut from = 0;
-    while let Some(at) = ["https://", "http://"]
-        .iter()
-        .filter_map(|scheme| text[from..].find(scheme))
-        .min()
-    {
-        let start = from + at;
-        let end = text[start..]
-            .find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"'))
-            .map_or(text.len(), |end| start + end);
-        let link = text[start..end].trim_end_matches(['.', ',', ')', ';', ':', '!', '?']);
-        if link.len() > "https://".len() {
-            out.push(link.to_string());
-        }
-        from = end.max(start + 1);
-    }
-    out
-}
-
-/// `&amp;`, `&lt;`, `&gt;`, `&quot;` and `&#39;`, as [`escape_html`]
-/// writes them, read back.
-fn unescape_html(text: &str) -> String {
-    text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
+    jadpo_std::email_health::text_links(text)
 }
 
 fn defect(ctx: &mut Ctx<'_>, what: &str) -> Outcome {

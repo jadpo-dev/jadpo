@@ -138,6 +138,8 @@ rules! {
         "14-tooling.html#command-errors", "Development port is invalid";
     CLI_DEV_START_FAILED: "cli.dev_start_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Development server could not start";
+    CLI_EMAIL_ARGUMENTS: "cli.email_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Email command has invalid arguments";
     CLI_FIX_ARGUMENTS: "cli.fix_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Fix command has invalid arguments";
     CLI_FMT_ARGUMENTS: "cli.fmt_arguments", area 14, Error, Agent,
@@ -390,6 +392,8 @@ rules! {
         "16-built-in-services.html#email-connection-required", "Action emits an email but the application names no email connection";
     EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
         "16-built-in-services.html#email-field-unused", "Email's field is written by no template and no subject";
+    EMAIL_HEALTH_PROBLEM: "email.health_problem", area 16, Declinable, Agent,
+        "16-built-in-services.html#email-health-problem", "Email's template fails a check of the mail health score";
     EMAIL_PARTIAL_INVALID: "email.partial_invalid", area 16, Error, Agent,
         "16-built-in-services.html#email-partial-invalid", "Template includes a partial that doesn't exist, can't be reached or is given the wrong fields";
     EMAIL_SENT_CONTEXT: "email.sent_context", area 16, Error, Agent,
@@ -1592,6 +1596,7 @@ mod tests {
             [
                 "constant.similar_exists",
                 "email.field_unused",
+                "email.health_problem",
                 "library.similar_exists",
                 "package.standard_candidate",
                 "query.nearest_exact",

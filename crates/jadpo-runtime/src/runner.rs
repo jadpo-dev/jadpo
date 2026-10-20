@@ -718,12 +718,30 @@ async fn attempt(
                             }
                         }
                         _ => {
-                            let call = Call::new(
+                            let mut call = Call::new(
                                 connection.clone(),
                                 jadpo_std::email::SEND,
                                 message,
                                 Repeat::Unkeyed,
                             );
+                            call.mail = Some(Box::new(crate::capability::MailSent {
+                                // Its identity key, `type members.WelcomeEmail`,
+                                // as people name it.
+                                email: subscriber
+                                    .event
+                                    .split_once(' ')
+                                    .map_or(subscriber.event.as_str(), |(_, name)| name)
+                                    .to_string(),
+                                // The trace of the work that emitted it.
+                                trace: delivery.trace.or_else(|| ctx.trace()).map(|trace| {
+                                    trace
+                                        .header()
+                                        .split('-')
+                                        .nth(1)
+                                        .unwrap_or_default()
+                                        .to_string()
+                                }),
+                            }));
                             send(ctx, call, budget, within).await
                         }
                     }

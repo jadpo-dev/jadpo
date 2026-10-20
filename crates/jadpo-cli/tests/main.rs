@@ -36,6 +36,7 @@ mod declines;
 mod decode_problems;
 mod deliveries;
 mod delivery_limits;
+mod dev_inbox;
 mod dev_provider_calls;
 mod emails;
 mod events;
