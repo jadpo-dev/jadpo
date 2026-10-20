@@ -463,6 +463,8 @@ impl Lower<'_> {
                     | Callee::Provider { .. }
                     | Callee::PackageAction { .. }
                     | Callee::Generate { .. }
+                    | Callee::Stream { .. }
+                    | Callee::Embed { .. }
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -906,7 +908,7 @@ impl Lower<'_> {
         let call = self.alloc();
         let args = match (&scripted, answer) {
             (typed::AiFakeAnswer::Value, _) => vec![Some(self.expr(answer))],
-            (typed::AiFakeAnswer::Raw, Expr::CallExpr(raw)) => {
+            (typed::AiFakeAnswer::Raw | typed::AiFakeAnswer::Partial(_), Expr::CallExpr(raw)) => {
                 let text = raw
                     .arg_list()
                     .iter()
@@ -1476,6 +1478,28 @@ impl Lower<'_> {
                 timeout_ms: *timeout_ms,
                 attempts: *attempts,
             },
+            Reach::Stream {
+                prompt,
+                model,
+                max_output,
+                timeout_ms,
+            } => Callee::Stream {
+                prompt: prompt.clone(),
+                model: model.clone(),
+                max_output: *max_output,
+                timeout_ms: *timeout_ms,
+            },
+            Reach::Embed {
+                model,
+                timeout_ms,
+                all,
+                dimensions,
+            } => Callee::Embed {
+                model: model.clone(),
+                timeout_ms: *timeout_ms,
+                all: *all,
+                dimensions: *dimensions,
+            },
             Reach::Unknown => Callee::Unknown,
         };
         if let Some(head) = call.expr() {
@@ -1549,7 +1573,7 @@ impl Lower<'_> {
             }
             // `ai.generate`'s prompt, its one value; its options and `as:`
             // are written out, so they are part of the call (chunk 5.5v3).
-            (Reach::Generate { .. }, _) => {
+            (Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. }, _) => {
                 let prompt = arguments
                     .iter()
                     .find(|arg| arg.name().is_none())
@@ -1739,7 +1763,9 @@ impl Lower<'_> {
             | Reach::AdvanceClock
             | Reach::Translation { .. }
             | Reach::Prompt(_)
-            | Reach::Generate { .. } => {}
+            | Reach::Generate { .. }
+            | Reach::Stream { .. }
+            | Reach::Embed { .. } => {}
             // The schedule's name names it; `run` is its run.
             Reach::Schedule { schedule, .. } => {
                 self.node(first.syntax(), Some(schedule.clone()), false);

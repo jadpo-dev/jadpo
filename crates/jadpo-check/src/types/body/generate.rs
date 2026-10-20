@@ -277,7 +277,7 @@ impl Body<'_> {
 
     /// Types the prompt and the values of options that aren't written
     /// out, without reading `as:` or `model:` as values.
-    fn generate_args_only(&mut self, call: &ast::CallExpr) {
+    pub(super) fn generate_args_only(&mut self, call: &ast::CallExpr) {
         for arg in Self::arguments(call) {
             let named = Self::arg_name(&arg);
             if matches!(named.as_deref(), Some("as" | "model")) {
@@ -481,7 +481,12 @@ impl Body<'_> {
 
     /// `model: <name>`: a name `ai: { models: }` gives, checked once the
     /// call is.
-    fn model_option(&mut self, value: &Expr, written: &str, options: &mut Options) -> bool {
+    pub(super) fn model_option(
+        &mut self,
+        value: &Expr,
+        written: &str,
+        options: &mut Options,
+    ) -> bool {
         if let Expr::NameRef(name) = value
             && let Some(model) = tree::name_ref_text(name)
         {
@@ -501,7 +506,12 @@ impl Body<'_> {
     }
 
     /// `max_output:`: a whole number of tokens written out.
-    fn max_output_option(&mut self, value: &Expr, written: &str, options: &mut Options) -> bool {
+    pub(super) fn max_output_option(
+        &mut self,
+        value: &Expr,
+        written: &str,
+        options: &mut Options,
+    ) -> bool {
         let most = jadpo_std::ai::MOST_MAX_OUTPUT;
         let given = match Const::from_expr(value) {
             Const::Number {
@@ -527,7 +537,12 @@ impl Body<'_> {
     }
 
     /// `timeout:`: a duration written out, 1 second to 10 minutes.
-    fn timeout_option(&mut self, value: &Expr, written: &str, options: &mut Options) -> bool {
+    pub(super) fn timeout_option(
+        &mut self,
+        value: &Expr,
+        written: &str,
+        options: &mut Options,
+    ) -> bool {
         let given = match Const::from_expr(value) {
             Const::Duration(text) => jadpo_std::Dur::parse(&text)
                 .and_then(|dur| u64::try_from(dur.millis).ok())
@@ -574,7 +589,7 @@ impl Body<'_> {
         given.is_some()
     }
 
-    fn option_invalid(
+    pub(super) fn option_invalid(
         &mut self,
         value: &Expr,
         written: &str,
@@ -653,12 +668,12 @@ impl Body<'_> {
     }
 }
 
-/// `ai.generate`'s options as written.
+/// `ai.generate`'s options as written, and `ai.stream`'s.
 #[derive(Default)]
-struct Options {
-    model: Option<(Span, String)>,
-    max_output: Option<u32>,
-    timeout_ms: Option<u64>,
+pub(super) struct Options {
+    pub(super) model: Option<(Span, String)>,
+    pub(super) max_output: Option<u32>,
+    pub(super) timeout_ms: Option<u64>,
     attempts: Option<u32>,
 }
 

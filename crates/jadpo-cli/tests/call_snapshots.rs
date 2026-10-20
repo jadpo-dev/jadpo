@@ -256,6 +256,7 @@ use shared/providers/acme_couriers
 
 /// Reads a shipment, books its collection, then labels it with its note
 /// and the booking: the read comes before the call, the write after it.
+decline step.late_failure: "A shipment's note and booking always make a label"
 action book_shipment(shipment_id: Shipment.id, postcode: AcmeCouriers.Postcode, slot: AcmeCouriers.SlotId) fails ShipmentNotFound, CollectionSlotGone, LabelInvalid -> Shipment {
     var shipment: Shipment = attempt Shipment.get(shipment_id)
     var booking: AcmeCouriers.Booking = attempt couriers.bookings.create(AcmeCouriers.CreateBooking {

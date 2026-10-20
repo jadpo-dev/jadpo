@@ -38,6 +38,7 @@ pub mod package_code;
 pub mod packages;
 pub mod policy;
 pub mod polls;
+pub mod prompt_recordings;
 pub mod prompts;
 pub mod providers;
 pub mod publishing;

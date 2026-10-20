@@ -335,6 +335,7 @@ use shipping/failures { CollectionSlotGone }
 use shared/providers/acme_couriers
 
 /// Books two collections from one postcode.
+decline step.late_failure: "A first collection booked without the second is still wanted"
 action book_twice(postcode: AcmeCouriers.Postcode, first: AcmeCouriers.SlotId, second: AcmeCouriers.SlotId) fails CollectionSlotGone -> AcmeCouriers.Booking {
     var one: AcmeCouriers.Booking = attempt couriers.bookings.create(AcmeCouriers.CreateBooking {
         postcode: postcode
@@ -872,6 +873,7 @@ use shared/providers/acme_couriers
 
 /// Books a collection, then keeps its reference: the call comes before
 /// the action's first write.
+decline step.late_failure: "The courier's references always fit a CourierRef"
 action book_and_keep(postcode: AcmeCouriers.Postcode, slot: AcmeCouriers.SlotId) fails CollectionSlotGone, ReferenceInvalid -> Collection {
     var booking: AcmeCouriers.Booking = attempt couriers.bookings.create(AcmeCouriers.CreateBooking {
         postcode: postcode

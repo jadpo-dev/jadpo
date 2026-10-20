@@ -7,11 +7,11 @@
 //!   written out, plain HTTP only to this machine.
 //! - [`settings`]: `application { ai: { connection: models: } }`, the
 //!   connection every `ai` call goes through and each model it names, a
-//!   `ModelId` setting, `default` among them. The keys later chunks build
-//!   (`embedding_dimensions:`, `limits:`, `personal_data:`,
-//!   `keep_content:`) are `toolchain.not_built_yet`. A package's
-//!   connection fills `ai` through its `provides/ai.jadpo` (chunk 5.5v3b,
-//!   [`crate::ai_mapping`]).
+//!   `ModelId` setting, `default` among them, and `embedding_dimensions:`,
+//!   the length of every embedding (chunk 5.5v4). The keys later chunks
+//!   build (`limits:`, `personal_data:`, `keep_content:`) are
+//!   `toolchain.not_built_yet`. A package's connection fills `ai` through
+//!   its `provides/ai.jadpo` (chunk 5.5v3b, [`crate::ai_mapping`]).
 //! - [`schema`]: the JSON Schema a model is asked to answer a type in,
 //!   the one OpenAPI writes for it with each field's `///` description,
 //!   whole: the runtime cuts it to what a provider enforces.
@@ -71,6 +71,9 @@ pub struct AiSettings {
     /// Each model `models:` names, with the `ModelId` setting it reads, in
     /// the order written.
     pub models: Vec<(String, String)>,
+    /// `embedding_dimensions:`, where it reads, and where it is written
+    /// (chunk 5.5v4): the length every vector `ai.embed` gives has.
+    pub embedding_dimensions: Option<(u64, Span)>,
     /// `limits:` (chunk 5.5v5).
     pub limits: crate::ai_limits::LimitsRead,
     pub problems: Vec<Diagnostic>,
@@ -322,18 +325,16 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     out.problems.push(problem);
                     continue;
                 }
-                if word == jadpo_std::ai::LIMITS {
-                    if given.insert(word.clone()) {
-                        out.limits = crate::ai_limits::read(
-                            db,
-                            project,
-                            &found.path,
-                            head.clone(),
-                            Some((key_span, &entry)),
-                            &mut out.problems,
-                        );
-                        continue;
-                    }
+                if word == jadpo_std::ai::LIMITS && given.insert(word.clone()) {
+                    out.limits = crate::ai_limits::read(
+                        db,
+                        project,
+                        &found.path,
+                        head.clone(),
+                        Some((key_span, &entry)),
+                        &mut out.problems,
+                    );
+                    continue;
                 }
                 if !given.insert(word.clone()) {
                     out.problems.push(
@@ -417,6 +418,30 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     }
                     continue;
                 }
+                // How long every embedding is (chunk 5.5v4).
+                if word == "embedding_dimensions" {
+                    let most = jadpo_std::embed::MOST_DIMENSIONS;
+                    let given = entry
+                        .value()
+                        .and_then(|value| match Const::from_expr(&value) {
+                            Const::Number {
+                                value: number,
+                                decimal: false,
+                            } if number.scale == 0 => u64::try_from(number.mantissa)
+                                .ok()
+                                .filter(|n| (1..=most).contains(n)),
+                            _ => None,
+                        });
+                    match given {
+                        Some(count) => out.embedding_dimensions = Some((count, span)),
+                        None => out.problems.push(
+                            invalid("`embedding_dimensions:` must be a whole number from 1 to 16,000", span, "not a length")
+                                .reason("`embedding_dimensions:` is how many numbers each embedding the model makes has, written out, so every vector type `ai.embed` answers as is checked against it; pgvector stores vectors of 1 to 16,000.")
+                                .next("Write the model's length, such as `embedding_dimensions: 1536`"),
+                        ),
+                    }
+                    continue;
+                }
                 // `models:`: each a `ModelId` setting.
                 let Some(models) = entry.block() else {
                     out.problems.push(
@@ -490,7 +515,7 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     &mut out.problems,
                 );
             }
-            for needed in jadpo_std::ai::KEYS {
+            for needed in jadpo_std::ai::REQUIRED_KEYS {
                 if !given.contains(needed) {
                     out.problems.push(
                         invalid(
@@ -544,6 +569,32 @@ pub fn answer_types(db: &dyn Db, project: Project) -> std::collections::BTreeMap
     out
 }
 
+/// The prompts the application's actions stream with `ai.stream` (area
+/// 21; chunk 5.5v6): what a test may script text and `partial(...)` for.
+#[salsa::tracked(returns(ref))]
+pub fn streamed_prompts(db: &dyn Db, project: Project) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        if location.ownership.package().is_some() || location.test {
+            continue;
+        }
+        for item in &jadpo_db::item_tree(db, file).items {
+            if item.kind != jadpo_db::ItemKind::Action {
+                continue;
+            }
+            let callable = crate::types::Callable::new(db, file, item.index, None);
+            out.extend(
+                crate::types::typed_body(db, project, callable)
+                    .streams
+                    .iter()
+                    .cloned(),
+            );
+        }
+    }
+    out
+}
+
 /// The domains whose actions ask a model, in name order: what the
 /// network report lists beside the model's connection.
 #[salsa::tracked(returns(ref))]
@@ -566,6 +617,20 @@ pub fn asking_domains(db: &dyn Db, project: Project) -> Vec<String> {
                 )
                 .generates
                 .is_empty()
+                || !crate::types::typed_body(
+                    db,
+                    project,
+                    crate::types::Callable::new(db, file, item.index, None),
+                )
+                .streams
+                .is_empty()
+                || crate::types::typed_body(
+                    db,
+                    project,
+                    crate::types::Callable::new(db, file, item.index, None),
+                )
+                .embeds
+                    > 0
         });
         if asks {
             out.push(domain.to_string());

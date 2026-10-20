@@ -117,6 +117,24 @@ fn settle_by(keys: &[String]) -> String {
     }
 }
 
+impl Body<'_> {
+    /// Why a call asking a model can fail: what `generate` or an embedding
+    /// may end in, which only shows when the program runs.
+    fn model_conditions(&self, call: &ast::CallExpr) -> &'static str {
+        match self.facts.reaches.get(&node_key(call.syntax())) {
+            Some(Reach::Embed { .. }) => {
+                "A model may take too long, or be sent more text than it takes, which only shows when the program runs"
+            }
+            Some(Reach::Stream { .. }) => {
+                "A model may refuse, take too long, be cut off or be sent too long a prompt before its first piece, which only shows when the program runs"
+            }
+            _ => {
+                "A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs"
+            }
+        }
+    }
+}
+
 fn capital_first(text: &str) -> String {
     let mut chars = text.chars();
     chars.next().map_or_else(String::new, |first| {
@@ -186,7 +204,9 @@ impl Body<'_> {
             ) => Fallible::Never,
             // How a model answers is a condition of the call, recorded
             // where it is checked (area 21; chunk 5.5v3).
-            Some(Reach::Generate { .. }) => Fallible::Unknown,
+            Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. }) => {
+                Fallible::Unknown
+            }
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }
@@ -341,7 +361,7 @@ impl Body<'_> {
             Fallible::Construction(breakable)
                 if matches!(
                     self.facts.reaches.get(&node_key(call.syntax())),
-                    Some(Reach::Generate { .. })
+                    Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. })
                 ) =>
             {
                 let arms: Vec<String> = breakable
@@ -353,7 +373,10 @@ impl Body<'_> {
                     format!("`{written}(...)` can fail at runtime, and nothing handles it"),
                 )
                 .at(span, "asks a model")
-                .reason("A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs, so the call can fail.")
+                .reason(format!(
+                    "{}, so the call can fail.",
+                    self.model_conditions(call)
+                ))
                 .next(format!(
                     "Write `attempt {written}(...) {{ {} }}`, each naming an `unavailable` failure",
                     arms.join("  ")
@@ -945,6 +968,16 @@ impl Body<'_> {
                 .iter()
                 .map(|condition| (condition.word(), condition.word().to_string()))
                 .collect(),
+            // A stream's, before its first piece (chunk 5.5v6).
+            Some(Reach::Stream { .. }) => super::stream::CONDITIONS
+                .iter()
+                .map(|condition| (condition.word(), condition.word().to_string()))
+                .collect(),
+            // An embedding asked for (chunk 5.5v4).
+            Some(Reach::Embed { .. }) => super::embed::CONDITIONS
+                .iter()
+                .map(|condition| (condition.word(), condition.word().to_string()))
+                .collect(),
             Some(Reach::Std(op)) => op
                 .operation()
                 .conditions
@@ -1198,10 +1231,11 @@ impl Body<'_> {
         ));
         // `ai.generate`'s `malformed` carries the last answer's
         // `DecodeProblem` (area 21, "Typed output"; chunk 5.5v3), and each
-        // of its conditions is a model giving no answer to use.
+        // of its conditions is a model giving no answer to use, as each of
+        // `ai.stream`'s is (chunk 5.5v6).
         let generates = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Generate { .. })
+            Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. })
         ));
         let own: Vec<&str> = arms
             .iter()
@@ -1349,10 +1383,13 @@ impl Body<'_> {
         self.flow.open = true;
         // How a model answers (area 21, "The `ai` capability"; chunk
         // 5.5v3): each condition an `unavailable` failure of the app's.
-        if matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
-            self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Generate { .. })
-        )) {
+        if let Some(Expr::CallExpr(call)) = attempt.expr()
+            && matches!(
+                self.facts.reaches.get(&node_key(call.syntax())),
+                Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. })
+            )
+        {
+            let conditions = self.model_conditions(&call);
             let listed: Vec<String> = uncovered.iter().map(|key| format!("`{key}`")).collect();
             let arms: Vec<String> = uncovered
                 .iter()
@@ -1384,7 +1421,9 @@ impl Body<'_> {
                     ),
                 )
                 .at(span, "can fail at runtime")
-                .reason("A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs; each needs an arm naming the `unavailable` failure the caller gets, and `invalid:`, which covers a value's broken rules, covers none of them.")
+                .reason(format!(
+                    "{conditions}; each needs an arm naming the `unavailable` failure the caller gets, and `invalid:`, which covers a value's broken rules, covers none of them."
+                ))
                 .next(next),
             );
             return;

@@ -109,6 +109,10 @@ pub enum What {
         params: Vec<(String, String)>,
         result: Option<String>,
         fails: Vec<String>,
+        /// The failures that can follow its own changing call, which end
+        /// the calling action for good with something done (area 12,
+        /// "Several changing calls in one action"; chunk 7.5e).
+        after_effect: Vec<String>,
     },
     /// A public library's function.
     Function {
@@ -252,12 +256,28 @@ impl Declaration {
                     out.push(line(format!("confirmed {confirmed}")));
                 }
             }
-            What::Function { fails, .. } | What::Action { fails, .. } => {
+            What::Function { fails, .. } => {
                 out.push(line(format!(
                     "signature {}",
                     self.signature().unwrap_or_default()
                 )));
                 out.extend(fails.iter().map(|f| line(format!("fails {f}"))));
+            }
+            What::Action {
+                fails,
+                after_effect,
+                ..
+            } => {
+                out.push(line(format!(
+                    "signature {}",
+                    self.signature().unwrap_or_default()
+                )));
+                out.extend(fails.iter().map(|f| line(format!("fails {f}"))));
+                out.extend(
+                    after_effect
+                        .iter()
+                        .map(|f| line(format!("after_effect {f}"))),
+                );
             }
             What::Type {
                 rules,
@@ -559,7 +579,14 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                     signature.fails.iter().map(|ty| ty.render(&name)).collect();
                 fails.sort();
                 fails.dedup();
+                let mut after_effect: Vec<String> = crate::types::action_steps(db, project)
+                    .get(&node.key)
+                    .map(|steps| steps.after_effect.iter().map(name).collect())
+                    .unwrap_or_default();
+                after_effect.sort();
+                after_effect.dedup();
                 declarations.push(made(What::Action {
+                    after_effect,
                     params: signature
                         .params
                         .iter()

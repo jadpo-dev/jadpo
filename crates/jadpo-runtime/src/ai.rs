@@ -148,7 +148,7 @@ pub(crate) enum Kept {
 impl Kept {
     /// How a record keeps a condition: its word, and for `malformed` its
     /// problem's path and rule after it, each after a space.
-    fn word(&self) -> Option<String> {
+    pub(crate) fn word(&self) -> Option<String> {
         match self {
             Kept::Answer(_) => None,
             Kept::Condition(rule) => Some(rule.word().to_string()),
@@ -162,7 +162,7 @@ impl Kept {
     }
 
     /// A condition as [`Kept::word`] writes it.
-    fn from_word(word: &str) -> Option<Kept> {
+    pub(crate) fn from_word(word: &str) -> Option<Kept> {
         let mut parts = word.splitn(3, ' ');
         let rule = RuleKey::from_word(parts.next()?)?;
         match (rule, parts.next(), parts.next()) {
@@ -375,7 +375,16 @@ pub async fn generate(
         .iter()
         .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
         .sum();
-    let taken = match crate::ai_budget::take(ctx, ai, site, &asked.model, input, settings).await {
+    let taken = match crate::ai_budget::take(
+        ctx,
+        ai,
+        crate::ai_budget::Asked::of(site),
+        &asked.model,
+        input,
+        settings,
+    )
+    .await
+    {
         Ok(taken) => taken,
         Err(crate::ai_budget::Refused::OverBudget) => {
             let now = ctx.now();
@@ -913,7 +922,7 @@ struct Asked {
 pub const CONTEXT_LENGTH_EXCEEDED: &str = "context_length_exceeded";
 
 /// Each message's role and text.
-fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
+pub(crate) fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
     let Value::List(items) = rendered else {
         return None;
     };
@@ -1153,20 +1162,20 @@ pub fn strict(schema: &serde_json::Value) -> serde_json::Value {
 
 /// What a chat completion says.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Reply {
-    content: Option<String>,
+pub(crate) struct Reply {
+    pub(crate) content: Option<String>,
     /// The model declined: a refusal it gave, or its answer stopped by the
     /// provider's filter.
-    refused: bool,
+    pub(crate) refused: bool,
     /// Its answer was cut off at the most tokens it was allowed.
-    cut_off: bool,
-    /// The tokens the provider says it used, when it says.
-    usage: Option<crate::ai_budget::Used>,
+    pub(crate) cut_off: bool,
+    /// The tokens the provider says it used, when it says (chunk 5.5v5).
+    pub(crate) usage: Option<crate::ai_budget::Used>,
 }
 
 /// A chat completion's first choice, as OpenAI's API answers one; `None`
 /// for anything else.
-fn reply_of(text: &str) -> Option<Reply> {
+pub(crate) fn reply_of(text: &str) -> Option<Reply> {
     let json: serde_json::Value = serde_json::from_str(text).ok()?;
     let choice = json.get("choices")?.as_array()?.first()?;
     let message = choice.get("message")?;
@@ -1312,7 +1321,7 @@ fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: 
 /// as the call's `timeout:` lasts: its last answer and where it came from,
 /// or what the call gives instead. On a host with no clock, as a test's,
 /// it is sent again at once, at most [`jadpo_std::ai::SENDS`] times.
-async fn sent(
+pub(crate) async fn sent(
     ctx: &mut Ctx<'_>,
     made: Call,
     request: Request,
@@ -1380,7 +1389,7 @@ async fn sent(
 /// Keeps one attempt in `jadpo dev`'s call log, its request and answer in
 /// full (area 21, "Prompts and answers in logs": in development, in
 /// full).
-fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
+pub(crate) fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
     let (Some(log), Some(logged)) = (ctx.host().call_log(), ctx.capabilities().calls().last())
     else {
         return;
@@ -1415,6 +1424,9 @@ pub enum Script {
     Content(String),
     /// One of `ai.generate`'s five conditions.
     Condition(RuleKey),
+    /// `partial("...", <condition>)`: a stream that sends the text, then
+    /// stops with the condition (chunk 5.5v6).
+    Partial(String, RuleKey),
 }
 
 /// A value of `site`'s type, written as `json`, as the model sends it:
@@ -1450,6 +1462,13 @@ pub fn scripted(script: Script) -> Answer {
         }
         Script::Condition(RuleKey::TooLong) => Answer::Failed(CONTEXT_LENGTH_EXCEEDED.to_string()),
         Script::Condition(_) => Answer::TimedOut,
+        // A stream's text and how it stops: the provider's own finish for
+        // a cut-off or a refusal, none for an answer out of time.
+        Script::Partial(text, rule) => Answer::Wire(completion(
+            Some(&text),
+            None,
+            crate::stream::finish_of(rule),
+        )),
     }
 }
 
@@ -1523,6 +1542,12 @@ impl Capability for AiFake {
 
     fn source(&self) -> Source {
         Source::Generated
+    }
+
+    /// A stream's answer: the next scripted one, cut into pieces of a few
+    /// words, as an OpenAI-compatible server streams it (chunk 5.5v6).
+    fn stream<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, crate::stream::Streamed> {
+        Box::pin(async move { crate::stream::faked(&call.operation, self.call(call).await) })
     }
 
     fn source_of(&self, call: &Call) -> Source {

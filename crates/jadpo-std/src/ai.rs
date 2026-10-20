@@ -42,8 +42,12 @@ pub const CONDITIONS: [crate::RuleKey; 5] = [
     crate::RuleKey::TooLong,
 ];
 
-/// The keys `ai:` must give.
-pub const KEYS: [&str; 2] = ["connection", "models"];
+/// The keys `ai:` takes besides `limits:`: `embedding_dimensions:` since
+/// chunk 5.5v4.
+pub const KEYS: [&str; 3] = ["connection", "models", "embedding_dimensions"];
+
+/// The keys of [`KEYS`] every `ai:` gives.
+pub const REQUIRED_KEYS: [&str; 2] = ["connection", "models"];
 
 /// `limits:`, which `ai:` must give too, with `per_day:` in it (chunk
 /// 5.5v5): nothing is unlimited.
@@ -51,8 +55,7 @@ pub const LIMITS: &str = "limits";
 
 /// The keys area 21 gives `ai:` that later work builds, each with the
 /// work that does.
-pub const LATER_KEYS: [(&str, &str); 3] = [
-    ("embedding_dimensions", "roadmap chunk 5.5v4"),
+pub const LATER_KEYS: [(&str, &str); 2] = [
     ("personal_data", "roadmap chunk 5.5v5b"),
     (
         "keep_content",
@@ -290,3 +293,40 @@ pub const SCHEMA_HEADING: &str = "# Answer format";
 /// The member a `T` whose JSON isn't an object is wrapped in, in a strict
 /// structured mode.
 pub const WRAPPED: &str = "value";
+
+/// `AiStream`, what `ai.stream` gives and a streaming route sends (area
+/// 21, "The `ai` capability"; area 7, "Streaming a model's answer"; chunk
+/// 5.5v6).
+pub const AI_STREAM: &str = "AiStream";
+
+/// One `ai.stream(prompt)` call's site, decoded (area 21; chunk 5.5v6):
+/// the prompt it renders and its options. It asks once (`attempts:` is
+/// always 1), for text, so it has no type and no schema.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StreamSite {
+    /// The prompt's name, `answer_question`.
+    pub prompt: String,
+    /// The prompt's place in the plan's prompts, and the number of each of
+    /// its fields' types in the JSON table, in the entry's order.
+    pub entry: u32,
+    pub fields: Vec<u32>,
+    /// The model's name in `ai: { models: }`.
+    pub model: String,
+    pub max_output: u32,
+    pub timeout_ms: u64,
+}
+
+/// What a streaming route sends, as server-sent events (area 7,
+/// "Streaming a model's answer"): each piece of the answer as it comes,
+/// then exactly one of the two that end it.
+pub mod events {
+    /// The next part of the answer: `{"text": "..."}`.
+    pub const PIECE: &str = "piece";
+    /// The answer is whole: `{}`. Always the last.
+    pub const DONE: &str = "done";
+    /// The answer stopped before it was whole: the failure envelope
+    /// (area 4). Always the last.
+    pub const ERROR: &str = "error";
+    /// The `Content-Type` a stream is sent with.
+    pub const CONTENT_TYPE: &str = "text/event-stream";
+}

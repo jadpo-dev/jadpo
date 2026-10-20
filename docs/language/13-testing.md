@@ -136,7 +136,12 @@ is read as its operation's output through the package's decoders, a test
 of kind `recording` named `<resource>.<operation>'s recording decodes`.
 `jadpo test --kind recording` runs only those, and giving the recording's
 file runs it alone; one that doesn't decode is area 11's
-`test.recording_undecodable` or `test.round_trip_failed`.
+`test.recording_undecodable` or `test.round_trip_failed`. Each recording
+of a prompt's answer, `prompts/recordings/<prompt>/<name>.json`, is a test
+of the same kind, `<prompt>'s <name> recording decodes`, read through each
+type the prompt is asked for as (area 21, "Recorded answers"; chunk
+5.5v4); one made from an older version of its prompt passes, with an
+alert on the report.
 
 A test that calls actions to set up data and then makes a request is a route
 test. Calling an action is an ordinary call, with no `call` word. Area 1
@@ -223,8 +228,11 @@ it, each placeholder given in `params:` (`path: "/todos/{todo_id}"` with
 `params: { todo_id: todo.id }`), and `input:` is the route's `Input`. It
 goes through the runtime's HTTP component exactly as a client's would, and
 gives a `Response`: `status`, the failure's `code` (`none` on success) and
-the route's `output` (`none` unless it succeeded). A defect behind the
-response ends the test as `test.fault`, with its frames:
+the route's `output` (`none` unless it succeeded). A route that streams a
+model's answer gives `pieces`, the text of each event in order, in place of
+`output`, and `code` the error event's that ended it (area 7, "Streaming a
+model's answer"; chunk 5.5v6). A defect behind the response ends the test
+as `test.fault`, with its frames:
 
 ```jadpo check project=route-test
 type Memo = Text {
@@ -740,7 +748,9 @@ the fake has responses, or fewer, the test fails and says so (question 7).
 > its output type, one of its failures by its code, or a condition.
 > `.requests` and the capabilities' fakes are not built yet, but for
 > `email.sent` (built in chunk 7.3c, area 16) and the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`
-> and `ai.<prompt>.requests` are built (chunk 5.5v3; area 21, "Tests").
+> and `ai.<prompt>.requests` are built (chunk 5.5v3; area 21, "Tests"),
+> and `recorded("<name>")`, the fake's embeddings and `fakes: { ai.embed:
+> }` since chunk 5.5v4.
 > The choices are in area 11's "Chosen in chunk 7.2d". Since chunk
 > 7.6 a package's action runs its real code in a test, and `fakes:`
 > scripts the operations it calls, its package's own included.
@@ -2797,7 +2807,7 @@ with when it comes.
 | Pure and action tests | Work in the new compiler (run, chunk 2.2): `jadpo test` runs `test "…" { }` and `assert` in the interpreter, for tests that call functions and actions. Since chunk 2.10 each test gets its own environment (its seed and clock, and the places its database and fakes will take), tests run on a thread per core, and the results are reported in the order seed's order. Each action or fixture a test calls commits on its own, through the runtime's action boundary; an action it calls joins its transaction. |
 | Kind of test | Works (run, chunk 2.2): the kind comes from what a test calls (an action, query or fixture makes it an action test, a `request` a route test, and since chunk 6.2c a schedule's `.run()` a schedule test), and the footer and `--json` count each kind. |
 | Schedule tests | Work (run, chunk 6.2c): `schedule.run()` in a test runs the schedule once at the test's clock, its action called as the system with no tenant, with its own database like an action test; `--kind schedule` runs only these; anywhere but a test it is `semantic.not_callable`. Fakes for what a run calls come with packages ("Writing a test"). |
-| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. |
+| Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. Since chunk 5.5v6 a streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
 | Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"), as since chunk 7.5d does one that stops as `diverged`. A fake failing a subscriber's call is retried and given up the same way on 7.0c's fakes; a test writes one with `fakes:` once 7.2 generates them. |

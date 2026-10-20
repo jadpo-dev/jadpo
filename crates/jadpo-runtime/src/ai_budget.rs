@@ -26,7 +26,7 @@
 //! Nothing here holds a prompt or an answer: only counts, the prompt's
 //! name, the model's and a digest of who the caller is.
 
-use jadpo_std::ai::{AiDriver, AiPrice, GenerateSite};
+use jadpo_std::ai::{AiDriver, AiPrice};
 use jadpo_value::Value;
 
 use crate::ai::Ai;
@@ -167,6 +167,27 @@ fn caller_key(ctx: &Ctx<'_>) -> Option<String> {
     )
 }
 
+/// What a call asks, as its limits count it: the prompt it is counted
+/// under (an embedding's `embed`), the most tokens each answer may take
+/// (none for an embedding) and how many answers it may ask for.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Asked<'a> {
+    pub prompt: &'a str,
+    pub max_output: u32,
+    pub attempts: u32,
+}
+
+impl<'a> Asked<'a> {
+    /// What an `ai.generate` or `ai.stream` call at `site` asks.
+    pub(crate) fn of(site: &'a jadpo_std::ai::GenerateSite) -> Asked<'a> {
+        Asked {
+            prompt: &site.prompt,
+            max_output: site.max_output,
+            attempts: site.attempts,
+        }
+    }
+}
+
 /// Takes from every limit the most a call to `site`'s prompt of `model`
 /// (its `ModelId` text) can use, sending `input` estimated tokens a
 /// time: `None` with no limits to keep (a program the checker didn't
@@ -174,7 +195,7 @@ fn caller_key(ctx: &Ctx<'_>) -> Option<String> {
 pub(crate) async fn take(
     ctx: &mut Ctx<'_>,
     ai: &Ai<'_>,
-    site: &GenerateSite,
+    site: Asked<'_>,
     model: &str,
     input: u64,
     settings: &[(u32, Value)],

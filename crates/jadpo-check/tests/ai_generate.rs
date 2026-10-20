@@ -539,8 +539,8 @@ fn only_an_action_asks_a_model_before_it_writes() {
 }
 
 /// A test scripts a model's answers by its prompt's name: a value of the
-/// type its calls ask for, `raw(...)` text, or one of the five failures;
-/// `recorded(...)` comes with chunk 5.5v4.
+/// type its calls ask for, `raw(...)` text, one of the five failures, or
+/// `recorded(...)`, naming one of the prompt's recordings (chunk 5.5v4).
 #[test]
 fn a_test_s_scripted_answers_are_checked() {
     let answer = action("", ALL_ARMS);
@@ -574,11 +574,11 @@ fn a_test_s_scripted_answers_are_checked() {
     );
     assert_eq!(
         of(
-            "toolchain.not_built_yet",
+            "semantic.fake_invalid",
             with("ai.answer_question: [recorded(\"sesame\")]")
         ),
         [format!(
-            "{test_path} toolchain.not_built_yet: `recorded(...)` isn't built yet"
+            "{test_path} semantic.fake_invalid: `answer_question` has no recording `sesame`"
         )]
     );
     assert_eq!(
@@ -677,4 +677,40 @@ fn the_schema_is_the_types_own_with_its_descriptions() {
         jadpo_check::ai::schema(graph, None, &jadpo_graph::TypeRef::Node(text)),
         None
     );
+}
+
+/// A route reaching `ai.generate` leaves room for it: the call's
+/// `timeout:` times its `attempts:` (60s and 2 by default), summed with
+/// the route's other outside calls, fits within the route's deadline
+/// (area 21, "Operations"; area 11's `route.calls_past_deadline`, chunk
+/// 7.5e).
+#[test]
+fn a_route_leaves_room_for_its_ai_calls() {
+    let route = "use support/actions { answer_customer }\nuse support/types { CustomerAsk, SupportAnswer }\n\n/// Where customers ask the assistant.\nroutes Questions {\n    prefix: /questions\n\n    /// Answers a customer's question.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: CustomerAsk\n        output: SupportAnswer\n        status: SuccessStatus.ok\n        run: answer_customer(input.question)\n    }\n}\n";
+    let ask = "use support/types { CustomerQuestion }\n\n/// A customer's question, as the page sends it.\ntype CustomerAsk = Input {\n    question: CustomerQuestion\n}\n";
+    let policy = "use support\n\npolicy {\n    actions: {\n        support.answer_customer: [Access.public]\n    }\n}\n";
+    let found = |options: &str| {
+        of(
+            "route.calls_past_deadline",
+            problems(&[
+                (ACTION_PATH, &action(options, ALL_ARMS)),
+                ("domains/support/routes/questions.jadpo", route),
+                ("domains/support/types/customer_ask.jadpo", ask),
+                ("policy.jadpo", policy),
+            ]),
+        )
+    };
+    assert_eq!(
+        found(""),
+        [
+            "domains/support/routes/questions.jadpo route.calls_past_deadline: `POST /questions` runs `answer_customer`, whose outside calls can take 120s, longer than its 10s deadline"
+        ]
+    );
+    assert_eq!(
+        found(", timeout: 10s, attempts: 2"),
+        [
+            "domains/support/routes/questions.jadpo route.calls_past_deadline: `POST /questions` runs `answer_customer`, whose outside calls can take 20s, longer than its 10s deadline"
+        ]
+    );
+    assert_eq!(found(", timeout: 8s, attempts: 1"), NONE);
 }

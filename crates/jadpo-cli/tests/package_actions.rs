@@ -78,11 +78,11 @@ fn files(sandbox: &str) -> Vec<(String, String)> {
         ),
         (
             "domains/billing/actions/subscribe.jadpo".to_string(),
-            "use app { pay }\nuse billing/failures { PaymentRefused }\nuse shared/providers/acme_pay\n\n/// Starts a subscription.\naction subscribe(plan: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {\n    return attempt pay.start(AcmePay.PayRequest {\n        reference: plan\n    }) {\n        card_declined: PaymentRefused\n    }\n}\n".to_string(),
+            "use app { pay }\nuse billing/failures { PaymentRefused }\nuse shared/providers/acme_pay\n\n/// Starts a subscription.\ndecline step.late_failure: \"An empty customer left by a declined card costs nothing\"\naction subscribe(plan: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {\n    return attempt pay.start(AcmePay.PayRequest {\n        reference: plan\n    }) {\n        card_declined: PaymentRefused\n    }\n}\n".to_string(),
         ),
         (
             "domains/billing/actions/subscribe_twice.jadpo".to_string(),
-            "use app { pay }\nuse billing/failures { PaymentRefused }\nuse shared/providers/acme_pay\n\n/// Starts a subscription, then attaches a second card itself.\naction subscribe_twice(plan: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {\n    var started: AcmePay.PayReply = attempt pay.start(AcmePay.PayRequest {\n        reference: plan\n    }) {\n        card_declined: PaymentRefused\n    }\n    return attempt pay.cards.attach(AcmePay.PayRequest {\n        reference: started.id\n    }) {\n        card_declined: PaymentRefused\n    }\n}\n".to_string(),
+            "use app { pay }\nuse billing/failures { PaymentRefused }\nuse shared/providers/acme_pay\n\n/// Starts a subscription, then attaches a second card itself.\ndecline step.late_failure: \"An empty customer left by a declined card costs nothing\"\naction subscribe_twice(plan: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {\n    var started: AcmePay.PayReply = attempt pay.start(AcmePay.PayRequest {\n        reference: plan\n    }) {\n        card_declined: PaymentRefused\n    }\n    return attempt pay.cards.attach(AcmePay.PayRequest {\n        reference: started.id\n    }) {\n        card_declined: PaymentRefused\n    }\n}\n".to_string(),
         ),
     ]
 }

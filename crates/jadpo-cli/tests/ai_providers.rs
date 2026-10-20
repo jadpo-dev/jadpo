@@ -190,12 +190,12 @@ pub(crate) fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -
     write(
         &root,
         "domains/support/actions/answer_customer.jadpo",
-        "use support/failures { AssistantUnavailable, QuestionTooLong }\nuse support/prompts { AnswerQuestion }\nuse support/types { Asked, SupportAnswer }\n\n/// Answers a customer's question.\naction answer_customer(asked: Asked) fails AssistantUnavailable, QuestionTooLong -> SupportAnswer {\n    return attempt ai.generate(\n        AnswerQuestion {\n            question: asked.question\n        },\n        as: SupportAnswer,\n        max_output: 300\n    ) {\n        refused: AssistantUnavailable\n        malformed: AssistantUnavailable\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: QuestionTooLong\n    }\n}\n",
+        "use support/failures { AssistantUnavailable, QuestionTooLong }\nuse support/prompts { AnswerQuestion }\nuse support/types { Asked, SupportAnswer }\n\n/// Answers a customer's question.\naction answer_customer(asked: Asked) fails AssistantUnavailable, QuestionTooLong -> SupportAnswer {\n    return attempt ai.generate(\n        AnswerQuestion {\n            question: asked.question\n        },\n        as: SupportAnswer,\n        max_output: 300,\n        timeout: 15s\n    ) {\n        refused: AssistantUnavailable\n        malformed: AssistantUnavailable\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: QuestionTooLong\n    }\n}\n",
     );
     write(
         &root,
         "domains/support/routes/answers.jadpo",
-        "use support/actions { answer_customer }\nuse support/types { Asked, SupportAnswer }\n\n/// Customers' questions.\nroutes Answers {\n    prefix: /answers\n\n    /// Anyone asks one.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: SupportAnswer\n        run: answer_customer(input)\n    }\n}\n",
+        "use support/actions { answer_customer }\nuse support/types { Asked, SupportAnswer }\n\n/// Customers' questions.\nroutes Answers {\n    prefix: /answers\n\n    /// Anyone asks one.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: Asked\n        output: SupportAnswer\n        deadline: 30s\n        run: answer_customer(input)\n    }\n}\n",
     );
     // The counts of what its calls use are kept in `main` (chunk 5.5v5).
     for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
