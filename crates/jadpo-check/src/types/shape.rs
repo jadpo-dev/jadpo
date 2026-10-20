@@ -114,6 +114,11 @@ pub struct VariantShape {
 /// wire_name: "after-noon" }`.
 pub const WIRE_NAME: &str = "wire_name";
 
+/// The setting a provider package's webhook event names the type its
+/// provider waits for in the response with (area 11, "Webhooks that need
+/// a reply"; chunk 7.7b): `reply: CallReply`.
+pub const REPLY: &str = "reply";
+
 /// The settings a provider package's field says how it is sent with (area
 /// 11, "Decoding"; chunk 7.2c2): one of the built-in encodings,
 /// `wire: Wire.unix_seconds`, or the package's own pair of functions,
@@ -382,6 +387,12 @@ fn line(member: &ast::Member, base: FieldsBase) -> Line {
     let value = member.value();
     if base == FieldsBase::Entity && crate::data::SECTIONS.contains(&key.as_str()) {
         // An entity's section, never a field (area 5).
+        return Line::Other;
+    }
+    if base == FieldsBase::Event && key == REPLY {
+        // An event's reply type, never a field (area 11, "Webhooks that
+        // need a reply"; chunk 7.7b): a package's webhook event names it,
+        // and any other event giving it is told so.
         return Line::Other;
     }
     let copying = COPY_LINES.contains(&key.as_str());

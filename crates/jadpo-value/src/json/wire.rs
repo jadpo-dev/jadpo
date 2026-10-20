@@ -236,6 +236,17 @@ fn is_number(text: &str) -> bool {
         && (whole == "0" || !whole.starts_with('0'))
 }
 
+/// The instant, in milliseconds since 1970, that a provider sent in
+/// `encoding`: a signed time a webhook carries in its body, such as AWS
+/// SNS's `Timestamp` (area 11, "Receiving from outside"; chunk 7.7b).
+/// `None` when it isn't one.
+pub fn instant_from_wire(encoding: WireEncoding, sent: &serde_json::Value) -> Option<i64> {
+    match read(encoding, None, sent, None).ok()? {
+        serde_json::Value::String(text) => jadpo_std::instant_millis(&text),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

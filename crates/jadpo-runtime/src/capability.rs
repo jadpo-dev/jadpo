@@ -479,6 +479,10 @@ impl<H: Host> Host for Faked<H> {
         self.host.passkeys()
     }
 
+    fn outbound(&self) -> Option<&dyn crate::Outbound> {
+        self.host.outbound()
+    }
+
     fn database(&self, store: &str) -> Option<&dyn Database> {
         self.host.database(store)
     }

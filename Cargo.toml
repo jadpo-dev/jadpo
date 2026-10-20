@@ -144,6 +144,12 @@ writeable = { version = "=0.6.4", default-features = false }
 # lock through tokio-postgres's SCRAM. No default features: no `alloc`
 # or OIDs are needed for a one-shot digest.
 sha2 = { version = "=0.11.1", default-features = false }
+# SHA-1 for the webhook checks that still sign with it (area 11,
+# "Receiving from outside"; chunk 7.7b; jadpo-value only): Twilio's
+# HMAC-SHA1 and AWS SNS's first signature version. RustCrypto's, the
+# release beside the `sha2` above, over the same `digest`; never used to
+# hash anything Jadpo itself keeps. No default features: no OIDs.
+sha1 = { version = "=0.11.0", default-features = false }
 # `crypto` (area 19, "Hashing and cryptography", chunk 5.5q2; jadpo-value
 # only): RustCrypto's audited, pure-Rust constructions, one per job and no
 # algorithm choices: XChaCha20-Poly1305 for `encrypt` and `decrypt`,

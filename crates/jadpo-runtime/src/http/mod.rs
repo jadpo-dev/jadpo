@@ -385,7 +385,8 @@ async fn respond(
         if !headers_readable(request) {
             return runtime_failure(HEADER_UNREADABLE, request_id, None);
         }
-        return crate::webhooks::answer(executor, webhooks, found, ctx, request, request_id).await;
+        return crate::webhooks::answer(app, executor, webhooks, found, ctx, request, request_id)
+            .await;
     }
     // A request with a credential counts against its caller once signed
     // in, or against its address if it isn't; every other request against
@@ -551,7 +552,7 @@ fn split_path(path: &str) -> Option<Vec<String>> {
 /// `text` with its `%XX` escapes decoded, and `+` read as a space in a
 /// query string; `None` when an escape is malformed or the bytes aren't
 /// UTF-8.
-fn percent_decode(text: &str, plus: bool) -> Option<String> {
+pub(crate) fn percent_decode(text: &str, plus: bool) -> Option<String> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0;
@@ -577,7 +578,7 @@ fn percent_decode(text: &str, plus: bool) -> Option<String> {
 
 /// A query string's values, by key, in the order they came; `None` when
 /// it can't be read.
-fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
+pub(crate) fn query_values(query: &str) -> Option<BTreeMap<String, Vec<String>>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for pair in query.split('&').filter(|pair| !pair.is_empty()) {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
@@ -1435,7 +1436,7 @@ pub(crate) fn invalid_input(request_id: &str, problems: &[Problem]) -> Response 
 
 /// A failure the program raised, in the envelope with its client fields
 /// and the status its kind sets.
-fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Response {
+pub(crate) fn declared_failure(app: &App<'_>, failure: &Failure, request_id: &str) -> Response {
     let status = failure.status.unwrap_or(500);
     let message = failure
         .message

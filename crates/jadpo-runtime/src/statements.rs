@@ -339,6 +339,26 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::webhooks::OLD_RECEIVED.to_string(),
         ),
         ("webhooks::RECEIVE", crate::webhooks::RECEIVE.to_string()),
+        (
+            "webhooks::replies::CLAIM",
+            crate::webhooks::replies::CLAIM.to_string(),
+        ),
+        (
+            "webhooks::replies::FIND",
+            crate::webhooks::replies::FIND.to_string(),
+        ),
+        (
+            "webhooks::replies::KEEP",
+            crate::webhooks::replies::KEEP.to_string(),
+        ),
+        (
+            "webhooks::replies::RELEASE",
+            crate::webhooks::replies::RELEASE.to_string(),
+        ),
+        (
+            "webhooks::replies::RETAKE",
+            crate::webhooks::replies::RETAKE.to_string(),
+        ),
     ]
 }
 
