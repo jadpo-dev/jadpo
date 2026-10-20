@@ -154,8 +154,8 @@ pub(crate) struct Facts {
     pub patterns: BTreeMap<NodeKey, PatternFact>,
     /// The `match`es on a call's outcome.
     pub outcomes: BTreeSet<NodeKey>,
-    /// The effects with no typed form of their own yet (`clock.now`), which
-    /// can pause.
+    /// Each read of `clock.now`, an effect that can pause, lowered to
+    /// [`jadpo_graph::body::Expr::Now`].
     pub effects: BTreeSet<NodeKey>,
     /// Each entity write (area 6): keyed by the record for a `create`, the
     /// call for an `update` or `delete`.

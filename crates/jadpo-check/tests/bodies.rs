@@ -358,7 +358,7 @@ fn sites_that_can_pause_are_effects_and_calls_into_actions() {
             .filter(|site| site.pauses)
             .map(|site| match &site.node {
                 Node::Expr(Expr::Call { callee, .. }) => format!("call {callee:?}"),
-                Node::Expr(Expr::Unchecked) => "effect".to_string(),
+                Node::Expr(Expr::Now) => "effect".to_string(),
                 other => format!("{other:?}"),
             })
             .collect();

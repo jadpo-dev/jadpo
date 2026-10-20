@@ -943,6 +943,53 @@ one per-invocation context in `jadpo-runtime`:
 | `enter(callable, site)`, `leave`, `branch(increment)` | Frames and path numbers |
 | `fail(failure)`, `fault(kind, site)` | Failures and defects with their `.jadpo` place |
 | `assertion_begin`, `record(site, value)`, `assertion_end` | A failed `assert`'s parts, recorded the same way by either executor (chunk 2.10) |
+| `effects::run(ctx, effects, effect, values)` | `clock.now`, `random`, `crypto` with its key, `json.read` and `json.write` with the plan's codec, and `emit` (chunk 7.0b) |
+
+**Operations with effects** (chunk 7.0b). Everything a body does that
+reads the invocation rather than only its values runs in one runtime
+function, `jadpo_runtime::effects::run`, which both executors call, so
+the interpreter keeps no copy and compiled code (Phase 8) re-implements
+none of it. The effect is named, never told by its source text:
+`Effect::Now` for `clock.now`, which the graph lowers to its own
+`Expr::Now` (a site that pauses, as it was); `Effect::Std { op, json }`
+for the standard operations `effects::is_effect` names, which
+`jadpo_value::run` refuses: `random`'s, from the invocation's random
+bytes, kept on a recording's tape; `crypto`'s but `read_certificate`,
+given the key ring its `key:` names (`effects::Keys`, read from the
+settings), its random bytes (secret for an encryption's nonce) and, for
+`verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
+`as:` claims, through the codec the plan numbers for their site (`json`);
+and `Effect::Emit { event }`, whose payload is written as its type's
+contract JSON and kept, with its subscribers, in the running action's
+outbox. What they need of the program comes as `Effects` (the plan's JSON
+table with the program's validators and shapes, the events' numbers and
+subscribers, the settings and the keys), which the interpreter builds
+from its plan and compiled code will hold as statics. A refusal comes
+back as `Refused::Broke` (a condition the call's `attempt` maps, with how
+a report names it and, for `mismatch`, its `DecodeProblem`),
+`Refused::Fault` or `Refused::Defect`, which the executor raises at its
+site. `the_interpreter_runs_effects_only_through_the_runtime` holds the
+interpreter to it: none of its sources may name what runs an effect (the
+clock, random bytes, `crypto::run`, a key ring, the JSON reader, the
+outbox), and each such name must still be the entry point's. The
+capability seam (chunk 7.0c) joins here, an outside call another effect.
+
+**The context's parts** (chunk 7.0b). `Ctx`'s fields are private and
+reached through methods. Its background-run state is one struct,
+`Background` (the system and its tenant, the subscriber's delivery whose
+handled record commits with the action, the chain and the trace, the
+work left for after the response, and the events kept), which the
+runner and the boundary set through `Ctx::background_mut`; its
+capabilities another, `Capabilities` (the host, through which its stores,
+passkey ceremonies and random bytes are reached, the identities made from
+them and the recording tape), reached through `Ctx::capabilities` and the
+methods that draw on them (`random_bytes`, `secret_random_bytes`,
+`new_id`, `transaction`); the capability seam (chunk 7.0c) is built on
+it. The action boundary's own state is `boundary::Boundary`, read and
+written field by field only in `boundary.rs`; the runner's batches use its
+methods. The request's own state (its caller, client address, deadline
+and a test's settings), the frames and the assertion being recorded stay
+on `Ctx`. Its public methods are unchanged.
 
 The runtime, not the executor, owns the action boundary: it opens the
 transaction at the first store operation, runs the body (a closure either

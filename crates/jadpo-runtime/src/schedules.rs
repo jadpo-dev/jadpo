@@ -901,7 +901,7 @@ async fn run_action(
     };
     match &outcome {
         Outcome::Value(_) => Ran::Succeeded {
-            events: ctx.emitted,
+            events: ctx.background().emitted(),
         },
         Outcome::Failed(failure) => Ran::Failed {
             code: failure.code.clone(),

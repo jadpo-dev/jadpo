@@ -326,7 +326,7 @@ async fn answer_request(
     ready: Option<&health::Readiness>,
 ) -> Response {
     // A request is never the system, whatever context it is answered in.
-    ctx.system = None;
+    ctx.background_mut().set_system(None);
     ctx.set_client(app.client.of(request));
     // Its trace continues the caller's `traceparent`, or starts one, so
     // what it emits carries it to each subscriber (area 12, question 17).
@@ -887,7 +887,7 @@ async fn run_with_caller(
     let claimed = Cell::new(false);
     // What was left for after the response before this route ran: only
     // its own action's work is waited for (chunk 6.3).
-    let earlier = ctx.deferred.len();
+    let earlier = ctx.deferred().len();
     let mut deadline = deadline;
     let mut attempt = 1;
     loop {
@@ -1062,11 +1062,11 @@ async fn run_with_caller(
             // The work the action set off, delivered now, while the
             // request waits, until it settles or `within:` passes; what
             // is left carries on after the response.
-            let work = ctx.deferred.split_off(earlier.min(ctx.deferred.len()));
+            let work = ctx.background_mut().take_deferred_from(earlier);
             let settled = match within.as_mut() {
                 Some(within) => crate::runner::settle_within(executor, ctx, work, within).await,
                 None => {
-                    ctx.deferred.extend(work);
+                    ctx.background_mut().defer_all(work);
                     crate::runner::Settled::Unsettled
                 }
             };

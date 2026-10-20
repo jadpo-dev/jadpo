@@ -19,7 +19,141 @@
 
 use jadpo_std::policy::Gate;
 
-use crate::{Ctx, Failure, Isolation, LocalFuture, Outcome, StoreError, Stored};
+use crate::ctx::{Capabilities, EmitRefused, Held, SessionEffect};
+use crate::{
+    Ctx, Event, Failure, Isolation, LocalFuture, Outcome, StoreError, Stored, Transaction,
+};
+
+/// An action's boundary while its body runs: opened when the outermost
+/// action starts, joined by every action it calls (area 6). Only this
+/// module reads and writes what it holds; the context keeps it
+/// ([`Ctx::open_boundary`]).
+#[derive(Default)]
+pub(crate) struct Boundary {
+    /// The level its transaction begins at: the outermost action's.
+    isolation: Isolation,
+    /// Begun at the first store operation.
+    transaction: Option<Box<dyn Transaction>>,
+    /// The store it was begun in.
+    store: Option<String>,
+    /// What the action emitted, for after it commits.
+    outbox: Vec<Event>,
+    /// Where in `outbox` the running action's own events begin, which its
+    /// allowance of [`crate::outbox::MAX_EVENTS`] counts from: 0, but for
+    /// each item of a batch, an action of its own whose events join its
+    /// page's (chunk 6.6a).
+    allowance: usize,
+    /// Its events' deliveries, once written to the outbox in its
+    /// transaction as it commits (chunk 6.1b), for the runner after it
+    /// commits.
+    sealed: Vec<crate::outbox::Delivery>,
+    /// How many events it wrote to the outbox as it sealed (chunk 6.2).
+    kept: u32,
+    /// A store operation found another transaction had changed what this
+    /// one read, so the body is run again.
+    concurrent_change: bool,
+    /// What the body did to the request's session, for its response once
+    /// it commits (area 8).
+    session: Option<SessionEffect>,
+    /// Whether the body issued an API token or a service key, whose
+    /// response is never kept for an idempotent repeat (area 8).
+    issued: bool,
+}
+
+impl Boundary {
+    pub(crate) fn new(isolation: Isolation) -> Boundary {
+        Boundary {
+            isolation,
+            ..Default::default()
+        }
+    }
+
+    pub(crate) fn isolation(&self) -> Isolation {
+        self.isolation
+    }
+
+    /// Its transaction in `store`, begun at the first store operation at
+    /// its isolation level in the store `capabilities` give (area 6). An
+    /// action writes one store (area 5), so asking for a second is a
+    /// fault.
+    pub(crate) async fn transaction(
+        &mut self,
+        capabilities: &Capabilities<'_>,
+        store: &str,
+    ) -> Result<&mut dyn Transaction, StoreError> {
+        match &self.store {
+            Some(open) if open != store => {
+                return Err(StoreError::Fault(format!(
+                    "an action writes one store, and this one already uses `{open}`, not `{store}`"
+                )));
+            }
+            Some(_) => {}
+            None => {
+                let Some(database) = capabilities.database(store) else {
+                    return Err(StoreError::Fault(format!("no store called `{store}`")));
+                };
+                self.transaction = Some(database.begin_at(self.isolation).await?);
+                self.store = Some(store.to_string());
+            }
+        }
+        match &mut self.transaction {
+            Some(transaction) => Ok(transaction.as_mut()),
+            None => Err(StoreError::Fault("no transaction".into())),
+        }
+    }
+
+    /// Its transaction, when it has begun one.
+    pub(crate) fn open_transaction(&mut self) -> Option<&mut dyn Transaction> {
+        match &mut self.transaction {
+            Some(transaction) => Some(transaction.as_mut()),
+            None => None,
+        }
+    }
+
+    /// Queues `event`, refused past the limits of one action's events.
+    pub(crate) fn emit(&mut self, event: Event) -> Result<(), EmitRefused> {
+        if self.outbox.len().saturating_sub(self.allowance) >= crate::outbox::MAX_EVENTS {
+            return Err(EmitRefused::TooMany);
+        }
+        if event.payload.len() > crate::outbox::MAX_EVENT_BYTES {
+            return Err(EmitRefused::TooLarge);
+        }
+        self.outbox.push(event);
+        Ok(())
+    }
+
+    /// The next action counts its events from here: an item of a batch, an
+    /// action of its own whose events join its page's (chunk 6.6a).
+    pub(crate) fn own_allowance(&mut self) {
+        self.allowance = self.outbox.len();
+    }
+
+    pub(crate) fn set_session(&mut self, effect: SessionEffect) {
+        self.session = Some(effect);
+    }
+
+    pub(crate) fn set_issued(&mut self) {
+        self.issued = true;
+    }
+
+    /// Another transaction changed what this one read.
+    pub(crate) fn mark_changed(&mut self) {
+        self.concurrent_change = true;
+    }
+
+    pub(crate) fn changed(&self) -> bool {
+        self.concurrent_change
+    }
+
+    pub(crate) fn take_transaction(&mut self) -> Option<Box<dyn Transaction>> {
+        self.transaction.take()
+    }
+
+    /// The deliveries of what it kept in the outbox as it sealed.
+    pub(crate) fn take_sealed(&mut self) -> Vec<crate::outbox::Delivery> {
+        std::mem::take(&mut self.sealed)
+    }
+}
 
 /// How many times a body runs before a concurrent change gives up with
 /// `unavailable` (area 6: "after three attempts within a second, the
@@ -116,23 +250,19 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             gated(ctx, body).await
         };
     }
-    ctx.actions += 1;
-    let hold = std::mem::take(&mut ctx.hold);
+    let hold = ctx.own_boundary();
     let isolation = body.isolation();
     let mut attempt = 1;
     loop {
-        ctx.boundary = Some(crate::ctx::Boundary {
-            isolation,
-            ..Default::default()
-        });
+        ctx.open_boundary(isolation);
         let mut outcome = gated(ctx, body).await;
         if matches!(outcome, Outcome::Value(_)) {
             outcome = sealed(ctx, body.outbox(), outcome).await;
         }
-        let boundary = ctx.boundary.take().unwrap_or_default();
+        let boundary = ctx.close_boundary();
         let succeeded = matches!(outcome, Outcome::Value(_));
         if hold && succeeded && !boundary.concurrent_change {
-            ctx.held = Some(crate::ctx::Held {
+            ctx.keep_held(Held {
                 transaction: boundary.transaction,
                 deliveries: boundary.sealed,
                 kept: boundary.kept,
@@ -164,7 +294,7 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
         };
         match ended {
             Ended::Committed => {
-                ctx.emitted = ctx.emitted.saturating_add(boundary.kept);
+                ctx.background_mut().count_kept(boundary.kept);
                 committed(ctx, boundary.sealed);
                 return outcome;
             }
@@ -217,8 +347,8 @@ async fn sealed(ctx: &mut Ctx<'_>, outbox: Option<&str>, outcome: Outcome) -> Ou
 /// emits keeps one beside its events (chunk 6.6a).
 pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), StoreError> {
     // Kept for a rerun after a concurrent change; the runner clears it.
-    let handled = ctx.handled.clone();
-    let Some(boundary) = ctx.boundary.as_mut() else {
+    let handled = ctx.background().handled().cloned();
+    let Some(boundary) = ctx.boundary_mut() else {
         return Ok(());
     };
     let events = std::mem::take(&mut boundary.outbox);
@@ -235,7 +365,7 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
         };
         let emitted_at = ctx.now();
         let trace = ctx.trace();
-        let depth = ctx.chain;
+        let depth = ctx.chain();
         for event in events {
             let Some(id) = ctx.new_id() else {
                 return Err(StoreError::Fault(
@@ -265,17 +395,14 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
         let written = u32::try_from(sealed.outbox.len()).unwrap_or(u32::MAX);
         let transaction = ctx.transaction(&store).await?;
         crate::outbox::write(transaction, &sealed, emitted_at, trace, depth).await?;
-        if let Some(boundary) = ctx.boundary.as_mut() {
+        if let Some(boundary) = ctx.boundary_mut() {
             boundary.sealed = sealed.deliveries;
             boundary.kept = written;
         }
     }
     // The store the transaction is in now, the outbox's when only it
     // began one.
-    let open = ctx
-        .boundary
-        .as_ref()
-        .and_then(|boundary| boundary.store.clone());
+    let open = ctx.boundary().and_then(|boundary| boundary.store.clone());
     if let Some(handled) = handled
         && open.as_deref() == Some(handled.store.as_str())
     {
@@ -302,10 +429,10 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
 /// change and answers `unavailable` otherwise.
 pub async fn commit_held(
     ctx: &mut Ctx<'_>,
-    held: crate::ctx::Held,
+    held: Held,
     then: Option<(&str, &str, &[crate::SqlValue])>,
 ) -> Result<(), StoreError> {
-    let crate::ctx::Held {
+    let Held {
         transaction,
         deliveries,
         kept,
@@ -330,21 +457,21 @@ pub async fn commit_held(
             // Nothing else to keep with it: the one statement, on its own.
             None => {
                 let database = ctx
-                    .host()
+                    .capabilities()
                     .database(store)
                     .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
                 let changed = database.query_once(sql, params).await;
                 lapsed(changed.map(|rows| rows.len() as u64))?;
             }
         }
-        ctx.emitted = ctx.emitted.saturating_add(kept);
+        ctx.background_mut().count_kept(kept);
         committed(ctx, deliveries);
         return Ok(());
     }
     if let Some(open) = transaction {
         open.commit().await?;
     }
-    ctx.emitted = ctx.emitted.saturating_add(kept);
+    ctx.background_mut().count_kept(kept);
     committed(ctx, deliveries);
     Ok(())
 }
@@ -374,7 +501,7 @@ async fn caught<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome
 pub(crate) struct Undo {
     open: bool,
     emitted: usize,
-    session: Option<crate::SessionEffect>,
+    session: Option<SessionEffect>,
     issued: bool,
 }
 
@@ -382,7 +509,7 @@ impl Undo {
     /// Marks where the call returns to if it fails; `Err` with the
     /// outcome the call ends in when the store couldn't.
     pub(crate) async fn take(ctx: &mut Ctx<'_>) -> Result<Undo, Outcome> {
-        let undo = match &mut ctx.boundary {
+        let undo = match ctx.boundary() {
             Some(boundary) => Undo {
                 open: boundary.transaction.is_some(),
                 emitted: boundary.outbox.len(),
@@ -414,13 +541,13 @@ impl Undo {
             if let Some(Err(error)) = savepoint(ctx, mark).await {
                 return lost(ctx, error);
             }
-        } else if failed && let Some(boundary) = &mut ctx.boundary {
+        } else if failed && let Some(boundary) = ctx.boundary_mut() {
             boundary.store = None;
             if let Some(transaction) = boundary.transaction.take() {
                 let _ = transaction.rollback().await;
             }
         }
-        if failed && let Some(boundary) = &mut ctx.boundary {
+        if failed && let Some(boundary) = ctx.boundary_mut() {
             boundary.outbox.truncate(self.emitted);
             boundary.session = self.session;
             boundary.issued = self.issued;
@@ -437,7 +564,7 @@ enum Mark {
 }
 
 async fn savepoint(ctx: &mut Ctx<'_>, mark: Mark) -> Option<Result<(), StoreError>> {
-    let transaction = ctx.boundary.as_mut()?.transaction.as_mut()?;
+    let transaction = ctx.boundary_mut()?.open_transaction()?;
     Some(match mark {
         Mark::Take => transaction.savepoint().await,
         Mark::Release => transaction.release_savepoint().await,

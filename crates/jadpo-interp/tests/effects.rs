@@ -2,7 +2,9 @@
 //! `not_built_yet` fault naming them at their `.jadpo` line, never a panic;
 //! `clock.now` reads the invocation's clock;
 //! a read or write on a host with no store stops with the store's fault at
-//! its line; the pure parts of actions and tests run.
+//! its line; the pure parts of actions and tests run; and the interpreter
+//! runs every operation with effects through the runtime's one entry point
+//! for them (chunk 7.0b).
 
 use crate::support;
 
@@ -181,4 +183,83 @@ fn a_write_without_a_store_faults_at_its_line() {
             vec!["main.jadpo:12".to_string()]
         )
     );
+}
+
+/// What runs an operation with effects itself, each with the effect it
+/// gives away: the runtime's entry point (`jadpo_runtime::effects`) names
+/// every one, and no interpreter source may.
+const EFFECTS_ONLY: &[(&str, &str)] = &[
+    (".now()", "reads the invocation's clock: `clock.now`"),
+    ("random_bytes", "takes the invocation's random bytes"),
+    ("random::run", "runs `random`"),
+    ("reads_generator", "tells `random` and a salt apart"),
+    ("crypto::run", "runs `crypto`"),
+    ("is_crypto", "tells `crypto` apart"),
+    ("reads_clock", "gives `verify_jwt` the clock"),
+    ("KeyRing", "holds the key a `crypto` call's `key:` names"),
+    (
+        "verify_jwt_as",
+        "reads a token's claims with the plan's codec",
+    ),
+    ("Op::Crypto", "runs a `crypto` operation of its own"),
+    ("Op::Json", "runs `json.read` or `json.write` of its own"),
+    ("read_value", "reads JSON with the plan's codec"),
+    ("ctx.emit(", "keeps an event in the outbox"),
+    ("EmitRefused", "says why an `emit` wasn't kept"),
+    ("subscribers_of", "finds an event's subscribers"),
+];
+
+/// A source file's code, without its comments and its tests: what it runs.
+fn code_of(text: &str) -> String {
+    let text = text
+        .split("#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or_default();
+    text.lines()
+        .map(|line| line.split("//").next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn the_interpreter_runs_effects_only_through_the_runtime() {
+    let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let entry = code_of(
+        &std::fs::read_to_string(crates.join("jadpo-runtime/src/effects.rs"))
+            .expect("the runtime's entry point for effects"),
+    );
+    let mut sources: Vec<_> = std::fs::read_dir(crates.join("jadpo-interp/src"))
+        .expect("the interpreter's sources")
+        .map(|entry| entry.expect("a source").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
+    sources.sort();
+    assert!(sources.len() > 3, "the interpreter's sources: {sources:?}");
+    let mut found = Vec::new();
+    for path in &sources {
+        let code = code_of(&std::fs::read_to_string(path).expect("a source file"));
+        let file = path.file_name().unwrap_or_default().to_string_lossy();
+        for (name, what) in EFFECTS_ONLY {
+            if code.contains(name) {
+                found.push(format!("{file}: `{name}` {what}"));
+            }
+        }
+        // `clock.now` is the graph's own node, never told by its text.
+        if code.contains("\"clock.now\"") {
+            found.push(format!("{file}: tells `clock.now` by its source text"));
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "the interpreter runs an operation with effects of its own; call \
+         `jadpo_runtime::effects::run` instead, which compiled code calls too:\n{}",
+        found.join("\n")
+    );
+    // Each name is still the entry point's, so the list can't go stale.
+    for (name, _) in EFFECTS_ONLY {
+        assert!(
+            entry.contains(name),
+            "`{name}` is no longer the runtime's entry point's: update EFFECTS_ONLY"
+        );
+    }
 }
