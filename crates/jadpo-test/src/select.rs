@@ -89,7 +89,13 @@ pub(crate) fn resolve(options: &Options) -> Result<Target, Ran> {
             "Give a `.test.jadpo` file, a file and a line as `<file>:<line>`, or a folder",
         ));
     };
-    if path.is_file() && path.extension().and_then(|e| e.to_str()) != Some("jadpo") {
+    // A package's recording is checked as a test (chunk 7.2d2).
+    let recording = path.extension().and_then(|e| e.to_str()) == Some("json")
+        && path
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|folder| folder == "recordings");
+    if path.is_file() && path.extension().and_then(|e| e.to_str()) != Some("jadpo") && !recording {
         return Err(arguments(
             format!("`{as_written}` isn't a Jadpo file"),
             "`jadpo test` runs the tests in files whose names end in `.jadpo`.",

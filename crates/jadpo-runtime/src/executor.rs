@@ -34,6 +34,15 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// The value the program started with for setting number `at`: its
+    /// variable's, its `test:` or its `default:` (area 10). What an email's
+    /// `from:` reads (area 16; chunk 7.3). None for an executor that keeps
+    /// no settings.
+    fn setting(&self, at: u32) -> Option<Value> {
+        let _ = at;
+        None
+    }
+
     /// Where callable `callable`'s clock starts, in milliseconds since
     /// 1970-01-01T00:00:00Z: a test's `clock:` (area 13). None for anything
     /// else, which runs at its host's time or the test default.
@@ -84,6 +93,20 @@ pub trait Executor {
     /// 7.2d): what a test's host gives a package's fake for.
     fn provider_connections(&self) -> Vec<&str> {
         Vec::new()
+    }
+
+    /// Reads the recording at `file` of one of the app's own integrations
+    /// as its operation's output, through the package's own decoders run
+    /// at `ctx` (area 11, "Provenance and confirmation"; chunk 7.2d2):
+    /// what `jadpo test` runs for each. `None` when the program holds no
+    /// such recording.
+    fn recording(
+        &self,
+        ctx: &mut Ctx<'_>,
+        file: &str,
+    ) -> Option<Result<(), crate::recorded::Unread>> {
+        let _ = (ctx, file);
+        None
     }
 
     /// Runs callable `callable` with `args`, one per parameter, against

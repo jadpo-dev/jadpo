@@ -1535,7 +1535,7 @@ error: `layout.unused_declaration` can't be declined
   |
 5 | decline layout.unused_declaration: "Kept for next quarter"
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
-  reason: Only judgement calls can be declined: `constant.similar_exists`, `library.similar_exists`, `package.standard_candidate`, `query.nearest_exact`, `translation.field_unused`, `type.batch_order_updatable`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  reason: Only judgement calls can be declined: `constant.similar_exists`, `email.field_unused`, `library.similar_exists`, `package.standard_candidate`, `query.nearest_exact`, `translation.field_unused`, `type.batch_order_updatable`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
   help: docs/language/01-project-layout-and-modules.html#decline-not-declinable
@@ -2585,6 +2585,7 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
      | `type.standard_exists` (decided 2026-10-17) | 19 | A shape can match a standard type by chance |
      | `type.variant_retired` (decided 2026-10-17) | 19 | Code that reads old records names a withdrawn code on purpose |
      | `type.batch_order_updatable` (area 12's question 13; built in chunk 6.4b3) | 12 | A field that can change only in a way that never moves a record behind the walk |
+     | `email.field_unused` (built in chunk 7.3) | 16 | A field kept for the next version of an email's templates |
      | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
      | Rate limits counted in memory | 16 | One instance, by design |
      | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |

@@ -40,24 +40,6 @@ pub(super) fn plural(n: usize, word: &str) -> String {
 }
 
 impl Body<'_> {
-    /// How `head.rest[0]...` reaches a package (chunk 7.1c2): `Some(Some(via))`
-    /// when `rest[0]` is a version to take into the package's name,
-    /// `Postcodes.v3` (or one written needlessly, which reads as the
-    /// package itself), `Some(None)` when a version is missing while two
-    /// are held, and `None` when the name needs nothing.
-    pub(super) fn through_version(&self, head: &str, rest: &[String]) -> Option<Option<String>> {
-        let versions = self.symbols.versions(head);
-        let next = rest.first()?;
-        if !versions.is_empty() {
-            let via = format!("{head}.{next}");
-            return Some(versions.contains(&via).then_some(via));
-        }
-        let needless = rest.len() > 1
-            && jadpo_db::is_version_label(next)
-            && self.symbols.declared(&format!("{head}.{next}")).is_empty();
-        needless.then(|| Some(head.to_string()))
-    }
-
     /// A call; `expected` is the type its position requires, which fixes a
     /// standard-library operation's type variables that its arguments
     /// don't.
@@ -238,7 +220,7 @@ impl Body<'_> {
             // and version, `Postcodes.v3.uk.parse(...)`; one without its
             // version, or with one while a single version is held, is
             // resolution's to report (chunk 7.1c2).
-            match self.through_version(&head, &rest) {
+            match self.symbols.through_version(&head, &rest) {
                 Some(Some(via)) => {
                     head = via;
                     rest.remove(0);
@@ -1405,11 +1387,13 @@ impl Body<'_> {
         }
         let given = args.len();
         let extra = slots.iter().filter(|slot| slot.is_none()).count();
-        // An option may be left out (area 10's `dst:`).
+        // An option may be left out (area 10's `dst:`), and a template's
+        // `text.format` takes its email's locale (area 16, "Email").
+        let template = self.context == super::Context::Template;
         let optional = |slot: usize| {
             table
                 .and_then(|op| op.params.get(slot))
-                .is_some_and(|param| param.optional)
+                .is_some_and(|param| param.optional || (template && param.name == "locale"))
         };
         let missing: Vec<String> = params
             .iter()

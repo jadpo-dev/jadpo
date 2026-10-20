@@ -61,4 +61,4 @@ target/release/jadpo calls
   <!-- try {"file": "app.jadpo", "replace": "domains: [courier_desk]", "with": "domains: [intake]", "check": ["connection.domain_not_listed"]} -->
 - In `book_pickup.test.jadpo`, script `slot_taken` twice for the taken slot. `jadpo test` reports `test.fake_unused`: the test makes one call, and an answer no call takes is a mistake in the test or the code.
   <!-- try {"file": "domains/courier_desk/actions/book_pickup.test.jadpo", "replace": "couriers.pickups.create: [slot_taken]", "with": "couriers.pickups.create: [slot_taken, slot_taken]", "test": ["test.fake_unused"], "failed": 1} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Next, [27-guest-house](../27-guest-house/README.md) sends email: templates checked against their email's fields, sent once the action that emits them commits.

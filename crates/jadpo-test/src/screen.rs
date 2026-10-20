@@ -129,6 +129,28 @@ fn report(test: &Test, failure: &TestFailure, root: Option<&str>) -> Report {
             Item::Field(Field::new("reason", vec![Text::Prose(info.reason())])),
             Item::Field(Field::new("next", vec![Text::Prose(info.next())])),
         ]),
+        Detail::Recording(info) => {
+            let mut items = vec![Item::Field(Field::new(
+                "decode",
+                vec![Text::Prose(info.subject.clone())],
+            ))];
+            if let (Some(recorded), Some(written)) = (&info.recorded, &info.written) {
+                items.push(Item::Field(Field::value("recorded", recorded.as_str())));
+                items.push(Item::Field(Field::new(
+                    "written",
+                    vec![Text::value_in(Token::Failure, written.clone())],
+                )));
+            }
+            items.push(Item::Field(Field::new(
+                "reason",
+                vec![Text::Prose(info.reason.clone())],
+            )));
+            items.push(Item::Field(Field::new(
+                "next",
+                vec![Text::Prose(info.next.clone())],
+            )));
+            groups.push(items);
+        }
     }
     if joined && groups.len() > 1 {
         let rest = groups.remove(1);

@@ -995,6 +995,13 @@ impl Part<'_> {
                     order,
                 );
                 children.push(member.syntax().clone());
+            } else if crate::types::EMAIL_FIELDS
+                .iter()
+                .any(|(name, _)| *name == field.name)
+            {
+                // Every email's `to:` and `locale:` (area 16): written
+                // nowhere, so placed at its type.
+                self.copied_field(host, host_key, field, None, order);
             }
         }
         children

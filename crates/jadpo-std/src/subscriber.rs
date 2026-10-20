@@ -10,6 +10,9 @@ pub struct EventsPlan {
     pub subscribers: Vec<SubscriberPlan>,
     /// `application { events: { store: } }`.
     pub store: Option<String>,
+    /// Every email and how it is sent (area 16; chunk 7.3): each has a
+    /// subscriber whose target is [`Target::Email`].
+    pub emails: crate::email::EmailsPlan,
 }
 
 impl EventsPlan {
@@ -70,7 +73,9 @@ impl SubscriberPlan {
     /// or the capability's it hands the event to.
     pub fn calls_through(&self) -> Vec<String> {
         match &self.target {
-            Target::Capability { connection, .. } => vec![connection.clone()],
+            Target::Capability { connection, .. } | Target::Email { connection } => {
+                vec![connection.clone()]
+            }
             Target::Action { .. } => self.connections.clone(),
         }
     }
@@ -88,13 +93,18 @@ pub enum Target {
         args: Vec<Vec<String>>,
     },
     /// An operation of the capability its connection fills, given the
-    /// event whole: `email`'s `send` of an `EmailMessage` (chunk 7.3).
+    /// event whole: a test capability's (chunk 7.0c).
     Capability {
         /// The connection the host gives a driver for (area 11).
         connection: String,
         operation: String,
         repeat: Repeat,
     },
+    /// An email, rendered whole and handed to `send` of the connection
+    /// `application { email: }` names (area 16, "Email"; chunk 7.3): its
+    /// plan is [`crate::email::EmailsPlan::email`] of the subscriber's
+    /// event. Sent with no key, as SMTP and the mail APIs take none.
+    Email { connection: String },
 }
 
 /// Whether an outside call may be sent again (area 11, "Idempotency";

@@ -618,6 +618,40 @@ pub(crate) async fn attempt_delivery(
             );
             send(ctx, call, budget, within).await
         }
+        // An email, rendered whole and sent with no key (area 16; chunk
+        // 7.3): what can't be rendered is settled as a subscriber's
+        // outcome is, before anything goes out.
+        Target::Email { connection } => {
+            let emails = &events.plan.emails;
+            let rendered = match emails.email(&subscriber.event) {
+                Some(email) => {
+                    crate::email::message(executor, ctx, emails, email, &delivery.value).await
+                }
+                None => Err(Outcome::Fault(ctx.fault(
+                    FaultKind::Defect("an email this build doesn't have".into()),
+                    Frame::ENTRY,
+                ))),
+            };
+            match rendered {
+                Err(outcome) => Ok(outcome),
+                Ok(message) => {
+                    let marked = database
+                        .query_once(outbox::MARK_SENDING, &[id.clone(), counted.clone()])
+                        .await;
+                    if !matches!(marked, Ok(rows) if !rows.is_empty()) {
+                        let state = retried("unavailable", Some("unavailable")).await;
+                        return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
+                    }
+                    let call = Call::new(
+                        connection.clone(),
+                        jadpo_std::email::SEND,
+                        message,
+                        Repeat::Unkeyed,
+                    );
+                    send(ctx, call, budget, within).await
+                }
+            }
+        }
         Target::Action { callable, args } => {
             let Some(args) = outbox::arguments(args, &delivery.value) else {
                 settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
@@ -1041,6 +1075,34 @@ impl<'c, 'p> Batch<'c, 'p> {
         let saved = ctx.runner();
         ctx.become_system(system);
         Ok(Batch { ctx, saved })
+    }
+
+    /// Opens a batch whose transaction begins at its first store operation
+    /// rather than at once: one item whose action makes outside calls, a
+    /// batch of its own (area 12, "How a run goes"; chunk 7.4b). What it
+    /// reads before a call is a snapshot the call closes, and the run's
+    /// own statements ([`Batch::writing`]) run in the transaction after
+    /// it, with the item's writes. `ctx` must be running no action.
+    pub fn open_for_calls(
+        ctx: &'c mut Ctx<'p>,
+        isolation: Isolation,
+        system: System,
+    ) -> Result<Batch<'c, 'p>, StoreError> {
+        if ctx.in_action() {
+            return Err(StoreError::Fault(
+                "a batch opened inside a running action".into(),
+            ));
+        }
+        ctx.open_boundary(isolation);
+        let saved = ctx.runner();
+        ctx.become_system(system);
+        Ok(Batch { ctx, saved })
+    }
+
+    /// The batch's transaction in `store`, begun now if nothing has begun
+    /// one, for the run's own statements, which write (chunk 7.4b).
+    pub async fn writing(&mut self, store: &str) -> Result<&mut dyn Transaction, StoreError> {
+        self.ctx.transaction(store).await
     }
 
     /// Runs `callable` for each of `items`, as [`items`] does.

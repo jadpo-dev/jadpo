@@ -1078,17 +1078,37 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2d". Not built: `.requests`, `jadpo
   trace`, timelines; enum variants written through a package's name in
   an expression (`AcmeCouriers.Window.morning`) are refused as
-  `type.not_a_value`, so a scripted value can't give an enum field yet.
-- [ ] **7.1e Enum values through a package's name** `opus · high` (found
-  in chunk 7.2d): `AcmeCouriers.Window.morning` refused as
-  `type.not_a_value`, so code and a test's `fakes:` can't write a
-  package enum's value; written through the package (and its version
-  while two are held) as a type's name already is.
-- [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
+  `type.not_a_value`, so a scripted value can't give an enum field yet
+  (built in 7.1e).
+- [x] **7.1e Enum values through a package's name** `opus · high` (found
+  in chunk 7.2d). Built: a package enum's value written through the
+  package, and its version while two are held
+  (`AcmeCouriers.Window.morning`, `Postcodes.v3.Round.morning`), in code,
+  constants, a test's `fakes:`, a variant built with its fields and a
+  `match` pattern, one path with a type's name through a package. Choices
+  in area 11's "Chosen in chunk 7.1e".
+- [x] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
   recordings and `jadpo package record` (against a local HTTP server in
   tests), every decoder run over every recording in `jadpo test` and the
   publishing bar, and `jadpo dev`'s fakes answering from a package's
-  recordings, their placeholders filled.
+  recordings, their placeholders filled. Built: a recording keeps the
+  answer along `output_at:` and the members the output type declares,
+  each plain text or number a placeholder naming its built-in type
+  (`"{Text}"`), what the package's own encodings and decoders read kept
+  as sent (`jadpo_runtime::recorded`); `jadpo test` reads every recording
+  of the app's own integrations through the package's decoders as a test
+  of kind `recording`, a field's `decode:` and `encode:` checked to give
+  back what was recorded (`test.recording_undecodable`,
+  `test.round_trip_failed`), and the publishing bar as its `decoders`
+  row; `jadpo dev`'s fake answers an operation from its recording, its
+  placeholders filled, logged as `recording`; and `jadpo package record
+  <connection> <operation> --input <json>` calls the sandbox once through
+  the package driver, never live and never with a stand-in credential
+  (`recording.refused`), keeps an answer that decodes and refuses one
+  that doesn't or a refusal (`recording.failed`), into the app's own
+  integration or a linked checkout. Live tests in `recordings.rs`
+  against a local server. Choices in area 11's "Chosen in chunk 7.2d2";
+  writing an operation's output type from the answer waits for 7.2e.
 - [x] **7.2e Mapping imported types to standard types** `opus · high`,
   after 7.2d and 7.1b (area 11, "Mapping imported types to standard
   types", Richard 2026-10-17): shape and name detection decoded at the
@@ -1133,13 +1153,44 @@ The design is area 11 as revised on 2026-10-16, with its research in
   with an alert line per connection. Live tests in
   `circuit_breaker.rs` against a local server answering `503`. Choices
   in area 12's "When a provider keeps failing".
-- [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
-  Jadpo-rendered, attachments), the SMTP driver and a mail package as a
-  second connection proving the swap, `emails/` templates and the shared
-  layout, the dev inbox, the health score. Chunk 5.3b refuses a dotted
-  translation key (area 16's old `"welcome_email.subject"`) as
-  `translation.key_invalid`; under translations as messages (5.4c) an
-  email's subject is its own member in its domain's language files.
+- [x] **7.3 Email: templates and the capability over SMTP** `opus · high`
+  (split from 7.3 Email on 2026-10-20): every `EmailMessage`'s `to:` and
+  `locale:`; its `.html` and `.txt` templates in `emails/` under the strict
+  rules, checked by the body checker and run by the executor; the shared
+  layout; `email: { connection: from: }`; `emit` of an email delivered to
+  the capability after commit, rendered whole at send, attachments
+  included, an unknown outcome parked; and the SMTP driver, tested against
+  a local SMTP server. Built: an email's `.html` and `.txt` read as
+  records beside its type, checked as pure callables taking its fields
+  (`email.template_missing`, `template_not_allowed`,
+  `template_value_invalid`, declinable `field_unused`), translations and
+  `text.format` in its locale, `{{ locale.direction }}` from Jadpo's
+  `text_direction` wording, numbers formatted, enums worded, HTML
+  escaped unless `Html`; `shared/emails/layout.*` with `{{ content }}`,
+  `{{ subject }}` and `{{ app.display_name }}` from `application {
+  display_name: }`; `email:` and `Driver.smtp` connections
+  (`email.settings_invalid`, `email.connection_required`, area 11's
+  connection rules for `host:`, `port:` and `credential:`, the network
+  report's row); email subjects required in every complete locale; each
+  email type a subscriber of its own targeting `Target::Email`, the
+  runtime rendering it at send (`jadpo_runtime::email`) and sending it
+  unkeyed; the SMTP driver (`jadpo_drivers::smtp`, MIME and the seam's
+  classification) over the native host's `NativeRelay` (`STARTTLS` or TLS
+  on 465 through OpenSSL, in the clear only to this machine); `jadpo
+  test` catching every email. Live tests in `crates/jadpo-cli/tests/
+  emails.rs` against an SMTP server started in the test; example 27
+  teaches email. Choices in area 16's "Chosen in chunk 7.3", one flagged
+  for Richard: where a partial is declared; recommendation `type X =
+  EmailPartial { ... }` with its templates beside it.
+- [ ] **7.3c Email: the second connection, the dev inbox and the health
+  score** `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20): a
+  mail package as a second connection proving the swap (`provides/email.jadpo`'s
+  `provide email`, `limits: { attachments: }` checked against a `File`
+  field's `max_size`); partials (`{{ include }}`), once where a partial is
+  declared is decided; `email.sent` in tests; the dev inbox in `jadpo dev`
+  and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
+  score, `jadpo check`'s warnings about templates that would fail it, and
+  `jadpo email check-domain`.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
   generated endpoints (the email links to the frontend's `link:` path,
@@ -1178,7 +1229,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the SQL goldens show both statements. Batch items' calls and the
   compile-time order check split to 7.4b. Choices in area 6's "Outside
   calls hold no transaction" and compiler-runtime.md §2.6.
-- [ ] **7.4b Calls from a batch's items, and calls checked before writes**
+- [x] **7.4b Calls from a batch's items, and calls checked before writes**
   `opus · xhigh`, after 7.4 (split from 7.4 on 2026-10-20): when
   `each:`'s action makes outside calls, each item a batch of its own, run
   as a subscriber's delivery is, its calls first under keys derived from
@@ -1186,10 +1237,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   committed together (area 12, "How a run goes"); and a write placed
   before a later outside call a compile error naming the call it must
   follow (area 6, "Several outside calls"), so checked code never reaches
-  `call_in_transaction`. Done when a batch whose `each:` action books a
-  collection commits each item's booking with the run's position, a run
-  resumed after a crash sending a repeated item's call under its first
-  key, and `jadpo check` refuses a write before a call.
+  `call_in_transaction`. Built: `outside_calls` in the checker works out
+  which actions make outside calls and which write, through the actions
+  they call, and `data.write_before_call` (not declinable) is reported at
+  a write some way through the body runs before a call, naming the last
+  one; the plan marks an `each:` or `finished:` action that calls, and
+  the runner's `batches::calling` runs each such item as a batch of its
+  own: the run's place read on its own, the item read as a page of one
+  giving its own cursor (or a file's next row), its action run with no
+  transaction open and its calls keyed from the run and that cursor or
+  row, then the run's row locked and held to that place and the item's
+  writes, problem and next position committed together; `finished:`
+  likewise. Live tests in `batch_calls.rs` hold each call to
+  `pg_stat_activity` showing no open transaction, crash an item between
+  its call and its commit and resume it under the same key, and run
+  `jadpo check` on a write before a call; `provider_calls.rs`'s write
+  before a call is now refused by `jadpo check`. Choices in area 6's
+  "Several outside calls" and area 12's "How a run is kept".
 - [ ] **7.5 Multi-step calls** `opus · xhigh` (areas 11 and 12, decided
   2026-10-16, with the edge-case review's ten fixes): several keyed
   changing calls per action where the key survives a retry, each recorded

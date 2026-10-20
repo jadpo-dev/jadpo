@@ -173,6 +173,9 @@ pub struct Ctx<'p> {
     /// The id of the request being answered, which the development call
     /// log files each provider call under (chunk 7.2d).
     request_id: Option<String>,
+    /// Whether its keyed provider calls count their steps outside an
+    /// action: only `jadpo package record`'s one call (chunk 7.2d2).
+    standalone_calls: bool,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -230,6 +233,7 @@ impl<'p> Ctx<'p> {
             call_key: None,
             steps: 0,
             request_id: None,
+            standalone_calls: false,
         }
     }
 
@@ -271,9 +275,18 @@ impl<'p> Ctx<'p> {
     /// counted across the invocation, so two actions it runs never send
     /// one key; `None` outside an action.
     pub fn next_step(&mut self) -> Option<u32> {
-        self.boundary.as_ref()?;
+        if !self.standalone_calls {
+            self.boundary.as_ref()?;
+        }
         self.steps = self.steps.saturating_add(1);
         Some(self.steps)
+    }
+
+    /// Lets a provider call it makes outside an action take a key, its
+    /// step counted as an action's would be: `jadpo package record`'s one
+    /// call to a sandbox, which no action makes (chunk 7.2d2).
+    pub fn allow_standalone_calls(&mut self) {
+        self.standalone_calls = true;
     }
 
     /// How many keyed calls it has made.

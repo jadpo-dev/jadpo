@@ -211,6 +211,28 @@ pub struct ProviderPlan {
     pub application: String,
     pub connections: Vec<ConnectionPlan>,
     pub operations: Vec<OperationPlan>,
+    /// Every recording of the app's own integrations (area 11,
+    /// "Provenance and confirmation"; chunk 7.2d2), which `jadpo test` and
+    /// the publishing bar decode with its operation's decoders.
+    pub recorded: Vec<RecordedPlan>,
+}
+
+/// One recording, `recordings/<resource>.<operation>.json`, of a package
+/// the app's own integration holds (chunk 7.2d2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedPlan {
+    /// Its path in the project.
+    pub file: String,
+    /// The package's name and version, `AcmeCouriers.v1`.
+    pub package: String,
+    /// `pickups.create`, from the file's name.
+    pub operation: String,
+    /// The operation it records, planned as a call through a connection
+    /// would be (its `connection` is `u32::MAX` when no connection calls
+    /// it); `None` when the package has no such operation.
+    pub plan: Option<OperationPlan>,
+    /// The recording as committed.
+    pub text: String,
 }
 
 impl ProviderPlan {
@@ -335,6 +357,10 @@ pub struct OperationPlan {
     /// The identity keys of the package failures it answers with, whose
     /// codes the provider's error code is matched against.
     pub failures: Vec<String>,
+    /// Its recording's text, `recordings/<resource>.<operation>.json` in
+    /// its package, which `jadpo dev`'s fake answers from with its
+    /// placeholders filled (chunk 7.2d2).
+    pub recording: Option<String>,
 }
 
 /// What the call at one site needs besides its operation (chunk 7.2c2):

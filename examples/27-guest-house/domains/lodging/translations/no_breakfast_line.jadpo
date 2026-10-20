@@ -1,0 +1,2 @@
+/// Said to a guest who didn't book breakfast.
+type NoBreakfastLine = Message {}

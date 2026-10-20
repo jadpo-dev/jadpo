@@ -320,6 +320,9 @@ pub fn plan(db: &dyn Db, project: Project) -> TranslationPlan {
                 .cloned(),
         );
     }
+    // Jadpo's own enums' wording (`jadpo.text_direction`), which email
+    // templates write (area 16).
+    entries.extend(jadpo::analysis(db, project).entries.iter().cloned());
     entries.sort_by(|a, b| a.key.cmp(&b.key));
     TranslationPlan { entries }
 }

@@ -33,6 +33,7 @@
 
 mod config;
 mod constant;
+mod emails;
 mod identity;
 mod policy;
 mod providers;
@@ -152,7 +153,8 @@ fn is_principal(name: &str) -> bool {
         .any(|kind| kind.type_name() == name)
 }
 
-/// Every event type the project declares, by key, in key order.
+/// Every event type the project declares, and every email type, which is
+/// sent by emitting it (area 16), by key, in key order.
 fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
     let mut keys: Vec<Key> = graph
         .nodes()
@@ -162,7 +164,7 @@ fn event_types(graph: &jadpo_graph::Graph) -> Vec<Key> {
                 && matches!(
                     node.detail,
                     jadpo_graph::Detail::Type {
-                        base: jadpo_graph::Base::Event,
+                        base: jadpo_graph::Base::Event | jadpo_graph::Base::EmailMessage,
                         ..
                     }
                 )
@@ -180,12 +182,14 @@ fn events_plan(
     db: &dyn Db,
     project: Project,
     by_key: &HashMap<Key, u32>,
+    setting: &dyn Fn(&str) -> Option<u32>,
 ) -> jadpo_std::subscriber::EventsPlan {
     use jadpo_check::events::Tenant;
     use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
     let written = jadpo_check::types::written_stores(db, project);
     let called = jadpo_check::types::called_connections(db, project);
-    let subscribers = jadpo_check::events::subscribers(db, project)
+    let (emails, sending) = emails::plan(db, project, by_key, setting);
+    let mut subscribers: Vec<SubscriberPlan> = jadpo_check::events::subscribers(db, project)
         .iter()
         .filter_map(|model| {
             let callable = *by_key.get(&model.run)?;
@@ -221,11 +225,15 @@ fn events_plan(
             })
         })
         .collect();
+    // Each email's delivery (area 16; chunk 7.3).
+    subscribers.extend(sending);
+    subscribers.sort_by(|a, b| a.key.cmp(&b.key));
     jadpo_std::subscriber::EventsPlan {
         subscribers,
         store: jadpo_check::events::events_settings(db, project)
             .store
             .clone(),
+        emails,
     }
 }
 
@@ -428,6 +436,24 @@ impl Plan {
                 found.push((key, kind, path.clone(), Arc::clone(&checked.body)));
             }
         }
+        // Each email template's callable (area 16; chunk 7.3), whose text
+        // its reports quote.
+        for (path, key) in emails::template_keys(db, project) {
+            let checked = jadpo_check::types::template_body(
+                db,
+                project,
+                jadpo_check::lookups::Name::new(db, path.clone()),
+            );
+            if let Some(text) = project
+                .records(db)
+                .iter()
+                .find(|record| record.path == path)
+                .and_then(|record| record.text.as_ref().ok())
+            {
+                files.insert(path.clone(), text.clone());
+            }
+            found.push((key, Kind::Function, path, Arc::clone(&checked.body)));
+        }
         // Numbered in key order, so the same project always numbers its
         // callables the same way; a key declared twice is an error the
         // checker reports, and the first is kept.
@@ -621,6 +647,8 @@ impl Plan {
             let backfill = backfill_lines.get(&key);
             let label = match (kind, backfill) {
                 (_, Some((field, _))) => format!("backfill {field}"),
+                // An email's template: `email accounts.WelcomeEmail html`.
+                _ if node.is_none() && key.name().starts_with("email ") => key.name().to_string(),
                 (Kind::Test, _) => format!("test \"{name}\""),
                 (kind, _) => format!("{} {name}", kind.word()),
             };
@@ -697,6 +725,16 @@ impl Plan {
         let mut batches: Vec<jadpo_std::batch::BatchPlan> = Vec::new();
         let mut batch_numbers: Vec<Option<u32>> = Vec::new();
         let run_stores = jadpo_check::types::file_run_stores(db, project);
+        // An action that makes outside calls runs each item, and
+        // `finished:`, as a batch of its own (area 12, chunk 7.4b).
+        let outside = jadpo_check::types::outside_calls(db, project);
+        let calling =
+            |(key, call): (Key, jadpo_std::batch::BatchCall)| jadpo_std::batch::BatchCall {
+                calls: outside
+                    .get(&key)
+                    .is_some_and(|outside| outside.calls.is_some()),
+                ..call
+            };
         for plan in batch_sites.into_iter().map(|site| {
             // A query's pages, kept in its store; or a file's rows, kept
             // where the run's actions write (chunk 6.4b).
@@ -732,7 +770,7 @@ impl Plan {
                     }),
                 ),
                 None => (
-                    jadpo_std::batch::BatchEach::Action(site.each.clone()?.1),
+                    jadpo_std::batch::BatchEach::Action(calling(site.each.clone()?)),
                     None,
                 ),
             };
@@ -757,7 +795,7 @@ impl Plan {
                 from_args: site.from_args,
                 each,
                 to,
-                finished: site.finished.map(|(_, call)| call),
+                finished: site.finished.map(calling),
                 key: site.key,
                 tenant: jadpo_check::batches::run_tenant(
                     db,
@@ -846,7 +884,14 @@ impl Plan {
             &queries,
         );
         routes.identity = identity;
-        let events = events_plan(db, project, &by_key);
+        let events = events_plan(db, project, &by_key, &|name: &str| {
+            setting_ids
+                .get(&config::key(
+                    jadpo_check::graph::registry(db, project),
+                    name,
+                ))
+                .copied()
+        });
         let schedules = schedules_plan(db, project, &by_key, &purges);
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan

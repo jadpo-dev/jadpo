@@ -5463,7 +5463,7 @@ a `LocalisedText` are each stored as that JSON in one `jsonb` column.
 > Built: `Html` and `Markdown` with `markup.to_html` and
 > `markup.to_plain_text`, and `RichText` and `LocalisedText` with
 > `markup.rich_to_html` and `text.pick`. Templates that write `Html` out
-> unescaped (area 16) come with email (chunk 7.3).
+> unescaped (area 16) were built with email in chunk 7.3.
 
 ## Hashing and cryptography
 

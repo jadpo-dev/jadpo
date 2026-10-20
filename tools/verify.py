@@ -178,8 +178,9 @@ POSTGRES = [
     ('live PostgreSQL: policy', [('jadpo-cli', 'policy'), ('jadpo-cli', 'system')], []),
     # Batch runs: pages committed with their position, problems, a crash
     # resumed, `key:`, a cancel and a deploy that changed the call (area
-    # 12, chunk 6.4).
-    ('live PostgreSQL: batches', [('jadpo-cli', 'batches')], []),
+    # 12, chunk 6.4); and items whose action makes outside calls, each a
+    # batch of its own, keyed calls repeated after a crash (chunk 7.4b).
+    ('live PostgreSQL: batches', [('jadpo-cli', 'batches'), ('jadpo-cli', 'batch_calls')], []),
     # The runtime's request path counted in round trips (chunk 4.10),
     # and signed sessions: no read to sign in while a signed part
     # lasts, the delay's bound on revocation, key rotation, the key
@@ -325,7 +326,7 @@ def steps(profile: str, require_examples: bool = False, table: list | None = Non
         # have, so tokio-postgres is proven to build for wasm32 too.
         crates = wasm_crates()
         packages = [arg for name in crates for arg in ('-p', name)]
-        features = (['--features', 'jadpo-drivers/postgres,jadpo-drivers/package']
+        features = (['--features', 'jadpo-drivers/postgres,jadpo-drivers/package,jadpo-drivers/smtp']
                     if 'jadpo-drivers' in crates else [])
         checks.append(Step('shared and runtime crates for wasm32', 'wasm32',
                            ['cargo', 'build', '--locked', '--target', WASM, *packages, *features],

@@ -44,6 +44,7 @@ mod quantities;
 mod ranges;
 mod request;
 mod standard_rules;
+pub(crate) mod template;
 mod temporal;
 mod text;
 mod translation;
@@ -71,6 +72,7 @@ pub(crate) use facts::{NodeKey, node_key};
 pub use failing::Fallible;
 pub(crate) use features::{is_feature, wrong_arguments as feature_arguments};
 pub(crate) use lower::transition_key;
+pub use template::{template_body, template_reads};
 
 /// Which failures can leave one callable (area 4).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -261,44 +263,13 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         return Checked::default();
     };
     let lookup = Lookup::for_file(db, project, file);
-    let mut checker = Body {
+    let mut checker = Body::new(
         db,
         project,
-        path: file.path(db),
-        ownership: &location(db, project, file).ownership,
-        table: &lookup,
-        calls: &lookup,
-        symbols: &lookup,
-        failures: &lookup,
-        writes: &lookup,
-        scopes: Vec::new(),
-        result: Ty::Prim(Prim::Unit),
-        context: Context::Action,
-        test: false,
-        word: "function",
-        library: None,
-        unknown_name: false,
-        unused: Vec::new(),
-        last_call: CallKind::Other,
-        dead: false,
-        flow: Flow::default(),
-        handled: Vec::new(),
-        arm: Arm::None,
-        facts: Facts::default(),
-        known: known::Known::default(),
-        assigned: Vec::new(),
-        set: None,
-        out: Vec::new(),
-        deferred: Vec::new(),
-        undeclared: false,
-        resolved: Vec::new(),
-        loops: 0,
-        pending_block: None,
-        stored: None,
-        retired: Vec::new(),
-        added: Vec::new(),
-        action: None,
-    };
+        file.path(db),
+        &location(db, project, file).ownership,
+        &lookup,
+    );
     let Some(target) = checker.target(&decl, callable.function(db)) else {
         return Checked::default();
     };
@@ -478,6 +449,10 @@ enum Context {
     /// "Computed backfills"): pure, reading its row's stored fields, and
     /// never able to fail.
     Backfill,
+    /// An email's template or the shared layout (area 16, "Email"):
+    /// pure, reading only its email's fields, translating and formatting
+    /// in its locale, which those calls take without `locale:`.
+    Template,
 }
 
 impl Context {
@@ -489,6 +464,7 @@ impl Context {
                 | Context::Constant
                 | Context::Rule
                 | Context::Backfill
+                | Context::Template
         )
     }
 
@@ -501,6 +477,7 @@ impl Context {
             Context::Constant => "a constant",
             Context::Rule => "a rule",
             Context::Backfill => "a backfill",
+            Context::Template => "a template",
         }
     }
 }
@@ -625,6 +602,57 @@ struct Body<'a> {
     /// actions: }` lists it decides which fields its updates may change
     /// (area 9).
     action: Option<String>,
+}
+
+impl<'a> Body<'a> {
+    /// A checker for code in `path`, owned by `ownership`, reading names
+    /// through `lookup`.
+    fn new(
+        db: &'a dyn Db,
+        project: Project,
+        path: &'a str,
+        ownership: &'a Ownership,
+        lookup: &'a Lookup<'a>,
+    ) -> Body<'a> {
+        Body {
+            db,
+            project,
+            path,
+            ownership,
+            table: lookup,
+            calls: lookup,
+            symbols: lookup,
+            failures: lookup,
+            writes: lookup,
+            scopes: Vec::new(),
+            result: Ty::Prim(Prim::Unit),
+            context: Context::Action,
+            test: false,
+            word: "function",
+            library: None,
+            unknown_name: false,
+            unused: Vec::new(),
+            last_call: CallKind::Other,
+            dead: false,
+            flow: Flow::default(),
+            handled: Vec::new(),
+            arm: Arm::None,
+            facts: Facts::default(),
+            known: known::Known::default(),
+            assigned: Vec::new(),
+            set: None,
+            out: Vec::new(),
+            deferred: Vec::new(),
+            undeclared: false,
+            resolved: Vec::new(),
+            loops: 0,
+            pending_block: None,
+            stored: None,
+            retired: Vec::new(),
+            added: Vec::new(),
+            action: None,
+        }
+    }
 }
 
 /// One callable to check.
@@ -1147,6 +1175,22 @@ impl Body<'_> {
         self.find(name).is_some()
     }
 
+    /// A dotted name through a package, as the declaration it reaches and
+    /// the number of names that took ([`NameView::through_package`]); a
+    /// local of the package's name is no package.
+    fn package_path(&self, names: &[String]) -> Option<Option<(String, usize)>> {
+        if self.is_local(names.first()?) {
+            return None;
+        }
+        self.symbols.through_package(names)
+    }
+
+    /// The span from `first`'s start to `last`'s end.
+    fn span_between(&self, first: &impl AstNode, last: &impl AstNode) -> Span {
+        let (start, end) = (self.span(first), self.span(last));
+        Span::new(self.path, start.start, end.end)
+    }
+
     fn pop_scope(&mut self) {
         let Some(scope) = self.scopes.pop() else {
             return;
@@ -1435,22 +1479,25 @@ impl Body<'_> {
     }
 
     /// `emit` (area 12, "Emitting an event"): only an action emits, and
-    /// only an event, a type with the `Event` base.
+    /// only an event, a type with the `Event` base, or an email, sent by
+    /// emitting it (area 16, "Email").
     fn emitted(&mut self, emit: &ast::EmitStmt, expr: &Expr, ty: &Ty) {
         if ty.has_error() {
             return;
         }
         let event = match ty {
-            Ty::Named(name) => {
-                (self.table.base(name) == Some(crate::types::FieldsBase::Event)).then_some(name)
-            }
+            Ty::Named(name) => matches!(
+                self.table.base(name),
+                Some(crate::types::FieldsBase::Event | crate::types::FieldsBase::EmailMessage)
+            )
+            .then_some(name),
             _ => None,
         };
         let Some(event) = event else {
             self.out.push(
                 Diagnostic::new(&rule::EVENT_EMIT_INVALID, format!("`emit` is given a `{ty}`"))
                     .at(self.span(expr), "not an event")
-                    .reason("`emit` announces that something happened: its value is an event, a type with the `Event` base declared in a domain's `events/` folder, built where it is emitted.")
+                    .reason("`emit` announces that something happened: its value is an event, a type with the `Event` base declared in a domain's `events/` folder, or an email to send, a type with the `EmailMessage` base in its `emails/` folder, built where it is emitted.")
                     .next("Emit an event, `emit <Name> { ... }`, declaring it as `type <Name> = Event { ... }`"),
             );
             return;

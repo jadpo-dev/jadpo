@@ -1,0 +1,4 @@
+type NightCount = Int {
+    min: 1
+    max: 28
+}

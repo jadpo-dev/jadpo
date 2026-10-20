@@ -18,6 +18,7 @@ mod formats;
 pub(crate) mod json_form;
 pub(crate) mod literal;
 mod loading;
+mod outside;
 mod recursion;
 pub(crate) mod rules;
 pub(crate) mod secrets;
@@ -31,7 +32,8 @@ pub(crate) use body::transition_key;
 pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{
     Callable, Checked, FailureSet, FailureSets, Fallible, backfill_callables, body_problems,
-    call_problems, callables_of, failure_set, failure_sets, rule_callables, typed_body,
+    call_problems, callables_of, failure_set, failure_sets, rule_callables, template_body,
+    template_reads, typed_body,
 };
 pub use connections::called_connections;
 pub use decl::type_problems;
@@ -46,6 +48,7 @@ pub use facts::{
     BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve, run_places,
 };
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
+pub use outside::{Outside, call_order_problems, outside_calls};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules, show as show_number};
 pub use shape::{
@@ -58,6 +61,7 @@ pub use stores::{
     store_problems, store_reaches, unkept_responses, used_stores, written_stores,
 };
 pub use table::{
-    Def, FieldDef, TypeTable, TypeView, VariantDef, WrittenCoding, standard_fields, type_table,
+    Def, EMAIL_FIELDS, FieldDef, TypeTable, TypeView, VariantDef, WrittenCoding, standard_fields,
+    type_table,
 };
 pub use ty::{BASES, Prim, TIME_FORMAT, Ty, TypeRef, container_arity, shown};

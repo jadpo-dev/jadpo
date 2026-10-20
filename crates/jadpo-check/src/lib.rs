@@ -18,6 +18,7 @@ pub mod connections;
 pub mod constants;
 pub mod data;
 pub mod declines;
+pub mod emails;
 pub mod events;
 mod failures;
 pub mod fixes;
@@ -146,6 +147,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(failure_problems(db, project, file).iter().cloned());
             out.extend(types::body_problems(db, project, file).iter().cloned());
             out.extend(types::recursion_problems(db, project, file).iter().cloned());
+            out.extend(
+                types::call_order_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(types::store_problems(db, project, file).iter().cloned());
             out.extend(
                 types::batch_store_problems(db, project, file)
@@ -220,6 +226,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
+        out.extend(emails::email_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(
             events::events_settings(db, project)

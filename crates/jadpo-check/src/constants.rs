@@ -556,8 +556,19 @@ impl<'db> Eval<'db> {
             let name = field.name_ref().as_ref().and_then(tree::name_ref_text);
             return select(receiver, name.as_deref());
         };
-        let head = tree::name_ref_text(&first).unwrap_or_default();
-        let names: Vec<String> = rest.iter().filter_map(tree::name_ref_text).collect();
+        let mut head = tree::name_ref_text(&first).unwrap_or_default();
+        let mut names: Vec<String> = rest.iter().filter_map(tree::name_ref_text).collect();
+        // A package's enum value, through the package and its version
+        // while two are held (area 11; chunk 7.1e).
+        let whole: Vec<String> = std::iter::once(head.clone()).chain(names.clone()).collect();
+        match NameView::through_package(&cx.lookup, &whole) {
+            Some(Some((reached, taken))) => {
+                head = reached;
+                names.drain(..taken - 1);
+            }
+            Some(None) => return Err(Stop::Unknown),
+            None => {}
+        }
         let written = tree::written(expr.syntax());
         if head == "config" {
             return self.not_fixed(

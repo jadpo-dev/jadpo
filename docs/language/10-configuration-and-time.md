@@ -1535,7 +1535,7 @@ Every locale knows its text direction (decided 2026-10-16, built in chunk
 script for the locale says (`Locale.ar_eg` and `Locale.he_il` read right to
 left, `Locale.en_gb` left to right). Jadpo ships its wording as the HTML
 values, `ltr` and `rtl`, so the email layout's `<html dir="{{
-locale.direction }}">` writes one of them once templates exist (chunk 7.3).
+locale.direction }}">` writes one of them (built in chunk 7.3).
 
 ```jadpo check project=locales-direction file=app.jadpo
 application {}
@@ -1704,8 +1704,8 @@ header and the same `locales { }`:
 > the exchange with translation services. Built in chunk 7.1b3: library
 > packages' translations, called through the package, and the root file's
 > package groups. Built in chunk 7.1b4: packages' text in `jadpo
-> translations export`, `import` and `unused`. Email templates that read
-> translations come with email in chunk 7.3 (area 16).
+> translations export`, `import` and `unused`. Built in chunk 7.3: email
+> templates that read translations, and email subjects required (area 16).
 
 Text the server writes for people (emails, generated pages, a failure's text
 for client apps) is translated in Jadpo itself. Each message is a type, each
@@ -2072,9 +2072,9 @@ test "a field given without its name is the next field" {
 An `EmailMessage`'s member in its domain's language files is its subject
 line, with the email's fields as placeholders; its body is its `.html` and
 `.txt` templates (area 16). A subject is worded where its emails are
-written (chunk 7.3 sends them), so it is checked when a language file words
-it, and it is not a call. It is not required yet: chunk 7.3 requires it
-with the email.
+written, checked when a language file words it, and it is not a call.
+Since chunk 7.3, which sends emails, it is required in every supported
+locale that isn't in progress, as a message's wording is.
 
 ```jadpo check project=translation-email file=app.jadpo hidden
 application {}
@@ -2090,6 +2090,10 @@ locales {
 type WelcomeEmail = EmailMessage {
     display_name: Text
 }
+```
+
+```jadpo check project=translation-email file=domains/accounts/emails/welcome_email.txt hidden
+Welcome to Acme, {{ display_name }}.
 ```
 
 ```jadpo check project=translation-email file=domains/accounts/translations/en_gb.jadpo
@@ -2111,7 +2115,7 @@ its values a wording, checked like a message with one enum field. A value's
 own fields are placeholders in that value's wording, both in the enum's
 wording and in a message that has the enum as its field; another value's
 fields are not available. In a template `{{ order.status }}` then
-writes the wording (chunk 7.3), and code reads it with
+writes the wording (built in chunk 7.3), and code reads it with
 `translations.<domain>.<enum>(value, locale: ...)`. Writing an enum out
 without wording is an error that says to add it, in a template. Area 2's
 "enums have no display labels" stands: the wording lives in translations.
@@ -2463,8 +2467,10 @@ Jadpo's messages are a catalogue, data in `jadpo-std` (`jadpo_text`): each
 has a key, a kind (a message, a failure or an enum), the feature that
 switches it on, the fields it may write besides `{app_name}`, a description
 for translators and the wording Jadpo ships. They have no runtime call:
-they are not in the `TranslationPlan`, the email machinery of chunk 7.3
-reads them, and `translations.jadpo` is not a scope code can call.
+`translations.jadpo` is not a scope code can call. The wording of
+Jadpo's enums the app has on is in the `TranslationPlan` as
+`jadpo.<key>`, which an email template's `{{ locale.direction }}`
+writes (chunk 7.3).
 
 A feature is switched on by what the project has, and a message's name is
 its key in the `jadpo: { }` group (a failure's is its code):
@@ -2491,7 +2497,8 @@ on until area 8's `sign_in:` is built, so none is listed, required or
 rewordable; privacy requests' messages (area 15) join the catalogue with
 that feature. `TextDirection`'s wording, `ltr` and `rtl`, is the same HTML
 values in every language, so Jadpo ships it in every locale and no app
-locale has to word it; nothing reads it until templates exist (chunk 7.3).
+locale has to word it; an email template's `{{ locale.direction }}`
+writes it (chunk 7.3).
 
 A library package carries translations as a domain does: a
 `translations/` folder with its message types, its failures' wording and
