@@ -1036,12 +1036,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   lazily, only the fields code reads (7.2c decodes every declared field
   as the answer arrives); `timed_out:` mapped on an idempotent operation;
   and `retry:` with its backoff.
-- [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
-  7.2c2: a generated fake per package and `fakes:` for provider
-  operations in tests; recordings and `jadpo package record`, every
-  decoder run over every recording; provider calls faked by default in
-  `jadpo dev`, with `development: { sandbox: }`; and the call log screen,
-  `jadpo calls` and `jadpo calls script`, on 7.0c's data.
+- [ ] **7.2d Fakes and the call log** `opus · high`, after 7.2c (split
+  from 7.2d Fakes, recordings and the call log on 2026-10-20): a
+  generated fake per package and `fakes:` for provider operations in
+  tests; provider calls faked by default in `jadpo dev`, with
+  `development: { sandbox: }`; and the call log screen, `jadpo calls`,
+  `jadpo calls show` and `jadpo calls script`, on 7.0c's data.
+- [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
+  recordings and `jadpo package record` (against a local HTTP server in
+  tests), every decoder run over every recording in `jadpo test` and the
+  publishing bar, and `jadpo dev`'s fakes answering from a package's
+  recordings, their placeholders filled.
 - [ ] **7.2e Mapping imported types to standard types** `opus · high`,
   after 7.2d and 7.1b (area 11, "Mapping imported types to standard
   types", Richard 2026-10-17): shape and name detection decoded at the
