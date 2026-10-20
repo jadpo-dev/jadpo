@@ -9,7 +9,7 @@
             "arrives_on": {
               "allows": {},
               "field": "arrives_on",
-              "position": 4,
+              "position": 5,
               "type": "date"
             },
             "booked_room": {
@@ -21,20 +21,26 @@
                 ]
               },
               "field": "booked_room",
-              "position": 3,
+              "position": 4,
               "type": "text"
             },
             "breakfast": {
               "allows": {},
               "field": "breakfast",
-              "position": 6,
+              "position": 7,
               "type": "boolean"
             },
             "guest_email": {
               "allows": {},
               "field": "guest_email",
-              "position": 1,
+              "position": 2,
               "type": "text"
+            },
+            "guest_id": {
+              "allows": {},
+              "field": "guest_id",
+              "position": 1,
+              "type": "uuid"
             },
             "guest_locale": {
               "allows": {
@@ -576,7 +582,7 @@
                 ]
               },
               "field": "guest_locale",
-              "position": 7,
+              "position": 8,
               "type": "text"
             },
             "guest_name": {
@@ -585,7 +591,7 @@
                 "min_length": 1
               },
               "field": "guest_name",
-              "position": 2,
+              "position": 3,
               "type": "text"
             },
             "id": {
@@ -600,16 +606,78 @@
                 "min": "1"
               },
               "field": "nights",
-              "position": 5,
+              "position": 6,
               "type": "smallint"
             }
           },
           "entity": "Booking",
+          "foreign_keys": {
+            "booking_guest_id_fkey": {
+              "columns": [
+                "guest_id"
+              ],
+              "on_delete": "cascade",
+              "table": "guest"
+            }
+          },
+          "indexes": {
+            "booking_arrives_on_id_idx": {
+              "columns": [
+                "arrives_on",
+                "id"
+              ],
+              "reason": "query my_bookings"
+            },
+            "booking_guest_id_idx": {
+              "columns": [
+                "guest_id"
+              ],
+              "reason": "reference Booking.guest_id"
+            }
+          },
           "primary_key": {
             "columns": [
               "id"
             ],
             "name": "booking_pkey"
+          }
+        },
+        "guest": {
+          "columns": {
+            "email": {
+              "allows": {},
+              "field": "email",
+              "position": 1,
+              "type": "text"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "last_signed_in_at": {
+              "allows": {},
+              "field": "last_signed_in_at",
+              "nullable": true,
+              "position": 2,
+              "type": "timestamptz(3)"
+            }
+          },
+          "entity": "Guest",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "guest_pkey"
+          },
+          "unique": {
+            "guest_email_key": {
+              "columns": [
+                "email"
+              ],
+              "rule": "Guest.email"
+            }
           }
         },
         "jadpo_circuit_breakers": {
@@ -935,6 +1003,182 @@
             "name": "jadpo_outbox_pkey"
           },
           "system": "outbox"
+        },
+        "jadpo_sessions": {
+          "columns": {
+            "csrf_verifier": {
+              "nullable": true,
+              "position": 3,
+              "type": "text"
+            },
+            "ends_at": {
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "principal_id": {
+              "position": 1,
+              "type": "uuid"
+            },
+            "started_at": {
+              "position": 4,
+              "type": "timestamptz(3)"
+            },
+            "verifier": {
+              "position": 2,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_sessions_ends_at_idx": {
+              "columns": [
+                "ends_at"
+              ],
+              "reason": "system sessions"
+            },
+            "jadpo_sessions_principal_id_idx": {
+              "columns": [
+                "principal_id"
+              ],
+              "reason": "system sessions"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_sessions_pkey"
+          },
+          "system": "sessions",
+          "unique": {
+            "jadpo_sessions_verifier_key": {
+              "columns": [
+                "verifier"
+              ],
+              "rule": "system sessions"
+            }
+          }
+        },
+        "jadpo_sign_in_requests": {
+          "columns": {
+            "address": {
+              "position": 1,
+              "type": "text"
+            },
+            "binding": {
+              "nullable": true,
+              "position": 8,
+              "type": "text"
+            },
+            "code": {
+              "nullable": true,
+              "position": 5,
+              "type": "text"
+            },
+            "exact": {
+              "nullable": true,
+              "position": 2,
+              "type": "text"
+            },
+            "expires_at": {
+              "nullable": true,
+              "position": 11,
+              "type": "timestamptz(3)"
+            },
+            "failed": {
+              "position": 15,
+              "type": "integer"
+            },
+            "failed_since": {
+              "nullable": true,
+              "position": 14,
+              "type": "timestamptz(3)"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "kept_until": {
+              "position": 16,
+              "type": "timestamptz(3)"
+            },
+            "request": {
+              "nullable": true,
+              "position": 3,
+              "type": "uuid"
+            },
+            "requested_at": {
+              "nullable": true,
+              "position": 10,
+              "type": "timestamptz(3)"
+            },
+            "return_to": {
+              "nullable": true,
+              "position": 7,
+              "type": "text"
+            },
+            "sealed": {
+              "nullable": true,
+              "position": 6,
+              "type": "bytea"
+            },
+            "sends": {
+              "position": 13,
+              "type": "integer"
+            },
+            "sends_since": {
+              "nullable": true,
+              "position": 12,
+              "type": "timestamptz(3)"
+            },
+            "token": {
+              "nullable": true,
+              "position": 4,
+              "type": "text"
+            },
+            "wrong_codes": {
+              "position": 9,
+              "type": "integer"
+            }
+          },
+          "indexes": {
+            "jadpo_sign_in_requests_kept_until_idx": {
+              "columns": [
+                "kept_until"
+              ],
+              "reason": "system sign-in requests"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_sign_in_requests_pkey"
+          },
+          "system": "sign_in_requests",
+          "unique": {
+            "jadpo_sign_in_requests_address_key": {
+              "columns": [
+                "address"
+              ],
+              "rule": "system sign-in requests"
+            },
+            "jadpo_sign_in_requests_request_key": {
+              "columns": [
+                "request"
+              ],
+              "rule": "system sign-in requests"
+            },
+            "jadpo_sign_in_requests_token_key": {
+              "columns": [
+                "token"
+              ],
+              "rule": "system sign-in requests"
+            }
+          }
         }
       }
     }

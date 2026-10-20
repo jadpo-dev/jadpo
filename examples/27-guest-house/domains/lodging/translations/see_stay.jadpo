@@ -1,0 +1,2 @@
+/// The confirmation's button to the guest's booking.
+type SeeStay = Message {}

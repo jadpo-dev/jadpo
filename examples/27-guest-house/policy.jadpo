@@ -1,0 +1,12 @@
+// The sign-in actions are run by people who aren't signed in yet; the
+// guest's own bookings only by a signed-in guest, the default.
+
+use lodging
+
+policy {
+    actions: {
+        lodging.ask_to_sign_in: [Access.public]
+        lodging.sign_in_with_link: [Access.public]
+        lodging.sign_in_with_code: [Access.public]
+    }
+}

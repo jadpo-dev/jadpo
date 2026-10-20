@@ -1,0 +1,19 @@
+// A fixture makes a guest as signing in would have, so a test can book
+// and read as them.
+
+use lodging/entities { Guest }
+use lodging/failures { GuestAlreadyKnown }
+
+/// A guest who has signed in before, with this address.
+fixture guest_at(address: Email) -> Principal.user {
+    var guest: Guest = attempt Guest.create {
+        set: {
+            email: address
+            last_signed_in_at: none
+        }
+        conflict: {
+            Guest.email: GuestAlreadyKnown
+        }
+    }
+    return Principal.user(guest)
+}

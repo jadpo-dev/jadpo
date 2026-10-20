@@ -1,0 +1,13 @@
+// A partial is a piece several emails share: a type with the
+// `EmailPartial` base, its `.html` and `.txt` beside it as an email's
+// are. In `shared/emails/` every domain's emails may include it; in a
+// domain's own `emails/` only that domain's may. A template includes it
+// as `{{ include button(label: ..., url: ...) }}`, giving each field
+// once by name, and the partial is written in the including email's
+// language.
+
+/// A link set as a button, in every email that asks the guest to act.
+type Button = EmailPartial {
+    label: PresentationText
+    url: Url
+}

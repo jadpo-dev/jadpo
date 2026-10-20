@@ -1,0 +1,19 @@
+// Every sign-in publishes a built-in event: `SignedIn` once a session
+// starts, `SignInRefused` for a link, a code or a first sign-in that was
+// refused. Only signing in publishes them, and none carries an address,
+// a link or a code. This action is what a subscriber runs for each
+// `SignedIn`, as the system.
+
+use lodging/entities { Guest }
+use lodging/failures { GuestNotFound }
+use lodging/queries { guest_by_id }
+
+/// Notes when a guest last signed in.
+action note_sign_in(event: SignedIn) fails GuestNotFound -> Guest {
+    var guest: Guest = attempt guest_by_id(event.user_id)
+    return Guest.update(guest) {
+        set: {
+            last_signed_in_at: clock.now
+        }
+    }
+}

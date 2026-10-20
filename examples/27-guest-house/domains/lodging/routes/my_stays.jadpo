@@ -1,0 +1,24 @@
+// These routes need a signed-in guest, the default.
+
+use lodging/types { BookingView, StayRequest }
+use lodging/actions { book_stay }
+use lodging/queries { my_bookings }
+
+/// A signed-in guest's stays.
+routes MyStays {
+    prefix: /my-stays
+
+    /// The guest's bookings.
+    GET / {
+        output: List<BookingView>
+        run: my_bookings()
+    }
+
+    /// Books a stay, and confirms it by email.
+    POST / {
+        input: StayRequest
+        output: BookingView
+        status: SuccessStatus.created
+        run: book_stay(input, current_principal.user)
+    }
+}

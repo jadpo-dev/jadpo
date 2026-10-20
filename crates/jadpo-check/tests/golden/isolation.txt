@@ -91,4 +91,10 @@
   action round_progress              read_committed
   fixture two_societies              read_committed
 27-guest-house
+  action ask_to_sign_in              read_committed
   action book_stay                   read_committed
+  action note_sign_in                repeatable_read: calls the query `guest_by_id`
+  action sign_in_with_code           read_committed
+  action sign_in_with_link           read_committed
+  action welcome_guest               read_committed
+  fixture guest_at                   read_committed

@@ -1,8 +1,15 @@
+// `guest_id` grants the guest it points at: a guest books, and reads,
+// only their own stays.
+
+use lodging/entities { Guest }
 use lodging/types { GuestName, NightCount, RoomKind }
 
 /// A guest's stay.
 entity Booking {
     id: Uuid
+    guest_id: Guest.id {
+        on_delete: OnDelete.cascade
+    }
     guest_email: Email
     guest_name: GuestName
     booked_room: RoomKind
@@ -12,7 +19,7 @@ entity Booking {
     guest_locale: Locale
 
     policy: {
-        create: [Access.public]
-        read: [Access.public]
+        create: [guest_id]
+        read: [guest_id]
     }
 }

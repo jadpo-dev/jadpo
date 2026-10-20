@@ -1,0 +1,31 @@
+use lodging/types { CodeGiven, LinkGiven, SignInAsk, SignedInView }
+use lodging/actions { ask_to_sign_in, sign_in_with_code, sign_in_with_link }
+
+/// The website's sign-in, at paths of the guest house's own.
+routes SignIn {
+    prefix: /sign-in
+
+    /// Asks for a sign-in link and code.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: SignInAsk
+        status: SuccessStatus.no_content
+        run: ask_to_sign_in(input)
+    }
+
+    /// Signs in with the link's token, which the link's page posts.
+    POST /link {
+        authentication: RouteAuthentication.none
+        input: LinkGiven
+        output: SignedInView
+        run: sign_in_with_link(input)
+    }
+
+    /// Signs in with the code a guest typed.
+    POST /code {
+        authentication: RouteAuthentication.none
+        input: CodeGiven
+        output: SignedInView
+        run: sign_in_with_code(input)
+    }
+}

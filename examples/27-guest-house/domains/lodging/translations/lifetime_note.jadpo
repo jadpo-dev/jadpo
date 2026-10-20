@@ -1,0 +1,4 @@
+/// How long the link and the code work.
+type LifetimeNote = Message {
+    expires_in: PresentationText
+}

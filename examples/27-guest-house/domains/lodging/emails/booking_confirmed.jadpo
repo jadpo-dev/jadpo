@@ -17,4 +17,5 @@ type BookingConfirmed = EmailMessage {
     nights: NightCount
     breakfast: Bool
     to_bring: List<PresentationText>
+    stay_page: Url
 }

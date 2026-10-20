@@ -3,6 +3,11 @@ config {
     bookings_address: Email {
         default: "bookings@tygwyn.example"
     }
+    /// The guest house's website, where guests sign in to see their
+    /// stay.
+    site: Url {
+        default: "https://tygwyn.example"
+    }
     /// The SMTP server the emails are handed to.
     smtp_host: Hostname {
         default: "localhost"

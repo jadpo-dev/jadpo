@@ -1,0 +1,5 @@
+/// A guest asking to sign in, in the language the site is showing them.
+type SignInAsk = Input {
+    address: Email
+    locale: Locale
+}

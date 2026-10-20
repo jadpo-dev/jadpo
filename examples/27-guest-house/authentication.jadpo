@@ -1,0 +1,22 @@
+// Guests sign in with a link, or the code beside it, emailed to the
+// address they booked with: there are no passwords to keep.
+// `generate_routes: false` means the guest house writes its own sign-in
+// routes (see `domains/lodging/routes/sign_in.jadpo`), and `email:` names
+// its own sign-in email in place of Jadpo's.
+
+use lodging
+
+authentication {
+    browser_session: {
+        cookie: "tygwyn_session"
+        origin: config.site
+    }
+    sign_in: {
+        magic_link: {
+            link: "/sign-in/confirm"
+            generate_routes: false
+            email: lodging.SignInEmail
+        }
+    }
+    on_first_sign_in: lodging.welcome_guest
+}

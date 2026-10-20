@@ -1,0 +1,63 @@
+// A route test signs in as a guest's browser would: it asks for a link,
+// reads the email from `email.sent`, and posts the token at the end of
+// the link the email carries. Jadpo makes the link, the code and the
+// email itself; the test only follows them.
+
+use lodging/types { CodeGiven, LinkGiven, SignInAsk, SignedInView }
+
+test "a guest signs in with the link from their email, in Welsh" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sign-in"
+        input: SignInAsk {
+            address: "megan@example.cymru"
+            locale: Locale.cy_gb
+        }
+    }
+    assert asked.status == 204
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+    assert list.all(
+        sent,
+        item -> item.to == "megan@example.cymru" and item.subject == "Mewngofnodi i Dŷ Gwyn"
+    )
+    var emailed_links: List<Text> = list.flatten(list.map(sent, item -> item.links))
+    var emailed_link: Text = match list.first(emailed_links) {
+        none -> ""
+        some(found) -> found
+    }
+    assert text.starts_with(emailed_link, "https://tygwyn.example/sign-in/confirm?token=")
+    var signed_in: Response = request {
+        method: HttpMethod.post
+        path: "/sign-in/link"
+        input: LinkGiven {
+            token: SignInToken(text.keep_last(emailed_link, 64))
+        }
+    }
+    assert signed_in.status == 200
+    assert signed_in.output == SignedInView {
+        next_page: "/"
+    }
+}
+
+test "a wrong code is refused, with the same answer every time" {
+    var asked: Response = request {
+        method: HttpMethod.post
+        path: "/sign-in"
+        input: SignInAsk {
+            address: "megan@example.cymru"
+            locale: Locale.en_gb
+        }
+    }
+    assert asked.status == 204
+    var refused: Response = request {
+        method: HttpMethod.post
+        path: "/sign-in/code"
+        input: CodeGiven {
+            address: "megan@example.cymru"
+            code: "000000"
+        }
+    }
+    assert refused.status == 401
+    assert refused.code == "sign_in_code_invalid"
+}

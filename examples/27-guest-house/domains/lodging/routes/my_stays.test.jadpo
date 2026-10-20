@@ -1,0 +1,59 @@
+use lodging/types { BookingView, RoomKind, StayRequest }
+use lodging/actions { book_stay }
+use lodging/fixtures { guest_at }
+
+test "booking needs a guest signed in" {
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/my-stays"
+        input: StayRequest {
+            guest_email: "megan@example.cymru"
+            guest_name: "Megan"
+            booked_room: RoomKind.twin_room
+            arrives_on: "2026-12-20"
+            nights: 2
+            breakfast: false
+            guest_locale: Locale.en_gb
+        }
+    }
+    assert response.status == 401
+    assert response.code == "authentication_required"
+    assert list.count(email.sent) == 0
+}
+
+test "a signed-in guest sees their own stays and nobody else's" {
+    var megan: Principal.user = guest_at("megan@example.cymru")
+    var owen: Principal.user = guest_at("owen@example.cymru")
+    var megans: BookingView = book_stay(
+        StayRequest {
+            guest_email: "megan@example.cymru"
+            guest_name: "Megan"
+            booked_room: RoomKind.twin_room
+            arrives_on: "2026-12-20"
+            nights: 2
+            breakfast: false
+            guest_locale: Locale.en_gb
+        },
+        megan
+    )
+    var owens: BookingView = book_stay(
+        StayRequest {
+            guest_email: "owen@example.cymru"
+            guest_name: "Owen"
+            booked_room: RoomKind.family_room
+            arrives_on: "2026-12-22"
+            nights: 4
+            breakfast: true
+            guest_locale: Locale.cy_gb
+        },
+        owen
+    )
+    assert owens.nights == 4
+    var megans_view: Response = request {
+        method: HttpMethod.get
+        path: "/my-stays"
+        as: megan
+    }
+    assert megans_view.status == 200
+    assert megans_view.output == [megans]
+}

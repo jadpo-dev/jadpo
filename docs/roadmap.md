@@ -1860,9 +1860,33 @@ The design is area 11 as revised on 2026-10-16, with its research in
   renders every page into a scratch folder, each under a 10-second limit;
   and the gate's `docs renderer` step runs the renderer's tests
   (`tools/language_docs_test.py`), which need no `jadpo`.
-- [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
-  capabilities, email, sign-in, multi-step calls and receiving, passing
+- [x] **7.8 Teaching examples for Phase 7: email and sign-in** `opus ·
+  high` (split on 2026-10-20: packages, calls and receiving are 7.8b, AI
+  and passkeys 7.8c). Built: 27-guest-house extended with a shared
+  partial (`shared/emails/button`, `{{ include }}`) in both its emails,
+  `email.sent` read in action and route tests, magic-link sign-in with
+  `generate_routes: false` and its own routes over `magic_links.request`,
+  `.redeem` and `.redeem_code` (`SignInToken`, `SignInCode`), its own
+  sign-in email picking from `MagicLinkEmail`, `on_first_sign_in:`,
+  Jadpo's own messages worded in Welsh, a `SignedIn` subscriber, and a
+  route test that signs in through the emailed link, passing
   `--require-examples`.
+- [ ] **7.8b Teaching examples for Phase 7: packages, calls and
+  receiving** `opus · high`, after 7.8: packages (two versions of one,
+  package events, subscribers and polls, `max_concurrent:`, recipes,
+  capabilities and `provides/`, a mail package as the second connection,
+  OpenAPI import and mapping to standard types, recordings), multi-step
+  calls (step records, operators, crash points) and webhooks and queues
+  (`receiving`), extending 26-delivery-desk where they fit its story; the
+  coverage test's exemptions for the package folders `subscribers`,
+  `events`, `provides` and `translations` and for `syntax PROVIDE_DECL`
+  removed once an example uses them, or their reasons corrected.
+- [ ] **7.8c Teaching examples for Phase 7: AI and passkeys** `opus ·
+  high`, after 7.8b and 5.5v7b: `ai.generate`, embeddings, recordings,
+  streaming to a route, budgets and personal data sent to models, through
+  a model package and its fake (22-plant-helpline, whose tests need
+  pgvector 0.8.0, or a new example), and passkey recovery through a
+  magic link in 27-guest-house.
 
 ## Phase 8 — Compiled deployables
 

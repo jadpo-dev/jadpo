@@ -1,0 +1,13 @@
+// The query names no caller, yet a guest gets only their own bookings:
+// `Booking`'s policy reads `guest_id`, and policy adds it to the query's
+// statement.
+
+use lodging/entities { Booking }
+use lodging/types { BookingView }
+
+/// The signed-in guest's bookings, soonest first.
+query my_bookings() -> List<BookingView> {
+    from: Booking
+    order: [Booking.arrives_on asc]
+    limit: 20
+}
