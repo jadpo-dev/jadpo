@@ -452,7 +452,8 @@ pub const BATCH_CANCELS: SystemTable = SystemTable {
 /// `resolve_done`, `resolve_not_done`), the item and its state then,
 /// and who did it: the name the operator's machine gives, and the
 /// database role PostgreSQL authenticated, which the statement reads
-/// itself. Kept, never deleted by the tick.
+/// itself. The tick deletes a row 30 days after it was written, once its
+/// delivery or run is gone (chunk 6.13).
 pub const OPERATOR_ACTIONS: SystemTable = SystemTable {
     table: "jadpo_operator_actions",
     columns: &[

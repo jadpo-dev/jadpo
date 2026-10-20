@@ -23,6 +23,10 @@
 //!   in: when, what, the item and its state then, the name the operator's
 //!   machine gives, and the database role PostgreSQL authenticated, which
 //!   the statement reads itself (`session_user`), so it can't be claimed.
+//! - **What is kept.** A delivery dismissed or cancelled, and each log row,
+//!   is kept 30 days after the operator acted, as run records are; the
+//!   tick then deletes it, a log row once its delivery or run is gone
+//!   ([`super::schedules`]; chunk 6.13).
 //!
 //! None of this runs the application's code: the tick's sweep delivers a
 //! retried delivery, and its tick runs a schedule.

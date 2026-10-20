@@ -7,6 +7,12 @@
 //! with the event, in one statement, and in any other store after it.
 //! Each delete takes 1,000 rows at a time, ten times a tick.
 //!
+//! What an operator settled (chunk 6.13): a delivery dismissed or
+//! cancelled goes 30 days after the operator's last action on it, with
+//! its handled records, and its event once no delivery of it is left that
+//! could run; the operator's log rows go 30 days after they were written,
+//! once their delivery is gone. A delivery that could still run stays.
+//!
 //! A help desk with two stores: members sign in with browser sessions and
 //! API tokens, kept beside them in `main`; partners with service keys,
 //! kept beside them in `tallies`. Adding a note emits `NoteAdded`, which
@@ -23,6 +29,7 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
+use jadpo_runtime::deliveries::{Action, Done, Holds, act_on_delivery, find};
 use jadpo_runtime::schedules::tick;
 use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, Row, SqlValue};
 use jadpo_term::Environment;
@@ -351,6 +358,7 @@ impl Stores {
 const T0: i64 = 1_792_400_400_000;
 const MINUTE: i64 = 60_000;
 const HOUR: i64 = 60 * MINUTE;
+const DAY: i64 = 24 * HOUR;
 
 async fn add_note(program: &Program, host: &Stores, text: &str) {
     let id = program.plan().find("add_note").expect("the action");
@@ -530,5 +538,189 @@ fn handled_records_go_only_once_their_delivery_can_no_longer_repeat() {
         assert_eq!((last.deleted.events, last.deleted.handled), (1, 2));
         assert_eq!(host.handled().await, (0, 0));
         assert_eq!(host.count(&host.main, outbox).await, 0);
+    });
+}
+
+/// The id, as 32 hex digits, of the delivery to `subscriber` of the event
+/// adding the note `body`.
+async fn delivery_of(host: &Stores, body: &str, subscriber: &str) -> String {
+    let rows = host
+        .rows(
+            &host.main,
+            &format!(
+                "SELECT replace(\"d\".\"id\"::text, '-', '') FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"subscriber\" = 'subscriber {subscriber}' AND \"o\".\"payload\" ->> 'note_id' = (SELECT \"id\"::text FROM \"note\" WHERE \"body\" = '{body}')"
+            ),
+        )
+        .await;
+    match rows.first().and_then(|row| row.first()) {
+        Some(SqlValue::Text(id)) => id.clone(),
+        other => panic!("no delivery of `{body}` to {subscriber}: {other:?}"),
+    }
+}
+
+/// Puts delivery `id` in `state`, as the runner would leave it: `failed`
+/// for good, or `pending` until 2027.
+async fn leave(host: &Stores, id: &str, state: &str) {
+    let due = if state == "pending" {
+        "'2027-01-01T00:00:00Z'"
+    } else {
+        "NULL"
+    };
+    let rows = host
+        .rows(
+            &host.main,
+            &format!(
+                "UPDATE \"jadpo_deliveries\" SET \"status\" = '{state}', \"next_attempt_at\" = {due} WHERE replace(\"id\"::text, '-', '') = '{id}' RETURNING 1"
+            ),
+        )
+        .await;
+    assert_eq!(rows.len(), 1, "{id}");
+}
+
+/// What `jadpo deliveries <action>` does to delivery `id` at `now`.
+async fn operate(host: &Stores, id: &str, action: Action, now: i64) {
+    let holds = Holds {
+        deliveries: true,
+        runs: false,
+    };
+    let found = find(&host.main, holds, id)
+        .await
+        .expect("the store answers");
+    let [item] = found.as_slice() else {
+        panic!("one delivery `{id}`: {found:?}");
+    };
+    host.clock.set(now);
+    match act_on_delivery(&host.main, host, item, action, "sam", now).await {
+        Ok(Done::Logged { .. }) => {}
+        other => panic!("{action:?} on `{id}`: {other:?}"),
+    }
+}
+
+#[test]
+fn what_an_operator_settled_goes_after_thirty_days_and_what_could_run_stays() {
+    let Some((program, _databases, host)) = load("settled-by-hand") else {
+        return;
+    };
+    let runtime = Runtime::new().expect("runtime");
+    runtime.block_on(async {
+        // Five notes, each delivered on the next tick to both
+        // subscribers, with a handled record of each in its store.
+        let notes = [
+            "dismissed early",
+            "cancelled early",
+            "dismissed late",
+            "still failed",
+            "still pending",
+        ];
+        for text in notes {
+            add_note(&program, &host, text).await;
+        }
+        host.clock.set(T0 + MINUTE);
+        let delivered = tick(&program, &host, T0 + MINUTE).await;
+        assert_eq!(delivered.deliveries.len(), 10, "{delivered:?}");
+        assert_eq!(host.handled().await, (5, 5));
+
+        // One delivery of each note is left that didn't succeed, as a
+        // worker given up at its claim leaves one beside a handled record;
+        // an operator dismisses one at once and cancels another, retries
+        // a third (which fails again), and dismisses one 20 days on.
+        let early = delivery_of(&host, "dismissed early", "mark_note_added").await;
+        let cancelled = delivery_of(&host, "cancelled early", "tally_note_added").await;
+        let late = delivery_of(&host, "dismissed late", "mark_note_added").await;
+        let failed = delivery_of(&host, "still failed", "mark_note_added").await;
+        let pending = delivery_of(&host, "still pending", "tally_note_added").await;
+        for id in [&early, &late, &failed] {
+            leave(&host, id, "failed").await;
+        }
+        for id in [&cancelled, &pending] {
+            leave(&host, id, "pending").await;
+        }
+        operate(&host, &early, Action::Dismiss, T0 + 2 * MINUTE).await;
+        operate(&host, &cancelled, Action::Cancel, T0 + 2 * MINUTE).await;
+        operate(&host, &failed, Action::Retry, T0 + 2 * MINUTE).await;
+        leave(&host, &failed, "failed").await;
+        operate(&host, &late, Action::Dismiss, T0 + 20 * DAY).await;
+        let log = "SELECT count(*) FROM \"jadpo_operator_actions\"";
+        let outbox = "SELECT count(*) FROM \"jadpo_outbox\"";
+        let deliveries = "SELECT count(*) FROM \"jadpo_deliveries\"";
+        assert_eq!(host.count(&host.main, log).await, 4);
+
+        // 29 days on, every event still has a delivery an operator
+        // settled within the window, or one that could run: nothing goes.
+        host.clock.set(T0 + 29 * DAY);
+        let kept = tick(&program, &host, T0 + 29 * DAY).await;
+        assert!(kept.problems.is_empty(), "{:?}", kept.problems);
+        assert_eq!(kept.deleted.deliveries, 0, "{:?}", kept.deleted);
+        assert_eq!(kept.deleted.events, 0, "{:?}", kept.deleted);
+        assert_eq!(kept.deleted.actions, 0, "{:?}", kept.deleted);
+        assert_eq!(host.count(&host.main, outbox).await, 5);
+        assert_eq!(host.count(&host.main, deliveries).await, 10);
+
+        // 30 days and a minute after the first dismissal and cancellation:
+        // those two deliveries go, with their handled records in both
+        // stores, and then their events, each with the delivery of it that
+        // succeeded; their log rows go with them. The retried delivery's
+        // log row stays while the delivery does.
+        host.clock.set(T0 + 30 * DAY + 3 * MINUTE);
+        let month = tick(&program, &host, T0 + 30 * DAY + 3 * MINUTE).await;
+        assert!(month.problems.is_empty(), "{:?}", month.problems);
+        assert_eq!(month.deleted.deliveries, 2, "{:?}", month.deleted);
+        assert_eq!(month.deleted.events, 2, "{:?}", month.deleted);
+        assert_eq!(month.deleted.handled, 4, "{:?}", month.deleted);
+        assert_eq!(month.deleted.actions, 2, "{:?}", month.deleted);
+        assert_eq!(host.handled().await, (3, 3));
+        assert_eq!(host.count(&host.main, outbox).await, 3);
+        assert_eq!(host.count(&host.main, deliveries).await, 6);
+        let left = host
+            .rows(&host.main, "SELECT \"action\", \"was\" FROM \"jadpo_operator_actions\" ORDER BY \"acted_at\"")
+            .await;
+        assert_eq!(
+            left,
+            [
+                vec![SqlValue::Text("retry".into()), SqlValue::Text("failed".into())],
+                vec![SqlValue::Text("dismiss".into()), SqlValue::Text("failed".into())],
+            ]
+        );
+
+        // 50 days and more on, the late dismissal goes the same way; the
+        // failed delivery and the pending one stay, with their events,
+        // handled records and log row, however old.
+        host.clock.set(T0 + 51 * DAY);
+        let later = tick(&program, &host, T0 + 51 * DAY).await;
+        assert!(later.problems.is_empty(), "{:?}", later.problems);
+        assert_eq!(later.deleted.deliveries, 1, "{:?}", later.deleted);
+        assert_eq!(later.deleted.events, 1, "{:?}", later.deleted);
+        assert_eq!(later.deleted.handled, 2, "{:?}", later.deleted);
+        assert_eq!(later.deleted.actions, 1, "{:?}", later.deleted);
+        assert_eq!(host.handled().await, (2, 2));
+        assert_eq!(host.count(&host.main, outbox).await, 2);
+        let states = host
+            .rows(&host.main, "SELECT \"status\" FROM \"jadpo_deliveries\" WHERE \"status\" <> 'succeeded' ORDER BY \"status\"")
+            .await;
+        assert_eq!(
+            states,
+            [
+                vec![SqlValue::Text("failed".into())],
+                vec![SqlValue::Text("pending".into())],
+            ]
+        );
+        assert_eq!(host.count(&host.main, log).await, 1);
+
+        // 1,000 at a time, ten times a tick: what one tick leaves, the
+        // next carries on with, and the event goes once its last
+        // delivery has.
+        host.rows(&host.main, "INSERT INTO \"jadpo_outbox\" (\"id\", \"event\", \"payload\", \"emitted_at\") VALUES ('00000000-0000-7000-8000-0000000000e1', 'event NoteAdded', '{}', '2026-10-01T00:00:00Z') RETURNING 1")
+            .await;
+        host.rows(&host.main, "INSERT INTO \"jadpo_deliveries\" (\"id\", \"outbox_id\", \"subscriber\", \"status\", \"attempts\") \
+            SELECT gen_random_uuid(), '00000000-0000-7000-8000-0000000000e1', 'subscriber ' || n, 'dismissed', 1 FROM generate_series(1, 10001) AS n \
+            RETURNING 1")
+            .await;
+        let first = tick(&program, &host, T0 + 52 * DAY).await;
+        assert_eq!(first.deleted.deliveries, 10_000, "{:?}", first.deleted);
+        assert_eq!(first.deleted.events, 0, "{:?}", first.deleted);
+        let second = tick(&program, &host, T0 + 52 * DAY + MINUTE).await;
+        assert_eq!(second.deleted.deliveries, 1, "{:?}", second.deleted);
+        assert_eq!(second.deleted.events, 1, "{:?}", second.deleted);
+        assert_eq!(host.count(&host.main, outbox).await, 2);
     });
 }
