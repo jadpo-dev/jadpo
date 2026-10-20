@@ -208,68 +208,8 @@ pub fn record(call: &Call) -> Reply {
     };
 
     // Never live, and never with a stand-in for its credential.
-    let config = ready.prepared.plan().config();
-    let variable = |at: u32| {
-        config
-            .fields
-            .get(at as usize)
-            .map_or_else(String::new, |field| field.variable.clone())
-    };
-    if let Some(unset) = ready.unset.get(connection.as_str())
-        && !unset.is_empty()
-    {
-        let variables: Vec<String> = unset.iter().map(|name| format!("`{name}`")).collect();
-        return Reply::failed(
-            Diagnostic::new(
-                &rule::RECORDING_REFUSED,
-                format!("`{connection}` has nothing set for its sandbox"),
-            )
-            .reason(format!(
-                "`jadpo package record` calls the provider's sandbox through `{connection}`, which reads {}, and nothing sets {}.",
-                crate::package::and_list(&variables),
-                if variables.len() == 1 { "it" } else { "them" }
-            ))
-            .next_marked(format!(
-                "Set {} in `.env.local` to the sandbox's, then run it again (human)",
-                crate::package::and_list(&variables)
-            )),
-        );
-    }
-    match &chosen.address {
-        Address::Hosts { environment, .. } => {
-            let chosen_now = ready.config.text_at(*environment);
-            if chosen_now.is_some_and(|chosen| chosen.eq_ignore_ascii_case("live")) {
-                let variable = variable(*environment);
-                return Reply::failed(
-                    Diagnostic::new(
-                        &rule::RECORDING_REFUSED,
-                        format!("`{connection}` calls its provider's live API"),
-                    )
-                    .reason(format!(
-                        "`jadpo package record` calls a provider's sandbox, never its live API, and `{variable}` chooses `live`."
-                    ))
-                    .next_marked(format!(
-                        "Set `{variable}` to `sandbox` in `.env.local`, then run it again (human)"
-                    )),
-                );
-            }
-        }
-        Address::Setting(_) => {}
-        Address::Unknown => {
-            return Reply::failed(
-                Diagnostic::new(
-                    &rule::RECORDING_REFUSED,
-                    format!("`{connection}` has no address to call"),
-                )
-                .reason(format!(
-                    "`{}` gives no `hosts:` its connection's environment chooses between, and the connection gives no `host:`.",
-                    chosen.package
-                ))
-                .next_marked(format!(
-                    "Give `{connection}` an `environment:` or a `host:` in `app.jadpo` (agent)"
-                )),
-            );
-        }
+    if let Some(refused) = refusal(&ready, chosen, "jadpo package record") {
+        return Reply::failed(*refused);
     }
     // The call, through the package driver, its answer as sent kept.
     let seen = Rc::new(Kept::default());
@@ -450,18 +390,93 @@ pub fn record(call: &Call) -> Reply {
     )
 }
 
+/// Why `command` won't call through provider connection `chosen` (area
+/// 11; chunks 7.2d2 and 5.5v4b): nothing set for its credential,
+/// environment or address, so `jadpo dev`'s stand-in would reach nobody;
+/// an environment that chooses `live`, since a recording is made against a
+/// sandbox, never the live API; or no address at all.
+pub(crate) fn refusal(
+    ready: &crate::dev::Ready,
+    chosen: &jadpo_std::provider::ConnectionPlan,
+    command: &str,
+) -> Option<Box<Diagnostic>> {
+    let connection = &chosen.name;
+    let config = ready.prepared.plan().config();
+    let variable = |at: u32| {
+        config
+            .fields
+            .get(at as usize)
+            .map_or_else(String::new, |field| field.variable.clone())
+    };
+    if let Some(unset) = ready.unset.get(connection.as_str())
+        && !unset.is_empty()
+    {
+        let variables: Vec<String> = unset.iter().map(|name| format!("`{name}`")).collect();
+        return Some(Box::new(
+            Diagnostic::new(
+                &rule::RECORDING_REFUSED,
+                format!("`{connection}` has nothing set for its sandbox"),
+            )
+            .reason(format!(
+                "`{command}` calls the provider's sandbox through `{connection}`, which reads {}, and nothing sets {}.",
+                crate::package::and_list(&variables),
+                if variables.len() == 1 { "it" } else { "them" }
+            ))
+            .next_marked(format!(
+                "Set {} in `.env.local` to the sandbox's, then run it again (human)",
+                crate::package::and_list(&variables)
+            )),
+        ));
+    }
+    match &chosen.address {
+        Address::Hosts { environment, .. } => {
+            let chosen_now = ready.config.text_at(*environment);
+            if chosen_now.is_some_and(|chosen| chosen.eq_ignore_ascii_case("live")) {
+                let variable = variable(*environment);
+                return Some(Box::new(
+                    Diagnostic::new(
+                        &rule::RECORDING_REFUSED,
+                        format!("`{connection}` calls its provider's live API"),
+                    )
+                    .reason(format!(
+                        "`{command}` calls a provider's sandbox, never its live API, and `{variable}` chooses `live`."
+                    ))
+                    .next_marked(format!(
+                        "Set `{variable}` to `sandbox` in `.env.local`, then run it again (human)"
+                    )),
+                ));
+            }
+            None
+        }
+        Address::Setting(_) => None,
+        Address::Unknown => Some(Box::new(
+            Diagnostic::new(
+                &rule::RECORDING_REFUSED,
+                format!("`{connection}` has no address to call"),
+            )
+            .reason(format!(
+                "`{}` gives no `hosts:` its connection's environment chooses between, and the connection gives no `host:`.",
+                chosen.package
+            ))
+            .next_marked(format!(
+                "Give `{connection}` an `environment:` or a `host:` in `app.jadpo` (agent)"
+            )),
+        )),
+    }
+}
+
 /// The answer the call's site handed the log, with the request it went
 /// out as.
 #[derive(Clone, Debug, Default)]
-struct Exchange {
-    method: String,
-    url: String,
-    answer: Option<String>,
+pub(crate) struct Exchange {
+    pub(crate) method: String,
+    pub(crate) url: String,
+    pub(crate) answer: Option<String>,
 }
 
 /// Keeps the one call's request and answer as sent.
 #[derive(Default)]
-struct Kept(RefCell<Exchange>);
+pub(crate) struct Kept(pub(crate) RefCell<Exchange>);
 
 impl CallLog for Kept {
     fn seen(&self, seen: &Seen<'_>) {
@@ -514,7 +529,7 @@ fn package_folder(root: &Path, package: &str) -> Result<PathBuf, Box<Diagnostic>
 
 /// How many placeholders a recording holds, and how many texts and
 /// numbers it keeps as sent.
-fn counts(text: &str) -> (usize, usize) {
+pub(crate) fn counts(text: &str) -> (usize, usize) {
     fn walk(json: &serde_json::Value, out: &mut (usize, usize)) {
         match json {
             serde_json::Value::String(text) if recorded::is_placeholder(text) => out.0 += 1,
@@ -534,7 +549,7 @@ fn counts(text: &str) -> (usize, usize) {
 }
 
 /// `path` from `root`, with `/`.
-fn shown_path(root: &Path, path: &Path) -> String {
+pub(crate) fn shown_path(root: &Path, path: &Path) -> String {
     let real = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let (root, path) = (real(root), real(path));
     match path.strip_prefix(&root) {
@@ -571,7 +586,7 @@ fn output_type_name(root: &Path, package: &str, operation: &str) -> String {
 }
 
 /// The project's errors, which stop it calling anything.
-fn refused_by_errors(
+pub(crate) fn refused_by_errors(
     diagnostics: Vec<Diagnostic>,
     sources: std::collections::BTreeMap<String, String>,
 ) -> Reply {
@@ -598,7 +613,7 @@ fn refused_by_errors(
 
 /// A diagnostic's `next`, its decider from its closing `(agent)` or
 /// `(human)`.
-trait NextMarked {
+pub(crate) trait NextMarked {
     fn next_marked(self, text: impl Into<String>) -> Self;
 }
 

@@ -101,7 +101,7 @@ fn desk(name: &str, provider: Provider) -> PathBuf {
         &root,
         "app.jadpo",
         &format!(
-            "application {{\n    connections: {{\n        {connection}: {{\n            package: {package}\n            domains: [support]\n            credential: config.provider_key\n            host: config.provider_host\n            development: {{\n                sandbox: {sandbox}\n            }}\n        }}\n    }}\n    ai: {{\n        connection: {connection}\n        models: {{\n{models}    }}\n}}\n"
+            "application {{\n    connections: {{\n        {connection}: {{\n            package: {package}\n            domains: [support]\n            credential: config.provider_key\n            host: config.provider_host\n            development: {{\n                sandbox: {sandbox}\n            }}\n        }}\n    }}\n    ai: {{\n        connection: {connection}\n        models: {{\n{models}        limits: {{\n            per_day: {{\n                tokens: 2000000\n            }}\n        }}\n    }}\n}}\n"
         ),
     );
     let search = embedding.map_or_else(String::new, |model| {
@@ -144,8 +144,10 @@ fn desk(name: &str, provider: Provider) -> PathBuf {
         ],
     );
     assert_eq!(added.code, 0, "{}{}", added.stdout, added.stderr);
-    let updated = jadpo(&root, &["api", "update"]);
-    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    for args in [&["api", "update"][..], &["migrate", "new", "initial"]] {
+        let out = jadpo(&root, args);
+        assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
+    }
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
     root
@@ -857,4 +859,25 @@ fn copy(from: &Path, to: &Path) {
             fs::copy(&path, &target).expect("copied");
         }
     }
+}
+
+/// In `jadpo test` the one `ai` fake answers through a package's
+/// connection too, for a stream and an embedding as for a typed answer:
+/// nothing reaches the provider.
+#[test]
+fn jadpo_test_fakes_the_packages_stream_and_embeddings() {
+    let root = desk("faked", Provider::OpenAi);
+    write(
+        &root,
+        "domains/support/actions/meaning_of.test.jadpo",
+        "use support/failures { AssistantUnavailable }\nuse support/types { Asked, Meaning }\n\ntest \"a reply streams piece by piece\" {\n    fakes: {\n        ai.answer_question: [raw(\"Our sourdough is baked beside sesame.\")]\n    }\n    var response: Response = request {\n        method: HttpMethod.post\n        path: \"/answers/streamed\"\n        input: Asked {\n            question: \"Sesame?\"\n        }\n    }\n    assert response.status == 200\n    assert response.pieces == [\"Our sourdough is \", \"baked beside sesame.\"]\n}\n\ntest \"the same question means the same\" {\n    var first: Meaning = attempt meaning_of(Asked { question: \"Sesame?\" })\n    var again: Meaning = attempt meaning_of(Asked { question: \"Sesame?\" })\n    assert first == again\n}\n\ntest \"an embedding out of time goes to a person\" {\n    fakes: {\n        ai.embed: [timed_out]\n    }\n    assert meaning_of(Asked { question: \"Sesame?\" }) fails AssistantUnavailable\n}\n",
+    );
+    let tested = jadpo(&root, &["test"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(
+        tested.stdout.contains("3 passed"),
+        "{}{}",
+        tested.stdout,
+        tested.stderr
+    );
 }

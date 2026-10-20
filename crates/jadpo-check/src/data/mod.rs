@@ -2666,6 +2666,25 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             }
         }
     }
+    // What the application's `ai` calls used is counted in the store
+    // `ai: { limits: }` keeps it in (area 21, "Budgets"; chunk 5.5v5),
+    // which may hold no entity, once `ai:` checks: one still being written
+    // asks for no table yet.
+    let ai = crate::ai::settings(db, project);
+    if let Some(store) = ai.limits.store.clone().filter(|_| ai.problems.is_empty()) {
+        schema
+            .stores
+            .entry(store)
+            .or_insert_with(|| physical::Store {
+                driver: Driver::Postgres.name().to_string(),
+                tables: BTreeMap::new(),
+            })
+            .tables
+            .insert(
+                system::AI_USAGE.table.to_string(),
+                columns::system_table(&system::AI_USAGE),
+            );
+    }
     // The ids of webhooks' events already received are kept beside the
     // outbox they are written to (area 11, "Receiving from outside"; chunk
     // 7.7).

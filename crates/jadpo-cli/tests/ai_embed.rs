@@ -58,7 +58,7 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
 /// `dimensions` numbers.
 fn app(dimensions: u32) -> String {
     format!(
-        "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n            default: config.drafting_model\n            embedding: config.search_model\n        }}\n        embedding_dimensions: {dimensions}\n    }}\n}}\n"
+        "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n            default: config.drafting_model\n            embedding: config.search_model\n        }}\n        limits: {{\n            per_day: {{\n                tokens: 2000000\n            }}\n        }}\n        embedding_dimensions: {dimensions}\n    }}\n}}\n"
     )
 }
 
@@ -127,8 +127,11 @@ fn desk(name: &str) -> PathBuf {
     ] {
         write(&root, &format!("domains/support/{path}"), text);
     }
-    let updated = jadpo(&root, &["api", "update"]);
-    assert_eq!(updated.code, 0, "{}{}", updated.stdout, updated.stderr);
+    // The counts of what its calls use are kept in `main` (chunk 5.5v5).
+    for args in [&["migrate", "new", "initial"][..], &["api", "update"]] {
+        let done = jadpo(&root, args);
+        assert_eq!(done.code, 0, "{args:?}: {}{}", done.stdout, done.stderr);
+    }
     root
 }
 
@@ -276,6 +279,7 @@ fn jadpo_test_embeds_through_the_fake_and_answers_from_recordings() {
             "name": "not_covered",
             "recorded": now,
             "now": changed,
+            "next": "jadpo ai record answer_question --as not_covered",
         }])
     );
     let tested = jadpo(&root, &["test"]);
@@ -292,7 +296,7 @@ fn jadpo_test_embeds_through_the_fake_and_answers_from_recordings() {
     assert!(
         tested
             .stdout
-            .contains("next: jadpo ai show answer_question"),
+            .contains("next: jadpo ai record answer_question --as not_covered"),
         "{}",
         tested.stdout
     );
@@ -497,7 +501,7 @@ fn the_support_desk_answers_from_the_nearest_article_and_a_recording() {
         "{\n    \"cited_slugs\": [],\n    \"reply\": \"{Text}\",\n    \"resolved_by_articles\": false\n  }",
         &now,
     );
-    let migrated = jadpo(&root, &["migrate", "new", "initial"]);
+    let migrated = jadpo(&root, &["migrate", "new", "articles"]);
     assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
     let checked = jadpo(&root, &["check"]);
     assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);

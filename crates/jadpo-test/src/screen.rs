@@ -69,8 +69,8 @@ pub fn screen(run: &Run) -> Screen {
         && let Some(alert) = run.alerts.first()
     {
         screen.push(Block::Hint {
-            command: format!("jadpo ai show {}", alert.prompt),
-            reason: "shows what the prompt sends now".to_string(),
+            command: alert.next(),
+            reason: "records it again from the prompt now".to_string(),
         });
     }
     screen

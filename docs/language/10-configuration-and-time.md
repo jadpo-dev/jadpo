@@ -179,7 +179,9 @@ from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`,
 type built on one of them, an enum whose variants carry no data, and the
 built-in enums `Zone` and `Locale` (question 2). A `ModelId` is read from its
 text, `openai/gpt-4.1-mini`, since every model `ai:` names is one (area 21;
-chunk 5.5v3). Lists, objects, maps, `T?` and data-carrying enums are rejected
+chunk 5.5v3), and a `Money` from its canonical text, `"GBP 20.00"`, since
+`ai: { limits: { per_day: { cost: } } }` names one (area 21; chunk 5.5v5).
+Lists, objects, maps, `T?` and data-carrying enums are rejected
 (`configuration.type_unsupported`): split them into fields.
 
 ```jadpo check project=settings-enums
@@ -3587,7 +3589,7 @@ error: `admin_emails` can't be a `List<Email>`
   |
 2 |     admin_emails: List<Email>
   |                   ^^^^^^^^^^^ not read from one variable
-  reason: A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId` and enums. A list is one value in many variables or one variable holding a format; split it into settings.
+  reason: A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money` and enums. A list is one value in many variables or one variable holding a format; split it into settings.
   next: Split `admin_emails` into settings of those types (agent)
   rule: configuration.type_unsupported
   help: docs/language/10-configuration-and-time.html#configuration-type-unsupported

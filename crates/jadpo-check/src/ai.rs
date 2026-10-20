@@ -11,7 +11,9 @@
 //!   the length of every embedding (chunk 5.5v4). The keys later chunks
 //!   build (`limits:`, `personal_data:`, `keep_content:`) are
 //!   `toolchain.not_built_yet`. A package's connection fills `ai` through
-//!   its `provides/ai.jadpo` (chunk 5.5v3b, [`crate::ai_mapping`]).
+//!   its `provides/ai.jadpo` (chunks 5.5v3b and 5.5v7,
+//!   [`crate::ai_mapping`]); `prices:` sets a model's price over its
+//!   package's (chunk 5.5v7).
 //! - [`schema`]: the JSON Schema a model is asked to answer a type in,
 //!   the one OpenAPI writes for it with each field's `///` description,
 //!   whole: the runtime cuts it to what a provider enforces.
@@ -74,6 +76,10 @@ pub struct AiSettings {
     /// `embedding_dimensions:`, where it reads, and where it is written
     /// (chunk 5.5v4): the length every vector `ai.embed` gives has.
     pub embedding_dimensions: Option<(u64, Span)>,
+    /// `limits:` (chunk 5.5v5).
+    pub limits: crate::ai_limits::LimitsRead,
+    /// `prices:`, the prices it sets for its models (chunk 5.5v7).
+    pub prices: Vec<crate::ai_limits::PriceRead>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -228,6 +234,11 @@ fn url(
 }
 
 /// `config.<name>` as the name it reads.
+pub(crate) fn reads_setting(value: &ast::Expr) -> Option<String> {
+    reads(value)
+}
+
+/// `config.<name>` as the name it reads.
 fn reads(value: &ast::Expr) -> Option<String> {
     let (first, rest) = tree::dotted(value)?;
     if tree::name_ref_text(&first).as_deref() != Some("config") || rest.len() != 1 {
@@ -288,18 +299,29 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                         )
                         .at(key_span, "decided, not built")
                         .reason(format!(
-                            "Area 21 decides `{word}:`, and roadmap chunk {chunk} builds it; this compiler can't keep to it yet, so an application that gives it couldn't run as written."
+                            "Area 21 decides `{word}:`, and it comes with {chunk}; this compiler can't keep to it yet, so an application that gives it couldn't run as written."
                         ))
                         .next(format!("Leave `{word}:` out for now")),
                     );
                     continue;
                 }
-                if !jadpo_std::ai::KEYS.contains(&word.as_str()) {
+                if word == jadpo_std::ai::PRICES && given.insert(word.clone()) {
+                    out.prices = crate::ai_limits::prices(
+                        db,
+                        project,
+                        &found.path,
+                        &entry,
+                        &mut out.problems,
+                    );
+                    continue;
+                }
+                if !jadpo_std::ai::KEYS.contains(&word.as_str()) && word != jadpo_std::ai::LIMITS {
                     let near = nearest(
                         &word,
                         jadpo_std::ai::KEYS
                             .iter()
                             .copied()
+                            .chain([jadpo_std::ai::LIMITS, jadpo_std::ai::PRICES])
                             .chain(jadpo_std::ai::LATER_KEYS.iter().map(|(key, _)| *key)),
                     );
                     let mut problem = invalid(
@@ -315,6 +337,17 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                         None => problem.next(format!("Remove `{word}:`")),
                     };
                     out.problems.push(problem);
+                    continue;
+                }
+                if word == jadpo_std::ai::LIMITS && given.insert(word.clone()) {
+                    out.limits = crate::ai_limits::read(
+                        db,
+                        project,
+                        &found.path,
+                        head.clone(),
+                        Some((key_span, &entry)),
+                        &mut out.problems,
+                    );
                     continue;
                 }
                 if !given.insert(word.clone()) {
@@ -485,6 +518,38 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     );
                 }
                 out.models = read;
+            }
+            // Each price is for a model `models:` names.
+            for price in &out.prices {
+                if !out.models.iter().any(|(name, _)| *name == price.model) {
+                    let names: Vec<String> = out
+                        .models
+                        .iter()
+                        .map(|(name, _)| format!("`{name}`"))
+                        .collect();
+                    out.problems.push(
+                        invalid(
+                            format!("`{}` isn't a model `models:` names", price.model),
+                            price.at.clone(),
+                            "no such model",
+                        )
+                        .reason("`prices:` sets a price for a model the application asks, by its name in `models:`.")
+                        .next(match names.is_empty() {
+                            true => "Name a model of `models:`".to_string(),
+                            false => format!("Name one of {}", crate::and_list(&names)),
+                        }),
+                    );
+                }
+            }
+            if !given.contains(jadpo_std::ai::LIMITS) {
+                out.limits = crate::ai_limits::read(
+                    db,
+                    project,
+                    &found.path,
+                    head.clone(),
+                    None,
+                    &mut out.problems,
+                );
             }
             for needed in jadpo_std::ai::REQUIRED_KEYS {
                 if !given.contains(needed) {

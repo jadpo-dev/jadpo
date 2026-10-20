@@ -98,6 +98,8 @@ rules! {
         "21-ai.html#ai-connection-required", "Action asks a model but the application names no `ai:` connection";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
         "21-ai.html#ai-settings-invalid", "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
+    AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "AI usage's database couldn't be read";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
         "07-http.html#api-authentication-invalid", "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
@@ -715,9 +717,9 @@ rules! {
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
         "18-records-and-manifest.html#record-out-of-date", "Generated record disagrees with the source";
     RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
-        "14-tooling.html#command-errors", "Provider's sandbox gave no answer to record";
+        "14-tooling.html#command-errors", "Sandbox or model gave no answer to record";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
-        "14-tooling.html#command-errors", "Operation can't be recorded through this connection";
+        "14-tooling.html#command-errors", "Answer can't be recorded through this connection";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -796,6 +798,8 @@ rules! {
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedules' database couldn't be read";
+    SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-budget-missing", "Application's `ai:` sets no daily limit";
     SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
         "21-ai.html#semantic-ai-dimensions-mismatch", "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,

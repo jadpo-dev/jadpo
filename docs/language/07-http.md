@@ -334,11 +334,16 @@ application {
         models: {
             default: config.drafting_model
         }
+        limits: {
+            per_day: {
+                tokens: 2000000
+            }
+        }
     }
 }
 ```
 
-```jadpo check project=ai-stream file=config.jadpo hidden
+```jadpo check project=ai-stream file=config.jadpo hidden migrate=initial
 config {
     drafting_model: ModelId {
         default: "meta-llama/Llama-3.1-8B-Instruct"
@@ -2006,11 +2011,16 @@ application {
         models: {
             default: config.drafting_model
         }
+        limits: {
+            per_day: {
+                tokens: 2000000
+            }
+        }
     }
 }
 ```
 
-```jadpo check project=e-route-stream-invalid file=config.jadpo hidden
+```jadpo check project=e-route-stream-invalid file=config.jadpo hidden migrate=initial
 config {
     drafting_model: ModelId {
         default: "meta-llama/Llama-3.1-8B-Instruct"

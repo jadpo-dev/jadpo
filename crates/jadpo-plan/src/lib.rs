@@ -334,6 +334,7 @@ fn schedules_plan(
         received: holding(RECEIVED_EVENTS.table).next(),
         steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
+        ai_usage: holding(jadpo_std::system::AI_USAGE.table).next(),
     }
 }
 
@@ -1022,6 +1023,36 @@ impl Plan {
                     ))
                     .copied()
             };
+            // What its calls may spend, and where that is counted
+            // (chunk 5.5v5).
+            let limits = settings.limits.store.as_ref().and_then(|store| {
+                Some(jadpo_std::ai::AiLimits {
+                    store: store.clone(),
+                    per_request: settings.limits.per_request,
+                    per_day: settings.limits.per_day?,
+                    cost: match &settings.limits.cost {
+                        Some(setting) => Some(number(setting)?),
+                        None => None,
+                    },
+                    per_caller_per_day: settings.limits.per_caller_per_day,
+                })
+            });
+            // The prices it sets for its models (chunk 5.5v7).
+            let prices: Vec<jadpo_std::ai::AiPriceSetting> = settings
+                .prices
+                .iter()
+                .filter_map(|price| {
+                    Some(jadpo_std::ai::AiPriceSetting {
+                        model: price.model.clone(),
+                        input: number(&price.input)?,
+                        cached: match &price.cached {
+                            Some(setting) => Some(number(setting)?),
+                            None => None,
+                        },
+                        output: number(&price.output)?,
+                    })
+                })
+                .collect();
             settings.connection.as_ref().and_then(|name| {
                 let models = settings
                     .models
@@ -1043,6 +1074,8 @@ impl Plan {
                         driver: jadpo_std::ai::AiDriver::OpenAiCompatible(url),
                         models,
                         schema: jadpo_std::ai::SchemaMode::StrictSubset,
+                        limits,
+                        prices,
                     });
                 }
                 // A package filling `ai` (chunk 5.5v3b).
@@ -1059,6 +1092,8 @@ impl Plan {
                     driver: jadpo_std::ai::AiDriver::Package(Box::new(package)),
                     models,
                     schema: mapping.schema,
+                    limits,
+                    prices,
                 })
             })
         };
@@ -1441,6 +1476,11 @@ fn ai_package(
             vector: embed.vector.clone(),
             index: embed.index.clone(),
             batch: embed.batch,
+            usage: Some(jadpo_std::ai::AiUsage {
+                input: embed.usage.input.clone(),
+                output: embed.usage.output.clone(),
+                cached: embed.usage.cached.clone(),
+            }),
         }),
         None => None,
     };
@@ -1461,5 +1501,6 @@ fn ai_package(
         contexts: mapping.contexts.clone(),
         stream,
         embed,
+        prices: mapping.prices.clone(),
     })
 }
