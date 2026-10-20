@@ -24,6 +24,7 @@ pub(crate) mod rules;
 pub(crate) mod secrets;
 mod shape;
 mod signatures;
+mod steps;
 mod stores;
 mod table;
 mod ty;
@@ -32,7 +33,8 @@ pub(crate) use body::transition_key;
 pub(crate) use body::{BodyView, LocalKind, ViewLocal, members_of};
 pub use body::{
     Callable, Checked, FailureSet, FailureSets, Fallible, backfill_callables, body_problems,
-    call_problems, callables_of, failure_set, failure_sets, rule_callables, typed_body,
+    call_problems, callables_of, failure_set, failure_sets, rule_callables, template_body,
+    template_reads, typed_body,
 };
 pub use connections::called_connections;
 pub use decl::type_problems;
@@ -55,11 +57,13 @@ pub use shape::{
     type_shapes, variant_block,
 };
 pub use signatures::{Callables, Sig, callables};
+pub use steps::{MOST_STEPS, Steps, action_steps, resumable_runs, step_problems};
 pub use stores::{
     Reach as StoreReach, batch_store_problems, batch_stores, file_run_problems, file_run_stores,
     store_problems, store_reaches, unkept_responses, used_stores, written_stores,
 };
 pub use table::{
-    Def, FieldDef, TypeTable, TypeView, VariantDef, WrittenCoding, standard_fields, type_table,
+    Def, EMAIL_FIELDS, FieldDef, TypeTable, TypeView, VariantDef, WrittenCoding, standard_fields,
+    type_table,
 };
 pub use ty::{BASES, Prim, TIME_FORMAT, Ty, TypeRef, container_arity, shown};

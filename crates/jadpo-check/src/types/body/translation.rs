@@ -423,6 +423,13 @@ impl Body<'_> {
             }
             slots.push(slot);
         }
+        // A template writes in its email's locale, which its calls take
+        // without `locale:` (area 16, "Email").
+        if self.context == super::Context::Template
+            && let Some(locale) = filled.first_mut()
+        {
+            *locale = true;
+        }
         self.facts
             .slots
             .insert(node_key(call.syntax()), slots.clone());

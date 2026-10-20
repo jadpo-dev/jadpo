@@ -52,6 +52,7 @@ pub(super) fn lower(
         refers: Vec::new(),
         at: BTreeMap::new(),
         write_block: None,
+        template_locale: None,
     };
     let mut body = typed::Body::default();
     for (id, local) in checker.facts.locals.iter().enumerate() {
@@ -143,6 +144,112 @@ pub(super) fn lower(
         .collect();
     body.open = checker.flow.open;
     body
+}
+
+/// The name of the local a template's text is written into.
+pub(crate) const TEMPLATE_OUT: &str = "written";
+
+/// The typed body of an email's template (area 16, "Email"): a callable
+/// taking the names it is given and returning the text it writes, built
+/// up in one `var mut` from each piece of text, each value written out
+/// and each `{{ if }}` and `{{ for }}`.
+pub(super) fn lower_template(
+    checker: &Body<'_>,
+    lookup: &Lookup<'_>,
+    text: &str,
+    template: &ast::Template,
+    html: bool,
+) -> typed::Body {
+    let mut lower = Lower {
+        facts: &checker.facts,
+        names: lookup,
+        failures: lookup,
+        resolver: Resolver {
+            symbols: lookup,
+            table: lookup,
+        },
+        lines: LineIndex::new(text),
+        sites: Vec::new(),
+        branches: Vec::new(),
+        refers: Vec::new(),
+        at: BTreeMap::new(),
+        write_block: None,
+        template_locale: None,
+    };
+    let mut body = typed::Body::default();
+    for (id, local) in checker.facts.locals.iter().enumerate() {
+        body.locals.push(typed::Local {
+            name: local.name.clone(),
+            ty: type_ref(lookup, &local.ty),
+            kind: local_kind(local.kind),
+            start: local.span.start,
+            end: local.span.end,
+        });
+        if local.kind == LocalKind::Param {
+            body.params.push(LocalId(id as u32));
+        }
+    }
+    let out = LocalId(body.locals.len() as u32);
+    body.locals.push(typed::Local {
+        name: TEMPLATE_OUT.to_string(),
+        ty: TypeRef::Builtin(Prim::Text),
+        kind: typed::LocalKind::VarMut,
+        start: 0,
+        end: 0,
+    });
+    let locale = checker
+        .facts
+        .locals
+        .iter()
+        .position(|local| local.name == "locale" && local.kind == LocalKind::Param)
+        .map(|at| LocalId(at as u32));
+    lower.template_locale = locale;
+    let end = u32::from(template.syntax().text_range().end());
+    let writing = Writing { out, locale, html };
+    let empty = lower.made(
+        (0, 0),
+        TypeRef::Builtin(Prim::Text),
+        typed::Node::Expr(typed::Expr::Literal(Literal::Text(String::new()))),
+    );
+    let mut block = vec![lower.made(
+        (0, 0),
+        TypeRef::Builtin(Prim::Unit),
+        typed::Node::Stmt(TypedStmt::Var {
+            local: Some(out),
+            value: Some(empty),
+        }),
+    )];
+    block.extend(lower.template_parts(template.template_body(), &writing));
+    let written = lower.made(
+        (end, end),
+        TypeRef::Builtin(Prim::Text),
+        typed::Node::Expr(typed::Expr::Local(out)),
+    );
+    block.push(lower.made(
+        (end, end),
+        TypeRef::Builtin(Prim::Unit),
+        typed::Node::Stmt(TypedStmt::Return {
+            value: Some(written),
+        }),
+    ));
+    body.block = block;
+    body.sites = lower.sites.into_iter().flatten().collect();
+    body.pauses = false;
+    body.branches = lower.branches;
+    lower.refers.sort_by_key(|name| (name.start, name.end));
+    lower.refers.dedup();
+    body.names = lower.refers;
+    body
+}
+
+/// What lowering a template writes with.
+struct Writing {
+    /// The local the text is written into.
+    out: LocalId,
+    /// The locale its translations and formatting write in.
+    locale: Option<LocalId>,
+    /// Whether values are escaped as HTML.
+    html: bool,
 }
 
 /// A callable's parameters, result, `fails` list and block.
@@ -239,6 +346,10 @@ struct Lower<'a> {
     at: BTreeMap<NodeKey, SiteId>,
     /// The block an `attempt` hands the write it is lowering.
     write_block: Option<ast::MemberList>,
+    /// In an email's template: the locale its translations and
+    /// `text.format` write in, which they are given without `locale:`
+    /// (area 16).
+    template_locale: Option<LocalId>,
 }
 
 impl Lower<'_> {
@@ -368,6 +479,290 @@ impl Lower<'_> {
             line: self.lines.line(start),
         });
         BranchId(self.branches.len() as u32 - 1)
+    }
+
+    // --- templates (area 16) ---------------------------------------------
+
+    /// The type of local `local`.
+    fn local_type(&self, local: LocalId) -> TypeRef {
+        self.facts
+            .locals
+            .get(local.0 as usize)
+            .map_or(TypeRef::Builtin(Prim::Unit), |fact| self.ty(&fact.ty))
+    }
+
+    /// A site made by lowering rather than written: at `range`, of `ty`.
+    fn made(&mut self, range: (u32, u32), ty: TypeRef, node: typed::Node) -> SiteId {
+        let id = self.alloc();
+        let pauses = Self::pauses(&node);
+        self.sites[id] = Some(typed::Site {
+            start: range.0,
+            end: range.1,
+            line: self.lines.line(range.0),
+            ty,
+            node,
+            pauses,
+        });
+        SiteId(id as u32)
+    }
+
+    fn template_parts(
+        &mut self,
+        body: Option<ast::TemplateBody>,
+        writing: &Writing,
+    ) -> Vec<SiteId> {
+        let mut out = Vec::new();
+        for part in body.iter().flat_map(ast::TemplateBody::template_parts) {
+            match part {
+                ast::TemplatePart::TemplateLiteral(literal) => {
+                    let Some(token) = literal.template_text_token() else {
+                        continue;
+                    };
+                    let range = (
+                        u32::from(token.text_range().start()),
+                        u32::from(token.text_range().end()),
+                    );
+                    let piece = self.made(
+                        range,
+                        TypeRef::Builtin(Prim::Text),
+                        typed::Node::Expr(typed::Expr::Literal(Literal::Text(
+                            token.text().to_string(),
+                        ))),
+                    );
+                    out.push(self.written(piece, range, writing));
+                }
+                ast::TemplatePart::TemplateValue(value) => {
+                    let Some(expr) = value.expr() else { continue };
+                    let range = range(value.syntax());
+                    let Some(piece) = self.template_piece(&expr, writing) else {
+                        continue;
+                    };
+                    out.push(self.written(piece, range, writing));
+                }
+                ast::TemplatePart::TemplateIf(branch) => {
+                    out.push(self.template_if(&branch, writing));
+                }
+                ast::TemplatePart::TemplateFor(each) => {
+                    let at = range(each.syntax());
+                    let tag = each.template_for_tag();
+                    let list = tag
+                        .as_ref()
+                        .and_then(ast::TemplateForTag::expr)
+                        .map(|list| self.expr(&list));
+                    let item = tag
+                        .as_ref()
+                        .and_then(ast::TemplateForTag::name)
+                        .and_then(|name| self.declared(&name));
+                    let body = self.template_parts(each.template_body(), writing);
+                    out.push(self.made(
+                        at,
+                        TypeRef::Builtin(Prim::Unit),
+                        typed::Node::Stmt(TypedStmt::For { item, list, body }),
+                    ));
+                }
+                // Refused by the check until partials are built.
+                ast::TemplatePart::TemplateInclude(_) => {}
+            }
+        }
+        out
+    }
+
+    /// `{{ if (...) }} ... {{ else if (...) }} ... {{ else }} ... {{ end }}`
+    /// as one `if` chain.
+    fn template_if(&mut self, branch: &ast::TemplateIf, writing: &Writing) -> SiteId {
+        let id = self.alloc();
+        let mut arms = Vec::new();
+        let mut otherwise = None;
+        let first = (
+            branch.template_if_tag().and_then(|tag| tag.condition()),
+            branch.template_body(),
+            branch.syntax().clone(),
+        );
+        let mut chain = vec![(first.0, first.1, first.2, true)];
+        for other in branch.template_elses() {
+            let tag = other.template_else_tag();
+            let conditional = tag
+                .as_ref()
+                .and_then(ast::TemplateElseTag::if_kw_token)
+                .is_some();
+            chain.push((
+                tag.and_then(|tag| tag.condition()),
+                other.template_body(),
+                other.syntax().clone(),
+                conditional,
+            ));
+        }
+        for (condition, body, node, conditional) in chain {
+            if !conditional {
+                let at = self.branch(id, &node);
+                otherwise = Some((at, self.template_parts(body, writing)));
+                break;
+            }
+            let condition = condition
+                .and_then(|c| c.expr())
+                .map(|condition| self.expr(&condition));
+            let at = self.branch(id, &node);
+            let then = self.template_parts(body, writing);
+            arms.push(typed::IfArm {
+                condition,
+                then,
+                branch: at,
+            });
+        }
+        let (otherwise_branch, otherwise) = match otherwise {
+            Some(found) => found,
+            None => (self.branch(id, branch.syntax()), Vec::new()),
+        };
+        self.fill(
+            id,
+            branch.syntax(),
+            TypeRef::Builtin(Prim::Unit),
+            typed::Node::Stmt(TypedStmt::If {
+                arms,
+                otherwise,
+                otherwise_branch,
+            }),
+        );
+        SiteId(id as u32)
+    }
+
+    /// `written = written + piece`.
+    fn written(&mut self, piece: SiteId, range: (u32, u32), writing: &Writing) -> SiteId {
+        let text = TypeRef::Builtin(Prim::Text);
+        let read = self.made(
+            range,
+            text.clone(),
+            typed::Node::Expr(typed::Expr::Local(writing.out)),
+        );
+        let joined = self.made(
+            range,
+            text,
+            typed::Node::Expr(typed::Expr::Binary {
+                op: BinaryOp::Add,
+                lhs: read,
+                rhs: piece,
+            }),
+        );
+        self.made(
+            range,
+            TypeRef::Builtin(Prim::Unit),
+            typed::Node::Stmt(TypedStmt::Assign {
+                local: Some(writing.out),
+                value: Some(joined),
+            }),
+        )
+    }
+
+    /// The text `{{ value }}` writes: the value as the check decided to
+    /// write it, escaped in HTML unless it is `Html`.
+    fn template_piece(&mut self, expr: &Expr, writing: &Writing) -> Option<SiteId> {
+        use super::template::TemplateWrite;
+        let write = self
+            .facts
+            .template_writes
+            .get(&node_key(expr.syntax()))?
+            .clone();
+        let at = range(expr.syntax());
+        let text = TypeRef::Builtin(Prim::Text);
+        let locale = |lower: &mut Self| {
+            writing.locale.map(|local| {
+                let ty = lower.local_type(local);
+                lower.made(at, ty, typed::Node::Expr(typed::Expr::Local(local)))
+            })
+        };
+        let piece = match write {
+            TemplateWrite::Html => return Some(self.expr(expr)),
+            TemplateWrite::Text => self.expr(expr),
+            TemplateWrite::AppName(name) => {
+                self.scan(expr.syntax());
+                self.made(
+                    at,
+                    text.clone(),
+                    typed::Node::Expr(typed::Expr::Literal(Literal::Text(name))),
+                )
+            }
+            TemplateWrite::Number => {
+                let value = self.expr(expr);
+                let params = jadpo_std::Op::TextFormat.operation().params;
+                let mut args: Vec<Option<SiteId>> = vec![None; params.len()];
+                if let Some(place) = args.first_mut() {
+                    *place = Some(value);
+                }
+                if let Some(place) = args.get_mut(1) {
+                    *place = locale(self);
+                }
+                // `standard`, which the checker fills: no standard type.
+                if let Some((place, _)) = args
+                    .iter_mut()
+                    .zip(params)
+                    .find(|(_, param)| param.implicit)
+                {
+                    *place = Some(self.made(
+                        at,
+                        TypeRef::Builtin(Prim::Unit),
+                        typed::Node::Expr(typed::Expr::Literal(Literal::None)),
+                    ));
+                }
+                self.made(
+                    at,
+                    text.clone(),
+                    typed::Node::Expr(typed::Expr::Call {
+                        callee: Callee::Std(jadpo_std::Op::TextFormat),
+                        args,
+                        fallible: typed::Fallible::Never,
+                    }),
+                )
+            }
+            TemplateWrite::Enum(key) => {
+                let value = self.expr(expr);
+                let locale = locale(self);
+                self.made(
+                    at,
+                    text.clone(),
+                    typed::Node::Expr(typed::Expr::Call {
+                        callee: Callee::Translation(key),
+                        args: vec![locale, Some(value)],
+                        fallible: typed::Fallible::Never,
+                    }),
+                )
+            }
+            TemplateWrite::Direction => {
+                self.scan(expr.syntax());
+                let of = locale(self);
+                let shown = self.ty(&Ty::Named(jadpo_std::TextDirection::NAME.to_string()));
+                let direction = self.made(
+                    at,
+                    shown,
+                    typed::Node::Expr(typed::Expr::Call {
+                        callee: Callee::Std(jadpo_std::Op::LocaleDirection),
+                        args: vec![of],
+                        fallible: typed::Fallible::Never,
+                    }),
+                );
+                let locale = locale(self);
+                self.made(
+                    at,
+                    text.clone(),
+                    typed::Node::Expr(typed::Expr::Call {
+                        callee: Callee::Translation(super::template::DIRECTION_WORDING.to_string()),
+                        args: vec![locale, Some(direction)],
+                        fallible: typed::Fallible::Never,
+                    }),
+                )
+            }
+        };
+        if !writing.html {
+            return Some(piece);
+        }
+        Some(self.made(
+            at,
+            text,
+            typed::Node::Expr(typed::Expr::Call {
+                callee: Callee::Escape,
+                args: vec![Some(piece)],
+                fallible: typed::Fallible::Never,
+            }),
+        ))
     }
 
     // --- statements -------------------------------------------------------
@@ -961,6 +1356,7 @@ impl Lower<'_> {
                         *place = lowered;
                     }
                 }
+                self.template_locale_in(&mut args, 0, call);
                 args
             }
             // `batches.each`'s named arguments in their places: `from:`,
@@ -1021,6 +1417,9 @@ impl Lower<'_> {
                         *place = lowered;
                     }
                 }
+                if let Some(at) = params.iter().position(|param| param.name == "locale") {
+                    self.template_locale_in(&mut args, at, call);
+                }
                 // What the checker fills, never written (`list.sum`'s
                 // `zero`, `text.format`'s `standard`).
                 for (place, param) in args.iter_mut().zip(params) {
@@ -1044,6 +1443,21 @@ impl Lower<'_> {
             callee,
             args,
             fallible,
+        }
+    }
+
+    /// In a template, a translation's or `text.format`'s locale left out
+    /// at `at`: the template's own (area 16).
+    fn template_locale_in(&mut self, args: &mut [Option<SiteId>], at: usize, call: &ast::CallExpr) {
+        let Some(locale) = self.template_locale else {
+            return;
+        };
+        if let Some(place) = args.get_mut(at)
+            && place.is_none()
+        {
+            let range = range(call.syntax());
+            let ty = self.local_type(locale);
+            *place = Some(self.made(range, ty, typed::Node::Expr(typed::Expr::Local(locale))));
         }
     }
 

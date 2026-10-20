@@ -1,0 +1,3 @@
+{{ app.display_name }}
+
+{{ content }}

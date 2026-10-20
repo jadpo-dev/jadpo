@@ -99,6 +99,21 @@ pub fn from_wire(
     wire::read(encoding, None, sent, None)
 }
 
+/// A standard type's part and the member of the object holding its field
+/// it is spelled as on a provider's wire (`wire_parts:`, chunk 7.2e).
+type Spelled = (String, String);
+
+/// `contract`, the contract's JSON for a value of standard type
+/// `standard`, as the members a field's `wire_parts:` sends it as (area
+/// 11; chunk 7.2e): each member's spelling and what it holds.
+pub fn parts_members(
+    standard: &str,
+    contract: &serde_json::Value,
+    parts: &[(String, String)],
+) -> Vec<(String, serde_json::Value)> {
+    wire::parts_write(standard, contract, parts)
+}
+
 /// Where in the input a value is: field names, list positions and
 /// [`MAP_ENTRY`] for a map's entry, as a problem shows it; with where it
 /// stands in the document itself and the document's numbers as written,
@@ -201,6 +216,9 @@ impl Codecs<'_> {
                         }
                     }
                 }
+                // Read from its object's members by the object, which
+                // gives the contract's JSON (chunk 7.2e).
+                (Some(_), WireCoding::Parts { .. }) => self.read(*contract, json, path, problems),
                 (Some(coder), WireCoding::Functions { decode, wire, .. }) => {
                     let sent = self.read(*wire, json, path, problems)?;
                     let decoded = coder.decode(decode, sent);
@@ -634,6 +652,12 @@ impl Codecs<'_> {
                 given.push((Some(slot as u32), Value::None));
                 continue;
             }
+            if let Some(read) = self.parts(*codec, entries, path, absent, problems) {
+                if let Some(value) = read {
+                    given.push((Some(slot as u32), value));
+                }
+                continue;
+            }
             let Some(member) = shape.json_name(slot) else {
                 continue;
             };
@@ -668,6 +692,12 @@ impl Codecs<'_> {
             let Some((_, absent)) = shape.field(slot) else {
                 continue;
             };
+            if let Some(read) = self.parts(*codec, entries, path, absent, problems) {
+                if let Some(value) = read {
+                    given.push((Some(slot as u32), value));
+                }
+                continue;
+            }
             // A standard object's part named for a reserved word is sent
             // without its `_` (chunk 5.5n), and a provider package's field
             // by its `wire_name:` (chunk 7.2c).
@@ -694,7 +724,12 @@ impl Codecs<'_> {
             if shape.open() {
                 break;
             }
-            if !(0..shape.len()).any(|slot| shape.json_name(slot) == Some(name.as_str())) {
+            if !(0..shape.len()).any(|slot| shape.json_name(slot) == Some(name.as_str()))
+                && !fields.iter().any(|codec| {
+                    self.parts_of(*codec)
+                        .is_some_and(|(_, _, parts)| parts.iter().any(|(_, at)| at == name))
+                })
+            {
                 // A key set's members a `Jwk` doesn't hold are ignored, as
                 // RFC 7517 §4 requires, but a private key's (chunk 5.5r4).
                 if shape.ty() == jadpo_std::standard::security::JWK
@@ -709,6 +744,78 @@ impl Codecs<'_> {
             return None;
         }
         shape.build(given)
+    }
+
+    /// On a provider's wire, field codec `id`'s `wire_parts:` (chunk
+    /// 7.2e): the contract's codec, its standard type and each part's
+    /// spelling.
+    fn parts_of(&self, id: CodecId) -> Option<(CodecId, &str, &[Spelled])> {
+        self.coder?;
+        match self.codec(id)? {
+            Codec::Wired {
+                contract,
+                coding: WireCoding::Parts { standard, parts },
+            } => Some((*contract, standard.as_str(), parts.as_slice())),
+            _ => None,
+        }
+    }
+
+    /// Field codec `id` read from its standard type's parts among
+    /// `entries`, the members of the object holding it, when it gives
+    /// `wire_parts:` (chunk 7.2e): `None` when it doesn't; otherwise the
+    /// value, or `None` inside when the field is left to what it holds
+    /// when absent or a problem was found. A field none of whose parts is
+    /// sent is `none`, or missing; one with only some, each missing part a
+    /// problem at its member.
+    fn parts(
+        &self,
+        id: CodecId,
+        entries: &serde_json::Map<String, serde_json::Value>,
+        path: &Path,
+        absent: bool,
+        problems: &mut Vec<Problem>,
+    ) -> Option<Option<Value>> {
+        let (contract, standard, parts) = self.parts_of(id)?;
+        let sent: Vec<(&str, &str, Option<&serde_json::Value>)> = parts
+            .iter()
+            .map(|(part, at)| {
+                (
+                    part.as_str(),
+                    at.as_str(),
+                    entries.get(at).filter(|json| !json.is_null()),
+                )
+            })
+            .collect();
+        if sent.iter().all(|(_, _, json)| json.is_none()) {
+            if absent {
+                return Some(None);
+            }
+            if matches!(self.codec(contract), Some(Codec::Nullable(_))) {
+                return Some(Some(Value::None));
+            }
+        }
+        let mut found = Vec::new();
+        for (part, at, json) in &sent {
+            match json {
+                Some(json) => found.push((part.to_string(), (*json).clone())),
+                None => Self::problem(problems, &path.with(*at), "required"),
+            }
+        }
+        if found.len() < sent.len() {
+            return Some(None);
+        }
+        let json = wire::parts_read(standard, &found);
+        // Each problem at the member its part was read from.
+        let before = problems.len();
+        let value = self.read(contract, &json, path, problems);
+        for problem in problems.iter_mut().skip(before) {
+            let member = problem.field.rsplit('.').next().unwrap_or("");
+            if let Some((_, at)) = parts.iter().find(|(part, _)| part == member) {
+                let shown = path.with(at.as_str()).shown();
+                problem.field = shown;
+            }
+        }
+        Some(value)
     }
 
     /// The value `text` holds as a value of codec `id`'s type: a path
@@ -1104,6 +1211,7 @@ impl Codecs<'_> {
                         }
                     }
                 }
+                (Some(_), WireCoding::Parts { .. }) => self.write(*contract, value, out),
                 (Some(coder), WireCoding::Functions { encode, wire, .. }) => {
                     match coder.encode(encode, value.clone()) {
                         Some(sent) => self.write(*wire, &sent, out),
@@ -1124,6 +1232,9 @@ impl Codecs<'_> {
                 let members = jadpo_std::standard_type(&record.ty).is_some_and(|entry| {
                     matches!(entry.json, jadpo_std::standard::Json::Members(_))
                 });
+                // Each part's member written so far, for fields that share
+                // one (chunk 7.2e).
+                let mut parted: BTreeMap<String, String> = BTreeMap::new();
                 for (at, ((name, field), codec)) in record.fields.iter().zip(fields).enumerate() {
                     // An optional `Input` field left out is left out on the
                     // wire too, so it never reads back as one sent as
@@ -1131,6 +1242,40 @@ impl Codecs<'_> {
                     if omitted.iter().any(|place| *place as usize == at)
                         || (members && *field == Value::None)
                     {
+                        continue;
+                    }
+                    // A field sent as its standard type's parts, each its
+                    // own member of this object (chunk 7.2e).
+                    if let Some((contract, standard, parts)) = self.parts_of(*codec) {
+                        let mut written = String::new();
+                        self.write(contract, field, &mut written);
+                        let json: serde_json::Value =
+                            serde_json::from_str(&written).unwrap_or(serde_json::Value::Null);
+                        for (member, part) in wire::parts_write(standard, &json, parts) {
+                            let part = part.to_string();
+                            match parted.get(&member) {
+                                Some(sent) if *sent == part => continue,
+                                // Two fields that share a member, as a
+                                // charge's amounts share its currency,
+                                // can't send it two ways: the member is
+                                // named, never a value.
+                                Some(_) => {
+                                    if let Some(coder) = self.coder {
+                                        coder.unwritten(&member);
+                                    }
+                                    continue;
+                                }
+                                None => {}
+                            }
+                            if !first {
+                                out.push(',');
+                            }
+                            first = false;
+                            write_string(&member, out);
+                            out.push(':');
+                            out.push_str(&part);
+                            parted.insert(member, part);
+                        }
                         continue;
                     }
                     if !first {

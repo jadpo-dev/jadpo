@@ -368,12 +368,26 @@ rules! {
         "14-tooling.html#command-errors", "Deliveries' database couldn't be read";
     DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
         "14-tooling.html#command-errors", "Delivery or schedule run isn't in a state the action applies to";
+    EFFECT_CALL_IN_LOOP: "effect.call_in_loop", area 3, Error, Agent,
+        "03-logic.html#effect-call-in-loop", "Outside call inside a `for` loop";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
         "03-logic.html#effect-function-persistence", "Function reads or writes stored data";
     EFFECT_RECURSIVE_ACTION: "effect.recursive_action", area 3, Error, Human,
         "03-logic.html#effect-recursive-action", "Action is part of a call cycle";
+    EMAIL_CONNECTION_REQUIRED: "email.connection_required", area 16, Error, Agent,
+        "16-built-in-services.html#email-connection-required", "Action emits an email but the application names no email connection";
+    EMAIL_FIELD_UNUSED: "email.field_unused", area 16, Declinable, Agent,
+        "16-built-in-services.html#email-field-unused", "Email's field is written by no template and no subject";
+    EMAIL_SETTINGS_INVALID: "email.settings_invalid", area 16, Error, Agent,
+        "16-built-in-services.html#email-settings-invalid", "Application's `email:` or `display_name:` is invalid";
+    EMAIL_TEMPLATE_MISSING: "email.template_missing", area 16, Error, Agent,
+        "16-built-in-services.html#email-template-missing", "Email has no template, or a template no email";
+    EMAIL_TEMPLATE_NOT_ALLOWED: "email.template_not_allowed", area 16, Error, Agent,
+        "16-built-in-services.html#email-template-not-allowed", "Template does more than read fields, translate and format";
+    EMAIL_TEMPLATE_VALUE_INVALID: "email.template_value_invalid", area 16, Error, Agent,
+        "16-built-in-services.html#email-template-value-invalid", "Template writes out something that isn't text or a number";
     EVENT_EMIT_INVALID: "event.emit_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#event-emit-invalid", "Emit is given something that isn't an event, or is used outside an action";
     EVENT_SETTINGS_INVALID: "event.settings_invalid", area 12, Error, Agent,
@@ -544,6 +558,8 @@ rules! {
         "11-integrations.html#package-provider-translations", "Provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
+    PACKAGE_STANDARD_CANDIDATE: "package.standard_candidate", area 11, Declinable, Agent,
+        "11-integrations.html#package-standard-candidate", "Provider field looks like a standard type the package doesn't use";
     PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
         "11-integrations.html#package-version-needed", "Name written through a package held in two versions doesn't say which";
     PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
@@ -680,6 +696,10 @@ rules! {
         "18-records-and-manifest.html#record-format-newer", "Record was written by a newer Jadpo";
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
         "18-records-and-manifest.html#record-out-of-date", "Generated record disagrees with the source";
+    RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Provider's sandbox gave no answer to record";
+    RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Operation can't be recorded through this connection";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -820,6 +840,16 @@ rules! {
         "03-logic.html#semantic-unused-variable", "Variable is never used";
     SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
+    STEP_CONTEXT: "step.context", area 12, Error, Human,
+        "12-jobs-and-events.html#step-context", "Several changing calls where a retry can't resume them";
+    STEP_LARGE_OUTPUT: "step.large_output", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-large-output", "Operation with a large answer among several changing calls";
+    STEP_STORE_REQUIRED: "step.store_required", area 12, Error, Human,
+        "12-jobs-and-events.html#step-store-required", "Action makes several changing calls but writes no store to keep their record in";
+    STEP_TOO_MANY: "step.too_many", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-too-many", "More than 8 changing calls on one way through an action";
+    STEP_UNKEYED: "step.unkeyed", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-unkeyed", "Changing call with no idempotency key beside another changing call";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
     SUBSCRIBER_ARGUMENT_INVALID: "subscriber.argument_invalid", area 12, Error, Agent,
@@ -960,6 +990,10 @@ rules! {
         "13-testing.html#test-fault", "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
         "14-tooling.html#command-errors", "No tests to run";
+    TEST_RECORDING_UNDECODABLE: "test.recording_undecodable", area 11, Error, Agent,
+        "11-integrations.html#test-recording-undecodable", "Recorded provider answer its operation's decoders don't read";
+    TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
+        "11-integrations.html#test-round-trip-failed", "Field's decode and encode don't round-trip a recorded value";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Test runtime could not start";
     TEST_SUBSCRIBER_FAILED: "test.subscriber_failed", area 13, Error, Agent,
@@ -1517,7 +1551,9 @@ mod tests {
             declinable,
             [
                 "constant.similar_exists",
+                "email.field_unused",
                 "library.similar_exists",
+                "package.standard_candidate",
                 "query.nearest_exact",
                 "translation.field_unused",
                 "type.batch_order_updatable",

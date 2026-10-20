@@ -248,7 +248,7 @@ pub fn as_sent(
 }
 
 /// A UUID's text: lower case, in its five groups.
-fn uuid_text(bytes: [u8; 16]) -> String {
+pub(crate) fn uuid_text(bytes: [u8; 16]) -> String {
     let hex = jadpo_value::encoding::to_hex(&bytes);
     format!(
         "{}-{}-{}-{}-{}",
@@ -344,6 +344,20 @@ fn generate(
             };
             let mut members = serde_json::Map::new();
             for (slot, field) in fields.iter().enumerate() {
+                // A field read from its standard type's parts among this
+                // object's members, each part its own (chunk 7.2e).
+                if let Some(Codec::Wired {
+                    contract,
+                    coding: jadpo_std::http::WireCoding::Parts { standard, parts },
+                }) = codecs.codecs.get(field.0 as usize)
+                {
+                    let whole = generate(codecs, *contract, making, depth + 1);
+                    for (member, json) in jadpo_value::json::parts_members(standard, &whole, parts)
+                    {
+                        members.entry(member).or_insert(json);
+                    }
+                    continue;
+                }
                 let Some(name) = shape.json_name(slot) else {
                     continue;
                 };
@@ -494,10 +508,20 @@ fn scalar_candidates(
             vec![serde_json::json!({ "instant": "2000-01-01T00:00:00Z", "zone": "Europe/London" })]
         }
         B::Duration => vec![text("PT1M"), text("1m"), J::from(60_000)],
-        B::Money => vec![
-            serde_json::json!({ "amount": "0.00", "currency": "GBP" }),
-            text("0.00 GBP"),
-        ],
+        // As the contract sends it, a whole number of minor units and a
+        // code, in the one currency its type fixes, if any.
+        B::Money => {
+            let code = rules
+                .iter()
+                .find_map(|rules| rules.currency)
+                .and_then(jadpo_std::money::code)
+                .unwrap_or("GBP");
+            vec![
+                serde_json::json!({ "amount": 0, "currency": code }),
+                serde_json::json!({ "amount": "0.00", "currency": "GBP" }),
+                text("0.00 GBP"),
+            ]
+        }
         B::Quantity(_) => vec![text("0"), J::from(0)],
         _ => {
             let length = usize::try_from(least_length.max(1)).unwrap_or(1);

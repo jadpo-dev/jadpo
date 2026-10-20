@@ -2121,8 +2121,10 @@ Failed`), or the runtime's `unavailable`, `misconfigured` or, for an
 unkeyed call that may have acted, `outcome_unknown` (`boundary::
 outcome_unknown`). A subscriber's plan names its `Target`: an action,
 or a capability's operation handed the event whole
-(`Target::Capability`, which chunk 7.3's email will plan), and
-`runner::attempt_delivery` runs either within the same budget.
+(`Target::Capability`), or an email (`Target::Email`, chunk 7.3),
+rendered whole by `email::message` (its templates' callables run by the
+executor) and sent unkeyed, and `runner::attempt_delivery` runs each
+within the same budget.
 `Logged::may_have_acted` (an unkeyed call answered or still out) turns
 what would be a retry into `After::Park`: the delivery record becomes
 `outcome_unknown`, never claimed again. An unkeyed capability send marks
@@ -2180,6 +2182,25 @@ action and fixture makes, itself or through the actions it calls
 each write some way runs before a call as `data.write_before_call`, at
 the write and naming the last such call, not declinable. The seam's
 `call_in_transaction` stays as the guard.
+
+**Several changing calls, checked** (chunk 7.5; area 12, "Several
+changing calls in one action"). `jadpo_check::types::action_steps` works
+out, once per project, what each action's and fixture's outside calls
+come to (`Steps`): the most changing calls one way through it makes (a
+provider operation with `changes: true`, a store's `put`), counted as
+`call_order_problems` walks a body, an action called adding its own
+longest way; how many it can make on every way; and the first call, the
+first with no key and the first `large_output: true` one, each named as
+written where it is made. `step_problems` reads it per file:
+`effect.call_in_loop` for an outside call in a `for` body, made there or
+by an action called there; `step.too_many` past 8 on one way;
+`step.unkeyed` for a call with no key in an action that can make another
+changing call; `step.large_output`; `step.context` where an action making
+several on one way is run by a schedule, a route whose API doesn't
+require `Idempotency-Key`, or a run's `each:` or `finished:`; and
+`step.store_required` for one a subscriber, or a route whose API requires
+the key (`resumable_runs`), runs with no store for its record. The
+record itself is roadmap 7.5b's.
 
 **A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
 kept"). The plan marks a `BatchCall` whose action makes outside calls
@@ -2262,6 +2283,30 @@ each call as it ends, with the request as made but its headers and the
 answer as sent or generated (`call_log::Seen`), and the request's id
 (`Ctx::request_id`, which the HTTP component sets); only `jadpo dev`'s
 host has one, writing `build/dev/calls.jsonl` for `jadpo calls`.
+
+**A package's recordings** (chunk 7.2d2; area 11, "Provenance and
+confirmation"): `recordings/<resource>.<operation>.json` in a package is
+a package record (`jadpo_db::Record`), and the plan carries each
+operation's text on `OperationPlan::recording` and every recording of
+the app's own integrations as a `RecordedPlan` (its operation planned
+whether or not a connection calls it). `jadpo_runtime::recorded` keeps an
+answer as a recording (`recorded::kept`: the path to `output_at:` and
+the members the output type declares, each plain text or number a
+placeholder naming its built-in type, `"{Text}"`, where a generated value
+reads back; what the package's own encodings and decoders read kept as
+sent, digits included) and fills one back (`recorded::filled`, from
+`fakes::generated`). `recorded::check` reads a recording whole through
+the package's functions at the call's site, a `RoundTrip` coder checking
+each field's `encode:` gives back what its `decode:` read; it is
+`Executor::recording`, which `jadpo test` runs for each `RecordedPlan` as
+a test of kind `recording` (`test.recording_undecodable`,
+`test.round_trip_failed`), and the publishing bar counts as its
+`decoders` row. `jadpo dev`'s fake answers an operation that has one
+`Answer::Recorded` (`Source::Recording`), which the call's site fills
+before decoding. `jadpo package record` calls the sandbox through
+`Program::call_provider` on a `NativeHost` with the package driver, its
+keyed call given a step outside an action (`Ctx::allow_standalone_calls`),
+and keeps the answer the call log hands it.
 
 **Webhooks as events** (chunk 7.7; area 11, "Chosen in chunk 7.7"). The
 checker reads a provider's `webhooks:` into `connections::WebhookReach`

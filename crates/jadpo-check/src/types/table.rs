@@ -75,6 +75,8 @@ pub enum WrittenCoding {
         decode: Option<(String, String)>,
         encode: Option<(String, String)>,
     },
+    /// `wire_parts:` (chunk 7.2e): each part and its spelling, as written.
+    Parts(Vec<(String, String)>),
 }
 
 impl WrittenCoding {
@@ -88,6 +90,17 @@ impl WrittenCoding {
             },
             _ => None,
         };
+        if let Some((_, rules::Const::Block(parts))) = given(super::shape::WIRE_PARTS) {
+            return Some(WrittenCoding::Parts(
+                parts
+                    .iter()
+                    .filter_map(|(part, value)| match value {
+                        rules::Const::Str(text) => Some((part.clone(), text.clone())),
+                        _ => None,
+                    })
+                    .collect(),
+            ));
+        }
         if let Some((_, value)) = given(super::shape::WIRE) {
             return match value {
                 rules::Const::Path(names) => match names.as_slice() {
@@ -294,7 +307,11 @@ pub fn derive(
     lines: &[Line],
     find: &mut dyn FnMut(&str) -> Found,
 ) -> (Vec<RawField>, Vec<LineProblem>) {
-    let mut fields: Vec<RawField> = Vec::new();
+    let mut fields: Vec<RawField> = if base == FieldsBase::EmailMessage {
+        email_fields()
+    } else {
+        Vec::new()
+    };
     let mut problems = Vec::new();
     let input = base == FieldsBase::Input;
     for (line, item) in lines.iter().enumerate() {
@@ -453,6 +470,31 @@ pub fn derive(
         }
     }
     (fields, problems)
+}
+
+/// The fields every `EmailMessage` has before its own (area 16, "Email"):
+/// `to:`, the address it is sent to, and `locale:`, the language it is
+/// written in.
+pub const EMAIL_FIELDS: [(&str, &str); 2] = [("to", "Email"), ("locale", "Locale")];
+
+fn email_fields() -> Vec<RawField> {
+    EMAIL_FIELDS
+        .iter()
+        .map(|(name, ty)| RawField {
+            name: (*name).to_string(),
+            source: Source::Written {
+                ty: TypeRef::Path(vec![(*ty).to_string()], Vec::new()),
+                settings: Vec::new(),
+            },
+            optional: false,
+            default: None,
+            header: None,
+            column: None,
+            wire_name: None,
+            coding: None,
+            replaces: None,
+        })
+        .collect()
 }
 
 fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn FnMut(LineKind)) {

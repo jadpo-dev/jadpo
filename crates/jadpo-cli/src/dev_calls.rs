@@ -1,8 +1,10 @@
 //! Provider calls in `jadpo dev` (area 11, "Provider calls in
 //! development"; area 17, "Provider calls in development: `jadpo calls`";
 //! chunk 7.2d): every provider operation faked by default, answered with
-//! what `jadpo calls script` scripted for it or else its generated
-//! default, so nothing leaves the machine and no credential is needed;
+//! what `jadpo calls script` scripted for it, else from its package's
+//! recording with its placeholders filled (chunk 7.2d2), else its
+//! generated default, so nothing leaves the machine and no credential is
+//! needed;
 //! the operations a connection's `development: { sandbox: }` names, or
 //! `--sandbox` names for one session, let through to the provider's
 //! sandbox, never live; and every call logged with its values in full in
@@ -40,6 +42,9 @@ pub(crate) const KEPT: usize = 500;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Setup {
     pub connections: Vec<ConnectionSetup>,
+    /// The operations whose package keeps a recording, which the fake
+    /// answers from (chunk 7.2d2): `couriers.pickups.create`.
+    pub recorded: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +64,11 @@ impl Setup {
         self.connections.iter().any(|connection| {
             connection.name == call.connection && connection.sandbox.contains(&call.operation)
         })
+    }
+
+    /// Whether `call`'s operation keeps a recording to answer from.
+    fn recorded(&self, call: &Call) -> bool {
+        self.recorded.contains(&call.name())
     }
 }
 
@@ -132,7 +142,18 @@ pub(crate) fn setup(
         }
         asked.extend(found);
     }
-    let mut out = Setup::default();
+    let mut out = Setup {
+        recorded: plan
+            .operations
+            .iter()
+            .filter(|op| op.recording.is_some())
+            .filter_map(|op| {
+                let connection = plan.connections.get(op.connection as usize)?;
+                Some(format!("{}.{}", connection.name, op.name))
+            })
+            .collect(),
+        ..Setup::default()
+    };
     for connection in &plan.connections {
         let mut sandbox: Vec<String> = Vec::new();
         if !session.fake.contains(&connection.name) {
@@ -260,6 +281,13 @@ impl DevProviders {
             Err(poisoned) => poisoned.into_inner().lets_through(call),
         }
     }
+
+    fn recorded(&self, call: &Call) -> bool {
+        match self.setup.lock() {
+            Ok(setup) => setup.recorded(call),
+            Err(poisoned) => poisoned.into_inner().recorded(call),
+        }
+    }
 }
 
 impl Capability for DevProviders {
@@ -267,8 +295,11 @@ impl Capability for DevProviders {
         if self.lets_through(call) {
             return self.sandbox.call(call);
         }
+        // Scripted, else from the operation's recording, else its
+        // generated default (chunk 7.2d2).
         let answer = match take(&self.script, &call.name()) {
             Some(word) => scripted_answer(&word),
+            None if self.recorded(call) => Answer::Recorded,
             None => Answer::Generated,
         };
         Box::pin(async move { answer })
@@ -283,6 +314,8 @@ impl Capability for DevProviders {
             Source::Sandbox
         } else if waiting(&self.script, &call.name()) {
             Source::Scripted
+        } else if self.recorded(call) {
+            Source::Recording
         } else {
             Source::Generated
         }

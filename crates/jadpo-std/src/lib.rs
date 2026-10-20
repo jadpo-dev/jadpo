@@ -57,6 +57,7 @@ pub mod batch;
 mod builtin;
 pub mod config;
 pub mod constant;
+pub mod email;
 mod enums;
 pub mod files;
 pub mod fixed;

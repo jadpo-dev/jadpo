@@ -64,6 +64,9 @@ pub enum ConnectionKind {
     Redis,
     /// A store of files, `Driver.disk` (area 16; chunk 6.4b).
     Files,
+    /// An SMTP server, `Driver.smtp`, which sends email (area 16; chunk
+    /// 7.3).
+    Smtp,
     /// A provider package (area 11).
     Package,
     /// Neither a built-in driver nor a package: area 11 reports it.
@@ -207,7 +210,7 @@ pub fn files_connections(db: &dyn Db, project: Project) -> Vec<jadpo_std::files:
     out
 }
 
-fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
+pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
     for (setting, member) in tree::members(list) {
         match tree::name_text(&setting).as_deref() {
             Some("package") => return ConnectionKind::Package,
@@ -218,6 +221,7 @@ fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::Postgres) => ConnectionKind::Postgres,
                         Some(Driver::Redis) => ConnectionKind::Redis,
                         Some(Driver::Disk) => ConnectionKind::Files,
+                        Some(Driver::Smtp) => ConnectionKind::Smtp,
                         None => ConnectionKind::Other,
                     },
                     _ => ConnectionKind::Other,

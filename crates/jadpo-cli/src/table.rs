@@ -232,7 +232,11 @@ pub const KINDS: &[Value] = &[
     },
     Value {
         name: "schedule",
-        description: "Tests that run a schedule (not built yet)",
+        description: "Tests that run a schedule",
+    },
+    Value {
+        name: "recording",
+        description: "Each recording of the app's own integrations, read by its decoders",
     },
 ];
 
@@ -284,7 +288,8 @@ pub static COMMANDS: &[Command] = &[
                       and <file>:<line> the test at that line. The project must check without errors \
                       first. With --watch, it keeps running: each save reruns the tests the change \
                       reaches, through the compiler's graph, within the path, name and kind given. \
-                      Pure, action and route tests run so far.",
+                      Every recording of the app's own integrations in shared/providers/ is read by its \
+                      operation's decoders as a test of its own.",
         arguments: &[Argument {
             name: "path",
             description: "A test file, <file>:<line>, or a folder",
@@ -301,7 +306,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--kind",
                 value: Some("kind"),
-                description: "Run one kind: pure, action, route, schedule",
+                description: "Run one kind, such as pure or recording",
                 values: KINDS,
             },
             Flag {
@@ -712,7 +717,11 @@ pub static COMMANDS: &[Command] = &[
                       as JSON, once and offline, into the app's own integration in \
                       shared/providers/<name>/<version>/: another Jadpo application's exactly, from its \
                       x-jadpo fields, any other's by its formats, with what it leaves out listed to \
-                      check; importing again merges, keeping corrections. `add` installs a package from \
+                      check; importing again merges, keeping corrections. `record <connection> \
+                      <resource>.<operation>` calls the provider's sandbox once, never live, with \
+                      `--input` as the operation's input, checks the answer against the operation's \
+                      types and keeps it in the package's recordings/ with its values as placeholders; \
+                      `jadpo test` and `check` then decode it with every decoder. `add` installs a package from \
                       its folder or from a git repository at a release tag (`<repository>@v<version>`) \
                       into packages/ and jadpo.lock, once its surface matches its code; `update` moves \
                       one to its newest release, listing what changed; `remove` takes out one the app no \
@@ -721,19 +730,19 @@ pub static COMMANDS: &[Command] = &[
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show, check, import, add, update, remove, link or unlink",
+                description: "What to do: show, check, import, record, add, update, remove, link or unlink",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi",
+                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection",
                 required: false,
                 values: Values::Path,
             },
             Argument {
                 name: "declaration",
-                description: "One of its declarations, such as uk.dates; for import, the file",
+                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, as <resource>.<operation>",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -749,6 +758,12 @@ pub static COMMANDS: &[Command] = &[
                 name: "--as",
                 value: Some("name"),
                 description: "For import: its name, such as Tidepool.v1",
+                values: &[],
+            },
+            Flag {
+                name: "--input",
+                value: Some("json"),
+                description: "For record: the operation's input as JSON",
                 values: &[],
             },
         ],
@@ -777,11 +792,17 @@ pub static COMMANDS: &[Command] = &[
                 description: "Try the app against a package's checkout before it is released",
                 command: "jadpo package link ../holidays",
             },
+            Example {
+                description: "Record a sandbox's answer to confirm an operation",
+                command: "jadpo package record holidays dates.list --input '{\"year\": 2027}'",
+            },
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
         raises: &[
             &rule::CLI_PACKAGE_NOT_OPENAPI,
             &rule::CLI_PACKAGE_UNREADABLE,
+            &rule::RECORDING_FAILED,
+            &rule::RECORDING_REFUSED,
             &rule::INSTALL_FETCH_FAILED,
             &rule::INSTALL_IN_USE,
             &rule::INSTALL_SURFACE_MISMATCH,

@@ -11,7 +11,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan,
-    PathPart, ProviderPlan, WebhookEvent, WebhookPlan,
+    PathPart, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan,
 };
 use jadpo_std::subscriber::Repeat;
 
@@ -98,65 +98,41 @@ pub(crate) fn plan(
             if !operation.public {
                 continue;
             }
-            let input = operation
-                .input
-                .as_ref()
-                .map(|(ty, _)| number(jadpo_check::graph::type_ref(&lookup, ty)));
-            let output = match &operation.output {
-                jadpo_check::types::Ty::Prim(jadpo_check::types::Prim::Unit) => None,
-                ty => Some(number(jadpo_check::graph::type_ref(&lookup, ty))),
-            };
-            let repeat = match (operation.changes, operation.idempotent, keyed) {
-                (false, _, _) => Repeat::Safe,
-                (true, true, true) => Repeat::Keyed,
-                // Marked idempotent with no key: repeating it as it is
-                // changes nothing (a `PUT` that replaces, a `DELETE`).
-                (true, true, false) => Repeat::Safe,
-                (true, false, _) => Repeat::Unkeyed,
-            };
-            out.operations.push(OperationPlan {
-                connection: at,
-                name: operation.full_name(),
-                method: operation.method,
-                path: operation
-                    .path
-                    .iter()
-                    .map(|part| match part {
-                        jadpo_check::providers::PathPart::Fixed(text) => {
-                            PathPart::Fixed(text.clone())
-                        }
-                        jadpo_check::providers::PathPart::Field(name) => {
-                            PathPart::Field(name.clone())
-                        }
-                    })
-                    .collect(),
-                input,
-                output,
-                // The whole answer as sent, and the package's function
-                // that turns it into the output (chunk 7.2c2).
-                decode: operation.decode.as_ref().map(|(wire, decode)| {
-                    (
-                        number(jadpo_check::graph::type_ref(&lookup, wire)),
-                        decode.as_str().to_string(),
-                    )
-                }),
-                output_at: operation.output_at.clone(),
-                failed_when: operation
-                    .failed_when
-                    .as_ref()
-                    .map(|when| (when.path.clone(), when.equals.clone())),
-                repeat,
-                // Each failure's plan is numbered, so the runtime raises
-                // it as the call's failure.
-                failures: operation
-                    .failures
-                    .iter()
-                    .filter_map(|name| jadpo_check::graph::declaration_key(&lookup, name))
-                    .filter(|key: &Key| types.failure_id(key).is_some())
-                    .map(|key| key.as_str().to_string())
-                    .collect(),
-            });
+            let mut planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
+            planned.recording = recording(db, project, operation);
+            out.operations.push(planned);
         }
+    }
+    // Every recording of the app's own integrations, decoded by `jadpo
+    // test` and the publishing bar with its operation's decoders (chunk
+    // 7.2d2). An installed package's were decoded when it was published.
+    for record in project.records(db) {
+        let Some((home, rest)) = jadpo_db::package_at(&record.path) else {
+            continue;
+        };
+        let (false, ["recordings", file]) = (home.installed, rest.as_slice()) else {
+            continue;
+        };
+        let Some(full) = file.strip_suffix(".json") else {
+            continue;
+        };
+        let Ok(text) = &record.text else {
+            continue;
+        };
+        let found = full
+            .split_once('.')
+            .and_then(|(resource, name)| operations.find(&home.folder, resource, name));
+        out.recorded.push(RecordedPlan {
+            file: record.path.clone(),
+            package: home.versioned(),
+            operation: full.to_string(),
+            // Only its answer is read, so how it would be sent again
+            // doesn't matter.
+            plan: found.map(|operation| {
+                operation_plan(&lookup, types, &mut number, operation, u32::MAX, false)
+            }),
+            text: text.clone(),
+        });
     }
     // Each connection's webhooks (chunk 7.7): the body is read with its
     // event's codec, numbered here, and its payload kept with it.
@@ -185,4 +161,91 @@ pub(crate) fn plan(
         });
     }
     out
+}
+
+/// Operation `operation` as a call through connection number `at` sends
+/// it, its types numbered by `number`; `keyed` when its provider takes an
+/// idempotency key.
+fn operation_plan(
+    lookup: &Lookup<'_>,
+    types: &mut crate::types::Types,
+    number: &mut dyn FnMut(TypeRef) -> u32,
+    operation: &jadpo_check::providers::Operation,
+    at: u32,
+    keyed: bool,
+) -> OperationPlan {
+    let input = operation
+        .input
+        .as_ref()
+        .map(|(ty, _)| number(jadpo_check::graph::type_ref(lookup, ty)));
+    let output = match &operation.output {
+        jadpo_check::types::Ty::Prim(jadpo_check::types::Prim::Unit) => None,
+        ty => Some(number(jadpo_check::graph::type_ref(lookup, ty))),
+    };
+    let repeat = match (operation.changes, operation.idempotent, keyed) {
+        (false, _, _) => Repeat::Safe,
+        (true, true, true) => Repeat::Keyed,
+        // Marked idempotent with no key: repeating it as it is
+        // changes nothing (a `PUT` that replaces, a `DELETE`).
+        (true, true, false) => Repeat::Safe,
+        (true, false, _) => Repeat::Unkeyed,
+    };
+    OperationPlan {
+        connection: at,
+        name: operation.full_name(),
+        method: operation.method,
+        path: operation
+            .path
+            .iter()
+            .map(|part| match part {
+                jadpo_check::providers::PathPart::Fixed(text) => PathPart::Fixed(text.clone()),
+                jadpo_check::providers::PathPart::Field(name) => PathPart::Field(name.clone()),
+            })
+            .collect(),
+        input,
+        output,
+        // The whole answer as sent, and the package's function that
+        // turns it into the output (chunk 7.2c2).
+        decode: operation.decode.as_ref().map(|(wire, decode)| {
+            (
+                number(jadpo_check::graph::type_ref(lookup, wire)),
+                decode.as_str().to_string(),
+            )
+        }),
+        output_at: operation.output_at.clone(),
+        failed_when: operation
+            .failed_when
+            .as_ref()
+            .map(|when| (when.path.clone(), when.equals.clone())),
+        repeat,
+        // Each failure's plan is numbered, so the runtime raises it as
+        // the call's failure.
+        failures: operation
+            .failures
+            .iter()
+            .filter_map(|name| jadpo_check::graph::declaration_key(lookup, name))
+            .filter(|key: &Key| types.failure_id(key).is_some())
+            .map(|key| key.as_str().to_string())
+            .collect(),
+        recording: None,
+    }
+}
+
+/// The text of `operation`'s recording, `recordings/<resource>.<operation>.json`
+/// in its package (chunk 7.2d2).
+fn recording(
+    db: &dyn Db,
+    project: Project,
+    operation: &jadpo_check::providers::Operation,
+) -> Option<String> {
+    let path = format!(
+        "{}/recordings/{}.json",
+        operation.folder,
+        operation.full_name()
+    );
+    project
+        .records(db)
+        .iter()
+        .find(|record| record.path == path)
+        .and_then(|record| record.text.clone().ok())
 }

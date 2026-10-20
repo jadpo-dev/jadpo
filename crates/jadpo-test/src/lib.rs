@@ -55,8 +55,8 @@ pub use env::{Fakes, TestDatabase, TestEnv};
 pub use json::{json, schema};
 pub use live::{REQUIRE_VARIABLE, SKIP_VARIABLE, live, skip_for_version};
 pub use outcome::{
-    AssertionFailure, Change, ChangeMark, Detail, FailureInfo, FaultInfo, Located, ShownLine,
-    ShownPart, StackFrame, TestFailure,
+    AssertionFailure, Change, ChangeMark, Detail, FailureInfo, FaultInfo, Located, RecordingInfo,
+    ShownLine, ShownPart, StackFrame, TestFailure,
 };
 pub use record::RECORD;
 pub use screen::screen;
@@ -73,14 +73,20 @@ pub enum TestKind {
     Route,
     /// Runs a schedule (area 12).
     Schedule,
+    /// Reads a recording of one of the app's own integrations as its
+    /// operation's output, through the package's decoders (area 11,
+    /// "Provenance and confirmation"; chunk 7.2d2): not a `test`
+    /// declaration, but checked on every run as one.
+    Recording,
 }
 
 impl TestKind {
-    pub const ALL: [TestKind; 4] = [
+    pub const ALL: [TestKind; 5] = [
         TestKind::Pure,
         TestKind::Action,
         TestKind::Route,
         TestKind::Schedule,
+        TestKind::Recording,
     ];
 
     pub fn word(self) -> &'static str {
@@ -89,6 +95,7 @@ impl TestKind {
             TestKind::Action => "action",
             TestKind::Route => "route",
             TestKind::Schedule => "schedule",
+            TestKind::Recording => "recording",
         }
     }
 
@@ -328,9 +335,13 @@ pub(crate) fn prepare(loaded: &jadpo_db::Loaded, cwd: &std::path::Path) -> Resul
     } else {
         BTreeMap::new()
     };
+    let prepared = Prepared::checked(db, loaded.project);
+    let mut tests = discover(graph);
+    tests.extend(recordings(&prepared));
+    tests.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
     Ok(Checked {
-        prepared: Prepared::checked(db, loaded.project),
-        tests: discover(graph),
+        prepared,
+        tests,
         project,
         steps,
     })
@@ -395,7 +406,7 @@ pub(crate) fn choose_and_run(
     // Only tests that call actions, queries or fixtures use a store.
     let users = ordered
         .iter()
-        .filter(|test| test.kind != TestKind::Pure)
+        .filter(|test| !matches!(test.kind, TestKind::Pure | TestKind::Recording))
         .count();
     let databases = (!steps.is_empty() && users > 0)
         .then(|| database::TestDatabases::new(steps.clone(), options.keep_failed).for_tests(users));
@@ -452,6 +463,29 @@ impl Rerun {
         let path = jadpo_term::shown_path(self.root.as_deref(), file);
         format!("jadpo test {path}:{line} --seed {}", self.seed)
     }
+}
+
+/// The key of the check of the recording at `file` (chunk 7.2d2).
+pub const RECORDING_KEY: &str = "recording ";
+
+/// A check for each recording of the app's own integrations (area 11,
+/// "Provenance and confirmation"; chunk 7.2d2), run as a test: its
+/// operation's decoders read it.
+pub fn recordings(prepared: &Prepared) -> Vec<Test> {
+    prepared
+        .plan()
+        .providers()
+        .recorded
+        .iter()
+        .map(|recorded| Test {
+            key: format!("{RECORDING_KEY}{}", recorded.file),
+            name: format!("{}'s recording decodes", recorded.operation),
+            file: recorded.file.clone(),
+            line: 1,
+            end_line: u32::try_from(recorded.text.lines().count().max(1)).unwrap_or(u32::MAX),
+            kind: TestKind::Recording,
+        })
+        .collect()
 }
 
 /// Every test in the graph, in file and line order, each with the kind

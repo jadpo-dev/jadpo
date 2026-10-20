@@ -10,11 +10,24 @@ use jadpo_db::{Database, File, Layout, Project, Record};
 /// out of date; and each domain with events gets its event record, as
 /// `jadpo records update` would write it.
 pub fn project(db: &Database, layout: Layout, files: &[(&str, &str)]) -> Project {
-    let make = |db: &Database, records: Vec<Record>| {
+    // An email's templates are read as records, as the loader reads them
+    // (area 16).
+    let template = |path: &str| layout == Layout::Project && jadpo_db::is_email_template(path);
+    let templates: Vec<Record> = files
+        .iter()
+        .filter(|(path, _)| template(path))
+        .map(|(path, text)| Record {
+            path: path.to_string(),
+            text: Ok(text.to_string()),
+        })
+        .collect();
+    let make = |db: &Database, mut records: Vec<Record>| {
         let inputs: Vec<File> = files
             .iter()
+            .filter(|(path, _)| !template(path))
             .map(|(path, text)| File::new(db, path.to_string(), text.to_string()))
             .collect();
+        records.extend(templates.iter().cloned());
         Project::new(db, inputs, Vec::new(), layout, Default::default(), records)
     };
     let scratch = Database::default();
