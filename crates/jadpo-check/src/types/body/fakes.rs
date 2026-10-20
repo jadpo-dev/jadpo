@@ -242,7 +242,7 @@ impl Body<'_> {
                             .reason(format!(
                                 "A scripted answer is {}one of `{written}`'s failures by its code{}, or a condition: `unavailable`, `lost`, `in_use` or `misconfigured`.",
                                 if gives {
-                                    format!("a `{}`, ", operation.output)
+                                    format!("a value of `{}`, ", operation.output)
                                 } else {
                                     String::new()
                                 },
