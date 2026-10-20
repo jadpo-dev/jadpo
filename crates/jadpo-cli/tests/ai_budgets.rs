@@ -249,3 +249,60 @@ fn development_counts_each_caller_and_the_sandbox_and_shows_the_usage() {
     }
     drop(dev);
 }
+
+/// A price the application sets for its model overrides its package's
+/// (area 21, question 7; chunk 5.5v7): the package's table prices the
+/// model at nothing, and the app's `Money` settings at 100, 10 and 400 US
+/// dollars a million input, cached and output tokens, so the third call
+/// of the day would pass 0.25.
+#[test]
+fn a_price_the_app_sets_overrides_its_packages() {
+    let root = desk(
+        "budget-prices",
+        "https://sandbox.acme-models.example",
+        STRICT,
+        "",
+    );
+    actions(&root);
+    let long = long_answer();
+    write(
+        &root,
+        crate::ai_providers::LIBRARY,
+        &crate::ai_providers::library("0.00", "0.00", "0.00"),
+    );
+    let config = fs::read_to_string(root.join("config.jadpo")).expect("config");
+    write(
+        &root,
+        "config.jadpo",
+        &config.replacen(
+            "config {\n",
+            "config {\n    ai_daily_spend: Money {\n        default: \"USD 0.25\"\n    }\n    input_price: Money {\n        default: \"USD 100.00\"\n    }\n    cached_price: Money {\n        default: \"USD 10.00\"\n    }\n    output_price: Money {\n        default: \"USD 400.00\"\n    }\n",
+            1,
+        ),
+    );
+    passes(
+        &root,
+        "        limits: {\n            per_day: {\n                tokens: 2000000\n                cost: config.ai_daily_spend\n            }\n        }\n        prices: {\n            default: {\n                input: config.input_price\n                cached: config.cached_price\n                output: config.output_price\n            }\n        }\n",
+        &format!(
+            "test \"the day's spend runs out at the app's own prices\" {{\n    fakes: {{\n        ai.answer_question: [{long}, {long}]\n    }}\n    var first: SupportAnswer = attempt answer_once(Asked {{ question: \"Sesame?\" }})\n    var second: SupportAnswer = attempt answer_once(Asked {{ question: \"Rye?\" }})\n    assert second.reply == first.reply\n    assert answer_once(Asked {{ question: \"Spelt?\" }}) fails AssistantUnavailable\n}}\n"
+        ),
+        1,
+    );
+    // A price for a model `models:` doesn't name, and one that isn't
+    // money, are each the app's mistake.
+    limited(
+        &root,
+        "        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n        prices: {\n            drafting: {\n                input: config.input_price\n                output: config.ai_daily_spend\n            }\n            default: {\n                input: config.drafting_model\n                output: config.output_price\n            }\n        }\n",
+    );
+    let checked = jadpo(&root, &["check"]);
+    let said = format!("{}{}", checked.stdout, checked.stderr);
+    assert_eq!(checked.code, 1, "{said}");
+    assert!(
+        said.contains("error: `drafting` isn't a model `models:` names"),
+        "{said}"
+    );
+    assert!(
+        said.contains("error: `input:` must be an amount of money"),
+        "{said}"
+    );
+}

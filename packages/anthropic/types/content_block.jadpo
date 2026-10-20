@@ -1,0 +1,8 @@
+/// One block of a message's content: its kind (`text`, `thinking` and
+/// others), and the text of a `text` block.
+public type ContentBlock = Object {
+    kind: Text {
+        wire_name: "type"
+    }
+    text: Text?
+}

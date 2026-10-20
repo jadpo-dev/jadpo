@@ -1,0 +1,13 @@
+{
+  "choices": [
+    {
+      "delta": {
+        "content": "{Text}"
+      },
+      "finish_reason": null,
+      "index": "{Int}"
+    }
+  ],
+  "id": "{Text}",
+  "model": "{Text}"
+}

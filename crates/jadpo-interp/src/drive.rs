@@ -537,7 +537,7 @@ async fn stream(
             at,
         )));
     };
-    let settings: Vec<(u32, Value)> = jadpo_runtime::stream::settings_read(ai.plan, site)
+    let settings: Vec<(u32, Value)> = jadpo_runtime::stream::settings_read(&ai, site)
         .into_iter()
         .filter_map(|number| {
             let value = ctx

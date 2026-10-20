@@ -439,6 +439,11 @@ impl Reply {
         serde_json::from_str(&self.body).unwrap_or_else(|_| panic!("not JSON: {}", self.body))
     }
 
+    /// Its body as text: a stream's events, as sent.
+    pub(super) fn text(&self) -> &str {
+        &self.body
+    }
+
     pub(super) fn body(&self) -> &str {
         &self.body
     }

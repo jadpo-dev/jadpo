@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "embedding": [
+        "{Float}",
+        "{Float}",
+        "{Float}"
+      ],
+      "index": "{Int}"
+    }
+  ],
+  "model": "{Text}",
+  "usage": {
+    "prompt_tokens": "{Int}",
+    "total_tokens": "{Int}"
+  }
+}

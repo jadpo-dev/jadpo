@@ -1,0 +1,8 @@
+/// One text's embedding, and its place among the texts sent.
+public type EmbeddingData = Object {
+    index: Int {
+        min: 0
+        max: 1000000
+    }
+    embedding: EmbeddingVector
+}

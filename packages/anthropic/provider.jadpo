@@ -1,0 +1,10 @@
+/// Anthropic's Claude API, each request carrying the workspace's API key
+/// in `x-api-key` and the API's version in `anthropic-version`. The
+/// connection gives its address, `https://api.anthropic.com`, in `host:`.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.header
+    credential_header: "x-api-key"
+    headers: ["anthropic-version: 2023-06-01"]
+    error_code: "error.type"
+}

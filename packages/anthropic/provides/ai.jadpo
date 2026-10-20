@@ -1,0 +1,76 @@
+/// Anthropic fills `ai`: `generate` as a message with its structured
+/// outputs in `output_config.format`, the answer every text block's text
+/// (thinking blocks have none), a refusal and a cut-off as its stop reason
+/// says; and `stream` as the same request streamed, each `text_delta`'s
+/// text a piece, ended by `message_stop`. It has no embeddings endpoint,
+/// so it maps no `embed:`. A model's thinking counts against
+/// `max_output:`, as `max_tokens` does.
+provide ai {
+    generate: {
+        call: messages.create
+        input: {
+            model: request.model
+            max_tokens: request.max_output
+            system: request.instructions
+            messages: {
+                each: request.messages
+                as: {
+                    role: item.role
+                    content: item.content
+                }
+            }
+        }
+        answer: response.content.text
+        refused_when: {
+            path: "stop_reason"
+            equals: "refusal"
+        }
+        cut_off_when: {
+            path: "stop_reason"
+            equals: "max_tokens"
+        }
+        usage: {
+            input: response.usage.input_tokens
+            output: response.usage.output_tokens
+            cached: response.usage.cache_read_input_tokens
+        }
+        schema: {
+            mode: AiSchema.strict_subset
+            at: "output_config.format"
+            envelope: AiEnvelope.anthropic
+        }
+    }
+    stream: {
+        call: messages.stream
+        input: {
+            model: request.model
+            max_tokens: request.max_output
+            system: request.instructions
+            messages: {
+                each: request.messages
+                as: {
+                    role: item.role
+                    content: item.content
+                }
+            }
+            stream: true
+        }
+        pieces: event.delta.text
+        refused_when: {
+            path: "delta.stop_reason"
+            equals: "refusal"
+        }
+        cut_off_when: {
+            path: "delta.stop_reason"
+            equals: "max_tokens"
+        }
+        done_when: {
+            path: "type"
+            equals: "message_stop"
+        }
+    }
+    models: {
+        context: models.context_windows
+        prices: models.prices
+    }
+}

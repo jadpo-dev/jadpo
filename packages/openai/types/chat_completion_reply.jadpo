@@ -1,0 +1,6 @@
+/// The model's message: its text, or the refusal it gave instead.
+public type ChatCompletionReply = Object {
+    role: Text
+    content: Text?
+    refusal: Text?
+}

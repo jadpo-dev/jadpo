@@ -1,0 +1,7 @@
+/// One turn of the conversation: `user` or `assistant`, and what it says.
+public type MessageParam = Object {
+    role: Text {
+        max_length: 20
+    }
+    content: Text
+}

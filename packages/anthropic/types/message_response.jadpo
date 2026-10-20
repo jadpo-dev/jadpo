@@ -1,0 +1,14 @@
+/// A message the model answers with: its content blocks, why it stopped
+/// (`end_turn`, `max_tokens`, `stop_sequence`, `tool_use`, `pause_turn`,
+/// `refusal` or `model_context_window_exceeded`), and the tokens it took.
+public type MessageResponse = Object {
+    id: Text
+    kind: Text {
+        wire_name: "type"
+    }
+    role: Text
+    model: Text
+    content: List<ContentBlock>
+    stop_reason: Text?
+    usage: MessageUsage
+}

@@ -830,6 +830,16 @@ fn read_provider(db: &dyn Db, file: jadpo_db::File) -> Option<Provider> {
                     .unwrap_or(&written);
                 credential.push(format!("credential {word}"));
             }
+            Some("credential_header") => {
+                credential.push(format!("credential header {}", unescape(&value(&member))));
+            }
+            Some("headers") => {
+                let written = value(&member);
+                let list = written.trim_start_matches('[').trim_end_matches(']');
+                for line in list.split(',').filter(|line| !line.is_empty()) {
+                    credential.push(format!("header {}", unescape(line)));
+                }
+            }
             Some("idempotency") => {
                 for (key, inner) in tree::members(member.block()) {
                     match tree::name_text(&key).as_deref() {

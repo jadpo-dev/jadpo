@@ -1,0 +1,6 @@
+/// An embedding as OpenAI sends it: a list of numbers of the model's
+/// length, read as it comes; the app's own vector type checks its length
+/// and direction.
+public type EmbeddingVector = Vector {
+    distance: VectorDistance.euclidean
+}

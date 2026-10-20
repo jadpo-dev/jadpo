@@ -44,7 +44,9 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use jadpo_std::ai::{AiDriver, AiInput, AiPlan, AiUrl, GenerateSite, PackageAi, SchemaMode};
+use jadpo_std::ai::{
+    AiDriver, AiEnvelope, AiInput, AiPlan, AiUrl, GenerateSite, PackageAi, SchemaMode,
+};
 use jadpo_std::prompt::PromptPlan;
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::{HttpMethod, RuleKey};
@@ -102,36 +104,45 @@ pub enum Done {
 pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
     let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
     // The day's cost limit, a `Money` setting (chunk 5.5v5).
-    read.extend(ai.plan.limits.as_ref().and_then(|limits| limits.cost));
+    read.extend(crate::ai_budget::settings_read(ai.plan));
     match &ai.plan.driver {
         AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
         AiDriver::Package(package) => {
-            if let Some((plan, _)) = ai.providers.as_ref().and_then(|providers| {
-                providers
-                    .plan
-                    .operation(&ai.plan.connection, &package.operation)
-            }) {
-                read.extend(crate::provider::settings_read(plan));
-            }
-            fn settings(input: &AiInput, read: &mut Vec<u32>) {
-                match input {
-                    AiInput::Setting(at) => read.push(*at),
-                    AiInput::Messages(parts) => {
-                        for (_, part) in parts {
-                            settings(part, read);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            for (_, input) in &package.input {
-                settings(input, &mut read);
-            }
+            read.extend(package_reads(ai, &package.operation, &package.input));
         }
     }
     read.sort_unstable();
     read.dedup();
+    read
+}
+
+/// The settings a package's operation `operation` reads when `ai` calls
+/// it, its credential's and address's among them, and those its mapped
+/// `input` reads.
+pub(crate) fn package_reads(ai: &Ai<'_>, operation: &str, input: &[(String, AiInput)]) -> Vec<u32> {
+    let mut read = Vec::new();
+    if let Some((plan, _)) = ai
+        .providers
+        .as_ref()
+        .and_then(|providers| providers.plan.operation(&ai.plan.connection, operation))
+    {
+        read.extend(crate::provider::settings_read(plan));
+    }
+    fn settings(input: &AiInput, read: &mut Vec<u32>) {
+        match input {
+            AiInput::Setting(at) => read.push(*at),
+            AiInput::Messages(parts) => {
+                for (_, part) in parts {
+                    settings(part, read);
+                }
+            }
+            _ => {}
+        }
+    }
+    for (_, input) in input {
+        settings(input, &mut read);
+    }
     read
 }
 
@@ -277,6 +288,10 @@ pub async fn generate(
         }),
         wrapped: mode == SchemaMode::StrictSubset && !site.object,
         mode,
+        envelope: match &ai.plan.driver {
+            AiDriver::Package(package) => package.envelope,
+            AiDriver::OpenAiCompatible(_) => AiEnvelope::OpenAi,
+        },
     };
     let mut messages = match &asked.schema {
         Some(schema) if mode != SchemaMode::StrictSubset => with_schema(messages, schema),
@@ -647,15 +662,46 @@ fn prepared(
         }
         Via::Package { package, providers } => (package, providers),
     };
-    let connection = ai.plan.connection.as_str();
-    let Some((_, op)) = providers.plan.operation(connection, &package.operation) else {
+    let given = Given {
+        model: model_name(&asked.model),
+        max_output: site.max_output,
+        messages,
+        instructions_apart: package.instructions_apart,
+        texts: &[],
+        dimensions: 0,
+    };
+    let json = mapped_input(&package.input, &given, settings).ok_or(Unready::Misconfigured)?;
+    let added = package.schema_at.as_deref().zip(envelope(asked, site));
+    package_request(
+        ctx,
+        providers,
+        (ai.plan.connection.as_str(), &package.operation),
+        &json,
+        settings,
+        added,
+        &site.prompt,
+    )
+}
+
+/// The request a package's operation `operation` of `connection` sends
+/// with `json`, its input as the mapping made it, and `added` written
+/// where it says; `asking` names the prompt or operation it is made for,
+/// in a fault.
+pub(crate) fn package_request(
+    ctx: &mut Ctx<'_>,
+    providers: &Providers<'_>,
+    (connection, operation): (&str, &str),
+    json: &serde_json::Value,
+    settings: &[(u32, Value)],
+    added: Option<(&str, serde_json::Value)>,
+    asking: &str,
+) -> Result<Request, crate::provider::Unready> {
+    use crate::provider::Unready;
+    let Some((_, op)) = providers.plan.operation(connection, operation) else {
         return Err(Unready::Fault(FaultKind::Defect(format!(
-            "`{connection}.{}`, which the plan doesn't have",
-            package.operation
+            "`{connection}.{operation}`, which the plan doesn't have"
         ))));
     };
-    let json =
-        package_input(package, asked, messages, site, settings).ok_or(Unready::Misconfigured)?;
     let input = match op.input {
         Some(number) => {
             let text = json.to_string();
@@ -673,9 +719,7 @@ fn prepared(
                         .map(|problem| format!("{} {}", problem.field, problem.rule))
                         .collect();
                     return Err(Unready::Fault(FaultKind::Provider(format!(
-                        "`{connection}.{}`'s input mapped from `{}` doesn't read: {}",
-                        package.operation,
-                        site.prompt,
+                        "`{connection}.{operation}`'s input mapped from `{asking}` doesn't read: {}",
                         described.join(", ")
                     ))));
                 }
@@ -683,12 +727,11 @@ fn prepared(
         }
         None => None,
     };
-    let added = package.schema_at.as_deref().zip(envelope(asked, site));
     let call = jadpo_std::provider::CallSite::default();
     crate::provider::request_adding(
         ctx,
         providers,
-        (connection, &package.operation),
+        (connection, operation),
         input.as_ref(),
         settings,
         crate::provider::Site {
@@ -702,7 +745,7 @@ fn prepared(
 
 /// A package's own functions, which nothing at an `ai` call's site runs:
 /// its operation's fields are read and written by their types alone.
-struct NoFunctions;
+pub(crate) struct NoFunctions;
 
 impl crate::provider::Functions for NoFunctions {
     fn function(
@@ -716,42 +759,62 @@ impl crate::provider::Functions for NoFunctions {
     }
 }
 
-/// The operation's input as JSON, its members by their spellings on the
-/// wire, made from what the package's `generate:` maps; `None` when a
+/// What a package's mapping reads of a call (chunks 5.5v3b and 5.5v7):
+/// the model's name after its provider, `max_output:`, the rendered
+/// messages, and for an embedding its texts and their dimensions.
+pub(crate) struct Given<'g> {
+    pub model: &'g str,
+    pub max_output: u32,
+    pub messages: &'g [(String, String)],
+    pub instructions_apart: bool,
+    pub texts: &'g [String],
+    pub dimensions: u64,
+}
+
+/// An operation's input as JSON, its members by their spellings on the
+/// wire, made from what a package's mapping gives them; `None` when a
 /// setting it reads has no value.
-fn package_input(
-    package: &PackageAi,
-    asked: &Asked,
-    messages: &[(String, String)],
-    site: &GenerateSite,
+pub(crate) fn mapped_input(
+    input: &[(String, AiInput)],
+    given: &Given<'_>,
     settings: &[(u32, Value)],
 ) -> Option<serde_json::Value> {
     // With `request.instructions` mapped, the instructions go there and
     // the messages are the rest; otherwise they open the messages.
-    let (instructions, messages): (Vec<&str>, Vec<&(String, String)>) =
-        if package.instructions_apart {
-            (
-                messages
-                    .iter()
-                    .filter(|(role, _)| role == "system")
-                    .map(|(_, content)| content.as_str())
-                    .collect(),
-                messages
-                    .iter()
-                    .filter(|(role, _)| role != "system")
-                    .collect(),
-            )
-        } else {
-            (Vec::new(), messages.iter().collect())
-        };
+    let (instructions, messages): (Vec<&str>, Vec<&(String, String)>) = if given.instructions_apart
+    {
+        (
+            given
+                .messages
+                .iter()
+                .filter(|(role, _)| role == "system")
+                .map(|(_, content)| content.as_str())
+                .collect(),
+            given
+                .messages
+                .iter()
+                .filter(|(role, _)| role != "system")
+                .collect(),
+        )
+    } else {
+        (Vec::new(), given.messages.iter().collect())
+    };
     let instructions = instructions.join("\n\n");
     let one = |input: &AiInput, message: Option<&(String, String)>| -> Option<serde_json::Value> {
         Some(match input {
-            AiInput::Model => model_name(&asked.model).into(),
-            AiInput::MaxOutput => site.max_output.into(),
+            AiInput::Model => given.model.into(),
+            AiInput::MaxOutput => given.max_output.into(),
             AiInput::Instructions => instructions.as_str().into(),
             AiInput::Role => message?.0.as_str().into(),
             AiInput::Content => message?.1.as_str().into(),
+            AiInput::Texts => serde_json::Value::Array(
+                given
+                    .texts
+                    .iter()
+                    .map(|text| text.as_str().into())
+                    .collect(),
+            ),
+            AiInput::Dimensions => given.dimensions.into(),
             AiInput::Text(text) => text.as_str().into(),
             AiInput::Int(n) => (*n).into(),
             AiInput::Bool(flag) => (*flag).into(),
@@ -765,7 +828,7 @@ fn package_input(
         })
     };
     let mut members = serde_json::Map::new();
-    for (member, input) in &package.input {
+    for (member, input) in input {
         let value = match input {
             AiInput::Messages(parts) => serde_json::Value::Array(
                 messages
@@ -802,13 +865,11 @@ fn package_reply(
             package.operation
         ))));
     };
+    let sent = serde_json::from_str::<serde_json::Value>(text).ok();
     // On the answer as sent.
     let cut_off = package.cut_off_when.as_ref().is_some_and(|(path, equals)| {
-        let sent = serde_json::from_str::<serde_json::Value>(text).ok();
-        let marker = serde_json::from_str::<serde_json::Value>(equals).ok();
         sent.as_ref()
-            .and_then(|sent| crate::provider::at_path(sent, path))
-            .is_some_and(|found| Some(found) == marker.as_ref())
+            .is_some_and(|sent| equal_at(sent, path, equals))
     });
     let call = jadpo_std::provider::CallSite::default();
     let name = format!("{connection}.{}", package.operation);
@@ -828,20 +889,13 @@ fn package_reply(
         crate::provider::Done::Failed(failure) => return Err(Done::Failed(failure)),
         crate::provider::Done::Fault(kind) => return Err(Done::Fault(kind)),
     };
-    let content = match value_at(&output, &package.answer) {
-        Some(Value::Text(text)) => Some(text.to_string()),
-        _ => None,
-    };
-    let refused = package
-        .refused_when
-        .as_ref()
-        .and_then(|path| value_at(&output, path))
-        .is_some_and(|found| match found {
-            Value::None => false,
-            Value::Text(text) => !text.trim().is_empty(),
-            Value::Bool(flag) => *flag,
-            _ => true,
-        });
+    let content = text_at(&output, &package.answer);
+    let refused = package.refused_when.iter().any(|marker| match marker {
+        jadpo_std::ai::AiMarker::Holds(path) => value_at(&output, path).is_some_and(holds),
+        jadpo_std::ai::AiMarker::Equals(path, equals) => sent
+            .as_ref()
+            .is_some_and(|sent| equal_at(sent, path, equals)),
+    });
     // Where the mapping says the tokens are; one written `0` is none.
     let usage = package.usage.as_ref().and_then(|usage| {
         let count = |path: &Option<Vec<String>>| match path {
@@ -870,6 +924,48 @@ fn package_reply(
     })
 }
 
+/// Whether the member of `sent` at `path`, dotted by spellings on the
+/// wire, is the JSON value `equals`.
+pub(crate) fn equal_at(sent: &serde_json::Value, path: &str, equals: &str) -> bool {
+    let marker = serde_json::from_str::<serde_json::Value>(equals).ok();
+    crate::provider::at_path(sent, path).is_some_and(|found| Some(found) == marker.as_ref())
+}
+
+/// Whether a value says something: anything but `none`, blank text or
+/// `false`.
+fn holds(found: &Value) -> bool {
+    match found {
+        Value::None => false,
+        Value::Text(text) => !text.trim().is_empty(),
+        Value::Bool(flag) => *flag,
+        _ => true,
+    }
+}
+
+/// The text at `path`, by field names, `0` for a list's first item and
+/// [`jadpo_std::ai::EACH`] for every item's, their texts joined in order
+/// and the items with none left out; `None` where there is no text.
+fn text_at(value: &Value, path: &[String]) -> Option<String> {
+    let Some((step, rest)) = path.split_first() else {
+        return match value {
+            Value::Text(text) => Some(text.to_string()),
+            _ => None,
+        };
+    };
+    match value {
+        Value::List(items) if step == jadpo_std::ai::EACH => {
+            let texts: Vec<String> = items
+                .iter()
+                .filter_map(|item| text_at(item, rest))
+                .collect();
+            (!texts.is_empty()).then(|| texts.concat())
+        }
+        Value::Record(record) => text_at(record.get(step)?, rest),
+        Value::List(items) => text_at(items.get(step.parse::<usize>().ok()?)?, rest),
+        _ => None,
+    }
+}
+
 /// The value at `path`, by field names, `0` for a list's first item.
 fn value_at<'v>(value: &'v Value, path: &[String]) -> Option<&'v Value> {
     path.iter().try_fold(value, |at, step| match at {
@@ -877,6 +973,18 @@ fn value_at<'v>(value: &'v Value, path: &[String]) -> Option<&'v Value> {
         Value::List(items) => items.get(step.parse::<usize>().ok()?),
         _ => None,
     })
+}
+
+/// The count of tokens at `path`, by field names: a whole number or a
+/// `TokenCount`.
+pub(crate) fn count_at(value: &Value, path: &[String]) -> Option<u64> {
+    match value_at(value, path)? {
+        Value::Int(n) => u64::try_from(*n).ok(),
+        other => match jadpo_value::standard::from(other) {
+            Ok(Value::Int(n)) => u64::try_from(n).ok(),
+            _ => None,
+        },
+    }
 }
 
 /// A condition, for the call's `attempt` to map.
@@ -932,6 +1040,8 @@ struct Asked {
     mode: SchemaMode,
     /// Whether `T` is asked for as the member `value` of an object.
     wrapped: bool,
+    /// The shape the mode's envelope is sent in (chunk 5.5v7).
+    envelope: AiEnvelope,
 }
 
 /// The code an OpenAI-compatible server answers a prompt longer than the
@@ -1032,7 +1142,9 @@ fn request_body(asked: &Asked, messages: &[(String, String)], site: &GenerateSit
     serde_json::Value::Object(body).to_string()
 }
 
-/// What the structured-output mode is asked with, OpenAI's form: for a
+/// What the structured-output mode is asked with, OpenAI's form unless
+/// the package's envelope is Anthropic's (`{"type": "json_schema",
+/// "schema": ...}`, chunk 5.5v7): for a
 /// strict mode, `{"type": "json_schema", "json_schema": {"name": <prompt>,
 /// "strict": true, "schema": ...}}` with the schema cut to what it
 /// enforces; for one that promises only JSON, `{"type": "json_object"}`;
@@ -1041,6 +1153,14 @@ fn request_body(asked: &Asked, messages: &[(String, String)], site: &GenerateSit
 /// says.
 fn envelope(asked: &Asked, site: &GenerateSite) -> Option<serde_json::Value> {
     match (&asked.schema, asked.mode) {
+        (Some(schema), SchemaMode::StrictSubset) if asked.envelope == AiEnvelope::Anthropic => {
+            let cut = strict(schema);
+            let cut = if asked.wrapped { wrapped(cut) } else { cut };
+            let mut format = serde_json::Map::new();
+            format.insert("type".into(), "json_schema".into());
+            format.insert("schema".into(), cut);
+            Some(serde_json::Value::Object(format))
+        }
         (Some(schema), SchemaMode::StrictSubset) => {
             let cut = strict(schema);
             let cut = if asked.wrapped { wrapped(cut) } else { cut };
@@ -1766,6 +1886,7 @@ mod tests {
             models: vec![("default".into(), 0)],
             schema: SchemaMode::StrictSubset,
             limits: None,
+            prices: Vec::new(),
         };
         let prompts = PromptPlan {
             entries: vec![PromptEntry {
@@ -1974,6 +2095,7 @@ mod tests {
             schema: Some(serde_json::json!({})),
             mode: SchemaMode::StrictSubset,
             wrapped: false,
+            envelope: AiEnvelope::OpenAi,
         };
         let problem = Problem {
             field: "cited.2".into(),
