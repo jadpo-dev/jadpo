@@ -36,6 +36,7 @@
 //! query's pages into a stored file, each page's rows put in the store
 //! once the page's transaction has closed ([`export`]).
 
+mod calling;
 pub(crate) mod export;
 pub(crate) mod file;
 
@@ -726,6 +727,20 @@ async fn step(
             ))
             .await
         }
+        // An item whose action makes outside calls is a batch of its own
+        // (chunk 7.4b).
+        (BatchFrom::Query(_), None) if calling::calls(plan.each.action()) => {
+            Box::pin(calling::page(
+                executor,
+                &mut ctx,
+                batches,
+                plan,
+                start,
+                saved,
+                (now, lease_until),
+            ))
+            .await
+        }
         (BatchFrom::Query(_), None) => {
             Box::pin(batch(
                 executor,
@@ -838,6 +853,12 @@ async fn batch(
         }
     };
     if held.read_all {
+        // A `finished:` whose action makes outside calls is a batch of its
+        // own (chunk 7.4b).
+        if calling::calls(plan.finished.as_ref()) {
+            open.rollback().await;
+            return calling::finished(executor, ctx, plan, start, saved, &held, now, None).await;
+        }
         return finished(executor, open, plan, &id, values, &held, now, None).await;
     }
     let Some(each) = plan.each.action() else {

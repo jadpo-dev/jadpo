@@ -418,6 +418,9 @@ impl Decoder<'_> {
                 BatchCall {
                     callable,
                     args: out,
+                    // Whether it makes outside calls is the project's,
+                    // filled in as the plan is made.
+                    calls: false,
                 },
             ))
         };

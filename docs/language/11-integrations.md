@@ -1584,7 +1584,11 @@ public type SlotTaken = Failure {
   version it was loaded at (area 6, "Outside calls hold no transaction").
   A call after the action's first write is still the fault
   `call_in_transaction`, sent to nobody, and a change made while the call
-  is out runs the action again, the call repeated under its key.
+  is out runs the action again, the call repeated under its key. Since
+  chunk 7.4b `jadpo check` refuses a write placed before a later call
+  (area 6's `data.write_before_call`), so checked code never meets the
+  fault, and an item of a batch whose `each:` action calls is a batch of
+  its own (area 12, "How a run is kept").
 
 ## Decoding
 

@@ -2062,7 +2062,7 @@ doubles the async signatures and lets bugs hide on one target.
 | HTTP | Router from the route table, input decoding, body limit, deadline, health, idempotency keys, failure envelope, `request_id` | fetch event |
 | Identity | Sessions, CSRF, API tokens, service keys, OIDC sign-in, revocation delay | same |
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
-| Transactions | Read committed or repeatable read by what the action does, a snapshot closed before each outside call and row versions checked after it (chunk 7.4), rerun within the budget | same |
+| Transactions | Read committed or repeatable read by what the action does, a snapshot closed before each outside call and row versions checked after it (chunk 7.4), a batch's item that calls a batch of its own (chunk 7.4b), rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
 | Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
 | Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2) | Cloudflare cron |
@@ -2164,9 +2164,40 @@ read and locked in the new transaction, once per transaction
 `RERUN_ATTEMPTS`; the rerun takes the same steps, so a keyed call
 repeats under its key. A reference's refusal planned as `Raises::Gone`
 is a concurrent change too once rows were loaded before a call. The SQL
-goldens show both statements. Batches' items still run inside their
-page's transaction, which has written, so their calls are refused until
-chunk 7.4b.
+goldens show both statements.
+
+**Calls before writes, checked** (chunk 7.4b; area 6, "Several outside
+calls"). `jadpo_check::types::outside_calls` works out, once per project,
+the outside call (`Callee::Provider`, `Callee::Files`) and the write
+(`Expr::Write`, an entity's other operations, a session or key operation
+that isn't `reads_only`, a batch operation other than `status`) each
+action and fixture makes, itself or through the actions it calls
+(`file_outside` per file), never through a run's `each:` and
+`finished:`. `call_order_problems` walks each body in the order it runs
+(`Walk`: each way through an `if` or a `match` on its own, a `return`,
+`reject` or `propagate` ending its way, a loop's body twice) and reports
+each write some way runs before a call as `data.write_before_call`, at
+the write and naming the last such call, not declinable. The seam's
+`call_in_transaction` stays as the guard.
+
+**A batch's items that make calls** (chunk 7.4b; area 12, "How a run is
+kept"). The plan marks a `BatchCall` whose action makes outside calls
+(`calls`, from `outside_calls`), and the runner runs each of its items
+as a batch of its own (`batches::calling`): where the run is read in a
+statement of its own (`PEEK`); a query's next item read in a snapshot as
+a page of one, giving its own cursor (`read::read_as` with
+`PageCursor::Last`), or a file's next row read first (one row a page);
+the item's action run in a boundary opened without a transaction
+(`runner::Batch::open_for_calls`), its calls keyed from the run and the
+item's place (`Ctx::set_call_key("batch", …)`: the run's id and the
+item's cursor, or where its row begins); then, in the transaction its
+writes are in or one begun now (`Batch::writing`), the run's row locked
+and held to the position read, the item's problem and the run's next
+position, committed with its writes. A query's run is then at the item's
+cursor; once a page of one finds none, the run is `read_all`. A
+`finished:` whose action makes outside calls runs the same way
+(`calling::finished`), keyed `finished`, the run's end committed with its
+writes, for a query's, a file's and an export's run alike.
 
 **Provider calls** (chunk 7.2c; area 11, "Chosen in chunk 7.2c"). A
 provider operation's call is `Callee::Provider` (its connection and

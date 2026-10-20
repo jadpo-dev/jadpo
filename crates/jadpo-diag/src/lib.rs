@@ -346,6 +346,8 @@ rules! {
         "06-reads-and-writes.html#data-update-by-id-value", "Update by `id` sets a value from something it can't use";
     DATA_VECTOR_STORE_UNSUPPORTED: "data.vector_store_unsupported", area 21, Error, Agent,
         "21-ai.html#data-vector-store-unsupported", "Vector field on a store that isn't PostgreSQL";
+    DATA_WRITE_BEFORE_CALL: "data.write_before_call", area 6, Error, Agent,
+        "06-reads-and-writes.html#data-write-before-call", "Write comes before a later outside call";
     DATA_WRITE_NOT_ENTITY: "data.write_not_entity", area 6, Error, Agent,
         "06-reads-and-writes.html#data-write-not-entity", "Write names a type that isn't an entity";
     DATA_WRITE_SECTION_REQUIRED: "data.write_section_required", area 6, Error, Agent,

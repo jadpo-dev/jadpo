@@ -1912,9 +1912,12 @@ through:
   under the key it was first sent with (area 11). A reference to a record
   loaded before a call that was deleted while the call was out is a
   concurrent change too, so the rerun's fresh read finds the record gone.
-- **Not yet.** The items of a batch run inside its page's transaction, so
-  an item's call is still refused; a write placed before a later call is
-  refused when it runs, not yet at compile time (both chunk 7.4b).
+- **A batch's items** (chunk 7.4b). An item of a run whose `each:` action
+  makes outside calls is a batch of its own (area 12, "How a run is
+  kept"), so its calls go out with no transaction open, as any action's
+  do, and its writes and the run's position commit after them under these
+  rules. A write placed before a later call is refused at compile time
+  ("Several outside calls", below).
 
 ### Several outside calls
 
@@ -1946,6 +1949,102 @@ a write refused for good (a unique rule, a restricted reference) after a
 step took effect is warned at compile time, naming the fixes: check with a
 read before the first call, record what happened and finish in a
 subscriber, or undo as another step (area 12).
+
+Built in chunk 7.4b, for the order: a write placed before a later outside
+call is [`data.write_before_call`](#data-write-before-call), reported at
+the write and naming the last call it comes before, so checked code never
+reaches the runtime's `call_in_transaction`, which stays as the guard.
+Chosen there, each the most conservative reading:
+
+- **What writes.** An entity's write; a session or key operation that
+  changes one; starting a run (`batches.each` and the file helpers keep
+  its row) or cancelling one; and calling an action or fixture that does
+  any of these, itself or through an action it calls, since it joins the
+  caller's transaction. `emit` writes nothing until the action commits,
+  and `batches.status` only reads.
+- **What calls.** A provider's operation, a store's `put` or `read`, and
+  calling an action or fixture that makes one, itself or through an action
+  it calls. A run's `each:` and `finished:` are the run's, never the
+  action that starts it.
+- **Each way through on its own.** A write on one way through an `if` or
+  a `match` and a call on another never meet, and a `return`, `reject` or
+  `propagate` ends its way; a loop's body counts as running more than
+  once, so a write in it comes before a call after the loop or in its next
+  turn.
+- **Not declinable.** The order is never a judgement call (area 1,
+  "Declining a judgement call"): run as written, the call would be
+  refused.
+
+A bakery keeps the price sheet a supplier sends again, marking it
+checked: the call first, then one write after it.
+
+```jadpo check project=write-after-call file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=write-after-call file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=write-after-call file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=write-after-call file=domains/bakery/entities/price_sheet.jadpo hidden
+/// A supplier's price sheet, kept as it was sent, and whether it was
+/// checked.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+    checked: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```jadpo check project=write-after-call file=domains/bakery/actions/recheck_prices.jadpo migrate=initial
+use app { sheets }
+use bakery/entities { PriceSheet }
+use bakery/failures { SheetNotKept }
+use bakery/types { SheetText }
+
+/// Keeps the sheet a supplier sent again, then marks it checked: the
+/// call first, the write after it.
+action recheck_prices(price_sheet: PriceSheet, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    return PriceSheet.update(price_sheet) {
+        set: {
+            sheet: sheet
+            checked: true
+        }
+    }
+}
+```
 
 ::: today
 
@@ -3687,7 +3786,103 @@ section a write doesn't take (`missing:`, `where:`, `empty:`) is
 `data.write_section_unexpected`; an update with nothing to change is
 `data.write_section_required`; a field given twice or unknown in `set:` is
 area 2's `type.duplicate_field` or `type.unknown_field`; and the conflict
-mappings are below.
+mappings are below. Since chunk 7.4b a write placed before a later outside
+call is `data.write_before_call`.
+
+### `data.write_before_call`
+
+No transaction is open while an outside call is out, so an action's
+writes come after its last call ("Several outside calls"). The error is
+at the write, naming the last call it comes before; one made through an
+action it calls names that action and the call it makes:
+
+```jadpo check project=e-write-before-call file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-write-before-call file=domains/bakery/entities/price_sheet.jadpo hidden migrate=initial
+/// A supplier's price sheet, kept as it was sent, and whether it was
+/// checked.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+    checked: Bool
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+        update: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-write-before-call file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=e-write-before-call file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-write-before-call file=domains/bakery/actions/recheck_prices.jadpo expect=data.write_before_call
+use app { sheets }
+use bakery/entities { PriceSheet }
+use bakery/failures { SheetNotKept }
+use bakery/types { SheetText }
+
+/// Marks a supplier's price sheet checked, then keeps the sheet they sent
+/// again: the write comes before the call.
+action recheck_prices(price_sheet: PriceSheet, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+    var checked: PriceSheet = PriceSheet.update(price_sheet) {
+        set: {
+            checked: true
+        }
+    }
+    var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    return PriceSheet.update(checked) {
+        set: {
+            sheet: sheet
+        }
+    }
+}
+```
+
+```text output
+error: `PriceSheet.update` writes before the call to `sheets.put`
+ --> domains/bakery/actions/recheck_prices.jadpo:9:31
+   |
+ 9 |     var checked: PriceSheet = PriceSheet.update(price_sheet) {
+   |                               ^^^^^^^^^^^^^^^^^ writes here
+14 |     var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+   |                               ---------- the call it must follow
+  reason: No transaction is open while an outside call is out, so an action writes only after its last call; run as written, `sheets.put` would be refused.
+  next: Move `PriceSheet.update` after `sheets.put` (agent)
+  rule: data.write_before_call
+  help: docs/language/06-reads-and-writes.html#data-write-before-call
+
+check failed: 1 error, 5 files
+```
 
 ### `data.write_not_entity`
 
@@ -4815,6 +5010,7 @@ The rows marked "Carried" were decided in earlier areas and bind this page.
 | Isolation of fixtures and tests | Chosen in chunk 3.7: a fixture is decided as an action is; each action or fixture a test calls begins its own transaction at its own level; a read or write a test runs itself, and whatever else runs outside an action (migrations, purge), runs at repeatable read | 2026-10-15 |
 | Outside calls and the transaction | No transaction is open during an outside call: reads before it run in a read-only snapshot closed before the call, the transaction opens after it, and a write to a record loaded before the call checks its row version, a change rerunning the action (Richard, from an outside review) | 2026-10-15 |
 | Several outside calls | Writes after the last call; no transaction during calls; the step record in the runtime's own short transactions, deleted in the commit; a rerun replays with the record's `clock.now` and stops as `diverged` when a fresh read changes a request; a write refusable after a step took effect is warned (Richard, area 12) | 2026-10-16 |
+| Writes before calls | Chosen in chunk 7.4b: a write placed before a later outside call, on any way through the body, directly or through an action it calls, is `data.write_before_call`, not declinable, at the write and naming the last call it comes before; starting or cancelling a run writes, and a run's `each:` and `finished:` are the run's | 2026-10-20 |
 | Entities in Redis | Get, create, update and delete by `id`; lookup by a `unique:` field; equality on one indexed field, paged in creation order, and its count; revision checks; simple-equality grants checked after reading; everything else a compile error naming PostgreSQL; expired records hidden (Richard) | 2026-10-16 |
 | Redis counters and lifecycles | Counter updates by `id` allowed as one Redis `increment`; no lifecycles on a Redis entity (decided for Richard) | 2026-10-16 |
 | Constants in queries and updates | A `constant` (area 3) is a value fixed while compiling, so a query accepts one wherever it accepts a literal (`query.value_unsupported` names constants among a query's values), and the "constants" an update by `id` may use are these. Arithmetic in a query stays refused, on constants too. Built in chunk 5.3e (Richard) | 2026-10-16 |

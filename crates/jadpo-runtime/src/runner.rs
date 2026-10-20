@@ -1015,6 +1015,34 @@ impl<'c, 'p> Batch<'c, 'p> {
         Ok(Batch { ctx, saved })
     }
 
+    /// Opens a batch whose transaction begins at its first store operation
+    /// rather than at once: one item whose action makes outside calls, a
+    /// batch of its own (area 12, "How a run goes"; chunk 7.4b). What it
+    /// reads before a call is a snapshot the call closes, and the run's
+    /// own statements ([`Batch::writing`]) run in the transaction after
+    /// it, with the item's writes. `ctx` must be running no action.
+    pub fn open_for_calls(
+        ctx: &'c mut Ctx<'p>,
+        isolation: Isolation,
+        system: System,
+    ) -> Result<Batch<'c, 'p>, StoreError> {
+        if ctx.in_action() {
+            return Err(StoreError::Fault(
+                "a batch opened inside a running action".into(),
+            ));
+        }
+        ctx.open_boundary(isolation);
+        let saved = ctx.runner();
+        ctx.become_system(system);
+        Ok(Batch { ctx, saved })
+    }
+
+    /// The batch's transaction in `store`, begun now if nothing has begun
+    /// one, for the run's own statements, which write (chunk 7.4b).
+    pub async fn writing(&mut self, store: &str) -> Result<&mut dyn Transaction, StoreError> {
+        self.ctx.transaction(store).await
+    }
+
     /// Runs `callable` for each of `items`, as [`items`] does.
     pub async fn items(
         &mut self,

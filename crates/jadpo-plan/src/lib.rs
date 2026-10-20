@@ -690,6 +690,16 @@ impl Plan {
         let mut batches: Vec<jadpo_std::batch::BatchPlan> = Vec::new();
         let mut batch_numbers: Vec<Option<u32>> = Vec::new();
         let run_stores = jadpo_check::types::file_run_stores(db, project);
+        // An action that makes outside calls runs each item, and
+        // `finished:`, as a batch of its own (area 12, chunk 7.4b).
+        let outside = jadpo_check::types::outside_calls(db, project);
+        let calling =
+            |(key, call): (Key, jadpo_std::batch::BatchCall)| jadpo_std::batch::BatchCall {
+                calls: outside
+                    .get(&key)
+                    .is_some_and(|outside| outside.calls.is_some()),
+                ..call
+            };
         for plan in batch_sites.into_iter().map(|site| {
             // A query's pages, kept in its store; or a file's rows, kept
             // where the run's actions write (chunk 6.4b).
@@ -725,7 +735,7 @@ impl Plan {
                     }),
                 ),
                 None => (
-                    jadpo_std::batch::BatchEach::Action(site.each.clone()?.1),
+                    jadpo_std::batch::BatchEach::Action(calling(site.each.clone()?)),
                     None,
                 ),
             };
@@ -750,7 +760,7 @@ impl Plan {
                 from_args: site.from_args,
                 each,
                 to,
-                finished: site.finished.map(|(_, call)| call),
+                finished: site.finished.map(calling),
                 key: site.key,
                 tenant: jadpo_check::batches::run_tenant(
                     db,
