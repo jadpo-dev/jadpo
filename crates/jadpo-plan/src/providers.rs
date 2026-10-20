@@ -91,6 +91,7 @@ pub(crate) fn plan(
             timeout_ms: connection.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
             idempotency,
             error_code: reach.error_code.clone(),
+            sandbox: jadpo_check::connections::sandboxed(db, project, connection),
         });
         for operation in operations.of(&connection.folder) {
             if !operation.public {

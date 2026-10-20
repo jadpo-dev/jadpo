@@ -99,6 +99,10 @@ pub struct ConnectionPlan {
     pub idempotency: Option<IdempotencyPlan>,
     /// Where a failed answer's code is, dotted from its root.
     pub error_code: Option<String>,
+    /// The operations `jadpo dev` lets through to the provider's sandbox,
+    /// `pickups.create` (area 11, "Provider calls in development"; chunk
+    /// 7.2d); every other call there is faked.
+    pub sandbox: Vec<String>,
 }
 
 /// One part of an operation's path.
