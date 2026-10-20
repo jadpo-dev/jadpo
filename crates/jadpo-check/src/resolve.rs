@@ -1198,17 +1198,28 @@ impl Names<'_> {
         if let Some((first, rest)) = dotted(expr)
             && starts_upper(&text(&first))
         {
-            if self.table.is_package(&text(&first)) && !rest.is_empty() {
-                let names: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
-                if let Some(Through::Package(via, taken)) = self.through(&names, out)
-                    && let Some(member) = names.get(taken)
-                {
-                    self.package_member(&via, member, out);
-                }
-                return;
-            }
-            self.type_qualifier(&first, false, out);
+            let names: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
+            self.qualified(&names, out);
         }
+    }
+
+    /// A dotted name whose first name is upper-case, read as a value or
+    /// matched as a pattern: through a package, `Postcodes.Round.morning`
+    /// or `Postcodes.v3.Round.morning` while two versions are held (area
+    /// 11; chunk 7.1e), or a type, an enum or an entity as a qualifier.
+    fn qualified(&self, names: &[ast::NameRef], out: &mut Vec<Diagnostic>) {
+        let Some(first) = names.first() else {
+            return;
+        };
+        if self.table.is_package(&text(first)) && names.len() > 1 {
+            if let Some(Through::Package(via, taken)) = self.through(names, out)
+                && let Some(member) = names.get(taken)
+            {
+                self.package_member(&via, member, out);
+            }
+            return;
+        }
+        self.type_qualifier(first, false, out);
     }
 
     /// How a dotted name whose first name is a package's reaches it (area
@@ -1886,10 +1897,12 @@ fn is_write(call: &ast::CallExpr) -> bool {
 /// A `match` arm's case pattern: `Enum.variant` names a type, `some(...)`
 /// and `success(...)` don't.
 pub(crate) fn pattern(names: &Names<'_>, case: &ast::CasePat, out: &mut Vec<Diagnostic>) {
-    if let Some(first) = case.path().and_then(|path| path.name_refs().next())
-        && starts_upper(&text(&first))
-    {
-        names.type_qualifier(&first, false, out);
+    let path: Vec<ast::NameRef> = case
+        .path()
+        .map(|path| path.name_refs().collect())
+        .unwrap_or_default();
+    if path.first().is_some_and(|first| starts_upper(&text(first))) {
+        names.qualified(&path, out);
     }
 }
 
