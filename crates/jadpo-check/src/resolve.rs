@@ -946,6 +946,15 @@ impl Names<'_> {
         };
         let rest = &names[taken..];
         let Some((member, after)) = rest.split_first() else {
+            // `Postcodes.v3(...)`: a package, with nothing of it named.
+            let span = Span::new(self.path, via.start, self.span(&names[taken - 1]).end);
+            out.push(not_callable(
+                &via.package,
+                "a package",
+                "A package is called through what it offers: a function of its public library, `Postcodes.uk.parse(...)`, or its type built from a value, `Postcodes.UkPostcode(...)`.",
+                format!("Call something `{}` offers, `{}.<library>.<function>(...)`", via.package, via.package),
+                span,
+            ));
             return;
         };
         // `Postcodes.translations.<message>(...)` is checked as a message's

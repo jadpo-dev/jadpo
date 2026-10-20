@@ -1109,3 +1109,23 @@ fn two_versions_with_translations_wait_for_a_later_chunk() {
         "{found:#?}"
     );
 }
+
+#[test]
+fn a_package_and_its_version_alone_is_not_called() {
+    let call = (
+        "domains/addresses/actions/read_postcode.jadpo",
+        "use packages/postcodes
+
+/// Reads a customer's postcode.
+action read_postcode(written: Postcodes.v3.WrittenPostcode) -> Postcodes.v3.UkPostcode {
+    return Postcodes.v3(written)
+}
+",
+    );
+    let found = both_installed(&with(&[call]));
+    assert!(
+        found.iter().any(|p| p
+            .contains("semantic.not_callable: `Postcodes.v3` is a package and can't be called")),
+        "{found:#?}"
+    );
+}
