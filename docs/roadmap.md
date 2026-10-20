@@ -1919,6 +1919,61 @@ The design is area 11 as revised on 2026-10-16, with its research in
   call to Swift, matching `SwiftCouriers.SlotTaken` directly, and its mail
   connection drops `domains: []`.
 
+### Phase 7 review (2026-10-21)
+
+Two independent reviewers, soundness and architecture for the phases
+ahead, read everything Phase 7 built; their confirmed findings are the
+chunks below, taken before Phase 8, in this order (7.9a, 7.9b and 7.9c
+side by side, then 7.9d, then 7.9e).
+
+- [ ] **7.9a Phase 7 review fixes: keys and replays** `opus · xhigh`: a
+  route whose action calls out but neither writes nor emits keeps the
+  client's `Idempotency-Key` (a store for its keys, provider keys derived
+  from the client's key, the action resumable); a delivery run while a
+  route waits (`settle:`) starts its step counter at 0 and gives the
+  route's back; the magic-link `send:` action keyed per attempt, or its
+  link and code the same on every attempt; a step's `unavailable` or
+  `rate_limited` failure with its own code left in doubt and resent under
+  its key, never replayed; the runtime's own timestamps (`emitted_at`,
+  AWS signing, the AI budget's day, a received event's) on the wall clock,
+  the record's fixed clock for `clock.now` only; an answered unkeyed
+  changing call on area 6's rerun parked `outcome_unknown` (areas 12 and
+  16 made to agree); and in tests, fakes judged exhausted or unused on the
+  plain run only, the `ai` answer cache cleared per attempt.
+- [ ] **7.9b Phase 7 review fixes: policy and privacy** `opus · xhigh`:
+  `to_models: false` and `personal_data: { allowed: }` count what a
+  condition decides (an `if`, a `match`, a `list.filter` on a marked
+  field), only a `for` loop's list dropped, and a write storing marked
+  content in a field without the same marks flagged; a webhook reply held
+  to area 9's output proof as an output to `Access.public`; the
+  magic-link `send:` action run with the tenant of its delivery, reply
+  actions and `on_first_sign_in:` with no tenant, and
+  `policy.system_grant_missing` checked for all three.
+- [ ] **7.9c Phase 7 review fixes: ticks, queues and budgets** `opus ·
+  high`: a poll's claim compared against the interval kept on its row, so
+  two ticks can't both take it; a queue message the store always refuses
+  parked `unreadable`; the AI budget reserving each repair's growing
+  conversation and charging resends after a 5xx; a success claimed before
+  a breaker opened closing it; `jadpo email open` on Windows passing the
+  link without a shell; `build/` in a new app's `.gitignore`.
+- [ ] **7.9d One outside-call path** `opus · xhigh`, after 7.9a: one
+  `exchange` for whole and streamed answers, owning `max_concurrent:`'s
+  slots and the time left (the route's remaining deadline, the background
+  budget) so a `Retry-After` never waits past it; one retrying send for
+  every call kind (provider, `ai.generate`, `ai.embed`, `ai.stream`,
+  files); one place deciding where an answer comes from (replay tape, step
+  record, rerun reuse); each call kind only building its request and
+  decoding its answer. Today `ai`, `embed` and `stream` through a package
+  ignore `max_concurrent:`, and streaming has its own copy of the path.
+- [ ] **7.9e The runtime's start-up state** `opus · xhigh`, after 7.9d:
+  `jadpo_runtime::Started::new(plan, values, target)` holding the decoded
+  settings, keys, credentials, sign-in settings, client address and purge
+  periods `Program` holds today, reached through `Ctx`; runtime entry
+  points taking `(ctx, site, input)` so the interpreter's eight copies of
+  per-call glue go; settings resolved one way (email and receiving honour
+  a test's `config:` as `ai` does); the `Executor` shrunk toward places,
+  plan and run.
+
 ## Phase 8 — Compiled deployables
 
 - [ ] **8.1 Native:** `opus · xhigh` graph to Rust; every test passes interpreted and
@@ -1937,6 +1992,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   encoding behind a smaller `Executor` (places, plan, run); 6.9's
   deployable handler; the corpus compiled as one generated crate, in its
   own CI job with a time budget.
+  From the Phase 7 review: one connections table (name, driver, settings,
+  targets) and a runtime factory building each driver from the plan and
+  7.9e's `Started`, hosts supplying only transports, dev and tests
+  wrapping it with `Faked`, `jadpo check` refusing a driver per target
+  (area 11, question 24); `Transport::upgrade` (rustls natively) for
+  STARTTLS and PostgreSQL's TLS, the SMTP conversation moved into
+  `jadpo_drivers::smtp` over it; `NativeFetch` replaced by a pooled,
+  cancellable hyper client with one rustls connector per worker; webhooks
+  a `Run::Webhook` entry in the route trie; provider call sites carrying
+  plan numbers, not names; a `testing` feature and a dev/test plan
+  section so fakes, recordings and crash points stay out of deployables.
 - [ ] **8.2 WebAssembly on Workers:** `opus · xhigh` the cron tick, outbox delivery after
   commit, PostgreSQL through Cloudflare's pooling; the client's address from
   `CF-Connecting-IP` (`ClientAddress::read` with `Target::Workers`, built in
@@ -1956,6 +2022,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   Wrangler file, its setting names and Jadpo's queue-name form checked
   against Wrangler's own; `Driver.cloudflare_queues` refused in a native
   deployable.
+  From the Phase 7 review: the six connections an invocation may hold,
+  counted across `Transport` and `Fetch` and shared with `waitUntil`;
+  `max_concurrent:` per isolate said in the deploy report, or decided
+  otherwise (**needs Richard**); SQS through `receiving:` looped inside
+  the minute's cron or its delay documented; passkeys on Workers built on
+  jadpo-value's pure-Rust checks or `passkey:` refused there (**needs
+  Richard**); `Driver.disk` refused on Workers; the `Fetch` aborting
+  through an `AbortSignal`, `redirect: "manual"` for the outbound guard;
+  the Wasm size measured with and without the `testing` feature.
 - [ ] **8.3 Performance spike** `opus · high`: one route compiled to native and to
   WebAssembly and measured against an equivalent hand-written Bun and
   TypeScript app, comparing Wasm with native and Bun with native as well
@@ -1974,6 +2049,12 @@ Richard, 2026-10-13: developers won't touch this if it's slower.
   From the Phase 6 review: deliveries swept concurrently within each
   sweep, with a bound, and a backlog of 10,000 deliveries among the
   workloads.
+  From the Phase 7 review: the tick's housekeeping measured (about 20
+  statements per store on an idle tick), then split into a fast tick and
+  an hourly pass one instance takes under a lease, its deletes batched;
+  the AI budget's reserve and charge each one statement; a write after an
+  outside call checking its version in its own `WHERE`; a delivery's
+  breaker read joined into its claim.
 - [ ] **9.2 Optimise WebAssembly** `opus · xhigh` until it matches the Bun app on throughput
   and p95, or Richard accepts a measured gap. The earlier experiments reached
   about 79% of Bun's throughput and list what to try next
