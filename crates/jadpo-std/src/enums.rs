@@ -292,6 +292,10 @@ std_enum! {
         /// An SMTP server, the `email` capability (area 16, "Email"; chunk
         /// 7.3).
         Smtp: "smtp",
+        /// A queue on Cloudflare Queues, the `receiving` capability on
+        /// Workers, its batches pushed to the app's consumer (area 11,
+        /// "Queues"; chunk 7.7c2).
+        CloudflareQueues: "cloudflare_queues",
     }
 }
 
