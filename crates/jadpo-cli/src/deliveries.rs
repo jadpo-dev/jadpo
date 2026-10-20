@@ -5,7 +5,9 @@
 //!
 //! - `jadpo deliveries` (or `list`) lists those that failed or whose
 //!   outcome is unknown, newest first, 20 a page; `--state` lists those
-//!   pending, running, dismissed or cancelled instead.
+//!   pending, running, held, dismissed or cancelled instead. Each
+//!   connection whose circuit breaker holds deliveries is an alert above
+//!   the footer of the list and of the held ones (chunk 7.2b).
 //! - `retry <id>` sends a failed delivery again on the app's next
 //!   tick, with a fresh retry budget, or asks the app's tick to run a
 //!   schedule whose latest run failed, waiting for it as `jadpo schedules
@@ -29,8 +31,9 @@ use std::path::PathBuf;
 
 use jadpo_check::schedules::ScheduleModel;
 use jadpo_diag::{Diagnostic, rule};
+use jadpo_runtime::breaker::Unavailable;
 use jadpo_runtime::deliveries::{
-    self as runtime, Action, CANCELLED, DISMISSED, Done, FAILED, Holds, Item, Kind,
+    self as runtime, Action, CANCELLED, DISMISSED, Done, FAILED, HELD, Holds, Item, Kind,
     NEEDS_AN_OPERATOR, OUTCOME_UNKNOWN, PENDING, RUNNING,
 };
 use jadpo_runtime::schedules::watch::Declared;
@@ -80,6 +83,10 @@ pub const STATES: &[crate::table::Value] = &[
     crate::table::Value {
         name: "running",
         description: "A worker has it",
+    },
+    crate::table::Value {
+        name: "held",
+        description: "Held while a provider it calls is unavailable",
     },
     crate::table::Value {
         name: "dismissed",
@@ -499,6 +506,7 @@ fn state_cell(state: &str) -> Cell {
         OUTCOME_UNKNOWN => Cell::state(Symbol::Decision, "outcome unknown"),
         PENDING => Cell::state(Symbol::Pending, "pending"),
         RUNNING => Cell::state(Symbol::Running, "running"),
+        HELD => Cell::state(Symbol::Paused, "held"),
         DISMISSED => Cell::state(Symbol::Skipped, "dismissed"),
         CANCELLED => Cell::state(Symbol::Skipped, "cancelled"),
         other => Cell::state(Symbol::Skipped, other.replace('_', " ")),
@@ -512,6 +520,7 @@ fn state_words(state: &str) -> &'static str {
         OUTCOME_UNKNOWN => "is in doubt",
         PENDING => "is pending",
         RUNNING => "is running",
+        HELD => "is held while a provider it calls is unavailable",
         DISMISSED => "was dismissed",
         CANCELLED => "was cancelled",
         runtime::SUCCEEDED => "succeeded",
@@ -525,6 +534,7 @@ fn when_header(state: Option<&str>) -> &'static str {
     match state {
         Some(PENDING) => "next attempt (UTC)",
         Some(RUNNING) => "started (UTC)",
+        Some(HELD) => "held since (UTC)",
         Some(DISMISSED) => "dismissed (UTC)",
         Some(CANCELLED) => "cancelled (UTC)",
         _ => "last tried (UTC)",
@@ -543,6 +553,12 @@ fn when_cell(item: &Item, now: i64) -> String {
             (_, None) => "now".to_string(),
         },
         RUNNING => item.last_tried.map(|at| clock(at, now)).unwrap_or_default(),
+        HELD => match (item.held_since, &item.held_for) {
+            (Some(since), Some(connection)) => format!("{} · {connection}", clock(since, now)),
+            (Some(since), None) => clock(since, now),
+            (None, Some(connection)) => connection.clone(),
+            (None, None) => String::new(),
+        },
         DISMISSED | CANCELLED => match &item.acted {
             Some(acted) => format!("{} · {}", clock(acted.at, now), acted.operator),
             None => String::new(),
@@ -602,6 +618,11 @@ fn item_json(project: &Project, store: &str, item: &Item) -> Json {
             "failureKind",
             item.failure_kind.as_deref().map_or(Json::Null, Json::from),
         ),
+        (
+            "heldFor",
+            item.held_for.as_deref().map_or(Json::Null, Json::from),
+        ),
+        ("heldSince", instant(item.held_since)),
         (
             "lastAction",
             item.acted.as_ref().map_or(Json::Null, |acted| {
@@ -677,6 +698,7 @@ fn list(call: &Call, project: &Project) -> Reply {
     let limit = i64::try_from(page.saturating_mul(PAGE)).unwrap_or(i64::MAX);
     let mut items: Vec<(String, Item)> = Vec::new();
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
+    let mut unavailable: Vec<(String, Unavailable)> = Vec::new();
     for (store, holds, url) in &databases {
         let states = states.clone();
         let read = with_database(store, url, |database| {
@@ -685,13 +707,21 @@ fn list(call: &Call, project: &Project) -> Reply {
                 let states: Vec<&str> = states.iter().map(String::as_str).collect();
                 let items = runtime::items(database, holds, &states, limit).await?;
                 let counts = runtime::counts(database, holds).await?;
-                Ok((items, counts))
+                // The connections whose circuit breakers hold this store's
+                // deliveries (chunk 7.2b).
+                let unavailable = if holds.deliveries {
+                    jadpo_runtime::breaker::unavailable(database).await?
+                } else {
+                    Vec::new()
+                };
+                Ok((items, counts, unavailable))
             })
         });
-        let (found, counted) = match read {
+        let (found, counted, open) = match read {
             Ok(read) => read,
             Err(reply) => return reply,
         };
+        unavailable.extend(open.into_iter().map(|open| (store.clone(), open)));
         items.extend(found.into_iter().map(|item| (store.clone(), item)));
         for (state, count) in counted {
             *counts.entry(state).or_default() += count;
@@ -758,6 +788,14 @@ fn list(call: &Call, project: &Project) -> Reply {
             })),
         ),
         (
+            "unavailable",
+            Json::array(
+                unavailable
+                    .iter()
+                    .map(|(store, open)| unavailable_json(store, open)),
+            ),
+        ),
+        (
             "counts",
             Json::object(
                 counts
@@ -772,12 +810,20 @@ fn list(call: &Call, project: &Project) -> Reply {
             ),
         ),
     ]);
+    let alerts: Vec<String> = match state.as_deref() {
+        None | Some(HELD) => unavailable
+            .iter()
+            .map(|(_, open)| unavailable_text(open, now))
+            .collect(),
+        Some(_) => Vec::new(),
+    };
     Reply::screen(
         list_screen(
             project,
             state.as_deref(),
             &shown,
             &counts,
+            &alerts,
             total,
             page,
             pages,
@@ -787,12 +833,49 @@ fn list(call: &Call, project: &Project) -> Reply {
     )
 }
 
+/// A connection whose circuit breaker holds deliveries, as an alert's
+/// line says it (chunk 7.2b).
+fn unavailable_text(open: &Unavailable, now: i64) -> String {
+    let since = open
+        .since
+        .map(|since| format!(" since {}", clock(since, now)))
+        .unwrap_or_default();
+    let next = if open.probing {
+        "one being tried now".to_string()
+    } else {
+        match open.probe_at {
+            Some(at) if at > now => format!("one tried again at {}", clock(at, now)),
+            _ => "one tried again on the next tick".to_string(),
+        }
+    };
+    format!(
+        "`{}` has been unavailable{since}: {} held, {next}",
+        open.connection,
+        plural(open.held, "delivery", "deliveries")
+    )
+}
+
+fn unavailable_json(store: &str, open: &Unavailable) -> Json {
+    Json::object([
+        ("connection", Json::from(open.connection.as_str())),
+        ("store", Json::from(store)),
+        ("probing", Json::from(open.probing)),
+        ("since", instant(open.since)),
+        ("nextProbeAt", instant(open.probe_at)),
+        (
+            "held",
+            Json::from(i64::try_from(open.held).unwrap_or(i64::MAX)),
+        ),
+    ])
+}
+
 #[allow(clippy::too_many_arguments)]
 fn list_screen(
     project: &Project,
     state: Option<&str>,
     shown: &[Item],
     counts: &BTreeMap<String, u64>,
+    alerts: &[String],
     total: u64,
     page: u64,
     pages: u64,
@@ -801,10 +884,13 @@ fn list_screen(
     let count = |state: &str| counts.get(state).copied().unwrap_or(0);
     let mut screen = Screen::new();
     if shown.is_empty() {
+        if !alerts.is_empty() {
+            screen.push(Block::Alerts(alerts.to_vec()));
+        }
         let (headline, facts) = match state {
             None => (
                 "Nothing needs an operator".to_string(),
-                [(PENDING, "pending"), (RUNNING, "running")]
+                [(HELD, "held"), (PENDING, "pending"), (RUNNING, "running")]
                     .into_iter()
                     .filter(|(state, _)| count(state) > 0)
                     .map(|(state, word)| Fact::plain(format!("{} {word}", count(state))))
@@ -816,6 +902,7 @@ fn list_screen(
                     OUTCOME_UNKNOWN => "Nothing is in doubt",
                     PENDING => "Nothing is pending",
                     RUNNING => "Nothing is running",
+                    HELD => "Nothing is held",
                     DISMISSED => "Nothing was dismissed",
                     _ => "Nothing was cancelled",
                 }
@@ -837,12 +924,16 @@ fn list_screen(
         ]);
     }
     screen.push(Block::Table(table));
+    if !alerts.is_empty() {
+        screen.push(Block::Alerts(alerts.to_vec()));
+    }
     let mut facts = Vec::new();
     let (outcome, headline) = match state {
         None => {
             let failed = count(FAILED);
             let unknown = count(OUTCOME_UNKNOWN);
-            if failed > 0 {
+            let held = count(HELD);
+            let headline = if failed > 0 {
                 if unknown > 0 {
                     facts.push(Fact {
                         text: format!("{unknown} outcome unknown"),
@@ -852,7 +943,11 @@ fn list_screen(
                 (Outcome::Failure, format!("{failed} failed"))
             } else {
                 (Outcome::Failure, format!("{unknown} outcome unknown"))
+            };
+            if held > 0 {
+                facts.push(Fact::plain(format!("{held} held")));
             }
+            headline
         }
         Some(state) => (
             Outcome::Success,

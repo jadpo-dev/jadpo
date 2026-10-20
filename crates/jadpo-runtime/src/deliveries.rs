@@ -51,6 +51,10 @@ pub const SUPERSEDED: &str = "superseded";
 /// A schedule's run an operator resolved as done.
 pub const RESOLVED: &str = "resolved";
 
+/// A delivery a circuit breaker holds while a provider it calls is
+/// unavailable (chunk 7.2b).
+pub const HELD: &str = crate::breaker::HELD;
+
 /// A delivery whose unkeyed call is on its way out (chunk 7.0c): shown
 /// as `running`, as a worker has it.
 pub const SENDING: &str = crate::outbox::SENDING;
@@ -67,8 +71,10 @@ pub const NEEDS_AN_OPERATOR: [&str; 2] = [FAILED, OUTCOME_UNKNOWN];
 /// subscriber's or the schedule's identity key), event, state, attempts,
 /// when it was last tried (a run's start), its next attempt, its
 /// failure's code and kind, its last operator action (when, which, by
-/// whom and as which role), and the time it is ordered by.
-const DELIVERY_COLUMNS: &str = "\"d\".\"id\", 'delivery', \"d\".\"subscriber\", \"o\".\"event\", \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_tried_at\", \"d\".\"next_attempt_at\", \"d\".\"last_failure\" ->> 'code', \"d\".\"last_failure\" ->> 'kind', \"a\".\"acted_at\", \"a\".\"action\", \"a\".\"operator\", \"a\".\"role\", COALESCE(\"d\".\"last_tried_at\", \"o\".\"emitted_at\")";
+/// whom and as which role), and the time it is ordered by; then a
+/// delivery's connection and time held, while a circuit breaker holds it
+/// (chunk 7.2b).
+const DELIVERY_COLUMNS: &str = "\"d\".\"id\", 'delivery', \"d\".\"subscriber\", \"o\".\"event\", \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_tried_at\", \"d\".\"next_attempt_at\", \"d\".\"last_failure\" ->> 'code', \"d\".\"last_failure\" ->> 'kind', \"a\".\"acted_at\", \"a\".\"action\", \"a\".\"operator\", \"a\".\"role\", COALESCE(\"d\".\"last_tried_at\", \"o\".\"emitted_at\"), \"d\".\"held_for\", \"d\".\"held_since\"";
 
 fn delivery_from() -> &'static str {
     "FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" LEFT JOIN LATERAL (SELECT \"acted_at\", \"action\", \"operator\", \"role\" FROM \"jadpo_operator_actions\" WHERE \"item\" = \"d\".\"id\" ORDER BY \"acted_at\" DESC, \"id\" DESC LIMIT 1) AS \"a\" ON TRUE"
@@ -146,7 +152,7 @@ pub const FIND_REQUESTED: &str = "SELECT \"run_requested\", 'schedule_run', \"sc
 /// now), and logs it as action `$7` with id `$3` by `$4`: one statement,
 /// so the change and its log row commit together, and only from the
 /// state it was read in. The role it was logged as.
-pub const ACT_DELIVERY: &str = "WITH \"d\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = $6, \"next_attempt_at\" = $8, \"attempts\" = CASE WHEN $9 THEN 0 ELSE \"attempts\" END, \"retried_at\" = CASE WHEN $9 THEN $2 ELSE \"retried_at\" END WHERE \"id\" = $1 AND \"status\" = $5 RETURNING \"id\", \"subscriber\", \"outbox_id\") INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") SELECT $3, $2, $7, 'delivery', \"d\".\"id\", \"d\".\"subscriber\", \"o\".\"event\", $5, $4, session_user FROM \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" RETURNING \"role\"";
+pub const ACT_DELIVERY: &str = "WITH \"d\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = $6, \"next_attempt_at\" = $8, \"attempts\" = CASE WHEN $9 THEN 0 ELSE \"attempts\" END, \"retried_at\" = CASE WHEN $9 THEN $2 ELSE \"retried_at\" END, \"held_ms\" = CASE WHEN $9 THEN NULL ELSE \"held_ms\" END WHERE \"id\" = $1 AND \"status\" = $5 RETURNING \"id\", \"subscriber\", \"outbox_id\") INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") SELECT $3, $2, $7, 'delivery', \"d\".\"id\", \"d\".\"subscriber\", \"o\".\"event\", $5, $4, session_user FROM \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" RETURNING \"role\"";
 
 /// Logs run `$1`, while its outcome is `$6` and no operator has settled
 /// it, as action `$5` at `$2` with id `$3` by `$4`: a dismissal, or a
@@ -212,6 +218,10 @@ pub struct Item {
     pub at: Option<i64>,
     /// Whether a run is its schedule's latest; always true of a delivery.
     pub latest: bool,
+    /// A held delivery's connection, whose circuit breaker holds it, and
+    /// since when (chunk 7.2b).
+    pub held_for: Option<String>,
+    pub held_since: Option<i64>,
 }
 
 /// The states [`items`] lists.
@@ -219,6 +229,7 @@ pub fn listable(state: &str) -> bool {
     [
         PENDING,
         RUNNING,
+        HELD,
         FAILED,
         OUTCOME_UNKNOWN,
         DISMISSED,
@@ -600,6 +611,16 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
         acted,
         at: millis(14),
         latest: true,
+        held_for: if kind == Kind::Delivery {
+            text(15)
+        } else {
+            None
+        },
+        held_since: if kind == Kind::Delivery {
+            millis(16)
+        } else {
+            None
+        },
     })
 }
 
