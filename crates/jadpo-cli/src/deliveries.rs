@@ -31,11 +31,11 @@ use std::path::PathBuf;
 
 use jadpo_check::schedules::ScheduleModel;
 use jadpo_diag::{Diagnostic, rule};
+use jadpo_runtime::breaker::Unavailable;
 use jadpo_runtime::deliveries::{
     self as runtime, Action, CANCELLED, DISMISSED, Done, FAILED, HELD, Holds, Item, Kind,
     NEEDS_AN_OPERATOR, OUTCOME_UNKNOWN, PENDING, RUNNING,
 };
-use jadpo_runtime::breaker::Unavailable;
 use jadpo_runtime::schedules::watch::Declared;
 use jadpo_term::{Block, Cell, Fact, Json, Outcome, Screen, Symbol, Table, Token};
 

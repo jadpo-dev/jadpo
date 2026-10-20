@@ -326,14 +326,21 @@ fn load(name: &str, sandbox: &str) -> Option<Loaded> {
 const FOUND: &str = r#"{"id": "p-1", "status": "out_for_delivery"}"#;
 
 /// The package driver, over the native host's HTTP, for `couriers`.
-fn faked(harness: &Harness<jadpo_host_native::Postgres>) -> Faked<&Harness<jadpo_host_native::Postgres>> {
+fn faked(
+    harness: &Harness<jadpo_host_native::Postgres>,
+) -> Faked<&Harness<jadpo_host_native::Postgres>> {
     let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
     Faked::new(harness).with("couriers", driver)
 }
 
 /// Ships parcel `parcel` on `host`, giving the work it left for after
 /// its response.
-async fn ship(harness: &Harness<jadpo_host_native::Postgres>, host: &dyn Host, program: &Program, parcel: &str) -> Vec<Deferred> {
+async fn ship(
+    harness: &Harness<jadpo_host_native::Postgres>,
+    host: &dyn Host,
+    program: &Program,
+    parcel: &str,
+) -> Vec<Deferred> {
     let id = program.plan().find("ship").expect("the action");
     let mut ctx = harness.ctx_on(program.places(), host);
     match program.run(&mut ctx, id, vec![Value::text(parcel)]).await {
@@ -366,7 +373,9 @@ fn in_state(rows: &[(String, String, i32)], status: &str) -> usize {
 }
 
 /// The `couriers` breaker's state, failures in a row and next probe.
-async fn breaker(harness: &Harness<jadpo_host_native::Postgres>) -> Option<(String, i32, Option<i64>)> {
+async fn breaker(
+    harness: &Harness<jadpo_host_native::Postgres>,
+) -> Option<(String, i32, Option<i64>)> {
     harness
         .rows(
             "SELECT \"state\", \"failures\", \"probe_at\" FROM \"jadpo_circuit_breakers\" WHERE \"connection\" = 'couriers'",
@@ -494,7 +503,14 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         let json = jadpo(
             &loaded.root,
             T0 + 31 * SECOND,
-            &["deliveries", "--state", "held", "--json", "--url", &loaded.url],
+            &[
+                "deliveries",
+                "--state",
+                "held",
+                "--json",
+                "--url",
+                &loaded.url,
+            ],
         );
         assert_eq!(json.code, 0, "{}{}", json.stdout, json.stderr);
         let document: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");

@@ -611,7 +611,11 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
         acted,
         at: millis(14),
         latest: true,
-        held_for: if kind == Kind::Delivery { text(15) } else { None },
+        held_for: if kind == Kind::Delivery {
+            text(15)
+        } else {
+            None
+        },
         held_since: if kind == Kind::Delivery {
             millis(16)
         } else {

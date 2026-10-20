@@ -105,7 +105,9 @@ pub const PROBE_UNUSED: &str = "UPDATE \"jadpo_circuit_breakers\" SET \"state\" 
 pub fn wake_sql() -> String {
     format!(
         "UPDATE \"jadpo_deliveries\" AS \"d\" SET \"status\" = 'pending', \"next_attempt_at\" = $1, \"held_ms\" = {}, \"held_for\" = NULL, \"held_since\" = NULL WHERE \"d\".\"status\" = 'held' AND (NOT EXISTS (SELECT 1 FROM \"jadpo_circuit_breakers\" AS \"b\" WHERE \"b\".\"connection\" = \"d\".\"held_for\" AND \"b\".\"state\" <> 'closed') OR \"d\".\"id\" IN (SELECT DISTINCT ON (\"h\".\"held_for\") \"h\".\"id\" FROM \"jadpo_deliveries\" AS \"h\" JOIN \"jadpo_circuit_breakers\" AS \"b\" ON \"b\".\"connection\" = \"h\".\"held_for\" WHERE \"h\".\"status\" = 'held' AND ((\"b\".\"state\" = 'open' AND \"b\".\"probe_at\" <= $1) OR (\"b\".\"state\" = 'probing' AND (\"b\".\"probe_until\" IS NULL OR \"b\".\"probe_until\" <= $1))) ORDER BY \"h\".\"held_for\", \"h\".\"held_since\", \"h\".\"id\")) RETURNING \"d\".\"id\"",
-        HELD_MS.replace("$2", "$1").replace("\"held_", "\"d\".\"held_")
+        HELD_MS
+            .replace("$2", "$1")
+            .replace("\"held_", "\"d\".\"held_")
     )
 }
 

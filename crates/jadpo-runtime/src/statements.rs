@@ -39,7 +39,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("breaker::RAISE", crate::breaker::RAISE.to_string()),
         ("breaker::READ", crate::breaker::READ.to_string()),
-        ("breaker::TAKE_PROBE", crate::breaker::TAKE_PROBE.to_string()),
+        (
+            "breaker::TAKE_PROBE",
+            crate::breaker::TAKE_PROBE.to_string(),
+        ),
         (
             "breaker::UNAVAILABLE",
             crate::breaker::UNAVAILABLE.to_string(),
