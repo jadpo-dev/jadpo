@@ -80,6 +80,10 @@ pub struct SubscriberModel {
     /// application with a tenant that carries no single such field
     /// limits its subscribers to no tenant at all ([`Tenant`]).
     pub tenant: Tenant,
+    /// The folder of the package it is in, when it is a package's own
+    /// (chunk 7.6b): it hears each connection receiving the package's
+    /// webhooks.
+    pub package: Option<String>,
 }
 
 /// Which tenant a subscriber's delivery is limited to (area 9, "Background
@@ -147,6 +151,7 @@ pub fn subscribers_in(db: &dyn Db, project: Project, file: File) -> Vec<Subscrib
             lookup: &lookup,
             names: &names,
             domain: ownership.domain().map(str::to_string),
+            package: ownership.package().cloned(),
             args: Vec::new(),
             builtin: false,
             out: Vec::new(),
@@ -399,8 +404,18 @@ pub fn emitting(db: &dyn Db, project: Project) -> BTreeMap<String, BTreeSet<Key>
 /// the one `events: { store: }` names (area 12, "Outbox placement,
 /// settled"). `None` when it emits nothing, or has nowhere to keep them,
 /// which is `event.store_required`.
+///
+/// A package's action writes no store, and keeps what it emits where its
+/// package's webhooks are kept: the store `events: { store: }` names, or
+/// the only store that holds the app's records (chunk 7.6b).
 pub fn outbox_store(db: &dyn Db, project: Project, action: &str) -> Option<String> {
     emitting(db, project).get(action)?;
+    if crate::package_code::actions(db, project)
+        .iter()
+        .any(|own| own.canonical == action)
+    {
+        return crate::webhooks::store(db, project);
+    }
     crate::types::written_stores(db, project)
         .get(action)
         .and_then(|stores| stores.keys().next().cloned())
@@ -478,6 +493,9 @@ struct Reader<'a> {
     names: &'a Names<'a>,
     /// The subscriber's own domain, whose action it runs.
     domain: Option<String>,
+    /// The package it is in, when it is a package's own (chunk 7.6b): it
+    /// listens for its webhooks' events and runs one of its actions.
+    package: Option<jadpo_db::PackageHome>,
     /// Where each argument of `run:` is.
     args: Vec<Span>,
     /// Whether `on:` names a built-in sign-in event (chunk 7.3b4).
@@ -578,6 +596,7 @@ impl Reader<'_> {
             run,
             args,
             retry,
+            package: self.package.as_ref().map(|home| home.folder.clone()),
         })
     }
 
@@ -665,6 +684,30 @@ impl Reader<'_> {
                 .next("Do the work in the action `replies:` names, or emit an event of the app's own from it for subscribers"),
             );
             return None;
+        }
+        // A package's subscriber listens for its own webhooks' events,
+        // public or not (chunk 7.6b).
+        if let Some(home) = &self.package {
+            let webhook = crate::webhooks::package_events(self.db, self.project)
+                .of
+                .get(&home.folder)
+                .is_some_and(|events| events.iter().any(|webhook| webhook.key == key));
+            if !webhook {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::SUBSCRIBER_EVENT_INVALID,
+                        format!(
+                            "`on: {}` isn't one of `{}`'s webhooks",
+                            tree::written(value.syntax()),
+                            home.versioned()
+                        ),
+                    )
+                    .at(self.span(&value), "not a webhook's event")
+                    .reason("A package's subscriber listens for an event its provider's webhooks bring, public or not, which its action enriches through its own API; the events the package's actions emit are for the app's subscribers.")
+                    .next("Listen for one of the package's webhook events, declared with `wire_name:` in its `events/`, its provider declaring `webhooks:`"),
+                );
+                return None;
+            }
         }
         Some((event, key))
     }
@@ -779,7 +822,11 @@ impl Reader<'_> {
             _ => return None,
         };
         let symbol = self.lookup.declared(&name).first()?.clone();
-        let same_domain = symbol.ownership.domain().map(str::to_string) == self.domain;
+        let same_domain = match &self.package {
+            // A package's subscriber runs one of its package's actions.
+            Some(home) => symbol.ownership.package() == Some(home),
+            None => symbol.ownership.domain().map(str::to_string) == self.domain,
+        };
         if symbol.kind != ItemKind::Action || !same_domain {
             let what = if symbol.kind == ItemKind::Action {
                 format!(
@@ -789,15 +836,17 @@ impl Reader<'_> {
             } else {
                 symbol.kind.with_a().to_string()
             };
-            self.out.push(
-                Diagnostic::new(
-                    &rule::SUBSCRIBER_RUN_INVALID,
-                    format!("`{name}` is {what}"),
-                )
-                .at(self.span(&callee), what.clone())
-                .reason("A subscriber lives in the domain that reacts, and runs an action of that domain; reacting to another domain's event is done by a subscriber in the reacting domain.")
-                .next(format!("Run an action of this domain, calling `{name}` from it if it is another domain's public action")),
-            );
+            let problem =
+                Diagnostic::new(&rule::SUBSCRIBER_RUN_INVALID, format!("`{name}` is {what}"))
+                    .at(self.span(&callee), what.clone());
+            self.out.push(match &self.package {
+                Some(home) => problem
+                    .reason(format!("A package's subscriber runs one of `{}`'s own actions, which calls the package's API to enrich the event and emits the package's own events.", home.versioned()))
+                    .next(format!("Run an action in the package's `actions/`, calling `{name}` from it")),
+                None => problem
+                    .reason("A subscriber lives in the domain that reacts, and runs an action of that domain; reacting to another domain's event is done by a subscriber in the reacting domain.")
+                    .next(format!("Run an action of this domain, calling `{name}` from it if it is another domain's public action")),
+            });
             return None;
         }
         let sig = self.lookup.signature(&name)?.clone();

@@ -630,6 +630,8 @@ rules! {
         "14-tooling.html#command-errors", "Example in a package's description doesn't compile or doesn't hold";
     PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package's function has no example, or a failure it raises is shown by none";
+    PUBLISH_SAMPLE_MISSING: "publish.sample_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's recipes have no sample app with one domain to compile in";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

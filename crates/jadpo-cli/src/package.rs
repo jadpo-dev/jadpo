@@ -1207,8 +1207,22 @@ fn check(call: &Call) -> Reply {
     {
         items.push(Item::later("decoders", "the package has errors"));
     }
+    // Each recipe compiled in the package's `sample/` app (chunk 7.6b).
     if data_files.iter().any(|f| f.starts_with("recipes/")) {
-        items.push(Item::later("recipes", "recipes in `sample/` come later"));
+        match (&found, compiled_cleanly) {
+            (Some(_), true) => {
+                if let Some(ran) = crate::package_recipe::in_sample(&folder, &compiled) {
+                    items.push(if ran.passed {
+                        Item::passed("recipes", ran.detail)
+                    } else {
+                        Item::failed("recipes", ran.detail)
+                    });
+                    diagnostics.extend(ran.problems);
+                    sources.extend(ran.sources);
+                }
+            }
+            _ => items.push(Item::later("recipes", "the package has errors")),
+        }
     }
 
     // The version, from the last release's surface.
