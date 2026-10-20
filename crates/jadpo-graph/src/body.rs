@@ -529,6 +529,10 @@ pub enum Callee {
     /// `prompts.render(prompt)` (area 21): the prompt's name, whose text
     /// the runtime fills from the value given.
     Prompt(String),
+    /// What an email's HTML template writes out, escaped (area 16,
+    /// "Email"): never written in source, but made for each `{{ value }}`
+    /// that isn't `Html`.
+    Escape,
     /// Nothing that can be called: already reported.
     Unknown,
 }
@@ -556,6 +560,7 @@ impl Callee {
             | Callee::AdvanceClock
             | Callee::Translation(_)
             | Callee::Prompt(_)
+            | Callee::Escape
             | Callee::Unknown => None,
         }
     }

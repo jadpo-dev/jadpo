@@ -602,6 +602,40 @@ pub(crate) async fn attempt_delivery(
             );
             send(ctx, call, budget, within).await
         }
+        // An email, rendered whole and sent with no key (area 16; chunk
+        // 7.3): what can't be rendered is settled as a subscriber's
+        // outcome is, before anything goes out.
+        Target::Email { connection } => {
+            let emails = &events.plan.emails;
+            let rendered = match emails.email(&subscriber.event) {
+                Some(email) => {
+                    crate::email::message(executor, ctx, emails, email, &delivery.value).await
+                }
+                None => Err(Outcome::Fault(ctx.fault(
+                    FaultKind::Defect("an email this build doesn't have".into()),
+                    Frame::ENTRY,
+                ))),
+            };
+            match rendered {
+                Err(outcome) => Ok(outcome),
+                Ok(message) => {
+                    let marked = database
+                        .query_once(outbox::MARK_SENDING, &[id.clone(), counted.clone()])
+                        .await;
+                    if !matches!(marked, Ok(rows) if !rows.is_empty()) {
+                        let state = retried("unavailable", Some("unavailable")).await;
+                        return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
+                    }
+                    let call = Call::new(
+                        connection.clone(),
+                        jadpo_std::email::SEND,
+                        message,
+                        Repeat::Unkeyed,
+                    );
+                    send(ctx, call, budget, within).await
+                }
+            }
+        }
         Target::Action { callable, args } => {
             let Some(args) = outbox::arguments(args, &delivery.value) else {
                 settle(FAILED, None, Some(failure_json("internal_fault", None))).await;

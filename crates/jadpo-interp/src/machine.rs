@@ -210,6 +210,9 @@ enum Task<'p> {
     /// `prompts.render(prompt)` (area 21): the prompt's value on the
     /// stack.
     RenderPrompt(SiteId),
+    /// A value an email's HTML template writes out (area 16): its text on
+    /// the stack, escaped.
+    Escape(SiteId),
     IfCheck {
         arms: &'p [IfArm],
         otherwise: &'p [SiteId],
@@ -883,6 +886,18 @@ impl<'p> Machine<'p> {
                     Err(fault) => return Err(self.value_fault(ctx, fault, at)),
                 }
             }
+            Task::Escape(at) => match self.pop() {
+                Value::Text(text) => self
+                    .values
+                    .push(Value::text(&jadpo_std::email::escape_html(&text))),
+                _ => {
+                    return Err(self.defect(
+                        ctx,
+                        "a template writing out something that isn't text",
+                        at,
+                    ));
+                }
+            },
             Task::RenderPrompt(at) => {
                 let prompt = self.pop();
                 let rendered = self.render_prompt(&prompt, at);
@@ -2152,6 +2167,14 @@ impl<'p> Machine<'p> {
                     at: id,
                 });
                 self.tasks.extend(work.into_iter().rev());
+            }
+            // A value an email's HTML template writes out (area 16).
+            Callee::Escape => {
+                let [Some(arg)] = args else {
+                    return Err(self.defect(ctx, "an escape of nothing", id));
+                };
+                self.tasks.push(Task::Escape(id));
+                self.tasks.push(Task::Expr(*arg));
             }
             // A prompt rendered as the messages a model is sent (area 21).
             Callee::Prompt(_) => {

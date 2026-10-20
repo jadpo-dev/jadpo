@@ -104,7 +104,7 @@ pub fn stored(file: &Value) -> Option<Stored> {
 }
 
 /// The media type of a `FileType` value.
-fn media_type(file_type: &Value) -> Option<&'static str> {
+pub(crate) fn media_type(file_type: &Value) -> Option<&'static str> {
     let Value::Variant(variant) = file_type else {
         return None;
     };

@@ -66,7 +66,8 @@ pub struct File {
 /// `.jadpo_record` ([`record::kind_of`]) and `jadpo.lock`, a record still
 /// under its name from before chunk 7.0 (`api/<api>.api`,
 /// `database/identities.json`), a prompt's text, `<name>.prompt`
-/// (area 21), and a package's files that aren't its source
+/// (area 21), an email's templates, `<name>.html` and `<name>.txt` (area
+/// 16), and a package's files that aren't its source
 /// ([`is_package_data`]), read whole for its digest.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Record {
@@ -78,8 +79,8 @@ pub struct Record {
 
 /// Whether a project-relative path is a record [`Record`] holds: a file in
 /// a migration's folder that isn't source, a generated record of any kind,
-/// one under its old name, or a prompt's text in a `prompts/` folder (area
-/// 21).
+/// one under its old name, a prompt's text in a `prompts/` folder (area
+/// 21), or an email's template in an `emails/` folder (area 16).
 pub fn is_record(path: &str) -> bool {
     if record::kind_of(path).is_some() || record::renamed(path).is_some() {
         return true;
@@ -87,7 +88,7 @@ pub fn is_record(path: &str) -> bool {
     if places::is_package_data(path) {
         return true;
     }
-    if is_prompt_text(path) {
+    if is_prompt_text(path) || is_email_template(path) {
         return true;
     }
     matches!(
@@ -113,6 +114,24 @@ pub fn is_prompt_text(path: &str) -> bool {
         _ => return false,
     };
     file.len() > PROMPT_EXTENSION.len() && file.ends_with(PROMPT_EXTENSION)
+}
+
+/// The extensions of an email's templates (area 16, "Email"): its HTML
+/// body and its plain-text body.
+pub const EMAIL_TEMPLATE_EXTENSIONS: [&str; 2] = [".html", ".txt"];
+
+/// Whether a project-relative path is an email's template (area 16):
+/// `<name>.html` or `<name>.txt` in a domain's `emails/` folder, or the
+/// shared layout's in `shared/emails/`.
+pub fn is_email_template(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    let file = match parts.as_slice() {
+        ["domains", _, "emails", file] | ["shared", "emails", file] => file,
+        _ => return false,
+    };
+    EMAIL_TEMPLATE_EXTENSIONS
+        .iter()
+        .any(|extension| file.len() > extension.len() && file.ends_with(extension))
 }
 
 /// The project: its source files in path order, the paths of every other

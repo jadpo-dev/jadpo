@@ -1404,11 +1404,13 @@ impl Body<'_> {
         }
         let given = args.len();
         let extra = slots.iter().filter(|slot| slot.is_none()).count();
-        // An option may be left out (area 10's `dst:`).
+        // An option may be left out (area 10's `dst:`), and a template's
+        // `text.format` takes its email's locale (area 16, "Email").
+        let template = self.context == super::Context::Template;
         let optional = |slot: usize| {
             table
                 .and_then(|op| op.params.get(slot))
-                .is_some_and(|param| param.optional)
+                .is_some_and(|param| param.optional || (template && param.name == "locale"))
         };
         let missing: Vec<String> = params
             .iter()

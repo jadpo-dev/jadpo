@@ -77,6 +77,7 @@ pub mod config;
 mod ctx;
 pub mod deliveries;
 pub mod effects;
+pub mod email;
 mod env;
 mod executor;
 mod failure;

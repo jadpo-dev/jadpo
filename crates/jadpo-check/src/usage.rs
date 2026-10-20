@@ -118,6 +118,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Files { .. }
                 | Callee::Provider { .. }
                 | Callee::AdvanceClock
+                | Callee::Escape
                 | Callee::Unknown => {}
                 // A prompt is used by the value built of its type.
                 Callee::Prompt(_) => {}

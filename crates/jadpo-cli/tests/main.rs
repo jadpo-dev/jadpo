@@ -26,6 +26,7 @@ mod declines;
 mod decode_problems;
 mod deliveries;
 mod delivery_limits;
+mod emails;
 mod events;
 mod field_rules_on_read;
 mod file_exports;

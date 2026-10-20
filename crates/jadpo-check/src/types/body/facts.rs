@@ -199,4 +199,6 @@ pub(crate) struct Facts {
     pub constants: BTreeMap<NodeKey, (Option<String>, String)>,
     /// Each `request { ... }` in a route test (area 13).
     pub requests: BTreeMap<NodeKey, super::request::RequestFact>,
+    /// Each value an email template writes out, and how (area 16).
+    pub template_writes: BTreeMap<NodeKey, super::template::TemplateWrite>,
 }

@@ -939,6 +939,9 @@ impl Decls<'_> {
                     LineKind::Duplicate(name) => lines
                         .iter()
                         .position(|line| matches!(line, Line::Field { name: n, .. } if n == name))
+                        // An email's own `to:` or `locale:` is written
+                        // once: the first is the one every email has.
+                        .filter(|at| *at != problem.line)
                         .and_then(member)
                         .and_then(|first| first.member_key())
                         .map(|key| self.span(key.syntax())),
@@ -1014,6 +1017,21 @@ impl Decls<'_> {
             .map(|entry| tree::written(entry.syntax()))
             .unwrap_or_default();
         let diagnostic = match &problem.kind {
+            // Every email has `to:` and `locale:` already (area 16).
+            LineKind::Duplicate(name)
+                if first.is_none()
+                    && super::table::EMAIL_FIELDS
+                        .iter()
+                        .any(|(field, _)| field == name) =>
+            {
+                Diagnostic::new(
+                    &rule::TYPE_DUPLICATE_FIELD,
+                    format!("`{host}` declares `{name}`, which every email has"),
+                )
+                .at(key_span, "already a field")
+                .reason("Every `EmailMessage` has `to:`, the address it is sent to, and `locale:`, the language it is written in, before the fields it declares.")
+                .next(format!("Remove `{name}`; `emit {host} {{ ... }}` gives it"))
+            }
             LineKind::Duplicate(name) => {
                 let mut found = Diagnostic::new(
                     &rule::TYPE_DUPLICATE_FIELD,
