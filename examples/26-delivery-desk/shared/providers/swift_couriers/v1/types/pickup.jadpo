@@ -1,5 +1,11 @@
+// The courier spells the collection time `collectAt`; `wire_name:` says
+// so, and the runtime reads and sends that spelling while code reads
+// `collect_at`.
+
 /// A booked pickup.
 public type Pickup = Object {
     id: Text
-    collect_at: Instant
+    collect_at: Instant {
+        wire_name: "collectAt"
+    }
 }

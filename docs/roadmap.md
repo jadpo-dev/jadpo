@@ -960,7 +960,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
   field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
   the importer lists each; recommendation `wire_name:`.
-- [ ] **7.2c Provider calls** `opus · high`, after 7.2 and 7.1c (split
+- [x] **7.2c Provider calls** `opus · high`, after 7.2 and 7.1c (split
   from 7.2c Wire, decoding and provider calls on 2026-10-20): a provider
   operation called through its connection over 7.0c's seam by the package
   driver (JSON over HTTP), tested against a local HTTP server started in
@@ -970,12 +970,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   connection's `domains:` enforced at the call.
   Also `wire_name:` on a provider's fields and enum variants (area 11,
   decided 2026-10-20), written by the importer where the spelling
-  differs.
+  differs. Built: a package's operations read from `resources/` and
+  checked (`package.operation_invalid`); `connection.resource.operation(
+  input)` in an action of a listed domain (`connection.domain_not_listed`),
+  its package failures mapped at the call by code to the app's own of the
+  same kind with the provider's as the cause, unmapped ones faults; the
+  plan's `ProviderPlan`, the runtime making each request (wire names,
+  placeholders, query or JSON body, bearer or basic credential, a key
+  derived from the app, environment, connection, caller's scope, action's
+  key and step) and decoding the answer from `output_at:` with
+  `failed_when:`; the package driver (`jadpo_drivers::package`) over a
+  host's `Fetch`, natively HTTPS through OpenSSL or plain HTTP to this
+  machine, sending nothing elsewhere; `wire_name:` on fields and variants
+  (`package.wire_name_invalid`), written by the importer; and package
+  object types built through the package's name. Live tests in
+  `provider_calls.rs`, a call before the first write going out and one
+  after it refused (`call_in_transaction`, until 7.4); example 26 books a
+  pickup. Choices in area 11's "Chosen in chunk 7.2c"; `jadpo dev` and
+  `jadpo test` give a package connection no driver until 7.2d.
 - [ ] **7.2c2 Wire encodings and decoders** `opus · high`, after 7.2c:
   hand-written packages' `wire:` (the built-in encodings), `decode:` and
   `encode:` on fields, and `wire_output:` with `decode:` on operations,
-  each package function run by the executor at the call's site; and
-  `retry:` with its backoff.
+  each package function run by the executor at the call's site; decoding
+  lazily, only the fields code reads (7.2c decodes every declared field
+  as the answer arrives); `timed_out:` mapped on an idempotent operation;
+  and `retry:` with its backoff.
 - [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
   7.2c2: a generated fake per package and `fakes:` for provider
   operations in tests; recordings and `jadpo package record`, every

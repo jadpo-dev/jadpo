@@ -1,6 +1,6 @@
 // A package with `resources/` is a provider package: one API at one
-// version. `provider.jadpo` says how that API is reached; calling it comes
-// with `connections:` in `app.jadpo`.
+// version. `provider.jadpo` says how that API is reached; the app calls it
+// through a connection in `app.jadpo`.
 
 /// How Swift Couriers' API is reached.
 provider {

@@ -259,8 +259,8 @@ Rust 1.88 or later).
 | `jadpo-codegen` | Rust source from graph and plan; drives cargo | |
 | `jadpo-value` | Runtime values, operators, JSON codecs, validation, standard-library implementations | yes |
 | `jadpo-runtime` | Everything in §2.6, behind a `Host` trait | yes |
-| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL now; Redis, SMTP, S3 and the package driver (JSON over HTTP) with their areas | yes |
-| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with (chunk 6.4b); the inbox with email | |
+| `jadpo-drivers` | Capability drivers over a host-supplied transport, a cargo feature each: PostgreSQL and the package driver (JSON over HTTP, chunk 7.2c) now; Redis, SMTP and S3 with their areas | yes |
+| `jadpo-host-native` | tokio and hyper: the HTTP listener, timers, the background work a response leaves, passkey ceremonies, the disk driver `jadpo dev` keeps files with (chunk 6.4b), HTTP for the package driver (chunk 7.2c); the inbox with email | |
 | `jadpo-host-workers` | workers-rs: fetch, scheduled, `waitUntil`, sockets, bindings | only |
 | `jadpo-term` | The CLI design language: rich, plain and JSON output | |
 | `jadpo-test` | Test runner, PostgreSQL harness, field-by-field value diffs; the differential comparison with compiled code | |
@@ -2084,9 +2084,9 @@ constraint name, serialisation failure, unavailable, fault), so executors
 and targets agree; the experiments found exactly this classification
 drifting between adapters
 ([shared conformance](experiments/shared-rust-conformance-results.md)).
-Package-backed capabilities use one generic driver that runs the package's
-declared protocol, credentials, idempotency header, retries and error
-mapping through `Host::fetch` (Phase 7); packages never generate driver code. Drivers
+Package-backed capabilities use one generic driver, the package driver
+(chunk 7.2c, below), over the `Fetch` the host gives, as the PostgreSQL
+driver runs over its `Transport`; packages never generate driver code. Drivers
 list their targets for `jadpo check` (area 11), and test fakes implement
 the same traits.
 
@@ -2132,6 +2132,37 @@ and the work it is given kept), which replaced twenty hand-written hosts
 in nineteen of `crates/jadpo-cli/tests`' files; the live tests of
 `capability_deliveries.rs` prove the seam with a test capability, the
 `mail` connection's fake.
+
+**Provider calls** (chunk 7.2c; area 11, "Chosen in chunk 7.2c"). A
+provider operation's call is `Callee::Provider` (its connection and
+`resource.operation`), which the interpreter runs through
+`jadpo_runtime::provider::call` with the plan's `ProviderPlan`
+(`jadpo_std::provider`: each connection's address, credential setting,
+timeout, `idempotency:` and `error_code:`, and each public operation's
+method, path, input and output numbered in the JSON table, `output_at:`,
+`failed_when:`, `Repeat` and failures), the credentials `Program` holds
+apart as it holds the keys (`provider::Credentials`), and the values of
+the settings its address reads. The runtime writes the input with the
+JSON table's codec, a provider package's `wire_name:` spellings
+included (`FieldPlan::wire`, a variant's codec's `wire`), fills the
+path, the query or the body, adds the credential and, for a keyed call,
+the derived key (`provider::key`, from the invocation's `CallKey`, which
+the HTTP component and the runner set, and its step, counted across the
+invocation and taken again by a rerun), and sends a `Call` carrying the
+`provider::Request` through `effects::send`. The package driver
+(`jadpo_drivers::package::JsonHttp`, feature `package`) sends it through
+its host's `Fetch` and classifies the answer (`provider::classify`):
+`Answer::Wire`, the answer as sent, which a recording keeps, or the
+seam's failures. The call's site decodes a wire answer from
+`output_at:` with the output's codec, a provider type's shape open to
+members it doesn't declare (`ShapePlan::open`), or raises the package
+failure the provider's code names, which the interpreter maps by code
+at the call's `attempt` (`RuleArm::named`, `Task::RaiseMapped`) or ends
+in `FaultKind::Provider`. Natively the host's `Fetch` is
+`jadpo_host_native::fetch::NativeFetch`: HTTPS through OpenSSL, or plain
+HTTP to this machine, each exchange on tokio's blocking pool within the
+call's timeout. `jadpo dev`'s and `jadpo test`'s hosts give a package
+connection no driver until chunk 7.2d's fakes.
 
 **Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
 6.4b"; area 12, "How a file's run is kept"). The `files` capability's

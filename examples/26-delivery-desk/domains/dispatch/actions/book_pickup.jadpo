@@ -1,0 +1,18 @@
+// A provider's operation is called through its connection, only from an
+// action of a domain the connection lists. Its package's failures are
+// mapped at the call by their codes to the app's own of the same kind;
+// the courier's stays as the cause. The call goes out before the
+// action's first read or write, while no transaction is open.
+
+use app { couriers }
+use dispatch/failures { PickupSlotGone }
+use shared/providers/swift_couriers
+
+/// Books a pickup with the courier.
+action book_pickup(
+    request: SwiftCouriers.PickupRequest
+) fails PickupSlotGone -> SwiftCouriers.Pickup {
+    return attempt couriers.pickups.create(request) {
+        slot_taken: PickupSlotGone
+    }
+}

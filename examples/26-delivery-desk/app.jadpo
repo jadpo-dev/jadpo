@@ -1,1 +1,14 @@
-application {}
+// The desk's own integration is called through a connection: which
+// package, which domains may call it, the credential its scheme sends
+// from a secret setting, and which of its hosts each deployment calls.
+application {
+    connections: {
+        couriers: {
+            package: SwiftCouriers.v1
+            domains: [dispatch]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+        }
+    }
+}

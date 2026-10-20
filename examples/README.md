@@ -101,7 +101,7 @@ README saying what it teaches, how to run it and what to try next.
 26. [26-delivery-desk/](26-delivery-desk/README.md): packages: an
     installed library package locked by its digest and used through its
     name, and the app's own integration with a provider's API in the
-    package format.
+    package format, called through a connection.
 
 `golden-todo/` is different: it holds the contract and notes for the
 golden todo application the compiler is built against, not a teaching

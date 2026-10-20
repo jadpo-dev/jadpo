@@ -1,0 +1,12 @@
+config {
+    /// The courier's API key: a secret, sent only as the package's scheme
+    /// says, and never read by code.
+    couriers_api_key: Text {
+        secret: true
+    }
+    /// Which of the courier's hosts this deployment calls, its sandbox or
+    /// its live API.
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
