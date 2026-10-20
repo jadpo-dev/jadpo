@@ -681,6 +681,69 @@ pub static COMMANDS: &[Command] = &[
         run: commands::api,
     },
     Command {
+        name: "package",
+        synonyms: &[],
+        group: "Change safely",
+        summary: "Import a provider's description",
+        description: "`import openapi <file>` reads an OpenAPI 3 document, as JSON, once and offline, \
+                      into the app's own integration in shared/providers/<name>/<version>/, in the \
+                      package format (area 11): its index, provider.jadpo with the file and its \
+                      digest under `imported:`, a resource per tag with its operations, and the \
+                      types and failures they reach. Another Jadpo application's document is read \
+                      exactly, from its x-jadpo fields; any other's fields map to Jadpo's types by \
+                      their formats, and what it leaves out is listed to check. Importing again \
+                      merges: what the description adds is added, and corrections are kept.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: import",
+                required: true,
+                values: Values::Fixed(crate::package_import::ACTIONS),
+            },
+            Argument {
+                name: "format",
+                description: "The description's format: openapi",
+                required: false,
+                values: Values::Fixed(crate::package_import::FORMATS),
+            },
+            Argument {
+                name: "file",
+                description: "The description to read",
+                required: false,
+                values: Values::Path,
+            },
+        ],
+        flags: &[Flag {
+            name: "--as",
+            value: Some("name"),
+            description: "The package's name and version, such as AcmeCouriers.v1; else from the document's title and version",
+            values: &[],
+        }],
+        examples: &[
+            Example {
+                description: "Import another Jadpo application's API",
+                command: "jadpo package import openapi ../orders/build/openapi/main.json",
+            },
+            Example {
+                description: "Import a provider's document under a name of your own",
+                command: "jadpo package import openapi acme.openapi.json --as AcmeCouriers.v1",
+            },
+            Example {
+                description: "List what the import leaves to check, as data for tools",
+                command: "jadpo package import openapi acme.openapi.json --json",
+            },
+        ],
+        arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
+        raises: &[
+            &rule::CLI_PACKAGE_IMPORT_INVALID,
+            &rule::CLI_PACKAGE_IMPORT_UNREADABLE,
+            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+            &rule::TOOLCHAIN_NOT_BUILT_YET,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::package,
+    },
+    Command {
         name: "records",
         synonyms: &[],
         group: "Change safely",

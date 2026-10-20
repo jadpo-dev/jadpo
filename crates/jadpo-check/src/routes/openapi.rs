@@ -28,8 +28,9 @@
 //! reads an `Idempotency-Key` (the header, whether the API requires it,
 //! what a key keeps, for how long, and the codes a key's repeat answers
 //! with), `x-jadpo-failure` on each failure the application declares (its
-//! `code` and `kind`) and `x-jadpo-constraints` on every field and
-//! placeholder: its type and rules as the API record writes them. Each
+//! `code` and `kind`) and `x-jadpo-constraints` on every field,
+//! placeholder and output: its type and rules as the API record writes
+//! them. Each
 //! route's operation is tagged with its group, and the group's `///`
 //! description is the tag's.
 
@@ -1151,7 +1152,7 @@ fn operation(
         // either way, and 202 when the work hadn't settled in time (area
         // 7, "Waiting for follow-on work").
         (Some(output), Some(settle)) => {
-            let schema = wire.schema(&type_ref(lookup, output), refs);
+            let schema = constrained(wire, &type_ref(lookup, output), refs);
             responses.set(
                 &success,
                 response(
@@ -1176,7 +1177,7 @@ fn operation(
             &success,
             response(
                 "Success.",
-                Some(wire.schema(&type_ref(lookup, output), refs)),
+                Some(constrained(wire, &type_ref(lookup, output), refs)),
             ),
         ),
         (None, _) => responses.set(&success, response("Success, with no content.", None)),

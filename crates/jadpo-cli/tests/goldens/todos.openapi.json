@@ -100,7 +100,8 @@
           "title": {
             "maxLength": 200,
             "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "x-jadpo-constraints": "Text { min_length: 1, max_length: 200 }"
           }
         },
         "required": [
@@ -436,7 +437,11 @@
         "required": [
           "error"
         ],
-        "type": "object"
+        "type": "object",
+        "x-jadpo-failure": {
+          "code": "todo_not_found",
+          "kind": "not_found"
+        }
       },
       "TodoStatus": {
         "description": "Where a todo is.",
@@ -452,15 +457,18 @@
         "properties": {
           "id": {
             "format": "uuid",
-            "type": "string"
+            "type": "string",
+            "x-jadpo-constraints": "Uuid"
           },
           "status": {
-            "$ref": "#/components/schemas/TodoStatus"
+            "$ref": "#/components/schemas/TodoStatus",
+            "x-jadpo-constraints": "TodoStatus"
           },
           "title": {
             "maxLength": 200,
             "minLength": 1,
-            "type": "string"
+            "type": "string",
+            "x-jadpo-constraints": "Text { min_length: 1, max_length: 200 }"
           }
         },
         "required": [
@@ -503,10 +511,50 @@
   },
   "info": {
     "title": "todos",
-    "version": "f238e909a6d4"
+    "version": "6a2987f054a4"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/openapi.json": {
+      "get": {
+        "description": "This document: the API's routes, what each takes and answers with, and how clients sign in.",
+        "operationId": "get_openapi_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "An OpenAPI 3.1 document.",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "This document."
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/RequestTooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalFault"
+          },
+          "504": {
+            "$ref": "#/components/responses/DeadlineExceeded"
+          }
+        },
+        "security": [],
+        "x-jadpo-changes": false,
+        "x-jadpo-generated": true
+      }
+    },
     "/todos": {
       "get": {
         "description": "Todos, by title.",
@@ -519,7 +567,8 @@
               "items": {
                 "$ref": "#/components/schemas/TodoStatus"
               },
-              "type": "array"
+              "type": "array",
+              "x-jadpo-constraints": "List<TodoStatus>"
             }
           },
           {
@@ -528,7 +577,8 @@
             "schema": {
               "maximum": 50,
               "minimum": 1,
-              "type": "integer"
+              "type": "integer",
+              "x-jadpo-constraints": "Int { min: 1, max: 50 }"
             }
           },
           {
@@ -537,7 +587,8 @@
             "schema": {
               "maxLength": 200,
               "minLength": 1,
-              "type": "string"
+              "type": "string",
+              "x-jadpo-constraints": "Text { min_length: 1, max_length: 200 }"
             }
           }
         ],
@@ -584,7 +635,11 @@
             "$ref": "#/components/responses/DeadlineExceeded"
           }
         },
-        "security": []
+        "security": [],
+        "tags": [
+          "Todos"
+        ],
+        "x-jadpo-changes": false
       },
       "post": {
         "description": "Creates a todo.",
@@ -685,7 +740,20 @@
             "$ref": "#/components/responses/DeadlineExceeded"
           }
         },
-        "security": []
+        "security": [],
+        "tags": [
+          "Todos"
+        ],
+        "x-jadpo-changes": true,
+        "x-jadpo-idempotency": {
+          "header": "Idempotency-Key",
+          "in_use": "conflict",
+          "keeps": "response",
+          "max_length": 255,
+          "required": false,
+          "reused": "idempotency_key_reused",
+          "window": "1d"
+        }
       }
     },
     "/todos/{todo_id}": {
@@ -699,7 +767,8 @@
             "required": true,
             "schema": {
               "format": "uuid",
-              "type": "string"
+              "type": "string",
+              "x-jadpo-constraints": "Uuid"
             }
           }
         ],
@@ -753,8 +822,18 @@
             "$ref": "#/components/responses/DeadlineExceeded"
           }
         },
-        "security": []
+        "security": [],
+        "tags": [
+          "Todos"
+        ],
+        "x-jadpo-changes": false
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "description": "Todos: making one and reading them back.",
+      "name": "Todos"
+    }
+  ]
 }

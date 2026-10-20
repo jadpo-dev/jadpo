@@ -19,6 +19,7 @@ mod help;
 mod hq;
 mod local;
 mod migrate;
+mod package_import;
 mod records;
 mod routes;
 mod run;

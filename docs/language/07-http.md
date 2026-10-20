@@ -547,7 +547,7 @@ GET /v1/openapi.json
 | `x-jadpo-changes` | Every operation | `true` for a route that runs an action, `false` for a `GET` and for the runtime's own reads |
 | `x-jadpo-idempotency` | Every operation that reads an `Idempotency-Key` | `header`, `required` (the API's `idempotency:`), `keeps` (`response`: a repeat gets the first answer; `request`: a repeat waits for the first but runs again; `nothing`: the action writes no store), `window` (`1d`), `max_length` (255), and the codes a key's repeat answers with, `in_use` (`conflict`) and `reused` (`idempotency_key_reused`) |
 | `x-jadpo-failure` | The schema of each failure the application declares | Its `code` and `kind` (`not_found`); sign-in's, policy's and the runtime's own codes carry none, since the caller's runtime handles them |
-| `x-jadpo-constraints` | Every field's and placeholder's schema | Its type and rules as the API record writes them: `Text { min_length: 1, max_length: 200 }`, `List<TodoView>`, `Money?` |
+| `x-jadpo-constraints` | Every field's, placeholder's and success response's schema | Its type and rules as the API record writes them: `Text { min_length: 1, max_length: 200 }`, `List<TodoView>`, `Money?` |
 
 - **Each operation is tagged with its route group**, and the group's `///`
   description is the tag's, so an importer names a resource after it.
