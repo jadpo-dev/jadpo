@@ -624,6 +624,24 @@ fn alert_text(alert: &Alert, now: i64) -> String {
             clock(*since, now),
             plural(*held, "delivery", "deliveries")
         ),
+        AlertKind::UnfinishedSteps { count, oldest, .. } => unfinished_text(*count, *oldest, now),
+    }
+}
+
+/// The alert on unfinished multi-step runs, as a line says it (chunk
+/// 7.5f): `3 multi-step runs are unfinished, the oldest since
+/// 2026-10-19 08:12`.
+pub(crate) fn unfinished_text(count: u64, oldest: i64, now: i64) -> String {
+    if count == 1 {
+        format!(
+            "1 multi-step run has been unfinished since {}",
+            clock(oldest, now)
+        )
+    } else {
+        format!(
+            "{count} multi-step runs are unfinished, the oldest since {}",
+            clock(oldest, now)
+        )
     }
 }
 
@@ -2076,6 +2094,15 @@ pub(crate) fn dev_alert(alert: &Alert, now: i64) -> (String, Json) {
             connection: connection.clone(),
             since: at(*since),
             held: *held,
+        },
+        AlertKind::UnfinishedSteps {
+            store,
+            count,
+            oldest,
+        } => AlertKind::UnfinishedSteps {
+            store: store.clone(),
+            count: *count,
+            oldest: at(*oldest),
         },
     };
     let local = Alert {

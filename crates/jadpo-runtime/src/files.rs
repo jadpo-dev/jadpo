@@ -170,7 +170,9 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
                 }
                 (crate::steps::Answered::Done, Some(key)) => {
                     let input = Value::record("FilePut", Vec::new());
-                    let made = Call::new(connection, PUT, input, Repeat::Keyed);
+                    let mut made = Call::new(connection, PUT, input, Repeat::Keyed);
+                    // Logged as the step it is (chunk 7.5f).
+                    made.step = at;
                     let now = ctx.now();
                     let capabilities = ctx.capabilities_mut();
                     let place = capabilities.sent(&made, crate::capability::Source::Replayed, now);

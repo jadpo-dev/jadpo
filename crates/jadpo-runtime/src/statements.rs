@@ -379,6 +379,8 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             "unfinished::OLD_ANSWERS",
             crate::unfinished::OLD_ANSWERS.to_string(),
         ),
+        ("unfinished::METRIC", crate::unfinished::METRIC.to_string()),
+        ("unfinished::RAISE", crate::unfinished::RAISE.to_string()),
         ("unfinished::RETRY", crate::unfinished::RETRY.to_string()),
         ("unfinished::STEPS", crate::unfinished::STEPS.to_string()),
         ("unfinished::by_id_sql", crate::unfinished::by_id_sql()),

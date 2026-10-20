@@ -652,6 +652,9 @@ pub async fn call(
         Ok(crate::steps::Stepped::Untracked) => None,
         Ok(crate::steps::Stepped::Send(at)) => Some(at),
         Ok(crate::steps::Stepped::Replay(answered)) => {
+            // Logged as the step it is (chunk 7.5f).
+            let mut made = made;
+            made.step = ctx.steps_at();
             return replayed(ctx, providers, op, &name, made, answered, site);
         }
         Err(Unanswered::Failed(code)) => return failed(providers, op, &name, &code),
