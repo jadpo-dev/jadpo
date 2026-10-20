@@ -162,15 +162,24 @@ fn one<E: Executor>(
             stores: databases.stores(),
         };
         let host = TestHost::new(databases);
-        let outcome = {
+        let (outcome, undelivered) = {
             let mut ctx = Ctx::new(places, &host, env.env);
             ctx.set_settings(executor.settings(callable));
-            runtime.block_on(executor.run(&mut ctx, callable, Vec::new()))
+            // What each step emits is delivered before the next statement,
+            // in an order the run's seed decides (chunk 6.11).
+            ctx.deliver_between_steps(crate::env::delivery_order(rerun.seed, &test.key));
+            let outcome = runtime.block_on(executor.run(&mut ctx, callable, Vec::new()));
+            (outcome, ctx.undelivered().cloned())
         };
         let failure = match outcome {
             Outcome::Value(_) => None,
             other => Some(Box::new(outcome::failure(
-                places, sources, test, &other, rerun,
+                places,
+                sources,
+                test,
+                &other,
+                rerun,
+                undelivered.as_ref(),
             ))),
         };
         let kept = host.finish(failure.is_some());
@@ -192,7 +201,7 @@ fn one<E: Executor>(
     match outcome {
         Outcome::Value(_) => None,
         other => Some(Box::new(outcome::failure(
-            places, sources, test, &other, rerun,
+            places, sources, test, &other, rerun, None,
         ))),
     }
 }

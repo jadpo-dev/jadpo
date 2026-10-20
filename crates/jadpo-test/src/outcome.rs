@@ -9,6 +9,7 @@
 
 use jadpo_diag::{Rule, rule};
 use jadpo_interp::{CallError, Value};
+use jadpo_runtime::test_steps::Undelivered;
 use jadpo_runtime::{
     Assertion, AssertionDetail, Failure, Fault, FaultKind, Frame, Got, Outcome, Places, Report,
     Sources,
@@ -19,8 +20,12 @@ use crate::{Rerun, Test};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TestFailure {
-    /// `test.assertion_failed`, `test.unexpected_failure` or `test.fault`.
+    /// `test.assertion_failed`, `test.unexpected_failure`, `test.fault` or
+    /// `test.subscriber_failed`.
     pub rule: &'static Rule,
+    /// For `test.subscriber_failed`: the delivery between the test's steps
+    /// that failed for good, whose failure or fault `detail` holds.
+    pub delivery: Option<Undelivered>,
     /// Where in the test it failed.
     pub location: Located,
     pub detail: Detail,
@@ -276,7 +281,26 @@ fn column_of(text: &str, offset: usize) -> usize {
         + 1
 }
 
+/// How `test` failed, from the outcome it ended with; `undelivered` when
+/// that outcome is a delivery's between its steps, which failed for good
+/// (chunk 6.11).
 pub(crate) fn failure(
+    places: &Places,
+    sources: &dyn Sources,
+    test: &Test,
+    outcome: &Outcome,
+    rerun: &Rerun,
+    undelivered: Option<&Undelivered>,
+) -> TestFailure {
+    let mut failure = ended(places, sources, test, outcome, rerun);
+    if let Some(undelivered) = undelivered {
+        failure.rule = &rule::TEST_SUBSCRIBER_FAILED;
+        failure.delivery = Some(undelivered.clone());
+    }
+    failure
+}
+
+fn ended(
     places: &Places,
     sources: &dyn Sources,
     test: &Test,
@@ -288,6 +312,7 @@ pub(crate) fn failure(
             let location = place_in_test(places, sources, &assertion.frames, test);
             TestFailure {
                 rule: &rule::TEST_ASSERTION_FAILED,
+                delivery: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
                 location,
@@ -298,6 +323,7 @@ pub(crate) fn failure(
             let location = place_in_test(places, sources, &failure.frames, test);
             TestFailure {
                 rule: &rule::TEST_UNEXPECTED_FAILURE,
+                delivery: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
                 location,
@@ -308,6 +334,7 @@ pub(crate) fn failure(
             let location = place_in_test(places, sources, &fault.frames, test);
             TestFailure {
                 rule: &rule::TEST_FAULT,
+                delivery: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
                 location,
@@ -334,6 +361,7 @@ pub(crate) fn not_runnable(
 ) -> TestFailure {
     TestFailure {
         rule: &rule::TEST_FAULT,
+        delivery: None,
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         kept: Vec::new(),

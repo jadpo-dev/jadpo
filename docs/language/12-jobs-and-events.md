@@ -2962,9 +2962,10 @@ Not yet:
 - The file helpers (`csv`, `tsv`, `json_lines`, `json`), `store.read`'s
   whole-read cap, `estimated_total` and the warning for a `from:` ordered
   by a field that can be updated: roadmap 6.4b.
-- Delivering events in tests after each commit, in a shuffled order
-  (area 13): roadmap 6.11, and a fake failing a subscriber with 7.0c's
-  fakes.
+- A test's `fakes:` failing a subscriber's provider call: roadmap 7.2,
+  with its generated fakes. Delivering events in tests after each step,
+  in an order the printed seed shuffles, and retrying or giving up a
+  call a fake fails, is built (area 13, "Caches and events"; chunk 6.11).
 - `jadpo deliveries` and the operator's retry, dismiss, cancel and
   resolve (area 14): roadmap 6.12.
 - The circuit breaker (question 18): roadmap 7.2b. `Retry-After`, several
@@ -3123,7 +3124,9 @@ Not yet:
     *Decided 2026-10-13:* `schedule.run()` runs a schedule under the test
     clock; events are delivered after each commit; a fake can fail a
     subscriber to test retries; delivery order is shuffled with a printed
-    seed, so a test that depends on order fails visibly.
+    seed, so a test that depends on order fails visibly. Built in chunk
+    6.11 (area 13, "Caches and events"), a fake's failure on 7.0c's
+    fakes; a test scripts one with `fakes:` from roadmap 7.2.
 16. **Where does a schedule's tick come from on each host?** Raised by
     Richard (2026-10-13) with the move to native Rust and WebAssembly
     targets. Cloudflare's cron triggers can fire more than once and do not

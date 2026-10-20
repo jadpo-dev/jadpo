@@ -671,10 +671,6 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "groups an aggregate by a stored enum or date",
     ),
     (
-        "crates/jadpo-interp/src/machine.rs",
-        "the interpreter: a test's clock moved by a duration",
-    ),
-    (
         "crates/jadpo-interp/src/probe.rs",
         "makes sample values for the proof probes",
     ),
@@ -687,6 +683,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "gives `clock.now` as an instant (chunk 7.0b)",
     ),
     ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
+    (
+        "crates/jadpo-runtime/src/test_steps.rs",
+        "moves a test's clock by the duration `clock.advance` is given (chunk 6.11)",
+    ),
     (
         "crates/jadpo-runtime/src/write.rs",
         "writes `now` into a stamped field",

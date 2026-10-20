@@ -371,6 +371,7 @@ fn help_json_is_the_whole_command_reference() {
             "test.assertion_failed",
             "test.unexpected_failure",
             "test.fault",
+            "test.subscriber_failed",
             "test.failed",
             "test.no_tests",
             "test.runtime_start_failed",

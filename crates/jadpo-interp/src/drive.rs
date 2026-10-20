@@ -35,9 +35,8 @@ async fn body(
     // A test, fixture or seed runs each call as the caller it passes
     // (area 9): policy then applies as to that caller.
     let plan = program.plan();
-    let test_like = plan
-        .callable(callee)
-        .is_some_and(|callable| matches!(callable.kind, Kind::Test | Kind::Fixture | Kind::Seed));
+    let kind = plan.callable(callee).map(|callable| callable.kind);
+    let test_like = matches!(kind, Some(Kind::Test | Kind::Fixture | Kind::Seed));
     loop {
         match step {
             Step::Done(result) => return result,
@@ -77,8 +76,21 @@ async fn body(
                         let caught = machine.catching();
                         schedule(program, ctx, action, at.0, caught).await
                     }
+                    Target::AdvanceClock => advance(ctx, &args, at.0),
                     effect => store(program, ctx, effect, args, at.0).await,
                 };
+                // What a test's step emitted is delivered before its next
+                // statement, and what the clock brought due once it moved
+                // (area 13, "Caches and events"; chunk 6.11). A delivery
+                // that failed for good ends the test there.
+                if kind == Some(Kind::Test) && !matches!(result, Err(Stop::Fault(_))) {
+                    let advanced = target == Target::AdvanceClock;
+                    if let Err(ended) =
+                        jadpo_runtime::test_steps::after_step(program, ctx, advanced, at.0).await
+                    {
+                        return self::result(ended);
+                    }
+                }
                 step = machine.resume(ctx, result);
             }
         }
@@ -133,6 +145,14 @@ async fn schedule(
     result.map(|_| Value::Unit)
 }
 
+/// `clock.advance(by)` in a test (area 13, "Controlling time"), which
+/// the runtime moves the test's clock for.
+fn advance(ctx: &mut Ctx<'_>, args: &[Value], at: u32) -> Result<Value, Stop> {
+    jadpo_runtime::test_steps::advance_clock(ctx, args, at)
+        .map(|()| Value::Unit)
+        .map_err(Stop::Fault)
+}
+
 /// A read or a write (area 6), which the runtime runs from its plan,
 /// inside the running action's transaction or a boundary of its own: what
 /// is left here is finding the plan and dispatching a refusal to the
@@ -154,7 +174,8 @@ fn store<'a, 'p: 'a>(
             | Target::Request { .. }
             | Target::Session(_)
             | Target::Batch(..)
-            | Target::Schedule(_) => None,
+            | Target::Schedule(_)
+            | Target::AdvanceClock => None,
         };
         let Some(op) = op else {
             let what = match target {
@@ -165,7 +186,8 @@ fn store<'a, 'p: 'a>(
                 | Target::Request { .. }
                 | Target::Session(_)
                 | Target::Batch(..)
-                | Target::Schedule(_) => "a call run as a read",
+                | Target::Schedule(_)
+                | Target::AdvanceClock => "a call run as a read",
             };
             return Err(Stop::Fault(
                 ctx.fault(FaultKind::Defect(what.to_string()), at),

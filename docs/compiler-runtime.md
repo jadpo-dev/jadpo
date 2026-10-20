@@ -1187,7 +1187,7 @@ them under the source power-assert style; `==` on records, lists, sets and
 maps adds a diff by field, index or key. A failure or fault that ends a
 test is reported with its `.jadpo` site, frames and path. Each outcome has
 a stable code (`test.assertion_failed`, `test.unexpected_failure`,
-`test.fault`) and a rerun command with the seed; the run is `test.failed`,
+`test.fault`, and since chunk 6.11 `test.subscriber_failed`) and a rerun command with the seed; the run is `test.failed`,
 and nothing to run is `test.no_tests`. A project keeps its last run's
 failures in `build/test/last-run.json` for `--failed`. Since chunk 2.10 the
 runner calls the runtime's `Executor` trait (the interpreter now, compiled
@@ -1213,7 +1213,15 @@ too, so the interpreter only hands over the site's values. Since chunk
 (`--kind schedule`): its `Schedule` site pauses like a call into the
 boundary, and the interpreter calls the schedule's action through it as
 the system with no tenant (`jadpo_runtime::schedules::test_run`), at the
-test's clock.
+test's clock. Since chunk 6.11 what a test's step emits is delivered
+before its next statement: the runner turns it on for a test with a
+database (`Ctx::deliver_between_steps`, with an order from the run's seed
+and the test's key), `clock.advance` pauses like a step, and after each
+step the executor calls `jadpo_runtime::test_steps::after_step`, which
+draws each delivery due in the outbox at the test's clock from all those
+due, delivers it as the runner does, and ends the test with the failure
+of one that failed for good, `Ctx::undelivered` naming it for the
+report's `test.subscriber_failed` (area 13, "Caches and events").
 
 **Differential test.** Every test runs interpreted and compiled, as Gleam
 runs one
