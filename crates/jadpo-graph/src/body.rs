@@ -568,6 +568,19 @@ pub enum Callee {
         timeout_ms: u64,
         attempts: u32,
     },
+    /// `ai.stream(prompt)` in an action (area 21, "The `ai` capability";
+    /// chunk 5.5v6): an outside call through the connection `ai:` names,
+    /// asking the model `model:` names for the prompt's answer as text,
+    /// piece by piece, as an `AiStream` a streaming route sends. Its
+    /// options are written out; it asks once.
+    Stream {
+        /// The prompt's name, `answer_question`.
+        prompt: String,
+        /// The model's name in `ai: { models: }`.
+        model: String,
+        max_output: u32,
+        timeout_ms: u64,
+    },
     /// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` in an action
     /// (area 21, "The `ai` capability"; chunk 5.5v4): an outside call
     /// through the connection `ai:` names, asking the model `model:` names
@@ -634,6 +647,7 @@ impl Callee {
             | Callee::Translation(_)
             | Callee::Prompt(_)
             | Callee::Generate { .. }
+            | Callee::Stream { .. }
             | Callee::Embed { .. }
             | Callee::AiFake { .. }
             | Callee::AiRequests { .. }
@@ -683,6 +697,10 @@ pub enum AiFakeAnswer {
     /// answer that doesn't decode, which the call repairs while its
     /// `attempts:` allow.
     Failed(String),
+    /// `partial("...", <condition>)`: a stream that sends the text's
+    /// pieces, then stops with the condition, by its word (chunk 5.5v6):
+    /// the call's one argument is the text.
+    Partial(String),
     /// `recorded("<name>")`: the answer the prompt's recording of that name
     /// keeps, its placeholders filled, run through the real decoding
     /// (chunk 5.5v4).

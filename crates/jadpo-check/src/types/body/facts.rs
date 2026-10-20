@@ -115,6 +115,15 @@ pub(crate) enum Reach {
         timeout_ms: u64,
         attempts: u32,
     },
+    /// `ai.stream(prompt)` (area 21; chunk 5.5v6): the prompt's name, the
+    /// model's and the call's options, written out. It gives an
+    /// `AiStream`.
+    Stream {
+        prompt: String,
+        model: String,
+        max_output: u32,
+        timeout_ms: u64,
+    },
     /// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` (area 21;
     /// chunk 5.5v4): the model's name in `ai: { models: }` and the call's
     /// `timeout:`. `V`, or `List<V>`, is the call's type.

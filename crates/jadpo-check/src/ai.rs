@@ -540,6 +540,32 @@ pub fn answer_types(db: &dyn Db, project: Project) -> std::collections::BTreeMap
     out
 }
 
+/// The prompts the application's actions stream with `ai.stream` (area
+/// 21; chunk 5.5v6): what a test may script text and `partial(...)` for.
+#[salsa::tracked(returns(ref))]
+pub fn streamed_prompts(db: &dyn Db, project: Project) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        if location.ownership.package().is_some() || location.test {
+            continue;
+        }
+        for item in &jadpo_db::item_tree(db, file).items {
+            if item.kind != jadpo_db::ItemKind::Action {
+                continue;
+            }
+            let callable = crate::types::Callable::new(db, file, item.index, None);
+            out.extend(
+                crate::types::typed_body(db, project, callable)
+                    .streams
+                    .iter()
+                    .cloned(),
+            );
+        }
+    }
+    out
+}
+
 /// The domains whose actions ask a model, in name order: what the
 /// network report lists beside the model's connection.
 #[salsa::tracked(returns(ref))]
@@ -561,6 +587,13 @@ pub fn asking_domains(db: &dyn Db, project: Project) -> Vec<String> {
                     crate::types::Callable::new(db, file, item.index, None),
                 )
                 .generates
+                .is_empty()
+                || !crate::types::typed_body(
+                    db,
+                    project,
+                    crate::types::Callable::new(db, file, item.index, None),
+                )
+                .streams
                 .is_empty()
                 || crate::types::typed_body(
                     db,
