@@ -540,6 +540,13 @@ async fn written(
         }
         Err(error) => return abandoned(open, error).await,
     }
+    // A `finished:` whose action makes outside calls is a batch of its own
+    // (chunk 7.4b).
+    if super::calling::calls(plan.finished.as_ref()) {
+        open.rollback().await;
+        return super::calling::finished(executor, ctx, plan, start, saved, held, now, Some(file))
+            .await;
+    }
     finished(
         executor,
         open,
