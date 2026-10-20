@@ -313,6 +313,7 @@ use shared/providers/acme_pay
 /// Opens the customer at Acme Pay, keeps a receipt, starts their
 /// subscription to the offer, then keeps the account and counts the
 /// subscriber: three changing calls, then the writes.
+decline step.late_failure: "The card was checked when the customer was opened"
 action start(customer: AcmePay.Reference, offer_id: Offer.id) fails OfferNotFound, PaymentRefused, ReceiptNotKept -> Account {
     var offer: Offer = attempt Offer.get(offer_id)
     var opened: AcmePay.Customer = attempt pay.customers.create(AcmePay.CustomerRequest {
@@ -392,6 +393,7 @@ routes PartnersSubscriptions {
         authentication: RouteAuthentication.none
         input: SubscriptionChoice
         status: SuccessStatus.no_content
+        deadline: 60s
         run: subscribe_now(input.customer, input.offer_id)
     }
 }

@@ -101,6 +101,8 @@ pub enum Done {
 /// the executor gives their values to [`generate`].
 pub fn settings_read(ai: &Ai<'_>, site: &GenerateSite) -> Vec<u32> {
     let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
+    // The day's cost limit, a `Money` setting (chunk 5.5v5).
+    read.extend(ai.plan.limits.as_ref().and_then(|limits| limits.cost));
     match &ai.plan.driver {
         AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => read.push(*at),
         AiDriver::OpenAiCompatible(AiUrl::Written(_)) => {}
@@ -146,7 +148,7 @@ pub(crate) enum Kept {
 impl Kept {
     /// How a record keeps a condition: its word, and for `malformed` its
     /// problem's path and rule after it, each after a space.
-    fn word(&self) -> Option<String> {
+    pub(crate) fn word(&self) -> Option<String> {
         match self {
             Kept::Answer(_) => None,
             Kept::Condition(rule) => Some(rule.word().to_string()),
@@ -160,7 +162,7 @@ impl Kept {
     }
 
     /// A condition as [`Kept::word`] writes it.
-    fn from_word(word: &str) -> Option<Kept> {
+    pub(crate) fn from_word(word: &str) -> Option<Kept> {
         let mut parts = word.splitn(3, ' ');
         let rule = RuleKey::from_word(parts.next()?)?;
         match (rule, parts.next(), parts.next()) {
@@ -346,6 +348,9 @@ pub async fn generate(
                 },
                 crate::steps::Answered::Done => return defect("a recorded answer with nothing"),
             };
+            // Logged as the step it is (chunk 7.5f).
+            let mut made = made;
+            made.step = ctx.steps_at();
             return replayed(ctx, ai, site, &asked, made, kept);
         }
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
@@ -362,26 +367,92 @@ pub async fn generate(
     {
         return replayed(ctx, ai, site, &asked, made, kept);
     }
+    // The prompt's values, for a development log alone, where `jadpo ai
+    // record` reads the last call's (chunk 5.5v4b).
+    let values = ctx
+        .host()
+        .call_log()
+        .and_then(|_| crate::prompt_recordings::values_written(ai, site, &prompt));
     let host = ctx.host();
     let began = host.monotonic_ms();
     let mut last_problem: Option<Problem> = None;
     let mut ended: Option<(Kept, Done)> = None;
     let mut first = Some(first);
-    for attempt in 1..=site.attempts.max(1) {
+    // What the call may use, taken from every limit before it is sent
+    // (area 21, "Budgets"; chunk 5.5v5).
+    let input: u64 = messages
+        .iter()
+        .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
+        .sum();
+    let taken = match crate::ai_budget::take(
+        ctx,
+        ai,
+        crate::ai_budget::Asked::of(site),
+        &asked.model,
+        input,
+        settings,
+    )
+    .await
+    {
+        Ok(taken) => taken,
+        Err(crate::ai_budget::Refused::OverBudget) => {
+            let now = ctx.now();
+            ctx.capabilities_mut().refused(&made, now);
+            ended = Some((
+                Kept::Condition(RuleKey::OverBudget),
+                broke(RuleKey::OverBudget),
+            ));
+            None
+        }
+        Err(crate::ai_budget::Refused::Unavailable) => {
+            return Done::Failed(Box::new(crate::unavailable()));
+        }
+        Err(crate::ai_budget::Refused::Misconfigured) => return misconfigured(ctx),
+    };
+    let mut used = crate::ai_budget::Used::default();
+    let attempts = if ended.is_some() {
+        0
+    } else {
+        site.attempts.max(1)
+    };
+    for attempt in 1..=attempts {
         let request = match first.take() {
             Some(request) => request,
             None => match prepared(ctx, ai, &via, &asked, &messages, site, settings) {
                 Ok(request) => request,
-                Err(crate::provider::Unready::Misconfigured) => return misconfigured(ctx),
-                Err(crate::provider::Unready::Fault(kind)) => return Done::Fault(kind),
+                Err(crate::provider::Unready::Misconfigured) => {
+                    let done = misconfigured(ctx);
+                    return crate::ai_budget::debited(ctx, taken, used, done).await;
+                }
+                Err(crate::provider::Unready::Fault(kind)) => {
+                    return crate::ai_budget::debited(ctx, taken, used, Done::Fault(kind)).await;
+                }
             },
         };
+        let sent_tokens: u64 = messages
+            .iter()
+            .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
+            .sum();
         let mut call = made.clone();
         call.attempt = attempt;
         call.step = step_at;
-        let (answer, source) = match sent(ctx, call, request, began, site.timeout_ms).await {
+        let (answer, source) = match sent(
+            ctx,
+            call,
+            request,
+            (began, site.timeout_ms),
+            values.as_deref(),
+        )
+        .await
+        {
             Ok(sent) => sent,
-            Err(done) => return done,
+            Err(done) => {
+                used.add(crate::ai_budget::Used {
+                    input: sent_tokens,
+                    ..Default::default()
+                });
+                return crate::ai_budget::debited(ctx, taken, used, done).await;
+            }
         };
         // A fake answers in the built-in driver's own form, whatever the
         // connection (area 21, "Tests"), and so does its generated
@@ -393,26 +464,50 @@ pub async fn generate(
             other => (other, faked),
         };
         let built_in = faked || matches!(via, Via::Driver(_));
+        // An attempt with no answer is charged what it sent.
+        let unanswered = crate::ai_budget::Used {
+            input: sent_tokens,
+            ..Default::default()
+        };
         let reply = match &answer {
             Answer::Wire(text) if built_in => match reply_of(text) {
                 Some(reply) => reply,
                 None => {
-                    return Done::Fault(FaultKind::Provider(format!(
-                        "`{}`'s answer to `{}` isn't a chat completion",
-                        ai.plan.connection, site.prompt
-                    )));
+                    used.add(unanswered);
+                    return crate::ai_budget::debited(
+                        ctx,
+                        taken,
+                        used,
+                        Done::Fault(FaultKind::Provider(format!(
+                            "`{}`'s answer to `{}` isn't a chat completion",
+                            ai.plan.connection, site.prompt
+                        ))),
+                    )
+                    .await;
                 }
             },
             Answer::Wire(text) => match &via {
                 Via::Package { package, providers } => {
                     match package_reply(ctx, providers, &ai.plan.connection, package, text) {
                         Ok(reply) => reply,
-                        Err(done) => return done,
+                        Err(done) => {
+                            used.add(unanswered);
+                            return crate::ai_budget::debited(ctx, taken, used, done).await;
+                        }
                     }
                 }
-                Via::Driver(_) => return defect("a driver's answer read as a package's"),
+                Via::Driver(_) => {
+                    return crate::ai_budget::debited(
+                        ctx,
+                        taken,
+                        used,
+                        defect("a driver's answer read as a package's"),
+                    )
+                    .await;
+                }
             },
             Answer::TimedOut => {
+                used.add(unanswered);
                 ended = Some((Kept::Condition(RuleKey::TimedOut), broke(RuleKey::TimedOut)));
                 break;
             }
@@ -421,15 +516,41 @@ pub async fn generate(
                 break;
             }
             Answer::Failed(_) | Answer::Misconfigured => {
-                return Done::Failed(Box::new(crate::misconfigured()));
+                return crate::ai_budget::debited(
+                    ctx,
+                    taken,
+                    used,
+                    Done::Failed(Box::new(crate::misconfigured())),
+                )
+                .await;
             }
             Answer::Unavailable | Answer::RetryAfter(_) | Answer::Unknown => {
-                return Done::Failed(Box::new(crate::unavailable()));
+                used.add(unanswered);
+                return crate::ai_budget::debited(
+                    ctx,
+                    taken,
+                    used,
+                    Done::Failed(Box::new(crate::unavailable())),
+                )
+                .await;
             }
             Answer::Value(_) | Answer::Generated | Answer::Recorded => {
-                return defect("an answer to `ai.generate` that isn't a chat completion");
+                return crate::ai_budget::debited(
+                    ctx,
+                    taken,
+                    used,
+                    defect("an answer to `ai.generate` that isn't a chat completion"),
+                )
+                .await;
             }
         };
+        // What the provider says the attempt used, or the estimate of
+        // what was sent and answered.
+        used.add(reply.usage.unwrap_or(crate::ai_budget::Used {
+            input: sent_tokens,
+            output: jadpo_std::ai::estimated_tokens(reply.content.as_deref().unwrap_or_default()),
+            cached: 0,
+        }));
         if reply.refused {
             ended = Some((Kept::Condition(RuleKey::Refused), broke(RuleKey::Refused)));
             break;
@@ -456,6 +577,7 @@ pub async fn generate(
             }
         }
     }
+    crate::ai_budget::debit(ctx, taken, used).await;
     let (kept, done) = ended.unwrap_or_else(|| {
         let problem = last_problem.unwrap_or_else(|| Problem {
             field: String::new(),
@@ -720,10 +842,31 @@ fn package_reply(
             Value::Bool(flag) => *flag,
             _ => true,
         });
+    // Where the mapping says the tokens are; one written `0` is none.
+    let usage = package.usage.as_ref().and_then(|usage| {
+        let count = |path: &Option<Vec<String>>| match path {
+            None => Some(0),
+            Some(path) => match value_at(&output, path) {
+                Some(Value::Int(n)) => u64::try_from(*n).ok(),
+                Some(Value::None) => Some(0),
+                Some(other) => match jadpo_value::standard::from(other) {
+                    Ok(Value::Int(n)) => u64::try_from(n).ok(),
+                    _ => None,
+                },
+                None => None,
+            },
+        };
+        Some(crate::ai_budget::Used {
+            input: count(&usage.input)?,
+            output: count(&usage.output)?,
+            cached: count(&usage.cached).unwrap_or(0),
+        })
+    });
     Ok(Reply {
         content,
         refused,
         cut_off,
+        usage,
     })
 }
 
@@ -796,7 +939,7 @@ struct Asked {
 pub const CONTEXT_LENGTH_EXCEEDED: &str = "context_length_exceeded";
 
 /// Each message's role and text.
-fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
+pub(crate) fn messages_of(rendered: &Value) -> Option<Vec<(String, String)>> {
     let Value::List(items) = rendered else {
         return None;
     };
@@ -1036,18 +1179,20 @@ pub fn strict(schema: &serde_json::Value) -> serde_json::Value {
 
 /// What a chat completion says.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Reply {
-    content: Option<String>,
+pub(crate) struct Reply {
+    pub(crate) content: Option<String>,
     /// The model declined: a refusal it gave, or its answer stopped by the
     /// provider's filter.
-    refused: bool,
+    pub(crate) refused: bool,
     /// Its answer was cut off at the most tokens it was allowed.
-    cut_off: bool,
+    pub(crate) cut_off: bool,
+    /// The tokens the provider says it used, when it says (chunk 5.5v5).
+    pub(crate) usage: Option<crate::ai_budget::Used>,
 }
 
 /// A chat completion's first choice, as OpenAI's API answers one; `None`
 /// for anything else.
-fn reply_of(text: &str) -> Option<Reply> {
+pub(crate) fn reply_of(text: &str) -> Option<Reply> {
     let json: serde_json::Value = serde_json::from_str(text).ok()?;
     let choice = json.get("choices")?.as_array()?.first()?;
     let message = choice.get("message")?;
@@ -1066,6 +1211,18 @@ fn reply_of(text: &str) -> Option<Reply> {
             .map(str::to_string),
         refused: refusal || finish == "content_filter",
         cut_off: finish == "length",
+        usage: json.get("usage").and_then(|usage| {
+            let count = |at: &[&str]| {
+                at.iter()
+                    .try_fold(usage, |at, step| at.get(step))
+                    .and_then(serde_json::Value::as_u64)
+            };
+            Some(crate::ai_budget::Used {
+                input: count(&["prompt_tokens"])?,
+                output: count(&["completion_tokens"])?,
+                cached: count(&["prompt_tokens_details", "cached_tokens"]).unwrap_or(0),
+            })
+        }),
     })
 }
 
@@ -1181,12 +1338,12 @@ fn generated_answer(ctx: &mut Ctx<'_>, ai: &Ai<'_>, site: &GenerateSite, asked: 
 /// as the call's `timeout:` lasts: its last answer and where it came from,
 /// or what the call gives instead. On a host with no clock, as a test's,
 /// it is sent again at once, at most [`jadpo_std::ai::SENDS`] times.
-async fn sent(
+pub(crate) async fn sent(
     ctx: &mut Ctx<'_>,
     made: Call,
     request: Request,
-    began: Option<u64>,
-    timeout_ms: u64,
+    (began, timeout_ms): (Option<u64>, u64),
+    values: Option<&str>,
 ) -> Result<(Answer, Source), Done> {
     let host = ctx.host();
     let mut sends = 1;
@@ -1219,7 +1376,7 @@ async fn sent(
             .last()
             .map_or(Source::Live, |logged| logged.source);
         if shown {
-            log(ctx, &call, &url, &body, &answer);
+            log(ctx, &call, (&url, &body, values), &answer);
         }
         let asked = match &answer {
             Answer::Unavailable | Answer::Unknown => None,
@@ -1249,7 +1406,12 @@ async fn sent(
 /// Keeps one attempt in `jadpo dev`'s call log, its request and answer in
 /// full (area 21, "Prompts and answers in logs": in development, in
 /// full).
-fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
+pub(crate) fn log(
+    ctx: &Ctx<'_>,
+    call: &Call,
+    (url, body, values): (&str, &str, Option<&str>),
+    answer: &Answer,
+) {
     let (Some(log), Some(logged)) = (ctx.host().call_log(), ctx.capabilities().calls().last())
     else {
         return;
@@ -1270,6 +1432,7 @@ fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
         body: Some(body),
         answer: sent,
         ended: &logged.ended,
+        values,
     });
 }
 
@@ -1284,6 +1447,9 @@ pub enum Script {
     Content(String),
     /// One of `ai.generate`'s five conditions.
     Condition(RuleKey),
+    /// `partial("...", <condition>)`: a stream that sends the text, then
+    /// stops with the condition (chunk 5.5v6).
+    Partial(String, RuleKey),
 }
 
 /// A value of `site`'s type, written as `json`, as the model sends it:
@@ -1319,6 +1485,13 @@ pub fn scripted(script: Script) -> Answer {
         }
         Script::Condition(RuleKey::TooLong) => Answer::Failed(CONTEXT_LENGTH_EXCEEDED.to_string()),
         Script::Condition(_) => Answer::TimedOut,
+        // A stream's text and how it stops: the provider's own finish for
+        // a cut-off or a refusal, none for an answer out of time.
+        Script::Partial(text, rule) => Answer::Wire(completion(
+            Some(&text),
+            None,
+            crate::stream::finish_of(rule),
+        )),
     }
 }
 
@@ -1392,6 +1565,12 @@ impl Capability for AiFake {
 
     fn source(&self) -> Source {
         Source::Generated
+    }
+
+    /// A stream's answer: the next scripted one, cut into pieces of a few
+    /// words, as an OpenAI-compatible server streams it (chunk 5.5v6).
+    fn stream<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, crate::stream::Streamed> {
+        Box::pin(async move { crate::stream::faked(&call.operation, self.call(call).await) })
     }
 
     fn source_of(&self, call: &Call) -> Source {
@@ -1586,6 +1765,7 @@ mod tests {
             driver: AiDriver::OpenAiCompatible(AiUrl::Written("http://localhost:11434/v1".into())),
             models: vec![("default".into(), 0)],
             schema: SchemaMode::StrictSubset,
+            limits: None,
         };
         let prompts = PromptPlan {
             entries: vec![PromptEntry {

@@ -69,7 +69,7 @@ Data
 
 Look things up
   routes        List every route
-  ai            Show what a prompt sends      show
+  ai            Show prompts, record, usage   show, record, usage
   calls         Show provider calls in dev    list, show, script
   email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
@@ -143,7 +143,7 @@ Data
 
 Look things up
   routes        List every route
-  ai            Show what a prompt sends      show
+  ai            Show prompts, record, usage   show · record · usage
   calls         Show provider calls in dev    list · show · script
   email         Read the dev inbox and check mail
   why           Explain why a schedule didn't run
@@ -720,7 +720,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
-            "ai\tShow what a prompt sends",
+            "ai\tShow prompts, record, usage",
             "calls\tShow provider calls in dev",
             "email\tRead the dev inbox and check mail",
             "why\tExplain why a schedule didn't run",

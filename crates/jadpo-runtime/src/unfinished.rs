@@ -21,6 +21,11 @@
 //!   after its last run, leaving its step list; an abandoned one goes that
 //!   long after it was abandoned, with its steps ([`OLD_ANSWERS`],
 //!   [`ABANDONED`]), both on the tick.
+//! - **The metric and the alert** (chunk 7.5f; area 11, "Personal
+//!   data"): how many records are unfinished and when the oldest started
+//!   ([`Metric`]), which the tick carries, and an alert with no setup once
+//!   one has been unfinished for [`ALERT_AFTER_MS`], which the tick raises
+//!   once until none is ([`raise`]).
 
 use crate::outbox::micros;
 use crate::{Database, SqlValue, StoreError};
@@ -36,6 +41,96 @@ pub const ROUTE_LAPSES_MS: i64 = 24 * 60 * 60 * 1000;
 /// How long a record keeps its answers after its last run, and an
 /// abandoned one is kept after it was abandoned (area 12: 30 days).
 pub const ANSWERS_KEPT_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// How long a record stays unfinished before its alert holds: a day, a
+/// subscriber's default `within:` and a route's key's lapse, so no retry
+/// with the default budget is still to finish it.
+pub const ALERT_AFTER_MS: i64 = ROUTE_LAPSES_MS;
+
+/// How many records are unfinished, not abandoned, and when the oldest's
+/// first run started.
+pub const METRIC: &str = "SELECT count(*), min(\"started_at\") FROM \"jadpo_step_records\" WHERE \"state\" <> 'abandoned'";
+
+/// Marks at `$2` each record unfinished since `$1` or before that no tick
+/// has raised the alert for; how many it marked, and how many not
+/// abandoned had been marked before. Of several instances' ticks one
+/// marks a record, so the alert is raised once until no record is
+/// unfinished past a day.
+pub const RAISE: &str = "WITH \"before\" AS (SELECT count(*) AS \"n\" FROM \"jadpo_step_records\" WHERE \"state\" <> 'abandoned' AND \"alerted_at\" IS NOT NULL), \"marked\" AS (UPDATE \"jadpo_step_records\" SET \"alerted_at\" = $2 WHERE \"state\" <> 'abandoned' AND \"started_at\" <= $1 AND \"alerted_at\" IS NULL RETURNING 1) SELECT (SELECT count(*) FROM \"marked\"), (SELECT \"n\" FROM \"before\")";
+
+/// The metric on one store's unfinished records (area 11, "Personal
+/// data": "a metric and a no-setup alert watch the number of unfinished
+/// records and the age of the oldest").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Metric {
+    /// Records not abandoned: a run under way, or one that ended without
+    /// committing.
+    pub count: u64,
+    /// When the oldest one's first run started.
+    pub oldest: Option<i64>,
+}
+
+impl Metric {
+    /// How long the oldest has been unfinished at `now`.
+    pub fn oldest_age_ms(&self, now: i64) -> Option<i64> {
+        self.oldest.map(|oldest| now.saturating_sub(oldest).max(0))
+    }
+
+    /// Whether the alert holds at `now`: one has been unfinished for
+    /// [`ALERT_AFTER_MS`] or more.
+    pub fn alerts(&self, now: i64) -> bool {
+        self.oldest_age_ms(now)
+            .is_some_and(|age| age >= ALERT_AFTER_MS)
+    }
+}
+
+/// The metric on `database`'s unfinished records.
+pub async fn metric(database: &dyn Database) -> Result<Metric, StoreError> {
+    let rows = database.query_once(METRIC, &[]).await?;
+    let row = rows.first();
+    let count = match row.and_then(|row| row.first()) {
+        Some(SqlValue::Int8(n)) => u64::try_from(*n).unwrap_or(0),
+        _ => 0,
+    };
+    Ok(Metric {
+        count,
+        oldest: millis(row.and_then(|row| row.get(1))),
+    })
+}
+
+/// Raises at `now` the alert on `store`'s unfinished records when one has
+/// newly been unfinished a day and no tick raised it for another still
+/// unfinished ([`RAISE`]); with the metric it read either way.
+pub(crate) async fn raise(
+    database: &dyn Database,
+    store: &str,
+    now: i64,
+) -> Result<(Metric, Option<crate::schedules::watch::Alert>), StoreError> {
+    use crate::schedules::watch::{Alert, AlertKind};
+    let metric = metric(database).await?;
+    if !metric.alerts(now) {
+        return Ok((metric, None));
+    }
+    let rows = database
+        .query_once(
+            RAISE,
+            &[micros(now.saturating_sub(ALERT_AFTER_MS)), micros(now)],
+        )
+        .await?;
+    let count = |at: usize| match rows.first().and_then(|row| row.get(at)) {
+        Some(SqlValue::Int8(n)) => *n,
+        _ => 0,
+    };
+    let alert = (count(0) > 0 && count(1) == 0).then(|| Alert {
+        schedule: None,
+        kind: AlertKind::UnfinishedSteps {
+            store: store.to_string(),
+            count: metric.count,
+            oldest: metric.oldest.unwrap_or(now),
+        },
+    });
+    Ok((metric, alert))
+}
 
 /// A record's columns, never its key: its id, whether it is a delivery's,
 /// the delivery's id when it is, its action, build, step shape, first
@@ -405,6 +500,20 @@ mod tests {
         assert!(record(vec![step(Some("answered"), false)]).dropped());
         assert!(!record(vec![step(None, false)]).dropped());
         assert!(!record(vec![step(Some("failed"), true)]).dropped());
+    }
+
+    #[test]
+    fn the_alert_holds_once_the_oldest_has_been_unfinished_a_day() {
+        let t0 = 1_792_486_800_000;
+        let metric = Metric {
+            count: 2,
+            oldest: Some(t0),
+        };
+        assert_eq!(metric.oldest_age_ms(t0 + 1_000), Some(1_000));
+        assert!(!metric.alerts(t0 + ALERT_AFTER_MS - 1));
+        assert!(metric.alerts(t0 + ALERT_AFTER_MS));
+        assert!(!Metric::default().alerts(t0));
+        assert_eq!(Metric::default().oldest_age_ms(t0), None);
     }
 
     #[test]

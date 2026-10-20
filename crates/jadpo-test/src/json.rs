@@ -55,6 +55,20 @@ pub fn json(run: &Run) -> Json {
                     .map(|(i, result)| test(i + 1, result)),
             ),
         ),
+        (
+            "alerts",
+            Json::array(run.alerts.iter().map(|alert| {
+                Json::object([
+                    ("kind", Json::from("recording_stale")),
+                    ("file", Json::from(&alert.file)),
+                    ("prompt", Json::from(&alert.prompt)),
+                    ("name", Json::from(&alert.name)),
+                    ("recorded", Json::from(&alert.recorded)),
+                    ("now", Json::from(&alert.now)),
+                    ("next", Json::from(alert.next().as_str())),
+                ])
+            })),
+        ),
     ])
 }
 
@@ -105,8 +119,34 @@ fn test(order: usize, result: &TestResult) -> Json {
         };
         let recording = match &failure.detail {
             Detail::Recording(info) => Json::object([
-                ("package", Json::from(&info.package)),
-                ("operation", Json::from(&info.operation)),
+                (
+                    "package",
+                    if info.prompt.is_some() {
+                        Json::Null
+                    } else {
+                        Json::from(&info.package)
+                    },
+                ),
+                (
+                    "operation",
+                    if info.prompt.is_some() {
+                        Json::Null
+                    } else {
+                        Json::from(&info.operation)
+                    },
+                ),
+                (
+                    "prompt",
+                    info.prompt
+                        .as_ref()
+                        .map_or(Json::Null, |(prompt, _)| Json::from(prompt)),
+                ),
+                (
+                    "name",
+                    info.prompt
+                        .as_ref()
+                        .map_or(Json::Null, |(_, name)| Json::from(name)),
+                ),
                 ("field", info.field.as_ref().into()),
                 ("rule", info.rule.as_ref().into()),
                 ("recorded", info.recorded.as_ref().into()),
@@ -291,6 +331,10 @@ pub fn schema() -> Json {
                     "total, ran, passed, failed, and totalByKind and ranByKind for pure, action, route and schedule",
                 ),
                 ("tests", "Every test that ran, in the order it ran"),
+                (
+                    "alerts",
+                    "What passed but should change: each recording of a prompt's answer the run read that was made from another version of the prompt, { kind: recording_stale, file, prompt, name, recorded (the version it was made from), now (the prompt's version now), next (the command that records it again) }",
+                ),
             ]),
         ),
         (
@@ -353,7 +397,7 @@ pub fn schema() -> Json {
                 ("endLine", "Its last line"),
                 (
                     "kind",
-                    "pure, action, route, schedule or recording (a recording of the app's own integration, read by its operation's decoders)",
+                    "pure, action, route, schedule or recording (a recording of the app's own integration, read by its operation's decoders, or of a prompt's answer, read through each type the prompt is asked for as)",
                 ),
                 ("outcome", "passed or failed"),
                 ("failure", "Only when it failed"),
@@ -386,7 +430,7 @@ pub fn schema() -> Json {
                 ),
                 (
                     "recording",
-                    "For test.recording_undecodable and test.round_trip_failed: the package, the operation, the field and rule a decoder refused (when one did), the value recorded and the one written back (for a round trip), and the message",
+                    "For test.recording_undecodable and test.round_trip_failed: the package and the operation, or for a prompt's recording the prompt and the recording's name, the field and rule a decoder refused (when one did), the value recorded and the one written back (for a round trip), and the message",
                 ),
                 (
                     "delivery",

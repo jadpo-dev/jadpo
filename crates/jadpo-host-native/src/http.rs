@@ -31,7 +31,9 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use std::future::Future;
+
+use http_body_util::{BodyExt, Either, Full};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -412,9 +414,72 @@ async fn read(request: hyper::Request<Incoming>, peer: Option<SocketAddr>) -> Op
     })
 }
 
+/// A response's body: whole, or a model's answer sent event by event as
+/// it is read (area 7, "Streaming a model's answer"; chunk 5.5v6).
+type Body = Either<Full<Bytes>, Pumped>;
+
+/// A body hyper sends a piece at a time as the task reading the stream
+/// hands each over; dropped, as hyper drops it when the client goes away,
+/// it ends that task, which drops the stream and with it the provider's
+/// connection.
+struct Pumped(tokio::sync::mpsc::Receiver<Bytes>);
+
+impl hyper::body::Body for Pumped {
+    type Data = Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, Self::Error>>> {
+        self.0
+            .poll_recv(cx)
+            .map(|bytes| bytes.map(|bytes| Ok(hyper::body::Frame::data(bytes))))
+    }
+}
+
+/// Reads `stream` on the worker's thread, handing each event to `sender`
+/// as it comes, until the last or until the client has gone, whichever is
+/// first: waiting on the model stops as soon as no one is listening.
+async fn pump(
+    stream: jadpo_runtime::stream::EventStream,
+    sender: tokio::sync::mpsc::Sender<Bytes>,
+) {
+    loop {
+        let next = {
+            let mut reading = std::pin::pin!(stream.next_written());
+            let mut gone = std::pin::pin!(sender.closed());
+            std::future::poll_fn(|cx| {
+                if let std::task::Poll::Ready(event) = reading.as_mut().poll(cx) {
+                    return std::task::Poll::Ready(event);
+                }
+                if gone.as_mut().poll(cx).is_ready() {
+                    return std::task::Poll::Ready(None);
+                }
+                std::task::Poll::Pending
+            })
+            .await
+        };
+        let Some(event) = next else {
+            return;
+        };
+        if sender.send(Bytes::from(event)).await.is_err() {
+            return;
+        }
+    }
+}
+
 /// The runtime's response as hyper's.
-fn write(response: Response) -> hyper::Response<Full<Bytes>> {
-    let mut out = hyper::Response::new(Full::new(Bytes::from(response.body)));
+fn write(mut response: Response) -> hyper::Response<Body> {
+    let body = match response.stream.take() {
+        Some(stream) => {
+            let (sender, receiver) = tokio::sync::mpsc::channel(1);
+            tokio::task::spawn_local(pump(stream, sender));
+            Either::Right(Pumped(receiver))
+        }
+        None => Either::Left(Full::new(Bytes::from(response.body))),
+    };
+    let mut out = hyper::Response::new(body);
     *out.status_mut() = hyper::StatusCode::from_u16(response.status)
         .unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
     for (name, value) in response.headers {

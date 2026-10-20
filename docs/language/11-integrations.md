@@ -18,6 +18,7 @@ rules:
   - connection.*
   - test.recording_undecodable
   - test.round_trip_failed
+  - route.calls_past_deadline
 ---
 
 # External services
@@ -1525,9 +1526,11 @@ var postcode: Postcodes.UkPostcode = attempt Postcodes.uk.parse(input.postcode) 
   key generation, 36 characters, cut to the package's `max_length:` where
   the provider allows fewer. Two callers who send the same
   `Idempotency-Key` never meet at a provider that keys by account.
-- **Retries** (question 8). `timeout:` (default 10s) and
+- **Retries** (question 8). `timeout:` (default 3s) and
   `retry: { attempts: within: }` (default 3 within 30s), exponential backoff
-  with full jitter. Only safe repeats are retried: the request never left,
+  with full jitter. The defaults' 9 seconds fit a route's 10-second default
+  deadline, so a route making one call needs no `deadline:` of its own
+  (Richard, 2026-10-20). Only safe repeats are retried: the request never left,
   the provider said it did nothing (honouring `Retry-After`), or the call
   is idempotent. The package's rate limits space calls out before the
   provider refuses them, and `max_concurrent:` caps how many run at once
@@ -2470,7 +2473,12 @@ are steps of the action that calls it (area 12, "Several changing calls
 in one action"); the record of those steps comes with roadmap 7.5b. Its
 subscribers and the events they emit came with chunk 7.6b (below), and polls
 and `max_concurrent:` with chunk 7.6c ("Polls"). The choices are in
-"Chosen in chunk 7.6".
+"Chosen in chunk 7.6". The card can be declined after the customer was
+created, so the package's surface lists `after_effect DeclinedCard` for
+`start_subscription`, and the app's call of it is warned as a point that
+can end `subscribe` for good once something took effect (area 12's
+`step.late_failure`, chunk 7.5e); here the empty customer left behind is
+harmless, so the warning is declined with that reason.
 
 ```jadpo check project=p76-actions file=app.jadpo hidden
 application {
@@ -2641,6 +2649,7 @@ use billing/failures { PaymentRefused }
 use shared/providers/acme_pay
 
 /// Starts a subscription: two steps, run by a subscriber.
+decline step.late_failure: "A declined card leaves an empty customer at Acme Pay, which costs nothing"
 action subscribe(tier: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {
     return attempt pay.start_subscription(
         AcmePay.PayRequest {
@@ -3244,7 +3253,7 @@ errors under area 12's "Errors" (`step.context`, `step.large_output`,
 `effect.call_in_loop`; an operation's `large_output:` is read. The record,
 replay and key windows came with roadmap 7.5b and the operator's items
 with 7.5c; the fakes' `lost` and `in_use` and the tests' crash points
-with 7.5d; the warning comes with 7.5e.
+with 7.5d; the warning and the deadline sum with 7.5e.
 
 Built in chunk 7.5b, the record, replay and key windows, as area 12's
 "Several changing calls in one action" says: a provider's `idempotency:`
@@ -3263,6 +3272,12 @@ its next key generation; `jadpo runs unfinished --build` (area 14).
 Choices in area 12's decisions table, "Operators, chosen in chunk
 7.5c".
 
+Built in chunk 7.5f, as area 12's "Several changing calls in one
+action" says: each step's state under its request's or delivery's line
+in `jadpo dev`, and the metric and the alert with no setup on unfinished
+records, their number and when the oldest started. Choices in area 12's
+decisions table, "Development and the metric, chosen in chunk 7.5f".
+
 Built in chunk 7.5d, the tests and tools' fakes and crash points, as
 area 13's "Provider calls and capabilities in tests" says: a fake keeps
 each key's first answer, answers a different request under it with the
@@ -3270,6 +3285,21 @@ package's `reused:` code, and keeps what `lost` did for the next call
 under its key; `jadpo test` reruns every test that reaches an action with
 several changing calls with a crash at each step boundary. Choices in
 area 12's decisions table, "Tests, chosen in chunk 7.5d".
+
+Built in chunk 7.5e, the warning and the deadline sum, with the errors
+under area 12's [`step.late_failure`](12-jobs-and-events.md#step-late-failure)
+and [`route.calls_past_deadline`](#route-calls-past-deadline) below: after
+an action's first changing call, each point that can end it for good (an
+`attempt` passing on a failure that isn't `unavailable` or
+`rate_limited`, `reject`, `propagate`) is one finding for the action,
+declinable, unless handled with `match`; a package's action lists on its
+surface which failures can follow its own changing call (`after_effect`),
+and the app's call of it is the point. Each route's action sums the
+`timeout:` times the attempts of every outside call on its longest way, a
+provider's operation and an `ai` call alike, against the route's
+`deadline:`, which is how question 8's single call is checked too.
+Choices in area 12's decisions table, "The late-failure warning and the
+deadline sum, chosen in chunk 7.5e".
 
 ## Receiving from outside
 
@@ -6503,6 +6533,204 @@ error: `support` calls `couriers`, whose `domains:` doesn't list it
 check failed: 1 error, 9 files
 ```
 
+## Time limit errors
+
+### `route.calls_past_deadline`
+
+> Built in chunk 7.5e, with its choices in area 12's decisions table,
+> "The late-failure warning and the deadline sum, chosen in chunk 7.5e".
+
+Each outside call can wait its `timeout:` on each of its attempts: a
+provider's operation its connection's `timeout:` (3 seconds by default)
+times its `retry: { attempts: }` (3), an `ai` call its own `timeout:`
+times its `attempts:` (area 21). A route's deadline covers every such
+call on the longest way through its action, those of the actions and
+package actions it calls included, so the sum must fit within it. Here
+the courier's lookup can wait 5 seconds three times, past the route's 10:
+
+```jadpo check project=e-calls-past-deadline file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+        }
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=policy.jadpo hidden
+use shipping
+
+policy {
+    actions: {
+        shipping.parcel_status: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/types/parcel_question.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Which parcel a customer asks after.
+type ParcelQuestion = Input {
+    parcel: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/types/parcel_answer.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+type ParcelAnswer = Output {
+    status: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /parcels/status
+    authentication none
+    input ParcelQuestion (body)
+    output ParcelAnswer
+    status 200
+
+output ParcelAnswer
+    status: Text { max_length: 40 }
+
+input ParcelQuestion
+    parcel: Text { max_length: 40 }
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/actions/parcel_status.jadpo
+use app { couriers }
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, in the courier's words.
+action parcel_status(enquiry: ParcelQuestion) -> ParcelAnswer {
+    var parcel_found: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: enquiry.parcel
+        }
+    )
+    return ParcelAnswer {
+        status: parcel_found.status
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/routes/parcels.jadpo expect=route.calls_past_deadline
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shipping/actions { parcel_status }
+
+/// Where customers ask after their parcels.
+routes Parcels {
+    prefix: /parcels
+
+    /// Where a parcel is.
+    POST /status {
+        authentication: RouteAuthentication.none
+        input: ParcelQuestion
+        output: ParcelAnswer
+        status: SuccessStatus.ok
+        run: parcel_status(input)
+    }
+}
+```
+
+```text output
+error: `POST /parcels/status` runs `parcel_status`, whose outside calls can take 15s, longer than its 10s deadline
+ --> domains/shipping/routes/parcels.jadpo:9:5
+  |
+9 |     POST /status {
+  |     ^^^^^^^^^^^^ deadline 10s
+  reason: Each outside call can wait its `timeout:` on each of its attempts, and a route's deadline covers every call on the longest way through `parcel_status`, those of the actions it calls included; at the deadline the route stops, so a call still waiting, or still to be tried again, never finishes.
+  next: Give the route `deadline: 15s`, lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber (agent)
+  rule: route.calls_past_deadline
+  help: docs/language/11-integrations.html#route-calls-past-deadline
+
+check failed: 1 error, 13 files
+```
+
+A route that needs longer than 60 seconds can't be given it: it answers
+`202` and makes its calls in a subscriber, which the route waits for with
+`settle:` (area 7).
+
 ## Errors
 
 > These examples predate the provider packages above and are rewritten when
@@ -8122,7 +8350,7 @@ Provider calls, each choice the most conservative reading:
   server; any other address, or a connection whose address or credential
   has no value, is `misconfigured` and logged as refused, sent to nobody.
   A host holding a setting's placeholder (`{project_ref}`) isn't filled
-  yet. The call waits `timeout:` (10 seconds by default), a duration
+  yet. The call waits `timeout:` (3 seconds by default), a duration
   written out (`connection.value_invalid` otherwise). It sends `Accept`
   and `Content-Type: application/json`, `User-Agent: jadpo`, the
   credential as `Authorization`, and the key in the package's header.
@@ -9227,6 +9455,10 @@ packages and extension points, as each note says; 26 was decided then.
    *Revised 2026-10-16 (Richard):* `max_concurrent:` in `provider.jadpo`
    caps calls at once per app instance, and a connection may lower it; a
    step in doubt is resent only within the provider's key window.
+   *Revised 2026-10-20 (Richard):* `timeout:` defaults to 3s, so a call's
+   3 attempts, 9 seconds, fit a route's 10-second default deadline; at
+   10s, the checked deadline sum (`route.calls_past_deadline`) refused
+   almost every route that calls out.
 9. **How is the outbound host controlled?** *Reopened 2026-10-13;* first
    answered as derived from `base_url`. *Recommendation:* the package lists
    its live and sandbox hosts and the connection's `environment:` picks one;
@@ -9530,7 +9762,7 @@ packages and extension points, as each note says; 26 was decided then.
 | Failure conditions | Contract error responses map to declarable failures; `timed_out` to `unavailable` only with an idempotency key; unmapped is a fault (Superseded 2026-10-13: reopened as question 5.) | 2026-10-12 |
 | Idempotency keys | Supplied by the runtime: delivery key in subscribers and schedules, the client's `Idempotency-Key` or request id in routes (Revised 2026-10-16: the key sent is derived from these by hashing, per step) | 2026-10-12 |
 | Call then write | Allowed when the call comes first; writes commit after it; a failed commit retries the call with the same key; area 3's text amended (Revised 2026-10-16: up to 8 keyed changing calls, recorded and replayed) | 2026-10-12 |
-| Retry settings | `timeout:` (10s) and `retry: { attempts: within: }` (3 within 30s); backoff fixed | 2026-10-12 |
+| Retry settings | `timeout:` (10s) and `retry: { attempts: within: }` (3 within 30s); backoff fixed (Revised 2026-10-20: `timeout:` 3s, under "Default timeouts") | 2026-10-12 |
 | Outbound host | From `base_url`, HTTPS only, no redirects or proxies; a sandbox host chosen by configuration (Superseded 2026-10-13: reopened as question 9.) | 2026-10-12 |
 | Credential schemes | `CredentialScheme.bearer`, `.header`, `.basic` first (Superseded 2026-10-13: reopened as question 10.) | 2026-10-12 |
 | Webhook signatures | On the integration (`webhooks: { signature: SignatureScheme.x secret: }`), used as `authentication: StripeV2024.signature`; five-minute tolerance (Superseded 2026-10-13: reopened as question 11.) | 2026-10-12 |
@@ -9598,3 +9830,4 @@ packages and extension points, as each note says; 26 was decided then.
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
 | Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |
+| Default timeouts (Richard, 2026-10-20) | A connection's `timeout:` defaults to 3s, its attempts staying 3, so one call's 9 seconds fit a route's 10-second default deadline; `ai.generate`'s to 25s and `ai.embed`'s to 5s (area 21). At 10s a call could take 30 seconds, and the deadline sum refused almost every route that calls out (option A, Richard) | 2026-10-20 |

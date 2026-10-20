@@ -10,6 +10,7 @@
 //! position so the same source always gives the same output.
 
 pub mod ai;
+pub mod ai_limits;
 pub mod ai_mapping;
 pub mod batches;
 mod case;
@@ -38,6 +39,7 @@ pub mod package_code;
 pub mod packages;
 pub mod policy;
 pub mod polls;
+pub mod prompt_recordings;
 pub mod prompts;
 pub mod providers;
 pub mod publishing;

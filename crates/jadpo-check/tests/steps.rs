@@ -178,8 +178,25 @@ fn files(events: bool, keep: &str, more: &[(&str, &str)]) -> Vec<(String, String
 
 /// Each problem the project gives, as `path rule: message`, but for
 /// unused imports, declarations and variables, migrations and records,
-/// which these projects don't keep.
+/// which these projects don't keep, and a failure after a changing call
+/// and a route's deadline, which [`late_problems`] keeps.
 fn problems_of(events: bool, keep: &str, more: &[(&str, &str)]) -> Vec<String> {
+    all_problems(events, keep, more)
+        .into_iter()
+        .filter(|problem| {
+            !problem.contains(" step.late_failure:")
+                && !problem.contains(" route.calls_past_deadline:")
+        })
+        .collect()
+}
+
+/// [`problems_of`] with `events: { store: }`, a failure after a changing
+/// call and a route's deadline kept (chunk 7.5e).
+fn late_problems(keep: &str, more: &[(&str, &str)]) -> Vec<String> {
+    all_problems(true, keep, more)
+}
+
+fn all_problems(events: bool, keep: &str, more: &[(&str, &str)]) -> Vec<String> {
     let files = files(events, keep, more);
     let files: Vec<(&str, &str)> = files
         .iter()
@@ -668,7 +685,7 @@ fn an_action_over_the_limit_is_reported_in_it_not_where_it_is_called() {
         .collect();
     let found: Vec<String> = support::problems(Layout::Project, &files)
         .into_iter()
-        .filter(|problem| problem.contains(" step."))
+        .filter(|problem| problem.contains(" step.") && !problem.contains(" step.late_failure:"))
         .collect();
     assert_eq!(
         found,
@@ -709,7 +726,7 @@ fn a_call_with_no_key_through_an_action_is_named_with_it() {
         .collect();
     let found: Vec<String> = support::problems(Layout::Project, &files)
         .into_iter()
-        .filter(|problem| problem.contains(" step."))
+        .filter(|problem| problem.contains(" step.") && !problem.contains(" step.late_failure:"))
         .collect();
     assert_eq!(
         found,
@@ -748,6 +765,8 @@ fn problems_with_steps(steps: &str, keep: &str, more: &[(&str, &str)]) -> Vec<St
                 "import.unused",
                 "layout.unused_declaration",
                 "semantic.unused_variable",
+                "step.late_failure",
+                "route.calls_past_deadline",
             ]
             .iter()
             .any(|rule| problem.contains(&format!(" {rule}:")))
@@ -849,4 +868,298 @@ fn the_record_is_planned_in_the_store_its_action_writes() {
         .expect("planned")
         .shape;
     assert_ne!(shape, &plans.values().next().expect("planned").shape);
+}
+
+// --- ending for good after a changing call (chunk 7.5e) ------------------------
+
+/// After the first changing call, a point that can end the action for good
+/// is reported once for the action, at the first, the others beside it:
+/// the provider keeps what it did while the action's writes roll back.
+#[test]
+fn a_failure_after_a_changing_call_is_reported_once_at_the_first() {
+    assert_eq!(
+        late_problems(&subscribe(), &[SUBSCRIBER]),
+        [format!(
+            "{KEEP} step.late_failure: `keep` can fail for good at `pay.cards.attach`, after `pay.customers.create` took effect"
+        )]
+    );
+    let [diagnostic] = found(&subscribe(), &[SUBSCRIBER], "step.late_failure")
+        .try_into()
+        .expect("one");
+    let text = format!("{IMPORTS}{}", subscribe());
+    let primary = diagnostic.primary.as_ref().expect("at the point");
+    assert_eq!(pointed(&text, primary), "pay.cards.attach");
+    assert_eq!(primary.text, "can fail with `PaymentRefused`");
+    let also: Vec<(String, &str)> = diagnostic
+        .secondary
+        .iter()
+        .map(|label| (pointed(&text, label), label.text.as_str()))
+        .collect();
+    assert_eq!(
+        also,
+        [
+            ("pay.customers.create".to_string(), "takes effect first"),
+            (
+                "pay.subscriptions.create".to_string(),
+                "can fail for good too"
+            ),
+        ]
+    );
+    assert!(diagnostic.rule.declinable, "a judgement call");
+    assert_eq!(
+        diagnostic.next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Check the condition before `pay.customers.create`, record what happened and finish in a subscriber of an event `keep` emits, or undo `pay.customers.create` as another step in a `match` arm, or write `decline step.late_failure: \"<why>\"` above it if this is deliberate"
+        )
+    );
+}
+
+#[test]
+fn a_decline_answers_it() {
+    let declined = subscribe().replace(
+        "action keep(",
+        "decline step.late_failure: \"Acme Pay declines a card at the first call, never later\"\naction keep(",
+    );
+    assert_eq!(
+        late_problems(&declined, &[SUBSCRIBER]),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_first_changing_calls_own_failure_and_a_retried_one_after_it_arent_reported() {
+    let keep = format!(
+        "/// Opens the customer, then keeps a sheet.\naction keep(plan: AcmePay.Reference) fails PaymentRefused, NoRoom -> Unit {{\n{}    var sheet: File = attempt sheets.put(encoding.to_utf8(customer.id), FileType.csv) {{\n        storage_full: NoRoom\n    }}\n    assert sheet == sheet\n}}\n",
+        keyed("customer", "customers.create", "plan"),
+    );
+    assert_eq!(late_problems(&keep, &[SUBSCRIBER]), Vec::<String>::new());
+}
+
+#[test]
+fn a_reject_a_refusable_write_and_a_called_actions_failure_are_each_points() {
+    let reject = format!(
+        "/// Opens the customer, then may refuse.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n{}    if (customer.id == plan) {{\n        reject PaymentRefused\n    }}\n}}\n",
+        keyed("customer", "customers.create", "plan"),
+    );
+    assert_eq!(
+        late_problems(&reject, &[SUBSCRIBER]),
+        [format!(
+            "{KEEP} step.late_failure: `keep` can fail for good at `reject PaymentRefused`, after `pay.customers.create` took effect"
+        )]
+    );
+    let write = "/// Opens the customer, then keeps the plan on the account.\naction keep(plan: AcmePay.Reference, account_id: Account.id) fails PaymentRefused, AccountNotFound -> Unit {\n    var customer: AcmePay.PayReply = attempt pay.customers.create(AcmePay.PayRequest {\n        reference: plan\n    }) {\n        card_declined: PaymentRefused\n    }\n    var account: Account = attempt Account.update(account_id) {\n        set: {\n            subscription: plan\n        }\n    }\n    assert account.subscription == customer.id\n}\n";
+    let files: Vec<(String, String)> = files(true, write, &[])
+        .into_iter()
+        .map(|(path, text)| {
+            let text = if path == KEEP {
+                text.replace("{ Account }", "{ Account, AccountNotFound }")
+            } else {
+                text
+            };
+            (path, text)
+        })
+        .collect();
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let found: Vec<String> = support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|problem| problem.contains(" step."))
+        .collect();
+    assert_eq!(
+        found,
+        [format!(
+            "{KEEP} step.late_failure: `keep` can fail for good at `Account.update`, after `pay.customers.create` took effect"
+        )]
+    );
+    let called = format!(
+        "/// Opens the card, then the customer.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n{}    var customer: AcmePay.PayReply = attempt open_customer(card.id)\n    assert customer.id == card.id\n}}\n",
+        keyed("card", "cards.attach", "plan"),
+    );
+    assert_eq!(
+        late_problems(&called, &[SUBSCRIBER]),
+        [format!(
+            "{KEEP} step.late_failure: `keep` can fail for good at `open_customer`, after `pay.cards.attach` took effect"
+        )]
+    );
+}
+
+#[test]
+fn a_failure_handled_with_match_isnt_reported_but_a_reject_in_its_arm_is() {
+    let handled = |arm: &str| {
+        format!(
+            "/// Opens the card, then the customer if it can.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n{}    var opened: AcmePay.Reference = match open_customer(card.id) {{\n        success(customer) -> customer.id\n        PaymentRefused -> {arm}\n    }}\n    assert opened == card.id\n}}\n",
+            keyed("card", "cards.attach", "plan"),
+        )
+    };
+    assert_eq!(
+        late_problems(&handled("card.id"), &[SUBSCRIBER]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        late_problems(&handled("reject PaymentRefused"), &[SUBSCRIBER]),
+        [format!(
+            "{KEEP} step.late_failure: `keep` can fail for good at `reject PaymentRefused`, after `pay.cards.attach` took effect"
+        )]
+    );
+}
+
+/// A failure on another way than the changing call's comes before it, so
+/// it isn't reported; where two ways meet, a changing call on either may
+/// have been made.
+#[test]
+fn only_a_way_that_made_a_changing_call_counts() {
+    let before = format!(
+        "/// Refuses first, then opens the customer.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n    if (plan == \"closed\") {{\n        reject PaymentRefused\n    }}\n{}    assert customer.id == plan\n}}\n",
+        keyed("customer", "customers.create", "plan"),
+    );
+    assert_eq!(late_problems(&before, &[SUBSCRIBER]), Vec::<String>::new());
+    let either = format!(
+        "/// Opens the customer on one way, then may refuse.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n    if (plan == \"new\") {{\n{}        assert customer.id == plan\n    }}\n    if (plan == \"closed\") {{\n        reject PaymentRefused\n    }}\n}}\n",
+        keyed("customer", "customers.create", "plan")
+            .replace("\n    ", "\n        ")
+            .replacen("    var", "        var", 1),
+    );
+    assert_eq!(
+        late_problems(&either, &[SUBSCRIBER]),
+        [format!(
+            "{KEEP} step.late_failure: `keep` can fail for good at `reject PaymentRefused`, after `pay.customers.create` took effect"
+        )]
+    );
+}
+
+// --- a route's deadline (chunk 7.5e) -------------------------------------------
+
+/// A route whose API requires the key, running `keep`.
+fn partners_route(deadline: &str) -> String {
+    PARTNERS.1.replace(
+        "        run: keep(input.plan)\n",
+        &format!("{deadline}        run: keep(input.plan)\n"),
+    )
+}
+
+/// The project's files, the connection's `timeout:` and attempts set by
+/// `settings`, written as its members are.
+fn timed_files(settings: &str, keep: &str, more: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut files = files(true, keep, more);
+    files[0].1 = files[0].1.replace(
+        "            environment: config.pay_environment\n",
+        &format!("            environment: config.pay_environment\n{settings}"),
+    );
+    files
+}
+
+/// The deadline diagnostics `files` give.
+fn past_deadline(files: &[(String, String)]) -> Vec<jadpo_diag::Diagnostic> {
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    jadpo_check::check(&db, project)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.rule.id == "route.calls_past_deadline")
+        .collect()
+}
+
+/// Each outside call can wait its `timeout:` on each of its attempts (3s
+/// and 3 by default, Richard 2026-10-20), and a route's deadline covers
+/// every call on the longest way through its action.
+#[test]
+fn a_routes_calls_are_summed_against_its_deadline() {
+    let declined = subscribe().replace(
+        "action keep(",
+        "decline step.late_failure: \"Acme Pay declines a card at the first call, never later\"\naction keep(",
+    );
+    // Three calls of 3s, each tried 3 times: 27s, past the 10s default.
+    assert_eq!(
+        late_problems(&declined, &[PARTNERS]),
+        [
+            "domains/billing/routes/partners_plans.jadpo route.calls_past_deadline: `POST /partners/plans` runs `keep`, whose outside calls can take 27s, longer than its 10s deadline"
+        ]
+    );
+    let [diagnostic] = found(&declined, &[PARTNERS], "route.calls_past_deadline")
+        .try_into()
+        .expect("one");
+    let primary = diagnostic.primary.as_ref().expect("at the route");
+    assert_eq!(pointed(PARTNERS.1, primary), "POST /");
+    assert_eq!(primary.text, "deadline 10s");
+    assert!(!diagnostic.rule.declinable, "a plain mistake");
+    assert_eq!(
+        diagnostic.next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Give the route `deadline: 27s`, lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber"
+        )
+    );
+    // A deadline that leaves room for them.
+    let room = partners_route("        deadline: 30s\n");
+    assert_eq!(
+        late_problems(&declined, &[(PARTNERS.0, &room)]),
+        Vec::<String>::new()
+    );
+    // Calls of 10s: 90s, past the most a route may wait.
+    let [diagnostic] = past_deadline(&timed_files(
+        "            timeout: 10s\n",
+        &declined,
+        &[PARTNERS],
+    ))
+    .try_into()
+    .expect("one");
+    assert_eq!(
+        diagnostic.message,
+        "`POST /partners/plans` runs `keep`, whose outside calls can take 90s, longer than its 10s deadline"
+    );
+    assert_eq!(
+        diagnostic.next.as_ref().map(|next| next.text.as_str()),
+        Some(
+            "Lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber, since a route's deadline is at most 60s"
+        )
+    );
+    // One call, through an action, fits the default deadline: 9s.
+    let one = "/// Opens the customer.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {\n    var customer: AcmePay.PayReply = attempt open_customer(plan)\n    assert customer.id == plan\n}\n";
+    let route = partners_route("");
+    assert_eq!(
+        late_problems(one, &[(PARTNERS.0, &route), POLICY]),
+        Vec::<String>::new()
+    );
+}
+
+/// Only the longest way counts, and a connection's `timeout:` and
+/// `retry:` set each call's share.
+#[test]
+fn the_longest_way_counts_with_its_connections_settings() {
+    let either = format!(
+        "/// Opens the customer, or the card.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {{\n    if (plan == \"card\") {{\n{}        assert card.id == plan\n        return\n    }}\n{}    assert customer.id == plan\n}}\n",
+        keyed("card", "cards.attach", "plan")
+            .replace("\n    ", "\n        ")
+            .replacen("    var", "        var", 1),
+        keyed("customer", "customers.create", "plan"),
+    );
+    // Each way makes one call of 9s; both together would be 18s.
+    assert_eq!(
+        late_problems(&either, &[PARTNERS, POLICY]),
+        Vec::<String>::new()
+    );
+    // 4s, three times, is 12s: past the default 10s.
+    let messages = |settings: &str| -> Vec<String> {
+        past_deadline(&timed_files(settings, &either, &[PARTNERS, POLICY]))
+            .into_iter()
+            .map(|diagnostic| diagnostic.message)
+            .collect()
+    };
+    assert_eq!(
+        messages("            timeout: 4s\n"),
+        [
+            "`POST /partners/plans` runs `keep`, whose outside calls can take 12s, longer than its 10s deadline"
+        ]
+    );
+    // 4s, twice, is 8s: within it.
+    assert_eq!(
+        messages(
+            "            timeout: 4s\n            retry: {\n                attempts: 2\n            }\n"
+        ),
+        Vec::<String>::new()
+    );
 }

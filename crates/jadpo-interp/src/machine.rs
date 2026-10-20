@@ -102,6 +102,12 @@ pub(crate) enum Target {
     /// `ai.generate(prompt, as: T)` through the connection `ai:` names
     /// (area 21, chunk 5.5v3): an outside call.
     Generate,
+    /// `ai.stream(prompt)` through the connection `ai:` names (area 21,
+    /// chunk 5.5v6): an outside call.
+    Stream,
+    /// `ai.embed(text, as: V)` or `ai.embed_all(texts, as: V)` through the
+    /// connection `ai:` names (area 21, chunk 5.5v4): an outside call.
+    Embed,
     /// A test's run of a schedule, by the callable number of the action it
     /// runs (area 13; chunk 6.2c).
     Schedule(u32),
@@ -594,6 +600,17 @@ impl<'p> Machine<'p> {
         let Some(ai) = program.ai() else {
             return Err("a model's scripted answer in a program that asks none");
         };
+        // An embedding's failure (chunk 5.5v4).
+        if prompt == jadpo_std::embed::OPERATION {
+            let AiFakeAnswer::Failed(word) = answer else {
+                return Err("an embedding scripted with what isn't a failure");
+            };
+            let Some(rule) = jadpo_std::RuleKey::from_word(word) else {
+                return Err("a scripted failure an embedding has none of");
+            };
+            ctx.at(at.0);
+            return jadpo_runtime::embed::script(ctx, &ai, rule);
+        }
         let given = match answer {
             AiFakeAnswer::Value => {
                 let value = self.pop();
@@ -606,10 +623,22 @@ impl<'p> Machine<'p> {
                 let json = ai.json.codecs.write_value(codec, &value);
                 // As the model sends it: a text answer as its text, a
                 // value that isn't an object wrapped as a strict mode asks.
-                let Some(generate) = program.generate_site_of(prompt) else {
-                    return Err("a scripted value of a prompt no call asks");
-                };
-                Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json))
+                match program.generate_site_of(prompt) {
+                    Some(generate) => {
+                        Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json))
+                    }
+                    // A streamed prompt's text, as it is (chunk 5.5v6).
+                    None => match value {
+                        Value::Text(text) => Script::Content(text.to_string()),
+                        _ => return Err("a scripted value of a prompt no call asks"),
+                    },
+                }
+            }
+            AiFakeAnswer::Partial(word) => {
+                match (self.pop(), jadpo_std::RuleKey::from_word(word)) {
+                    (Value::Text(text), Some(rule)) => Script::Partial(text.to_string(), rule),
+                    _ => return Err("`partial(...)` given no text or condition"),
+                }
             }
             AiFakeAnswer::Raw => match self.pop() {
                 Value::Text(text) => Script::Content(text.to_string()),
@@ -619,15 +648,57 @@ impl<'p> Machine<'p> {
                 Some(rule) => Script::Condition(rule),
                 None => return Err("a scripted failure `ai.generate` has none of"),
             },
+            // The prompt's recording, its placeholders filled, sent as the
+            // model sends an answer (chunk 5.5v4).
+            AiFakeAnswer::Recorded(name) => {
+                let Some(generate) = program.generate_site_of(prompt) else {
+                    return Err("a recorded answer of a prompt no call asks");
+                };
+                let Some(recording) = program
+                    .plan()
+                    .prompt_recordings()
+                    .iter()
+                    .find(|recording| recording.prompt == *prompt && recording.name == *name)
+                else {
+                    return Err("a recording the plan doesn't have");
+                };
+                match jadpo_runtime::prompt_recordings::answer_at(
+                    ctx,
+                    &ai.json,
+                    generate.answer,
+                    &recording.text,
+                ) {
+                    Some(json) => Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json)),
+                    // One that keeps no answer, which its own test reports,
+                    // answers with nothing to decode.
+                    None => Script::Condition(jadpo_std::RuleKey::Malformed),
+                }
+            }
         };
         ctx.at(at.0);
         jadpo_runtime::ai::script(ctx, &ai, prompt, given)
+    }
+
+    /// The `ai.embed` or `ai.embed_all` call at `at`, decoded.
+    pub fn embed_site(&self, at: SiteId) -> Option<&'p jadpo_std::embed::EmbedSite> {
+        match self.decoded(at)? {
+            Decoded::Embed(site) => Some(site),
+            _ => None,
+        }
     }
 
     /// The `ai.generate` call at `at`, decoded.
     pub fn generate_site(&self, at: SiteId) -> Option<&'p jadpo_std::ai::GenerateSite> {
         match self.decoded(at)? {
             Decoded::Generate(site) => Some(site),
+            _ => None,
+        }
+    }
+
+    /// The `ai.stream` call at `at`, decoded.
+    pub fn stream_site(&self, at: SiteId) -> Option<&'p jadpo_std::ai::StreamSite> {
+        match self.decoded(at)? {
+            Decoded::Stream(site) => Some(site),
             _ => None,
         }
     }
@@ -1238,6 +1309,8 @@ impl<'p> Machine<'p> {
                     | Target::Files(..)
                     | Target::Provider
                     | Target::Generate
+                    | Target::Stream
+                    | Target::Embed
                     | Target::Schedule(_)
                     | Target::AdvanceClock => {
                         return Ok(Flow::Pause { target, args, at });
@@ -2256,12 +2329,15 @@ impl<'p> Machine<'p> {
                 }
             }
             // A test's `fakes: { ai.<prompt>: }`, given to the `ai` fake
-            // (area 21; chunk 5.5v3): a value or `raw(...)`'s text first.
+            // (area 21; chunk 5.5v3): a value, `raw(...)`'s text or
+            // `partial(...)`'s first.
             Callee::AiFake { answer, .. } => {
                 self.tasks.push(Task::AiFake(id));
                 if matches!(
                     answer,
-                    jadpo_graph::body::AiFakeAnswer::Value | jadpo_graph::body::AiFakeAnswer::Raw
+                    jadpo_graph::body::AiFakeAnswer::Value
+                        | jadpo_graph::body::AiFakeAnswer::Raw
+                        | jadpo_graph::body::AiFakeAnswer::Partial(_)
                 ) {
                     let [Some(arg)] = args else {
                         return Err(self.defect(ctx, "a scripted answer without its value", id));
@@ -2282,6 +2358,20 @@ impl<'p> Machine<'p> {
                 let sent = jadpo_runtime::ai::requests(ctx, &ai, prompt);
                 self.values.push(sent);
             }
+            // A model asked for embeddings: an outside call (area 21,
+            // chunk 5.5v4).
+            Callee::Embed { .. } => {
+                let Some(Some(arg)) = args.first() else {
+                    return Err(self.defect(ctx, "an embedding asked of no text", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Embed,
+                    count: 1,
+                    at: id,
+                    then: None,
+                });
+                self.tasks.push(Task::Expr(*arg));
+            }
             // A model asked to answer a prompt: an outside call, before the
             // action's first write (area 21, chunk 5.5v3).
             Callee::Generate { .. } => {
@@ -2290,6 +2380,19 @@ impl<'p> Machine<'p> {
                 };
                 self.tasks.push(Task::Invoke {
                     target: Target::Generate,
+                    count: 1,
+                    at: id,
+                    then: None,
+                });
+                self.tasks.push(Task::Expr(*arg));
+            }
+            // A model's answer streamed (area 21, chunk 5.5v6).
+            Callee::Stream { .. } => {
+                let Some(Some(arg)) = args.first() else {
+                    return Err(self.defect(ctx, "a model asked with no prompt", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Stream,
                     count: 1,
                     at: id,
                     then: None,

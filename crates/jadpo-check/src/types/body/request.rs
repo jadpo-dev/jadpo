@@ -4,7 +4,9 @@
 //! routes` prints it, placeholders by name (`"/todos/{todo_id}"`), each
 //! given in `params:`, typed by the placeholder; `input:` is the route's
 //! `Input`. It gives a `Response`: `status`, the failure's `code` (`none`
-//! on success) and the route's `output` (`none` unless it succeeded).
+//! on success) and the route's `output` (`none` unless it succeeded); a
+//! streaming route's gives `pieces`, each `piece` event's text, in place
+//! of `output`, and `code` the `error` event's that ended it (chunk 5.5v6).
 //! `as:` signs in as a caller (area 8) through the route's real
 //! authentication: a user with a browser session. Every request but a
 //! `GET` sends a fresh `Idempotency-Key`, as a real client would, or the
@@ -363,6 +365,16 @@ impl Body<'_> {
 /// A route test's response's fields (`status`, `code`, `output`), with
 /// their types for a response whose output is `args`' one.
 pub(super) fn response_members(args: &[Ty]) -> Vec<(&'static str, Ty)> {
+    // A streaming route's: the text of each `piece` event in place of an
+    // output, and `code` the `error` event's (area 7, "Streaming a
+    // model's answer"; chunk 5.5v6).
+    if args.first().is_some_and(crate::routes::streams) {
+        return vec![
+            ("status", Ty::Prim(Prim::Int)),
+            ("code", Ty::Prim(Prim::Text).nullable()),
+            ("pieces", Ty::List(Box::new(Ty::Prim(Prim::Text)))),
+        ];
+    }
     vec![
         ("status", Ty::Prim(Prim::Int)),
         ("code", Ty::Prim(Prim::Text).nullable()),

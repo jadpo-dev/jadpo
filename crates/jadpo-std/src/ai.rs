@@ -10,9 +10,10 @@ pub const DEFAULT_MAX_OUTPUT: u32 = 1_000;
 /// The most `max_output:` may be.
 pub const MOST_MAX_OUTPUT: u32 = 1_000_000;
 
-/// What `timeout:` is when a call leaves it out, in milliseconds: 60
-/// seconds.
-pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
+/// What `timeout:` is when a call leaves it out, in milliseconds: 25
+/// seconds, so `ai.generate`'s 2 attempts fit a route's longest deadline,
+/// 60 seconds (Richard, 2026-10-20).
+pub const DEFAULT_TIMEOUT_MS: u64 = 25_000;
 
 /// The longest `timeout:` may be, in milliseconds: 10 minutes.
 pub const MOST_TIMEOUT_MS: u64 = 600_000;
@@ -42,16 +43,25 @@ pub const CONDITIONS: [crate::RuleKey; 5] = [
     crate::RuleKey::TooLong,
 ];
 
-/// The keys `ai:` takes now.
-pub const KEYS: [&str; 2] = ["connection", "models"];
+/// The keys `ai:` takes besides `limits:`: `embedding_dimensions:` since
+/// chunk 5.5v4.
+pub const KEYS: [&str; 3] = ["connection", "models", "embedding_dimensions"];
 
-/// The keys area 21 gives `ai:` that later chunks build, each with the
-/// chunk that does.
-pub const LATER_KEYS: [(&str, &str); 4] = [
-    ("embedding_dimensions", "5.5v4"),
-    ("limits", "5.5v5"),
-    ("personal_data", "5.5v5"),
-    ("keep_content", "5.5v5"),
+/// The keys of [`KEYS`] every `ai:` gives.
+pub const REQUIRED_KEYS: [&str; 2] = ["connection", "models"];
+
+/// `limits:`, which `ai:` must give too, with `per_day:` in it (chunk
+/// 5.5v5): nothing is unlimited.
+pub const LIMITS: &str = "limits";
+
+/// The keys area 21 gives `ai:` that later work builds, each with the
+/// work that does.
+pub const LATER_KEYS: [(&str, &str); 2] = [
+    ("personal_data", "roadmap chunk 5.5v5b"),
+    (
+        "keep_content",
+        "area 15's encrypted fields, after the first build",
+    ),
 ];
 
 /// How far a provider's structured-output mode goes (area 21, "How a
@@ -88,6 +98,46 @@ pub struct AiPlan {
     /// setting it reads.
     pub models: Vec<(String, u32)>,
     pub schema: SchemaMode,
+    /// What the application may spend (area 21, "Budgets"; chunk 5.5v5):
+    /// always given by a checked program, since `per_day:` is required.
+    pub limits: Option<AiLimits>,
+}
+
+/// `ai: { limits: }` (area 21, "Budgets"; chunk 5.5v5), in tokens, with
+/// the store its counts are kept in.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AiLimits {
+    /// The database the day's counts are kept in: `limits: { store: }`,
+    /// or the application's only one.
+    pub store: String,
+    /// The most every `ai` call of one request, delivery or schedule run
+    /// may use together.
+    pub per_request: Option<u64>,
+    /// The most the application's calls may use in a day, from midnight
+    /// UTC.
+    pub per_day: u64,
+    /// The number of the `Money` setting the day's estimated cost may not
+    /// pass, `per_day: { cost: }`.
+    pub cost: Option<u32>,
+    /// The most each caller's calls may use in a day.
+    pub per_caller_per_day: Option<u64>,
+}
+
+/// One row of a package's price table (area 21, "How a provider fills
+/// it", `models: { prices: }`): what a model costs per million tokens
+/// from a day on, in millionths of its currency's major unit, so `0.40`
+/// USD a million is `400_000`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AiPrice {
+    /// The model's name after its provider, `gpt-4.1-mini`.
+    pub model: String,
+    /// The day the price holds from, `2026-04-14`.
+    pub from: String,
+    /// The currency's ISO 4217 code, `USD`.
+    pub currency: String,
+    pub input: u64,
+    pub cached: u64,
+    pub output: u64,
 }
 
 /// What fills `ai` (area 21, "How a provider fills it").
@@ -131,9 +181,20 @@ pub struct PackageAi {
     /// Each model's context window in tokens, by the model's name as its
     /// `ModelId` writes it after its provider, from the package's table.
     pub contexts: Vec<(String, u64)>,
+    /// Each model's prices, from the package's table, when it has one.
+    pub prices: Vec<AiPrice>,
 }
 
 impl PackageAi {
+    /// The price of the model named `name` on `day` (`2026-10-20`): the
+    /// row for it holding from the latest day not after it.
+    pub fn price(&self, name: &str, day: &str) -> Option<&AiPrice> {
+        self.prices
+            .iter()
+            .filter(|price| price.model == name && price.from.as_str() <= day)
+            .max_by(|a, b| a.from.cmp(&b.from))
+    }
+
     /// The context window of the model named `name`, if the package's
     /// table has it.
     pub fn context(&self, name: &str) -> Option<u64> {
@@ -233,3 +294,40 @@ pub const SCHEMA_HEADING: &str = "# Answer format";
 /// The member a `T` whose JSON isn't an object is wrapped in, in a strict
 /// structured mode.
 pub const WRAPPED: &str = "value";
+
+/// `AiStream`, what `ai.stream` gives and a streaming route sends (area
+/// 21, "The `ai` capability"; area 7, "Streaming a model's answer"; chunk
+/// 5.5v6).
+pub const AI_STREAM: &str = "AiStream";
+
+/// One `ai.stream(prompt)` call's site, decoded (area 21; chunk 5.5v6):
+/// the prompt it renders and its options. It asks once (`attempts:` is
+/// always 1), for text, so it has no type and no schema.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StreamSite {
+    /// The prompt's name, `answer_question`.
+    pub prompt: String,
+    /// The prompt's place in the plan's prompts, and the number of each of
+    /// its fields' types in the JSON table, in the entry's order.
+    pub entry: u32,
+    pub fields: Vec<u32>,
+    /// The model's name in `ai: { models: }`.
+    pub model: String,
+    pub max_output: u32,
+    pub timeout_ms: u64,
+}
+
+/// What a streaming route sends, as server-sent events (area 7,
+/// "Streaming a model's answer"): each piece of the answer as it comes,
+/// then exactly one of the two that end it.
+pub mod events {
+    /// The next part of the answer: `{"text": "..."}`.
+    pub const PIECE: &str = "piece";
+    /// The answer is whole: `{}`. Always the last.
+    pub const DONE: &str = "done";
+    /// The answer stopped before it was whole: the failure envelope
+    /// (area 4). Always the last.
+    pub const ERROR: &str = "error";
+    /// The `Content-Type` a stream is sent with.
+    pub const CONTENT_TYPE: &str = "text/event-stream";
+}

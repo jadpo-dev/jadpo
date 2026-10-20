@@ -772,6 +772,7 @@ fn list(call: &Call, project: &Project) -> Reply {
     let mut items: Vec<(String, Item)> = Vec::new();
     let mut counts: BTreeMap<String, u64> = BTreeMap::new();
     let mut unavailable: Vec<(String, Unavailable)> = Vec::new();
+    let mut unfinished: Vec<(String, jadpo_runtime::unfinished::Metric)> = Vec::new();
     for (store, holds, url) in &databases {
         let states = states.clone();
         let read = with_database(store, url, |database| {
@@ -787,14 +788,21 @@ fn list(call: &Call, project: &Project) -> Reply {
                 } else {
                     Vec::new()
                 };
-                Ok((items, counts, unavailable))
+                // The metric on its unfinished multi-step runs (chunk 7.5f).
+                let metric = if holds.steps {
+                    Some(jadpo_runtime::unfinished::metric(database).await?)
+                } else {
+                    None
+                };
+                Ok(((items, counts, unavailable), metric))
             })
         });
-        let (found, counted, open) = match read {
+        let ((found, counted, open), metric) = match read {
             Ok(read) => read,
             Err(reply) => return reply,
         };
         unavailable.extend(open.into_iter().map(|open| (store.clone(), open)));
+        unfinished.extend(metric.map(|metric| (store.clone(), metric)));
         items.extend(found.into_iter().map(|item| (store.clone(), item)));
         for (state, count) in counted {
             *counts.entry(state).or_default() += count;
@@ -869,6 +877,20 @@ fn list(call: &Call, project: &Project) -> Reply {
             ),
         ),
         (
+            "unfinished",
+            Json::array(unfinished.iter().map(|(store, metric)| {
+                Json::object([
+                    ("store", Json::from(store.as_str())),
+                    (
+                        "count",
+                        Json::from(i64::try_from(metric.count).unwrap_or(i64::MAX)),
+                    ),
+                    ("oldestStartedAt", instant(metric.oldest)),
+                    ("alert", Json::from(metric.alerts(now))),
+                ])
+            })),
+        ),
+        (
             "counts",
             Json::object(
                 counts
@@ -883,13 +905,29 @@ fn list(call: &Call, project: &Project) -> Reply {
             ),
         ),
     ]);
-    let alerts: Vec<String> = match state.as_deref() {
+    let mut alerts: Vec<String> = match state.as_deref() {
         None | Some(HELD) => unavailable
             .iter()
             .map(|(_, open)| unavailable_text(open, now))
             .collect(),
         Some(_) => Vec::new(),
     };
+    // Unfinished multi-step runs, once one has been unfinished a day
+    // (chunk 7.5f), beside the items they are.
+    if matches!(state.as_deref(), None | Some(DIVERGED | UNFINISHED)) {
+        alerts.extend(
+            unfinished
+                .iter()
+                .filter(|(_, metric)| metric.alerts(now))
+                .filter_map(|(_, metric)| {
+                    Some(crate::schedules::unfinished_text(
+                        metric.count,
+                        metric.oldest?,
+                        now,
+                    ))
+                }),
+        );
+    }
     // The first delivery in doubt whose action keeps a record of steps is
     // settled by `show`, not `resolve --done` (chunk 7.5c).
     let stepped = match shown

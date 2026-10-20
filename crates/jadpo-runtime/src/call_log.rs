@@ -34,6 +34,10 @@ pub struct Seen<'a> {
     /// `None` when none came.
     pub answer: Option<&'a str>,
     pub ended: &'a Ended,
+    /// For a model asked a prompt, the prompt's values as the code gave
+    /// them, each field as its type's JSON (area 21; chunk 5.5v4b): what
+    /// `jadpo ai record` asks the model with again.
+    pub values: Option<&'a str>,
 }
 
 impl std::fmt::Debug for Seen<'_> {
@@ -48,8 +52,28 @@ impl std::fmt::Debug for Seen<'_> {
     }
 }
 
+/// A delivery whose subscriber's action kept a record of several changing
+/// calls, as an attempt at it ended (chunk 7.5f): what became of each step
+/// it reached, never a request, an answer or a key.
+#[derive(Clone, Copy, Debug)]
+pub struct DeliveryAttempt<'a> {
+    pub delivery: [u8; 16],
+    /// The subscriber, as a log names it.
+    pub subscriber: &'a str,
+    /// The state the attempt left it in: `succeeded`, `pending` (to be
+    /// tried again), `failed`, `outcome_unknown` or `diverged`.
+    pub state: &'a str,
+    pub steps: &'a [crate::steps::RunSteps],
+}
+
 /// Where a host keeps its development call log.
 pub trait CallLog {
     /// Keeps `seen`.
     fn seen(&self, seen: &Seen<'_>);
+
+    /// Hears a delivery whose action reached steps under a record, as an
+    /// attempt at it ends: `jadpo dev` prints its line (chunk 7.5f).
+    fn attempt_ended(&self, attempt: &DeliveryAttempt<'_>) {
+        let _ = attempt;
+    }
 }

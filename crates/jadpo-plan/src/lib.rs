@@ -334,6 +334,7 @@ fn schedules_plan(
         received: holding(RECEIVED_EVENTS.table).next(),
         steps: holding(STEP_RECORDS.table).collect(),
         parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
+        ai_usage: holding(jadpo_std::system::AI_USAGE.table).next(),
     }
 }
 
@@ -397,6 +398,9 @@ pub struct Plan {
     /// The connection `ai:` names and the models it gives (area 21; chunk
     /// 5.5v3), when the application asks a model.
     ai: Option<jadpo_std::ai::AiPlan>,
+    /// Every recording of a prompt's answer (area 21, "Tests"; chunk
+    /// 5.5v4).
+    prompt_recordings: Vec<jadpo_std::embed::PromptRecording>,
     /// The `SigningKey` setting a record's answers are encrypted with,
     /// by its number: `application { steps: { encryption_key: } }` (area
     /// 12; chunk 7.5b).
@@ -1016,6 +1020,20 @@ impl Plan {
                     ))
                     .copied()
             };
+            // What its calls may spend, and where that is counted
+            // (chunk 5.5v5).
+            let limits = settings.limits.store.as_ref().and_then(|store| {
+                Some(jadpo_std::ai::AiLimits {
+                    store: store.clone(),
+                    per_request: settings.limits.per_request,
+                    per_day: settings.limits.per_day?,
+                    cost: match &settings.limits.cost {
+                        Some(setting) => Some(number(setting)?),
+                        None => None,
+                    },
+                    per_caller_per_day: settings.limits.per_caller_per_day,
+                })
+            });
             settings.connection.as_ref().and_then(|name| {
                 let models = settings
                     .models
@@ -1037,6 +1055,7 @@ impl Plan {
                         driver: jadpo_std::ai::AiDriver::OpenAiCompatible(url),
                         models,
                         schema: jadpo_std::ai::SchemaMode::StrictSubset,
+                        limits,
                     });
                 }
                 // A package filling `ai` (chunk 5.5v3b).
@@ -1053,8 +1072,49 @@ impl Plan {
                     driver: jadpo_std::ai::AiDriver::Package(Box::new(package)),
                     models,
                     schema: mapping.schema,
+                    limits,
                 })
             })
+        };
+        // Every recording of a prompt's answer (chunk 5.5v4), decoded by
+        // `jadpo test` through each type the prompt's calls ask for.
+        let prompt_recordings = {
+            let analysis = jadpo_check::prompts::analysis(db, project);
+            jadpo_check::prompt_recordings::recordings(db, project)
+                .iter()
+                .filter_map(|found| {
+                    let text = found.text.clone().ok()?;
+                    let beside =
+                        jadpo_check::prompt_recordings::beside_its_prompt(db, project, found);
+                    let mut answers: Vec<u32> = Vec::new();
+                    for callable in &callables {
+                        for site in &callable.sites {
+                            if let Decoded::Generate(generate) = &site.decoded
+                                && generate.prompt == found.prompt
+                                && !answers.contains(&generate.answer)
+                            {
+                                answers.push(generate.answer);
+                            }
+                        }
+                    }
+                    Some(jadpo_std::embed::PromptRecording {
+                        file: found.file.clone(),
+                        prompt: found.prompt.clone(),
+                        name: found.name.clone(),
+                        version: beside
+                            .then(|| analysis.prompt(&found.prompt))
+                            .flatten()
+                            .and_then(|facts| {
+                                facts
+                                    .digest
+                                    .as_ref()
+                                    .map(|digest| format!("{}@{digest}", facts.key))
+                            }),
+                        answers,
+                        text,
+                    })
+                })
+                .collect()
         };
         Plan {
             callables,
@@ -1081,6 +1141,7 @@ impl Plan {
             file_stores: jadpo_check::data::files_connections(db, project).clone(),
             providers,
             ai,
+            prompt_recordings,
             steps_key,
             build,
         }
@@ -1108,6 +1169,11 @@ impl Plan {
     /// 21; chunk 5.5v3).
     pub fn ai(&self) -> Option<&jadpo_std::ai::AiPlan> {
         self.ai.as_ref()
+    }
+
+    /// Every recording of a prompt's answer (chunk 5.5v4).
+    pub fn prompt_recordings(&self) -> &[jadpo_std::embed::PromptRecording] {
+        &self.prompt_recordings
     }
 
     /// Every `batches.each` call's run (area 12, chunk 6.4).
@@ -1379,5 +1445,6 @@ fn ai_package(
         }),
         schema_at: mapping.schema_at.clone(),
         contexts: mapping.contexts.clone(),
+        prices: mapping.prices.clone(),
     })
 }

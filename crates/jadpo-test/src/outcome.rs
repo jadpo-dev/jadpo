@@ -99,6 +99,101 @@ pub struct RecordingInfo {
     pub written: Option<String>,
     pub reason: String,
     pub next: String,
+    /// For a recording of a prompt's answer (chunk 5.5v4): the prompt's
+    /// name and the recording's.
+    pub prompt: Option<(String, String)>,
+}
+
+/// The failure a recording of a prompt's answer at `test.file` gives when
+/// `unread` says why it isn't read (area 21, "Tests"; chunk 5.5v4):
+/// `test.recording_undecodable`.
+pub(crate) fn prompt_recording(
+    sources: &dyn Sources,
+    test: &Test,
+    unread: &jadpo_runtime::prompt_recordings::Unread,
+    rerun: &Rerun,
+) -> TestFailure {
+    use jadpo_runtime::prompt_recordings::Unread;
+    let (prompt, name) = jadpo_db::prompt_recording(&test.file)
+        .map(|(_, prompt, name)| (prompt.to_string(), name.to_string()))
+        .unwrap_or_default();
+    let called = format!("`{prompt}`'s recording `{name}`");
+    let shape = format!(
+        "A recording is one JSON object: the model's `answer`, written as `json.write` writes its type, and the `version` of the prompt it answered, as `jadpo ai show {prompt}` prints it."
+    );
+    let (subject, reason, next, field, rule) = match unread {
+        Unread::NoPrompt => (
+            format!("No prompt `{prompt}` is beside {called}"),
+            "A recording is kept beside the prompt it records, in `recordings/<prompt>/<name>.json` in the prompt's own `prompts/` folder, and no prompt of its folder's name is there.".to_string(),
+            "Move it beside its prompt, or remove it if the prompt is gone (agent)".to_string(),
+            None,
+            None,
+        ),
+        Unread::NotJson => (
+            format!("{called} isn't a JSON object"),
+            shape,
+            "Write it as `{ \"answer\": ..., \"version\": ... }` (agent)".to_string(),
+            None,
+            None,
+        ),
+        Unread::NoAnswer => (
+            format!("{called} keeps no `answer`"),
+            shape,
+            "Add the model's `answer`, a value of the type the prompt is asked for as (agent)"
+                .to_string(),
+            None,
+            None,
+        ),
+        Unread::NoVersion => (
+            format!("{called} doesn't say which version of the prompt it answered"),
+            format!(
+                "A recording keeps the `version` of the prompt it was made from, so a change to `{prompt}` shows which recordings may no longer be what the model says."
+            ),
+            format!("Add `\"version\"`, as `jadpo ai show {prompt}` prints it (agent)"),
+            None,
+            None,
+        ),
+        Unread::NotAsked => (
+            format!("No call asks `{prompt}` for an answer to read {called} as"),
+            format!(
+                "A recording is decoded through each type an `ai.generate` call of its prompt answers as, and no action asks `{prompt}`, so nothing would read it."
+            ),
+            format!("Remove it, or ask `{prompt}` from an action (agent)"),
+            None,
+            None,
+        ),
+        Unread::Undecoded { field, rule } => (
+            if field.is_empty() {
+                format!("{called} doesn't decode: `{rule}`")
+            } else {
+                format!("{called} doesn't decode: `{rule}` on `{field}`")
+            },
+            "Every build decodes every recording through each type its prompt is asked for as, every rule included, so an answer no call could read, or one its type has changed under since it was recorded, shows here before a test answers with it.".to_string(),
+            "Correct its answer to the type, or record it again (agent)".to_string(),
+            (!field.is_empty()).then(|| field.clone()),
+            Some(rule.clone()),
+        ),
+    };
+    TestFailure {
+        rule: &rule::TEST_RECORDING_UNDECODABLE,
+        delivery: None,
+        crash: None,
+        location: Located::new(sources, &test.file, None, test.line, ""),
+        rerun: rerun.command(&test.file, test.line),
+        kept: Vec::new(),
+        detail: Detail::Recording(Box::new(RecordingInfo {
+            operation: prompt.clone(),
+            package: String::new(),
+            subject,
+            field,
+            rule,
+            recorded: None,
+            written: None,
+            reason,
+            next,
+            prompt: Some((prompt, name)),
+        })),
+    }
 }
 
 /// The failure a recording at `test.file`, of `package`'s operation
@@ -123,6 +218,7 @@ pub(crate) fn recording(
         next: format!(
             "Correct the operation against the provider's documentation, or record `{operation}` again with `jadpo package record` (agent)"
         ),
+        prompt: None,
     };
     let mut failed = &rule::TEST_RECORDING_UNDECODABLE;
     match unread {

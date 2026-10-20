@@ -7,8 +7,8 @@
 //!
 //! The screen: the prompt's fields (its type, file and version), one
 //! section per message in the order they are sent, then a footer counting
-//! the placeholders and the data blocks among them. `jadpo ai record` and
-//! `jadpo ai usage` come with the `ai` capability.
+//! the placeholders and the data blocks among them. `jadpo ai usage` is
+//! [`crate::ai_usage`]; `jadpo ai record` comes with roadmap chunk 5.5v4b.
 
 use std::path::PathBuf;
 
@@ -23,29 +23,27 @@ use crate::suggest::nearest;
 use crate::table::Value;
 
 /// What `jadpo ai` does.
-pub const ACTIONS: &[Value] = &[Value {
-    name: "show",
-    description: "Show what a prompt sends, its placeholders in place",
-}];
+pub const ACTIONS: &[Value] = &[
+    Value {
+        name: "show",
+        description: "Show what a prompt sends, its placeholders in place",
+    },
+    Value {
+        name: "record",
+        description: "Keep the model's answer to a prompt for tests",
+    },
+    Value {
+        name: "usage",
+        description: "Show the tokens and cost models used today and this month",
+    },
+];
 
 pub fn ai(call: &Call) -> Reply {
     let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
     match call.arguments.first().map(String::as_str) {
         Some("show") => {}
-        Some(later @ ("record" | "usage")) => {
-            return Reply::failed(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`jadpo ai {later}` isn't built yet"),
-                )
-                .reason(if later == "record" {
-                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and comes with the `ai` capability."
-                } else {
-                    "`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and comes with the `ai` capability."
-                })
-                .next("Run `jadpo ai show <prompt>` to see what a prompt sends"),
-            );
-        }
+        Some("record") => return crate::ai_record::record(call),
+        Some("usage") => return crate::ai_usage::usage(call),
         Some(other) => {
             let diagnostic = Diagnostic::new(
                 &rule::CLI_AI_ARGUMENTS,
@@ -67,7 +65,7 @@ pub fn ai(call: &Call) -> Reply {
                     &rule::CLI_AI_ARGUMENTS,
                     "`jadpo ai` needs to know what to do",
                 )
-                .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request.")
+                .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request. `record` keeps the model's answer to it for tests.")
                 .next("Run `jadpo ai show <prompt>` with one of the project's prompts"),
             );
         }

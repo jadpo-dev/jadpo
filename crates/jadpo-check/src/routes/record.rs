@@ -446,10 +446,18 @@ fn write(
             entry.push(format!("input {input} ({source})"));
         }
         if let Some(output) = &route.output {
-            entry.push(format!(
-                "output {}",
-                wire.render(&type_ref(lookup, output), &mut refs)
-            ));
+            // A model's answer, streamed (area 7; chunk 5.5v6).
+            if super::streams(output) {
+                entry.push(format!(
+                    "output {} (server-sent events)",
+                    jadpo_std::ai::AI_STREAM
+                ));
+            } else {
+                entry.push(format!(
+                    "output {}",
+                    wire.render(&type_ref(lookup, output), &mut refs)
+                ));
+            }
         }
         entry.push(format!("status {}", route.status.code()));
         // A route that waits for its work answers 202 when it hadn't

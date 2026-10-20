@@ -536,3 +536,7 @@ subscription
 batch_size
 # CSS's own property names, in the pages `jadpo dev` serves (chunk 7.3c2)
 outline
+
+# Area 12's rule `step.late_failure` (chunk 7.5e): a failure that comes
+# late, after a changing call took effect; ordinary English.
+late

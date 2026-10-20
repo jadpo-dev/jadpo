@@ -335,6 +335,10 @@ pub struct Ticked {
     /// How many polls it called, and how many of those saw a change, when
     /// it called any (chunk 7.6c).
     pub polled: Option<(u64, u64)>,
+    /// The metric on the unfinished records of actions with several
+    /// changing calls, for each store that keeps them: how many, and when
+    /// the oldest started (chunk 7.5f).
+    pub unfinished: Vec<(String, crate::unfinished::Metric)>,
 }
 
 /// How many rows a tick deleted.
@@ -367,6 +371,8 @@ pub struct Deleted {
     /// Parked queue messages an operator dismissed 30 days before (chunk
     /// 7.7c).
     pub parked: u64,
+    /// Counts of what `ai` calls used on days long past (chunk 5.5v5).
+    pub ai_usage: u64,
 }
 
 /// How many queue messages one tick kept as events, dropped as repeats,
@@ -499,6 +505,17 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             }
         }
     }
+    // The counts of what `ai` calls used, once `jadpo ai usage` no
+    // longer shows their day (chunk 5.5v5).
+    if let Some(store) = &plan.ai_usage
+        && !budget.spent()
+    {
+        let before = now.saturating_sub(crate::ai_budget::KEPT_MS);
+        match delete(host, store, crate::ai_budget::OLD_DAYS, before).await {
+            Ok(count) => ticked.deleted.ai_usage += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
+        }
+    }
     // Each queue's messages, kept as events and delivered within what is
     // left of the budget (chunk 7.7c).
     if !budget.spent() {
@@ -532,6 +549,19 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
     for store in &plan.steps {
         if budget.spent() {
             return ticked;
+        }
+        // The metric on its unfinished records, and their alert once one
+        // has been unfinished a day, raised once (chunk 7.5f).
+        let raised = match host.database(store) {
+            Some(database) => crate::unfinished::raise(database, store, now).await,
+            None => Err(StoreError::Fault(format!("no store called `{store}`"))),
+        };
+        match raised {
+            Ok((metric, alert)) => {
+                ticked.unfinished.push((store.clone(), metric));
+                ticked.raised.extend(alert);
+            }
+            Err(error) => ticked.problems.push((store.clone(), error)),
         }
         match delete(host, store, crate::unfinished::OLD_ANSWERS, kept).await {
             Ok(count) => ticked.deleted.answers += count,

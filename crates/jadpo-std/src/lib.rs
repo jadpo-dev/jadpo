@@ -60,6 +60,7 @@ pub mod config;
 pub mod constant;
 pub mod email;
 pub mod email_health;
+pub mod embed;
 mod enums;
 pub mod files;
 pub mod fixed;

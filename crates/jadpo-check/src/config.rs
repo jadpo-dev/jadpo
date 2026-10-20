@@ -313,7 +313,7 @@ impl Reader<'_> {
                     )
                     .at(type_span.clone(), "not read from one variable")
                     .reason(format!(
-                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId` and enums. {why}"
+                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId`, `Money` and enums. {why}"
                     ))
                     .next(format!("Split `{name}` into settings of those types")),
                 );
@@ -618,6 +618,27 @@ impl Reader<'_> {
         if let Const::Path(names) = constant {
             return self.given_variant(name, word, ty, reads, names, &at, &shown);
         }
+        // An amount, written as its canonical text, `"GBP 20.00"` (chunk
+        // 5.5v5).
+        if self.lookup.base_prim(ty) == Some(Prim::Money) {
+            if let Const::Str(text) = constant
+                && jadpo_std::money::is_amount_text(text)
+            {
+                return Some(Some(text.clone()));
+            }
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::CONFIGURATION_DEFAULT_INVALID,
+                    format!("`{shown}` isn't a valid `{ty}`"),
+                )
+                .at(at, "not an amount")
+                .reason(format!(
+                    "An amount is written as its currency's code, a space and the amount with the currency's places, `\"GBP 20.00\"`; a {word} is checked while compiling."
+                ))
+                .next(format!("Write the {word} as `\"GBP 20.00\"`")),
+            );
+            return None;
+        }
         if let Err(problem) = literal::check(&self.lookup, ty, constant) {
             let diagnostic = match problem {
                 // A setting never holds a standard object, so its text is
@@ -825,6 +846,10 @@ impl Reader<'_> {
                     base.name()
                 ));
             }
+            // An amount, read from its text, `GBP 20.00`: what `ai: {
+            // limits: { per_day: { cost: } } }` names (area 21; chunk
+            // 5.5v5).
+            Prim::Money => Reads::Text,
             other => match other.representation() {
                 Prim::Text => Reads::Text,
                 Prim::Int | Prim::Decimal => Reads::Number,
@@ -1343,12 +1368,16 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 }
                 let path = current.file(db).path(db).clone();
                 for site in &checked.body.sites {
-                    // `ai.generate` reads its model's setting and its
-                    // connection's address (area 21; chunk 5.5v3).
+                    // `ai.generate`, `ai.stream` and `ai.embed` read their
+                    // model's setting and the connection's address (area 21;
+                    // chunks 5.5v3, 5.5v6 and 5.5v4).
                     let names: Vec<String> = match &site.node {
                         Node::Expr(Expr::Config { field }) => vec![field.name().to_string()],
                         Node::Expr(Expr::Call {
-                            callee: jadpo_graph::body::Callee::Generate { model, .. },
+                            callee:
+                                jadpo_graph::body::Callee::Generate { model, .. }
+                                | jadpo_graph::body::Callee::Stream { model, .. }
+                                | jadpo_graph::body::Callee::Embed { model, .. },
                             ..
                         }) => {
                             let settings = crate::ai::settings(db, project);

@@ -687,6 +687,9 @@ pub const STEP_RECORDS: SystemTable = SystemTable {
         column("state", "text", false),
         column("problem", "jsonb", true),
         column("taken_at", "timestamptz(3)", false),
+        // When a tick raised the alert on unfinished records for it, once
+        // it had been unfinished a day (chunk 7.5f).
+        column("alerted_at", "timestamptz(3)", true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -727,6 +730,40 @@ pub const STEPS: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// What the application's `ai` calls used (area 21, "Budgets"; chunk
+/// 5.5v5), in the store `ai: { limits: }` keeps its counts in: one row
+/// for each day (UTC) and window, each change one statement, so every
+/// instance shares the counts and none is lost. A window is the
+/// application's (`app`, no key), a caller's (`caller`, a digest of who
+/// it is, never the caller), or a prompt's with its model (`prompt`,
+/// `<prompt> <model>`), which `jadpo ai usage` reads. `reserved_*` is
+/// what calls under way may still use, taken before each is sent and
+/// given back when it is charged what it used. Never a prompt or an
+/// answer.
+pub const AI_USAGE: SystemTable = SystemTable {
+    table: "jadpo_ai_usage",
+    columns: &[
+        column("day", "date", false),
+        column("scope", "text", false),
+        column("key", "text", false),
+        column("calls", "integer", false),
+        column("input_tokens", "bigint", false),
+        column("output_tokens", "bigint", false),
+        column("cached_tokens", "bigint", false),
+        column("reserved_tokens", "bigint", false),
+        // The estimated cost in millionths of `currency`'s major unit:
+        // `NULL` currency while no call has had a price.
+        column("cost_micros", "bigint", false),
+        column("reserved_micros", "bigint", false),
+        column("currency", "text", true),
+        column("touched_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["day", "scope", "key"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -753,7 +790,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 21] = [
+pub const ALL: [&SystemTable; 22] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -775,6 +812,7 @@ pub const ALL: [&SystemTable; 21] = [
     &RECEIVED_EVENTS,
     &PARKED_MESSAGES,
     &POLLS,
+    &AI_USAGE,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

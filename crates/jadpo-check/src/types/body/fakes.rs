@@ -15,9 +15,10 @@ use jadpo_diag::{Diagnostic, nearest, rule};
 use jadpo_graph::body::{AiFakeAnswer, FakeAnswer, FakeCondition};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
+use super::super::rules::Const;
 use super::super::ty::{Prim, Ty};
 use super::Body;
-use super::facts::node_key;
+use super::facts::{NodeKey, node_key};
 
 /// What one scripted answer is, for the typed body.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -346,12 +347,13 @@ impl Body<'_> {
                 let own = match &answer {
                     Expr::CallExpr(call) => matches!(
                         call.expr(),
-                        Some(Expr::NameRef(name)) if matches!(super::text(&name).as_str(), "raw" | "recorded")
+                        Some(Expr::NameRef(name)) if matches!(super::text(&name).as_str(), "raw" | "recorded" | "partial")
                     ),
                     _ => false,
                 };
                 if let (true, Expr::CallExpr(call)) = (own, &answer) {
-                    for arg in Self::arguments(call) {
+                    // `partial(...)`'s second is a condition's word.
+                    for arg in Self::arguments(call).into_iter().take(1) {
                         if let Some(value) = arg.expr() {
                             self.walk(|walk| walk.expr(&value));
                         }
@@ -376,6 +378,20 @@ impl Body<'_> {
         written: &str,
         span: jadpo_diag::Span,
     ) {
+        // An embedding's failures (chunk 5.5v4).
+        if prompt == jadpo_std::embed::OPERATION {
+            self.embed_fakes(entry, written, span);
+            return;
+        }
+        if prompt == "embed_all" {
+            self.out.push(
+                invalid(format!("`{written}` isn't scripted on its own"), span.clone(), "scripted as `ai.embed`")
+                    .reason("`ai.embed` and `ai.embed_all` are one operation to the `ai` fake: `fakes: { ai.embed: [...] }` scripts each of their calls in the order made.")
+                    .next("Script it as `ai.embed`")
+                    .edit(span, "ai.embed"),
+            );
+            return;
+        }
         if self.prompt_type(prompt).is_none() {
             let known: Vec<String> = crate::prompts::analysis(self.db, self.project)
                 .prompts
@@ -412,14 +428,33 @@ impl Body<'_> {
             );
             return;
         }
-        let words: Vec<&str> = super::generate::CONDITIONS
-            .iter()
-            .map(|condition| condition.word())
-            .collect();
-        let types = crate::ai::answer_types(self.db, self.project)
+        let mut types = crate::ai::answer_types(self.db, self.project)
             .get(prompt)
             .cloned()
             .unwrap_or_default();
+        // A streamed prompt's answer is text, and its conditions a
+        // stream's (chunk 5.5v6).
+        let streamed = crate::ai::streamed_prompts(self.db, self.project).contains(prompt);
+        let mut words: Vec<&str> = Vec::new();
+        if !streamed || !types.is_empty() {
+            words.extend(super::generate::CONDITIONS.iter().map(|c| c.word()));
+        }
+        if streamed {
+            for condition in super::stream::CONDITIONS {
+                if !words.contains(&condition.word()) {
+                    words.push(condition.word());
+                }
+            }
+            let text = Ty::Prim(Prim::Text);
+            if !types.contains(&text) {
+                types.push(text);
+            }
+        }
+        let calls = match (streamed, types.len() > 1 || !streamed) {
+            (true, false) => "`ai.stream`",
+            (true, true) => "`ai.generate` and `ai.stream`",
+            _ => "`ai.generate`",
+        };
         for answer in items {
             let key = node_key(answer.syntax());
             if let Expr::NameRef(named) = &answer {
@@ -437,7 +472,7 @@ impl Body<'_> {
                     "not a failure",
                 )
                 .reason(format!(
-                    "A model's scripted answer is a value of the type its call asks for, `raw(\"...\")` with text it answers, or one of `ai.generate`'s failures: {}.",
+                    "A model's scripted answer is a value of the type its call asks for, `raw(\"...\")` with text it answers, or one of {calls}'s failures: {}.",
                     crate::and_list(&words.iter().map(|word| format!("`{word}`")).collect::<Vec<_>>())
                 ));
                 problem = match near {
@@ -454,16 +489,15 @@ impl Body<'_> {
             {
                 let called = super::text(&callee);
                 if called == "recorded" {
-                    let at = self.span(&answer);
-                    self.out.push(
-                        jadpo_diag::Diagnostic::new(
-                            &rule::TOOLCHAIN_NOT_BUILT_YET,
-                            "`recorded(...)` isn't built yet".to_string(),
-                        )
-                        .at(at, "decided, not built")
-                        .reason("A recorded answer, kept in the prompt's `recordings/` by `jadpo ai record`, comes with roadmap chunk 5.5v4.")
-                        .next("Script the answer as a value, or with `raw(\"...\")`, for now"),
-                    );
+                    if let Some(name) = self.recorded_fake(call, prompt) {
+                        self.facts
+                            .ai_fakes
+                            .insert(key, (prompt.to_string(), AiFakeAnswer::Recorded(name)));
+                    }
+                    continue;
+                }
+                if called == "partial" {
+                    self.partial_answer(call, prompt, written, streamed, key);
                     continue;
                 }
                 if called == "raw" {
@@ -529,6 +563,223 @@ impl Body<'_> {
                     );
                 }
             }
+        }
+    }
+
+    /// `partial("...", <condition>)` (area 21, "Tests"; chunk 5.5v6): a
+    /// stream that sends the text's pieces and then stops with the
+    /// condition, which reaches the client as an `error` event: only for a
+    /// prompt an action streams, and only a condition a stream can stop
+    /// with once it has started.
+    fn partial_answer(
+        &mut self,
+        call: &ast::CallExpr,
+        prompt: &str,
+        written: &str,
+        streamed: bool,
+        key: NodeKey,
+    ) {
+        let at = self.span(call);
+        if !streamed {
+            for arg in Self::arguments(call).into_iter().take(1) {
+                if let Some(value) = arg.expr() {
+                    self.infer(&value);
+                }
+            }
+            self.out.push(
+                invalid(format!("`{prompt}` isn't streamed, so `{written}` can't stop part-way"), at, "a partial stream")
+                    .reason("`partial(\"...\", <condition>)` scripts a stream that sends its text and then stops with the condition, and only an `ai.stream` call of the prompt streams; an `ai.generate` call's answer comes whole or not at all.")
+                    .next("Script one of `ai.generate`'s failures, or stream the prompt with `ai.stream`"),
+            );
+            return;
+        }
+        let words: Vec<&str> = super::stream::AFTER_FIRST
+            .iter()
+            .map(|c| c.word())
+            .collect();
+        let listed = crate::and_list(
+            &words
+                .iter()
+                .map(|word| format!("`{word}`"))
+                .collect::<Vec<_>>(),
+        );
+        let args = Self::arguments(call);
+        let text = args
+            .first()
+            .filter(|arg| arg.name().is_none())
+            .and_then(ast::Arg::expr);
+        let condition = args
+            .get(1)
+            .filter(|arg| arg.name().is_none())
+            .and_then(ast::Arg::expr);
+        if let Some(text) = &text {
+            self.check(text, &Ty::Prim(Prim::Text));
+        }
+        let word = match &condition {
+            Some(Expr::NameRef(named)) => Some(super::text(named)),
+            _ => None,
+        };
+        match (text, word, args.len()) {
+            (Some(_), Some(word), 2) if words.contains(&word.as_str()) => {
+                self.facts
+                    .ai_fakes
+                    .insert(key, (prompt.to_string(), AiFakeAnswer::Partial(word)));
+            }
+            (Some(_), Some(word), 2) => {
+                let span = condition
+                    .as_ref()
+                    .map_or_else(|| at.clone(), |c| self.span(c));
+                let mut problem = invalid(
+                    format!("`{word}` isn't how a stream stops part-way"),
+                    span.clone(),
+                    "not a condition",
+                )
+                .reason(format!(
+                    "Once its first piece has come, a stream stops part-way only when the model declines to go on, its time runs out or its answer reaches `max_output:`: {listed}; `too_long` is found before anything is sent."
+                ));
+                problem = match nearest(&word, words.iter().copied()) {
+                    Some(near) => problem
+                        .next(format!("Use `{near}` instead of `{word}`"))
+                        .edit(span, near),
+                    None => problem.next(format!("Write one of {listed}")),
+                };
+                self.out.push(problem);
+            }
+            _ => {
+                let at = self.arg_list_span(call);
+                self.out.push(
+                    invalid("`partial` takes the text sent and how the stream stops".to_string(), at, "not a text and a condition")
+                        .reason(format!(
+                            "`partial(\"...\", <condition>)` scripts a stream that sends the text's pieces, then stops with the condition, one of {listed}."
+                        ))
+                        .next("Write `partial(\"Our sourdough is\", timed_out)`"),
+                );
+            }
+        }
+    }
+
+    /// `recorded("<name>")`: the prompt's recording of that name, kept
+    /// beside it in `recordings/<prompt>/<name>.json` (chunk 5.5v4); its
+    /// name when there is one.
+    fn recorded_fake(&mut self, call: &ast::CallExpr, prompt: &str) -> Option<String> {
+        let args = Self::arguments(call);
+        let written = match args.as_slice() {
+            [arg] if arg.name().is_none() => {
+                arg.expr().map(|value| (Const::from_expr(&value), value))
+            }
+            _ => None,
+        };
+        let Some((Const::Str(name), value)) = written else {
+            let at = self.arg_list_span(call);
+            self.out.push(
+                invalid("`recorded` takes a recording's name, written out".to_string(), at, "not one name")
+                    .reason("`recorded(\"sesame\")` answers with the prompt's recording of that name, kept beside the prompt in `recordings/<prompt>/sesame.json`.")
+                    .next("Write `recorded(\"<name>\")`, naming one of the prompt's recordings"),
+            );
+            return None;
+        };
+        let facts = crate::prompts::analysis(self.db, self.project).prompt(prompt)?;
+        let names = crate::prompt_recordings::names_of(self.db, self.project, &facts.path, prompt);
+        if names.contains(&name) {
+            return Some(name);
+        }
+        let file = crate::prompt_recordings::path(&facts.path, prompt, &name);
+        let at = self.span(&value);
+        let listed: Vec<String> = names.iter().map(|known| format!("`{known}`")).collect();
+        let mut problem = invalid(
+            format!("`{prompt}` has no recording `{name}`"),
+            at.clone(),
+            "no such recording",
+        )
+        .reason(if listed.is_empty() {
+            format!(
+                "`recorded(\"{name}\")` answers with the recording kept at `{file}`, and `{prompt}` has none yet."
+            )
+        } else {
+            format!(
+                "`recorded(\"{name}\")` answers with the recording kept at `{file}`; `{prompt}`'s are {}.",
+                crate::and_list(&listed)
+            )
+        });
+        problem = match nearest(&name, names.iter().map(String::as_str)) {
+            Some(near) => problem
+                .next(format!("Use `recorded(\"{near}\")`"))
+                .edit(at, format!("\"{near}\"")),
+            None => problem.next(format!(
+                "Keep the answer at `{file}`, with the prompt's `version`, or script it as a value"
+            )),
+        };
+        self.out.push(problem);
+        None
+    }
+
+    /// `fakes: { ai.embed: [...] }` (chunk 5.5v4): each answer one
+    /// `ai.embed` or `ai.embed_all` call, in the order made, and each one
+    /// of the call's three failures; every call past them is answered with
+    /// the vectors the fake makes from the texts.
+    fn embed_fakes(&mut self, entry: &ast::Member, written: &str, span: jadpo_diag::Span) {
+        let words: Vec<&str> = super::embed::CONDITIONS
+            .iter()
+            .map(|condition| condition.word())
+            .collect();
+        let listed: Vec<String> = words.iter().map(|word| format!("`{word}`")).collect();
+        let Some(Expr::ListExpr(answers)) = entry.value() else {
+            let at = entry
+                .value()
+                .map_or_else(|| span.clone(), |value| self.span(&value));
+            self.out.push(
+                invalid(format!("`{written}`'s answers aren't a list"), at, "not a list")
+                    .reason("An embedding's scripted answers are a list, taken in order, one by each call that asks for embeddings.")
+                    .next(format!("Write `{written}: [timed_out]`")),
+            );
+            return;
+        };
+        let items: Vec<Expr> = answers.exprs().collect();
+        if items.is_empty() {
+            self.out.push(
+                invalid(format!("`{written}` is scripted with no answers"), self.span(&answers), "no answers")
+                    .reason("A call the test doesn't script is answered with the vectors the fake makes from its texts, so an empty list says nothing.")
+                    .next(format!("Remove `{written}:`, or list the failures its calls end in")),
+            );
+            return;
+        }
+        for answer in items {
+            let key = node_key(answer.syntax());
+            if let Expr::NameRef(named) = &answer
+                && words.contains(&super::text(named).as_str())
+            {
+                let word = super::text(named);
+                self.facts.ai_fakes.insert(
+                    key,
+                    (
+                        jadpo_std::embed::OPERATION.to_string(),
+                        AiFakeAnswer::Failed(word),
+                    ),
+                );
+                continue;
+            }
+            if !matches!(answer, Expr::NameRef(_)) {
+                self.infer(&answer);
+            }
+            let shown = crate::tree::written(answer.syntax());
+            let mut problem = invalid(
+                format!("`{shown}` isn't an answer `{written}` gives"),
+                self.span(&answer),
+                "not a failure",
+            )
+            .reason(format!(
+                "A test scripts an embedding's failures, {}; every other call is answered with a vector the fake makes from the text's SHA-256 and the test's seed, so the same text always gives the same vector.",
+                crate::and_list(&listed)
+            ));
+            problem = match nearest(&shown, words.iter().copied()) {
+                Some(near) => problem
+                    .next(format!("Use `{near}` instead of `{shown}`"))
+                    .edit(self.span(&answer), near),
+                None => problem.next(format!(
+                    "Remove `{shown}`, and embed the same text to get the same vector"
+                )),
+            };
+            self.out.push(problem);
         }
     }
 }

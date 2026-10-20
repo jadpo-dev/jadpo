@@ -75,8 +75,10 @@ pub enum TestKind {
     Schedule,
     /// Reads a recording of one of the app's own integrations as its
     /// operation's output, through the package's decoders (area 11,
-    /// "Provenance and confirmation"; chunk 7.2d2): not a `test`
-    /// declaration, but checked on every run as one.
+    /// "Provenance and confirmation"; chunk 7.2d2), or a recording of a
+    /// prompt's answer through each type the prompt is asked for as (area
+    /// 21, "Tests"; chunk 5.5v4): not a `test` declaration, but checked on
+    /// every run as one.
     Recording,
 }
 
@@ -187,7 +189,34 @@ pub struct Run {
     pub total: BTreeMap<TestKind, usize>,
     /// In the order they ran.
     pub results: Vec<TestResult>,
+    /// Each recording of a prompt's answer the run read that was made from
+    /// another version of its prompt (chunk 5.5v4), in path order.
+    pub alerts: Vec<StaleRecording>,
     pub elapsed: Duration,
+}
+
+/// A recording of a prompt's answer made from another version of its
+/// prompt than the one there now (area 21, "Tests"; chunk 5.5v4): its
+/// answer still decodes, but may no longer be what the model says.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaleRecording {
+    pub file: String,
+    /// `answer_question`.
+    pub prompt: String,
+    /// `sesame`.
+    pub name: String,
+    /// The version it was made from, `answer_question@1a2b3c4d`.
+    pub recorded: String,
+    /// The prompt's version now, `answer_question@864ad76b`.
+    pub now: String,
+}
+
+impl StaleRecording {
+    /// The command that records it again, from the prompt now (chunk
+    /// 5.5v4b): `jadpo ai record answer_question --as not_covered`.
+    pub fn next(&self) -> String {
+        format!("jadpo ai record {} --as {}", self.prompt, self.name)
+    }
 }
 
 impl Run {
@@ -437,12 +466,33 @@ pub(crate) fn choose_and_run(
     for test in tests {
         *total.entry(test.kind).or_default() += 1;
     }
+    // Each recording read made from another version of its prompt.
+    let alerts = prepared
+        .plan()
+        .prompt_recordings()
+        .iter()
+        .filter(|recording| {
+            let key = format!("{RECORDING_KEY}{}", recording.file);
+            jadpo_runtime::prompt_recordings::stale(recording)
+                && results.iter().any(|result| result.test.key == key)
+        })
+        .filter_map(|recording| {
+            Some(StaleRecording {
+                file: recording.file.clone(),
+                prompt: recording.prompt.clone(),
+                name: recording.name.clone(),
+                recorded: jadpo_runtime::prompt_recordings::recorded_version(&recording.text)?,
+                now: recording.version.clone()?,
+            })
+        })
+        .collect();
     Ran::Done(Box::new(Run {
         seed,
         root,
         selection,
         total,
         results,
+        alerts,
         elapsed: started.elapsed(),
     }))
 }
@@ -470,9 +520,12 @@ pub const RECORDING_KEY: &str = "recording ";
 
 /// A check for each recording of the app's own integrations (area 11,
 /// "Provenance and confirmation"; chunk 7.2d2), run as a test: its
-/// operation's decoders read it.
+/// operation's decoders read it; and for each recording of a prompt's
+/// answer (area 21, "Tests"; chunk 5.5v4): each type the prompt is asked
+/// for as decodes it.
 pub fn recordings(prepared: &Prepared) -> Vec<Test> {
-    prepared
+    let lines = |text: &str| u32::try_from(text.lines().count().max(1)).unwrap_or(u32::MAX);
+    let mut out: Vec<Test> = prepared
         .plan()
         .providers()
         .recorded
@@ -482,10 +535,31 @@ pub fn recordings(prepared: &Prepared) -> Vec<Test> {
             name: format!("{}'s recording decodes", recorded.operation),
             file: recorded.file.clone(),
             line: 1,
-            end_line: u32::try_from(recorded.text.lines().count().max(1)).unwrap_or(u32::MAX),
+            end_line: lines(&recorded.text),
             kind: TestKind::Recording,
         })
-        .collect()
+        .collect();
+    out.extend(
+        prepared
+            .plan()
+            .prompt_recordings()
+            .iter()
+            .map(|recording| Test {
+                key: format!("{RECORDING_KEY}{}", recording.file),
+                name: prompt_recording_name(&recording.prompt, &recording.name),
+                file: recording.file.clone(),
+                line: 1,
+                end_line: lines(&recording.text),
+                kind: TestKind::Recording,
+            }),
+    );
+    out
+}
+
+/// The name of the check of prompt `prompt`'s recording `name`:
+/// `answer_question's sesame recording decodes`.
+pub fn prompt_recording_name(prompt: &str, name: &str) -> String {
+    format!("{prompt}'s {name} recording decodes")
 }
 
 /// Every test in the graph, in file and line order, each with the kind

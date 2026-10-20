@@ -631,6 +631,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "proves a call's literal arguments",
     ),
     (
+        "crates/jadpo-check/src/types/body/embed.rs",
+        "checks `ai.embed`'s `timeout:`, a duration read by the contract's own reader",
+    ),
+    (
         "crates/jadpo-check/src/types/body/generate.rs",
         "checks `ai.generate`'s `timeout:`, a duration read by the contract's own reader",
     ),
@@ -685,6 +689,14 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-interp/src/probe.rs",
         "makes sample values for the proof probes",
+    ),
+    (
+        "crates/jadpo-runtime/src/ai_budget.rs",
+        "counts what `ai` calls use: the day's cost limit read from its `Money` setting's value, and the day a price holds from (chunk 5.5v5)",
+    ),
+    (
+        "crates/jadpo-cli/src/ai_usage.rs",
+        "shows the day `jadpo ai usage` counts are for (chunk 5.5v5)",
     ),
     (
         "crates/jadpo-runtime/src/read.rs",

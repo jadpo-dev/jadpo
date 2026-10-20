@@ -68,6 +68,11 @@ fn files(sandbox: &str) -> Vec<(&'static str, String)> {
         models: {
             default: config.drafting_model
         }
+        limits: {
+            per_day: {
+                tokens: 2000000
+            }
+        }
     }
 }
 "#

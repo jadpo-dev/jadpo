@@ -1465,19 +1465,47 @@ The design is area 11 as revised on 2026-10-16, with its research in
   a test's steps ends it as `test.subscriber_failed`; each delivery attempt
   in a test counts its keyed calls from none under its own key. Live tests
   in `step_crashes.rs`. Choices in area 12's "Tests, chosen in chunk 7.5d".
-- [ ] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
+- [x] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
   after 7.5d (split from 7.5d on 2026-10-20): the late-failure warning (a
   declinable error) after the first changing step, reaching through
   package actions, and the deadline sum: the timeout times the attempts of
   every step on the longest path against a reaching route's deadline,
-  with the single call's deadline warning (area 11) it sums.
-- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+  with the single call's deadline warning (area 11) it sums. Built: the
+  steps walk keeps each way's first changing call and how long its
+  outside calls can take; `step.late_failure` (declinable) once for each
+  action at its first `attempt`, `reject` or `propagate` after one that
+  can end it for good (a failure not `unavailable` or `rate_limited`),
+  unless a `match` handles it; a package's action lists them on its
+  surface as `after_effect` (and `jadpo package show`'s "after effect"),
+  and the app's call of it is the point; `route.calls_past_deadline` at a
+  route whose action's provider and `ai.generate` calls, each `timeout:`
+  times its attempts, add up on the longest way past its `deadline:`,
+  the one check chunk 5.5v6's streaming routes rely on. Example 26's
+  route waits 20 seconds. Choices in area 12's "The late-failure warning
+  and the deadline sum, chosen in chunk 7.5e".
+- [x] **7.5f Multi-step calls: development and the metric** `opus ·
   high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
   `jadpo dev`'s request lines and timeline; the metric and the no-setup
   alert on unfinished records (their number and the oldest's age). Each
   step's state in `jadpo watch` comes with `jadpo watch` (after the first
   build, item 6), and the records' entry in the personal-data report with
-  the report itself (area 15, after the first build, item 1).
+  the report itself (area 15, after the first build, item 1). Built: the
+  runtime's `steps` module notes what became of each step a run reached
+  (`StepState`: replayed, answered, failed by its code, in doubt,
+  diverged, outcome unknown) and keeps it on the invocation as the record
+  closes (`RunSteps`), a response carrying its own and each call logged
+  with its step (`Logged::step`); a delivery's attempt with steps is
+  handed to the development call log (`CallLog::delivered`); `jadpo dev`
+  shows each step under its request's line in place of its call, and a
+  delivery with steps as a line of its own with `jadpo deliveries show`
+  when it needs an operator, both in `--json`. The `unfinished` module's
+  `Metric` (records not abandoned, the oldest's start) is carried by the
+  tick for each store, which raises `unfinished_steps` once a record has
+  been unfinished a day, once until none is (`jadpo_step_records.
+  alerted_at`); `jadpo deliveries` shows it and its `--json` the metric.
+  Until area 17's timelines, a request's line and its trace are its
+  timeline. Live tests in `step_development.rs`. Choices in area 12's
+  "Development and the metric, chosen in chunk 7.5f".
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1645,32 +1673,110 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/ai_providers.rs` (`jadpo test` through the
   fake; `jadpo dev` faked, scripted, and through a sandbox started in the
   test). Choices in area 21's "Chosen in chunk 5.5v3b".
-- [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
-  5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
-  and its check, the fake's seeded embeddings, `jadpo ai record` and
-  `recorded(...)`, every recording decoded on every build and a changed
-  prompt's recordings warned about. Done when the support example on area
-  21 runs end to end in a test: embed, nearest query, typed answer from a
-  recording.
-- [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
-  21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
-  per-day and per-caller limits counted in the main store, the cost
-  estimate from the package's prices, `jadpo ai usage`, `personal_data: {
-  allowed: }` with the flow check from placeholders back to marked
-  fields, `to_models: false`, and the prompts in the personal-data report.
-  Done when a test exhausts each limit and is refused `over_budget`, and
-  a marked field reaching a prompt unlisted fails to compile.
-- [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
+- [x] **5.5v4 Embeddings and recordings** `opus · high` (area 21; split
+  on 2026-10-20: `jadpo ai record` is 5.5v4b). Built: `ai.embed(text, as:
+  V)` and `ai.embed_all(texts, as: V)` as outside calls only an action
+  makes, of a `Text` or `Markdown` (or a list of up to 100), asking the
+  `embedding` model unless `model:` names another, with `timeout:` (15s)
+  and `timed_out`, `over_budget` and `too_long` each mapped to an
+  `unavailable` failure; `embedding_dimensions:` in `ai:` and
+  `semantic.ai_dimensions_mismatch` for a `V` of another length or none
+  given; the built-in driver's OpenAI embeddings request
+  (`jadpo_runtime::embed`), each vector read as `V`, another length
+  `misconfigured`, answers reused on a rerun and kept as steps; the fake's
+  embedding from the text's SHA-256 and the test's seed, and `fakes: {
+  ai.embed: }` scripting its failures; recordings of a prompt's answer,
+  `prompts/recordings/<prompt>/<name>.json` with `answer` (plain values
+  as placeholders) and `version`, `recorded("<name>")` in a test's
+  `fakes:`, every recording decoded by `jadpo test` as a `recording`
+  test (`test.recording_undecodable`), and one made from an older prompt
+  an alert on the report and in `data.alerts`. Tests in `ai_embed.rs`
+  (the checker's, and the CLI's: the fake, `jadpo dev` against an
+  OpenAI-compatible server started in the test, and the support desk end
+  to end in PostgreSQL: embed, nearest query, typed answer from a
+  recording). Choices in area 21's "Chosen in chunk 5.5v4".
+- [x] **5.5v4b `jadpo ai record`** `opus · high` (area 21, "Tests"; split
+  from 5.5v4 on 2026-10-20). Built: `jadpo ai record <prompt> --as
+  <name>`, asking the configured model once as the prompt's first
+  `ai.generate` call asks, with the values of its last `jadpo dev` call
+  (the call log now keeps a prompt's values) or `--fixture <fixture>`'s,
+  and keeping the answer as 5.5v4's recording, its plain values
+  placeholders by area 11's code, with the prompt's version; through a
+  package's connection refused when live or unset by `jadpo package
+  record`'s own refusals (`recording.refused`), and nothing kept on any
+  condition (`recording.failed`); the stale recording's alert naming it
+  as the next step, in the hint and `data.alerts[].next`. Tests in
+  `crates/jadpo-cli/tests/ai_record.rs`, against an OpenAI-compatible
+  server started in the test: a recording made from a `jadpo dev` call
+  answers a test through `recorded(...)`. Choices in area 21's "Chosen in
+  chunk 5.5v4b".
+- [x] **5.5v5 Budgets** `opus · high` (area 21, "Budgets"), after 5.5v3b
+  (split on 2026-10-20: personal data to models is 5.5v5b). Built:
+  `ai: { limits: }` with `per_request:`, `per_day: { tokens: cost: }`
+  (required, `semantic.ai_budget_missing`), `per_caller_per_day:` and
+  `store:` (`jadpo_check::ai_limits`); a `Money` setting read from
+  `"GBP 20.00"`; `jadpo_ai_usage` in the main store, one row per day and
+  window (the app's, each caller's digest, each prompt and model's), the
+  tick deleting days past 62; before sending, the call's most possible use
+  (its prompt's estimate and `max_output:`, times `attempts:`) checked
+  against the request's count and taken from the day's rows by one
+  conditional statement each, `over_budget` with nothing sent when a
+  limit can't cover it, `unavailable` when the store can't be reached;
+  after, charged the answer's reported usage or the estimate
+  (`jadpo_runtime::ai_budget`); `models: { prices: }` read and the cost
+  estimated in millionths of the price's currency, another currency than
+  the limit's `misconfigured`; every call counted in tests, `jadpo dev`
+  (the development daily limit on sandboxed prompts) and production; and
+  `jadpo ai usage` (`ai.usage_unavailable`). Tests in
+  `crates/jadpo-check/tests/ai_generate.rs` and `ai_providers.rs`, and
+  `crates/jadpo-cli/tests/ai_budgets.rs` (each limit exhausted in `jadpo
+  test`; a caller's day and a sandboxed prompt's reported usage in `jadpo
+  dev`, and `jadpo ai usage`). A setting overriding a price moved to
+  5.5v7. Choices in area 21's "Chosen in chunk 5.5v5".
+- [ ] **5.5v5b Personal data to models** `opus · high` (area 21, "Personal
+  data sent to a model"), after 5.5v5 (split from 5.5v5 on 2026-10-20):
+  `personal_data: { allowed: }` with the flow check from placeholders back
+  to marked fields (`personal:` read on fields for it, and the standard
+  types' own categories), `to_models: false`. Done when a marked field
+  reaching a prompt unlisted fails to compile. The prompts' entry in the
+  personal-data report comes with the report itself (area 15, after the
+  first build, item 1).
+- [x] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, the stream fake, and the
-  check that a route's deadline leaves room for the `timeout:` of each
-  `ai` call it reaches (left from 5.5v3). Done
+  an `AiStream`, the final and error events, the stream fake. The check
+  that a route's deadline leaves room for the `timeout:` of each `ai` call
+  it reaches (left from 5.5v3) moved to chunk 7.5e, which builds one
+  deadline sum over every outside call a route reaches; an `ai.stream`
+  call counts its `timeout:` once. Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
+  Built: `ai.stream(prompt)` with `model:`, `max_output:` and `timeout:`,
+  only in an action, giving an `AiStream`, its four conditions before the
+  first piece mapped as `generate`'s; OpenAI's streamed chat completion
+  read piece by piece (`jadpo_runtime::stream`), the open answer kept on
+  the invocation and given back on a rerun; a route with `output:
+  AiStream` answering `text/event-stream` once its action commits:
+  `piece` events, then `done`, or `error` (`unavailable`) for anything
+  after the first piece, ended by the call's `timeout:` or the route's
+  deadline; no `id:` or `retry:`; only `.ok` and no `settle:`
+  (`route.stream_invalid`); never kept for a repeat; OpenAPI's
+  `text/event-stream` with `x-jadpo-stream` and the record's `output
+  AiStream (server-sent events)`; a route test's `response.pieces`; the
+  fake's text cut into pieces of three words and `partial("...",
+  <condition>)`; natively, each event sent as it is read and the
+  provider's connection closed when the client goes away. Tests in
+  `ai_stream.rs` (the checker's, and the CLI's: the route tests, and
+  `jadpo dev` streaming from a server started in the test). Choices in
+  area 7's "Streaming a model's answer" and area 21's "Chosen in chunk
+  5.5v6".
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
-  after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
-  with its context and price tables, recordings and `jadpo package conform
-  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+  after 5.5v3b, 5.5v4b and 5.5v6: a package's `provide ai { embed: }`
+  (`toolchain.not_built_yet` since 5.5v3b; 5.5v4 built `ai.embed` through
+  the built-in driver alone), and two provider packages filling `ai`, each
+  with its context and price tables, a setting overriding a price (moved
+  from 5.5v5), recordings and `jadpo package conform
+  <package> ai`, and a package's `provide ai { stream: }` mapping (5.5v6
+  streams through the built-in driver only). **Needs Richard** for the API keys the live conformance run uses.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
@@ -1683,6 +1789,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
   the token test compares instants as instants, and the open-transaction
   count of the call tests leaves out the server's autovacuum workers.
+- [x] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
+  7.5e): new default timeouts (Richard, 2026-10-20, option A), since at
+  the old ones the route-deadline sum refused almost every route that
+  calls out: a provider connection's `timeout:` 3s (3 attempts, 9s, inside
+  a route's 10s default deadline) and `ai.generate`'s 25s (2 attempts,
+  50s, so a route that asks a model writes `deadline:` up to 60s), the
+  `deadline:` and `timeout:` lines 7.5e added for the old ones removed;
+  `ai.stream`'s `timeout:` counted once in the sum (`Calls::time`); and a
+  package's failure has one name inside its own code, so a `match` on its
+  own operation's outcome takes the bare `CardDeclined`. Also under the
+  decision: `ai.embed` and `ai.embed_all` counted once in the sum, their
+  default `timeout:` 5s, so a search route embedding its query fits the
+  10s default.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

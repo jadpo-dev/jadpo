@@ -70,6 +70,7 @@
 )]
 
 pub mod ai;
+pub mod ai_budget;
 pub mod batches;
 mod boundary;
 pub mod breaker;
@@ -82,6 +83,7 @@ mod ctx;
 pub mod deliveries;
 pub mod effects;
 pub mod email;
+pub mod embed;
 mod env;
 mod executor;
 mod failure;
@@ -98,6 +100,7 @@ mod outcome;
 mod places;
 mod policy;
 pub mod polls;
+pub mod prompt_recordings;
 pub mod provider;
 mod purge;
 mod race;
@@ -115,6 +118,7 @@ pub mod slots;
 pub mod statements;
 pub mod steps;
 mod store;
+pub mod stream;
 pub mod test_steps;
 pub mod unfinished;
 pub mod webhooks;

@@ -125,11 +125,14 @@ fn show_names_a_prompt_the_project_has() {
         "{}",
         other.stderr
     );
-    let later = jadpo(&root, &["ai", "record", "answer_question"]);
+    // `usage` reads the counts `ai: { limits: }` keeps, which a project
+    // with no `ai:` has none of (chunk 5.5v5).
+    let usage = jadpo(&root, &["ai", "usage"]);
     assert!(
-        later.stderr.contains("rule: toolchain.not_built_yet"),
+        usage.stderr.contains("This project asks no model")
+            && usage.stderr.contains("rule: cli.ai_arguments"),
         "{}",
-        later.stderr
+        usage.stderr
     );
 }
 

@@ -292,6 +292,13 @@ pub trait Capability {
         false
     }
 
+    /// Sends `call` and gives its answer as it comes, for `ai.stream`
+    /// (area 21; chunk 5.5v6): the whole answer, as [`Capability::call`]
+    /// gives it, unless the driver can read it piece by piece.
+    fn stream<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, crate::stream::Streamed> {
+        Box::pin(async move { crate::stream::Streamed::Whole(self.call(call).await) })
+    }
+
     /// The inputs of the calls of `operation` through `connection` it was
     /// sent, in order, one per call however often it asked again: what a
     /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a
@@ -350,6 +357,10 @@ pub struct Logged {
     /// `None` while it is out, or on a host with no such clock.
     pub took_ms: Option<u64>,
     pub ended: Ended,
+    /// Its place among the steps of an action with several changing
+    /// calls, from 1, when it is one, sent or given back from the record
+    /// (chunk 7.5f).
+    pub step: Option<u32>,
 }
 
 impl Logged {
@@ -693,6 +704,7 @@ mod tests {
                 at: Clock::TEST.now(),
                 took_ms: None,
                 ended: Ended::Answered,
+                step: None,
             }]
         );
         assert_eq!(fake.sent(), [send("ada@example.com", Repeat::Unkeyed)]);
@@ -788,6 +800,7 @@ mod tests {
             at: 0,
             took_ms: None,
             ended,
+            step: None,
         };
         for (repeat, ended, acted) in [
             (Repeat::Unkeyed, Ended::Answered, true),

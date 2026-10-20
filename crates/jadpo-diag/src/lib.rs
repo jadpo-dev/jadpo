@@ -98,6 +98,8 @@ rules! {
         "21-ai.html#ai-connection-required", "Action asks a model but the application names no `ai:` connection";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
         "21-ai.html#ai-settings-invalid", "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
+    AI_USAGE_UNAVAILABLE: "ai.usage_unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "AI usage's database couldn't be read";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
         "07-http.html#api-authentication-invalid", "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
@@ -719,9 +721,9 @@ rules! {
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
         "18-records-and-manifest.html#record-out-of-date", "Generated record disagrees with the source";
     RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
-        "14-tooling.html#command-errors", "Provider's sandbox gave no answer to record";
+        "14-tooling.html#command-errors", "Sandbox or model gave no answer to record";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
-        "14-tooling.html#command-errors", "Operation can't be recorded through this connection";
+        "14-tooling.html#command-errors", "Answer can't be recorded through this connection";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -730,6 +732,8 @@ rules! {
         "07-http.html#route-authentication-invalid", "Route authentication is not RouteAuthentication.none or .fresh";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
         "07-http.html#route-binding-unused", "Route reads a placeholder or input it never passes on";
+    ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
+        "11-integrations.html#route-calls-past-deadline", "Outside calls a route reaches can take longer than its deadline";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
         "07-http.html#route-deadline-invalid", "Route deadline is not a duration up to 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
@@ -776,6 +780,8 @@ rules! {
         "07-http.html#route-settle-invalid", "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
+    ROUTE_STREAM_INVALID: "route.stream_invalid", area 7, Error, Agent,
+        "07-http.html#route-stream-invalid", "Streaming route answers with another status or waits with `settle:`";
     RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Unfinished runs' database couldn't be read";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,
@@ -796,6 +802,10 @@ rules! {
         "14-tooling.html#command-errors", "Schedule's run failed";
     SCHEDULES_UNAVAILABLE: "schedules.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Schedules' database couldn't be read";
+    SEMANTIC_AI_BUDGET_MISSING: "semantic.ai_budget_missing", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-budget-missing", "Application's `ai:` sets no daily limit";
+    SEMANTIC_AI_DIMENSIONS_MISMATCH: "semantic.ai_dimensions_mismatch", area 21, Error, Agent,
+        "21-ai.html#semantic-ai-dimensions-mismatch", "Vector type an embedding is asked for as has a length other than `embedding_dimensions:`";
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,
@@ -874,6 +884,8 @@ rules! {
         "12-jobs-and-events.html#step-encryption-key-required", "Actions make several changing calls but no key encrypts their answers";
     STEP_LARGE_OUTPUT: "step.large_output", area 12, Error, Agent,
         "12-jobs-and-events.html#step-large-output", "Operation with a large answer among several changing calls";
+    STEP_LATE_FAILURE: "step.late_failure", area 12, Declinable, Agent,
+        "12-jobs-and-events.html#step-late-failure", "Action can fail for good after a changing call took effect";
     STEP_SETTINGS_INVALID: "step.settings_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#step-settings-invalid", "Steps setting in `application { }` doesn't read";
     STEP_STORE_REQUIRED: "step.store_required", area 12, Error, Human,
@@ -1588,6 +1600,7 @@ mod tests {
                 "library.similar_exists",
                 "package.standard_candidate",
                 "query.nearest_exact",
+                "step.late_failure",
                 "translation.field_unused",
                 "type.batch_order_updatable",
                 "type.standard_exists",

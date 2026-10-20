@@ -1060,7 +1060,7 @@ impl Body<'_> {
                     ty
                 }
                 None => {
-                    let fields = response_fields();
+                    let fields = response_fields(receiver);
                     self.unknown_field("Response", &field, &fields, span, false);
                     Ty::Error
                 }
@@ -2050,9 +2050,14 @@ fn nearest_fields(item: &Ty) -> Vec<FieldDef> {
 
 /// `Page<T>`'s fields, as the unknown-field error lists them.
 /// A route test's response's fields, for messages.
-fn response_fields() -> Vec<FieldDef> {
-    ["status", "code", "output"]
+fn response_fields(receiver: &Ty) -> Vec<FieldDef> {
+    let args = match receiver.strip_nullable() {
+        Ty::Opaque(_, args) => args.clone(),
+        _ => Vec::new(),
+    };
+    super::request::response_members(&args)
         .into_iter()
+        .map(|(name, _)| name)
         .map(|name| FieldDef {
             name: name.to_string(),
             declared: Ty::Error,

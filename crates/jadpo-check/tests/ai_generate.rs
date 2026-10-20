@@ -13,10 +13,13 @@ use crate::support;
 
 const CONFIG: (&str, &str) = (
     "config.jadpo",
-    "config {\n    model_url: Url {\n        default: \"http://localhost:11434/v1\"\n    }\n    drafting_model: ModelId {\n        default: \"local/llama3.2\"\n    }\n    reply_limit: Int {\n        default: 3\n    }\n}\n",
+    "config {\n    model_url: Url {\n        default: \"http://localhost:11434/v1\"\n    }\n    drafting_model: ModelId {\n        default: \"local/llama3.2\"\n    }\n    reply_limit: Int {\n        default: 3\n    }\n    ai_daily_spend: Money {\n        default: \"GBP 20.00\"\n    }\n}\n",
 );
 
-const APP: &str = "application {\n    connections: {\n        local_model: {\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }\n    }\n    ai: {\n        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n    }\n}\n";
+const APP: &str = "application {\n    connections: {\n        local_model: {\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }\n    }\n    ai: {\n        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n    }\n}\n";
+
+/// The daily limit every `ai:` gives (chunk 5.5v5).
+const LIMITS: &str = "        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n";
 
 const TYPES: [(&str, &str); 5] = [
     (
@@ -64,7 +67,7 @@ fn problems_with(app: &str, files: &[(&str, &str)]) -> Vec<String> {
     let mut all: Vec<(&str, &str)> = vec![("app.jadpo", app), CONFIG];
     all.extend_from_slice(&TYPES);
     all.extend_from_slice(files);
-    let project = support::project_with_records(&db, Layout::Project, &all, &[PROMPT]);
+    let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[PROMPT]);
     jadpo_check::check(&db, project)
         .iter()
         .map(|d| {
@@ -119,10 +122,11 @@ fn a_model_asked_with_every_failure_mapped_checks_clean() {
 fn ai_s_settings_are_checked() {
     let answer = action("", ALL_ARMS);
     let files = [(ACTION_PATH, answer.as_str())];
+    let limits = LIMITS;
     let with = |ai: &str| {
         problems_with(
             &format!(
-                "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n        mail: {{\n            driver: Driver.smtp\n            host: \"localhost\"\n        }}\n    }}\n    ai: {{\n{ai}    }}\n}}\n"
+                "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n        mail: {{\n            driver: Driver.smtp\n            host: \"localhost\"\n        }}\n    }}\n    ai: {{\n{ai}{limits}    }}\n}}\n"
             ),
             &files,
         )
@@ -162,9 +166,79 @@ fn ai_s_settings_are_checked() {
     );
     assert_eq!(
         with(
-            "        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        limits: {\n            per_request: 20000\n        }\n"
+            "        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        personal_data: {\n            allowed: []\n        }\n"
         ),
-        ["app.jadpo toolchain.not_built_yet: `ai: { limits: }` isn't built yet"]
+        ["app.jadpo toolchain.not_built_yet: `ai: { personal_data: }` isn't built yet"]
+    );
+}
+
+/// `ai:` caps what its calls use with `limits:`: `per_day: { tokens: }`
+/// is required, so nothing is unlimited (`semantic.ai_budget_missing`),
+/// `cost:` is a `Money` setting, the others whole numbers of tokens, and
+/// the counts are kept in a database (chunk 5.5v5).
+#[test]
+fn the_daily_limit_is_required_and_checked() {
+    let answer = action("", ALL_ARMS);
+    let files = [(ACTION_PATH, answer.as_str())];
+    let with = |limits: &str| {
+        problems_with(
+            &format!(
+                "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n        mail: {{\n            driver: Driver.smtp\n            host: \"localhost\"\n        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n            default: config.drafting_model\n        }}\n{limits}    }}\n}}\n"
+            ),
+            &files,
+        )
+    };
+    let limits = |inner: &str| format!("        limits: {{\n{inner}        }}\n");
+    assert_eq!(
+        with(&limits(
+            "            per_request: 20000\n            per_day: {\n                tokens: 2000000\n                cost: config.ai_daily_spend\n            }\n            per_caller_per_day: 60000\n            store: main\n"
+        )),
+        NONE
+    );
+    assert_eq!(
+        with(""),
+        ["app.jadpo semantic.ai_budget_missing: `ai:` sets no daily limit"]
+    );
+    assert_eq!(
+        with(&limits("            per_request: 20000\n")),
+        ["app.jadpo semantic.ai_budget_missing: `limits:` sets no daily limit"]
+    );
+    assert_eq!(
+        with(&limits(
+            "            per_day: {\n                cost: config.ai_daily_spend\n            }\n"
+        )),
+        ["app.jadpo semantic.ai_budget_missing: `per_day:` sets no daily tokens"]
+    );
+    let day = "            per_day: {\n                tokens: 2000000\n            }\n";
+    assert_eq!(
+        with(&limits(&format!("{day}            per_request: 0\n"))),
+        ["app.jadpo ai.settings_invalid: `per_request` must be a number of tokens"]
+    );
+    assert_eq!(
+        with(&limits(&format!(
+            "{day}            per_caller_per_day: 2.5\n"
+        ))),
+        ["app.jadpo ai.settings_invalid: `per_caller_per_day` must be a number of tokens"]
+    );
+    assert_eq!(
+        with(&limits(&format!("{day}            per_hour: 100\n"))),
+        ["app.jadpo ai.settings_invalid: `per_hour` isn't one of `limits:`'s settings"]
+    );
+    assert_eq!(
+        with(&limits(&format!("{day}            store: mail\n"))),
+        ["app.jadpo ai.settings_invalid: `store: mail` isn't a database"]
+    );
+    assert_eq!(
+        with(&limits(
+            "            per_day: {\n                tokens: 2000000\n                cost: \"20.00 GBP\"\n            }\n"
+        )),
+        ["app.jadpo ai.settings_invalid: `cost:` must be a setting"]
+    );
+    assert_eq!(
+        with(&limits(
+            "            per_day: {\n                tokens: 2000000\n                cost: config.reply_limit\n            }\n"
+        )),
+        ["app.jadpo ai.settings_invalid: `cost:` must be an amount of money"]
     );
 }
 
@@ -177,7 +251,7 @@ fn a_model_connection_gives_an_address_it_may_reach() {
     let with = |connection: &str| {
         problems_with(
             &format!(
-                "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n{connection}        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n            default: config.drafting_model\n        }}\n    }}\n}}\n"
+                "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n{connection}        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n            default: config.drafting_model\n        }}\n{LIMITS}    }}\n}}\n"
             ),
             &files,
         )
@@ -395,7 +469,7 @@ fn a_test_reaching_a_call_needs_its_settings() {
     all.extend_from_slice(&TYPES);
     all.push((ACTION_PATH, answer.as_str()));
     all.push(("domains/support/actions/answer_customer.test.jadpo", test));
-    let project = support::project_with_records(&db, Layout::Project, &all, &[PROMPT]);
+    let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[PROMPT]);
     let found: Vec<String> = jadpo_check::check(&db, project)
         .iter()
         .map(|d| format!("{}: {}", d.rule.id, d.message))
@@ -465,8 +539,8 @@ fn only_an_action_asks_a_model_before_it_writes() {
 }
 
 /// A test scripts a model's answers by its prompt's name: a value of the
-/// type its calls ask for, `raw(...)` text, or one of the five failures;
-/// `recorded(...)` comes with chunk 5.5v4.
+/// type its calls ask for, `raw(...)` text, one of the five failures, or
+/// `recorded(...)`, naming one of the prompt's recordings (chunk 5.5v4).
 #[test]
 fn a_test_s_scripted_answers_are_checked() {
     let answer = action("", ALL_ARMS);
@@ -500,11 +574,11 @@ fn a_test_s_scripted_answers_are_checked() {
     );
     assert_eq!(
         of(
-            "toolchain.not_built_yet",
+            "semantic.fake_invalid",
             with("ai.answer_question: [recorded(\"sesame\")]")
         ),
         [format!(
-            "{test_path} toolchain.not_built_yet: `recorded(...)` isn't built yet"
+            "{test_path} semantic.fake_invalid: `answer_question` has no recording `sesame`"
         )]
     );
     assert_eq!(
@@ -543,7 +617,7 @@ fn the_schema_is_the_types_own_with_its_descriptions() {
     let mut all: Vec<(&str, &str)> = vec![("app.jadpo", APP), CONFIG];
     all.extend_from_slice(&TYPES);
     all.push((ACTION_PATH, answer.as_str()));
-    let project = support::project_with_records(&db, Layout::Project, &all, &[PROMPT]);
+    let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[PROMPT]);
     let graph = jadpo_check::graph::graph(&db, project);
     let key = graph
         .nodes()
@@ -603,4 +677,45 @@ fn the_schema_is_the_types_own_with_its_descriptions() {
         jadpo_check::ai::schema(graph, None, &jadpo_graph::TypeRef::Node(text)),
         None
     );
+}
+
+/// A route reaching `ai.generate` leaves room for it: the call's
+/// `timeout:` times its `attempts:` (25s and 2 by default, which a route
+/// gives `deadline:` room for, Richard 2026-10-20), summed with
+/// the route's other outside calls, fits within the route's deadline
+/// (area 21, "Operations"; area 11's `route.calls_past_deadline`, chunk
+/// 7.5e).
+#[test]
+fn a_route_leaves_room_for_its_ai_calls() {
+    let route = "use support/actions { answer_customer }\nuse support/types { CustomerAsk, SupportAnswer }\n\n/// Where customers ask the assistant.\nroutes Questions {\n    prefix: /questions\n\n    /// Answers a customer's question.\n    POST / {\n        authentication: RouteAuthentication.none\n        input: CustomerAsk\n        output: SupportAnswer\n        status: SuccessStatus.ok\n        run: answer_customer(input.question)\n    }\n}\n";
+    let ask = "use support/types { CustomerQuestion }\n\n/// A customer's question, as the page sends it.\ntype CustomerAsk = Input {\n    question: CustomerQuestion\n}\n";
+    let policy = "use support\n\npolicy {\n    actions: {\n        support.answer_customer: [Access.public]\n    }\n}\n";
+    let found_at = |options: &str, route: &str| {
+        of(
+            "route.calls_past_deadline",
+            problems(&[
+                (ACTION_PATH, &action(options, ALL_ARMS)),
+                ("domains/support/routes/questions.jadpo", route),
+                ("domains/support/types/customer_ask.jadpo", ask),
+                ("policy.jadpo", policy),
+            ]),
+        )
+    };
+    let found = |options: &str| found_at(options, route);
+    assert_eq!(
+        found(""),
+        [
+            "domains/support/routes/questions.jadpo route.calls_past_deadline: `POST /questions` runs `answer_customer`, whose outside calls can take 50s, longer than its 10s deadline"
+        ]
+    );
+    assert_eq!(
+        found(", timeout: 10s, attempts: 2"),
+        [
+            "domains/support/routes/questions.jadpo route.calls_past_deadline: `POST /questions` runs `answer_customer`, whose outside calls can take 20s, longer than its 10s deadline"
+        ]
+    );
+    assert_eq!(found(", timeout: 8s, attempts: 1"), NONE);
+    // The defaults fit a route that waits the most a route may.
+    let patient = route.replace("        run:", "        deadline: 60s\n        run:");
+    assert_eq!(found_at("", &patient), NONE);
 }
