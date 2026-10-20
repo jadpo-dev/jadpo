@@ -289,7 +289,13 @@ impl Ctx<'_> {
         .reason(format!(
             "`{}: {{ }}` words package `{package_code}`'s public messages and enums, by their names in lower_snake_case, and its failures, by their codes; `jadpo package show {}` lists them. `{}` is none of them.{}",
             self.scope,
-            self.scope,
+            // A version held beside another is shown by its name and
+            // version (chunk 7.1c3).
+            if package_code.contains('.') {
+                package_code
+            } else {
+                self.scope
+            },
             member.name,
             match near {
                 Some(near) => format!(" Did you mean `{near}`?"),

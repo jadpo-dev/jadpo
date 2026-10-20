@@ -984,11 +984,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
   field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
   the importer lists each; recommendation `wire_name:`.
-- [ ] **7.1c3 Wording two versions of a package** `opus · high` (area 11,
+- [x] **7.1c3 Wording two versions of a package** `opus · high` (area 11,
   decided 2026-10-20): two versions of a library package with
   `translations/` held side by side, the app wording each under
   `<package>_v<n>: { }`, in the root file, the record, the translation
-  commands and the publishing bar.
+  commands and the publishing bar. Built: while names carry the version,
+  each version's text keyed `postcodes_v3` in the root files' groups, the
+  root record, `jadpo translations missing`, `export`, `import` and
+  `unused`, and in calls through the checker, the graph and the
+  interpreter, the "not built yet" refusal lifted; a group keyed for what
+  was held before (the folder's name once two are held, a version's key
+  once one is, a version no longer held) reported as
+  `translation.group_unknown` with the rename as its edit, nothing
+  moved by `add`, `remove` or `jadpo fix`; record lines following the
+  wording to its new key, so acceptance stays and staleness is judged
+  against the version it now words; a domain named like a version's key
+  `package.name_taken`; the publishing bar unchanged, one package being
+  one version. Choices in area 10's "Chosen in chunk 7.1c3".
 - [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
   and 7.1c: a provider operation called through its connection over
   7.0c's seam by the package driver (JSON over HTTP), tested against a

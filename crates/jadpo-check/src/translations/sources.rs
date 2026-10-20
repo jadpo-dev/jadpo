@@ -181,6 +181,10 @@ pub struct Standing {
     pub stale: bool,
     /// Whether the locale's translations are in progress.
     pub in_progress: bool,
+    /// The record's member its line was written under, when the wording
+    /// moved to a package's new key since (chunk 7.1c3): `recorded` is
+    /// that line, carried over.
+    pub moved_from: Option<String>,
 }
 
 impl Standing {
@@ -295,6 +299,7 @@ pub fn standings<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> St
                 recorded,
                 stale,
                 in_progress: plan.in_progress.contains(&locale),
+                moved_from: None,
             });
         }
     }
@@ -430,6 +435,7 @@ fn root_standings(
                 recorded,
                 stale,
                 in_progress: plan.in_progress.contains(&locale),
+                moved_from: None,
             });
         }
     }
@@ -478,6 +484,7 @@ fn package_standings(
 ) {
     let default_file = files.iter().find(|file| file.locale == Some(plan.default));
     for scope in super::packages::scopes(db, project) {
+        let home = super::declared::package_of(db, project, &scope);
         let subjects = subjects(db, project, Name::new(db, scope.clone()));
         let own: Vec<_> = language_files(db, project, &scope)
             .into_iter()
@@ -525,11 +532,23 @@ fn package_standings(
                 };
                 let name = format!("{scope}.{}", member.name);
                 let default_hash = hash(&default_text);
+                let mut moved_from = None;
                 let recorded = out
                     .record
                     .iter()
                     .find(|entry| entry.locale == file.tag && entry.member == name)
-                    .cloned();
+                    .cloned()
+                    .or_else(|| {
+                        let home = home.as_ref()?;
+                        let wording = hash(&canonical(&member.body));
+                        let line =
+                            carried(&out.record, files, file, home, &scope, member, &wording)?;
+                        moved_from = Some(line.member.clone());
+                        Some(Entry {
+                            member: name.clone(),
+                            ..line.clone()
+                        })
+                    });
                 let stale = recorded
                     .as_ref()
                     .is_some_and(|entry| entry.from != default_hash);
@@ -547,10 +566,51 @@ fn package_standings(
                     recorded,
                     stale,
                     in_progress: plan.in_progress.contains(&locale),
+                    moved_from,
                 });
             }
         }
     }
+}
+
+/// The record's line a package's wording had under another key before a
+/// version was added beside it or removed (chunk 7.1c3): the folder's
+/// name, `postcodes.<member>`, or a version's key,
+/// `postcodes_v2.<member>`, in the same locale and for the same wording,
+/// where that key no longer words the member. The line goes with the
+/// wording, so it stays accepted, and is stale when the version it now
+/// words has different default wording from the one it was translated
+/// from; wording that changed on the way is a new translation.
+fn carried<'a>(
+    record: &'a [Entry],
+    files: &[&super::language::LanguageFile],
+    file: &super::language::LanguageFile,
+    home: &jadpo_db::PackageHome,
+    scope: &str,
+    member: &super::language::Member,
+    wording: &str,
+) -> Option<&'a Entry> {
+    let member = member.name.as_str();
+    record.iter().find(|entry| {
+        let Some((key, rest)) = entry.member.split_once('.') else {
+            return false;
+        };
+        let names_package = key == home.name
+            || key
+                .strip_prefix(&format!("{}_", home.name))
+                .is_some_and(jadpo_db::is_version_label);
+        entry.locale == file.tag
+            && rest == member
+            && entry.wording == wording
+            && key != scope
+            && names_package
+            && !files.iter().any(|other| {
+                other.tag == file.tag
+                    && other
+                        .group(key)
+                        .is_some_and(|group| group.member(member).is_some())
+            })
+    })
 }
 
 fn invalid(path: &str, text: &str, line: usize, why: &str) -> Diagnostic {
@@ -704,6 +764,9 @@ pub enum Change {
     Reworded,
     /// A line for a translation that is gone.
     Removed,
+    /// A line carried to the key its package's wording moved to, when a
+    /// version was added beside it or removed (chunk 7.1c3).
+    Moved,
     /// A person accepted its wording.
     Accepted,
     /// Made from default wording that has changed and not reworded since:
@@ -752,6 +815,8 @@ pub fn updated(standings: &Standings, accept: Option<&str>) -> Updated {
             Some(recorded) => {
                 if recorded.from != standing.default_hash {
                     change = Some(Change::StillStale);
+                } else if standing.moved_from.is_some() {
+                    change = Some(Change::Moved);
                 }
                 recorded.clone()
             }
@@ -774,6 +839,12 @@ pub fn updated(standings: &Standings, accept: Option<&str>) -> Updated {
             .iter()
             .any(|entry| entry.locale == gone.locale && entry.member == gone.member)
         {
+            continue;
+        }
+        // Carried over to the key its wording moved to.
+        if standings.list.iter().any(|standing| {
+            standing.tag == gone.locale && standing.moved_from.as_ref() == Some(&gone.member)
+        }) {
             continue;
         }
         // Still written, but not readable just now (a mistake being
