@@ -140,7 +140,7 @@ pub fn record(call: &Call) -> Reply {
                 format!("`{name}` has no `output:` to check its answer against"),
             )
             .reason("Area 11 decides that `jadpo package record` writes an operation's output type from the answer when it has none, and that comes with mapping imported types to standard types (chunk 7.2e).")
-            .pipe_next(format!(
+            .next_marked(format!(
                 "Give `{operation}` an `output:` from the provider's documentation, then record it (agent)"
             ))
             .help_at("11-integrations.html#provenance-and-confirmation"),
@@ -229,7 +229,7 @@ pub fn record(call: &Call) -> Reply {
                 crate::package::and_list(&variables),
                 if variables.len() == 1 { "it" } else { "them" }
             ))
-            .pipe_next(format!(
+            .next_marked(format!(
                 "Set {} in `.env.local` to the sandbox's, then run it again (human)",
                 crate::package::and_list(&variables)
             )),
@@ -248,7 +248,7 @@ pub fn record(call: &Call) -> Reply {
                     .reason(format!(
                         "`jadpo package record` calls a provider's sandbox, never its live API, and `{variable}` chooses `live`."
                     ))
-                    .pipe_next(format!(
+                    .next_marked(format!(
                         "Set `{variable}` to `sandbox` in `.env.local`, then run it again (human)"
                     )),
                 );
@@ -265,7 +265,7 @@ pub fn record(call: &Call) -> Reply {
                     "`{}` gives no `hosts:` its connection's environment chooses between, and the connection gives no `host:`.",
                     chosen.package
                 ))
-                .pipe_next(format!(
+                .next_marked(format!(
                     "Give `{connection}` an `environment:` or a `host:` in `app.jadpo` (agent)"
                 )),
             );
@@ -295,7 +295,7 @@ pub fn record(call: &Call) -> Reply {
                 .reason(format!(
                     "The runtime that sends the call couldn't start: {error}."
                 ))
-                .pipe_next("Free some memory, then run it again (human)"),
+                .next_marked("Free some memory, then run it again (human)"),
             );
         }
     };
@@ -311,7 +311,7 @@ pub fn record(call: &Call) -> Reply {
         Reply::failed(
             Diagnostic::new(&rule::RECORDING_FAILED, headline)
                 .reason(reason)
-                .pipe_next(next),
+                .next_marked(next),
         )
     };
     let output_name = output_type_name(&root, &chosen.package, operation);
@@ -364,8 +364,7 @@ pub fn record(call: &Call) -> Reply {
             };
             return failed(headline, reason, next);
         }
-        (done, None) => {
-            let _ = done;
+        (_, None) => {
             return failed(
                 format!("`{name}` gave no answer to record"),
                 "The call ended without an answer from the sandbox.".to_string(),
@@ -409,7 +408,7 @@ pub fn record(call: &Call) -> Reply {
         text: match (written, before.is_some()) {
             (true, false) => format!("Recorded `{name}` from the sandbox"),
             (true, true) => format!("Recorded `{name}` again from the sandbox"),
-            (false, _) => format!("Recorded `{name}` from the sandbox, unchanged"),
+            (false, _) => format!("Recorded `{name}` from the sandbox, as before"),
         },
         rows: vec![
             ("sent".to_string(), request.clone()),
@@ -454,7 +453,7 @@ pub fn record(call: &Call) -> Reply {
 /// The answer the call's site handed the log, with the request it went
 /// out as.
 #[derive(Clone, Debug, Default)]
-struct Seenly {
+struct Exchange {
     method: String,
     url: String,
     answer: Option<String>,
@@ -462,11 +461,11 @@ struct Seenly {
 
 /// Keeps the one call's request and answer as sent.
 #[derive(Default)]
-struct Kept(RefCell<Seenly>);
+struct Kept(RefCell<Exchange>);
 
 impl CallLog for Kept {
     fn seen(&self, seen: &Seen<'_>) {
-        *self.0.borrow_mut() = Seenly {
+        *self.0.borrow_mut() = Exchange {
             method: seen.method.to_string(),
             url: seen.url.to_string(),
             answer: seen.answer.map(str::to_string),
@@ -509,7 +508,7 @@ fn package_folder(root: &Path, package: &str) -> Result<PathBuf, Box<Diagnostic>
             "An installed package's files are held to its digest in `{}`; its recordings are made where it is developed.",
             jadpo_db::LOCK
         ))
-        .pipe_next("Link its checkout with `jadpo package link <folder>`, then record it again (human)"),
+        .next_marked("Link its checkout with `jadpo package link <folder>`, then record it again (human)"),
     ))
 }
 
@@ -599,12 +598,12 @@ fn refused_by_errors(
 
 /// A diagnostic's `next`, its decider from its closing `(agent)` or
 /// `(human)`.
-trait PipeNext {
-    fn pipe_next(self, text: impl Into<String>) -> Self;
+trait NextMarked {
+    fn next_marked(self, text: impl Into<String>) -> Self;
 }
 
-impl PipeNext for Diagnostic {
-    fn pipe_next(self, text: impl Into<String>) -> Diagnostic {
+impl NextMarked for Diagnostic {
+    fn next_marked(self, text: impl Into<String>) -> Diagnostic {
         let text = text.into();
         if let Some(text) = text.strip_suffix(" (human)") {
             self.next_for(text, Decider::Human)
