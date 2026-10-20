@@ -16,16 +16,16 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::schedules::{Ran, tick};
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, Row, SqlValue};
+use jadpo_runtime::{Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -210,84 +210,40 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// A store, a clock the test moves, and random bytes from a counter.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    clock: Cell<i64>,
-    drawn: Cell<u64>,
+async fn names(host: &Harness) -> Vec<String> {
+    host.rows("SELECT \"name\" FROM \"member\" ORDER BY \"name\"")
+        .await
+        .into_iter()
+        .map(|row| match &row[0] {
+            SqlValue::Text(text) => text.clone(),
+            other => panic!("not text: {other:?}"),
+        })
+        .collect()
 }
 
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(self.clock.get())
-    }
-}
-
-impl Store {
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    async fn names(&self) -> Vec<String> {
-        self.rows("SELECT \"name\" FROM \"member\" ORDER BY \"name\"")
-            .await
-            .into_iter()
-            .map(|row| match &row[0] {
-                SqlValue::Text(text) => text.clone(),
-                other => panic!("not text: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// Each purge run record's outcome and the records it counted, oldest
-    /// first.
-    async fn purge_runs(&self) -> Vec<(String, Option<i32>)> {
-        self.rows("SELECT \"outcome\", \"items\" FROM \"jadpo_schedule_runs\" WHERE \"schedule\" = 'schedule Member.purge' ORDER BY \"started_at\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(outcome), items] => (
-                    outcome.clone(),
-                    match items {
-                        SqlValue::Int4(items) => Some(*items),
-                        _ => None,
-                    },
-                ),
-                other => panic!("not a run: {other:?}"),
-            })
-            .collect()
-    }
+/// Each purge run record's outcome and the records it counted, oldest
+/// first.
+async fn purge_runs(host: &Harness) -> Vec<(String, Option<i32>)> {
+    host.rows("SELECT \"outcome\", \"items\" FROM \"jadpo_schedule_runs\" WHERE \"schedule\" = 'schedule Member.purge' ORDER BY \"started_at\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(outcome), items] => (
+                outcome.clone(),
+                match items {
+                    SqlValue::Int4(items) => Some(*items),
+                    _ => None,
+                },
+            ),
+            other => panic!("not a run: {other:?}"),
+        })
+        .collect()
 }
 
 /// Runs `action` with `args` at the store's clock, as no one.
-async fn call(program: &Program, host: &Store, action: &str, args: Vec<Value>) -> Value {
+async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
-    host.seeds.set(host.seeds.get() + 1);
-    let env = Env {
-        seed: Some(host.seeds.get()),
-        clock: Clock::fixed(host.clock.get()),
-    };
-    let mut ctx = Ctx::new(program.places(), host, env);
+    let mut ctx = host.ctx(program.places());
     match program.run(&mut ctx, id, args).await {
         Outcome::Value(value) => value,
         other => panic!("{action}: expected a value, got {other:?}"),
@@ -389,15 +345,10 @@ fn the_purge_runs_hourly_on_the_tick_and_is_recorded_like_any_schedule() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        clock: Cell::new(T0),
-        drawn: Cell::new(0),
-    };
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     let tick_at = |at: i64| {
-        host.clock.set(at);
+        host.set_now(at);
         runtime.block_on(tick(&program, &host, at))
     };
     let purges = |ticked: &jadpo_runtime::schedules::Ticked| -> Vec<Ran> {
@@ -418,7 +369,7 @@ fn the_purge_runs_hourly_on_the_tick_and_is_recorded_like_any_schedule() {
         for member in [&bob, &cy] {
             call(&program, &host, "leave", vec![id_of(member)]).await;
         }
-        host.clock.set(T0 + DAY);
+        host.set_now(T0 + DAY);
         call(&program, &host, "leave", vec![id_of(&dee)]).await;
         (ada, bob, cy, dee)
     });
@@ -440,7 +391,7 @@ fn the_purge_runs_hourly_on_the_tick_and_is_recorded_like_any_schedule() {
         .expect("the purge ran");
     assert_eq!(due.items, Some(0));
     runtime.block_on(async {
-        assert_eq!(host.names().await, ["Ada", "Bob", "Cy", "Dee"]);
+        assert_eq!(names(&host).await, ["Ada", "Bob", "Cy", "Dee"]);
     });
 
     // Thirty days and an hour after Bob and Cy left, the hourly run takes
@@ -449,9 +400,9 @@ fn the_purge_runs_hourly_on_the_tick_and_is_recorded_like_any_schedule() {
     let ran = tick_at(later);
     assert_eq!(purges(&ran), [Ran::Succeeded { events: 0 }]);
     runtime.block_on(async {
-        assert_eq!(host.names().await, ["Ada", "Dee"]);
+        assert_eq!(names(&host).await, ["Ada", "Dee"]);
         assert_eq!(
-            host.purge_runs().await,
+            purge_runs(&host).await,
             [
                 ("succeeded".to_string(), Some(0)),
                 ("succeeded".to_string(), Some(2))

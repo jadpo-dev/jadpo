@@ -14,6 +14,15 @@
 //!   the system limited to the event's tenant, and records how it ended:
 //!   `succeeded`; `pending` again with its next attempt after a backoff
 //!   with full jitter, while its budget lasts; or `failed`.
+//! - A delivery to a capability's operation (an email, chunk 7.3) hands
+//!   the event to it through the capability seam ([`crate::effects::call`];
+//!   chunk 7.0c). One whose outcome is unknown, and that sent again could
+//!   act twice, is parked as `outcome_unknown` for an operator, never sent
+//!   again by itself (area 12, "Retries and giving up"; area 16): an
+//!   unkeyed send is marked `sending` before it goes out, so one whose
+//!   worker was lost meanwhile is parked by [`crate::runner::sweep`] rather
+//!   than claimed again. A subscriber's action that made such a call and
+//!   then ended in a way that would be retried is parked the same way.
 //! - A subscriber's action commits a handled record
 //!   (`jadpo_handled_deliveries`, keyed by the delivery's `id`) in the
 //!   store it writes, with its writes, so a repeated delivery finds it and
@@ -57,6 +66,12 @@ pub const PENDING: &str = "pending";
 pub const RUNNING: &str = "running";
 pub const SUCCEEDED: &str = "succeeded";
 pub const FAILED: &str = "failed";
+/// Parked for an operator: an outside call may have acted, and sending it
+/// again could act twice (chunk 7.0c).
+pub const OUTCOME_UNKNOWN: &str = "outcome_unknown";
+/// `running`, with its unkeyed call on its way out (chunk 7.0c): never
+/// claimed again, and parked once its lease has passed.
+pub const SENDING: &str = "sending";
 
 /// The outbox rows of one commit: their ids, event keys and payloads
 /// unnested, then the time, the trace context, the encoding and the
@@ -90,8 +105,18 @@ pub const GIVE_UP: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'failed'
 pub const LEASE_EXPIRED: &str = "lease_expired";
 
 /// Records how attempt `$2` of delivery `$1` ended, while it is still the
-/// claimer's: its state `$3`, its next attempt `$4` and its failure `$5`.
-pub const SETTLE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = $3, \"next_attempt_at\" = $4, \"last_failure\" = $5 WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
+/// claimer's, its call on its way out or not: its state `$3`, its next
+/// attempt `$4` and its failure `$5`.
+pub const SETTLE: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = $3, \"next_attempt_at\" = $4, \"last_failure\" = $5 WHERE \"id\" = $1 AND \"status\" IN ('running', 'sending') AND \"attempts\" = $2 RETURNING \"id\"";
+
+/// Marks attempt `$2` of delivery `$1` as `sending` before its unkeyed
+/// call goes out (chunk 7.0c), while it is still the claimer's.
+pub const MARK_SENDING: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'sending' WHERE \"id\" = $1 AND \"status\" = 'running' AND \"attempts\" = $2 RETURNING \"id\"";
+
+/// Parks every delivery still `sending` once its lease passed at `$1`, its
+/// worker lost while its unkeyed call was out: `outcome_unknown`, with
+/// failure `$2`, for an operator (chunk 7.0c).
+pub const PARK_LOST: &str = "UPDATE \"jadpo_deliveries\" SET \"status\" = 'outcome_unknown', \"next_attempt_at\" = NULL, \"last_failure\" = $2 WHERE \"status\" = 'sending' AND \"next_attempt_at\" <= $1 RETURNING \"id\"";
 
 /// The deliveries due at `$1`, oldest first, at most `$2`, with what
 /// their outbox row keeps, the encoding its payload was written in last
@@ -392,6 +417,19 @@ pub(crate) fn failure_json(code: &str, kind: Option<&str>) -> SqlValue {
     SqlValue::Json(serde_json::Value::Object(object).to_string())
 }
 
+/// What a delivery record keeps of an attempt parked as
+/// `outcome_unknown`: that, and how the attempt itself ended, when it ended
+/// otherwise (`deadline_exceeded`, `unavailable`).
+pub(crate) fn parked_json(cause: Option<&str>) -> SqlValue {
+    let mut object = serde_json::Map::new();
+    object.insert("code".into(), OUTCOME_UNKNOWN.into());
+    object.insert("kind".into(), OUTCOME_UNKNOWN.into());
+    if let Some(cause) = cause.filter(|cause| *cause != OUTCOME_UNKNOWN) {
+        object.insert("cause".into(), cause.into());
+    }
+    SqlValue::Json(serde_json::Value::Object(object).to_string())
+}
+
 /// What happens to a delivery after an attempt (area 12, "Retries and
 /// giving up").
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -410,6 +448,26 @@ pub enum After {
         code: String,
         kind: Option<String>,
     },
+    /// Parked for an operator, never tried again by itself: an outside
+    /// call may have acted, and sending it again could act twice (area 12,
+    /// `outcome_unknown`; chunk 7.0c). How the attempt ended, when that
+    /// was otherwise.
+    Park {
+        cause: String,
+    },
+}
+
+impl After {
+    /// What an attempt that ended as `self` leaves once a call its run made
+    /// may have acted outside ([`crate::capability::Logged::may_have_acted`]):
+    /// one that would be retried is parked instead, since a retry would
+    /// send that call again (area 16: "never resent blindly").
+    pub fn once_acted(self) -> After {
+        match self {
+            After::Retry { code, .. } => After::Park { cause: code },
+            other => other,
+        }
+    }
 }
 
 /// How `outcome` leaves a delivery.
@@ -419,7 +477,11 @@ pub fn after(outcome: &crate::Outcome) -> After {
         Outcome::Value(_) => After::Succeeded,
         Outcome::Failed(failure) => {
             let kind = failure.kind.clone();
-            if matches!(kind.as_deref(), Some("unavailable" | "rate_limited")) {
+            if kind.as_deref() == Some(OUTCOME_UNKNOWN) {
+                After::Park {
+                    cause: failure.code.clone(),
+                }
+            } else if matches!(kind.as_deref(), Some("unavailable" | "rate_limited")) {
                 After::Retry {
                     code: failure.code.clone(),
                     kind,
@@ -474,12 +536,10 @@ pub fn backoff(attempt: u32, random: Option<[u8; 8]>) -> i64 {
     wait.max(1_000)
 }
 
-/// The arguments `subscriber`'s action takes from event `value`: each a
-/// path read from it.
-pub fn arguments(subscriber: &SubscriberPlan, value: &Value) -> Option<Vec<Value>> {
-    subscriber
-        .args
-        .iter()
+/// The arguments a subscriber's action takes from event `value`, each a
+/// path of `args` read from it.
+pub fn arguments(args: &[Vec<String>], value: &Value) -> Option<Vec<Value>> {
+    args.iter()
         .map(|path| {
             let mut at = value.clone();
             for field in path {
@@ -591,6 +651,30 @@ mod tests {
             After::Retry { .. }
         ));
         assert!(matches!(after(&failed("not_found")), After::Fail { .. }));
+        // An outside call may have acted: parked for an operator, never
+        // tried again by itself (chunk 7.0c).
+        assert_eq!(
+            after(&Outcome::Failed(Box::new(crate::outcome_unknown()))),
+            After::Park {
+                cause: "outcome_unknown".into()
+            }
+        );
+        // And so is what would be retried once a call the run made may
+        // have acted; what fails for good stays failed.
+        assert_eq!(
+            after(&failed("unavailable")).once_acted(),
+            After::Park {
+                cause: "down".into()
+            }
+        );
+        assert!(matches!(
+            after(&failed("not_found")).once_acted(),
+            After::Fail { .. }
+        ));
+        assert_eq!(
+            after(&Outcome::Value(Value::Unit)).once_acted(),
+            After::Succeeded
+        );
         let fault = |kind| {
             Outcome::Fault(Box::new(Fault {
                 kind,

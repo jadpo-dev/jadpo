@@ -34,6 +34,7 @@ use jadpo_runtime::{
     StoreError, Transaction,
 };
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -276,16 +277,6 @@ struct State {
 
 struct Interfering(Rc<State>);
 
-impl Host for Interfering {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(self)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 impl Database for Interfering {
     fn begin_at(
         &self,
@@ -423,7 +414,7 @@ fn a_concurrent_change_reruns_the_whole_action_and_its_writes_happen_once() {
         levels: RefCell::new(Vec::new()),
         inserted: RefCell::new(Vec::new()),
     });
-    let host = Interfering(Rc::clone(&state));
+    let host = Harness::new(Interfering(Rc::clone(&state)));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let shelf = value(call(&program, &host, "add_shelf", vec![Value::text("Jams")]).await);
@@ -554,16 +545,6 @@ struct Racer {
     levels: RefCell<Vec<Isolation>>,
 }
 
-impl Host for Racer {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(self)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 impl Database for Racer {
     fn begin_at(
         &self,
@@ -690,12 +671,14 @@ async fn race(
         released: Cell::new(false),
         saw_waiting: Cell::new(false),
     });
-    let racer = |first: bool| Racer {
-        store: postgres(url).expect("store"),
-        race: Rc::clone(&shared),
-        first,
-        begun: Cell::new(0),
-        levels: RefCell::new(Vec::new()),
+    let racer = |first: bool| {
+        Harness::new(Racer {
+            store: postgres(url).expect("store"),
+            race: Rc::clone(&shared),
+            first,
+            begun: Cell::new(0),
+            levels: RefCell::new(Vec::new()),
+        })
     };
     let (first, second) = (racer(true), racer(false));
     let outcomes = both(
@@ -709,7 +692,10 @@ async fn race(
     .await;
     let attempts = [&first, &second]
         .iter()
-        .map(|racer| (racer.begun.get(), racer.levels.borrow().clone()))
+        .map(|racer| {
+            let racer = racer.store();
+            (racer.begun.get(), racer.levels.borrow().clone())
+        })
         .collect();
     (outcomes, attempts, shared.saw_waiting.get())
 }
@@ -736,7 +722,7 @@ fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
         levels: RefCell::new(Vec::new()),
         inserted: RefCell::new(Vec::new()),
     });
-    let host = Interfering(Rc::clone(&state));
+    let host = Harness::new(Interfering(Rc::clone(&state)));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let shelf = value(call(&program, &host, "add_shelf", vec![Value::text("Jams")]).await);

@@ -20,7 +20,9 @@ use jadpo_runtime::SqlValue;
 use jadpo_runtime::schedules::tick;
 use jadpo_term::Environment;
 
-use crate::schedules::{BELL_CHECK, FILES, MINUTE, Store, T0, jadpo, until_count, write};
+use jadpo_test::host::Harness;
+
+use crate::schedules::{BELL_CHECK, FILES, MINUTE, T0, jadpo, until_count, write};
 
 fn project(name: &str) -> PathBuf {
     let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("deliveries-6.12-{name}"));
@@ -138,11 +140,11 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store::new(&url, 0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
     let runtime = Runtime::new().expect("runtime");
     let tick_at = |minutes: i64| {
-        host.clock.set(at(minutes, 0));
+        host.set_now(at(minutes, 0));
         runtime.block_on(tick(&program, &host, at(minutes, 0)))
     };
     let op = |at: i64, args: &[&str]| operating(&root, Some(&url), at, args);
@@ -420,7 +422,7 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     };
     let run = match runtime
         .block_on(jadpo_runtime::schedules::watch::request_run(
-            &host.db,
+            host.store(),
             &host,
             &declared,
             at(112, 0),

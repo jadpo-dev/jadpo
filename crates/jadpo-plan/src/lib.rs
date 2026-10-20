@@ -181,7 +181,7 @@ fn events_plan(
     by_key: &HashMap<Key, u32>,
 ) -> jadpo_std::subscriber::EventsPlan {
     use jadpo_check::events::Tenant;
-    use jadpo_std::subscriber::{SubscriberPlan, TenantFrom};
+    use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
     let written = jadpo_check::types::written_stores(db, project);
     let subscribers = jadpo_check::events::subscribers(db, project)
         .iter()
@@ -191,8 +191,10 @@ fn events_plan(
                 key: model.key.as_str().to_string(),
                 name: model.name.clone(),
                 event: model.event.as_str().to_string(),
-                callable,
-                args: model.args.clone(),
+                target: Target::Action {
+                    callable,
+                    args: model.args.clone(),
+                },
                 attempts: model.retry.attempts,
                 within_ms: model.retry.within_ms,
                 tenant: match &model.tenant {
@@ -261,16 +263,21 @@ fn schedules_plan(
                 .clone()
         })
         .flatten();
-    let stores = jadpo_check::data::schema(db, project)
-        .stores
-        .iter()
-        .filter(|(_, store)| store.tables.contains_key("jadpo_idempotency_keys"))
-        .map(|(name, _)| name.clone())
-        .collect();
+    let schema = jadpo_check::data::schema(db, project);
+    let holding = |table: &'static str| {
+        schema
+            .stores
+            .iter()
+            .filter(move |(_, store)| store.tables.contains_key(table))
+            .map(|(name, _)| name.clone())
+    };
+    use jadpo_std::system::{IDEMPOTENCY_KEYS, SERVICE_KEYS, SESSIONS};
     SchedulesPlan {
         schedules,
         store,
-        stores,
+        stores: holding(IDEMPOTENCY_KEYS.table).collect(),
+        sessions: holding(SESSIONS.table).next(),
+        keys: holding(SERVICE_KEYS.table).next(),
     }
 }
 

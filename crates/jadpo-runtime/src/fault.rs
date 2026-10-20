@@ -33,6 +33,10 @@ pub enum FaultKind {
     /// (docs/compiler-runtime.md §2.6): a database a test couldn't get, or
     /// an error the server gave.
     Store(String),
+    /// An outside call, named (`mail.send`), made while the action's
+    /// transaction was open, which the runtime refuses before it goes out
+    /// (area 6, "Outside calls hold no transaction"; chunk 7.0c).
+    CallInTransaction(String),
 }
 
 impl FaultKind {
@@ -48,6 +52,7 @@ impl FaultKind {
             FaultKind::RecursionLimit => "recursion_limit",
             FaultKind::DeadlineExceeded => "deadline_exceeded",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
+            FaultKind::CallInTransaction(_) => "call_in_transaction",
             FaultKind::Defect(_) | FaultKind::Store(_) => "internal_fault",
         }
     }

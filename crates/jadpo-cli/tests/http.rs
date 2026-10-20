@@ -639,6 +639,40 @@ fn a_save_swaps_in_the_new_version_and_errors_keep_the_last_good_one() {
     assert_eq!(accepted.status, 202);
 }
 
+#[test]
+fn a_save_that_truncates_before_it_writes_never_serves_the_empty_file() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let (_dir, root) = project();
+    let dev = Dev::start(&root);
+    let routes = root.join("domains/planning/routes/todos.jadpo");
+    let text = std::fs::read_to_string(&routes).expect("the routes");
+    // An editor that saves in place truncates the file, then writes it: the
+    // empty file checks cleanly with no routes, so reloading it would answer
+    // 404 until the next save (chunk 5.13b). Between the two, the last
+    // version keeps serving.
+    std::fs::write(&routes, "").expect("truncate");
+    std::thread::sleep(Duration::from_millis(400));
+    let between = dev.send("POST", "/todos", &[], r#"{"title":"Between"}"#);
+    assert_eq!(between.status, 201, "{}", dev.out.text());
+    std::fs::write(
+        &routes,
+        text.replace("SuccessStatus.created", "SuccessStatus.accepted"),
+    )
+    .expect("write");
+    wait_for(&dev, "\"reloaded\"");
+    let accepted = dev.send("POST", "/todos", &[], r#"{"title":"Written"}"#);
+    assert_eq!(accepted.status, 202);
+    let reloads = dev.out.text().matches("\"reloaded\"").count();
+    assert_eq!(
+        reloads,
+        1,
+        "one reload, of the written file:\n{}",
+        dev.out.text()
+    );
+}
+
 /// Saves `text` to `path` in one step, as an editor's atomic save does:
 /// written beside the project, then renamed over the file. A plain write
 /// truncates the file first, and on a loaded machine `jadpo dev` can see the

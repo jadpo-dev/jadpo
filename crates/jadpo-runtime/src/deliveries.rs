@@ -47,6 +47,15 @@ pub const SUPERSEDED: &str = "superseded";
 /// A schedule's run an operator resolved as done.
 pub const RESOLVED: &str = "resolved";
 
+/// A delivery whose unkeyed call is on its way out (chunk 7.0c): shown
+/// as `running`, as a worker has it.
+pub const SENDING: &str = crate::outbox::SENDING;
+
+/// A record's state as an operator is shown it.
+fn shown_state(state: &str) -> String {
+    if state == SENDING { RUNNING } else { state }.to_string()
+}
+
 /// The states an operator is shown by default: those that need one.
 pub const NEEDS_AN_OPERATOR: [&str; 2] = [FAILED, OUTCOME_UNKNOWN];
 
@@ -231,9 +240,20 @@ pub async fn items(
     limit: i64,
 ) -> Result<Vec<Item>, StoreError> {
     let mut out = Vec::new();
+    // A delivery `sending` its unkeyed call (chunk 7.0c) is running.
     let wanted = SqlValue::Array(
         SqlType::Text,
-        states.iter().map(|s| SqlValue::Text(s.to_string())).collect(),
+        states
+            .iter()
+            .flat_map(|s| {
+                if *s == RUNNING {
+                    vec![RUNNING, SENDING]
+                } else {
+                    vec![*s]
+                }
+            })
+            .map(|s| SqlValue::Text(s.to_string()))
+            .collect(),
     );
     if holds.deliveries {
         let rows = database
@@ -299,7 +319,7 @@ pub async fn counts(
         for row in database.query_once(DELIVERY_COUNTS, &[]).await? {
             if let (Some(SqlValue::Text(state)), Some(SqlValue::Int8(n))) = (row.first(), row.get(1))
             {
-                *out.entry(state.clone()).or_default() += u64::try_from(*n).unwrap_or(0);
+                *out.entry(shown_state(state)).or_default() += u64::try_from(*n).unwrap_or(0);
             }
         }
     }
@@ -553,7 +573,7 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
         kind,
         target: text(2)?,
         event: text(3),
-        state: text(4)?,
+        state: shown_state(&text(4)?),
         attempts: match row.get(5) {
             Some(SqlValue::Int4(n)) => Some(*n),
             _ => None,

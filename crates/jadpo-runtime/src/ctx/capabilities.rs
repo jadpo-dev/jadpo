@@ -2,22 +2,25 @@
 //! 7.0b): its stores, its passkey ceremonies and its random bytes, with
 //! the identities it makes from them and what a recording keeps of them.
 //!
-//! The capability seam (chunk 7.0c) is built here: each call that leaves
-//! the process logged on its invocation, the record recordings, `jadpo
-//! calls` and an `outcome_unknown` result read, and the fakes a test
-//! gives in the host's place.
+//! The capability seam's state is here too (chunk 7.0c): the log of each
+//! call that left the process ([`Logged`]), which `jadpo calls` lists and
+//! from which the runner knows a run may have acted outside, and the
+//! calls' answers a recording keeps and a replay gives back.
 
+use crate::capability::{Answer, Call, Ended, Logged, Recorded, Recording, Source};
 use crate::{Database, Host, Passkeys};
 
-/// What happens to the random bytes an invocation is given (area 17).
+/// What happens to the effects an invocation is given (area 17).
 enum Tape {
     Off,
     /// Kept, in the order they were given.
-    Recording(Vec<u8>),
-    /// A recorded run's, given back from `at`.
+    Recording(Recording),
+    /// A recorded run's, given back in order: its random bytes from
+    /// `random`, its calls' answers from `calls`.
     Replaying {
-        bytes: Vec<u8>,
-        at: usize,
+        recording: Recording,
+        random: usize,
+        calls: usize,
     },
 }
 
@@ -35,9 +38,11 @@ pub struct Capabilities<'p> {
     /// How many trace and span ids it has worked out without the host's
     /// randomness.
     spans: u64,
-    /// The random bytes a recorded run keeps, or a replayed run gives back
-    /// (area 17, "Replaying a production request").
+    /// The random bytes and calls' answers a recorded run keeps, or a
+    /// replayed run gives back (area 17, "Replaying a production request").
     tape: Tape,
+    /// Each call that left the process, or was refused, in order.
+    calls: Vec<Logged>,
 }
 
 impl std::fmt::Debug for Capabilities<'_> {
@@ -52,6 +57,7 @@ impl std::fmt::Debug for Capabilities<'_> {
             .field("seeded", &self.seed.is_some())
             .field("ids", &self.ids)
             .field("tape", &tape)
+            .field("calls", &self.calls)
             .finish_non_exhaustive()
     }
 }
@@ -65,6 +71,7 @@ impl<'p> Capabilities<'p> {
             draws: 0,
             spans: 0,
             tape: Tape::Off,
+            calls: Vec::new(),
         }
     }
 
@@ -112,22 +119,25 @@ impl<'p> Capabilities<'p> {
     /// Fills `out` with random bytes, as [`crate::Ctx::random_bytes`]
     /// gives them.
     pub(crate) fn random_bytes(&mut self, out: &mut [u8]) -> bool {
-        if let Tape::Replaying { bytes, at } = &mut self.tape {
-            let Some(next) = at
+        if let Tape::Replaying {
+            recording, random, ..
+        } = &mut self.tape
+        {
+            let Some(next) = random
                 .checked_add(out.len())
-                .and_then(|end| bytes.get(*at..end))
+                .and_then(|end| recording.random.get(*random..end))
             else {
                 return false;
             };
             out.copy_from_slice(next);
-            *at += out.len();
+            *random += out.len();
             return true;
         }
         if !self.fresh_random(out) {
             return false;
         }
         if let Tape::Recording(kept) = &mut self.tape {
-            kept.extend_from_slice(out);
+            kept.random.extend_from_slice(out);
         }
         true
     }
@@ -163,22 +173,108 @@ impl<'p> Capabilities<'p> {
         true
     }
 
-    /// Keeps the random bytes given from now on.
-    pub(crate) fn record_random(&mut self) {
-        self.tape = Tape::Recording(Vec::new());
+    /// Keeps the random bytes given and the calls' answers from now on.
+    pub(crate) fn record(&mut self) {
+        self.tape = Tape::Recording(Recording::default());
     }
 
-    /// The random bytes kept since [`Capabilities::record_random`].
-    pub(crate) fn recorded_random(&self) -> Option<&[u8]> {
+    /// What was kept since [`Capabilities::record`].
+    pub(crate) fn recorded(&self) -> Option<&Recording> {
         match &self.tape {
             Tape::Recording(kept) => Some(kept),
             _ => None,
         }
     }
 
-    /// Gives `bytes`, a recorded run's, as the random bytes, in order.
-    pub(crate) fn replay_random(&mut self, bytes: Vec<u8>) {
-        self.tape = Tape::Replaying { bytes, at: 0 };
+    /// Gives `recording`'s random bytes and calls' answers, in order.
+    pub(crate) fn replay(&mut self, recording: Recording) {
+        self.tape = Tape::Replaying {
+            recording,
+            random: 0,
+            calls: 0,
+        };
+    }
+
+    // --- the capability seam's log (chunk 7.0c) ---------------------------
+
+    /// The calls that left the process, or were refused, in order.
+    pub fn calls(&self) -> &[Logged] {
+        &self.calls
+    }
+
+    /// Takes the log of calls, leaving it empty.
+    pub(crate) fn take_calls(&mut self) -> Vec<Logged> {
+        std::mem::take(&mut self.calls)
+    }
+
+    /// Whether a call logged from `since` on may have acted outside in a
+    /// way sending it again would repeat ([`Logged::may_have_acted`]).
+    pub fn may_have_acted(&self, since: usize) -> bool {
+        self.calls
+            .get(since..)
+            .is_some_and(|calls| calls.iter().any(Logged::may_have_acted))
+    }
+
+    /// Logs `call` at `at` as going out with an answer from `source`,
+    /// giving its place in the log, to say how it ended with
+    /// [`Capabilities::ended`].
+    pub(crate) fn sent(&mut self, call: &Call, source: Source, at: i64) -> usize {
+        self.calls.push(Logged {
+            connection: call.connection.clone(),
+            operation: call.operation.clone(),
+            repeat: call.repeat,
+            source,
+            at,
+            took_ms: None,
+            ended: Ended::InFlight,
+        });
+        self.calls.len() - 1
+    }
+
+    /// Logs that the call at `place` was answered `answer` after `took_ms`,
+    /// and keeps the answer while recording.
+    pub(crate) fn ended(&mut self, place: usize, answer: &Answer, took_ms: Option<u64>) {
+        let Some(logged) = self.calls.get_mut(place) else {
+            return;
+        };
+        logged.ended = Ended::of(answer);
+        logged.took_ms = took_ms;
+        if let Tape::Recording(kept) = &mut self.tape {
+            kept.calls.push(Recorded {
+                connection: logged.connection.clone(),
+                operation: logged.operation.clone(),
+                answer: answer.clone(),
+            });
+        }
+    }
+
+    /// Logs `call` at `at` as refused before it went out.
+    pub(crate) fn refused(&mut self, call: &Call, at: i64) {
+        let place = self.sent(call, Source::Live, at);
+        if let Some(logged) = self.calls.get_mut(place) {
+            logged.ended = Ended::Refused;
+        }
+    }
+
+    /// In a replayed run, the answer the recording kept for its next call,
+    /// once it is `call`'s; `Err` with what the recording has there when
+    /// it isn't (`nothing` once it has run out). `None` when not
+    /// replaying.
+    pub(crate) fn replayed(&mut self, call: &Call) -> Option<Result<Answer, String>> {
+        let Tape::Replaying {
+            recording, calls, ..
+        } = &mut self.tape
+        else {
+            return None;
+        };
+        let Some(next) = recording.calls.get(*calls) else {
+            return Some(Err("nothing".to_string()));
+        };
+        if next.connection != call.connection || next.operation != call.operation {
+            return Some(Err(format!("`{}.{}`", next.connection, next.operation)));
+        }
+        *calls += 1;
+        Some(Ok(next.answer.clone()))
     }
 
     /// A new identity made at `now`, as [`crate::Ctx::new_id`] makes it.

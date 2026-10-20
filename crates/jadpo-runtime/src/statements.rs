@@ -157,6 +157,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("outbox::GIVE_UP", crate::outbox::GIVE_UP.to_string()),
         (
+            "outbox::MARK_SENDING",
+            crate::outbox::MARK_SENDING.to_string(),
+        ),
+        (
             "outbox::INSERT_DELIVERIES",
             crate::outbox::INSERT_DELIVERIES.to_string(),
         ),
@@ -169,6 +173,7 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::outbox::INSERT_OUTBOX.to_string(),
         ),
         ("outbox::PARK", crate::outbox::PARK.to_string()),
+        ("outbox::PARK_LOST", crate::outbox::PARK_LOST.to_string()),
         ("outbox::RELEASE", crate::outbox::RELEASE.to_string()),
         ("outbox::SETTLE", crate::outbox::SETTLE.to_string()),
         ("schedules::CLAIM", crate::schedules::CLAIM.to_string()),
@@ -177,11 +182,20 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::schedules::CLAIM_REQUESTED.to_string(),
         ),
         ("schedules::ENDED", crate::schedules::ENDED.to_string()),
+        (
+            "schedules::ENDED_SERVICE_KEYS",
+            crate::schedules::ENDED_SERVICE_KEYS.to_string(),
+        ),
+        (
+            "schedules::ENDED_SESSIONS",
+            crate::schedules::ENDED_SESSIONS.to_string(),
+        ),
         ("schedules::ENSURE", crate::schedules::ENSURE.to_string()),
         (
             "schedules::EXPIRED_KEYS",
             crate::schedules::EXPIRED_KEYS.to_string(),
         ),
+        ("schedules::HANDLED", crate::schedules::HANDLED.to_string()),
         (
             "schedules::OLD_RUNS",
             crate::schedules::OLD_RUNS.to_string(),

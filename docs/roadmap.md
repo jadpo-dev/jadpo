@@ -704,13 +704,17 @@ chunks below, taken before Phase 7, in this order.
   nothing builds. Areas 7 (2,852 to 2,830 lines), 9 (4,250 to 4,278),
   12 (3,515 to 3,258) and 13 (1,980 to 1,970), `compiler-runtime.md`
   (2,382 to 2,388) and this roadmap (1,088 to 987).
-- [ ] **6.10 The tick's remaining deletes** `opus · high` (areas 8 and
-  12, "The tick"): ended browser sessions, API tokens and expired keys
-  deleted on the tick, as a lookup already ignores them; and a
-  subscriber's handled records deleted once their delivery can no longer
-  repeat, which the chunk works out from the delivery's own record (with
-  its event gone, nothing redelivers it), the store each is in, and
-  1,000 rows at a time, ten times a tick, as the tick's other deletes.
+- [x] **6.10 The tick's remaining deletes** `opus · high`. Built: the
+  tick deletes ended browser sessions and API tokens, and expired service
+  keys, in the store each is kept in (`SchedulesPlan`'s `sessions` and
+  `keys`); and a subscriber's handled records once their delivery's
+  record is gone: the statement deleting a settled event deletes those
+  kept in its store, and the tick then deletes the rest in each other
+  store by the deliveries' ids, so a store it can't reach keeps a few
+  records rather than losing one early. 1,000 rows (events, for the
+  outbox) at a time, ten times a tick; statements in
+  `jadpo_runtime::statements`; live tests in `tick_deletes.rs`. Choices
+  in area 12, "The tick".
 - [ ] **6.11 Events in tests** `opus · high` (area 13, "Caches and
   events"; area 12, question 15): what each step of a test emits
   delivered after it commits and before the next statement, at the
@@ -726,14 +730,14 @@ chunks below, taken before Phase 7, in this order.
   schedule's run retried through the app's tick. `show`, `retry
   --not-done` and `abandon` come with multi-step calls (7.5), and batch
   runs and parked queue messages with 6.4b and 7.7.
-- [ ] **5.13b `jadpo dev` and half-written files** `opus · high` (from
-  chunk 5.13): an editor's truncate-then-write leaves an empty routes
-  file that checks cleanly with no routes, and `jadpo dev` reloads it,
-  serving 404s until the next save. Guard the reload: wait until a
-  changed file's content is stable (unchanged across a short settle
-  after the last event), or treat a file emptied mid-session as not yet
-  saved. `crates/jadpo-cli/tests/config.rs` writes `.env.local` without
-  an atomic rename and may flake the same way; write it atomically.
+- [x] **5.13b `jadpo dev` and half-written files** `opus · high`.
+  Built: the watcher behind `jadpo dev` and `jadpo test --watch` takes a
+  file that had text and is empty now as a save in place not yet
+  written, and waits for its text, up to 2 seconds, before handing the
+  burst over; chosen over a longer settle, which only covers shorter
+  gaps and slows every save (area 14, "Watching saves"). A live test
+  truncates the routes file, then writes it 400 ms later, and the old
+  version serves between; `config.rs` saves `.env.local` atomically.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
@@ -751,12 +755,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   each a struct of its own, the boundary's state in `boundary.rs`, and
   every field private, reached through methods. Choices in
   compiler-runtime.md §2.5.
-- [ ] **7.0c The capability seam** `opus · xhigh`, after 7.0b: a seam that
-  logs each outside call on its invocation, feeding recordings, `jadpo
-  calls` and an `outcome_unknown` result; fakes as `Host` wrappers and one
-  shared test host; a delivery that targets an action or a capability;
-  no capability call inside an open transaction. 6.4b, 7.1, 7.3 and
-  5.5v3 build on it.
+- [x] **7.0c The capability seam** `opus · xhigh`. Built:
+  `jadpo_runtime::effects::call`, the one way a call leaves the process,
+  through one driver trait, `capability::Capability`, which
+  `Host::capability(connection)` gives: refused while the action's
+  transaction is open (`call_in_transaction`), logged on its invocation
+  without its values (`capability::Logged`, on `Response::calls` for
+  7.2's `jadpo calls`), and recorded and replayed beside the random bytes
+  (`Ctx::record_run`); fakes as host wrappers (`capability::Faked`,
+  `Fake`) and one shared test host, `jadpo_test::host::Harness`, now under
+  nineteen of `crates/jadpo-cli/tests`' files; a subscriber's `Target`, an
+  action or a capability's operation, and a delivery whose unkeyed call
+  may have acted parked as `outcome_unknown` (its driver said so, it was
+  cut off or its worker lost while the call was out, or its action would
+  be retried after one), proved live with a test capability. A batch's
+  items still run inside its transaction, so an item's call is refused
+  until 7.4. Choices in area 16 and compiler-runtime.md §2.6.
 - [ ] **6.4b Batch file helpers** `opus · xhigh` (areas 12, 16 and 19),
   moved after 7.0c from Phase 6, since it needs a minimal `files`
   capability on that seam: a store's `put` and `read` of a `File` with a

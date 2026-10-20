@@ -46,11 +46,14 @@ use std::collections::VecDeque;
 use std::ops::ControlFlow;
 use std::rc::Rc;
 
+use jadpo_std::subscriber::Target;
 use jadpo_value::{Validator, Value};
 
 pub use crate::budget::RUN_LIMIT_MS;
 use crate::budget::{Budget, Cut, Invocation};
+use crate::capability::{Call, Repeat};
 use crate::ctx::System;
+use crate::effects::Unanswered;
 pub use crate::outbox::Delivery;
 use crate::race::{First, race};
 use crate::{
@@ -122,7 +125,7 @@ pub async fn settle_within(
     work: Vec<Deferred>,
     within: &mut crate::LocalFuture<'_, ()>,
 ) -> Settled {
-    use crate::outbox::{FAILED, SUCCEEDED};
+    use crate::outbox::{FAILED, OUTCOME_UNKNOWN, SUCCEEDED};
     let host = ctx.host();
     let budget = Budget::of(host, u64::from(jadpo_std::http::MAX_DEADLINE_MS));
     let mut queue: VecDeque<Piece> = VecDeque::new();
@@ -156,7 +159,11 @@ pub async fn settle_within(
                     attempt_delivery(executor, ctx, &budget, delivery.clone(), Some(&mut stop))
                         .await;
                 match attempted {
-                    Some((_, state)) if state == SUCCEEDED || state == FAILED => true,
+                    Some((_, state))
+                        if state == SUCCEEDED || state == FAILED || state == OUTCOME_UNKNOWN =>
+                    {
+                        true
+                    }
                     Some((_, GIVEN_BACK)) => {
                         queue.push_front(Piece::Delivery(delivery));
                         false
@@ -414,16 +421,19 @@ pub async fn deliver(
 const GIVEN_BACK: &str = "given back";
 
 /// [`deliver`] within `budget`, with the state its record was left in:
-/// `succeeded`, `failed`, or `pending` to be tried again after a wait; or
-/// [`GIVEN_BACK`]. Its claim lasts what is left of `budget` and the
-/// margin ([`crate::lease`]). The subscriber's action runs within
+/// `succeeded`, `failed`, `pending` to be tried again after a wait, or
+/// `outcome_unknown`; or [`GIVEN_BACK`]. Its claim lasts what is left of
+/// `budget` and the margin ([`crate::lease`]). The subscriber's action, or
+/// the capability's operation it targets (chunk 7.0c), runs within
 /// `budget` ([`within_budget`]): one its limit stops is an attempt that
 /// ran out of time, settled against its `retry:` budget (chunk 6.6a); one
 /// its host's shutdown stops is given back. While a route waits for it,
 /// `within` races the action's body in place of the budget's limit, and
 /// one it stops is given back too. A delivery claimed over its `retry:`
 /// budget or past `within:` from its event fails without running (chunk
-/// 6.6a).
+/// 6.6a). Once a call its run made may have acted outside, and sending it
+/// again could act twice, the delivery is neither given back nor retried
+/// but parked as `outcome_unknown` for an operator (area 16).
 async fn attempt_delivery(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -432,7 +442,7 @@ async fn attempt_delivery(
     within: Option<&mut crate::LocalFuture<'_, ()>>,
 ) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
-        self, After, CHAIN_LIMIT, FAILED, PENDING, SUCCEEDED, failure_json, micros,
+        self, After, CHAIN_LIMIT, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED, failure_json, micros,
     };
     if ctx.in_action() {
         return Some((
@@ -557,53 +567,92 @@ async fn attempt_delivery(
             FAILED,
         ));
     }
-    let Some(args) = outbox::arguments(subscriber, &delivery.value) else {
-        settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
-        return Some((
-            Outcome::Fault(ctx.fault(
-                FaultKind::Defect("an event without the fields its subscriber reads".into()),
-                Frame::ENTRY,
-            )),
-            FAILED,
-        ));
+    // What the run sends outside is logged from here (chunk 7.0c).
+    let mark = ctx.capabilities().calls().len();
+    let ran = match &subscriber.target {
+        // A capability's operation is handed the event whole (chunk 7.0c).
+        Target::Capability {
+            connection,
+            operation,
+            repeat,
+        } => {
+            // An unkeyed send is marked as going out first, so a worker
+            // lost while it is out leaves it for an operator, never sends
+            // it again: the sweep parks it once its lease has passed.
+            if *repeat == Repeat::Unkeyed {
+                let marked = database
+                    .query_once(outbox::MARK_SENDING, &[id.clone(), counted.clone()])
+                    .await;
+                if !matches!(marked, Ok(rows) if !rows.is_empty()) {
+                    let state = retried("unavailable", Some("unavailable")).await;
+                    return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
+                }
+            }
+            let call = Call::new(
+                connection.clone(),
+                operation.clone(),
+                delivery.value.clone(),
+                *repeat,
+            );
+            send(ctx, call, budget, within).await
+        }
+        Target::Action { callable, args } => {
+            let Some(args) = outbox::arguments(args, &delivery.value) else {
+                settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
+                return Some((
+                    Outcome::Fault(ctx.fault(
+                        FaultKind::Defect(
+                            "an event without the fields its subscriber reads".into(),
+                        ),
+                        Frame::ENTRY,
+                    )),
+                    FAILED,
+                ));
+            };
+            let job = Job {
+                callable: *callable,
+                args,
+                system: System {
+                    tenant: outbox::tenant(subscriber, &delivery.value),
+                },
+            };
+            let (trace, chain) = (ctx.trace(), ctx.chain());
+            let continued = match delivery.trace {
+                Some(parent) => ctx.new_span(parent),
+                None => ctx.new_trace(),
+            };
+            ctx.set_trace(Some(continued));
+            let background = ctx.background_mut();
+            background.set_chain(delivery.depth.saturating_add(1));
+            background.set_handled(subscriber.store.clone().map(|store| crate::ctx::Handled {
+                store,
+                id: delivery.id,
+            }));
+            let ran = match within {
+                // A route stopping its wait gives the delivery back, as the
+                // host shutting down does.
+                Some(stop) => held(executor, ctx, job, stop, ())
+                    .await
+                    .map_err(|()| Cut::ShuttingDown),
+                None => within_budget(executor, ctx, budget, job).await,
+            };
+            let background = ctx.background_mut();
+            background.set_handled(None);
+            background.set_trace(trace);
+            background.set_chain(chain);
+            ran
+        }
     };
-    let job = Job {
-        callable: subscriber.callable,
-        args,
-        system: System {
-            tenant: outbox::tenant(subscriber, &delivery.value),
-        },
-    };
-    let (trace, chain) = (ctx.trace(), ctx.chain());
-    let continued = match delivery.trace {
-        Some(parent) => ctx.new_span(parent),
-        None => ctx.new_trace(),
-    };
-    ctx.set_trace(Some(continued));
-    let background = ctx.background_mut();
-    background.set_chain(delivery.depth.saturating_add(1));
-    background.set_handled(subscriber.store.clone().map(|store| crate::ctx::Handled {
-        store,
-        id: delivery.id,
-    }));
-    let ran = match within {
-        // A route stopping its wait gives the delivery back, as the host
-        // shutting down does.
-        Some(stop) => held(executor, ctx, job, stop, ())
-            .await
-            .map_err(|()| Cut::ShuttingDown),
-        None => within_budget(executor, ctx, budget, job).await,
-    };
-    let background = ctx.background_mut();
-    background.set_handled(None);
-    background.set_trace(trace);
-    background.set_chain(chain);
+    // Whether a call the run made may have acted outside in a way sending
+    // it again would repeat: then the delivery is never given back nor
+    // retried, but parked for an operator (area 16).
+    let acted = ctx.capabilities().may_have_acted(mark);
     let outcome = match ran {
         Ok(outcome) => outcome,
         // What the subscriber's action had begun is dropped, nothing it
         // did kept, and the delivery is given back as it was, for
         // deferred work or the sweep to run.
-        Err(Cut::ShuttingDown) => {
+        Err(Cut::ShuttingDown) if !acted => {
             crate::lease::release(database, &lease, now).await;
             return Some((
                 Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
@@ -612,9 +661,11 @@ async fn attempt_delivery(
         }
         // Its time ran out: nothing it did kept, and the attempt is
         // settled as one that timed out.
-        Err(Cut::OutOfTime) => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
+        Err(_) => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
     };
-    let state = match outbox::after(&outcome) {
+    let after = outbox::after(&outcome);
+    let after = if acted { after.once_acted() } else { after };
+    let state = match after {
         After::Succeeded => {
             settle(SUCCEEDED, None, None).await;
             SUCCEEDED
@@ -624,8 +675,51 @@ async fn attempt_delivery(
             settle(FAILED, None, Some(failure_json(&code, kind.as_deref()))).await;
             FAILED
         }
+        After::Park { cause } => {
+            settle(
+                OUTCOME_UNKNOWN,
+                None,
+                Some(outbox::parked_json(Some(&cause))),
+            )
+            .await;
+            OUTCOME_UNKNOWN
+        }
     };
     Some((outcome, state))
+}
+
+/// Hands `call`, a capability's delivery, to the capability seam in `ctx`
+/// (chunk 7.0c), raced against `within` while a route waits for it, or
+/// else against `budget`'s limit, as a subscriber's action is: its outcome,
+/// or why it was cut while the call was out.
+async fn send(
+    ctx: &mut Ctx<'_>,
+    call: Call,
+    budget: &Budget<'_>,
+    within: Option<&mut crate::LocalFuture<'_, ()>>,
+) -> Result<Outcome, Cut> {
+    let name = call.name();
+    let sent = {
+        let sending = crate::effects::call(ctx, call);
+        match within {
+            Some(stop) => match race(sending, stop).await {
+                First::Left(sent) => sent,
+                First::Right(()) => return Err(Cut::ShuttingDown),
+            },
+            None => match race(sending, budget.cut()).await {
+                First::Left(sent) => sent,
+                First::Right(cut) => return Err(cut),
+            },
+        }
+    };
+    Ok(match sent {
+        Ok(value) => Outcome::Value(value),
+        Err(Unanswered::Failed(code)) => {
+            Outcome::Failed(Box::new(crate::Failure::new(name, code.clone(), code)))
+        }
+        Err(Unanswered::Failure(failure)) => Outcome::Failed(failure),
+        Err(Unanswered::Fault(kind)) => Outcome::Fault(ctx.fault(kind, Frame::ENTRY)),
+    })
 }
 
 /// Eight random bytes for a retry's jitter, from the host; none from a
@@ -673,6 +767,17 @@ pub(crate) async fn sweep_within(
     let database = host
         .database(store)
         .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+    // A delivery whose worker was lost while its unkeyed call was out is
+    // parked for an operator, never claimed again (chunk 7.0c).
+    database
+        .query_once(
+            crate::outbox::PARK_LOST,
+            &[
+                micros(now),
+                crate::outbox::parked_json(Some("lease_expired")),
+            ],
+        )
+        .await?;
     let rows = database
         .query_once(DUE, &[micros(now), SqlValue::Int8(i64::from(SWEEP_BATCH))])
         .await?;

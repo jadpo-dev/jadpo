@@ -13,7 +13,8 @@
 use std::path::Path;
 
 use jadpo_interp::Program;
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, SqlValue};
+use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 use super::http::{Dev, jadpo, tempdir, write};
@@ -210,19 +211,6 @@ fn a_body_naming_a_member_twice_is_refused() {
     assert_eq!(twice.status, 400, "{twice:?}");
 }
 
-/// A host whose one store is a PostgreSQL database.
-struct Store(jadpo_host_native::Postgres);
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.0)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 #[test]
 fn a_stored_value_that_breaks_its_rules_is_never_read_as_one() {
     if !jadpo_test::live() {
@@ -279,7 +267,7 @@ fn a_stored_value_that_breaks_its_rules_is_never_read_as_one() {
     });
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let host = Harness::postgres(&url);
     let call = |n: u8| {
         let action = program.plan().find("find_review").expect("the action");
         runtime.block_on(async {

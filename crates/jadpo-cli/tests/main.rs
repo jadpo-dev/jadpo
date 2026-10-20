@@ -14,6 +14,7 @@ mod batch_limits;
 mod batch_tenants;
 mod batches;
 mod binary;
+mod capability_deliveries;
 mod check;
 mod cli;
 mod client_address;
@@ -61,6 +62,7 @@ mod system_statements;
 mod tenant_reach;
 #[path = "test.rs"]
 mod test_command;
+mod tick_deletes;
 mod translation_exchange;
 mod translation_jadpo;
 mod translation_tooling;
