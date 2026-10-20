@@ -22,7 +22,7 @@ use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
 use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 use crate::support;
@@ -202,7 +202,7 @@ fn statement(url: &str, sql: &str, params: &[SqlValue]) {
 }
 
 /// What the action `name` gives with `args`.
-fn call(program: &Program, host: &Bench, name: &str, args: Vec<Value>) -> Outcome {
+fn call(program: &Program, host: &Harness, name: &str, args: Vec<Value>) -> Outcome {
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let id = program.plan().find(name).expect("the action");
     runtime.block_on(async {
@@ -256,7 +256,7 @@ fn a_row_edited_outside_jadpo_to_break_a_fields_rule_is_a_defect_on_every_read()
     );
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let tool_id = || Value::uuid(&jadpo_runtime::uuid_text(&tool));
     let shed_id = || Value::uuid(&jadpo_runtime::uuid_text(&shed));
     // Every read gives the row back while it keeps its rules.
@@ -451,7 +451,7 @@ fn a_nearest_querys_record_is_held_to_its_fields_rules() {
     );
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let question = || jadpo_value::vector::from_floats(&[1.0, 0.5, 0.0]).expect("a vector");
     let outcome = call(&program, &host, "answer_from", vec![question()]);
     assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");

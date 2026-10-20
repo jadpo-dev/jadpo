@@ -23,7 +23,7 @@ use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, run_deferred};
 use jadpo_runtime::{Database, Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -367,7 +367,7 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-async fn execute(host: &Bench, sql: &str, params: &[SqlValue]) {
+async fn execute(host: &Harness, sql: &str, params: &[SqlValue]) {
     host.store()
         .query_once(sql, params)
         .await
@@ -375,7 +375,7 @@ async fn execute(host: &Bench, sql: &str, params: &[SqlValue]) {
 }
 
 /// Each chore's title and how many times it was ticked, by title.
-async fn ticks(host: &Bench) -> Vec<(String, i64)> {
+async fn ticks(host: &Harness) -> Vec<(String, i64)> {
     host.store()
         .query_once(
             "SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"",
@@ -392,7 +392,7 @@ async fn ticks(host: &Bench) -> Vec<(String, i64)> {
 }
 
 /// Each tally's household, items walked and items skipped.
-async fn tallies(host: &Bench) -> Vec<(String, i64, i64)> {
+async fn tallies(host: &Harness) -> Vec<(String, i64, i64)> {
     host.store()
         .query_once(
             "SELECT \"household_id\"::text, \"walked\"::int8, \"skipped\"::int8 FROM \"tally\" ORDER BY 1",
@@ -411,7 +411,7 @@ async fn tallies(host: &Bench) -> Vec<(String, i64, i64)> {
 }
 
 /// The run's state and items done, as its row keeps them.
-async fn kept(host: &Bench, run: &Value) -> (String, i64) {
+async fn kept(host: &Harness, run: &Value) -> (String, i64) {
     let id = match jadpo_runtime::to_sql(&field(run, "id"), jadpo_runtime::SqlType::Uuid) {
         Ok(id) => id,
         other => panic!("not an identity: {other:?}"),
@@ -463,7 +463,7 @@ const BIRCH: &str = "0b000000-0000-4000-8000-000000000002";
 
 /// Runs `action` with `args` as no one signed in, then the run it
 /// started, to its end; gives the run.
-async fn sweep(program: &Program, host: &Bench, action: &str, args: Vec<Value>) -> Value {
+async fn sweep(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
     let mut ctx = host.ctx(program.places());
     let outcome = program.run(&mut ctx, id, args).await;
@@ -497,7 +497,7 @@ fn a_run_reaches_only_the_tenant_its_one_saved_tenant_id_names() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(1_800_000_000_000).random_from(7);
+    let host = Harness::postgres(&url).at(1_800_000_000_000).random_from(7);
     let program = &program;
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
@@ -609,7 +609,9 @@ fn a_runs_finished_keeps_its_counts_in_its_tenants_record() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(1_800_000_000_000).random_from(11);
+    let host = Harness::postgres(&url)
+        .at(1_800_000_000_000)
+        .random_from(11);
     let program = &program;
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {

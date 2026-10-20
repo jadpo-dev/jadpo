@@ -1,20 +1,20 @@
 //! The one host the runtime's Rust tests run on (chunk 7.0c, from the
 //! Phase 6 architecture review, which counted twenty hand-written hosts in
-//! `crates/jadpo-cli/tests`): a [`Bench`] over one store, whose clock,
+//! `crates/jadpo-cli/tests`): a [`Harness`] over one store, whose clock,
 //! randomness, timers, budget and background work a test sets. Fakes of
 //! outside capabilities wrap it, as they wrap any host
 //! ([`jadpo_runtime::capability::Faked`]).
 //!
 //! It is the runtime's, not a test project's: `jadpo test` runs each test
 //! on [`crate::database::TestHost`], and a Rust test that drives the
-//! runtime directly runs on a bench.
+//! runtime directly runs on a harness.
 
 use std::cell::{Cell, RefCell};
 
 use jadpo_runtime::budget::Invocation;
 use jadpo_runtime::{Clock, Ctx, Database, Env, Host, LocalFuture, Places, Row, SqlValue};
 
-/// What a timer of some length does on a [`Bench`].
+/// What a timer of some length does on a [`Harness`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Timer {
     /// Never finishes, so nothing runs out of time: every timer's default.
@@ -30,7 +30,7 @@ pub enum Timer {
 /// clock, randomness, timers, monotonic clock and budget a test sets. It
 /// keeps the work it is given to run after a response and to hand on,
 /// for the test to run or drop.
-pub struct Bench<D = jadpo_host_native::Postgres> {
+pub struct Harness<D = jadpo_host_native::Postgres> {
     database: D,
     /// The wall clock, when it has one, and how far it moves on each time
     /// it is read.
@@ -48,9 +48,9 @@ pub struct Bench<D = jadpo_host_native::Postgres> {
     handed: RefCell<Vec<LocalFuture<'static, ()>>>,
 }
 
-impl<D> std::fmt::Debug for Bench<D> {
+impl<D> std::fmt::Debug for Harness<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bench")
+        f.debug_struct("Harness")
             .field("clock", &self.clock)
             .field("random", &self.random)
             .field("seeds", &self.seeds)
@@ -59,23 +59,23 @@ impl<D> std::fmt::Debug for Bench<D> {
     }
 }
 
-impl Bench<jadpo_host_native::Postgres> {
-    /// A bench over the PostgreSQL database at `url`.
-    pub fn postgres(url: &str) -> Bench<jadpo_host_native::Postgres> {
-        Bench::new(
+impl Harness<jadpo_host_native::Postgres> {
+    /// A harness over the PostgreSQL database at `url`.
+    pub fn postgres(url: &str) -> Harness<jadpo_host_native::Postgres> {
+        Harness::new(
             jadpo_host_native::postgres(url)
                 .unwrap_or_else(|error| panic!("the store at {url}: {error:?}")),
         )
     }
 }
 
-impl<D: Database> Bench<D> {
-    /// A bench over `database` with no clock and no randomness, as a
+impl<D: Database> Harness<D> {
+    /// A harness over `database` with no clock and no randomness, as a
     /// test's host has, so each context runs under its seed and the test
     /// clock; timers that never finish; the default budget; and no
     /// monotonic clock.
-    pub fn new(database: D) -> Bench<D> {
-        Bench {
+    pub fn new(database: D) -> Harness<D> {
+        Harness {
             database,
             clock: None,
             step: Cell::new(0),
@@ -91,7 +91,7 @@ impl<D: Database> Bench<D> {
 
     /// Gives it a wall clock reading `now`, milliseconds since the epoch,
     /// which the test moves.
-    pub fn at(mut self, now: i64) -> Bench<D> {
+    pub fn at(mut self, now: i64) -> Harness<D> {
         self.clock = Some(Cell::new(now));
         self
     }
@@ -99,20 +99,20 @@ impl<D: Database> Bench<D> {
     /// Gives it random bytes, drawn from a counter starting after `drawn`
     /// draws: the same bytes every run, and different benches different
     /// bytes when they start apart.
-    pub fn random_from(mut self, drawn: u64) -> Bench<D> {
+    pub fn random_from(mut self, drawn: u64) -> Harness<D> {
         self.random = Some(Cell::new(drawn));
         self
     }
 
     /// Gives it a monotonic clock reading `start`, moving on `step` each
     /// time it is read.
-    pub fn monotonic(mut self, start: u64, step: u64) -> Bench<D> {
+    pub fn monotonic(mut self, start: u64, step: u64) -> Harness<D> {
         self.monotonic = Some((Cell::new(start), step));
         self
     }
 
     /// Gives each invocation of background work `ms` milliseconds.
-    pub fn budget(mut self, ms: u64) -> Bench<D> {
+    pub fn budget(mut self, ms: u64) -> Harness<D> {
         self.budget = Some(ms);
         self
     }
@@ -129,11 +129,11 @@ impl<D: Database> Bench<D> {
             .map_or_else(|| Clock::TEST.now(), Cell::get)
     }
 
-    /// Sets its clock, which [`Bench::at`] gave it, to `now`.
+    /// Sets its clock, which [`Harness::at`] gave it, to `now`.
     pub fn set_now(&self, now: i64) {
         self.clock
             .as_ref()
-            .expect("a bench with a clock: give it one with `at`")
+            .expect("a harness with a clock: give it one with `at`")
             .set(now);
     }
 
@@ -164,7 +164,7 @@ impl<D: Database> Bench<D> {
     }
 
     /// A context for one invocation on `host`, a wrapper of it (fakes in
-    /// some capabilities' place), as [`Bench::ctx`] makes one.
+    /// some capabilities' place), as [`Harness::ctx`] makes one.
     pub fn ctx_on<'p>(&self, places: &'p Places, host: &'p dyn Host) -> Ctx<'p> {
         self.seeds.set(self.seeds.get() + 1);
         let env = Env {
@@ -222,7 +222,7 @@ impl std::future::Future for Later {
     }
 }
 
-impl<D: Database> Host for Bench<D> {
+impl<D: Database> Host for Harness<D> {
     fn database(&self, _store: &str) -> Option<&dyn Database> {
         Some(&self.database)
     }

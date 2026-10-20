@@ -31,7 +31,7 @@ use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
 use jadpo_std::read::Source;
 use jadpo_std::standard::geo::{BOUNDING_BOX, CIRCLE};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::{Decimal, Quantity, Value, geo};
 
 use crate::support;
@@ -301,7 +301,7 @@ fn each_geo_condition_derives_the_gist_index_it_searches() {
 struct Live {
     url: String,
     program: Program,
-    host: Bench,
+    host: Harness,
     runtime: jadpo_host_native::Runtime,
 }
 
@@ -313,7 +313,7 @@ impl Live {
         assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
         let loaded = jadpo_db::load(root);
         let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-        let host = Bench::postgres(&url);
+        let host = Harness::postgres(&url);
         Live {
             url,
             program,

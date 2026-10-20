@@ -20,7 +20,7 @@ use jadpo_runtime::{
     StoreError, Transaction,
 };
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 use crate::support;
@@ -252,7 +252,7 @@ fn calls(url: &str) {
 fn call(program: &Program, url: &str, name: &str, since: i32) -> (Value, usize) {
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let sent = Rc::new(Cell::new(0));
-    let host = Bench::new(Counted {
+    let host = Harness::new(Counted {
         store: jadpo_host_native::postgres(url).expect("store"),
         sent: sent.clone(),
     });

@@ -23,7 +23,7 @@ use jadpo_runtime::runner::{Job, as_system as run_as_system};
 use jadpo_runtime::{Caller, Executor, Outcome, SqlType, SqlValue, System};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -370,7 +370,7 @@ fn project(name: &str) -> PathBuf {
 /// Runs `action` with `args` as `caller`, signed in, or as no one.
 async fn call(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
@@ -389,7 +389,7 @@ async fn call(
 /// runner runs a subscriber's delivery or a schedule's run.
 async fn as_system(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     tenant: Option<&Value>,
@@ -477,7 +477,7 @@ fn the_system_is_let_in_exactly_where_access_system_grants_and_no_caller_is() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let ann = value(call(&program, &host, "join", vec![Value::text("ann")], None).await);

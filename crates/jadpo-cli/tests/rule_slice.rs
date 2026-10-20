@@ -14,7 +14,7 @@ use std::path::Path;
 
 use jadpo_interp::Program;
 use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 use super::http::{Dev, jadpo, tempdir, write};
@@ -267,7 +267,7 @@ fn a_stored_value_that_breaks_its_rules_is_never_read_as_one() {
     });
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let call = |n: u8| {
         let action = program.plan().find("find_review").expect("the action");
         runtime.block_on(async {

@@ -34,7 +34,7 @@ use jadpo_runtime::{
     StoreError, Transaction,
 };
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -414,7 +414,7 @@ fn a_concurrent_change_reruns_the_whole_action_and_its_writes_happen_once() {
         levels: RefCell::new(Vec::new()),
         inserted: RefCell::new(Vec::new()),
     });
-    let host = Bench::new(Interfering(Rc::clone(&state)));
+    let host = Harness::new(Interfering(Rc::clone(&state)));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let shelf = value(call(&program, &host, "add_shelf", vec![Value::text("Jams")]).await);
@@ -672,7 +672,7 @@ async fn race(
         saw_waiting: Cell::new(false),
     });
     let racer = |first: bool| {
-        Bench::new(Racer {
+        Harness::new(Racer {
             store: postgres(url).expect("store"),
             race: Rc::clone(&shared),
             first,
@@ -722,7 +722,7 @@ fn two_counters_at_once_rerun_only_when_their_action_reads_first() {
         levels: RefCell::new(Vec::new()),
         inserted: RefCell::new(Vec::new()),
     });
-    let host = Bench::new(Interfering(Rc::clone(&state)));
+    let host = Harness::new(Interfering(Rc::clone(&state)));
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let shelf = value(call(&program, &host, "add_shelf", vec![Value::text("Jams")]).await);

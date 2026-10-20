@@ -756,7 +756,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   without its values (`capability::Logged`, on `Response::calls` for
   7.2's `jadpo calls`), and recorded and replayed beside the random bytes
   (`Ctx::record_run`); fakes as host wrappers (`capability::Faked`,
-  `Fake`) and one shared test host, `jadpo_test::host::Bench`, now under
+  `Fake`) and one shared test host, `jadpo_test::host::Harness`, now under
   nineteen of `crates/jadpo-cli/tests`' files; a subscriber's `Target`, an
   action or a capability's operation, and a delivery whose unkeyed call
   may have acted parked as `outcome_unknown` (its driver said so, it was

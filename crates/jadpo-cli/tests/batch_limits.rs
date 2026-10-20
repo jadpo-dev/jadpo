@@ -23,7 +23,7 @@ use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, deliver};
 use jadpo_runtime::{Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -186,7 +186,7 @@ const DAY: i64 = 24 * 60 * 60 * 1000;
 
 /// Runs `action` with `args` as no one signed in, giving the work it
 /// left for after its response.
-async fn call(host: &Bench, program: &Program, action: &str, args: Vec<Value>) -> Vec<Deferred> {
+async fn call(host: &Harness, program: &Program, action: &str, args: Vec<Value>) -> Vec<Deferred> {
     let id = program.plan().find(action).expect("the action");
     let mut ctx = host.ctx(program.places());
     match program.run(&mut ctx, id, args).await {
@@ -226,8 +226,8 @@ fn load(name: &str) -> Option<Loaded> {
     })
 }
 
-fn host(url: &str) -> Bench {
-    Bench::postgres(url).at(T0).random_from(0)
+fn host(url: &str) -> Harness {
+    Harness::postgres(url).at(T0).random_from(0)
 }
 
 /// Runs `work` and what it sets off, one piece at a time, as deferred work
@@ -235,7 +235,7 @@ fn host(url: &str) -> Bench {
 /// when it stopped.
 async fn drive(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     work: Vec<Deferred>,
     limit: usize,
 ) -> (usize, usize) {
@@ -264,7 +264,7 @@ async fn drive(
 }
 
 /// Starts the loop on a shelf of one item and runs it until it stops.
-async fn loop_until_it_stops(program: &Program, host: &Bench) {
+async fn loop_until_it_stops(program: &Program, host: &Harness) {
     call(host, program, "add_item", vec![Value::text("a")]).await;
     let work = call(host, program, "touch_all", vec![]).await;
     let (ran, left) = drive(program, host, work, 200).await;

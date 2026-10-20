@@ -2113,7 +2113,7 @@ record. Fakes are host wrappers: `capability::Faked` gives a
 `capability::Fake` (scripted answers per operation, a `Hang`, and what
 it was sent) in some connections' place, everything else the wrapped
 host's, through `Host` for `&H`. The runtime's Rust tests share one host,
-`jadpo_test::host::Bench` (one store for every name, a clock the test
+`jadpo_test::host::Harness` (one store for every name, a clock the test
 moves, randomness from a counter, timers that pass when told, a budget,
 and the work it is given kept), which replaced twenty hand-written hosts
 in nineteen of `crates/jadpo-cli/tests`' files; the live tests of

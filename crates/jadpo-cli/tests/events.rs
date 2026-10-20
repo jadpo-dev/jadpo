@@ -27,7 +27,7 @@ use jadpo_runtime::runner::{Deferred, run_deferred, sweep};
 use jadpo_runtime::{Caller, Executor, Outcome, SqlType, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -454,7 +454,7 @@ fn project(name: &str) -> PathBuf {
 
 /// Each delivery of `subscriber`'s state, attempts and last failure's
 /// code, oldest event first.
-async fn deliveries(host: &Bench, subscriber: &str) -> Vec<(String, i32, Option<String>)> {
+async fn deliveries(host: &Harness, subscriber: &str) -> Vec<(String, i32, Option<String>)> {
     let sql = format!(
         "SELECT \"d\".\"status\", \"d\".\"attempts\", \"d\".\"last_failure\" ->> 'code' FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" WHERE \"d\".\"subscriber\" LIKE '%{subscriber}' ORDER BY \"o\".\"emitted_at\", \"o\".\"id\""
     );
@@ -476,7 +476,7 @@ async fn deliveries(host: &Bench, subscriber: &str) -> Vec<(String, i32, Option<
 }
 
 /// Each tally's household's name and how many chores it saw, by name.
-async fn tallies(host: &Bench) -> Vec<(String, i32)> {
+async fn tallies(host: &Harness) -> Vec<(String, i32)> {
     host.rows("SELECT \"h\".\"name\", \"t\".\"seen\"::int4 FROM \"tally\" AS \"t\" JOIN \"household\" AS \"h\" ON \"h\".\"id\" = \"t\".\"household_id\" ORDER BY \"h\".\"name\"")
         .await
         .into_iter()
@@ -491,7 +491,7 @@ async fn tallies(host: &Bench) -> Vec<(String, i32)> {
 /// gives back its outcome and the work it left for after its response.
 async fn call(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
@@ -555,7 +555,7 @@ fn an_event_is_kept_with_its_writes_and_delivered_after_the_response_retried_and
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let join = |handle: &str| {
@@ -758,7 +758,7 @@ fn a_payload_is_read_by_its_encoding_and_a_later_one_is_parked() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let ann = value(call(&program, &host, "join", vec![Value::text("ann")], None, None).await.0);

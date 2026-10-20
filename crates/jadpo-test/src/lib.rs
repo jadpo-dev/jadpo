@@ -21,7 +21,7 @@
 //! [`postgres`] gives tests a PostgreSQL server: the one
 //! `JADPO_TEST_DATABASE_URL` names, or a disposable one from the machine's
 //! own PostgreSQL tools; [`live`] says whether a Rust test's live part
-//! runs, the one helper every such test calls; and [`host::Bench`] is the
+//! runs, the one helper every such test calls; and [`host::Harness`] is the
 //! one host a Rust test that drives the runtime runs on (chunk 7.0c).
 //!
 //! What later phases add is left out rather than imitated: the trace of

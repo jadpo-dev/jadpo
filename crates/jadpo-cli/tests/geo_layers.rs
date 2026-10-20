@@ -18,7 +18,7 @@ use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
 use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::{Quantity, Value};
 
 use crate::support;
@@ -151,7 +151,7 @@ fn a_get_route_sends_a_query_s_layer_as_plain_geojson() {
     assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     runtime.block_on(async {
         let store = jadpo_host_native::postgres(&url).expect("store");

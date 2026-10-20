@@ -29,7 +29,7 @@ use jadpo_runtime::{
     Database, Executor, Isolation, LocalFuture, Outcome, Row, SqlValue, StoreError, Transaction,
 };
 use jadpo_term::Environment;
-use jadpo_test::host::{Bench, Timer};
+use jadpo_test::host::{Harness, Timer};
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -206,7 +206,7 @@ fn project(name: &str) -> PathBuf {
 }
 
 /// The store, its transactions noting when a commit begins: what the
-/// test's bench runs on, with a clock the test sets, which moves on each
+/// test's harness runs on, with a clock the test sets, which moves on each
 /// time the host reads it when the test says so, as a sweep's work takes
 /// time; random bytes from a counter; and the 15-minute limit of a run,
 /// which passes at once when the test says so.
@@ -277,7 +277,7 @@ impl Transaction for Noted {
 const T0: i64 = 1_792_400_400_000;
 
 /// How many events of type `event` the outbox keeps.
-async fn events(host: &Bench<Noting>, event: &str) -> i64 {
+async fn events(host: &Harness<Noting>, event: &str) -> i64 {
     host.count(&format!(
         "SELECT count(*) FROM \"jadpo_outbox\" WHERE \"event\" LIKE '%{event}'"
     ))
@@ -287,7 +287,7 @@ async fn events(host: &Bench<Noting>, event: &str) -> i64 {
 /// Each delivery to `subscriber` of the note with `words`: its state,
 /// attempts and last failure's code.
 async fn deliveries(
-    host: &Bench<Noting>,
+    host: &Harness<Noting>,
     subscriber: &str,
     words: &str,
 ) -> Vec<(String, i32, Option<String>)> {
@@ -313,7 +313,7 @@ async fn deliveries(
 
 /// Sets the delivery to `subscriber` of the note with `words` as `set`
 /// says, as a crash or a dropped run would have left it.
-async fn leave(host: &Bench<Noting>, subscriber: &str, words: &str, set: &str) {
+async fn leave(host: &Harness<Noting>, subscriber: &str, words: &str, set: &str) {
     host.rows(&format!(
         "UPDATE \"jadpo_deliveries\" AS \"d\" SET {set} FROM \"jadpo_outbox\" AS \"o\", \"note\" AS \"n\" WHERE \"o\".\"id\" = \"d\".\"outbox_id\" AND \"n\".\"id\"::text = \"o\".\"payload\" ->> 'note_id' AND \"d\".\"subscriber\" LIKE '%{subscriber}' AND \"n\".\"words\" = '{words}' RETURNING \"d\".\"id\""
     ))
@@ -322,7 +322,7 @@ async fn leave(host: &Bench<Noting>, subscriber: &str, words: &str, set: &str) {
 
 /// Posts a note saying `words` at the clock's time, giving the work it
 /// left for after its response.
-async fn post(host: &Bench<Noting>, program: &Program, words: &str) -> Vec<Deferred> {
+async fn post(host: &Harness<Noting>, program: &Program, words: &str) -> Vec<Deferred> {
     let id = program.plan().find("post_note").expect("the action");
     let mut ctx = host.ctx(program.places());
     match program.run(&mut ctx, id, vec![Value::text(words)]).await {
@@ -368,8 +368,8 @@ fn load(name: &str) -> Option<Loaded> {
     })
 }
 
-fn host(url: &str) -> Bench<Noting> {
-    Bench::new(Noting {
+fn host(url: &str) -> Harness<Noting> {
+    Harness::new(Noting {
         db: postgres(url).expect("store"),
         committing: Rc::new(Cell::new(false)),
     })

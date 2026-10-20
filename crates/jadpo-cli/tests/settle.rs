@@ -26,7 +26,7 @@ use jadpo_runtime::runner::run_deferred;
 use jadpo_runtime::{Executor, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
-use jadpo_test::host::{Bench, Timer};
+use jadpo_test::host::{Harness, Timer};
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -236,7 +236,7 @@ const WITHIN_MS: u64 = 2_000;
 /// Each delivery to `subscriber` of the order for `item`: its state,
 /// attempts and last failure's code.
 async fn deliveries(
-    host: &Bench,
+    host: &Harness,
     subscriber: &str,
     item: &str,
 ) -> Vec<(String, i32, Option<String>)> {
@@ -303,7 +303,7 @@ fn a_route_waits_for_its_follow_on_work_then_answers_with_its_query() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let app = program.app();
     let route = app
         .table

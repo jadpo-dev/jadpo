@@ -20,7 +20,7 @@ use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Outcome, SqlValue};
 use jadpo_std::Op;
 use jadpo_std::read::Source;
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 use crate::support;
@@ -197,7 +197,7 @@ fn each_operation_derives_the_index_on_its_expression() {
 struct Live {
     url: String,
     program: Program,
-    host: Bench,
+    host: Harness,
     runtime: jadpo_host_native::Runtime,
 }
 
@@ -209,7 +209,7 @@ impl Live {
         assert_eq!(applied.code, 0, "{}{}", applied.stdout, applied.stderr);
         let loaded = jadpo_db::load(root);
         let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-        let host = Bench::postgres(&url);
+        let host = Harness::postgres(&url);
         Live {
             url,
             program,

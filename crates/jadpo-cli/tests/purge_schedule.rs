@@ -25,7 +25,7 @@ use jadpo_interp::Program;
 use jadpo_runtime::schedules::{Ran, tick};
 use jadpo_runtime::{Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -210,7 +210,7 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-async fn names(host: &Bench) -> Vec<String> {
+async fn names(host: &Harness) -> Vec<String> {
     host.rows("SELECT \"name\" FROM \"member\" ORDER BY \"name\"")
         .await
         .into_iter()
@@ -223,7 +223,7 @@ async fn names(host: &Bench) -> Vec<String> {
 
 /// Each purge run record's outcome and the records it counted, oldest
 /// first.
-async fn purge_runs(host: &Bench) -> Vec<(String, Option<i32>)> {
+async fn purge_runs(host: &Harness) -> Vec<(String, Option<i32>)> {
     host.rows("SELECT \"outcome\", \"items\" FROM \"jadpo_schedule_runs\" WHERE \"schedule\" = 'schedule Member.purge' ORDER BY \"started_at\"")
         .await
         .into_iter()
@@ -241,7 +241,7 @@ async fn purge_runs(host: &Bench) -> Vec<(String, Option<i32>)> {
 }
 
 /// Runs `action` with `args` at the store's clock, as no one.
-async fn call(program: &Program, host: &Bench, action: &str, args: Vec<Value>) -> Value {
+async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
     let mut ctx = host.ctx(program.places());
     match program.run(&mut ctx, id, args).await {
@@ -345,7 +345,7 @@ fn the_purge_runs_hourly_on_the_tick_and_is_recorded_like_any_schedule() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
     let tick_at = |at: i64| {
         host.set_now(at);

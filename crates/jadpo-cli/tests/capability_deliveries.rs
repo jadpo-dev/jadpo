@@ -30,7 +30,7 @@ use jadpo_runtime::runner::{Deferred, run_deferred, sweep};
 use jadpo_runtime::{Ctx, Executor, Host, LocalFuture, Outcome, Places, SqlValue};
 use jadpo_std::subscriber::{EventsPlan, Target};
 use jadpo_term::Environment;
-use jadpo_test::host::{Bench, Timer};
+use jadpo_test::host::{Harness, Timer};
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -285,9 +285,9 @@ impl Executor for Stand<'_> {
 
 /// Posts a note saying `words` on `host`, giving the work it left for
 /// after its response.
-async fn post(bench: &Bench, host: &dyn Host, program: &Program, words: &str) -> Vec<Deferred> {
+async fn post(harness: &Harness, host: &dyn Host, program: &Program, words: &str) -> Vec<Deferred> {
     let id = program.plan().find("post_note").expect("the action");
-    let mut ctx = bench.ctx_on(program.places(), host);
+    let mut ctx = harness.ctx_on(program.places(), host);
     match program.run(&mut ctx, id, vec![Value::text(words)]).await {
         Outcome::Value(_) => {}
         other => panic!("the note is posted: {other:?}"),
@@ -298,7 +298,7 @@ async fn post(bench: &Bench, host: &dyn Host, program: &Program, words: &str) ->
 /// Each delivery of the note saying `words`: its state, attempts, last
 /// failure's code and its cause.
 async fn deliveries(
-    bench: &Bench,
+    harness: &Harness,
     words: &str,
 ) -> Vec<(String, i32, Option<String>, Option<String>)> {
     let sql = format!(
@@ -308,7 +308,7 @@ async fn deliveries(
         SqlValue::Text(text) => Some(text.clone()),
         _ => None,
     };
-    bench
+    harness
         .rows(&sql)
         .await
         .into_iter()
@@ -338,16 +338,16 @@ fn state(
     )]
 }
 
-/// The test capability, on a bench over `url` whose clock reads `T0`.
-fn stage(url: &str) -> (Rc<Fake>, Bench) {
+/// The test capability, on a harness over `url` whose clock reads `T0`.
+fn stage(url: &str) -> (Rc<Fake>, Harness) {
     (
         Rc::new(Fake::new()),
-        Bench::postgres(url).at(T0).random_from(0),
+        Harness::postgres(url).at(T0).random_from(0),
     )
 }
 
-fn faked<'b>(bench: &'b Bench, fake: &Rc<Fake>) -> Faked<&'b Bench> {
-    Faked::new(bench).with("mail", Rc::clone(fake) as Rc<dyn Capability>)
+fn faked<'b>(harness: &'b Harness, fake: &Rc<Fake>) -> Faked<&'b Harness> {
+    Faked::new(harness).with("mail", Rc::clone(fake) as Rc<dyn Capability>)
 }
 
 /// A delivery that targets a capability hands it the event whole, through
@@ -358,15 +358,15 @@ fn a_delivery_hands_its_event_to_a_capability_once() {
     let Some(loaded) = load("sent") else {
         return;
     };
-    let (fake, bench) = stage(&loaded.url);
-    let host = faked(&bench, &fake);
+    let (fake, harness) = stage(&loaded.url);
+    let host = faked(&harness, &fake);
     let stand = Stand::new(&loaded.program, Relay::Sent(Repeat::Unkeyed));
     Runtime::new().expect("runtime").block_on(async {
-        let work = post(&bench, &host, &loaded.program, "hello").await;
+        let work = post(&harness, &host, &loaded.program, "hello").await;
         let ran = run_deferred(&stand, &host, work).await;
         assert!(matches!(ran.as_slice(), [Outcome::Value(_)]), "{ran:?}");
         assert_eq!(
-            deliveries(&bench, "hello").await,
+            deliveries(&harness, "hello").await,
             state("succeeded", 1, None, None)
         );
         let sent = fake.sent();
@@ -377,13 +377,13 @@ fn a_delivery_hands_its_event_to_a_capability_once() {
             "the event, whole"
         );
         assert_eq!(
-            bench
+            harness
                 .count("SELECT count(*) FROM \"jadpo_handled_deliveries\"")
                 .await,
             0,
             "no action, so no handled record"
         );
-        bench.set_now(T0 + HOUR);
+        harness.set_now(T0 + HOUR);
         sweep(&stand, &host, "main", T0 + HOUR)
             .await
             .expect("the sweep runs");
@@ -399,8 +399,8 @@ fn an_unkeyed_send_whose_outcome_is_unknown_is_parked_never_sent_again() {
     let Some(loaded) = load("unknown") else {
         return;
     };
-    let (fake, bench) = stage(&loaded.url);
-    let host = faked(&bench, &fake);
+    let (fake, harness) = stage(&loaded.url);
+    let host = faked(&harness, &fake);
     let stand = Stand::new(&loaded.program, Relay::Sent(Repeat::Unkeyed));
     Runtime::new().expect("runtime").block_on(async {
         for (words, answer) in [
@@ -409,33 +409,33 @@ fn an_unkeyed_send_whose_outcome_is_unknown_is_parked_never_sent_again() {
             ("down", Answer::Unavailable),
         ] {
             fake.script("send", Scripted::Answer(answer));
-            let work = post(&bench, &host, &loaded.program, words).await;
+            let work = post(&harness, &host, &loaded.program, words).await;
             run_deferred(&stand, &host, work).await;
         }
         assert_eq!(
-            deliveries(&bench, "lost").await,
+            deliveries(&harness, "lost").await,
             state("outcome_unknown", 1, Some("outcome_unknown"), None)
         );
         assert_eq!(
-            deliveries(&bench, "refused").await,
+            deliveries(&harness, "refused").await,
             state("failed", 1, Some("recipient_rejected"), None)
         );
         assert_eq!(
-            deliveries(&bench, "down").await,
+            deliveries(&harness, "down").await,
             state("pending", 1, Some("unavailable"), None)
         );
         // An hour on, only the one that surely did nothing is sent again.
-        bench.set_now(T0 + HOUR);
+        harness.set_now(T0 + HOUR);
         sweep(&stand, &host, "main", T0 + HOUR)
             .await
             .expect("the sweep runs");
         assert_eq!(fake.sent().len(), 4, "three sends, and the retry");
         assert_eq!(
-            deliveries(&bench, "down").await,
+            deliveries(&harness, "down").await,
             state("succeeded", 2, None, None)
         );
         assert_eq!(
-            deliveries(&bench, "lost").await,
+            deliveries(&harness, "lost").await,
             state("outcome_unknown", 1, Some("outcome_unknown"), None),
             "parked, not sent again"
         );
@@ -449,23 +449,23 @@ fn a_keyed_send_whose_outcome_is_unknown_is_sent_again() {
     let Some(loaded) = load("keyed") else {
         return;
     };
-    let (fake, bench) = stage(&loaded.url);
-    let host = faked(&bench, &fake);
+    let (fake, harness) = stage(&loaded.url);
+    let host = faked(&harness, &fake);
     let stand = Stand::new(&loaded.program, Relay::Sent(Repeat::Keyed));
     Runtime::new().expect("runtime").block_on(async {
         fake.script("send", Scripted::Answer(Answer::Unknown));
-        let work = post(&bench, &host, &loaded.program, "keyed").await;
+        let work = post(&harness, &host, &loaded.program, "keyed").await;
         run_deferred(&stand, &host, work).await;
         assert_eq!(
-            deliveries(&bench, "keyed").await,
+            deliveries(&harness, "keyed").await,
             state("pending", 1, Some("unavailable"), None)
         );
-        bench.set_now(T0 + HOUR);
+        harness.set_now(T0 + HOUR);
         sweep(&stand, &host, "main", T0 + HOUR)
             .await
             .expect("the sweep runs");
         assert_eq!(
-            deliveries(&bench, "keyed").await,
+            deliveries(&harness, "keyed").await,
             state("succeeded", 2, None, None)
         );
         assert_eq!(fake.sent().len(), 2);
@@ -479,17 +479,17 @@ fn an_unkeyed_send_cut_off_while_it_is_out_is_parked() {
     let Some(loaded) = load("cut") else {
         return;
     };
-    let (fake, bench) = stage(&loaded.url);
-    let host = faked(&bench, &fake);
+    let (fake, harness) = stage(&loaded.url);
+    let host = faked(&harness, &fake);
     let stand = Stand::new(&loaded.program, Relay::Sent(Repeat::Unkeyed));
     Runtime::new().expect("runtime").block_on(async {
         fake.script("send", Scripted::Hang);
-        let work = post(&bench, &host, &loaded.program, "slow").await;
-        bench.set_timer(RUN_LIMIT_MS, Timer::Now);
+        let work = post(&harness, &host, &loaded.program, "slow").await;
+        harness.set_timer(RUN_LIMIT_MS, Timer::Now);
         run_deferred(&stand, &host, work).await;
-        bench.set_timer(RUN_LIMIT_MS, Timer::Never);
+        harness.set_timer(RUN_LIMIT_MS, Timer::Never);
         assert_eq!(
-            deliveries(&bench, "slow").await,
+            deliveries(&harness, "slow").await,
             state(
                 "outcome_unknown",
                 1,
@@ -497,7 +497,7 @@ fn an_unkeyed_send_cut_off_while_it_is_out_is_parked() {
                 Some("deadline_exceeded")
             )
         );
-        bench.set_now(T0 + HOUR);
+        harness.set_now(T0 + HOUR);
         sweep(&stand, &host, "main", T0 + HOUR)
             .await
             .expect("the sweep runs");
@@ -513,27 +513,27 @@ fn an_unkeyed_send_whose_worker_was_lost_is_parked_not_sent_again() {
     let Some(loaded) = load("lost-worker") else {
         return;
     };
-    let (fake, bench) = stage(&loaded.url);
-    let host = faked(&bench, &fake);
+    let (fake, harness) = stage(&loaded.url);
+    let host = faked(&harness, &fake);
     let stand = Stand::new(&loaded.program, Relay::Sent(Repeat::Unkeyed));
     Runtime::new().expect("runtime").block_on(async {
         // Its work dropped, then its record left as a worker lost while
         // its send was out leaves it: `sending`, its lease a minute on.
-        drop(post(&bench, &host, &loaded.program, "crashed").await);
+        drop(post(&harness, &host, &loaded.program, "crashed").await);
         let lease = (T0 + 60_000) / 1000;
-        bench
+        harness
             .rows(&format!(
                 "UPDATE \"jadpo_deliveries\" SET \"status\" = 'sending', \"attempts\" = 1, \"next_attempt_at\" = to_timestamp({lease}) RETURNING \"id\""
             ))
             .await;
         // Before its lease passes, the sweep leaves it alone.
-        bench.set_now(T0 + 30_000);
+        harness.set_now(T0 + 30_000);
         sweep(&stand, &host, "main", T0 + 30_000).await.expect("the sweep runs");
-        assert_eq!(deliveries(&bench, "crashed").await, state("sending", 1, None, None));
-        bench.set_now(T0 + HOUR);
+        assert_eq!(deliveries(&harness, "crashed").await, state("sending", 1, None, None));
+        harness.set_now(T0 + HOUR);
         sweep(&stand, &host, "main", T0 + HOUR).await.expect("the sweep runs");
         assert_eq!(
-            deliveries(&bench, "crashed").await,
+            deliveries(&harness, "crashed").await,
             state(
                 "outcome_unknown",
                 1,
@@ -553,15 +553,15 @@ fn an_action_that_sent_an_unkeyed_call_then_failed_is_parked_not_retried() {
     let Some(loaded) = load("action") else {
         return;
     };
-    let (fake, bench) = stage(&loaded.url);
-    let host = faked(&bench, &fake);
+    let (fake, harness) = stage(&loaded.url);
+    let host = faked(&harness, &fake);
     let failed = Outcome::Failed(Box::new(jadpo_runtime::unavailable()));
     let stand = Stand::new(&loaded.program, Relay::CallsThen(failed));
     Runtime::new().expect("runtime").block_on(async {
-        let work = post(&bench, &host, &loaded.program, "half").await;
+        let work = post(&harness, &host, &loaded.program, "half").await;
         run_deferred(&stand, &host, work).await;
         assert_eq!(
-            deliveries(&bench, "half").await,
+            deliveries(&harness, "half").await,
             state(
                 "outcome_unknown",
                 1,
@@ -569,7 +569,7 @@ fn an_action_that_sent_an_unkeyed_call_then_failed_is_parked_not_retried() {
                 Some("unavailable")
             )
         );
-        bench.set_now(T0 + HOUR);
+        harness.set_now(T0 + HOUR);
         sweep(&stand, &host, "main", T0 + HOUR)
             .await
             .expect("the sweep runs");

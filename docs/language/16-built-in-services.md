@@ -1327,7 +1327,9 @@ reading:
   retried as any delivery is. A subscriber's action whose worker is lost
   while its call is out is the step record's (area 12, "Several changing
   calls in one action"; chunk 7.5): until then it is claimed again as
-  any lost delivery is.
+  any lost delivery is. A schedule's run has no retry to stop, its next
+  run being the next tick's, so its run record keeps how it ended, as
+  before.
 - **No call inside an open transaction.** A call made once the action
   has read or written, while its transaction is open, is refused before
   it goes out, with a fault naming the call and saying to make it before

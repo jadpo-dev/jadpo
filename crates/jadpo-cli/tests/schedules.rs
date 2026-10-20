@@ -25,7 +25,7 @@ use jadpo_runtime::schedules::{Ran, Skipped, tick};
 use jadpo_runtime::{Caller, Executor, Outcome, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -452,7 +452,7 @@ fn project(name: &str) -> PathBuf {
 
 /// Each run record's outcome, the reason a tick skipped it, its due
 /// time as minutes after `T0` and its events, oldest first.
-async fn runs(host: &Bench) -> Vec<(String, Option<String>, i64, Option<i32>)> {
+async fn runs(host: &Harness) -> Vec<(String, Option<String>, i64, Option<i32>)> {
     host.rows("SELECT \"outcome\", \"reason\", ((extract(epoch FROM \"due_slot\") * 1000 - 1792400400000) / 60000)::int8, \"events\" FROM \"jadpo_schedule_runs\" ORDER BY \"started_at\", \"due_slot\"")
         .await
         .into_iter()
@@ -475,14 +475,14 @@ async fn runs(host: &Bench) -> Vec<(String, Option<String>, i64, Option<i32>)> {
 }
 
 /// When the census is next due, as minutes after `T0`.
-async fn next_due(host: &Bench) -> i64 {
+async fn next_due(host: &Harness) -> i64 {
     host.count("SELECT ((extract(epoch FROM \"next_run_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"jadpo_schedules\"")
         .await
 }
 
 /// Each census's count of chores, and when it was taken as minutes
 /// after `T0`, oldest first.
-async fn censuses(host: &Bench) -> Vec<(i32, i64)> {
+async fn censuses(host: &Harness) -> Vec<(i32, i64)> {
     host.rows("SELECT \"seen\"::int4, ((extract(epoch FROM \"taken_at\") * 1000 - 1792400400000) / 60000)::int8 FROM \"census\" ORDER BY \"taken_at\"")
         .await
         .into_iter()
@@ -494,7 +494,7 @@ async fn censuses(host: &Bench) -> Vec<(i32, i64)> {
 }
 
 /// Each delivery's state and attempts, oldest event first.
-async fn deliveries(host: &Bench) -> Vec<(String, i32)> {
+async fn deliveries(host: &Harness) -> Vec<(String, i32)> {
     host.rows("SELECT \"d\".\"status\", \"d\".\"attempts\" FROM \"jadpo_deliveries\" AS \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" ORDER BY \"o\".\"emitted_at\"")
         .await
         .into_iter()
@@ -508,7 +508,7 @@ async fn deliveries(host: &Bench) -> Vec<(String, i32)> {
 /// Runs `action` with `args` as `caller`, signed in, or as no one.
 async fn call(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
@@ -573,8 +573,8 @@ fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
     // Two instances of the application, each with its own connection.
-    let host = Bench::postgres(&url).at(T0).random_from(0);
-    let other = Bench::postgres(&url).at(T0).random_from(1 << 40);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
+    let other = Harness::postgres(&url).at(T0).random_from(1 << 40);
     let at = |minutes: i64| {
         let now = T0 + minutes * MINUTE;
         host.set_now(now);
@@ -855,7 +855,7 @@ fn schedules_are_listed_explained_paused_resumed_run_and_paged() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
     let runtime = Runtime::new().expect("runtime");
     let tick_at = |minutes: i64| {
@@ -1295,8 +1295,8 @@ fn two_instances_ticking_raise_an_alert_once() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
-    let other = Bench::postgres(&url).at(T0).random_from(1 << 40);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
+    let other = Harness::postgres(&url).at(T0).random_from(1 << 40);
     let runtime = Runtime::new().expect("runtime");
     // Both instances' ticks together: the alerts each raised.
     let both = |minutes: i64| {
@@ -1577,7 +1577,7 @@ fn deployed_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
 }
 
 /// Waits, up to a minute, until `sql`'s count is `want`.
-fn until_count(runtime: &Runtime, host: &Bench, sql: &str, want: i64) {
+fn until_count(runtime: &Runtime, host: &Harness, sql: &str, want: i64) {
     let started = std::time::Instant::now();
     while runtime.block_on(host.count(sql)) != want {
         assert!(
@@ -1605,7 +1605,7 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let at = |minutes: i64, seconds: i64| T0 + minutes * MINUTE + seconds * 1000;
     let runtime = Runtime::new().expect("runtime");
     host.set_now(at(0, 0));
@@ -1753,7 +1753,7 @@ fn a_requested_run_no_tick_picks_up_is_withdrawn() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let runtime = Runtime::new().expect("runtime");
 
     // No application is running, so no tick comes: after twice the period

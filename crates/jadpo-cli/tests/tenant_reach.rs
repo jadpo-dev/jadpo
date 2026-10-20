@@ -25,7 +25,7 @@ use jadpo_runtime::runner::{Deferred, run_deferred};
 use jadpo_runtime::{Caller, Executor, Outcome, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -402,7 +402,7 @@ fn project(name: &str) -> PathBuf {
 }
 
 /// Each household's name and how many tallies it holds, by name.
-async fn tallies(host: &Bench) -> Vec<(String, i64)> {
+async fn tallies(host: &Harness) -> Vec<(String, i64)> {
     host.rows("SELECT \"h\".\"name\", count(\"t\".\"id\") FROM \"household\" AS \"h\" LEFT JOIN \"tally\" AS \"t\" ON \"t\".\"household_id\" = \"h\".\"id\" GROUP BY \"h\".\"name\" ORDER BY \"h\".\"name\"")
         .await
         .into_iter()
@@ -414,7 +414,7 @@ async fn tallies(host: &Bench) -> Vec<(String, i64)> {
 }
 
 /// Each chore's title and ticks, by title.
-async fn ticks(host: &Bench) -> Vec<(String, i64)> {
+async fn ticks(host: &Harness) -> Vec<(String, i64)> {
     host.rows("SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"")
         .await
         .into_iter()
@@ -429,7 +429,7 @@ async fn ticks(host: &Bench) -> Vec<(String, i64)> {
 /// gives back its outcome and the work it left for after its response.
 async fn call(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
@@ -496,7 +496,7 @@ fn a_caller_reaches_no_other_tenant_through_an_event_or_a_batch() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url).at(T0).random_from(0);
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let program = &program;
     let host = &host;
     let runtime = Runtime::new().expect("runtime");

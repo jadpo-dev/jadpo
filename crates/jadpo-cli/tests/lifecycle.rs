@@ -23,7 +23,7 @@ use jadpo_host_native::{Postgres, Runtime, postgres};
 use jadpo_interp::Program;
 use jadpo_runtime::{Clock, Database, Executor, Outcome, PURGE_BATCHES, Row, SqlValue};
 use jadpo_term::Environment;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -289,7 +289,7 @@ fn lifecycles_hide_records_and_run_transitions() {
 // --- purge -----------------------------------------------------------------------
 
 /// Runs `action` with `args`, as one invocation at the test clock.
-async fn call(program: &Program, host: &Bench, action: &str, args: Vec<Value>) -> Value {
+async fn call(program: &Program, host: &Harness, action: &str, args: Vec<Value>) -> Value {
     let id = program.plan().find(action).expect("the action");
     // Each invocation its own seed, so each makes new identities.
     let mut ctx = host.ctx(program.places());
@@ -361,7 +361,7 @@ fn purge_deletes_records_hidden_long_enough_and_keeps_the_rest() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let check = postgres(&url).expect("store");
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
@@ -492,7 +492,7 @@ fn purge_waits_as_long_as_a_setting_says() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let check = postgres(&url).expect("store");
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
@@ -560,7 +560,7 @@ fn purge_works_in_batches() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let check = postgres(&url).expect("store");
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
@@ -672,7 +672,7 @@ fn purge_follows_a_cascade_back_to_its_own_entity() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let check = postgres(&url).expect("store");
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {

@@ -874,13 +874,13 @@ use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::{Caller, Executor, Outcome};
 use jadpo_std::http::PrincipalKind;
-use jadpo_test::host::Bench;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 /// Runs `action` with `args` as `caller`, signed in, or as no one.
 async fn call(
     program: &Program,
-    host: &Bench,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
@@ -932,7 +932,7 @@ fn a_change_policy_refuses_reads_as_missing_and_is_logged_as_concealed() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let ann = value(call(&program, &host, "join", vec![Value::text("ann")], None).await);
@@ -1896,7 +1896,7 @@ fn a_reference_into_another_tenant_is_refused_without_policy_too() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         // A test's or a seed's call without a caller runs without policy,
@@ -2742,7 +2742,7 @@ fn a_listed_line_held_in_a_record_refuses_an_action_that_changes_none() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Bench::postgres(&url);
+    let host = Harness::postgres(&url);
     let runtime = Runtime::new().expect("runtime");
     runtime.block_on(async {
         let ann = value(call(&program, &host, "register", vec![Value::text("ann")], None).await);
