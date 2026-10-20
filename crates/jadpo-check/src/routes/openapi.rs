@@ -303,10 +303,7 @@ pub fn document(
     while let Some(key) = refs.iter().find(|key| !done.contains(*key)).cloned() {
         done.insert(key.clone());
         let name = wire.name(&key);
-        let schema = match super::wire::issued_of(&key) {
-            Some(issued) => super::wire::issued_schema(issued),
-            None => type_schema(&wire, &key, &mut refs),
-        };
+        let schema = component_schema(&wire, &key, &mut refs);
         schemas.insert(name, schema);
     }
     if exchange {
@@ -1641,6 +1638,16 @@ fn constrained(wire: &Wire<'_>, ty: &jadpo_graph::TypeRef, refs: &mut BTreeSet<K
     let mut schema = wire.schema(ty, refs);
     schema.set("x-jadpo-constraints", wire.render(ty, refs));
     schema
+}
+
+/// The schema of the object or enum `key` names, as its component in a
+/// document: what `ai.generate` asks a model to answer in too (area 21,
+/// "Typed output"; chunk 5.5v3).
+pub fn component_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
+    match super::wire::issued_of(key) {
+        Some(issued) => super::wire::issued_schema(issued),
+        None => type_schema(wire, key, refs),
+    }
 }
 
 /// An object's or enum's schema.

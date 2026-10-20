@@ -394,6 +394,9 @@ pub struct Plan {
     /// The connections to provider packages and their operations (area
     /// 11, chunk 7.2c).
     providers: jadpo_std::provider::ProviderPlan,
+    /// The connection `ai:` names and the models it gives (area 21; chunk
+    /// 5.5v3), when the application asks a model.
+    ai: Option<jadpo_std::ai::AiPlan>,
     /// The `SigningKey` setting a record's answers are encrypted with,
     /// by its number: `application { steps: { encryption_key: } }` (area
     /// 12; chunk 7.5b).
@@ -724,6 +727,13 @@ impl Plan {
                 setting: &|key: &Key| setting_ids.get(key).copied(),
                 json: &mut json_types,
                 prompt: &|key: &str| prompt_fields.get(key).cloned(),
+                schema: &|ty: &TypeRef| {
+                    jadpo_check::ai::schema(
+                        &graph,
+                        jadpo_check::locales::locales(db, project).plan.as_ref(),
+                        ty,
+                    )
+                },
                 starter: &key,
                 batches: &mut batch_sites,
             }
@@ -993,6 +1003,42 @@ impl Plan {
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();
+        // The connection `ai:` names, its address and its models (area 21;
+        // chunk 5.5v3).
+        let ai = {
+            let settings = jadpo_check::ai::settings(db, project);
+            let connections = jadpo_check::ai::model_connections(db, project);
+            let number = |name: &str| {
+                setting_ids
+                    .get(&config::key(
+                        jadpo_check::graph::registry(db, project),
+                        name,
+                    ))
+                    .copied()
+            };
+            settings.connection.as_ref().and_then(|name| {
+                let connection = connections.list.iter().find(|found| found.name == *name)?;
+                let url = match connection.url.as_ref()? {
+                    jadpo_check::ai::ModelUrl::Setting(setting) => {
+                        jadpo_std::ai::AiUrl::Setting(number(setting)?)
+                    }
+                    jadpo_check::ai::ModelUrl::Written(text) => {
+                        jadpo_std::ai::AiUrl::Written(text.clone())
+                    }
+                };
+                let models = settings
+                    .models
+                    .iter()
+                    .filter_map(|(model, setting)| Some((model.clone(), number(setting)?)))
+                    .collect();
+                Some(jadpo_std::ai::AiPlan {
+                    connection: name.clone(),
+                    url,
+                    models,
+                    schema: jadpo_std::ai::SchemaMode::StrictSubset,
+                })
+            })
+        };
         Plan {
             callables,
             by_key,
@@ -1017,6 +1063,7 @@ impl Plan {
             batch_numbers,
             file_stores: jadpo_check::data::files_connections(db, project).clone(),
             providers,
+            ai,
             steps_key,
             build,
         }
@@ -1038,6 +1085,12 @@ impl Plan {
     /// through them (area 11, chunk 7.2c).
     pub fn providers(&self) -> &jadpo_std::provider::ProviderPlan {
         &self.providers
+    }
+
+    /// The connection every `ai` call goes through, and its models (area
+    /// 21; chunk 5.5v3).
+    pub fn ai(&self) -> Option<&jadpo_std::ai::AiPlan> {
+        self.ai.as_ref()
     }
 
     /// Every `batches.each` call's run (area 12, chunk 6.4).

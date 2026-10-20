@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use jadpo_interp::{CallError, Prepared, Program, STACK_BYTES};
+use jadpo_runtime::ai::AiFake;
 use jadpo_runtime::capability::{Capability, Faked};
 use jadpo_runtime::config::Mode;
 use jadpo_runtime::crashes::{Boundary, Reached};
@@ -191,6 +192,10 @@ fn one<E: Executor>(
     // default otherwise.
     let fake = Rc::new(ProviderFake::new());
     let connections = executor.provider_connections();
+    // Every model asked answers through the `ai` fake (area 21, "Tests"):
+    // nothing reaches a model from a test.
+    let ai = Rc::new(AiFake::new());
+    let models = executor.ai_connection();
     // Only a test that calls an action, query or fixture, sends a request
     // through a route or runs a schedule can touch a store.
     if let (
@@ -246,7 +251,7 @@ fn one<E: Executor>(
         return None;
     }
     let host = env.host();
-    let host = faked(&host, &connections, &fake);
+    let host = faked(&host, &connections, &fake, models, &ai);
     let mut ctx = Ctx::new(places, &host, env.env);
     ctx.set_settings(executor.settings(callable));
     let ran = block_on(executor.run(&mut ctx, callable, Vec::new()));
@@ -263,7 +268,7 @@ fn one<E: Executor>(
         ))),
     };
     drop(ctx);
-    outcome::fakes_used(places, sources, test, &fake.usage(), failure, rerun)
+    outcome::fakes_used(places, sources, test, &usage(&fake, &ai), failure, rerun)
 }
 
 /// What a test with a database runs with, once for the run without a
@@ -298,6 +303,8 @@ impl<E: Executor> Stored<'_, E> {
         let places = executor.places();
         let fake = Rc::new(ProviderFake::new());
         let connections = executor.provider_connections();
+        let ai = Rc::new(AiFake::new());
+        let models = executor.ai_connection();
         let mut env = self.env.clone();
         env.database = TestDatabase::Copied {
             stores: self.databases.stores(),
@@ -315,7 +322,7 @@ impl<E: Executor> Stored<'_, E> {
                     .and_then(|events| events.plan.emails.connection.clone()),
             );
         let (outcome, undelivered, reached, crashed) = {
-            let host = faked(&host, &connections, &fake);
+            let host = faked(&host, &connections, &fake, models, &ai);
             let mut ctx = Ctx::new(places, &host, env.env);
             ctx.set_settings(executor.settings(self.callable));
             // What each step emits is delivered before the next statement,
@@ -350,7 +357,7 @@ impl<E: Executor> Stored<'_, E> {
             places,
             self.sources,
             test,
-            &fake.usage(),
+            &usage(&fake, &ai),
             failure,
             self.rerun,
         );
@@ -367,13 +374,31 @@ impl<E: Executor> Stored<'_, E> {
     }
 }
 
-/// `host` with `fake` in each of `connections`' place.
-fn faked<H: Host>(host: H, connections: &[&str], fake: &Rc<ProviderFake>) -> Faked<H> {
-    connections
+/// `host` with `fake` in each of `connections`' place, and `ai` in the
+/// place of the connection `ai:` names, `models`.
+fn faked<H: Host>(
+    host: H,
+    connections: &[&str],
+    fake: &Rc<ProviderFake>,
+    models: Option<&str>,
+    ai: &Rc<AiFake>,
+) -> Faked<H> {
+    let faked = connections
         .iter()
         .fold(Faked::new(host), |faked, connection| {
             faked.with(connection, Rc::clone(fake) as Rc<dyn Capability>)
-        })
+        });
+    match models {
+        Some(models) => faked.with(models, Rc::clone(ai) as Rc<dyn Capability>),
+        None => faked,
+    }
+}
+
+/// How each scripted operation and prompt was used.
+fn usage(fake: &ProviderFake, ai: &AiFake) -> Vec<jadpo_runtime::fakes::Usage> {
+    let mut used = fake.usage();
+    used.extend(ai.usage());
+    used
 }
 
 #[cfg(test)]

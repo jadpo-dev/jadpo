@@ -174,6 +174,10 @@ pub struct NativeHost {
     /// The driver `jadpo dev` gives every provider package's connection
     /// (chunk 7.2d), and which connections those are.
     providers: Option<(Providers, FileStores)>,
+    /// The built-in `Driver.openai_compatible` (area 21; chunk 5.5v3),
+    /// for the connections that are a model's: JSON over HTTP, as the
+    /// package driver sends it.
+    models: Option<(JsonHttp<fetch::NativeFetch>, FileStores)>,
     /// `jadpo dev`'s call log, which keeps each provider call with its
     /// values (chunk 7.2d).
     call_log: Option<CallLog>,
@@ -313,6 +317,17 @@ impl NativeHost {
         self
     }
 
+    /// Gives the built-in `Driver.openai_compatible` for every connection
+    /// `connections` says is a model's (area 21; chunk 5.5v3): the one
+    /// `ai:` names, whose server the runtime sends OpenAI's API to.
+    pub fn with_models(mut self, connections: impl Fn(&str) -> bool + 'static) -> NativeHost {
+        self.models = Some((
+            JsonHttp::new(fetch::NativeFetch),
+            FileStores(Rc::new(connections)),
+        ));
+        self
+    }
+
     /// Keeps each provider call with its values in `log` (chunk 7.2d).
     pub fn with_call_log(mut self, log: Rc<dyn jadpo_runtime::call_log::CallLog>) -> NativeHost {
         self.call_log = Some(CallLog(log));
@@ -376,6 +391,11 @@ impl Host for NativeHost {
             && (stores.0)(connection)
         {
             return Some(files as &dyn jadpo_runtime::capability::Capability);
+        }
+        if let Some((driver, models)) = &self.models
+            && (models.0)(connection)
+        {
+            return Some(driver as &dyn jadpo_runtime::capability::Capability);
         }
         let (driver, connections) = self.providers.as_ref()?;
         (connections.0)(connection).then_some(driver.0.as_ref())

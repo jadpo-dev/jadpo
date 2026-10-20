@@ -57,6 +57,10 @@ pub struct Call {
     /// package's fake keeps its answer under as its provider would
     /// (chunk 7.5d). Never logged.
     pub key: Option<SentKey>,
+    /// Which of a call's answers it asks for, from 1: an `ai.generate`
+    /// call's repair asks again (area 21; chunk 5.5v3), which a fake's
+    /// `.requests` doesn't list as a call of its own.
+    pub attempt: u32,
 }
 
 /// The idempotency key a provider call goes under, and its package's code
@@ -95,6 +99,7 @@ impl Call {
             request: None,
             step: None,
             key: None,
+            attempt: 1,
         }
     }
 
@@ -254,6 +259,15 @@ pub trait Capability {
     ) -> bool {
         let _ = (connection, operation, answer, from);
         false
+    }
+
+    /// The inputs of the calls of `operation` through `connection` it was
+    /// sent, in order, one per call however often it asked again: what a
+    /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a
+    /// fake keeps them.
+    fn requests(&self, connection: &str, operation: &str) -> Vec<Value> {
+        let _ = (connection, operation);
+        Vec::new()
     }
 }
 

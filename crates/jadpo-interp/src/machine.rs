@@ -99,6 +99,9 @@ pub(crate) enum Target {
     /// `connection.resource.operation(input)` through the connection its
     /// site names (area 11, chunk 7.2c): an outside call.
     Provider,
+    /// `ai.generate(prompt, as: T)` through the connection `ai:` names
+    /// (area 21, chunk 5.5v3): an outside call.
+    Generate,
     /// A test's run of a schedule, by the callable number of the action it
     /// runs (area 13; chunk 6.2c).
     Schedule(u32),
@@ -235,6 +238,9 @@ enum Task<'p> {
     /// A test's `fakes:` scripting one answer of a provider operation
     /// (area 13; chunk 7.2d), with its value on top when it gives one.
     Fake(SiteId),
+    /// A test's `fakes: { ai.<prompt>: }` answer, given to the `ai` fake
+    /// (area 21, chunk 5.5v3).
+    AiFake(SiteId),
     /// `Principal.user(record)` (area 8): the caller made from the record
     /// on top.
     Caller {
@@ -569,6 +575,61 @@ impl<'p> Machine<'p> {
         ctx.at(at.0);
         let providers = self.program.providers();
         jadpo_runtime::fakes::script(ctx, &providers, (connection, operation), given)
+    }
+
+    /// Gives the `ai` fake the next answer to the prompt the `fakes:`
+    /// answer at `at` scripts (area 21; chunk 5.5v3): a value written as
+    /// its call's type's JSON, `raw(...)`'s text, or a condition.
+    fn script_ai_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<(), &'static str> {
+        use jadpo_graph::body::AiFakeAnswer;
+        use jadpo_runtime::ai::Script;
+        let Some(Node::Expr(Expr::Call {
+            callee: Callee::AiFake { prompt, answer },
+            ..
+        })) = self.site(at).map(|site| &site.node)
+        else {
+            return Err("a scripted answer the plan doesn't have");
+        };
+        let program = self.program;
+        let Some(ai) = program.ai() else {
+            return Err("a model's scripted answer in a program that asks none");
+        };
+        let given = match answer {
+            AiFakeAnswer::Value => {
+                let value = self.pop();
+                let Some(Decoded::Json(number)) = self.decoded(at) else {
+                    return Err("a scripted value with no codec");
+                };
+                let Some(codec) = ai.json.codec_of(*number) else {
+                    return Err("a scripted value with no codec");
+                };
+                let json = ai.json.codecs.write_value(codec, &value);
+                // As the model sends it: a text answer as its text, a
+                // value that isn't an object wrapped as a strict mode asks.
+                let Some(generate) = program.generate_site_of(prompt) else {
+                    return Err("a scripted value of a prompt no call asks");
+                };
+                Script::Content(jadpo_runtime::ai::as_sent(&ai, generate, &json))
+            }
+            AiFakeAnswer::Raw => match self.pop() {
+                Value::Text(text) => Script::Content(text.to_string()),
+                _ => return Err("`raw(...)` given no text"),
+            },
+            AiFakeAnswer::Failed(word) => match jadpo_std::RuleKey::from_word(word) {
+                Some(rule) => Script::Condition(rule),
+                None => return Err("a scripted failure `ai.generate` has none of"),
+            },
+        };
+        ctx.at(at.0);
+        jadpo_runtime::ai::script(ctx, &ai, prompt, given)
+    }
+
+    /// The `ai.generate` call at `at`, decoded.
+    pub fn generate_site(&self, at: SiteId) -> Option<&'p jadpo_std::ai::GenerateSite> {
+        match self.decoded(at)? {
+            Decoded::Generate(site) => Some(site),
+            _ => None,
+        }
     }
 
     /// What the provider call at `at` reads of its answer, and whether it
@@ -1047,6 +1108,12 @@ impl<'p> Machine<'p> {
                 }
                 self.values.push(Value::Unit);
             }
+            Task::AiFake(at) => {
+                if let Err(why) = self.script_ai_fake(ctx, at) {
+                    return Err(self.defect(ctx, why, at));
+                }
+                self.values.push(Value::Unit);
+            }
             Task::Caller { kind, at } => {
                 let record = self.pop();
                 let made = self
@@ -1170,6 +1237,7 @@ impl<'p> Machine<'p> {
                     | Target::Batch(..)
                     | Target::Files(..)
                     | Target::Provider
+                    | Target::Generate
                     | Target::Schedule(_)
                     | Target::AdvanceClock => {
                         return Ok(Flow::Pause { target, args, at });
@@ -2181,6 +2249,47 @@ impl<'p> Machine<'p> {
                     };
                     self.tasks.push(Task::Expr(*arg));
                 }
+            }
+            // A test's `fakes: { ai.<prompt>: }`, given to the `ai` fake
+            // (area 21; chunk 5.5v3): a value or `raw(...)`'s text first.
+            Callee::AiFake { answer, .. } => {
+                self.tasks.push(Task::AiFake(id));
+                if matches!(
+                    answer,
+                    jadpo_graph::body::AiFakeAnswer::Value | jadpo_graph::body::AiFakeAnswer::Raw
+                ) {
+                    let [Some(arg)] = args else {
+                        return Err(self.defect(ctx, "a scripted answer without its value", id));
+                    };
+                    self.tasks.push(Task::Expr(*arg));
+                }
+            }
+            // What a test's code asked a model with (area 21).
+            Callee::AiRequests { prompt } => {
+                let program = self.program;
+                let Some(ai) = program.ai() else {
+                    return Err(self.defect(
+                        ctx,
+                        "`.requests` in a program that asks no model",
+                        id,
+                    ));
+                };
+                let sent = jadpo_runtime::ai::requests(ctx, &ai, prompt);
+                self.values.push(sent);
+            }
+            // A model asked to answer a prompt: an outside call, before the
+            // action's first write (area 21, chunk 5.5v3).
+            Callee::Generate { .. } => {
+                let Some(Some(arg)) = args.first() else {
+                    return Err(self.defect(ctx, "a model asked with no prompt", id));
+                };
+                self.tasks.push(Task::Invoke {
+                    target: Target::Generate,
+                    count: 1,
+                    at: id,
+                    then: None,
+                });
+                self.tasks.push(Task::Expr(*arg));
             }
             // A caller made from a record, in a test (area 8).
             Callee::Caller(kind) => {

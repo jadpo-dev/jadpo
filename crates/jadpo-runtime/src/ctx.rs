@@ -236,6 +236,10 @@ pub struct Ctx<'p> {
     /// The steps it reached under a record, and the crash `jadpo test`
     /// asked for, if any (chunk 7.5d).
     crashes: crate::crashes::Crashes,
+    /// Each `ai.generate` call's answer, by the step it took and the
+    /// request it sent, given back to an action run again after a
+    /// concurrent change (area 21; chunk 5.5v3).
+    reused: Vec<crate::ai::Reused>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -300,6 +304,7 @@ impl<'p> Ctx<'p> {
             record: None,
             through: Vec::new(),
             crashes: crate::crashes::Crashes::default(),
+            reused: Vec::new(),
         }
     }
 
@@ -428,6 +433,23 @@ impl<'p> Ctx<'p> {
     /// call to a sandbox, which no action makes (chunk 7.2d2).
     pub fn allow_standalone_calls(&mut self) {
         self.standalone_calls = true;
+    }
+
+    /// The answer the `ai.generate` call at step `step` was given when it
+    /// sent the request digested as `digest`, on an earlier run of its
+    /// action (chunk 5.5v3).
+    pub(crate) fn reused(&self, step: u32, digest: &[u8; 32]) -> Option<crate::ai::Kept> {
+        self.reused
+            .iter()
+            .find(|kept| kept.step == step && kept.digest == *digest)
+            .map(|kept| kept.kept.clone())
+    }
+
+    /// Keeps an `ai.generate` call's answer for a rerun of its action,
+    /// in place of any its step had.
+    pub(crate) fn keep_reused(&mut self, reused: crate::ai::Reused) {
+        self.reused.retain(|kept| kept.step != reused.step);
+        self.reused.push(reused);
     }
 
     /// How many keyed calls it has made.

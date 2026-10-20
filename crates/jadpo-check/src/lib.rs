@@ -9,6 +9,7 @@
 //! [`check`] assembles every diagnostic for a project, sorted by file and
 //! position so the same source always gives the same output.
 
+pub mod ai;
 pub mod batches;
 mod case;
 pub mod client_address;
@@ -238,6 +239,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         );
         out.extend(prompts::prompt_problems(db, project).iter().cloned());
         out.extend(emails::email_problems(db, project).iter().cloned());
+        out.extend(ai::ai_problems(db, project).iter().cloned());
         out.extend(routes::api_problems(db, project).iter().cloned());
         out.extend(
             events::events_settings(db, project)
@@ -265,6 +267,12 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
         out.extend(receiving::mappings(db, project).problems.iter().cloned());
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
+        out.extend(
+            receiving::cloudflare_queues(db, project)
+                .problems
+                .iter()
+                .cloned(),
+        );
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

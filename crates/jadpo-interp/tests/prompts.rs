@@ -71,8 +71,13 @@ fn page_example() -> (String, String, String) {
             .map(|(_, body)| body.clone())
             .expect("the page's example")
     };
-    let prompt_type = find(&|(_, body)| body.contains("type AnswerQuestion = Prompt {\n"));
-    let prompt_text = find(&|(_, body)| body.starts_with("# Instructions\n"));
+    // "Prompts as files"' own example, which sends help articles.
+    let prompt_type = find(&|(_, body)| {
+        body.contains("type AnswerQuestion = Prompt {\n")
+            && body.contains("articles: List<ArticleExcerpt>")
+    });
+    let prompt_text =
+        find(&|(_, body)| body.starts_with("# Instructions\n") && body.contains("{articles}"));
     let received = find(&|(before, _)| before.contains("What the provider receives"));
     let prompt_type = prompt_type
         .lines()

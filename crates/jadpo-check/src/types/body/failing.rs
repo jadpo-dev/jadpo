@@ -184,6 +184,9 @@ impl Body<'_> {
                 | Reach::Translation { .. }
                 | Reach::Prompt(_),
             ) => Fallible::Never,
+            // How a model answers is a condition of the call, recorded
+            // where it is checked (area 21; chunk 5.5v3).
+            Some(Reach::Generate { .. }) => Fallible::Unknown,
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }
@@ -331,6 +334,29 @@ impl Body<'_> {
                 .next(format!(
                     "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each condition to an `invalid_value` failure, or `invalid:` for all of them{}",
                     settle_by(breakable)
+                ))
+            }
+            // A model asked (area 21; chunk 5.5v3): how it answers is only
+            // known when it does.
+            Fallible::Construction(breakable)
+                if matches!(
+                    self.facts.reaches.get(&node_key(call.syntax())),
+                    Some(Reach::Generate { .. })
+                ) =>
+            {
+                let arms: Vec<String> = breakable
+                    .iter()
+                    .map(|key| format!("{key}: SomeFailure"))
+                    .collect();
+                Diagnostic::new(
+                    &rule::FAILURE_ATTEMPT_REQUIRED,
+                    format!("`{written}(...)` can fail at runtime, and nothing handles it"),
+                )
+                .at(span, "asks a model")
+                .reason("A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs, so the call can fail.")
+                .next(format!(
+                    "Write `attempt {written}(...) {{ {} }}`, each naming an `unavailable` failure",
+                    arms.join("  ")
                 ))
             }
             Fallible::Construction(breakable) => {
@@ -914,6 +940,11 @@ impl Body<'_> {
                 let word = jadpo_std::RuleKey::StorageFull.word();
                 vec![(word, word.to_string())]
             }
+            // How a model answers (area 21, chunk 5.5v3).
+            Some(Reach::Generate { .. }) => super::generate::CONDITIONS
+                .iter()
+                .map(|condition| (condition.word(), condition.word().to_string()))
+                .collect(),
             Some(Reach::Std(op)) => op
                 .operation()
                 .conditions
@@ -1165,6 +1196,13 @@ impl Body<'_> {
             self.facts.reaches.get(&node_key(call.syntax())),
             Some(Reach::Std(jadpo_std::Op::JsonRead | jadpo_std::Op::CryptoVerifyJwt))
         ));
+        // `ai.generate`'s `malformed` carries the last answer's
+        // `DecodeProblem` (area 21, "Typed output"; chunk 5.5v3), and each
+        // of its conditions is a model giving no answer to use.
+        let generates = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Generate { .. })
+        ));
         let own: Vec<&str> = arms
             .iter()
             .filter(|arm| arm.key != "invalid")
@@ -1176,9 +1214,10 @@ impl Body<'_> {
             .collect();
         let invalid_fills = !rest.is_empty() && rest.iter().all(|key| *key == "mismatch");
         for arm in arms {
-            let fills = (reads
+            let fills = ((reads
                 && (arm.key == "mismatch" || (arm.key == "invalid" && invalid_fills)))
-                .then(|| (arm.key.as_str(), arm.key_span.clone()));
+                || (generates && arm.key == jadpo_std::RuleKey::Malformed.word()))
+            .then(|| (arm.key.as_str(), arm.key_span.clone()));
             let filling = fills.is_some();
             let failure = arm
                 .value
@@ -1196,7 +1235,7 @@ impl Body<'_> {
                 self.leave(failure, span.clone(), "mapped here");
                 // A store with no room for a file isn't the value's fault
                 // (area 16, chunk 6.4b).
-                let kind = if arm.key == jadpo_std::RuleKey::StorageFull.word() {
+                let kind = if arm.key == jadpo_std::RuleKey::StorageFull.word() || generates {
                     "unavailable"
                 } else {
                     "invalid_value"
@@ -1254,10 +1293,19 @@ impl Body<'_> {
             .cloned()
             .collect();
         // A store with no room isn't a value breaking a rule, so `invalid:`
-        // never covers it (chunk 6.4b).
+        // never covers it (chunk 6.4b); nor how a model answers (chunk
+        // 5.5v3).
         let full = jadpo_std::RuleKey::StorageFull.word();
         if invalid.is_some() && uncovered.iter().any(|key| key == full) {
             self.rule_unmapped(attempt, &[full.to_string()], rules, written, span);
+            return mapped;
+        }
+        if generates && let Some(arm) = invalid {
+            if uncovered.is_empty() {
+                self.invalid_covers_nothing(arm, breakable, written);
+            } else {
+                self.rule_unmapped(attempt, &uncovered, rules, written, span);
+            }
             return mapped;
         }
         match invalid {
@@ -1299,6 +1347,48 @@ impl Body<'_> {
         span: Span,
     ) {
         self.flow.open = true;
+        // How a model answers (area 21, "The `ai` capability"; chunk
+        // 5.5v3): each condition an `unavailable` failure of the app's.
+        if matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Generate { .. })
+        )) {
+            let listed: Vec<String> = uncovered.iter().map(|key| format!("`{key}`")).collect();
+            let arms: Vec<String> = uncovered
+                .iter()
+                .map(|key| format!("{key}: SomeFailure"))
+                .collect();
+            let next = if attempt.member_list().is_some() {
+                format!(
+                    "Add {} to the block after `{written}`, each naming an `unavailable` failure",
+                    crate::and_list(
+                        &arms
+                            .iter()
+                            .map(|arm| format!("`{arm}`"))
+                            .collect::<Vec<_>>()
+                    )
+                )
+            } else {
+                format!(
+                    "Add a block after `{written}`: `{{ {} }}`, each naming an `unavailable` failure",
+                    arms.join("  ")
+                )
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::FAILURE_RULE_UNMAPPED,
+                    format!(
+                        "`{written}` can fail on {}, and nothing maps {}",
+                        crate::and_list(&listed),
+                        if listed.len() == 1 { "it" } else { "them" }
+                    ),
+                )
+                .at(span, "can fail at runtime")
+                .reason("A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs; each needs an arm naming the `unavailable` failure the caller gets, and `invalid:`, which covers a value's broken rules, covers none of them.")
+                .next(next),
+            );
+            return;
+        }
         // A store's put fails only when the store has no room (area 16,
         // chunk 6.4b).
         if uncovered
@@ -1540,7 +1630,10 @@ impl Body<'_> {
         let meaning = match kind {
             "conflict" => "a write the store refuses because of the records already there",
             "not_found" => "a read that finds nothing",
-            "unavailable" => "a store with no room for what is put in it",
+            "unavailable" if condition == jadpo_std::RuleKey::StorageFull.word() => {
+                "a store with no room for what is put in it"
+            }
+            "unavailable" => "a model that gives no answer to use",
             _ => "a value that breaks a type's rules",
         };
         self.out.push(
