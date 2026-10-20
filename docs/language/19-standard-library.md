@@ -8724,7 +8724,8 @@ and `NhsNumber`.
   built yet, and logs carry no values today (a failure's code and a
   fault), so nothing writes one in clear; its build treats a field of
   such a type as marked with that category, hashed in logs, kept out of
-  caches when sensitive, and its reads recorded. A failed assertion in
+  caches when sensitive, and its reads recorded. Area 21's check of what
+  reaches a model already does (chunk 5.5v5b). A failed assertion in
   `jadpo test` still shows the value it compared, which is test data.
 - **Validators:** IBAN's mod-97 with each country's length from SWIFT's
   IBAN Registry (a country the registry adds later is refused until a

@@ -166,9 +166,9 @@ fn ai_s_settings_are_checked() {
     );
     assert_eq!(
         with(
-            "        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        personal_data: {\n            allowed: []\n        }\n"
+            "        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        keep_content: {\n            keep: 30d\n        }\n"
         ),
-        ["app.jadpo toolchain.not_built_yet: `ai: { personal_data: }` isn't built yet"]
+        ["app.jadpo toolchain.not_built_yet: `ai: { keep_content: }` isn't built yet"]
     );
 }
 

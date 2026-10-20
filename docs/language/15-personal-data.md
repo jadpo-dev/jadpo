@@ -375,8 +375,11 @@ new provider is seen by a person before it ships.
 
 ### Status
 
-Nothing on this page is built yet. It is first on the roadmap's list of
-work after the first build.
+Nothing on this page is built yet, but for one reading: an entity's and
+an event's `personal: PersonalData.<category>` is read and checked against
+the fourteen categories, for area 21's check of what reaches a model
+(chunk 5.5v5b). The rest is first on the roadmap's list of work after the
+first build.
 
 ### Consistency with the rest of the language
 
