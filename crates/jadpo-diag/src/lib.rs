@@ -1584,6 +1584,7 @@ mod tests {
             [
                 "constant.similar_exists",
                 "email.field_unused",
+                "email.health_problem",
                 "library.similar_exists",
                 "package.standard_candidate",
                 "query.nearest_exact",
