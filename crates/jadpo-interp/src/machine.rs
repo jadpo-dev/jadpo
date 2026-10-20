@@ -510,6 +510,18 @@ impl<'p> Machine<'p> {
         }
     }
 
+    /// The connection the package action called at `at` is called through
+    /// (chunk 7.6); `None` for any other call.
+    pub fn package_connection(&self, at: SiteId) -> Option<&'p str> {
+        match &self.site(at)?.node {
+            Node::Expr(Expr::Call {
+                callee: Callee::PackageAction { connection, .. },
+                ..
+            }) => Some(connection.as_str()),
+            _ => None,
+        }
+    }
+
     /// The connection and operation the provider call at `at` makes
     /// (chunk 7.2c).
     pub fn provider_call(&self, at: SiteId) -> Option<(&'p str, &'p str)> {
@@ -570,6 +582,25 @@ impl<'p> Machine<'p> {
 
     /// Whether `key` is a failure of the provider operation `operation` of
     /// `connection`: its package's, which its call maps.
+    /// The connection and action of the package action called at `at`,
+    /// when `key` is one of the failures that can leave it, all its
+    /// package's own (chunk 7.6).
+    fn package_action_failure(&self, at: SiteId, key: &str) -> Option<(&'p str, &'p str)> {
+        let connection = self.package_connection(at)?;
+        let Some(Decoded::Callable(Some(target))) = self.decoded(at) else {
+            return None;
+        };
+        let callable = self.program.plan().callable(*target)?;
+        let name = callable.key.name();
+        let name = name.rsplit('.').next().unwrap_or(name);
+        callable
+            .body
+            .failures
+            .iter()
+            .any(|known| known.as_str() == key)
+            .then_some((connection, name))
+    }
+
     fn provider_failure(&self, connection: &str, operation: &str, key: &str) -> bool {
         self.program
             .plan()
@@ -1567,10 +1598,17 @@ impl<'p> Machine<'p> {
                     // one no arm maps is a fault, never passed on.
                     // So is its `timed_out` where its `attempt` maps it
                     // (chunk 7.2c2).
+                    // A package action's failure the same (chunk 7.6); a
+                    // package action's own operation's passes on.
                     if let Stop::Failed(failure) = &stop
-                        && let Some((connection, operation)) = self.provider_call(inner)
-                        && (self.provider_failure(connection, operation, &failure.key)
-                            || failure.key == "runtime timed_out")
+                        && let Some((connection, operation)) = self
+                            .provider_call(inner)
+                            .filter(|(connection, operation)| {
+                                *connection != jadpo_graph::body::OWN_CONNECTION
+                                    && (self.provider_failure(connection, operation, &failure.key)
+                                        || failure.key == "runtime timed_out")
+                            })
+                            .or_else(|| self.package_action_failure(inner, &failure.key))
                     {
                         let code = failure.code.clone();
                         self.values.truncate(base);
@@ -2098,7 +2136,8 @@ impl<'p> Machine<'p> {
             Callee::Function(_)
             | Callee::Action(_)
             | Callee::Fixture(_)
-            | Callee::LibraryFunction(_) => {
+            | Callee::LibraryFunction(_)
+            | Callee::PackageAction { .. } => {
                 let Some(Decoded::Callable(Some(target))) = self.decoded(id) else {
                     return Err(self.defect(ctx, "a call to a callable that has no body", id));
                 };

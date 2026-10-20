@@ -26,6 +26,10 @@ quote
 display_name
 recipient
 attachment
+# CSS properties in Jadpo's own sign-in email's inline styles
+# (`font-weight`, `white-space`; area 16, chunk 7.3b)
+weight
+white
 # the records' names (chunk 5.5m2)
 tracking
 
@@ -338,6 +342,10 @@ security
 browser_session
 fresh
 user_disabled
+# what `magic_links.redeem` gives, `MagicLinkRedeemed` and its `user_id`
+# (area 8, chunk 7.3b3)
+redeemed
+user_id
 # the toolchain's own error code, `toolchain.project_not_found` (area 14),
 # which a project's failure code for an entity called Project matches
 project_not_found
@@ -500,3 +508,14 @@ recipe
 checkout
 linked
 unlinked
+# Words the language itself defines for receiving from outside (area 11,
+# chunk 7.7): every webhook event's `occurred_at`, a connection's
+# `webhooks: { replies: }`, and the ids of events `received`
+occurred_at
+replies
+received
+# The members AWS SNS names its messages with, which the runtime reads to
+# check and confirm them (area 11, chunk 7.7b): `SubscribeURL`, and the
+# `SubscriptionConfirmation` type
+subscribe
+subscription

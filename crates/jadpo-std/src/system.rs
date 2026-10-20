@@ -195,6 +195,31 @@ pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// The events received from outside, by where they came from and the
+/// sender's own id (area 11, "Receiving from outside"; chunk 7.7): a
+/// webhook's provider event id, under `webhook <connection>`, so a repeat
+/// is dropped. Committed with the event's outbox row, in the store webhook
+/// events are kept in, and deleted by the tick once a provider no longer
+/// sends it again. A webhook that needs a reply keeps the reply its
+/// action gave, so a repeat is answered with it (chunk 7.7b): none while
+/// the action runs.
+pub const RECEIVED_EVENTS: SystemTable = SystemTable {
+    table: "jadpo_received_events",
+    columns: &[
+        column("source", "text", false),
+        column("event_id", "text", false),
+        column("received_at", "timestamptz(3)", false),
+        column("reply", "text", true),
+    ],
+    primary_key: &["source", "event_id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["received_at"],
+        reason: "system received events",
+    }],
+};
+
 /// Idempotency keys (area 7): one stored response per key and caller.
 pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
     table: "jadpo_idempotency_keys",
@@ -400,6 +425,64 @@ pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
     }],
 };
 
+/// Magic-link sign-ins (area 8, "Magic links"; chunk 7.3b): one row per
+/// address, found by the address's digest, never the address. It holds
+/// the latest request's link and code, each only as a verifier and filled
+/// as its email is sent, the address sealed under the link's token so a
+/// confirmed link can name it, where to go after signing in, the browser
+/// a `same_browser:` link is bound to, and the counts the send and
+/// wrong-code limits read. Nothing in it signs anyone in.
+pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
+    table: "jadpo_sign_in_requests",
+    columns: &[
+        column("id", "uuid", false),
+        // The address's digest in lower case, so the limits count every
+        // way of writing it as one; and as it was written, which the
+        // address a code is confirmed with must match.
+        column("address", "text", false),
+        column("exact", "text", true),
+        // The latest request, which its email's delivery names; `NULL`
+        // once its link or code is used.
+        column("request", "uuid", true),
+        column("token", "text", true),
+        column("code", "text", true),
+        column("sealed", "bytea", true),
+        column("return_to", "text", true),
+        column("binding", "text", true),
+        column("wrong_codes", "integer", false),
+        column("requested_at", "timestamptz(3)", true),
+        column("expires_at", "timestamptz(3)", true),
+        // The hour the sends are counted in, and how many.
+        column("sends_since", "timestamptz(3)", true),
+        column("sends", "integer", false),
+        // The UTC day the wrong codes are counted in, and how many.
+        column("failed_since", "timestamptz(3)", true),
+        column("failed", "integer", false),
+        // When nothing in the row counts any more.
+        column("kept_until", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[
+        SystemUnique {
+            columns: &["address"],
+            rule: "system sign-in requests",
+        },
+        SystemUnique {
+            columns: &["request"],
+            rule: "system sign-in requests",
+        },
+        SystemUnique {
+            columns: &["token"],
+            rule: "system sign-in requests",
+        },
+    ],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["kept_until"],
+        reason: "system sign-in requests",
+    }],
+};
+
 /// Batch runs (area 12, "How a run goes"; chunk 6.4): which `batches.each`
 /// call each is and the shape it saved under, its `key:` and saved values
 /// as their types' JSON, how far it got (the cursor of the next page, or
@@ -523,6 +606,75 @@ pub const OPERATOR_ACTIONS: SystemTable = SystemTable {
     }],
 };
 
+/// The record of an action with several changing calls (area 12,
+/// "Several changing calls in one action"; chunk 7.5b): one row for each
+/// run that has sent a step, keyed by the action's key, in the store the
+/// action writes, beside its outbox. Its id is a digest of its scope and
+/// key; it is deleted in the action's commit, its steps with it.
+pub const STEP_RECORDS: SystemTable = SystemTable {
+    table: "jadpo_step_records",
+    columns: &[
+        column("id", "uuid", false),
+        // Whose key it is (`delivery`, a route's caller's scope) and the
+        // action's key (a delivery's id, a client's `Idempotency-Key`).
+        column("scope", "text", false),
+        column("key", "text", false),
+        // The identity key of the action that is run.
+        column("action", "text", false),
+        // The build it started under, and a digest of its action's step
+        // shape (area 11, "Deploys").
+        column("build", "text", false),
+        column("shape", "text", false),
+        // When its first run started: `clock.now` for every rerun.
+        column("started_at", "timestamptz(3)", false),
+        // The generation of the runner that holds it, which every write
+        // checks: a delivery's attempt, a route's claim.
+        column("generation", "bigint", false),
+        // `running`, or `diverged` with what differed (`problem`: the
+        // step, its operation and the fields, never a value).
+        column("state", "text", false),
+        column("problem", "jsonb", true),
+        column("taken_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[SystemUnique {
+        columns: &["scope", "key"],
+        rule: "system step records",
+    }],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
+/// Each step of a record (chunk 7.5b): written before it is sent, with
+/// its operation, a keyed fingerprint of each top-level field of its
+/// request and when it was first sent; its answer, encrypted, once it
+/// comes. A step with no answer is in doubt.
+pub const STEPS: SystemTable = SystemTable {
+    table: "jadpo_steps",
+    columns: &[
+        column("record_id", "uuid", false),
+        column("position", "integer", false),
+        // `pay.payments.create`, `sheets.put`.
+        column("operation", "text", false),
+        column("fingerprint", "jsonb", false),
+        // How many times its key was replaced (a provider's
+        // `new_key_on:`).
+        column("key_generation", "integer", false),
+        column("dispatched_at", "timestamptz(3)", false),
+        // `answered` or `failed` once answered; `NULL` while in doubt.
+        column("outcome", "text", true),
+        column("answer", "bytea", true),
+        column("answered_at", "timestamptz(3)", true),
+    ],
+    primary_key: &["record_id", "position"],
+    unique: &[],
+    foreign_keys: &[SystemForeignKey {
+        columns: &["record_id"],
+        table: STEP_RECORDS.table,
+    }],
+    indexes: &[],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
 /// deliveries, handled records and idempotency keys; the log of what
@@ -544,8 +696,12 @@ pub const SCHEDULE_TABLES: [&SystemTable; 3] = [&SCHEDULES, &SCHEDULE_RUNS, &OPE
 /// What a store some batch walks keeps (chunk 6.4).
 pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATCH_CANCELS];
 
+/// What the store an action with several changing calls keeps its record
+/// in holds (chunk 7.5b).
+pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
+
 /// Every system table.
-pub const ALL: [&SystemTable; 15] = [
+pub const ALL: [&SystemTable; 19] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -558,9 +714,13 @@ pub const ALL: [&SystemTable; 15] = [
     &SERVICE_KEYS,
     &PASSKEYS,
     &PASSKEY_CHALLENGES,
+    &SIGN_IN_REQUESTS,
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,
+    &STEP_RECORDS,
+    &STEPS,
+    &RECEIVED_EVENTS,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name
@@ -609,7 +769,8 @@ mod tests {
         let grouped = IN_EVERY_STORE
             .iter()
             .chain(&SCHEDULE_TABLES)
-            .chain(&BATCH_TABLES);
+            .chain(&BATCH_TABLES)
+            .chain(&STEP_TABLES);
         for table in grouped {
             assert!(ALL.contains(table), "{}", table.table);
         }

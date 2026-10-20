@@ -26,6 +26,11 @@ pub struct SchedulesPlan {
     /// the principal's services, whose expired ones the tick deletes;
     /// `None` when no service key is declared.
     pub keys: Option<String>,
+    /// The store the ids of events received from outside are kept in
+    /// (`jadpo_received_events`), whose old ones the tick deletes (area 11,
+    /// "Receiving from outside"; chunk 7.7); `None` when nothing is
+    /// received.
+    pub received: Option<String>,
 }
 
 impl SchedulesPlan {

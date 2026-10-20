@@ -1,6 +1,7 @@
 //! Each API's own OpenAPI document, served at `<prefix>/openapi.json`
 //! (area 7, "OpenAPI"; chunk 7.2): every API that has a document, that is
-//! routes of its own or the passkey routes, unless its entry in `apis: { }`
+//! routes of its own, the passkey or magic-link routes or, for the `webhooks`
+//! API, the connections' webhooks (chunk 7.7), unless its entry in `apis: { }`
 //! says `serve_openapi: false`. The route is the runtime's, listed like
 //! any generated route: in the API's record (`generated openapi`), its
 //! OpenAPI document (`x-jadpo-generated`) and `jadpo routes`.
@@ -39,23 +40,16 @@ pub fn served(db: &dyn Db, project: Project) -> Vec<Served> {
     let apis = super::api_table(db, project);
     let groups = super::groups(db, project);
     let identity = crate::identity::identity(db, project);
-    // The passkey routes belong to the first API that accepts browser
-    // sessions (area 8, "Passkeys"), routes of its own or not.
-    let passkey_api = identity.passkeys().and_then(|_| {
-        apis.apis
-            .iter()
-            .find(|api| {
-                super::apis::accepted_methods(db, project, &api.name)
-                    .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
-            })
-            .map(|api| api.name.as_str())
-    });
+    // The passkey and magic-link routes belong to the first API that
+    // accepts browser sessions (area 8), routes of its own or not.
+    let sign_in = sign_in_api(db, project);
     apis.apis
         .iter()
         .filter(|api| api.serve_openapi)
         .filter(|api| {
-            passkey_api == Some(api.name.as_str())
+            sign_in.as_deref() == Some(api.name.as_str())
                 || groups.routes().any(|(group, _)| group.api == api.name)
+                || !crate::webhooks::declared_in(db, project, &api.name).is_empty()
         })
         .map(|api| {
             let signs_in = super::apis::accepted_methods(db, project, &api.name)
@@ -84,4 +78,22 @@ pub fn served_by(db: &dyn Db, project: Project, api: &str) -> Option<Served> {
     served(db, project)
         .into_iter()
         .find(|served| served.api == api)
+}
+
+/// The API the routes `sign_in:` generates belong to (area 8, "Passkeys"
+/// and "Magic links"): the first that accepts browser sessions, when
+/// passkeys or magic links are declared.
+pub fn sign_in_api(db: &dyn Db, project: Project) -> Option<String> {
+    let identity = crate::identity::identity(db, project);
+    if identity.passkeys().is_none() && identity.magic_link_routes().is_none() {
+        return None;
+    }
+    super::api_table(db, project)
+        .apis
+        .iter()
+        .find(|api| {
+            super::apis::accepted_methods(db, project, &api.name)
+                .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
+        })
+        .map(|api| api.name.clone())
 }

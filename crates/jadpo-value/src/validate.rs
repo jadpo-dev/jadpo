@@ -135,6 +135,8 @@ impl Validator {
                         | Builtin::Email
                         | Builtin::Url
                         | Builtin::IpAddress
+                        | Builtin::SignInCode
+                        | Builtin::SignInToken
                         | Builtin::PostgresUrl
                         | Builtin::RedisUrl
                         | Builtin::SigningKey

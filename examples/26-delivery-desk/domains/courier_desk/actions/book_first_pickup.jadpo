@@ -1,0 +1,18 @@
+// The app calls a package's public action through its connection, as it
+// calls an operation, and maps its failures at the call by their codes.
+
+use app { couriers }
+use courier_desk/types { BookedPickup }
+use courier_desk/failures { PickupSlotGone }
+use shared/providers/swift_couriers
+
+/// Books the courier's first slot of the day.
+action book_first_pickup(postcode: SwiftCouriers.Postcode) fails PickupSlotGone -> BookedPickup {
+    var pickup: SwiftCouriers.Pickup = attempt couriers.book_first_slot(postcode) {
+        slot_taken: PickupSlotGone
+    }
+    return BookedPickup {
+        id: pickup.id
+        collect_at: pickup.collect_at
+    }
+}

@@ -311,6 +311,12 @@ impl Program {
 
     /// The same program reading `values` as its settings (area 10): what
     /// the application started with, or a test run's.
+    /// The key settings' keys, held apart from the values code reads: what
+    /// the runtime derives a record's keys from (chunk 7.5b).
+    pub(crate) fn effect_keys(&self) -> &jadpo_runtime::effects::Keys {
+        &self.keys
+    }
+
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
         self.settings = Self::decoded(&self.prepared, values);
         self.keys = jadpo_runtime::effects::Keys::read(self.prepared.plan.config(), values);
@@ -739,6 +745,15 @@ impl Executor for Program {
             plan: self.plan().events(),
             json: self.stored_json(),
             numbers: &self.plan().json().events,
+        })
+    }
+
+    fn webhooks(&self) -> Option<jadpo_runtime::webhooks::Webhooks<'_>> {
+        let plan = &self.plan().providers().webhooks;
+        (!plan.is_empty()).then(|| jadpo_runtime::webhooks::Webhooks {
+            plan,
+            credentials: &self.credentials,
+            json: self.stored_json(),
         })
     }
 

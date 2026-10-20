@@ -368,6 +368,8 @@ rules! {
         "14-tooling.html#command-errors", "Deliveries' database couldn't be read";
     DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
         "14-tooling.html#command-errors", "Delivery or schedule run isn't in a state the action applies to";
+    EFFECT_CALL_IN_LOOP: "effect.call_in_loop", area 3, Error, Agent,
+        "03-logic.html#effect-call-in-loop", "Outside call inside a `for` loop";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
@@ -528,6 +530,8 @@ rules! {
         "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-action-invalid", "Package action does what package code may not";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "11-integrations.html#package-digest-mismatch", "Installed package's files differ from its digest in the lock";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
@@ -838,6 +842,20 @@ rules! {
         "03-logic.html#semantic-unused-variable", "Variable is never used";
     SEMANTIC_WRONG_NAME_KIND: "semantic.wrong_name_kind", area 1, Error, Agent,
         "01-project-layout-and-modules.html#semantic-wrong-name-kind", "Name is the wrong kind of declaration here";
+    STEP_CONTEXT: "step.context", area 12, Error, Human,
+        "12-jobs-and-events.html#step-context", "Several changing calls where a retry can't resume them";
+    STEP_ENCRYPTION_KEY_REQUIRED: "step.encryption_key_required", area 12, Error, Human,
+        "12-jobs-and-events.html#step-encryption-key-required", "Actions make several changing calls but no key encrypts their answers";
+    STEP_LARGE_OUTPUT: "step.large_output", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-large-output", "Operation with a large answer among several changing calls";
+    STEP_SETTINGS_INVALID: "step.settings_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-settings-invalid", "Steps setting in `application { }` doesn't read";
+    STEP_STORE_REQUIRED: "step.store_required", area 12, Error, Human,
+        "12-jobs-and-events.html#step-store-required", "Action makes several changing calls but writes no store to keep their record in";
+    STEP_TOO_MANY: "step.too_many", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-too-many", "More than 8 changing calls on one way through an action";
+    STEP_UNKEYED: "step.unkeyed", area 12, Error, Agent,
+        "12-jobs-and-events.html#step-unkeyed", "Changing call with no idempotency key beside another changing call";
     STORE_ACTION_SPANS_STORES: "store.action_spans_stores", area 6, Error, Human,
         "06-reads-and-writes.html#store-action-spans-stores", "Action writes more than one store";
     SUBSCRIBER_ARGUMENT_INVALID: "subscriber.argument_invalid", area 12, Error, Agent,

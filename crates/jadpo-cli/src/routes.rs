@@ -11,7 +11,10 @@
 //! service keys, running `generated exchange`, written `generated`; so are
 //! the routes passkeys bring (`generated passkey sign-in` and the rest), in
 //! the first API that accepts browser sessions, and each API's own OpenAPI
-//! document (`generated openapi`, area 7).
+//! document (`generated openapi`, area 7). Each connection's webhooks are
+//! listed in the `webhooks` API, running `generated webhook` with
+//! `signature` as their authentication (chunk 7.7), the API shown at
+//! `/webhooks` when the app declares none.
 
 use std::path::PathBuf;
 
@@ -74,6 +77,34 @@ pub fn routes(call: &Call) -> Reply {
             lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
         }
     }
+    // The magic-link routes, in the same API (area 8, "Magic links").
+    if let Some(magic) = jadpo_check::identity::identity(db, project).magic_link_routes()
+        && let Some(api) = jadpo_check::routes::served::sign_in_api(db, project)
+    {
+        let api_tokens = jadpo_check::identity::identity(db, project)
+            .built(jadpo_std::AuthenticationMethod::ApiToken);
+        for step in jadpo_std::http::MagicLinkStep::ALL {
+            if step == jadpo_std::http::MagicLinkStep::Redeem && !api_tokens {
+                continue;
+            }
+            let path: String = step
+                .segments(&magic.path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            lines.push(Line {
+                api: api.clone(),
+                method: step.method().word().to_string(),
+                path,
+                runs: format!("generated {}", step.label()),
+                authentication: "none",
+                file: String::new(),
+                line: 0,
+                place: "generated".to_string(),
+            });
+        }
+        lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    }
     if jadpo_check::identity::identity(db, project).exchanges() {
         for api in &apis.apis {
             let methods = jadpo_check::routes::apis::accepted_methods(db, project, &api.name);
@@ -113,11 +144,40 @@ pub fn routes(call: &Call) -> Reply {
         }
         lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
     }
+    // Each connection's webhooks (area 11, "Receiving from outside"; chunk
+    // 7.7), in the `webhooks` API, which is listed at `/webhooks` when the
+    // app declares none.
+    let webhooks = &jadpo_check::webhooks::webhooks(db, project).routes;
+    for route in webhooks {
+        lines.push(Line {
+            api: route.api.clone(),
+            method: "POST".to_string(),
+            path: route.path(),
+            runs: "generated webhook".to_string(),
+            authentication: "signature",
+            file: String::new(),
+            line: 0,
+            place: "generated".to_string(),
+        });
+    }
+    lines.sort_by(|a, b| (&a.api, &a.path, &a.method).cmp(&(&b.api, &b.path, &b.method)));
+    let mut blocks: Vec<(String, String)> = apis
+        .apis
+        .iter()
+        .map(|api| (api.name.clone(), api.path()))
+        .collect();
+    if !webhooks.is_empty() && apis.get(jadpo_check::webhooks::DEFAULT_PREFIX).is_none() {
+        blocks.push((
+            jadpo_check::webhooks::DEFAULT_PREFIX.to_string(),
+            format!("/{}", jadpo_check::webhooks::DEFAULT_PREFIX),
+        ));
+        blocks.sort();
+    }
     let mut screen = Screen::new();
     let mut data = Vec::new();
     let mut count = 0usize;
-    for api in &apis.apis {
-        let rows: Vec<&Line> = lines.iter().filter(|line| line.api == api.name).collect();
+    for (api, path) in &blocks {
+        let rows: Vec<&Line> = lines.iter().filter(|line| line.api == *api).collect();
         if rows.is_empty() {
             continue;
         }
@@ -148,7 +208,7 @@ pub fn routes(call: &Call) -> Reply {
             })
             .collect();
         screen.push(Block::Section {
-            heading: format!("{}  {}", api.name, api.path()),
+            heading: format!("{api}  {path}"),
             lines: shown,
         });
         count += rows.len();
@@ -165,10 +225,9 @@ pub fn routes(call: &Call) -> Reply {
             ]));
         }
     }
-    let apis_shown = apis
-        .apis
+    let apis_shown = blocks
         .iter()
-        .filter(|api| lines.iter().any(|line| line.api == api.name))
+        .filter(|(api, _)| lines.iter().any(|line| line.api == *api))
         .count();
     screen.push(Block::summary(
         Outcome::Success,

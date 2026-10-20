@@ -157,6 +157,13 @@ fn hostile_input_is_survived() {
     inputs.push(
         "type A = Output {\n    flour: Grams;?\n    total: Grams;, ;: ;= ;+ ;)\n}\n".to_string(),
     );
+    // `=` before a `/` isn't a clean `:`: after `:` the lexer reads
+    // `/_length` as a route path, so the edit changes the rest of the line.
+    inputs.push(
+        "/// How a baker signs in.{\ntype Handle = Text {\n    mine =/_length: 3\n    max_length: 40\n}\n"
+            .to_string(),
+    );
+    inputs.push("function f() -> Unit {\n    g(mine =/_length: 3)\n}\n".to_string());
     for input in inputs {
         check(&input);
     }

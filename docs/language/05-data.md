@@ -1240,6 +1240,12 @@ that holds an entity, since any of them can be written:
 A subscriber's record that it handled a delivery goes in the store the
 subscriber writes, committing with its writes, and refers to no table in
 another store (area 12, "Delivery: at least once, safe to repeat").
+The record of an action with several changing calls (`jadpo_step_records`:
+each run's key, action, build, step shape, first start, the generation
+of the runner holding it and whether it diverged; and `jadpo_steps`: each
+step's operation, its request's fingerprint, when it was sent and its
+sealed answer; area 12, built in chunk 7.5b) goes in the store such an
+action writes, or `events: { store: }`'s, only where one is kept.
 
 Browser sessions and API tokens (`jadpo_sessions`: each one's user, the
 verifiers of its token and a browser session's CSRF token, and when it
@@ -1252,7 +1258,10 @@ one statement. Passkeys (`jadpo_passkeys`: each one's user, its
 credential ID, the user handle its device keeps and the
 `WebAuthnCredential` it is; and `jadpo_passkey_challenges`: each ceremony
 under way, by its challenge's verifier, with what it is bound to and when
-it expires; area 8, chunk 5.5z) go beside the sessions they start.
+it expires; area 8, chunk 5.5z) and magic links
+(`jadpo_sign_in_requests`: one row per address, by its digest, with the
+latest link's and code's verifiers and the counts the limits read; area
+8, chunk 7.3b) go beside the sessions they start.
 Schedule state, each schedule's lease included, goes in the store
 `schedules: { store: }` names in `app.jadpo`, or the only store when there
 is one (area 12): `jadpo_schedules` (each schedule's next due time, lease

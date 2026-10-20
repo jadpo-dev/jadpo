@@ -253,6 +253,13 @@ pub trait NameView {
     /// The identity registry every key is made through.
     fn registry(&self) -> &Registry;
 
+    /// Whether `name` is one of the resources of the provider package in
+    /// `folder`, which the package's own actions call by its bare name
+    /// (area 11; chunk 7.6).
+    fn is_resource(&self, _folder: &str, _name: &str) -> bool {
+        false
+    }
+
     /// The name the checker's tables know `written` by, as this reader
     /// writes it ([`Symbol::canonical`]).
     fn canonical(&self, written: &str) -> String {
@@ -530,6 +537,10 @@ impl NameView for Lookup<'_> {
 
     fn is_domain(&self, name: &str) -> bool {
         !self.in_package && self.facts(name).domain
+    }
+
+    fn is_resource(&self, folder: &str, name: &str) -> bool {
+        self.in_package && crate::package_code::is_resource(self.db, self.project, folder, name)
     }
 
     fn is_connection(&self, name: &str) -> bool {

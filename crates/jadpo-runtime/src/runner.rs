@@ -446,7 +446,8 @@ pub(crate) async fn attempt_delivery(
     within: Option<&mut crate::LocalFuture<'_, ()>>,
 ) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
-        self, After, CHAIN_LIMIT, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED, failure_json, micros,
+        self, After, CHAIN_LIMIT, DIVERGED, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED,
+        failure_json, micros,
     };
     if ctx.in_action() {
         return Some((
@@ -591,6 +592,10 @@ pub(crate) async fn attempt_delivery(
     // A provider call's key is derived from the delivery's id, which every
     // attempt shares (area 12, "Keys"; chunk 7.2c).
     ctx.set_call_key("delivery", jadpo_value::encoding::to_hex(&delivery.id));
+    // Its key survives a retry, so an action with several changing calls
+    // keeps a record of its steps, held by this attempt (area 12, "One
+    // runner per record"; chunk 7.5b).
+    ctx.set_resumable(Some(i64::from(attempt)));
     let ran = match &subscriber.target {
         // A capability's operation is handed the event whole (chunk 7.0c).
         Target::Capability {
@@ -607,6 +612,7 @@ pub(crate) async fn attempt_delivery(
                     .await;
                 if !matches!(marked, Ok(rows) if !rows.is_empty()) {
                     let state = retried("unavailable", Some("unavailable")).await;
+                    ctx.set_resumable(None);
                     return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                 }
             }
@@ -640,6 +646,7 @@ pub(crate) async fn attempt_delivery(
                         .await;
                     if !matches!(marked, Ok(rows) if !rows.is_empty()) {
                         let state = retried("unavailable", Some("unavailable")).await;
+                        ctx.set_resumable(None);
                         return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                     }
                     let call = Call::new(
@@ -652,9 +659,47 @@ pub(crate) async fn attempt_delivery(
                 }
             }
         }
+        // The sign-in email the application sends itself (area 16,
+        // "Built-in emails", level 5): its action is given the
+        // `MagicLinkRequest` made now, with a link and a code no attempt
+        // before had, or nothing runs when the request was used or
+        // replaced since.
+        Target::Action { callable, .. }
+            if subscriber.event == jadpo_std::email::MAGIC_LINK_EMAIL =>
+        {
+            let plan = events
+                .plan
+                .emails
+                .email(&subscriber.event)
+                .and_then(|email| email.builtin.as_ref())
+                .map(|jadpo_std::email::BuiltinEmail::MagicLink(plan)| plan.clone());
+            let made = match &plan {
+                Some(plan) => {
+                    crate::http::magic_links::request_value(executor, ctx, plan, &delivery.value)
+                        .await
+                }
+                None => Err("a sign-in email this build doesn't have"),
+            };
+            match made {
+                Ok(None) => Ok(Outcome::Value(Value::Unit)),
+                Err("unavailable") => Ok(Outcome::Failed(Box::new(crate::unavailable()))),
+                Err(what) => Ok(Outcome::Fault(
+                    ctx.fault(FaultKind::Defect(what.into()), Frame::ENTRY),
+                )),
+                Ok(Some(request)) => {
+                    let job = Job {
+                        callable: *callable,
+                        args: vec![request],
+                        system: System { tenant: None },
+                    };
+                    run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
+                }
+            }
+        }
         Target::Action { callable, args } => {
             let Some(args) = outbox::arguments(args, &delivery.value) else {
                 settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
+                ctx.set_resumable(None);
                 return Some((
                     Outcome::Fault(ctx.fault(
                         FaultKind::Defect(
@@ -672,33 +717,10 @@ pub(crate) async fn attempt_delivery(
                     tenant: outbox::tenant(subscriber, &delivery.value),
                 },
             };
-            let (trace, chain) = (ctx.trace(), ctx.chain());
-            let continued = match delivery.trace {
-                Some(parent) => ctx.new_span(parent),
-                None => ctx.new_trace(),
-            };
-            ctx.set_trace(Some(continued));
-            let background = ctx.background_mut();
-            background.set_chain(delivery.depth.saturating_add(1));
-            background.set_handled(subscriber.store.clone().map(|store| crate::ctx::Handled {
-                store,
-                id: delivery.id,
-            }));
-            let ran = match within {
-                // A route stopping its wait gives the delivery back, as the
-                // host shutting down does.
-                Some(stop) => held(executor, ctx, job, stop, ())
-                    .await
-                    .map_err(|()| Cut::ShuttingDown),
-                None => within_budget(executor, ctx, budget, job).await,
-            };
-            let background = ctx.background_mut();
-            background.set_handled(None);
-            background.set_trace(trace);
-            background.set_chain(chain);
-            ran
+            run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
         }
     };
+    ctx.set_resumable(None);
     // Whether a call the run made may have acted outside in a way sending
     // it again would repeat: then the delivery is never given back nor
     // retried, but parked for an operator (area 16).
@@ -749,8 +771,52 @@ pub(crate) async fn attempt_delivery(
             .await;
             OUTCOME_UNKNOWN
         }
+        After::Diverge { problem } => {
+            settle(DIVERGED, None, Some(outbox::diverged_json(&problem))).await;
+            DIVERGED
+        }
     };
     Some((outcome, state))
+}
+
+/// Runs a delivery's action, `job`, as the system in `ctx`: its trace
+/// continuing the event's, one deeper in its chain, and its handled record
+/// kept where its subscriber keeps it (chunk 6.1b). Raced against `within`
+/// while a route waits for it, or else against `budget`'s limit.
+async fn run_job(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    delivery: &crate::outbox::Delivery,
+    subscriber: &jadpo_std::subscriber::SubscriberPlan,
+    job: Job,
+    budget: &Budget<'_>,
+    within: Option<&mut crate::LocalFuture<'_, ()>>,
+) -> Result<Outcome, Cut> {
+    let (trace, chain) = (ctx.trace(), ctx.chain());
+    let continued = match delivery.trace {
+        Some(parent) => ctx.new_span(parent),
+        None => ctx.new_trace(),
+    };
+    ctx.set_trace(Some(continued));
+    let background = ctx.background_mut();
+    background.set_chain(delivery.depth.saturating_add(1));
+    background.set_handled(subscriber.store.clone().map(|store| crate::ctx::Handled {
+        store,
+        id: delivery.id,
+    }));
+    let ran = match within {
+        // A route stopping its wait gives the delivery back, as the
+        // host shutting down does.
+        Some(stop) => held(executor, ctx, job, stop, ())
+            .await
+            .map_err(|()| Cut::ShuttingDown),
+        None => within_budget(executor, ctx, budget, job).await,
+    };
+    let background = ctx.background_mut();
+    background.set_handled(None);
+    background.set_trace(trace);
+    background.set_chain(chain);
+    ran
 }
 
 /// Hands `call`, a capability's delivery, to the capability seam in `ctx`

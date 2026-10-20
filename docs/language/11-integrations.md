@@ -234,7 +234,7 @@ and `shared/providers/`.
 | `oauth:` | The provider's authorize, token and revoke addresses, for a connection whose credential is an `OAuthGrant` (see "Acting for each user") |
 | `idempotency:` | `header:` (where the key goes), `window:` (how long the provider keeps a key; required), `max_length:`, the provider's error codes `in_use:` (the key's first request is still running), `reused:` (the key came with a different request) and `new_key_on:` (the first attempt failed and the key cannot be used again), and `replays_failures: true` (default false) for a provider that replays a failed answer under the same key. Left out when the API takes no key |
 | `error_code:` | Where the provider's error code is in a failed response |
-| `webhooks:` | `check:` (the signature scheme), `event_id:`, `event_type:`, and `handshake:` where the provider needs one |
+| `webhooks:` | `check:` (the signature scheme), `event_id:`, `event_type:`, `occurred_at:` where the body says when the event happened, `header:` for `SignatureScheme.hmac_sha256`, and `handshake:` where the provider needs one |
 | `polls:` | Operations the runtime calls on a schedule, each with a default interval and the event emitted when the answer changes |
 | `erasure:` | The operation that deletes a person at the provider and the key it takes (`by:`) |
 | `max_concurrent:` | How many of its calls run at once per app instance |
@@ -2462,6 +2462,195 @@ var started: Stripe.StartedSubscription = attempt stripe.start_subscription(requ
 }
 ```
 
+Built in chunk 7.6 and checked by this checkout's `jadpo`: a package's
+action calling its own operations, one its package keeps to itself, each
+answer passed to the next, and the app calling it through its connection
+and mapping its failure at the call. A package action's changing calls
+are steps of the action that calls it (area 12, "Several changing calls
+in one action"); the record of those steps comes with roadmap 7.5b. Its
+subscribers and the events they emit, polls and `max_concurrent:` come
+with roadmap 7.6b. The choices are in "Chosen in chunk 7.6".
+
+```jadpo check project=p76-actions file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        pay: {
+            package: AcmePay.v1
+            domains: [billing]
+            credential: config.pay_api_key
+            environment: config.pay_environment
+        }
+    }
+    events: {
+        store: main
+    }
+    steps: {
+        encryption_key: config.step_encryption_key
+    }
+}
+```
+
+```jadpo check project=p76-actions file=config.jadpo hidden
+config {
+    pay_api_key: Text {
+        secret: true
+    }
+    pay_environment: ProviderEnvironment
+    step_encryption_key: SigningKey
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's payments API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
+        window: 24h
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/types/pay_request.jadpo hidden
+/// What each call takes.
+public type PayRequest = Object {
+    reference: Reference
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/types/pay_reply.jadpo hidden
+/// What each call gives.
+public type PayReply = Object {
+    id: Reference
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/types/reference.jadpo hidden
+/// Acme Pay's reference for a record.
+public type Reference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/failures/declined_card.jadpo hidden
+/// The card was declined.
+public type DeclinedCard = Failure {
+    kind: FailureKind.rejected
+    message: "The card was declined."
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/resources/customers.jadpo hidden
+resource customers {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/customers"
+        input: PayRequest
+        output: PayReply
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/resources/cards.jadpo hidden
+public resource cards {
+    attach: {
+        method: HttpMethod.post
+        path: "/v1/cards"
+        input: PayRequest
+        output: PayReply
+        changes: true
+        idempotent: true
+        failures: [DeclinedCard]
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/failures/payment_refused.jadpo hidden
+/// The payment provider refused the card.
+type PaymentRefused = Failure {
+    kind: FailureKind.rejected
+    message: "The card was refused."
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/events/plan_chosen.jadpo hidden
+use shared/providers/acme_pay
+
+/// A customer chose a plan.
+type PlanChosen = Event {
+    tier: AcmePay.Reference
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/events/events.jadpo_record hidden
+// Generated by Jadpo from the events of domain billing; update it with `jadpo records update`, never by hand.
+record events 1
+
+event PlanChosen
+    tier: Text { max_length: 40 }
+```
+
+```jadpo check project=p76-actions file=domains/billing/subscribers/open_subscription.jadpo hidden
+use billing/actions { subscribe }
+use billing/events { PlanChosen }
+
+/// Starts the subscription a customer chose.
+subscriber open_subscription {
+    on: PlanChosen
+    run: subscribe(event.tier)
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/actions/start_subscription.jadpo
+/// Creates the customer, then attaches the card to it.
+public action start_subscription(input: PayRequest) fails DeclinedCard -> PayReply {
+    var customer: PayReply = customers.create(input)
+    return attempt cards.attach(
+        PayRequest {
+            reference: customer.id
+        }
+    )
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/actions/subscribe.jadpo
+use app { pay }
+use billing/failures { PaymentRefused }
+use shared/providers/acme_pay
+
+/// Starts a subscription: two steps, run by a subscriber.
+action subscribe(tier: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {
+    return attempt pay.start_subscription(
+        AcmePay.PayRequest {
+            reference: tier
+        }
+    ) {
+        declined_card: PaymentRefused
+    }
+}
+```
+
 ### Polls
 
 **Polling turns an API without webhooks into events.** `polls:` in
@@ -2600,8 +2789,9 @@ changing calls in one action").
 - **The record.** Before a step is sent the runtime records its position,
   operation, a fingerprint of its request (over the typed value, not the
   bytes) and the time sent; when the answer comes, success or failure, it
-  records the answer as the provider sent it, encrypted, at most 256 KB (a
-  larger one is a fault naming the step). Provider reads after the first
+  records the answer as the provider sent it, encrypted, at most 1 MB (a
+  larger one is a fault naming the step; corrected from 256 KB in chunk
+  7.5 to area 12's "Settled for the build"). Provider reads after the first
   changing step are recorded the same way. Database reads are not, and
   reads before the first changing step are not.
 - **Replay.** A rerun replays answered steps in order without sending them,
@@ -2658,7 +2848,7 @@ changing calls in one action").
   outbox; an action that writes no store needs `events: { store: }`, or it
   is a compile error.
 - **Personal data.** Requests are kept only as fingerprints. Answers are
-  encrypted with a runtime key; nothing links them to a person, so the
+  encrypted with `application { steps: { encryption_key: } }` (area 12); nothing links them to a person, so the
   personal-data report lists "provider answers for unfinished actions, at
   most 30 days", as it does for logs. A metric and a no-setup alert watch
   the number of unfinished records and the age of the oldest.
@@ -2704,6 +2894,22 @@ Calls without idempotency keys (GitHub, Twilio Messages, Postmark) stay
 one per action. A receipt sent after a charge belongs in a subscriber of
 the action's event, not as an unkeyed last step.
 
+Built in chunk 7.5, what `jadpo check` keeps of these rules, with the
+errors under area 12's "Errors" (`step.context`, `step.large_output`,
+`step.store_required`, `step.too_many`, `step.unkeyed`) and area 3's
+`effect.call_in_loop`; an operation's `large_output:` is read. The record,
+replay and key windows come with roadmap 7.5b, and the operator's items,
+the fakes' `lost` and `in_use`, the tests' crash points and the warning
+with 7.5c.
+
+Built in chunk 7.5b, the record, replay and key windows, as area 12's
+"Several changing calls in one action" says: a provider's `idempotency:`
+`window:`, `replays_failures:` and `new_key_on:` are read into the plan,
+an operation's `changes:` marks a step, and the provider call records,
+replays and keys each step through the capability seam
+(`effects::exchange` writes a step before it is sent). Choices in area
+12's decisions table, "The record, chosen in chunk 7.5b".
+
 ## Receiving from outside
 
 Decided 2026-10-16 (Richard), extending question 11.
@@ -2736,6 +2942,77 @@ basic authentication (Postmark, which signs nothing), Twilio's HMAC-SHA1
 and AWS SNS certificates (question 25). Every event carries the provider's
 `occurred_at`; out-of-order delivery is the app's to handle, by ignoring
 an event older than what it stored, and a recipe shows how.
+
+> **Built (chunk 7.7)**, with its choices under "Chosen in chunk 7.7"
+> below: `webhooks:` in `provider.jadpo` (`SignatureScheme.stripe`,
+> `.standard_webhooks`, `.hmac_sha256` with `header:`, and `.basic`;
+> `.twilio`, `.slack`, `.sns` and `handshake:` since chunk 7.7b, under
+> "Chosen in chunk 7.7b"), a package's `events/` with each event's
+> `wire_name:` and `occurred_at: Instant`, a connection's `webhooks: {
+> secret: }`, and the
+> generated route the runtime answers, its events kept in the outbox for
+> the app's subscribers. A package that receives webhooks, its events and
+> how its provider signs them:
+
+```jadpo check project=e77-webhooks file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/provider.jadpo
+/// Acme Pay's API, which signs its webhooks as Stripe does.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.stripe
+        event_id: "id"
+        event_type: "type"
+        occurred_at: "created"
+    }
+}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/types/payment_id.jadpo hidden
+/// Acme Pay's reference for a payment.
+public type PaymentId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e77-webhooks file=shared/providers/acme_pay/v1/events/payment_succeeded.jadpo
+/// A payment was taken.
+public type PaymentSucceeded = Event {
+    wire_name: "payment.succeeded"
+    occurred_at: Instant
+    payment_id: PaymentId {
+        wire_name: "paymentId"
+    }
+    pence: Int {
+        min: 0
+    }
+}
+```
+
+A connection to it with `webhooks: { secret: config.payments_webhook_secret }`
+has `POST /webhooks/payments`, listed by `jadpo routes` as `generated
+webhook` with `signature` for its authentication, and an app's subscriber
+takes its events with `on: AcmePay.PaymentSucceeded`, as
+`crates/jadpo-cli/tests/webhooks.rs` shows against live PostgreSQL. Its
+body's `paymentId` and `pence` are the event's fields; its `id`, `type` and
+`created` are read from the places `webhooks:` names, and every other
+member is left out, as a provider's answer's are.
 
 ### Webhooks that need a reply
 
@@ -2772,6 +3049,135 @@ phone: {
 }
 ```
 
+> **Built (chunk 7.7b)**, with its choices under "Chosen in chunk 7.7b"
+> below: an event's `reply:`, an object of the package's own `types/`,
+> and a connection's `webhooks: { replies: }`, each event needing a reply
+> answered by an app's action that takes the event and returns the reply,
+> run as the system once the signature is checked; the reply is sent as
+> the package's JSON and kept with the event's id, so a repeat is answered
+> with it. The event isn't kept in the outbox, so subscribing to it is
+> `subscriber.event_invalid`. Acme Voice signs as Twilio does, over a form
+> body, and waits for what a caller hears:
+
+```jadpo check project=e77b-replies file=app.jadpo
+use support
+
+application {
+    connections: {
+        phone: {
+            package: AcmeVoice.v1
+            domains: [support]
+            credential: config.phone_key
+            host: config.phone_address
+            webhooks: {
+                secret: config.phone_auth_token
+                replies: {
+                    incoming_call: support.answer_call
+                }
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=config.jadpo hidden
+config {
+    phone_address: Url
+    phone_auth_token: Text {
+        secret: true
+    }
+    phone_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/package.jadpo hidden
+/// Acme Voice's calls API.
+package AcmeVoice.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/provider.jadpo
+/// Acme Voice's API, which signs its webhooks as Twilio does.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.twilio
+        event_id: "CallSid"
+        event_type: "CallStatus"
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/types/call_reply.jadpo
+/// What a caller hears.
+public type CallReply = Object {
+    spoken: Text
+    hang_up: Bool {
+        wire_name: "hangUp"
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=shared/providers/acme_voice/v1/events/incoming_call.jadpo
+/// A call is ringing, and waits to be told what to do.
+public type IncomingCall = Event {
+    wire_name: "ringing"
+    reply: CallReply
+    occurred_at: Instant
+    call_sid: Text {
+        wire_name: "CallSid"
+    }
+    from: Text {
+        wire_name: "From"
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=domains/support/entities/phone_log.jadpo hidden
+/// A call the desk answered.
+entity PhoneLog {
+    id: Uuid
+    call_sid: Text
+    caller: Text
+    rang_at: Instant
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=e77b-replies file=domains/support/actions/answer_call.jadpo migrate=initial
+use support/entities { PhoneLog }
+use shared/providers/acme_voice
+
+/// Answers a call Acme Voice rings through, noting who rang.
+action answer_call(event: AcmeVoice.IncomingCall) -> AcmeVoice.CallReply {
+    var noted_call: PhoneLog = PhoneLog.create {
+        set: {
+            call_sid: event.call_sid
+            caller: event.from
+            rang_at: event.occurred_at
+        }
+    }
+    return AcmeVoice.CallReply {
+        spoken: "Thanks for calling."
+        hang_up: noted_call.caller != ""
+    }
+}
+```
+
+A ringing call is answered `200` with `{"spoken":"Thanks for calling.","hangUp":true}`,
+and Twilio asking again gets the same reply without the action running
+again, as `crates/jadpo-cli/tests/webhook_replies.rs` shows against live
+PostgreSQL.
+
 ### Handshakes
 
 Some providers check an address before sending to it (AWS SNS, Slack,
@@ -2779,6 +3185,102 @@ Microsoft Graph). These are built-in rules the package names in
 `webhooks:` (`handshake: WebhookHandshake.sns`, `.slack`,
 `.microsoft_graph`), answered by the runtime and extended by Jadpo
 releases.
+
+> **Built (chunk 7.7b)**, with its choices under "Chosen in chunk 7.7b"
+> below: SNS's subscription confirmation, signed as its messages are and
+> from the connection's topic, confirmed by visiting its address on AWS's
+> SNS host; Slack's challenge, answered once its signature is checked
+> (`SignatureScheme.slack`); and Microsoft Graph's validation, which Graph
+> doesn't sign, its token answered as plain text. SNS's own messages are
+> checked against the certificate the runtime fetches from AWS's SNS host
+> over HTTPS, never from a private address, and keeps. A handshake signed
+> otherwise than its provider signs is `package.provider_invalid`. A
+> package receiving an SNS topic's messages:
+
+```jadpo check project=e77b-sns file=app.jadpo hidden
+application {
+    connections: {
+        orders: {
+            package: AcmeTopics.v1
+            domains: [dispatch]
+            credential: config.orders_key
+            host: config.orders_address
+            webhooks: {
+                secret: config.orders_topic
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=config.jadpo hidden
+config {
+    orders_address: Url
+    orders_key: Text {
+        secret: true
+    }
+    orders_topic: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=domains/dispatch/entities/parcel.jadpo hidden
+/// A parcel sent out.
+entity Parcel {
+    id: Uuid
+    reference: Text
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/package.jadpo hidden
+/// Acme's order topic, on AWS SNS.
+package AcmeTopics.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/provider.jadpo
+/// AWS SNS, which signs each message with a certificate of AWS's own.
+provider {
+    protocol: Protocol.json_http
+    credential: CredentialScheme.bearer
+    webhooks: {
+        check: SignatureScheme.sns
+        event_id: "MessageId"
+        event_type: "Message.type"
+        handshake: WebhookHandshake.sns
+    }
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/types/shipment.jadpo hidden
+/// An order that went out.
+public type Shipment = Object {
+    order_id: Text
+}
+```
+
+```jadpo check project=e77b-sns file=shared/providers/acme_topics/v1/events/order_shipped.jadpo migrate=initial
+/// An order was shipped.
+public type OrderShipped = Event {
+    wire_name: "order.shipped"
+    occurred_at: Instant
+    shipment: Shipment {
+        wire_name: "Message"
+    }
+}
+```
+
+The connection's secret is the topic's ARN, and SNS's `Message`, which
+holds JSON, is read as the JSON it holds, so `event_type:` and the
+event's fields reach inside it.
 
 ### Queues
 
@@ -3401,7 +3903,7 @@ example and real output under "Errors".
 | A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
-| Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | Not yet on the roadmap |
+| Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | 7.5: area 12's `step.` errors and area 3's `effect.call_in_loop` |
 | A service image not yet accepted; an `asks:` host not granted by `outbound:` | By `jadpo check` (named, with the line that grants it) | Not yet on the roadmap |
 | A third-party package from git with no acceptance | By `jadpo check` | Not yet on the roadmap |
 
@@ -3410,9 +3912,10 @@ example and real output under "Errors".
 > `hosts:` with `runs:`, a reserved name and a name the app uses, and the
 > reachable-from-public rule (area 1's `visibility.public_reaches_private`).
 > Chunk 7.1b2 built a surface that differs at install and a link in CI,
-> under "Installing errors". Still to come: a resource and an action with one
-> name, a public action that emits and subscribing to a non-public event
-> (chunk 7.6). Chunk 7.1c built a connection's `host:` for a package
+> under "Installing errors". Chunk 7.6 built a resource and an action with
+> one name and a public action that emits, under `package.action_invalid`,
+> and chunk 7.7 subscribing to a non-public event (`package.not_public`).
+> Chunk 7.1c built a connection's `host:` for a package
 > with fixed `hosts:`, with the rest of a connection's keys, under
 > "Connection errors". Chunk 7.2d2 built a decoder that fails on a
 > recording and a field's `decode:` and `encode:` that don't round-trip,
@@ -3952,6 +4455,104 @@ error: `AcmeCouriers.tidying` isn't public
 check failed: 1 error, 6 files
 ```
 
+### `package.action_invalid`
+
+A package's action calls only its own API: its operations, in any order,
+and its pure functions, never another action, so what it does is one way
+through it that a retry replays in order. It never emits when it is
+`public`, since a package emits only about the outside world, and it
+never shares a name with one of its resources, which share its
+connection's namespace (chunk 7.6):
+
+```jadpo check project=p76-calls file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's payments API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
+        window: 24h
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/types/pay_request.jadpo hidden
+/// What each call takes.
+public type PayRequest = Object {
+    reference: Text {
+        max_length: 40
+    }
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/types/pay_reply.jadpo hidden
+/// What each call gives.
+public type PayReply = Object {
+    id: Text {
+        max_length: 40
+    }
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/resources/customers.jadpo hidden
+resource customers {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/customers"
+        input: PayRequest
+        output: PayReply
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/actions/open_customer.jadpo hidden
+/// Opens the customer.
+public action open_customer(input: PayRequest) -> PayReply {
+    return customers.create(input)
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/actions/start_subscription.jadpo expect=package.action_invalid
+/// Opens the customer, through the other action.
+public action start_subscription(input: PayRequest) -> PayReply {
+    return open_customer(input)
+}
+```
+
+```text output
+error: `start_subscription` calls the package's action `open_customer`
+ --> shared/providers/acme_pay/v1/actions/start_subscription.jadpo:3:12
+  |
+3 |     return open_customer(input)
+  |            ^^^^^^^^^^^^^ another action
+  reason: A package's action calls only its own API: its operations, in any order, and its pure functions. The steps it makes are one way through it, which a retry replays in order.
+  next: Make `open_customer`'s calls here, or move what both share to a function (agent)
+  rule: package.action_invalid
+  help: docs/language/11-integrations.html#package-action-invalid
+
+check failed: 1 error, 8 files
+```
+
 ### `package.not_locked`
 
 `packages/` holds only installed packages, each with its line in
@@ -4368,6 +4969,58 @@ error: `wire_name` is for a provider package's fields
   help: docs/language/11-integrations.html#package-wire-name-invalid
 
 check failed: 1 error, 3 files
+```
+
+A package that receives webhooks names each event as its provider sends
+it, so the runtime can find the event a body carries:
+
+```jadpo check project=e77-wire-name file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e77-wire-name file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e77-wire-name file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+    }
+    webhooks: {
+        check: SignatureScheme.standard_webhooks
+        event_id: "id"
+        event_type: "type"
+    }
+}
+```
+
+```jadpo check project=e77-wire-name file=shared/providers/acme_pay/v1/events/payment_refunded.jadpo expect=package.wire_name_invalid
+/// A payment was given back.
+public type PaymentRefunded = Event {
+    occurred_at: Instant
+    reference: Text
+}
+```
+
+```text output
+error: Webhook event `PaymentRefunded` doesn't give `wire_name:`
+ --> shared/providers/acme_pay/v1/events/payment_refunded.jadpo:2:13
+  |
+2 | public type PaymentRefunded = Event {
+  |             ^^^^^^^^^^^^^^^ no `wire_name:`
+  reason: `AcmePay.v1` declares `webhooks:`, so each event it declares gives the type its provider names it by, `wire_name:`, which the runtime matches a webhook's event type against.
+  next: Add `wire_name:` with the provider's name for the event, such as `wire_name: "payment.succeeded"` (agent)
+  rule: package.wire_name_invalid
+  help: docs/language/11-integrations.html#package-wire-name-invalid
+
+check failed: 1 error, 4 files
 ```
 
 ### `package.standard_candidate`
@@ -6353,7 +7006,9 @@ side (below); the rest is still to build.
 | The scoped review of an import's types, tracked per type, and unconfirmed operations (built) | 7.2e2 |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
-| Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
+| Package subscribers on their own webhooks and the events they emit, polls, `max_concurrent:`, recipes compiled against `sample/` at publish | 7.6b |
+| Package's services; several changing calls in one action; receiving (queues, chunk 7.7c; webhooks as events built in 7.7, replies and handshakes in 7.7b); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -6999,8 +7654,9 @@ Provider calls, each choice the most conservative reading:
   is one of the package's object types, and without it the call takes
   nothing; without `output:` it gives nothing and its answer isn't read.
   `changes:` defaults to `true` for every method but `GET`, as the
-  importer writes it, and `idempotent:` to `false`. `source:`, `docs:`,
-  `scope:` and `large_output:` are read by the chunks that use them;
+  importer writes it, and `idempotent:` to `false`. `source:`, `docs:`
+  and `scope:` are read by the chunks that use them (`large_output:`, a
+  flag, since chunk 7.5);
   `wire_output:` and `decode:` are `toolchain.not_built_yet` until chunk
   7.2c2. Anything else, a malformed path, a placeholder no input field is
   sent as, or a failure that isn't the package's, is
@@ -7456,6 +8112,240 @@ choice the most conservative reading:
   while the app calls none of the package's operations, when the review
   starts; then "Not yet confirmed" with the calls no recording confirms.
   `--json` gives them as `review` and `again`.
+
+### Chosen in chunk 7.7
+
+Webhooks as events (the first part of chunk 7.7, split on 2026-10-20:
+replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
+`receiving` 7.7c), each the most conservative reading:
+
+- **Where the route is.** `POST <prefix>/<connection>`, the prefix the
+  app's `webhooks` API declares, or `/webhooks` when it declares none, in
+  which case the routes belong to no declared API and have no record or
+  OpenAPI document of their own; `jadpo routes` lists them under
+  `webhooks  /webhooks`. In a declared `webhooks` API each is in its record
+  (`generated webhook`, its connection, `authentication signature`,
+  `status 204`) and its OpenAPI document. The path changes only with the
+  API's prefix. Any method is the runtime's at that path (`OPTIONS` and
+  `405` with `Allow: OPTIONS, POST`), so an app route there is
+  `route.path_overlap`.
+- **The signature.** Checked over the raw body with the connection's
+  secret, and the value it replaced while a deployment rotates it, every
+  candidate compared in constant time. `stripe`: `Stripe-Signature:
+  t=<seconds>,v1=<hex>`, each `v1` tried, over `<t>.<body>` under the
+  secret as written. `standard_webhooks`: `webhook-id`,
+  `webhook-timestamp` and `webhook-signature` (or Svix's `svix-` headers),
+  each `v1,<base64>` tried, over `<id>.<timestamp>.<body>` under the Base64
+  after the secret's `whsec_` (the secret as written when it has none).
+  `hmac_sha256`: the body's HMAC in the header `header:` names, as 64 hex
+  digits or Base64, with or without `sha256=`; it signs no time, so its age
+  isn't checked. `basic`: `Authorization: Basic` against the secret as
+  `user:password`. A signed time more than five minutes from the host's
+  clock, either way, is refused. Any refusal is `401 unauthenticated`,
+  "The webhook's signature doesn't match.", saying nothing of why; the
+  host's log line says (`unsigned`, `stale`, `mismatch`, `no secret`).
+- **Reading the body.** It is JSON (`400 invalid_request` otherwise). The
+  event's id is the text or whole number at `event_id:`, its type the text
+  at `event_type:` (`400` when either is missing). A type the package
+  declares no event for is answered `204` and not kept, since a provider
+  sends every type the account subscribes to. The event's fields are read
+  from the body's root with its type's codec on the provider's wire, its
+  `wire_name:` and `wire:` spellings included, every member it doesn't
+  declare left out; a body it doesn't read is `422 invalid_input`, each
+  problem by the provider's field, so the provider keeps it and sends it
+  again once the package is fixed. A field read by the package's own
+  `decode:` and `encode:` is `toolchain.not_built_yet` on a webhook's
+  event, since those run at a call's site.
+- **`occurred_at`.** Every event of a package with `webhooks:` declares
+  `occurred_at: Instant`, with no `wire_name:` or `wire:`
+  (`package.wire_invalid`), and the runtime fills it, whatever the body
+  holds of that name: from the place `webhooks: { occurred_at: }` names (a
+  whole number of seconds since 1970, or RFC 3339 text; `400` when it holds
+  neither), else the signature's time, else when the request arrived. Each
+  event names the type its provider sends with a text `wire_name:`, no two
+  of one package alike (`package.wire_name_invalid`). An app's own event
+  giving `wire_name:` is `toolchain.not_built_yet` until queues (7.7c).
+- **Keeping it once.** In one read-committed transaction in the events'
+  store, the provider's id is recorded under `webhook <connection>` in
+  `jadpo_received_events`, then the event's outbox row and a delivery for
+  each subscriber are written, as an action's events are (its trace the
+  request's, `traceparent` continued; depth 0; `within:` counted from
+  arrival). An id already recorded is a repeat: answered `204` as the
+  first was, nothing kept. The tick deletes ids received more than 30 days
+  ago, longer than any provider retries. A store that can't be reached is
+  `503 unavailable`, nothing kept, so the provider sends it again.
+- **The store.** `events: { store: }`, or the only store that holds the
+  app's records; with none, or several and none named, the connection's
+  `secret:` is `event.store_required`. `jadpo_received_events` is in that
+  store's migration only when some connection receives webhooks.
+- **The connection.** `webhooks:` takes `secret:`, a secret setting
+  (`connection.value_invalid` otherwise, `connection.key_missing` when it
+  is left out), and `replies:` (chunk 7.7b); given to a package whose
+  provider declares no `webhooks:` it is
+  `connection.key_invalid`. A package with `webhooks:` and no connection
+  giving a secret receives nothing.
+- **What answers.** Every request is answered once it is kept or dropped:
+  `204` with no body, deliveries running after the response. An event
+  whose payload is over 64 KB, every event's limit (area 12), is `413
+  request_too_large`. It is counted
+  against its address's rate limit, whatever credential it carries. A
+  non-public package event is kept and reaches no subscriber, subscribing
+  to one being `package.not_public`; package subscribers come with 7.6.
+
+### Chosen in chunk 7.7b
+
+Webhook replies, handshakes, and Twilio's, Slack's and SNS's schemes,
+each the most conservative reading where the pages left it open:
+
+- **Twilio.** `SignatureScheme.twilio`: `X-Twilio-Signature`, the Base64
+  of the HMAC-SHA1 under the auth token (the connection's secret) of the
+  URL Twilio requested followed by each form member's name and value,
+  sorted by name and, for a name sent twice, by value. The URL is
+  `https://`, the request's `Host` and its path and query, tried with
+  `:443` written and without, as Twilio's own libraries do; Twilio sends
+  only to HTTPS and a proxy in front of the host ends the TLS. It signs no
+  time, so no age is checked; a repeat is dropped by its id. The body is
+  a form (`400 invalid_request` otherwise), read as JSON of its members'
+  text, a name sent twice a list, so the places and fields name form
+  members (`event_id: "CallSid"`).
+- **Slack.** Its events can't be checked by any scheme the page named, so
+  `SignatureScheme.slack` joins them, as "extended by Jadpo releases"
+  allows: `X-Slack-Signature: v0=<hex>`, the HMAC-SHA-256 of
+  `v0:<X-Slack-Request-Timestamp>:<body>` under the signing secret, with
+  the five-minute tolerance.
+- **SNS.** `SignatureScheme.sns`: the message's own `Signature`, RSA
+  PKCS #1 v1.5 over the members SNS lists for its `Type`, with SHA-1
+  (`SignatureVersion` 1) or SHA-256 (2), by the RSA key (2,048 bits or
+  more) of the certificate at its `SigningCertURL`, valid at the host's
+  time; the chain isn't checked, since the certificate comes over HTTPS
+  from AWS's own host. Any AWS account can have SNS sign a message from
+  its own topic, so the connection's `secret:` is the topic's ARN, and a
+  message from any other topic is refused before anything is fetched.
+  The certificate is fetched only from `https://sns.<region>.amazonaws.com`
+  (or `.amazonaws.com.cn`), a `.pem` path with no port, credentials or
+  query, by the host's guard for the runtime's own requests: HTTPS only,
+  no redirect followed, connected only to the public address it checked
+  (never loopback, private, link-local, shared, reserved or multicast),
+  at most 16 KB within five seconds; each certificate is kept for a day.
+  SNS signs the time it published and its retries keep it, so the
+  five-minute tolerance holds only ahead of the host's clock: a message
+  signed 30 days ago or more, as long as a received id is kept, is
+  refused, so any replay within that is a repeat by its `MessageId`. A
+  certificate that can't be fetched is `503 unavailable`, so SNS sends it
+  again; a host that reaches nothing (Workers, until Phase 8) answers so.
+  The `Message`, when it holds JSON, is read as that JSON, so places reach
+  inside it (`"Message.type"`). Anything but a `Notification` carries no
+  event: answered `204`.
+- **Handshakes.** `handshake:` names `WebhookHandshake.sns`, `.slack` or
+  `.microsoft_graph` (`package.provider_invalid` otherwise); SNS's and
+  Slack's need `SignatureScheme.sns` and `.slack`, which sign them
+  (`package.provider_invalid` otherwise). SNS's `SubscriptionConfirmation`,
+  signed and from the topic, is confirmed by a `GET` of its `SubscribeURL`
+  on an SNS host through the same guard (`204` when SNS took it, `503`
+  otherwise). Slack's `url_verification`, once signed, is answered
+  `200` with `{"challenge": ...}`. Microsoft Graph's validation is the
+  only request answered before a signature is looked for, since Graph
+  signs none: a `POST` whose query gives one `validationToken` of at most
+  1,024 characters, none a control character, answered `200` with the
+  token as `text/plain; charset=utf-8` and `X-Content-Type-Options:
+  nosniff` (`400 invalid_request` for one that isn't). Graph's own
+  notification check, its `clientState` in the body, isn't a scheme yet.
+- **Replies.** `reply:` in a webhook event a package declares names an
+  `Object` of the package's own (`package.wire_invalid` otherwise); on
+  any other event `reply` is reserved (`type.reserved_field_name`), so it
+  is never a field. The connection's `replies:` keys each event needing a
+  reply by its name in lower_snake_case, `incoming_call:`, naming an
+  action `<domain>.<action>` (any domain; the app's `use` line for it, as
+  `on_first_sign_in:`'s) that takes the one event and returns the reply
+  type: a key no such event has is `connection.key_invalid`, a value that
+  isn't such an action `connection.value_invalid`, and an event needing a
+  reply with none `connection.key_missing`. Subscribing to such an event
+  is `subscriber.event_invalid`: it isn't kept in the outbox.
+- **Answering.** After the signature and the body are read, the event's
+  id is claimed in `jadpo_received_events` (its new `reply` column empty)
+  in a statement of its own; the action runs as the system, in its own
+  transaction, as `on_first_sign_in:`'s does; its reply is encoded with
+  the reply type's codec on the provider's wire and sent `200` as
+  `application/json`, and kept over the claim once the action has
+  committed. A repeat that finds the reply is answered with it, one that
+  finds a claim younger than a minute `409 conflict` ("The webhook is
+  still being answered."), and a claim older than that, left by a process
+  that stopped, is taken over. A failure gives the claim back, so the
+  provider's retry runs the action again: a declared failure answered as
+  a route answers it, `unavailable` `503`, a fault `500`. Keeping the
+  reply follows the action's commit rather than joining it, since the
+  action may write another store: if that statement fails, a retry after
+  the claim lapses runs the action again. Twilio's TwiML waits for an XML
+  byte format, as the page says.
+
+### Chosen in chunk 7.6
+
+Package actions and recipes (the first part of chunk 7.6, split on
+2026-10-20: package subscribers, the events they emit, polls,
+`max_concurrent:` and recipes compiled against `sample/` are 7.6b), each
+the most conservative reading:
+
+- **Calling its own API.** In a package's action, `<resource>.<operation>(input)`
+  calls one of its package's operations, public or not, by its bare names;
+  a function or a test of the package calling one is
+  `effect.function_persistence`. The operation's failures are the
+  package's own, so they pass on to the action's `fails` with `attempt`
+  as a library function's do, or are handled with `match`. At run time
+  the call goes through the connection the app called the action
+  through, with its credential, host, timeout and fake.
+- **No other action.** A package's action calling another action, its
+  package's or any other, is `package.action_invalid`: the pages let a
+  package action call its operations and its pure functions, and keeping
+  it to one body keeps each way through it one sequence of steps. This
+  can be loosened later without breaking a package.
+- **The app's call.** `connection.<action>(...)` calls a `public` action
+  of the connection's package, from an action of a domain its
+  `domains:` lists (`connection.domain_not_listed` otherwise), with the
+  action's parameters as written; one without `public` is
+  `package.not_public`. Its package failures are mapped at the call by
+  their codes, as an operation's are (`failure.attempt_required` when
+  nothing maps them), and one no arm maps is a fault; its `attempt` may
+  not map `timed_out:`, since its calls are several, or may be. An
+  unknown name through the connection lists its public operations and
+  actions.
+- **Steps.** A package action's changing calls count as the calling
+  action's on its longest way through, and the keys the runtime derives
+  carry on the caller's step numbering, so a second package action, or
+  the app's own call after one, continues it. A package action over 8 is
+  `step.too_many` where it is declared, which `jadpo package check`'s
+  `compiles` row shows, so it can't be published.
+- **Emitting.** `emit` in a `public` package action is
+  `package.action_invalid`; in one without `public`, which only the
+  package's subscribers run, it is `toolchain.not_built_yet` until 7.6b.
+- **A resource and an action of one name** is `package.action_invalid`
+  at the action.
+- **The surface.** Each `public` action is an entry after the
+  operations, `action <name>` with its file, its `signature` and a `fails`
+  line per failure, compared between versions as a function's is.
+- **Fakes.** A test's `fakes:` may script any of the package's
+  operations, public or not, when the package has actions, since those
+  reach the ones it keeps to itself; a package action runs its real code
+  in a test, as every package's code does. The provider plan holds every
+  operation of a connection's package.
+- **`jadpo package recipe <package> <recipe> --into <domain>`** finds the
+  package as `jadpo package show` does and copies every file under its
+  `recipes/<recipe>/`, hidden ones left out, to the same path under
+  `domains/<domain>/`, which must be one of the app's domains. It copies
+  all or nothing: a file the domain already has is never written over,
+  and naming one refuses the copy with `cli.package_arguments`. The files
+  are copied as they are; `jadpo check` then shows what to fit to the app.
+  The screen lists each file written, the footer counts them, and the
+  hint is `jadpo check`, designed with the CLI design language:
+
+```text
+Copied recipe track_parcels into domains/shipping
+    domains/shipping/actions/track_parcel.jadpo
+    domains/shipping/schedules/track_nightly.jadpo
+
+recipe copied: Couriers.v1, track_parcels, 2 files
+
+next: jadpo check  shows what to fit to the app
+```
 
 ### Chosen in chunk 7.1e
 
@@ -8012,3 +8902,5 @@ packages and extension points, as each note says; 26 was decided then.
 | A standard type read from its object's members (chunk 7.2e) | A provider package's field gives `wire_parts:`, the member of the object holding it that each part of its standard type is read from and written to, so Stripe's `amount` and `currency` are one `Money` and `lat` and `lng` one `Point`; for the standard types made of named parts and `Point`; fields may share a part's member, and two values that differ there stop the call; the field has no member of its own on the wire and is the contract's everywhere else. Decided by the building session where the page names the decoding but no mechanism could do it; follows `wire_name:`'s shape (decided for Richard) | 2026-10-20 |
 | What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |
 | Where a type is marked reviewed (chunk 7.2e2) | An imported provider package lists the types an agent has gone through in `provider.jadpo`'s `imported:`, `reviewed: [Charge, Shop]`, each one of its own types once; the review covers the types the app's calls reach, worked out on every check, for the app's own integrations only, and stops nothing (decided by the building session) | 2026-10-20 |
+| Webhook replies and handshakes (chunk 7.7b) | `SignatureScheme.slack` joins the built-in schemes, since no named one checks Slack; an SNS connection's `secret:` is its topic's ARN, a message from any other topic refused before its certificate is fetched; SNS's certificate fetched only from AWS's SNS hosts over HTTPS through the host's guard (no redirect, no private address) and kept a day; an SNS message refused once signed 30 days ago, as long as a received id is kept; Microsoft Graph's validation the one request answered unsigned; a reply kept after its action commits, not in its transaction (decided by the building session; details under "Chosen in chunk 7.7b") | 2026-10-20 |
+| What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |

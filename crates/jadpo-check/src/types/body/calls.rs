@@ -168,6 +168,15 @@ impl Body<'_> {
                 if kind == Some(ItemKind::Query) {
                     self.read_in_loop(span.clone(), &callee);
                 }
+                // A package's action calls its own API, never another
+                // action (area 11, "What package code may do"; chunk 7.6).
+                if kind == Some(ItemKind::Action)
+                    && let Ownership::Package(_) = self.ownership
+                {
+                    self.package_calls_action(span, &callee);
+                    self.args_only(call);
+                    return (Ty::Error, CallKind::Effect(callee), Reach::Unknown);
+                }
                 self.may_call(span, &callee, kind.as_ref());
                 self.args(&sig, call, &callee);
                 let reach = match &kind {
@@ -389,6 +398,14 @@ impl Body<'_> {
             );
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
+        // A package's action calls its own operations by its resources'
+        // bare names (area 11, "What package code may do"; chunk 7.6).
+        if let Ownership::Package(home) = self.ownership
+            && crate::package_code::is_resource(self.db, self.project, &home.folder, &head)
+        {
+            let folder = home.folder.clone();
+            return self.own_operation_call(&folder, &head, &rest, call, callee, &written);
+        }
         if self.symbols.is_connection(&head) {
             // A store of files' own operations (area 16, chunk 6.4b).
             if let [member] = rest.as_slice()
@@ -421,6 +438,8 @@ impl Body<'_> {
                     fails: Vec::new(),
                     checked: false,
                     safe: true,
+                    own: false,
+                    action: None,
                 };
                 return (Ty::Error, CallKind::Effect(written), reach);
             }
@@ -445,6 +464,11 @@ impl Body<'_> {
                 && let Some(op) = jadpo_std::http::SessionOp::from_name(member)
             {
                 return self.session_call(op, call, callee, &written);
+            }
+            if head == jadpo_std::http::MAGIC_LINKS
+                && let Some(op) = jadpo_std::http::SessionOp::magic_link_op(member)
+            {
+                return self.magic_link_call(op, call, callee, &written);
             }
             if head == "batches"
                 && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)

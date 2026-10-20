@@ -121,6 +121,79 @@ pub fn subject_key(der: &[u8]) -> Option<SubjectKey> {
     None
 }
 
+/// The digest an RSA signature was made over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RsaDigest {
+    Sha1,
+    Sha256,
+}
+
+/// The DigestInfo before a SHA-1 digest in a PKCS #1 v1.5 signature (RFC
+/// 8017 §9.2, note 1).
+const SHA1_DIGEST_INFO: [u8; 15] = [
+    0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14,
+];
+
+/// The same before a SHA-256 digest.
+const SHA256_DIGEST_INFO: [u8; 19] = [
+    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05,
+    0x00, 0x04, 0x20,
+];
+
+/// The fewest bits an RSA key that signs a webhook may have.
+const RSA_BITS_MIN: usize = 2048;
+
+/// Whether `signature` is the RSA PKCS #1 v1.5 signature of `signed`,
+/// over `digest`, by the key of the certificate whose PEM is `pem`, that
+/// certificate valid at `now` (milliseconds since 1970): AWS SNS's
+/// message signature (area 11, "Receiving from outside"; chunk 7.7b). The
+/// certificate is read as strictly as a `Certificate` is, and its key is
+/// RSA of at least 2048 bits; its chain isn't checked, since the runtime
+/// fetched it over HTTPS from AWS's own host.
+pub fn rsa_signed(pem: &str, now: i64, digest: RsaDigest, signed: &[u8], signature: &[u8]) -> bool {
+    let Some(der) = pem_der(pem) else {
+        return false;
+    };
+    let Some(parts) = parts(&der) else {
+        return false;
+    };
+    if now < parts.not_before || now > parts.not_after {
+        return false;
+    }
+    let Some(SubjectKey::Rsa { n, e }) = subject_key(&der) else {
+        return false;
+    };
+    if n.len() * 8 < RSA_BITS_MIN {
+        return false;
+    }
+    let Ok(key) = rsa::RsaPublicKey::new(
+        rsa::BigUint::from_bytes_be(&n),
+        rsa::BigUint::from_bytes_be(&e),
+    ) else {
+        return false;
+    };
+    let (scheme, hashed) = match digest {
+        RsaDigest::Sha1 => {
+            use sha1::Digest;
+            (
+                rsa::Pkcs1v15Sign {
+                    hash_len: Some(20),
+                    prefix: Box::from(&SHA1_DIGEST_INFO[..]),
+                },
+                sha1::Sha1::digest(signed).to_vec(),
+            )
+        }
+        RsaDigest::Sha256 => (
+            rsa::Pkcs1v15Sign {
+                hash_len: Some(32),
+                prefix: Box::from(&SHA256_DIGEST_INFO[..]),
+            },
+            crate::hash::sha256(signed).to_vec(),
+        ),
+    };
+    key.verify(scheme, &hashed, signature).is_ok()
+}
+
 /// A certificate's canonical text: its DER as one PEM block.
 pub fn pem_text(record: &Record) -> Result<String, Fault> {
     let Some(Value::Bytes(der)) = record.get("der") else {
@@ -721,5 +794,66 @@ mod tests {
             Some(&Value::Instant(jadpo_std::INSTANT_MAX))
         );
         assert_eq!(pem_text(&record).as_deref(), Ok(forever));
+    }
+
+    /// A test certificate for `sns.eu-west-2.amazonaws.com`, valid from
+    /// 2026 to 2036, and its key's signatures of `message`, made with
+    /// OpenSSL (`openssl dgst -sha1 -sign` and `-sha256`).
+    const SIGNING: &str = "-----BEGIN CERTIFICATE-----\nMIIDVzCCAj+gAwIBAgIUN21O0o8ipzh6VaTx2KqMYqoHM4MwDQYJKoZIhvcNAQEL\nBQAwOzEkMCIGA1UEAwwbc25zLmV1LXdlc3QtMi5hbWF6b25hd3MuY29tMRMwEQYD\nVQQKDApKYWRwbyB0ZXN0MB4XDTI2MDEwMTAwMDAwMFoXDTM2MDEwMTAwMDAwMFow\nOzEkMCIGA1UEAwwbc25zLmV1LXdlc3QtMi5hbWF6b25hd3MuY29tMRMwEQYDVQQK\nDApKYWRwbyB0ZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkH0+\n4SSdjM3HKlfbW/dqdckWiyKn9X2eKowlYACC9vOJQRS32C7J13LpHo8XlCugfopl\nl+PKQ+Pb7U/gNbqxSIDTpYG7xZ9YRX8ePLqcXVcxN1zr404qp1FOEKClFX6rNUQQ\nq3ewqaQN6aBCOLmTJt/7NQEcD/TsekaZtfsHJ2rsL7OOcu9RiulGtqFThswlcejJ\nY+SPG2TyZVNp3Nbq6e5x+Cuip9BKSz1HVKwlJFpNtTK0CC8MjIa6BTKFhKRnK0MT\nhsebBQU4XbrGcbfu3dz+PwY+bhWDPo5yx1F/9BdeQj5iNPcd0mTbs34gPbi5a3Zm\necF4w56lTWI2w0eM0QIDAQABo1MwUTAdBgNVHQ4EFgQUfAdv5cm6hhGFKK1T8yvY\nPkBMLkUwHwYDVR0jBBgwFoAUfAdv5cm6hhGFKK1T8yvYPkBMLkUwDwYDVR0TAQH/\nBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAgo6eeXEvqNsjnGmokGsjASyyziYe\nLD86ajh+5sr/MT7mjKTFdSyZS0D60tDyqeWxnMMO97xW/wPLxxx0ne+ToAOikJ6C\neqTW7NehJdeH3kIV5oCTN1Y7DIq3XX0nzEdDEc5VVpxAZh5DYzpFIthTr3rNvvMh\nbKeZ7nRe3Z+1Q8t/FpM6Pf6goTSNvkoTUfA/YP2shX58qCPxaMlpdITyWLTXeURf\n9qsJnEO5ay6AztvCCjP18og9Sc5OxFo6Gcjn0s3xWv9OFmhPXhlLXvThu/W5KTLO\nzJWvZL7GPptBVGdzooLSeYi+laU5AVilDKqXDNR45h5N3CTVVwTU/CuZ/w==\n-----END CERTIFICATE-----\n";
+    const SIGNED_SHA1: &str = "IWl5ALobGNmZMx9MNTZqVmhnXL1puwRu4ia1VdlrPAVKIwv53RWWwM2JFF8FT/D34mDaYCWVw2ngmvDU/7RoK9xuOrQDiLDljUzjpEHPkhdnbTiQ3USScQJNYCWBUFL4hAbwDWham6zr4L8LfJs7yGM7kqelwTakD6dIWHK4aybVJOMhGV6pKHTsf1mHcFEG27htXnGccicrskQkqvDxe1oB2IyiO4rqzMVFEO3D3jtU7TmCaKZ245AvIp/ggsnnxV5DI6bMgO6tMZkyaxgf0YL/x2l63oUJSUBFgCiZcEcH18E8gHd/ft2DlzP4rsuBC3ayK7tBXEw+0ee5yn9TuA==";
+    const SIGNED_SHA256: &str = "jp9X+HLBsEZ2W1VdPV/Hv9Yw5H8eWlTItq7zfvl9tcwQhFJoRoK8OBEVwT7he6aPiMiKpDOHjZcHdHcTgIMkDpkuTcBC+hipfeMWZZIgjQIOUl6AWhrx9V4I8sD03uIt3m/vTSNEvqZSxvHo77JXvc1v92Hji+SLlJpq9iLZx4Dn/Hx6SwgewaJRb7IXeWApORDwWD9838EJRgvyxIYNbOoAKGDpSfRSTC8u+exFczp1BnTLX8kc7ChOUxrR1d83w4ck4m75xMhSC4BbIbqfNq1IkwLh/ISn+x538QgLUZqKf6OYyd9PG9DV5j1sLsrtpZpFIJAh5OCbOKvItc0q1g==";
+
+    /// An RSA signature is checked with a certificate's key, over SHA-1 or
+    /// SHA-256 as it was made, only while the certificate is valid.
+    #[test]
+    fn a_signature_is_checked_with_a_certificates_key_while_it_is_valid() {
+        let sha1 = crate::encoding::from_base64(SIGNED_SHA1).unwrap();
+        let sha256 = crate::encoding::from_base64(SIGNED_SHA256).unwrap();
+        // 2026-10-19.
+        let now = 1_792_400_400_000;
+        assert!(rsa_signed(SIGNING, now, RsaDigest::Sha1, b"message", &sha1));
+        assert!(rsa_signed(
+            SIGNING,
+            now,
+            RsaDigest::Sha256,
+            b"message",
+            &sha256
+        ));
+        assert!(!rsa_signed(
+            SIGNING,
+            now,
+            RsaDigest::Sha256,
+            b"message",
+            &sha1
+        ));
+        assert!(!rsa_signed(
+            SIGNING,
+            now,
+            RsaDigest::Sha1,
+            b"massage",
+            &sha1
+        ));
+        // Before it was issued, and after it lapsed.
+        assert!(!rsa_signed(
+            SIGNING,
+            1_700_000_000_000,
+            RsaDigest::Sha1,
+            b"message",
+            &sha1
+        ));
+        assert!(!rsa_signed(
+            SIGNING,
+            2_100_000_000_000,
+            RsaDigest::Sha1,
+            b"message",
+            &sha1
+        ));
+        assert!(!rsa_signed(
+            "not a certificate",
+            now,
+            RsaDigest::Sha1,
+            b"message",
+            &sha1
+        ));
     }
 }

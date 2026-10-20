@@ -501,6 +501,19 @@ fn a_semicolon_in_a_use_path_is_not_a_clean_split() {
 }
 
 #[test]
+fn equals_before_a_route_path_is_not_a_clean_colon() {
+    // After `:` a `/` starts a route path, after `=` it divides, so
+    // `mine =/_length: 3` as `mine:/_length: 3` reads differently and
+    // still has an error: the habit is reported but not clean.
+    let member = parse_file("type Handle = Text {\n    mine =/_length: 3\n    max_length: 40\n}\n");
+    assert_eq!(member.errors().len(), 1, "{:#?}", member.errors());
+    assert_eq!(member.errors()[0].rule.id, "syntax.colon_required");
+    assert!(!member.checkable(), "{:#?}", member.errors());
+    let argument = parse_file("function f() -> Unit {\n    g(mine =/_length: 3)\n}\n");
+    assert!(!argument.checkable(), "{:#?}", argument.errors());
+}
+
+#[test]
 fn optional_chaining_with_a_space_is_the_same_habit() {
     // `a ? .b` would format to `a?.b`, so it reads as that habit too.
     let spaced = parse_file("action f() -> Unit {\n    sessions ? .revoke_token(x)\n}\n");

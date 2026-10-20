@@ -508,10 +508,20 @@ pub enum Callee {
     },
     /// `connection.resource.operation(input)` in an action (area 11,
     /// "Calling"; chunk 7.2c): an outside call of a provider package's
-    /// operation through the connection named, `bookings.create`.
+    /// operation through the connection named, `bookings.create`. In a
+    /// package's own action, `resource.operation(input)` (chunk 7.6), the
+    /// connection is [`OWN_CONNECTION`]: the one the app called that
+    /// action through.
     Provider {
         connection: String,
         operation: String,
+    },
+    /// `connection.action(input)` in an app's action (area 11, "What
+    /// package code may do"; chunk 7.6): a provider package's action, run
+    /// with its own operations going through the connection named.
+    PackageAction {
+        connection: String,
+        action: Key,
     },
     /// One answer a test's `fakes:` scripts for a provider operation
     /// (area 13, "Fakes for integrations"; chunk 7.2d), given to the
@@ -548,6 +558,11 @@ pub enum Callee {
     Unknown,
 }
 
+/// The connection a package action's own operation names
+/// ([`Callee::Provider`]): none, since it goes through the one its action
+/// was called through.
+pub const OWN_CONNECTION: &str = "";
+
 impl Callee {
     /// The project node it reaches, if one.
     pub fn key(&self) -> Option<&Key> {
@@ -561,6 +576,7 @@ impl Callee {
             | Callee::Variant(key) => Some(key),
             Callee::Entity { entity, .. } => Some(entity),
             Callee::Schedule { schedule, .. } => Some(schedule),
+            Callee::PackageAction { action, .. } => Some(action),
             Callee::Std(_)
             | Callee::Construct(_)
             | Callee::Caller(_)
@@ -588,6 +604,7 @@ impl Callee {
                 | Callee::Fixture(_)
                 | Callee::LibraryFunction(_)
                 | Callee::Schedule { .. }
+                | Callee::PackageAction { .. }
         )
     }
 }

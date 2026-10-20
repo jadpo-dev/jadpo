@@ -1077,8 +1077,10 @@ config {
 ### Built-in emails
 
 > Decided on 2026-10-16 (Richard). Built with email (chunk 7.3) and the
-> features that send them: magic-link sign-in (area 8, not yet on the
-> roadmap) and data requests (area 15, after the first build).
+> features that send them: magic-link sign-in (area 8), whose email is
+> built at levels 1 to 3 in chunk 7.3b and at levels 4 and 5 in chunk
+> 7.3b2 ("Chosen in chunk 7.3b2" below), and data requests (area 15,
+> after the first build).
 
 Jadpo sends some emails itself: the magic-link email (area 8) and the
 privacy emails (area 15). Each works with nothing written, and an app can
@@ -1155,15 +1157,17 @@ messages:
 | `sign_in_code_invalid` | | "That code isn't right. Check it, or ask for a new one." |
 | `sign_in_codes_disabled` | | "Too many wrong codes today. Use the link in your email instead." |
 | `sign_in_refused` | | "We couldn't sign you in." |
+| `sign_in_return_invalid` (only with `generate_routes: false`, area 8) | | "We can't send you back there after signing in. Start again from this site." |
 
 `expires_in` is `expires_after:` as Jadpo formats it in the email's
 language ("15 minutes"). The failures' wording also goes into the
 per-locale failure export for client apps (area 10).
 
 Built in chunk 5.4e: these twelve messages are in Jadpo's catalogue (area
-10, "Jadpo's and packages' text") with the wording above, but no application
-has the feature on until magic-link sign-in is built, so none is listed,
-required or rewordable yet.
+10, "Jadpo's and packages' text") with the wording above. Since chunk 7.3b
+they are on once `magic_link:` is declared: listed, required in the app's
+other locales and rewordable, the email written with them and its
+failures' wording in the per-locale failure export.
 
 Passkeys (area 8, "Passkeys") bring no email, only their failures' wording,
 which a client app shows; they are on, listed, required in an app's other
@@ -2009,7 +2013,12 @@ check failed: 1 error, 5 files
 
 Built in chunk 7.3: email's templates, the shared layout, `email:`,
 sending after commit through the SMTP driver, attachments and parking
-("Chosen in chunk 7.3" below); a mail package as the connection,
+("Chosen in chunk 7.3" below); in chunk 7.3b: Jadpo's own magic-link
+email at levels 1 to 3, worded by Jadpo or reworded by the app and wrapped
+in the app's layout ("Chosen in chunk 7.3b" below); in chunk 7.3b2: its
+levels 4 and 5, the app's own email filled with the link and the code
+and the app's own sending given them ("Chosen in chunk 7.3b2" below); a
+mail package as the connection,
 partials, `email.sent`, the dev inbox and the health score come with
 chunk 7.3c. Default rate limits came with routes (chunk
 4.1); flags, the rest of files (multipart slots, and image variants and
@@ -2036,6 +2045,66 @@ the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
 `max_size:`, `types:` and `store:` as it is written come with the rest
 of the files capability.
+
+### Chosen in chunk 7.3b2
+
+What "Built-in emails" leaves to the build of the magic-link email's
+levels 4 and 5, each the most conservative reading (area 8 has the
+checks, "The app's own sign-in email and sending (chosen in chunk
+7.3b2)"):
+
+- **Still one delivery.** Whichever level, asking for a link leaves the
+  same outbox row, `jadpo.MagicLinkEmail` with the address, the locale
+  and the request's id, and the link and the code are made as it is
+  sent. At level 4 that delivery fills the app's email from them, `to:`
+  the address and `locale:` the request's, with `expires_in` worded as
+  Jadpo words it, and renders it as any of the app's emails is, in its
+  layout. At level 5 the delivery runs the app's action instead, given a
+  `MagicLinkRequest`; a delivery whose request was used, replaced or has
+  expired sends nothing at either.
+- **Each attempt its own link and code.** The app's action is retried as
+  a subscriber's is (area 12's defaults, no `retry:` of its own), and
+  each attempt makes a new link and code, replacing the last, so a
+  message that went out before a failure can't sign anyone in once a
+  later one has; an outside call within one attempt is sent again with
+  the same ones, as any call is.
+- **Only the email holds the code.** The email `email:` names is never
+  emitted, a `SignInCode` is never kept, answered, put in a failure or an
+  event, or written as JSON, and `MagicLinkEmail`'s fields are copied only
+  into an email. What the app's own sending does with the link and the
+  code is its own, as with any value it sends a provider; in development
+  that call is logged with its values, as every provider call is (area
+  17).
+
+### Chosen in chunk 7.3b
+
+What "Built-in emails" leaves to the build of the magic-link email's
+first three levels, each the most conservative reading:
+
+- **Written by the runtime.** Jadpo's email has no templates: the
+  runtime writes its HTML and text from Jadpo's seven messages, each
+  worded in the email's locale (the application's rewording first, then
+  Jadpo's), with `{app_name}` the application's `display_name:` and
+  `expires_in` the duration in words in that locale ("15 minutes").
+- **Its look** (designed with the design skill, 2026-10-20): one neutral
+  column at most 480 pixels wide, inline styles only, no images or
+  fonts, colours left to the reader's mail client but the button's (a
+  dark fill, `#1f2937`, under white text, about 15:1); the heading, the line
+  naming the address, the button, the code line with the six digits set
+  apart (monospaced, spaced, never wrapped, so they read and copy
+  easily), then the expiry and ignore lines a size smaller. The text part
+  has the same lines with the link written out. The whole is in the
+  locale's direction (`dir="rtl"` for a right-to-left locale).
+- **Its layout.** With the application's layout, the HTML body goes into
+  `layout.html` as its `{{ content }}` and the text into `layout.txt`;
+  without one, Jadpo's plain layout is a minimal document (`<!DOCTYPE
+  html>`, the locale's `lang` and `dir`, the subject as its title).
+- **Without `locales { }`** the email is in `en_gb`, Jadpo's wording.
+- **Its delivery** is a subscriber of its own, `email
+  jadpo.MagicLinkEmail`, tried as an email is; its outbox payload is the
+  address, the locale and the sign-in request's id, never the link or
+  the code, which are made as it is sent (area 8, "What is kept (chosen
+  in chunk 7.3b)").
 
 ### Chosen in chunk 7.3
 

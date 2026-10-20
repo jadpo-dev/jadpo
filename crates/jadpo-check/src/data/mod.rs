@@ -1117,31 +1117,40 @@ impl Reader<'_> {
         // the runtime (area 8), in a column of its own or inside a value
         // stored as JSON (chunk 5.9b).
         if let Some(credential) = held_credential(self.lookup, &ty, &mut Vec::new()) {
-            let what = if credential == jadpo_std::Builtin::ApiToken {
-                "An API token"
+            let (what, kept, given) = match credential {
+                jadpo_std::Builtin::ApiToken => ("An API token", "an API token", "token"),
+                jadpo_std::Builtin::SignInCode => ("A sign-in code", "a sign-in code", "code"),
+                jadpo_std::Builtin::SignInToken => {
+                    ("A sign-in link's token", "a sign-in link's token", "token")
+                }
+                _ => ("A service key", "a service key", "key"),
+            };
+            let reason = if credential == jadpo_std::Builtin::SignInCode {
+                "A sign-in code is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own email and sending are given it only to send it.".to_string()
+            } else if credential == jadpo_std::Builtin::SignInToken {
+                "A sign-in link's token is made as the email carrying it is sent, and the runtime keeps only its verifier, so a copy of the database signs no one in; the application's own route is given it only to redeem it.".to_string()
             } else {
-                "A service key"
+                format!(
+                    "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
+                )
+            };
+            let next = if credential == jadpo_std::Builtin::SignInCode {
+                format!("Remove `{name}`; send the code, never keep it")
+            } else if credential == jadpo_std::Builtin::SignInToken {
+                format!("Remove `{name}`; redeem the token, never keep it")
+            } else {
+                format!(
+                    "Remove `{name}`, and give the {given} in the output of the action that issues it"
+                )
             };
             self.out.push(
                 Diagnostic::new(
                     &rule::TYPE_AUTH_CREDENTIAL_STORED,
-                    format!(
-                        "`{entity}.{name}` keeps {}",
-                        if credential == jadpo_std::Builtin::ApiToken {
-                            "an API token"
-                        } else {
-                            "a service key"
-                        }
-                    ),
+                    format!("`{entity}.{name}` keeps {kept}"),
                 )
                 .at(node_span(path, value.syntax()), "a secret, stored")
-                .reason(format!(
-                    "{what} is shown once, in the output of the action that issues it, and the runtime keeps only its verifier, so a copy of the database signs no one in."
-                ))
-                .next(format!(
-                    "Remove `{name}`, and give the {} in the output of the action that issues it",
-                    if credential == jadpo_std::Builtin::ApiToken { "token" } else { "key" }
-                )),
+                .reason(reason)
+                .next(next),
             );
             return Some(field);
         }
@@ -2518,9 +2527,12 @@ fn held_credential(
     seen: &mut Vec<String>,
 ) -> Option<jadpo_std::Builtin> {
     match lookup.structure(ty) {
-        Ty::Prim(credential @ (jadpo_std::Builtin::ApiToken | jadpo_std::Builtin::ServiceKey)) => {
-            Some(credential)
-        }
+        Ty::Prim(
+            credential @ (jadpo_std::Builtin::ApiToken
+            | jadpo_std::Builtin::ServiceKey
+            | jadpo_std::Builtin::SignInCode
+            | jadpo_std::Builtin::SignInToken),
+        ) => Some(credential),
         Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => {
             held_credential(lookup, &inner, seen)
         }
@@ -2585,6 +2597,10 @@ pub const SERVICE_KEYS: &str = jadpo_std::system::SERVICE_KEYS.table;
 pub const PASSKEYS: &str = jadpo_std::system::PASSKEYS.table;
 pub const PASSKEY_CHALLENGES: &str = jadpo_std::system::PASSKEY_CHALLENGES.table;
 
+/// The magic links' table, beside the sessions they start, when
+/// `magic_link:` is declared (area 8, "Magic links").
+pub const SIGN_IN_REQUESTS: &str = jadpo_std::system::SIGN_IN_REQUESTS.table;
+
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
 /// in a wrong store are left out; their errors stop the build anyway.
@@ -2631,6 +2647,31 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             }
         }
     }
+    // The record of an action with several changing calls lives in the
+    // store it writes, beside its outbox (area 12; chunk 7.5b).
+    for plan in crate::types::record_plans(db, project).values() {
+        if let Some(found) = schema.stores.get_mut(&plan.store) {
+            for system in jadpo_std::system::STEP_TABLES {
+                found
+                    .tables
+                    .insert(system.table.to_string(), columns::system_table(system));
+            }
+        }
+    }
+    // The ids of webhooks' events already received are kept beside the
+    // outbox they are written to (area 11, "Receiving from outside"; chunk
+    // 7.7).
+    if let Some(store) = crate::webhooks::webhooks(db, project)
+        .routes
+        .first()
+        .map(|route| route.store.clone())
+        && let Some(found) = schema.stores.get_mut(&store)
+    {
+        found.tables.insert(
+            system::RECEIVED_EVENTS.table.to_string(),
+            columns::system_table(&system::RECEIVED_EVENTS),
+        );
+    }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).
     if let Some(store) = crate::identity::identity(db, project).sessions_store()
@@ -2652,6 +2693,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         found.tables.insert(
             PASSKEY_CHALLENGES.to_string(),
             columns::system_table(&system::PASSKEY_CHALLENGES),
+        );
+    }
+    if let Some(store) = crate::identity::identity(db, project).sessions_store()
+        && crate::identity::identity(db, project)
+            .magic_links()
+            .is_some()
+        && let Some(found) = schema.stores.get_mut(store)
+    {
+        found.tables.insert(
+            SIGN_IN_REQUESTS.to_string(),
+            columns::system_table(&system::SIGN_IN_REQUESTS),
         );
     }
     if let Some(store) = crate::identity::identity(db, project).keys_store()

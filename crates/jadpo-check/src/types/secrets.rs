@@ -95,6 +95,113 @@ pub(crate) fn held_secret(
     }
 }
 
+/// The magic link's code or token a value of `ty` is or holds, however
+/// deep (area 8, "Magic links"): in a list, a set, a map or an option, in
+/// a field of an object or an `Input`, or in a variant's data.
+pub(crate) fn held_sign_in(
+    table: &dyn TypeView,
+    ty: &Ty,
+    seen: &mut Vec<String>,
+) -> Option<jadpo_std::Builtin> {
+    match table.structure(ty) {
+        Ty::Prim(held @ (jadpo_std::Builtin::SignInCode | jadpo_std::Builtin::SignInToken)) => {
+            Some(held)
+        }
+        Ty::List(inner) | Ty::Set(inner) | Ty::Nullable(inner) => held_sign_in(table, &inner, seen),
+        Ty::Map(key, value) => {
+            held_sign_in(table, &key, seen).or_else(|| held_sign_in(table, &value, seen))
+        }
+        Ty::Named(name) => {
+            if seen.contains(&name) {
+                return None;
+            }
+            seen.push(name.clone());
+            match table.def(&name) {
+                Some(Def::Fields {
+                    base: FieldsBase::Object | FieldsBase::Input,
+                    fields,
+                    ..
+                }) => fields
+                    .iter()
+                    .find_map(|field| held_sign_in(table, &field.declared, seen)),
+                Some(Def::Enum { variants }) => variants
+                    .iter()
+                    .flat_map(|variant| variant.fields.iter().flatten())
+                    .find_map(|field| held_sign_in(table, &field.declared, seen)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Whether a field of a declaration of `base` (a failure's when
+/// `failure`) may hold `held`, a magic link's code or token: a code goes
+/// into an email or the application's own sending, and a token only from
+/// a request's `Input` to `magic_links.redeem`, so neither is answered,
+/// put in a failure or an event, and a token is never emailed or worded.
+pub(crate) fn sign_in_refused(base: FieldsBase, failure: bool, held: jadpo_std::Builtin) -> bool {
+    failure
+        || match base {
+            FieldsBase::Output | FieldsBase::Event | FieldsBase::Failure => true,
+            FieldsBase::EmailMessage | FieldsBase::Message | FieldsBase::Prompt => {
+                held == jadpo_std::Builtin::SignInToken
+            }
+            FieldsBase::Object | FieldsBase::Input | FieldsBase::Entity => false,
+        }
+}
+
+/// A field holding a magic link's code or token where none may go: a
+/// response, a failure or an event, or, for a token, an email, a message
+/// or a prompt (area 8, "Magic links").
+pub(crate) fn sign_in_code_field(
+    base: FieldsBase,
+    failure: bool,
+    host: &str,
+    name: &str,
+    held: jadpo_std::Builtin,
+    span: Span,
+) -> Diagnostic {
+    let (label, why) = if failure || base == FieldsBase::Failure {
+        (
+            "in a failure",
+            "A failure is logged and its client fields reach the client.",
+        )
+    } else if base == FieldsBase::Event {
+        (
+            "in an event",
+            "An event is kept in the outbox and handed to every subscriber.",
+        )
+    } else if base == FieldsBase::EmailMessage {
+        (
+            "in an email",
+            "An email is kept in the outbox until it is sent.",
+        )
+    } else if matches!(base, FieldsBase::Message | FieldsBase::Prompt) {
+        (
+            "written out",
+            "A message or a prompt is text written for someone else to read.",
+        )
+    } else {
+        (
+            "sent to a client",
+            "A response is written out, logged by proxies and kept by browsers.",
+        )
+    };
+    let goes = if held == jadpo_std::Builtin::SignInToken {
+        "A sign-in link's token comes only from the request the link's page posts, to `magic_links.redeem`, so nobody reading a response, a log or the outbox can sign in as the person it was sent to."
+    } else {
+        "A sign-in code goes only into the email that carries it, or to the application's own sending, so nobody reading a response, a log or the outbox can sign in as the person it was sent to."
+    };
+    Diagnostic::new(
+        &rule::TYPE_SECRET_EXPOSED,
+        format!("`{host}.{name}` holds a `{}`", held.name()),
+    )
+    .at(span, label)
+    .reason(format!("{goes} {why}"))
+    .next(format!("Remove `{name}`"))
+}
+
 /// Whether a declaration of `base` keeps a secret value out of its fields:
 /// everything but an `Object` or an `Input`, which stay in memory or arrive
 /// from outside (an entity's fields are the data model's to refuse).

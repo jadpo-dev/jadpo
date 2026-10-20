@@ -80,19 +80,18 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
     };
     let apis = super::api_table(db, project);
     let identity = crate::identity::identity(db, project);
-    // The passkey routes belong to the first API that accepts browser
-    // sessions (area 8, "Passkeys"), routes of its own or not.
-    let passkey_api = identity.passkeys().and_then(|_| {
-        apis.apis
-            .iter()
-            .find(|api| {
-                super::apis::accepted_methods(db, project, &api.name)
-                    .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
-            })
-            .map(|api| api.name.clone())
-    });
+    // The passkey and magic-link routes belong to the first API that
+    // accepts browser sessions (area 8), routes of its own or not.
+    let passkey_api = super::served::sign_in_api(db, project);
     if let Some(api) = &passkey_api {
         by_api.entry(api.clone()).or_default();
+    }
+    // Each connection's webhook, in the `webhooks` API the app declares
+    // (chunk 7.7).
+    if !crate::webhooks::declared_in(db, project, crate::webhooks::DEFAULT_PREFIX).is_empty() {
+        by_api
+            .entry(crate::webhooks::DEFAULT_PREFIX.to_string())
+            .or_default();
     }
     by_api
         .into_iter()
@@ -112,9 +111,20 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
             {
                 generated.extend(passkey_entries(&passkey.path));
             }
+            if let Some(magic) = identity.magic_link_routes()
+                && passkey_api.as_deref() == Some(api.as_str())
+            {
+                generated.extend(magic_link_entries(
+                    &magic.path,
+                    identity.built(jadpo_std::AuthenticationMethod::ApiToken),
+                ));
+            }
             // Its own OpenAPI document (area 7, "OpenAPI").
             if let Some(served) = super::served::served_by(db, project, &api) {
                 generated.push(openapi_entry(&served));
+            }
+            for webhook in crate::webhooks::declared_in(db, project, &api) {
+                generated.push(webhook_entry(&webhook));
             }
             let mut head = Entry::new(format!("api {api}"));
             let mut names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
@@ -200,6 +210,22 @@ fn openapi_entry(served: &super::served::Served) -> Generated {
     }
 }
 
+/// A connection's generated webhook (area 11, "Receiving from outside";
+/// chunk 7.7), as the record lists it: the runtime's, its body the
+/// provider's, checked by its signature, answered with no content.
+fn webhook_entry(webhook: &crate::webhooks::WebhookModel) -> Generated {
+    let path = webhook.path();
+    Generated {
+        entry: Entry::new(format!("POST {path}"))
+            .with("generated webhook")
+            .with(format!("connection {}", webhook.connection))
+            .with("authentication signature")
+            .with("status 204"),
+        at: (path, order_of(jadpo_std::HttpMethod::Post)),
+        sections: Vec::new(),
+    }
+}
+
 /// The routes `passkey:` generates under `path` (area 8, "Passkeys"), as
 /// the record lists them: the runtime's, each body and answer fixed.
 fn passkey_entries(path: &[String]) -> Vec<Generated> {
@@ -259,6 +285,48 @@ fn passkey_entries(path: &[String]) -> Vec<Generated> {
             }
             Generated {
                 at: (sorted, order_of(step.method())),
+                entry,
+                sections,
+            }
+        })
+        .collect()
+}
+
+/// The routes `magic_link:` generates under `path` (area 8, "Magic
+/// links"), as the record lists them: the runtime's, anyone may call each,
+/// each body and answer fixed. The redemption comes with `api_token:`.
+fn magic_link_entries(path: &[String], api_tokens: bool) -> Vec<Generated> {
+    use jadpo_std::http::{MAGIC_LINK_CONFIRMED, MAGIC_LINK_TOKEN, MagicLinkStep};
+    MagicLinkStep::ALL
+        .into_iter()
+        .filter(|step| api_tokens || *step != MagicLinkStep::Redeem)
+        .map(|step| {
+            let shown: String = step
+                .segments(path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let mut entry = Entry::new(format!("{} {shown}", step.method().word()))
+                .with("generated magic link")
+                .with("authentication none")
+                .with(format!("input {} (body)", step.input()));
+            if let Some(output) = step.output() {
+                entry.push(format!("output {output}"));
+            }
+            entry.push(format!("status {}", step.status().code()));
+            let sections = match step {
+                MagicLinkStep::Confirm => vec![(
+                    MAGIC_LINK_CONFIRMED.to_string(),
+                    Entry::new(format!("output {MAGIC_LINK_CONFIRMED}")).with("return_to: Text"),
+                )],
+                MagicLinkStep::Redeem => vec![(
+                    MAGIC_LINK_TOKEN.to_string(),
+                    Entry::new(format!("output {MAGIC_LINK_TOKEN}")).with("token: ApiToken"),
+                )],
+                MagicLinkStep::Request => Vec::new(),
+            };
+            Generated {
+                at: (shown, order_of(step.method())),
                 entry,
                 sections,
             }

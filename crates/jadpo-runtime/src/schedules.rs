@@ -349,6 +349,9 @@ pub struct Deleted {
     pub deliveries: u64,
     /// An operator's log rows (chunk 6.13).
     pub actions: u64,
+    /// The ids of events received from outside, once no sender would send
+    /// one again (chunk 7.7).
+    pub received: u64,
 }
 
 /// Runs one tick at `now` on `host`, within the budget its host gives a
@@ -446,6 +449,13 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
         if plan.keys.as_ref() == Some(store) {
             match delete(host, store, ENDED_SERVICE_KEYS, now).await {
                 Ok(count) => ticked.deleted.service_keys += count,
+                Err(error) => ticked.problems.push((store.clone(), error)),
+            }
+        }
+        if plan.received.as_ref() == Some(store) {
+            let before = now.saturating_sub(crate::webhooks::RECEIVED_KEPT_MS);
+            match delete(host, store, crate::webhooks::OLD_RECEIVED, before).await {
+                Ok(count) => ticked.deleted.received += count,
                 Err(error) => ticked.problems.push((store.clone(), error)),
             }
         }

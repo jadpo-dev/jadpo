@@ -202,19 +202,13 @@ pub fn document(
         .filter(|(group, _)| group.api == api)
         .collect();
     let identity = crate::identity::identity(db, project);
-    // The passkey routes belong to the first API that accepts browser
-    // sessions (area 8, "Passkeys").
-    let passkeys = identity.passkeys().filter(|_| {
-        super::api_table(db, project)
-            .apis
-            .iter()
-            .find(|found| {
-                super::apis::accepted_methods(db, project, &found.name)
-                    .contains(&jadpo_std::AuthenticationMethod::BrowserSession)
-            })
-            .is_some_and(|found| found.name == api)
-    });
-    if routes.is_empty() && passkeys.is_none() {
+    // The passkey and magic-link routes belong to the first API that
+    // accepts browser sessions (area 8).
+    let here = super::served::sign_in_api(db, project).as_deref() == Some(api);
+    let passkeys = identity.passkeys().filter(|_| here);
+    let magic_links = identity.magic_link_routes().filter(|_| here);
+    let webhooks = crate::webhooks::declared_in(db, project, api);
+    if routes.is_empty() && passkeys.is_none() && magic_links.is_none() && webhooks.is_empty() {
         return None;
     }
     let wire = Wire {
@@ -266,6 +260,10 @@ pub fn document(
             .or_insert_with(Value::object);
         entry.set("post", exchange_operation(&methods, &mut failure_schemas));
     }
+    for webhook in &webhooks {
+        let entry = paths.entry(webhook.path()).or_insert_with(Value::object);
+        entry.set("post", webhook_operation(webhook, &mut failure_schemas));
+    }
     if let Some(passkey) = passkeys {
         for step in jadpo_std::http::PasskeyStep::ALL {
             let path: String = step
@@ -277,6 +275,24 @@ pub fn document(
             entry.set(
                 &step.method().word().to_ascii_lowercase(),
                 passkey_operation(step, &methods, &mut failure_schemas),
+            );
+        }
+    }
+    if let Some(magic) = magic_links {
+        let api_tokens = identity.built(jadpo_std::AuthenticationMethod::ApiToken);
+        for step in jadpo_std::http::MagicLinkStep::ALL {
+            if step == jadpo_std::http::MagicLinkStep::Redeem && !api_tokens {
+                continue;
+            }
+            let path: String = step
+                .segments(&magic.path)
+                .iter()
+                .map(|text| format!("/{text}"))
+                .collect();
+            let entry = paths.entry(path).or_insert_with(Value::object);
+            entry.set(
+                &step.method().word().to_ascii_lowercase(),
+                magic_link_operation(step, &mut failure_schemas),
             );
         }
     }
@@ -475,6 +491,75 @@ fn served_operation(
     responses.set("429", shared_response("RateLimited"));
     responses.set("500", shared_response("InternalFault"));
     responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+/// A connection's generated webhook (area 11, "Receiving from outside";
+/// chunk 7.7): the provider's JSON body, checked by its signature and kept
+/// for the app's subscribers, answered with no content.
+fn webhook_operation(
+    webhook: &crate::webhooks::WebhookModel,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "post_{}",
+            webhook
+                .segments
+                .iter()
+                .map(|segment| segment.replace(['-', '.'], "_"))
+                .collect::<Vec<_>>()
+                .join("_")
+        ),
+    );
+    out.set(
+        "description",
+        format!(
+            "Receives `{}`'s webhooks from its provider: each checked by its signature, a repeat of an event already received answered alike, and each event its package declares kept for the app's subscribers.",
+            webhook.package
+        ),
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", true);
+    out.set("security", Vec::<Value>::new());
+    let mut object = Value::object();
+    object.set("type", "object");
+    let mut json = Value::object();
+    json.set("schema", object);
+    let mut content = Value::object();
+    content.set("application/json", json);
+    let mut body = Value::object();
+    body.set("required", true);
+    body.set("content", content);
+    out.set("requestBody", body);
+    let mut responses = Value::object();
+    let mut received = Value::object();
+    received.set("description", "Received.");
+    responses.set("204", received);
+    failure_schemas.insert(
+        "SignatureMismatch".to_string(),
+        envelope(
+            "unauthenticated",
+            "The webhook's signature doesn't match, or it was signed more than five minutes ago.",
+            None,
+        ),
+    );
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set(
+        "401",
+        response(
+            "Fails with `unauthenticated`.",
+            Some(reference("SignatureMismatch")),
+        ),
+    );
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("503", shared_response("Unavailable"));
     out.set("responses", responses);
     out
 }
@@ -821,6 +906,217 @@ fn passkey_operation(
     responses.set("413", shared_response("RequestTooLarge"));
     responses.set("422", shared_response("InvalidInput"));
     responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+/// One of the runtime's magic-link routes (area 8, "Magic links"): its
+/// fixed body and answer, with every failure it can answer.
+fn magic_link_operation(
+    step: jadpo_std::http::MagicLinkStep,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::http::MagicLinkStep as S;
+    let text = |description: &str| {
+        let mut out = Value::object();
+        out.set("type", "string");
+        out.set("description", description);
+        out
+    };
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "{}_{}",
+            step.method().word().to_ascii_lowercase(),
+            step.label().replace([' ', '-'], "_")
+        ),
+    );
+    out.set(
+        "description",
+        match step {
+            S::Request => "Sends a link and a six-digit code to the address once the request commits, when an account has it or a first sign-in may make one. The answer is the same for every address.",
+            S::Confirm => "Takes a link's token, or an address and its code, once, and starts a browser session; answers with the path the person asked to go to.",
+            S::Redeem => "Takes an address and its code, once, and issues an API token for the application's own client.",
+        },
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", true);
+    out.set("security", Vec::<Value>::new());
+    let mut properties = Value::object();
+    let mut required: Vec<Value> = Vec::new();
+    match step {
+        S::Request => {
+            let mut address = text("The address to send the link and the code to.");
+            address.set("format", "email");
+            properties.set("address", address);
+            properties.set(
+                "return_to",
+                text("Where to go once signed in: a path on this site, starting with one `/`. Without it, `/`."),
+            );
+            properties.set(
+                "locale",
+                text("The email's language, when the application supports it; otherwise the request's `Accept-Language` decides."),
+            );
+            required.push(Value::from("address"));
+        }
+        S::Confirm => {
+            properties.set("token", text("The link's token, 64 hexadecimal digits."));
+            let mut address = text("The address the code was sent to, with `code`.");
+            address.set("format", "email");
+            properties.set("address", address);
+            properties.set("code", text("The six-digit code, with `address`."));
+        }
+        S::Redeem => {
+            let mut address = text("The address the code was sent to.");
+            address.set("format", "email");
+            properties.set("address", address);
+            properties.set("code", text("The six-digit code."));
+            required.push(Value::from("address"));
+            required.push(Value::from("code"));
+        }
+    }
+    let mut schema = Value::object();
+    schema.set("type", "object");
+    schema.set("properties", properties);
+    if !required.is_empty() {
+        schema.set("required", required);
+    }
+    schema.set("additionalProperties", false);
+    let mut json = Value::object();
+    json.set("schema", schema);
+    let mut content = Value::object();
+    content.set("application/json", json);
+    let mut request = Value::object();
+    request.set("required", true);
+    request.set("content", content);
+    out.set("requestBody", request);
+    let mut responses = Value::object();
+    let status = step.status().code().to_string();
+    let answer = |field: &str, description: &str| {
+        let mut properties = Value::object();
+        properties.set(field, text(description));
+        let mut out = Value::object();
+        out.set("type", "object");
+        out.set("properties", properties);
+        out.set("required", vec![Value::from(field)]);
+        out.set("additionalProperties", false);
+        out
+    };
+    let success = match step {
+        S::Request => response(
+            "Accepted: an email is sent if an account has the address.",
+            None,
+        ),
+        S::Confirm => response(
+            "Signed in: the response sets the session's cookies.",
+            Some(answer(
+                "return_to",
+                "The path the person asked to go to, or `/`.",
+            )),
+        ),
+        S::Redeem => response(
+            "The API token, shown once.",
+            Some(answer(
+                "token",
+                "The API token: `jadpo_token_` and 64 hexadecimal digits.",
+            )),
+        ),
+    };
+    responses.set(&status, success);
+    let mut failures: Vec<(&str, &str, &str, &str)> = Vec::new();
+    match step {
+        S::Request => {}
+        S::Confirm | S::Redeem => {
+            if step == S::Confirm {
+                failures.push((
+                    "401",
+                    "SignInLinkExpired",
+                    "sign_in_link_expired",
+                    "The link expired, was used or replaced, or is unknown.",
+                ));
+                failures.push((
+                    "401",
+                    "SignInLinkOtherBrowser",
+                    "sign_in_link_other_browser",
+                    "The link was opened in a browser other than the one that asked for it.",
+                ));
+                failures.push((
+                    "403",
+                    "CsrfRejected",
+                    "csrf_rejected",
+                    "The request has no `Origin` naming this site.",
+                ));
+            }
+            failures.push((
+                "401",
+                "SignInCodeInvalid",
+                "sign_in_code_invalid",
+                "The code is wrong, used, ended, expired or replaced, or the address has none.",
+            ));
+            failures.push((
+                "429",
+                "SignInCodesDisabled",
+                "sign_in_codes_disabled",
+                "The address sent too many wrong codes today; its links still work.",
+            ));
+            failures.push(("429", "RateLimited", "rate_limited", "Too many requests."));
+            failures.push((
+                "403",
+                "SignInRefused",
+                "sign_in_refused",
+                "The application refused a first sign-in.",
+            ));
+            failures.push((
+                "403",
+                "AccountDisabled",
+                "user_disabled",
+                "The user's record isn't active.",
+            ));
+            failures.push((
+                "503",
+                "AuthenticationUnavailable",
+                "authentication_unavailable",
+                "The store sessions are kept in can't be reached.",
+            ));
+        }
+    }
+    let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+    for (status, name, code, description) in failures {
+        failure_schemas.insert(name.to_string(), envelope(code, description, None));
+        by_status.entry(status).or_default().push((code, name));
+    }
+    for (status, mut failures) in by_status {
+        failures.sort();
+        failures.dedup();
+        let mut schemas: Vec<Value> = failures.iter().map(|(_, name)| reference(name)).collect();
+        let codes: Vec<String> = failures
+            .iter()
+            .map(|(code, _)| format!("`{code}`"))
+            .collect();
+        let schema = if schemas.len() == 1 {
+            schemas.remove(0)
+        } else {
+            let mut any = Value::object();
+            any.set("oneOf", schemas);
+            any
+        };
+        responses.set(
+            status,
+            response(
+                &format!("Fails with {}.", crate::and_list(&codes)),
+                Some(schema),
+            ),
+        );
+    }
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    if step == S::Request {
+        responses.set("429", shared_response("RateLimited"));
+    }
     responses.set("500", shared_response("InternalFault"));
     responses.set("504", shared_response("DeadlineExceeded"));
     out.set("responses", responses);

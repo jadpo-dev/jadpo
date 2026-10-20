@@ -34,7 +34,12 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
         Ty::Prim(prim) if prim.is_secret() => {
             return Err(prim.name().to_string());
         }
-        Ty::Prim(prim @ (Builtin::ApiToken | Builtin::ServiceKey)) => {
+        Ty::Prim(
+            prim @ (Builtin::ApiToken
+            | Builtin::ServiceKey
+            | Builtin::SignInCode
+            | Builtin::SignInToken),
+        ) => {
             return Err(prim.name().to_string());
         }
         // A standard type is stored as its data entry says (area 19).
@@ -66,6 +71,8 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
             | Builtin::PageSize
             | Builtin::ApiToken
             | Builtin::ServiceKey
+            | Builtin::SignInCode
+            | Builtin::SignInToken
             | Builtin::PostgresUrl
             | Builtin::RedisUrl
             | Builtin::SigningKey

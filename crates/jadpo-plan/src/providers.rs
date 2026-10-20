@@ -1,6 +1,6 @@
 //! The provider plan (area 11, "Calling"; chunk 7.2c): each connection to
 //! a provider package, read from `app.jadpo` and the package's
-//! `provider.jadpo`, and each public operation of its package, its input
+//! `provider.jadpo`, and each operation of its package, its input
 //! and output numbered in the plan's JSON table so the runtime writes a
 //! request and reads an answer with the codecs `json.read` and
 //! `json.write` use, a provider package's field and variant spellings on
@@ -11,7 +11,7 @@ use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
     Address, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan,
-    PathPart, ProviderPlan, RecordedPlan,
+    PathPart, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan, WebhookReply,
 };
 use jadpo_std::subscriber::Repeat;
 
@@ -78,6 +78,9 @@ pub(crate) fn plan(
             max_length: given.max_length,
             in_use: given.in_use.clone(),
             reused: given.reused.clone(),
+            window_ms: given.window_ms,
+            new_key_on: given.new_key_on.clone(),
+            replays_failures: given.replays_failures,
         });
         let keyed = idempotency
             .as_ref()
@@ -94,10 +97,9 @@ pub(crate) fn plan(
             error_code: reach.error_code.clone(),
             sandbox: jadpo_check::connections::sandboxed(db, project, connection),
         });
+        // Every operation, public or not: a package's own actions call
+        // the ones it keeps to itself (chunk 7.6).
         for operation in operations.of(&connection.folder) {
-            if !operation.public {
-                continue;
-            }
             let mut planned = operation_plan(&lookup, types, &mut number, operation, at, keyed);
             planned.recording = recording(db, project, operation);
             out.operations.push(planned);
@@ -132,6 +134,41 @@ pub(crate) fn plan(
                 operation_plan(&lookup, types, &mut number, operation, u32::MAX, false)
             }),
             text: text.clone(),
+        });
+    }
+    // Each connection's webhooks (chunk 7.7): the body is read with its
+    // event's codec, numbered here, and its payload kept with it.
+    for route in &jadpo_check::webhooks::webhooks(db, project).routes {
+        let (Some(scheme), Some(secret)) = (route.scheme(), setting(&route.secret)) else {
+            continue;
+        };
+        out.webhooks.push(WebhookPlan {
+            connection: route.connection.clone(),
+            segments: route.segments.clone(),
+            scheme,
+            handshake: route.handshake(),
+            secret,
+            event_id: route.event_id.clone(),
+            event_type: route.event_type.clone(),
+            occurred_at: route.occurred_at.clone(),
+            store: route.store.clone(),
+            events: route
+                .events
+                .iter()
+                .map(|event| WebhookEvent {
+                    wire_name: event.wire_name.clone(),
+                    key: event.key.as_str().to_string(),
+                    number: number(TypeRef::Node(event.key.clone())),
+                    // Answered by the app's action, its reply encoded with
+                    // the package's type (chunk 7.7b).
+                    reply: event.reply.as_ref().and_then(|(reply, _, _)| {
+                        Some(WebhookReply {
+                            action: route.answering(&event.key)?.as_str().to_string(),
+                            number: number(TypeRef::Node(reply.clone())),
+                        })
+                    }),
+                })
+                .collect(),
         });
     }
     out
@@ -192,6 +229,7 @@ fn operation_plan(
             .as_ref()
             .map(|when| (when.path.clone(), when.equals.clone())),
         repeat,
+        changes: operation.changes,
         // Each failure's plan is numbered, so the runtime raises it as
         // the call's failure.
         failures: operation

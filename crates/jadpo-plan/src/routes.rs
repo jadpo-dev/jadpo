@@ -383,6 +383,37 @@ pub(crate) fn table(
             });
         }
     }
+    // The magic-link routes the runtime answers (area 8, "Magic links"),
+    // in the same API; the redemption only with API tokens.
+    if let Some(magic) = identity.magic_link_routes()
+        && let Some(api) = passkey_api
+    {
+        let api_tokens = identity.built(jadpo_std::AuthenticationMethod::ApiToken);
+        for step in jadpo_std::http::MagicLinkStep::ALL {
+            if step == jadpo_std::http::MagicLinkStep::Redeem && !api_tokens {
+                continue;
+            }
+            let segments = step.segments(&magic.path);
+            out.routes.push(RoutePlan {
+                key: format!("route {} /{}", step.method().word(), segments.join("/")),
+                method: step.method(),
+                segments: segments.into_iter().map(Segment::Fixed).collect(),
+                api: api as u32,
+                input: None,
+                output: None,
+                status: step.status(),
+                deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+                run: Run::MagicLink(step),
+                settle: None,
+                keys: None,
+                args: Vec::new(),
+                authentication: step.authentication(),
+                caller: None,
+                file: "generated".to_string(),
+                line: 0,
+            });
+        }
+    }
     // Each API's own OpenAPI document (area 7, "OpenAPI"), as `jadpo
     // check` writes it to `build/openapi/<api>.json`.
     let served = jadpo_check::routes::served::served(db, project);

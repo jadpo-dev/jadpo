@@ -567,6 +567,63 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 continue;
             }
         }
+        // The runtime answers each connection's webhook itself, whatever
+        // the method (area 11, "Receiving from outside"; chunk 7.7).
+        let webhook = crate::webhooks::webhooks(db, project)
+            .routes
+            .iter()
+            .find(|webhook| {
+                let segments: Vec<Segment> = webhook
+                    .segments
+                    .iter()
+                    .map(|text| Segment::Fixed(text.clone()))
+                    .collect();
+                overlaps(&route.segments, &segments)
+            });
+        if let Some(webhook) = webhook {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is where `{}` receives its webhooks", route.label(), webhook.connection),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!(
+                    "A connection given a webhook secret has `POST {}`, which the runtime answers itself, so this route would never run.",
+                    webhook.path()
+                ))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
+        // The runtime answers the routes magic links generate (area 8,
+        // "Magic links").
+        if let Some(magic) = crate::identity::identity(db, project).magic_link_routes() {
+            let generated = jadpo_std::http::MagicLinkStep::ALL
+                .into_iter()
+                .find(|step| {
+                    let segments: Vec<Segment> = step
+                        .segments(&magic.path)
+                        .into_iter()
+                        .map(Segment::Fixed)
+                        .collect();
+                    route.method == step.method() && overlaps(&route.segments, &segments)
+                });
+            if let Some(step) = generated {
+                out.push(
+                    Diagnostic::new(
+                        &rule::ROUTE_PATH_OVERLAP,
+                        format!("`{}` is the runtime's {}", route.label(), step.label()),
+                    )
+                    .at(span.clone(), "answered by the runtime")
+                    .reason("With `magic_link:` in `sign_in:`, the runtime answers the magic-link routes under its `path:` itself, so this route would never run.")
+                    .next(format!(
+                        "Give `{}` in `{group}` another path, or move the magic-link routes with `path:`",
+                        route.label()
+                    )),
+                );
+                continue;
+            }
+        }
         // The runtime answers its health checks before any route (area 7,
         // "Health").
         let fixed: Vec<&str> = route
@@ -2107,6 +2164,9 @@ impl Reader<'_> {
         if head == "sessions" {
             return SessionOp::from_name(&member);
         }
+        if head == jadpo_std::http::MAGIC_LINKS {
+            return SessionOp::magic_link_op(&member);
+        }
         let op = SessionOp::key_op(&member)?;
         let identity = crate::identity::identity(self.db, self.project);
         identity
@@ -2128,6 +2188,11 @@ impl Reader<'_> {
     ) -> Option<Run> {
         let written = tree::written(call.expr()?.syntax());
         if !op.reads_only() {
+            let keeps = if op.magic_link() {
+                "the sign-in requests"
+            } else {
+                "the tokens or keys"
+            };
             self.out.push(
                 Diagnostic::new(
                     &rule::ROUTE_RUN_INVALID,
@@ -2135,7 +2200,7 @@ impl Reader<'_> {
                 )
                 .at(callee_span, "a generated write")
                 .reason(format!(
-                    "A route runs a named action, or a named query for a `GET`, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes the tokens or keys the runtime keeps, in the transaction of the action that calls it."
+                    "A route runs a named action, or a named query for a `GET`, and may run the generated listings `sessions.tokens` and the service entity's `keys` itself; `{written}` writes {keeps} the runtime keeps, in the transaction of the action that calls it."
                 ))
                 .next(format!("Call `{written}` in an action, and run that")),
             );

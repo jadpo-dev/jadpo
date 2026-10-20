@@ -726,23 +726,25 @@ pub static COMMANDS: &[Command] = &[
                       into packages/ and jadpo.lock, once its surface matches its code; `update` moves \
                       one to its newest release, listing what changed; `remove` takes out one the app no \
                       longer uses; `link` compiles the app against a package's live checkout, which CI \
-                      refuses, and `unlink` goes back to the installed version.",
+                      refuses, and `unlink` goes back to the installed version. `recipe <package> \
+                      <recipe> --into <domain>` copies one of a package's recipes into a domain, \
+                      where it becomes the app's own code, never writing over a file it has.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show, check, import, record, add, update, remove, link or unlink",
+                description: "What to do: show, check, import, record, add, update, remove, link, unlink or recipe",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection",
+                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>; for import, openapi; for record, the connection; for recipe, the package",
                 required: false,
                 values: Values::Path,
             },
             Argument {
                 name: "declaration",
-                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, as <resource>.<operation>",
+                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, as <resource>.<operation>; for recipe, the recipe",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -764,6 +766,12 @@ pub static COMMANDS: &[Command] = &[
                 name: "--input",
                 value: Some("json"),
                 description: "For record: the operation's input as JSON",
+                values: &[],
+            },
+            Flag {
+                name: "--into",
+                value: Some("domain"),
+                description: "For recipe: the domain it is copied into",
                 values: &[],
             },
         ],
@@ -791,6 +799,10 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "Try the app against a package's checkout before it is released",
                 command: "jadpo package link ../holidays",
+            },
+            Example {
+                description: "Copy a package's recipe into a domain",
+                command: "jadpo package recipe holidays closures --into scheduling",
             },
             Example {
                 description: "Record a sandbox's answer to confirm an operation",

@@ -30,6 +30,7 @@ pub mod locales;
 pub mod lookups;
 mod naming;
 mod not_value;
+pub mod package_code;
 pub mod packages;
 pub mod policy;
 pub mod prompts;
@@ -49,6 +50,7 @@ mod tree;
 pub mod types;
 mod usage;
 mod visibility;
+pub mod webhooks;
 
 pub use failures::{
     DECLARABLE_KINDS, FailureInfo, FailureTable, MEMBERS as FAILURE_MEMBERS, failure_problems,
@@ -124,6 +126,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(
+                package_code::action_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
             out.extend(naming_problems(db, project, file).iter().cloned());
             out.extend(resolve_file(db, project, file).iter().cloned());
             out.extend(import_problems(db, project, file).iter().cloned());
@@ -153,6 +160,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(types::step_problems(db, project, file).iter().cloned());
             out.extend(types::store_problems(db, project, file).iter().cloned());
             out.extend(
                 types::batch_store_problems(db, project, file)
@@ -210,6 +218,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(config::connection_problems(db, project).iter().cloned());
         out.extend(config::test_value_problems(db, project).iter().cloned());
         out.extend(identity::identity_problems(db, project).iter().cloned());
+        out.extend(identity::sign_in_problems(db, project).iter().cloned());
         out.extend(
             client_address::client_address_problems(db, project)
                 .iter()
@@ -241,6 +250,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .cloned(),
         );
+        out.extend(types::steps_settings(db, project).problems.iter().cloned());
         out.extend(routes::table_problems(db, project).iter().cloned());
         out.extend(routes::signin_problems(db, project).iter().cloned());
         out.extend(records::record_problems(db, project).iter().cloned());
@@ -251,6 +261,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .iter()
                 .cloned(),
         );
+        out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

@@ -39,7 +39,13 @@ const OPTIONS: [&str; 4] = ["secret", "default", "binding", "test"];
 /// may be a secret: the places the compiler itself owns (area 10,
 /// "Secrets"). A connection's address, an integration's credential (and a
 /// webhook's `secret:`), and a signing key.
-pub const SECRET_SINKS: [&str; 4] = ["url", "credential", "signing_key", "secret"];
+pub const SECRET_SINKS: [&str; 5] = [
+    "url",
+    "credential",
+    "signing_key",
+    "secret",
+    "encryption_key",
+];
 
 /// How a setting's value is read from its variable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -798,6 +804,8 @@ impl Reader<'_> {
             | Prim::PageSize
             | Prim::ApiToken
             | Prim::ServiceKey
+            | Prim::SignInCode
+            | Prim::SignInToken
             | Prim::PresentationText => {
                 return Err(format!(
                     "`{}` is made by the runtime, not read from a deployment.",
