@@ -81,6 +81,7 @@ mod sql_literals;
 mod standard_boundaries;
 mod standard_storage;
 mod step_deliveries;
+mod step_operators;
 mod step_records;
 mod suggest;
 mod suggest_share;

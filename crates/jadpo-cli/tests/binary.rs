@@ -125,6 +125,7 @@ fn bash_completes_commands_and_values() {
             "translations",
             "schedules",
             "deliveries",
+            "runs",
             "config",
             "completions",
             "lsp",

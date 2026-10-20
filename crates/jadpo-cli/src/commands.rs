@@ -22,6 +22,7 @@ pub use crate::package::package;
 pub use crate::records::records;
 pub use crate::routes::routes;
 use crate::run::{Call, Reply, Session, both, either, quoted, unknown_command};
+pub use crate::runs::runs;
 pub use crate::schedules::{schedules, why};
 pub use crate::sql::sql;
 use crate::suggest::nearest;

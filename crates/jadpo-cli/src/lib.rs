@@ -32,6 +32,7 @@ mod provider_review;
 mod records;
 mod routes;
 mod run;
+mod runs;
 mod schedules;
 mod share;
 mod sql;
