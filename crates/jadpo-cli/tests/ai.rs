@@ -125,7 +125,7 @@ fn show_names_a_prompt_the_project_has() {
         "{}",
         other.stderr
     );
-    let later = jadpo(&root, &["ai", "record", "answer_question"]);
+    let later = jadpo(&root, &["ai", "usage"]);
     assert!(
         later.stderr.contains("rule: toolchain.not_built_yet"),
         "{}",

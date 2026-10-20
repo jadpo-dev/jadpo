@@ -450,6 +450,25 @@ fn placeholders(codecs: &Codecs<'_>, id: CodecId, json: &J, making: &mut Making<
     }
 }
 
+/// `answer`, a value of codec `id`'s type as `json.write` writes it, as a
+/// prompt's recording keeps its answer (area 21; chunk 5.5v4b): its plain
+/// values placeholders, as [`kept`] keeps an operation's, written two
+/// spaces deep from `depth` with each number's digits; `None` when it
+/// isn't JSON.
+pub fn kept_answer(
+    codecs: &Codecs<'_>,
+    id: CodecId,
+    answer: &str,
+    depth: usize,
+    making: &mut Making<'_>,
+) -> Option<String> {
+    let (document, numbers) = jadpo_value::json::parse(answer.as_bytes())?;
+    let kept = placeholders(codecs, id, &document, making);
+    let mut out = String::new();
+    write(&kept, &numbers, &mut Vec::new(), depth, &mut out);
+    Some(out)
+}
+
 /// `json`, a recorded value of codec `id`'s type, with each placeholder
 /// filled as [`filled`] fills an operation's: what a prompt's recording
 /// gives as its answer (area 21; chunk 5.5v4).

@@ -29,6 +29,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Show what a prompt sends, its placeholders in place",
     },
     Value {
+        name: "record",
+        description: "Keep the model's answer to a prompt for tests",
+    },
+    Value {
         name: "usage",
         description: "Show the tokens and cost models used today and this month",
     },
@@ -38,19 +42,8 @@ pub fn ai(call: &Call) -> Reply {
     let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
     match call.arguments.first().map(String::as_str) {
         Some("show") => {}
+        Some("record") => return crate::ai_record::record(call),
         Some("usage") => return crate::ai_usage::usage(call),
-        Some(later @ "record") => {
-            return Reply::failed(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`jadpo ai {later}` isn't built yet"),
-                )
-                .reason(
-                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and roadmap chunk 5.5v4b builds it. Until then a recording is written by hand beside its prompt, in `recordings/<prompt>/<name>.json`.",
-                )
-                .next("Run `jadpo ai show <prompt>` to see what a prompt sends"),
-            );
-        }
         Some(other) => {
             let diagnostic = Diagnostic::new(
                 &rule::CLI_AI_ARGUMENTS,
@@ -72,7 +65,7 @@ pub fn ai(call: &Call) -> Reply {
                     &rule::CLI_AI_ARGUMENTS,
                     "`jadpo ai` needs to know what to do",
                 )
-                .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request.")
+                .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request. `record` keeps the model's answer to it for tests.")
                 .next("Run `jadpo ai show <prompt>` with one of the project's prompts"),
             );
         }

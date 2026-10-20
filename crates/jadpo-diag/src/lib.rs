@@ -717,9 +717,9 @@ rules! {
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
         "18-records-and-manifest.html#record-out-of-date", "Generated record disagrees with the source";
     RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
-        "14-tooling.html#command-errors", "Provider's sandbox gave no answer to record";
+        "14-tooling.html#command-errors", "Sandbox or model gave no answer to record";
     RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
-        "14-tooling.html#command-errors", "Operation can't be recorded through this connection";
+        "14-tooling.html#command-errors", "Answer can't be recorded through this connection";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
