@@ -11,7 +11,9 @@
 # options they use. `DecodeProblem` is what a failure mapped from
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
 # `FirstSignIn` is what `on_first_sign_in:`'s action is given (area 8),
-# and `MagicLinkRedeemed` what `magic_links.redeem` gives.
+# and `MagicLinkRedeemed` what `magic_links.redeem` gives; `SignedIn`,
+# `SignInRefused` and `SignInCodesDisabled` are the events sign-in
+# publishes, which only the runtime emits (area 8, "Events").
 # `MagicLinkEmail` is what the application's own sign-in email picks its
 # fields from, and `MagicLinkRequest` what its own sending is given (area
 # 16, "Built-in emails"), their fields in `jadpo-std`'s `email`.
@@ -23,7 +25,7 @@
 Page Nearest
 File FileContents Principal Response Access
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
-MagicLinkRedeemed
+MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
