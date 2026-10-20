@@ -1790,8 +1790,12 @@ impl Walk<'_> {
         callee: &Callee,
         args: &[Option<SiteId>],
     ) -> Prov {
-        if matches!(callee, Callee::Batch(BatchOp::Each)) {
-            return self.batch(flow, args);
+        if matches!(callee, Callee::Batch(BatchOp::Each | BatchOp::Read(_))) {
+            return self.batch(
+                flow,
+                args,
+                matches!(callee, Callee::Batch(BatchOp::Read(_))),
+            );
         }
         // An inline function's parameter holds the list it is given.
         let first = match args.first() {
@@ -1936,18 +1940,30 @@ impl Walk<'_> {
     /// counts and problems only: how many items there were, which shows
     /// nothing of them, as a count of records doesn't, and which failed
     /// and why, decided by what decides whether `each:`'s action fails.
-    fn batch(&mut self, flow: &Flow<'_>, args: &[Option<SiteId>]) -> Prov {
-        let arg = |at: usize| args.get(at).copied().flatten();
+    fn batch(&mut self, flow: &Flow<'_>, args: &[Option<SiteId>], file: bool) -> Prov {
+        // A file helper's read (chunk 6.4b) has its file, then `as:`, a
+        // type, in place of `from:`; the rest as `batches.each`'s.
+        let skip = usize::from(file);
+        let arg = |at: usize| {
+            let at = if at == 0 { 0 } else { at + skip };
+            args.get(at).copied().flatten()
+        };
+        // A row read from a file holds no record's values: what it holds
+        // came in from outside, as a request's input does.
         let page = match arg(0) {
-            Some(from) => self.eval(flow, from),
-            None => Prov::default(),
+            Some(from) if !file => self.eval(flow, from),
+            _ => Prov::default(),
         };
         let each = self.run_call(arg(1));
         let finished = self.run_call(arg(2));
         // What the run saves: `from:`'s arguments (walked with its query
-        // already, so again without reporting), what `each:` and
-        // `finished:` capture, and `key:`.
+        // already, so again without reporting), or the file, what `each:`
+        // and `finished:` capture, and `key:`.
         let mut saved: Vec<(SiteId, Prov)> = Vec::new();
+        if file && let Some(read) = arg(0) {
+            let prov = self.eval(flow, read);
+            saved.push((read, prov));
+        }
         if let Some(from) = arg(0)
             && let Node::Expr(Expr::Call {
                 callee: Callee::Query(_),

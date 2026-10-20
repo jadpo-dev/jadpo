@@ -46,6 +46,10 @@
 //!   each claim it takes a [`lease`] of the same length (chunk 6.7).
 //! - [`serve`]: what every host does with a request and a tick (chunk
 //!   6.9), which a host's server handler wraps.
+//! - [`files`]: the `files` capability on the seam (chunk 6.4b): a store's
+//!   `put` and ranged `read` of a `File`, with an in-memory fake, and
+//!   [`rows`], a stored file's CSV, TSV and JSON Lines rows, which a file
+//!   helper's batch run reads a page at a time.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -76,6 +80,7 @@ mod env;
 mod executor;
 mod failure;
 mod fault;
+pub mod files;
 mod host;
 pub mod http;
 pub mod lease;
@@ -90,6 +95,7 @@ mod race;
 mod ratelimit;
 mod read;
 mod report;
+pub mod rows;
 pub mod runner;
 pub mod schedules;
 pub mod serve;

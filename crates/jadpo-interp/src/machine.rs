@@ -93,6 +93,9 @@ pub(crate) enum Target {
     /// `batches.each`, by the number its site decodes, or with `None`
     /// `batches.status` and `batches.cancel` (area 12, chunk 6.4).
     Batch(jadpo_std::batch::BatchOp, Option<u32>),
+    /// `store.put(bytes, type)` or `store.read(file)` through the `files`
+    /// connection its site names (area 16, chunk 6.4b): an outside call.
+    Files(jadpo_std::files::FilesOp),
     /// A test's run of a schedule, by the callable number of the action it
     /// runs (area 13; chunk 6.2c).
     Schedule(u32),
@@ -438,6 +441,17 @@ impl<'p> Machine<'p> {
         match self.enter(ctx, callee, args, at) {
             Ok(()) => self.run(ctx),
             Err(stop) => Step::Done(Err(stop)),
+        }
+    }
+
+    /// The `files` connection the call at `at` goes through (chunk 6.4b).
+    pub fn files_connection(&self, at: SiteId) -> Option<&'p str> {
+        match &self.site(at)?.node {
+            Node::Expr(Expr::Call {
+                callee: Callee::Files { connection, .. },
+                ..
+            }) => Some(connection.as_str()),
+            _ => None,
         }
     }
 
@@ -998,6 +1012,7 @@ impl<'p> Machine<'p> {
                     | Target::Request { .. }
                     | Target::Session(_)
                     | Target::Batch(..)
+                    | Target::Files(..)
                     | Target::Schedule(_) => {
                         return Ok(Flow::Pause { target, args, at });
                     }
@@ -1936,12 +1951,14 @@ impl<'p> Machine<'p> {
             // in the action's transaction (area 12): `batches.each` works
             // out only what its run saves, never its query or its actions,
             // which the run calls later.
-            Callee::Batch(jadpo_std::batch::BatchOp::Each) => {
+            Callee::Batch(
+                op @ (jadpo_std::batch::BatchOp::Each | jadpo_std::batch::BatchOp::Read(_)),
+            ) => {
                 let Some(Decoded::Batch { number, sites }) = self.decoded(id) else {
                     return Err(self.defect(ctx, "a batch with no plan", id));
                 };
                 self.tasks.push(Task::Invoke {
-                    target: Target::Batch(jadpo_std::batch::BatchOp::Each, Some(*number)),
+                    target: Target::Batch(*op, Some(*number)),
                     count: sites.len(),
                     at: id,
                     then: None,
@@ -1953,6 +1970,17 @@ impl<'p> Machine<'p> {
             Callee::Batch(op) => {
                 self.tasks.push(Task::Invoke {
                     target: Target::Batch(*op, None),
+                    count: args.len(),
+                    at: id,
+                    then: None,
+                });
+                self.arguments(args, id);
+            }
+            // A store's put or read: an outside call, before the action's
+            // first read or write (area 16, chunk 6.4b).
+            Callee::Files { op, .. } => {
+                self.tasks.push(Task::Invoke {
+                    target: Target::Files(*op),
                     count: args.len(),
                     at: id,
                     then: None,

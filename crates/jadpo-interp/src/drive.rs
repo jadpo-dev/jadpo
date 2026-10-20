@@ -73,6 +73,10 @@ async fn body(
                     } => request(program, ctx, route, &args, keyed, signed).await,
                     Target::Session(op) => session(program, ctx, op, &args, at.0).await,
                     Target::Batch(op, number) => batch(program, ctx, op, number, &args, at.0).await,
+                    Target::Files(op) => {
+                        let connection = machine.files_connection(at).unwrap_or_default();
+                        files(ctx, connection, op, &args, at.0).await
+                    }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
                         schedule(program, ctx, action, at.0, caught).await
@@ -154,6 +158,7 @@ fn store<'a, 'p: 'a>(
             | Target::Request { .. }
             | Target::Session(_)
             | Target::Batch(..)
+            | Target::Files(..)
             | Target::Schedule(_) => None,
         };
         let Some(op) = op else {
@@ -165,6 +170,7 @@ fn store<'a, 'p: 'a>(
                 | Target::Request { .. }
                 | Target::Session(_)
                 | Target::Batch(..)
+                | Target::Files(..)
                 | Target::Schedule(_) => "a call run as a read",
             };
             return Err(Stop::Fault(
@@ -268,7 +274,7 @@ async fn batch(
         )));
     };
     let stored = match (op, number, args) {
-        (BatchOp::Each, Some(number), _) => match program.plan().batch(number) {
+        (BatchOp::Each | BatchOp::Read(_), Some(number), _) => match program.plan().batch(number) {
             Some(plan) => batches::start(ctx, program_batches, plan, args, at).await,
             None => {
                 return Err(Stop::Fault(
@@ -293,6 +299,39 @@ async fn batch(
         Stored::Failed(failure) => Err(Stop::Failed(failure)),
         Stored::Conflict { cause, .. } => Err(Stop::Failed(cause)),
         Stored::Fault(fault) => Err(Stop::Fault(fault)),
+    }
+}
+
+/// `store.put(bytes, type)` or `store.read(file)` at site `at` (area 16,
+/// chunk 6.4b), through the runtime's `files` capability: an outside call,
+/// which the seam refuses once the action's transaction is open.
+async fn files(
+    ctx: &mut Ctx<'_>,
+    connection: &str,
+    op: jadpo_std::files::FilesOp,
+    args: &[Value],
+    at: u32,
+) -> Result<Value, Stop> {
+    use jadpo_runtime::files::{self, Done};
+    use jadpo_std::files::FilesOp;
+    let done = match (op, args) {
+        (FilesOp::Put, [bytes, file_type]) => files::put(ctx, connection, bytes, file_type).await,
+        (FilesOp::Read, [file]) => files::read_whole(ctx, file).await,
+        _ => Done::Fault(FaultKind::Defect(format!(
+            "`{connection}.{}` called with the wrong arguments",
+            op.name()
+        ))),
+    };
+    match done {
+        Done::Value(value) => Ok(value),
+        Done::Broke(rule) => Err(Stop::Invalid {
+            rule,
+            written: rule.word().to_string(),
+            problem: None,
+            name: None,
+        }),
+        Done::Failed(failure) => Err(Stop::Failed(failure)),
+        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
     }
 }
 

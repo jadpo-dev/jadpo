@@ -348,6 +348,7 @@ impl Lower<'_> {
                     | Callee::Entity { .. }
                     | Callee::Session(_)
                     | Callee::Batch(_)
+                    | Callee::Files { .. }
             ),
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
@@ -851,6 +852,10 @@ impl Lower<'_> {
             Reach::Caller(kind) => Callee::Caller(*kind),
             Reach::Session(op) => Callee::Session(*op),
             Reach::Batch(op) => Callee::Batch(*op),
+            Reach::Files(connection, op) => Callee::Files {
+                connection: connection.clone(),
+                op: *op,
+            },
             Reach::AdvanceClock => Callee::AdvanceClock,
             Reach::Schedule {
                 schedule,
@@ -891,6 +896,11 @@ impl Lower<'_> {
             (Reach::Batch(op), Some(slots)) => {
                 let mut args = vec![None; op.params().len()];
                 for (arg, slot) in arguments.iter().zip(slots) {
+                    // A file helper's `as:` is a type, which `each:`'s item
+                    // is (chunk 6.4b): nothing to work out.
+                    if matches!(op, jadpo_std::batch::BatchOp::Read(_)) && slot == Some(1) {
+                        continue;
+                    }
                     let lowered = arg.expr().map(|value| self.expr(&value));
                     if let Some(slot) = slot
                         && let Some(place) = args.get_mut(slot)
@@ -1040,6 +1050,7 @@ impl Lower<'_> {
             Reach::Std(_)
             | Reach::Session(_)
             | Reach::Batch(_)
+            | Reach::Files(..)
             | Reach::AdvanceClock
             | Reach::Translation { .. }
             | Reach::Prompt(_) => {}

@@ -25,6 +25,7 @@ mod decode_problems;
 mod delivery_limits;
 mod events;
 mod field_rules_on_read;
+mod file_imports;
 mod fix;
 mod fmt;
 mod geo_layers;

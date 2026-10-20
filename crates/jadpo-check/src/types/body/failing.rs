@@ -177,6 +177,7 @@ impl Body<'_> {
                 Reach::Caller(_)
                 | Reach::Session(_)
                 | Reach::Batch(_)
+                | Reach::Files(..)
                 | Reach::AdvanceClock
                 | Reach::Translation { .. }
                 | Reach::Prompt(_),
@@ -850,6 +851,11 @@ impl Body<'_> {
         match self.facts.reaches.get(&node_key(call.syntax())) {
             Some(Reach::Construct(target)) => self.rules_of(target),
             Some(Reach::Std(jadpo_std::Op::TextParse)) => self.parse_rules(call),
+            // A store with no room for the bytes (area 16, chunk 6.4b).
+            Some(Reach::Files(_, jadpo_std::files::FilesOp::Put)) => {
+                let word = jadpo_std::RuleKey::StorageFull.word();
+                vec![(word, word.to_string())]
+            }
             Some(Reach::Std(op)) => op
                 .operation()
                 .conditions
@@ -1130,7 +1136,14 @@ impl Body<'_> {
             }
             if let Some(failure) = &failure {
                 self.leave(failure, span.clone(), "mapped here");
-                self.mapping_kind(arm, failure, "invalid_value");
+                // A store with no room for a file isn't the value's fault
+                // (area 16, chunk 6.4b).
+                let kind = if arm.key == jadpo_std::RuleKey::StorageFull.word() {
+                    "unavailable"
+                } else {
+                    "invalid_value"
+                };
+                self.mapping_kind(arm, failure, kind);
             } else {
                 self.flow.open = true;
             }
@@ -1441,6 +1454,7 @@ impl Body<'_> {
         let meaning = match kind {
             "conflict" => "a write the store refuses because of the records already there",
             "not_found" => "a read that finds nothing",
+            "unavailable" => "a store with no room for what is put in it",
             _ => "a value that breaks a type's rules",
         };
         self.out.push(

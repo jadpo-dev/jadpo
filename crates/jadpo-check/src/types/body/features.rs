@@ -50,6 +50,7 @@ pub(crate) fn feature_fields(name: &str, args: &[Ty]) -> Option<Vec<FieldDef>> {
                 optional: false,
                 default: None,
                 header: None,
+                column: None,
                 copied: false,
                 replaces: None,
                 generated: false,

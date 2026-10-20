@@ -81,6 +81,53 @@ pub fn object_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
 /// The batch types, in the order area 2 lists them.
 pub const OBJECTS: [&str; 4] = [BATCH_RUN, BATCH_PROGRESS, ROW_PROBLEM, IMPORT_SUMMARY];
 
+/// The objects only the runtime builds and an entity field or a run keeps
+/// as their JSON: the batch types and a stored `File` (chunk 6.4b), each
+/// with its fields.
+pub fn kept_fields(name: &str) -> Option<&'static [(&'static str, Part)]> {
+    object_fields(name).or_else(|| crate::files::object_fields(name))
+}
+
+/// The format a file helper reads rows in (area 19, "Data formats"),
+/// named by its namespace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum RowFormat {
+    /// `csv`: comma-separated cells under a header row (RFC 4180).
+    Csv,
+    /// `tsv`: CSV's tab-separated form.
+    Tsv,
+    /// `json_lines`: one JSON value a line.
+    JsonLines,
+}
+
+impl RowFormat {
+    pub const ALL: [RowFormat; 3] = [RowFormat::Csv, RowFormat::Tsv, RowFormat::JsonLines];
+
+    /// Its namespace: `csv`, `tsv`, `json_lines`.
+    pub fn namespace(self) -> &'static str {
+        match self {
+            RowFormat::Csv => "csv",
+            RowFormat::Tsv => "tsv",
+            RowFormat::JsonLines => "json_lines",
+        }
+    }
+
+    pub fn from_namespace(name: &str) -> Option<RowFormat> {
+        RowFormat::ALL
+            .into_iter()
+            .find(|format| format.namespace() == name)
+    }
+
+    /// The byte between a row's cells, for the formats with a header.
+    pub fn delimiter(self) -> Option<u8> {
+        match self {
+            RowFormat::Csv => Some(b','),
+            RowFormat::Tsv => Some(b'\t'),
+            RowFormat::JsonLines => None,
+        }
+    }
+}
+
 /// An operation of the `batches` namespace, which only an action calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BatchOp {
@@ -91,18 +138,30 @@ pub enum BatchOp {
     Status,
     /// `batches.cancel(run)`: stops the run after the batch in hand.
     Cancel,
+    /// `csv.read(file, as:, each:, finished:, key:)`, and `tsv`'s and
+    /// `json_lines`'s (area 19, "Data formats"; chunk 6.4b): starts a run
+    /// over a stored file's rows once the calling action commits.
+    Read(RowFormat),
 }
 
 impl BatchOp {
+    /// The operations of the `batches` namespace.
     pub const ALL: [BatchOp; 3] = [BatchOp::Each, BatchOp::Status, BatchOp::Cancel];
 
-    /// As a call writes it after `batches.`.
+    /// As a call writes it after `batches.`, or after a format's
+    /// namespace.
     pub fn name(self) -> &'static str {
         match self {
             BatchOp::Each => "each",
             BatchOp::Status => "status",
             BatchOp::Cancel => "cancel",
+            BatchOp::Read(_) => "read",
         }
+    }
+
+    /// Whether it starts a run: `batches.each`, or a file helper's.
+    pub fn starts(self) -> bool {
+        matches!(self, BatchOp::Each | BatchOp::Read(_))
     }
 
     pub fn from_name(name: &str) -> Option<BatchOp> {
@@ -115,12 +174,19 @@ impl BatchOp {
         match self {
             BatchOp::Each => &EACH_PARAMS,
             BatchOp::Status | BatchOp::Cancel => &["run"],
+            BatchOp::Read(_) => &READ_PARAMS,
         }
     }
 }
 
 /// `batches.each`'s parameters, in the order its call is lowered.
 pub const EACH_PARAMS: [&str; 4] = ["from", "each", "finished", "key"];
+
+/// A file helper's parameters when it reads (area 19, "Data formats"),
+/// in the order its call is lowered: the stored `File`, `as:` (a type,
+/// which lowers to nothing; `each:`'s item is of it), then as
+/// `batches.each`'s.
+pub const READ_PARAMS: [&str; 5] = ["file", "as", "each", "finished", "key"];
 
 /// The runs, one row each, in the store the run's items write (area 12,
 /// "How a run goes").
@@ -153,15 +219,15 @@ pub struct BatchPlan {
     /// The level each batch's transaction begins at: repeatable read when
     /// `each:`'s or `finished:`'s action loads a record.
     pub isolation: Isolation,
-    /// The named query `from:` calls, which gives a `Page`, walked from
-    /// the cursor each page gives.
-    pub read: ReadPlan,
+    /// What the run walks: a named query's pages, or a stored file's
+    /// rows.
+    pub from: BatchFrom,
     /// The JSON table's number of each value saved with the run, in
-    /// order: `from:`'s arguments first, then what `each:` and
-    /// `finished:` capture.
+    /// order: `from:`'s arguments (or the file a file helper reads)
+    /// first, then what `each:` and `finished:` capture.
     pub captured: Vec<u32>,
     /// How many of `captured` are `from:`'s arguments, in its query's
-    /// parameter order.
+    /// parameter order, or the file: one.
     pub from_args: usize,
     pub each: BatchCall,
     pub finished: Option<BatchCall>,
@@ -170,6 +236,40 @@ pub struct BatchPlan {
     /// The tenant the run is limited to (area 12, "A batch's tenant";
     /// chunk 6.4c).
     pub tenant: BatchTenant,
+}
+
+/// What a run walks.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BatchFrom {
+    /// The named query `from:` calls, which gives a `Page`, walked from
+    /// the cursor each page gives.
+    Query(ReadPlan),
+    /// The rows of the stored `File` saved first with the run (chunk
+    /// 6.4b).
+    File(FileRows),
+}
+
+impl BatchFrom {
+    /// The query it walks, if it walks one.
+    pub fn query(&self) -> Option<&ReadPlan> {
+        match self {
+            BatchFrom::Query(read) => Some(read),
+            BatchFrom::File(_) => None,
+        }
+    }
+}
+
+/// How a file helper reads a file's rows (area 19, "Data formats";
+/// chunk 6.4b).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FileRows {
+    pub format: RowFormat,
+    /// The JSON table's number of `as:`'s type, an `Input`, each row read
+    /// as one.
+    pub row: u32,
+    /// For CSV and TSV, the column each of the row type's fields is read
+    /// from, in its fields' order: its `column:`, else its name.
+    pub columns: Vec<String>,
 }
 
 /// Where a run's tenant comes from: its saved values holding a tenant's
@@ -218,6 +318,15 @@ mod tests {
         for op in BatchOp::ALL {
             assert_eq!(BatchOp::from_name(op.name()), Some(op));
         }
+        // A file helper's `read` is its format's, never `batches.read`.
+        assert_eq!(BatchOp::from_name("read"), None);
+        for format in RowFormat::ALL {
+            assert_eq!(RowFormat::from_namespace(format.namespace()), Some(format));
+            assert_eq!(BatchOp::Read(format).params(), READ_PARAMS);
+            assert!(BatchOp::Read(format).starts());
+        }
+        assert!(kept_fields(crate::files::FILE).is_some());
+        assert!(kept_fields(BATCH_RUN).is_some());
         assert_eq!(BatchOp::Each.params(), EACH_PARAMS);
         assert_eq!(
             crate::system::BATCH_TABLES.map(|table| table.table),

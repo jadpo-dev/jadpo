@@ -333,6 +333,8 @@ pub struct Plan {
     batches: Vec<jadpo_std::batch::BatchPlan>,
     /// Each `batches.each` site's number's place in `batches`.
     batch_numbers: Vec<Option<u32>>,
+    /// The connections that keep files (area 16, chunk 6.4b).
+    file_stores: Vec<jadpo_std::files::FilesConnection>,
 }
 
 /// A structured field the latest migration checks, rewrites or fills as
@@ -677,8 +679,25 @@ impl Plan {
         // read when an action it calls loads a record (area 12).
         let mut batches: Vec<jadpo_std::batch::BatchPlan> = Vec::new();
         let mut batch_numbers: Vec<Option<u32>> = Vec::new();
+        let run_stores = jadpo_check::types::file_run_stores(db, project);
         for plan in batch_sites.into_iter().map(|site| {
-            let read = queries.get(site.query? as usize)?.read.clone();
+            // A query's pages, kept in its store; or a file's rows, kept
+            // where the run's actions write (chunk 6.4b).
+            let (from, store) = match &site.file {
+                Some((format, row, ty)) => (
+                    jadpo_std::batch::BatchFrom::File(jadpo_std::batch::FileRows {
+                        format: *format,
+                        row: *row,
+                        columns: row_columns(db, project, ty),
+                    }),
+                    run_stores.get(&site.starter).cloned().flatten()?,
+                ),
+                None => {
+                    let read = queries.get(site.query? as usize)?.read.clone();
+                    let store = read.store.clone();
+                    (jadpo_std::batch::BatchFrom::Query(read), store)
+                }
+            };
             let (_, each) = site.each.clone()?;
             let isolation = [&site.each, &site.finished]
                 .into_iter()
@@ -694,9 +713,9 @@ impl Plan {
             Some(jadpo_std::batch::BatchPlan {
                 name: site.name,
                 shape: site.shape,
-                store: read.store.clone(),
+                store,
                 isolation,
-                read,
+                from,
                 captured: site.captured,
                 from_args: site.from_args,
                 each,
@@ -801,12 +820,19 @@ impl Plan {
             migration_json,
             batches,
             batch_numbers,
+            file_stores: jadpo_check::data::files_connections(db, project).clone(),
         }
     }
 
     /// Every `batches.each` call's run (area 12, chunk 6.4).
     pub fn batches(&self) -> &[jadpo_std::batch::BatchPlan] {
         &self.batches
+    }
+
+    /// The connections that keep files, which a host gives a driver for
+    /// (area 16, chunk 6.4b).
+    pub fn file_stores(&self) -> &[jadpo_std::files::FilesConnection] {
+        &self.file_stores
     }
 
     /// The run of the `batches.each` call whose site decodes `number`.
@@ -980,5 +1006,26 @@ impl Plan {
     /// The purge of the entity called `entity`, when its lifecycle has one.
     pub fn purge(&self, entity: &str) -> Option<&PurgePlan> {
         self.purges.iter().find(|plan| plan.entity == entity)
+    }
+}
+
+/// The column each of a file row type's fields is read from, in its
+/// fields' order: its `column:`, else its name (chunk 6.4b).
+fn row_columns(db: &dyn Db, project: Project, ty: &TypeRef) -> Vec<String> {
+    use jadpo_check::types::TypeView;
+    let TypeRef::Node(key) = ty else {
+        return Vec::new();
+    };
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    let def = lookup
+        .def(key.written())
+        .or_else(|| lookup.def(key.name()))
+        .cloned();
+    match def {
+        Some(jadpo_check::types::Def::Fields { fields, .. }) => fields
+            .iter()
+            .map(|field| field.column.clone().unwrap_or_else(|| field.name.clone()))
+            .collect(),
+        _ => Vec::new(),
     }
 }

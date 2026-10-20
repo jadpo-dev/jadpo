@@ -27,6 +27,7 @@ mod expr;
 pub(crate) mod facts;
 mod failing;
 mod features;
+mod files;
 mod identity;
 mod json;
 mod known;

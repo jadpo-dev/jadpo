@@ -129,6 +129,7 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                     .iter()
                     .cloned(),
             );
+            out.extend(types::file_run_problems(db, project, file).iter().cloned());
             out.extend(graph::similar_problems(db, project, file).iter().cloned());
             out.extend(data::data_problems(db, project, file).iter().cloned());
             out.extend(

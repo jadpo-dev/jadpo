@@ -62,6 +62,8 @@ pub const MAIN: &str = "main";
 pub enum ConnectionKind {
     Postgres,
     Redis,
+    /// A store of files, `Driver.disk` (area 16; chunk 6.4b).
+    Files,
     /// A provider package (area 11).
     Package,
     /// Neither a built-in driver nor a package: area 11 reports it.
@@ -142,6 +144,57 @@ pub fn connections(db: &dyn Db, project: Project) -> Connections {
     }
 }
 
+/// The connections that keep files (area 16; chunk 6.4b), each with its
+/// driver and the folder `path:` names, which the disk driver keeps files
+/// under in production; `jadpo dev` keeps them under `.jadpo/files/`.
+#[salsa::tracked(returns(ref))]
+pub fn files_connections(db: &dyn Db, project: Project) -> Vec<jadpo_std::files::FilesConnection> {
+    let mut out = Vec::new();
+    let app = project
+        .files(db)
+        .iter()
+        .find(|file| file.path(db) == jadpo_db::PROJECT_FILE);
+    let Some(source) = app.and_then(|file| tree::source(db, *file)) else {
+        return out;
+    };
+    for decl in source.decls() {
+        let Decl::SingletonDecl(singleton) = decl else {
+            continue;
+        };
+        if singleton.keyword().map(|t| t.text().to_string()).as_deref() != Some("application") {
+            continue;
+        }
+        for (key, member) in tree::members(singleton.member_list()) {
+            if tree::name_text(&key).as_deref() != Some("connections") {
+                continue;
+            }
+            for (name, entry) in tree::members(member.block()) {
+                let Some(name) = tree::name_text(&name) else {
+                    continue;
+                };
+                if connection_kind(entry.block()) != ConnectionKind::Files {
+                    continue;
+                }
+                let path = tree::members(entry.block())
+                    .into_iter()
+                    .find(|(setting, _)| tree::name_text(setting).as_deref() == Some("path"))
+                    .and_then(|(_, setting)| {
+                        match setting.value().as_ref().map(Const::from_expr) {
+                            Some(Const::Str(path)) => Some(path),
+                            _ => None,
+                        }
+                    });
+                out.push(jadpo_std::files::FilesConnection {
+                    name,
+                    driver: Driver::Disk,
+                    path,
+                });
+            }
+        }
+    }
+    out
+}
+
 fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
     for (setting, member) in tree::members(list) {
         match tree::name_text(&setting).as_deref() {
@@ -152,6 +205,7 @@ fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                     [host, variant] if host == Driver::NAME => match Driver::from_name(variant) {
                         Some(Driver::Postgres) => ConnectionKind::Postgres,
                         Some(Driver::Redis) => ConnectionKind::Redis,
+                        Some(Driver::Disk) => ConnectionKind::Files,
                         None => ConnectionKind::Other,
                     },
                     _ => ConnectionKind::Other,
@@ -240,6 +294,20 @@ pub struct FieldModel {
     /// The geometry its `geography` column holds (area 20, chunk 5.5u4):
     /// one of the six geometries, or `Geometry` for any of them.
     pub geometry: Option<&'static str>,
+    /// For a `File` field, its store and what it holds (area 16; chunk
+    /// 6.4b).
+    pub file: Option<FileField>,
+}
+
+/// A `File` field's settings (area 16, "Files"): the `files` connection
+/// its bytes go to, the most bytes it holds, and the types it takes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FileField {
+    pub store: String,
+    /// `max_size:`, in bytes.
+    pub max_size: u64,
+    /// `types:`, by `FileType`'s variants; empty when it names none.
+    pub types: Vec<String>,
 }
 
 impl FieldModel {
@@ -949,6 +1017,7 @@ impl Reader<'_> {
             builtin: None,
             scale: None,
             geometry: None,
+            file: None,
         };
         if ty.has_error() {
             // A type that names nothing is resolution's one error: the
@@ -1207,6 +1276,13 @@ impl Reader<'_> {
             Expr::RecordExpr(record) => tree::members(record.member_list()),
             _ => Vec::new(),
         };
+        let file = matches!(
+            self.lookup.structure(ty.strip_nullable()),
+            Ty::Opaque(held, args) if held == jadpo_std::files::FILE && args.is_empty()
+        );
+        if file {
+            field.file = self.file_field(path, entity, name, value, &settings);
+        }
         let mut on_delete: Option<(OnDelete, Span)> = None;
         for (key, member) in settings {
             let Some(word) = tree::name_text(&key) else {
@@ -1270,6 +1346,20 @@ impl Reader<'_> {
                 // A field's own grants narrow its entity's (area 9, "Field
                 // restrictions"), read by `crate::policy`.
                 "policy" => {}
+                // A `File` field's, read above (area 16).
+                "store" | "max_size" | "types" if !file => {
+                    self.out.push(
+                        Diagnostic::new(
+                            &rule::TYPE_UNKNOWN_SETTING,
+                            format!("`{word}` is a `File` field's setting"),
+                        )
+                        .at(key_span, "not a `File` field")
+                        .reason(format!(
+                            "`store:`, `max_size:` and `types:` say where a `File` field's bytes are kept, how many it holds and which types it takes (area 16); `{entity}.{name}` isn't a `File`."
+                        ))
+                        .next(format!("Remove `{word}`")),
+                    );
+                }
                 "on_delete" => match names.as_slice() {
                     [host, variant]
                         if host == OnDelete::NAME && OnDelete::from_name(variant).is_some() =>
@@ -1324,6 +1414,197 @@ impl Reader<'_> {
             on_delete: on_delete.map(|(o, _)| o),
         });
         Some(field)
+    }
+
+    /// A `File` field's settings (area 16, "Files"; chunk 6.4b): `store:`
+    /// naming a `files` connection, `max_size:` a size literal, and
+    /// `types:` a list of `FileType`'s variants.
+    fn file_field(
+        &mut self,
+        path: &str,
+        entity: &str,
+        name: &str,
+        value: &Expr,
+        settings: &[(ast::Name, ast::Member)],
+    ) -> Option<FileField> {
+        let setting = |word: &str| {
+            settings
+                .iter()
+                .find(|(key, _)| tree::name_text(key).as_deref() == Some(word))
+        };
+        let at = node_span(path, value.syntax());
+        let problem = |out: &mut Vec<Diagnostic>,
+                       span: Span,
+                       title: String,
+                       label: &str,
+                       reason: String,
+                       next: String| {
+            out.push(
+                Diagnostic::new(&rule::DATA_FILE_FIELD_INVALID, title)
+                    .at(span, label.to_string())
+                    .reason(reason)
+                    .next(next),
+            );
+        };
+        let stores: Vec<String> = self
+            .connections
+            .declared
+            .iter()
+            .filter(|(_, kind)| *kind == ConnectionKind::Files)
+            .map(|(store, _)| store.clone())
+            .collect();
+        let listed = || {
+            if stores.is_empty() {
+                "and `app.jadpo` declares none".to_string()
+            } else {
+                format!(
+                    "and `app.jadpo` declares {}",
+                    crate::and_list(&stores.iter().map(|s| format!("`{s}`")).collect::<Vec<_>>())
+                )
+            }
+        };
+        let store = match setting("store") {
+            None => {
+                problem(
+                    &mut self.out,
+                    at.clone(),
+                    format!("`{entity}.{name}` names no store for its bytes"),
+                    "no `store:`",
+                    format!(
+                        "A `File` field's bytes live in a connection that provides `files`, `driver: Driver.disk` or a store of its own, which its `store:` names, {}.",
+                        listed()
+                    ),
+                    match stores.first() {
+                        Some(first) => format!("Add `store: {first}` to `{name}`'s block"),
+                        None => format!(
+                            "Declare a connection with `driver: Driver.disk` in `app.jadpo`, and name it in `{name}`'s `store:`"
+                        ),
+                    },
+                );
+                None
+            }
+            Some((_, member)) => {
+                let (written, span) = self.store_value(path, member, &at);
+                if self.connections.kind(&written) == Some(ConnectionKind::Files) {
+                    Some(written)
+                } else {
+                    let what = match self.connections.kind(&written) {
+                        Some(_) => format!("`{written}` is a connection that keeps no files"),
+                        None => format!("`{written}` is no connection"),
+                    };
+                    problem(
+                        &mut self.out,
+                        span,
+                        format!("`{entity}.{name}`'s `store:` isn't a store of files"),
+                        "not a `files` connection",
+                        format!(
+                            "A `File` field's `store:` names a connection that provides `files`; {what}, {}.",
+                            listed()
+                        ),
+                        match stores.first() {
+                            Some(first) => format!("Write `store: {first}`"),
+                            None => "Declare a connection with `driver: Driver.disk` in `app.jadpo`, and name it here".to_string(),
+                        },
+                    );
+                    None
+                }
+            }
+        };
+        let max_size = match setting("max_size")
+            .and_then(|(key, member)| Some((key, member.value())))
+        {
+            None => {
+                problem(
+                    &mut self.out,
+                    at.clone(),
+                    format!("`{entity}.{name}` doesn't say how large a file it holds"),
+                    "no `max_size:`",
+                    "A `File` field's `max_size:` is the most bytes it holds, written as a size such as `5mb`: an upload past it is refused, and it decides whether `store.read` may read the file whole.".to_string(),
+                    format!("Add `max_size:` to `{name}`'s block, such as `max_size: 5mb`"),
+                );
+                None
+            }
+            Some((key, given)) => {
+                let written = given
+                    .as_ref()
+                    .map(|v| tree::written(v.syntax()))
+                    .unwrap_or_default();
+                match jadpo_std::files::size(&written) {
+                    Some(bytes) if bytes > 0 => Some(bytes),
+                    _ => {
+                        let span = given.as_ref().map_or_else(
+                            || node_span(path, key.syntax()),
+                            |v| node_span(path, v.syntax()),
+                        );
+                        problem(
+                            &mut self.out,
+                            span,
+                            format!("`{entity}.{name}`'s `max_size:` isn't a size"),
+                            "not a size",
+                            "`max_size:` is a whole number of bytes, kilobytes, megabytes or gigabytes, written `700b`, `512kb`, `5mb` or `2gb`, each a thousand times the last.".to_string(),
+                            "Write the size as a whole number and its unit, such as `5mb`".to_string(),
+                        );
+                        None
+                    }
+                }
+            }
+        };
+        let mut types = Vec::new();
+        if let Some((_, member)) = setting("types") {
+            let items: Option<Vec<Expr>> = match member.value() {
+                Some(Expr::ListExpr(list)) => Some(list.exprs().collect()),
+                _ => None,
+            };
+            let mut wrong: Option<Span> = None;
+            match items {
+                Some(items) if !items.is_empty() => {
+                    for item in items {
+                        match path_names(&item).as_slice() {
+                            [host, variant]
+                                if host == jadpo_std::FILE_TYPE
+                                    && jadpo_std::FILE_TYPES.iter().any(|(v, _)| v == variant) =>
+                            {
+                                if !types.contains(variant) {
+                                    types.push(variant.clone());
+                                }
+                            }
+                            _ => {
+                                wrong.get_or_insert(node_span(path, item.syntax()));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    wrong = Some(
+                        member
+                            .value()
+                            .map_or_else(|| at.clone(), |v| node_span(path, v.syntax())),
+                    );
+                }
+            }
+            if let Some(span) = wrong {
+                let known: Vec<String> = jadpo_std::FILE_TYPES
+                    .iter()
+                    .map(|(variant, _)| format!("`FileType.{variant}`"))
+                    .collect();
+                problem(
+                    &mut self.out,
+                    span,
+                    format!("`{entity}.{name}`'s `types:` isn't a list of file types"),
+                    "not a `FileType`",
+                    format!(
+                        "`types:` lists the types a `File` field takes, each one of `FileType`'s: {}.",
+                        crate::and_list(&known)
+                    ),
+                    "List the file types it takes, such as `types: [FileType.csv]`".to_string(),
+                );
+            }
+        }
+        Some(FileField {
+            store: store?,
+            max_size: max_size?,
+            types,
+        })
     }
 
     fn setting_value(&mut self, span: Span, setting: &str, takes: &str) {
