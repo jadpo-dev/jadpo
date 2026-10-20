@@ -1055,13 +1055,30 @@ The design is area 11 as revised on 2026-10-16, with its research in
   than attempted, one probe delivery is tried after a pause, and success
   releases the rest; held deliveries keep their retry budget, are shown
   in `jadpo deliveries` and alerted.
-- [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
-  Jadpo-rendered, attachments), the SMTP driver and a mail package as a
-  second connection proving the swap, `emails/` templates and the shared
-  layout, the dev inbox, the health score. Chunk 5.3b refuses a dotted
-  translation key (area 16's old `"welcome_email.subject"`) as
-  `translation.key_invalid`; under translations as messages (5.4c) an
-  email's subject is its own member in its domain's language files.
+- [ ] **7.3 Email: templates and the capability over SMTP** `opus · high`
+  (split from 7.3 Email on 2026-10-20): every `EmailMessage`'s `to:` and
+  `locale:`; its `.html` and `.txt` templates in `emails/` under the strict
+  rules (only its fields, `if` on a `Bool`, `for` over a list, translations
+  and `text.format` taking the email's locale, only text and numbers
+  written out, escaped unless `Html`), checked by the body checker and run
+  by the executor; the shared layout in `shared/emails/` with `{{ content
+  }}`, `{{ subject }}`, `{{ locale.direction }}` and `{{ app.display_name
+  }}` from `application { display_name: }`; `email: { connection: from: }`
+  in `application { }`; `emit` of an email delivered to the capability
+  after commit, rendered whole at send with its subject from its member in
+  the domain's language files and its `File` fields attached, an unknown
+  outcome parked; and the SMTP driver (`driver: Driver.smtp`), tested
+  against a local SMTP server started in the test. `jadpo dev` and `jadpo
+  test` give the email connection no driver until 7.3c.
+- [ ] **7.3c Email: the second connection, the dev inbox and the health
+  score** `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20): a
+  mail package as a second connection proving the swap (`provides/email.jadpo`'s
+  `provide email`, `limits: { attachments: }` checked against a `File`
+  field's `max_size`); partials (`{{ include }}`), once where a partial is
+  declared is decided; `email.sent` in tests; the dev inbox in `jadpo dev`
+  and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
+  score, `jadpo check`'s warnings about templates that would fail it, and
+  `jadpo email check-domain`.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
   generated endpoints (the email links to the frontend's `link:` path,
