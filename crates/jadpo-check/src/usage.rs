@@ -72,6 +72,11 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         if let Decl::QueryDecl(query) = &decl {
             constants_in_query(db, project, file, query, contested, domain, &mut found);
         }
+        // A provider package's field or operation decoded by the package's
+        // own functions calls them (area 11, "Decoding"; chunk 7.2c2).
+        if matches!(decl, Decl::TypeDecl(_) | Decl::ResourceDecl(_)) {
+            decoders_named(db, project, file, decl.syntax(), &mut found);
+        }
     }
     let host_of = |key: &Key| canonical_of(contested, key);
     // The latest migration's computed backfills use what they call (area
@@ -161,6 +166,52 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         }
     }
     found
+}
+
+/// The package functions a provider package's type or resource names as
+/// `decode:` or `encode:` (chunk 7.2c2), each as a call of it.
+fn decoders_named(
+    db: &dyn Db,
+    project: Project,
+    file: File,
+    decl: &jadpo_syntax::SyntaxNode,
+    found: &mut Mentions,
+) {
+    if location(db, project, file).ownership.package().is_none() {
+        return;
+    }
+    let lookup = Lookup::for_file(db, project, file);
+    for member in decl.descendants().filter_map(ast::Member::cast) {
+        let key = member
+            .member_key()
+            .and_then(|key| key.names().next())
+            .and_then(|name| tree::name_text(&name));
+        if !matches!(key.as_deref(), Some("decode" | "encode")) {
+            continue;
+        }
+        let Some(ast::Expr::FieldExpr(field)) = member.value() else {
+            continue;
+        };
+        let (Some(ast::Expr::NameRef(head)), Some(function)) = (field.expr(), field.name_ref())
+        else {
+            continue;
+        };
+        let (Some(library), Some(function)) =
+            (tree::name_ref_text(&head), tree::name_ref_text(&function))
+        else {
+            continue;
+        };
+        let key = crate::graph::library_function_key(
+            lookup.registry(),
+            &lookup.canonical_name(&library),
+            &function,
+        );
+        if let Some((library, function)) = key.name().rsplit_once('.') {
+            found
+                .library_calls
+                .insert((library.to_string(), function.to_string()));
+        }
+    }
 }
 
 /// The constants a query's block reads: one beside its use by name, a

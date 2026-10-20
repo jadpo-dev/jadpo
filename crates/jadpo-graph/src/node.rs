@@ -113,6 +113,22 @@ pub struct FailureDetail {
 /// failure plans' own, decided once in `jadpo-std`.
 pub use jadpo_std::types::Section;
 
+/// How a provider package's field is sent on the wire (area 11,
+/// "Decoding"; chunk 7.2c2).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FieldCoding {
+    /// One of the built-in encodings, by its name after `Wire.`:
+    /// `unix_seconds`.
+    Encoding(String),
+    /// The package's own `decode:` and `encode:` functions, and the type
+    /// the value has on the wire: the one `decode:` takes.
+    Functions {
+        decode: Key,
+        encode: Key,
+        wire: TypeRef,
+    },
+}
+
 /// A callable's signature.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Signature {
@@ -186,6 +202,9 @@ pub enum Detail {
         /// A provider package's field's spelling on the wire, its
         /// `wire_name:` (area 11, decided 2026-10-20).
         wire_name: Option<String>,
+        /// How a provider package's field is sent, when its `wire:` or its
+        /// `decode:` and `encode:` say (area 11, "Decoding"; chunk 7.2c2).
+        coding: Option<FieldCoding>,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
         copied_from: Option<Key>,

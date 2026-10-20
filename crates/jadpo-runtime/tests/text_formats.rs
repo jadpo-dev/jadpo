@@ -97,6 +97,7 @@ fn a_request_s_html_is_made_safe_as_it_is_read() {
         codecs: &codecs,
         validators: &validators,
         shapes: &[],
+        coder: None,
     };
     let mut problems = Vec::new();
     let json = serde_json::Value::String(
@@ -326,6 +327,7 @@ fn localised_text_is_sent_keyed_by_each_locale_s_tag() {
         codecs: &codecs,
         validators: &validators,
         shapes: &[],
+        coder: None,
     };
     let read = |json: &str| {
         let mut problems = Vec::new();

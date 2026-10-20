@@ -9,7 +9,7 @@
 
 use jadpo_db::Ownership;
 use jadpo_diag::{Diagnostic, nearest, rule};
-use jadpo_syntax::ast::{self, Expr};
+use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use jadpo_diag::Span;
 
@@ -53,6 +53,7 @@ impl Body<'_> {
                     operation: rest.join("."),
                     fails: Vec::new(),
                     checked: false,
+                    safe: true,
                 },
             )
         };
@@ -272,6 +273,7 @@ impl Body<'_> {
                 operation: operation.full_name(),
                 fails: operation.failures.clone(),
                 checked: true,
+                safe: operation.safe_to_repeat(),
             },
         )
     }
@@ -289,6 +291,10 @@ impl Body<'_> {
         written: &str,
         span: Span,
     ) -> Vec<(Option<String>, String)> {
+        let safe = matches!(inner, Expr::CallExpr(call) if matches!(
+            self.facts.reaches.get(&super::node_key(call.syntax())),
+            Some(Reach::Provider { safe: true, .. })
+        ));
         let codes: Vec<(String, String, Option<String>)> = names
             .iter()
             .filter_map(|name| {
@@ -304,6 +310,17 @@ impl Body<'_> {
                 .and_then(|value| self.failure_given(value));
             if arm.key == "invalid" {
                 self.invalid_outside_construction(arm, inner, written);
+                continue;
+            }
+            // No answer in time, from an operation safe to send again, is
+            // the runtime's `timed_out`, which the call may map to the
+            // app's own `unavailable` failure (area 11, "Calling"; chunk
+            // 7.2c2).
+            if arm.key == TIMED_OUT {
+                if let Some(failure) = self.timed_out_arm(arm, failure, safe, written) {
+                    self.leave_mapped(&failure, span.clone());
+                    mapped.push((Some(TIMED_OUT.to_string()), failure));
+                }
                 continue;
             }
             let Some((code, package_failure, kind)) =
@@ -379,4 +396,61 @@ impl Body<'_> {
         }
         mapped
     }
+
+    /// `timed_out: Failure` on a provider's operation: only on one safe to
+    /// send again, and to an `unavailable` failure. Gives the failure it
+    /// maps to.
+    fn timed_out_arm(
+        &mut self,
+        arm: &Arm,
+        failure: Option<String>,
+        safe: bool,
+        written: &str,
+    ) -> Option<String> {
+        if !safe {
+            self.flow.open = true;
+            self.out.push(
+                Diagnostic::new(
+                    &rule::FAILURE_UNKNOWN_MAPPING,
+                    format!("`{written}` can't map `timed_out:`"),
+                )
+                .at(arm.key_span.clone(), "it changes something, with no key")
+                .reason("Only an operation safe to send again, one that changes nothing or is `idempotent: true`, maps a timeout to a failure; one that changes something and gets no answer in time may have acted, which is the runtime's `outcome_unknown`.")
+                .next("Remove `timed_out: ...`, or mark the operation `idempotent: true` if sending it again changes nothing"),
+            );
+            return None;
+        }
+        let Some(failure) = failure else {
+            self.flow.open = true;
+            return None;
+        };
+        let theirs = self
+            .failures
+            .failure_info(&failure)
+            .and_then(|info| info.kind.clone());
+        if let Some(theirs) = theirs
+            && theirs != "unavailable"
+        {
+            let at = arm
+                .value
+                .as_ref()
+                .map_or_else(|| arm.key_span.clone(), |value| self.span(value));
+            self.out.push(
+                Diagnostic::new(
+                    &rule::FAILURE_MAPPING_KIND,
+                    format!("`timed_out:` needs an `unavailable` failure, and `{failure}` is `{theirs}`"),
+                )
+                .at(at, format!("kind `{theirs}`"))
+                .reason("A provider that gives no answer in time is unavailable for now, so the app's failure it is mapped to is `unavailable` too, and the client gets the status that means.")
+                .next(format!(
+                    "Name an `unavailable` failure here, or make `{failure}`'s kind `FailureKind.unavailable`"
+                )),
+            );
+        }
+        Some(failure)
+    }
 }
+
+/// The condition a provider's operation that gets no answer in time is
+/// mapped by (area 4's runtime kind `timed_out`).
+pub(crate) const TIMED_OUT: &str = "timed_out";

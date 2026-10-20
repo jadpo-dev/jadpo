@@ -65,6 +65,7 @@ impl Table {
             codecs: &self.codecs,
             validators: &self.validators,
             shapes: &self.shapes,
+            coder: None,
         }
     }
 }

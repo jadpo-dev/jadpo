@@ -118,6 +118,10 @@ pub struct PackageConnection {
     /// `timeout:`, how long a call waits for its answer, in milliseconds,
     /// when the connection gives one (area 11, question 8; chunk 7.2c).
     pub timeout_ms: Option<u64>,
+    /// `retry:`, how often and for how long a call that may be sent again
+    /// is tried, when the connection gives it (area 11, question 8; chunk
+    /// 7.2c2).
+    pub retry: Option<jadpo_std::provider::RetryPlan>,
     pub reach: Reach,
 }
 
@@ -507,6 +511,7 @@ impl Reader<'_> {
             environment: None,
             host: None,
             timeout_ms: None,
+            retry: None,
             reach: reach.clone(),
         };
         let mut given: BTreeSet<String> = BTreeSet::new();
@@ -520,6 +525,7 @@ impl Reader<'_> {
                 "package" => {}
                 "domains" => read.domains = self.domains(member, out),
                 "timeout" => read.timeout_ms = self.timeout(member, out),
+                "retry" => read.retry = self.retry(member, out),
                 "credential" => match &reach.credential {
                     Some(_) => read.credential = self.credential(member, out),
                     None => out.push(
@@ -942,6 +948,95 @@ impl Reader<'_> {
             );
         }
         given
+    }
+
+    /// `retry: { attempts: 3 within: 30s }` (chunk 7.2c2): how many times
+    /// a call that may be sent again is tried, the first included, from 1
+    /// to [`jadpo_std::provider::MAX_ATTEMPTS`], and within how long of the
+    /// first, a duration up to [`jadpo_std::provider::MAX_WITHIN_MS`]; each
+    /// left out keeps its default.
+    fn retry(
+        &self,
+        member: &ast::Member,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<jadpo_std::provider::RetryPlan> {
+        use jadpo_std::provider::{DEFAULT_RETRY, MAX_ATTEMPTS, MAX_WITHIN_MS};
+        let reason = format!(
+            "`retry:` holds `attempts:`, how many times a call that may be sent again is tried, from 1 to {MAX_ATTEMPTS} (3 by default), and `within:`, a duration up to 5 minutes after the first attempt (30 seconds by default)."
+        );
+        let next =
+            "Write `retry: { attempts: 3 within: 30s }`, or leave `retry:` out for the default";
+        let Some(block) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!("`{}`'s `retry:` holds no block", self.connection),
+                    self.value_span(member),
+                    "not a block",
+                )
+                .reason(reason)
+                .next(next),
+            );
+            return None;
+        };
+        let mut retry = DEFAULT_RETRY;
+        let before = out.len();
+        for (setting, entry) in tree::members(Some(block)) {
+            let name = name_text(&setting).unwrap_or_default();
+            let span = self.value_span(&entry);
+            let value = entry.value().as_ref().map(Const::from_expr);
+            match name.as_str() {
+                "attempts" => match value {
+                    Some(Const::Number {
+                        value,
+                        decimal: false,
+                    }) if value.mantissa >= 1 && value.mantissa <= i128::from(MAX_ATTEMPTS) => {
+                        retry.attempts = u32::try_from(value.mantissa).unwrap_or(1);
+                    }
+                    _ => out.push(
+                        self.invalid(
+                            format!(
+                                "`{}`'s `retry: {{ attempts: }}` must be from 1 to {MAX_ATTEMPTS}",
+                                self.connection
+                            ),
+                            span,
+                            &format!("not 1 to {MAX_ATTEMPTS}"),
+                        )
+                        .reason(reason.clone())
+                        .next(next),
+                    ),
+                },
+                "within" => {
+                    let millis = match value {
+                        Some(Const::Duration(text)) => jadpo_std::Dur::parse(&text)
+                            .and_then(|dur| u64::try_from(dur.millis).ok())
+                            .filter(|millis| *millis > 0 && *millis <= MAX_WITHIN_MS),
+                        _ => None,
+                    };
+                    match millis {
+                        Some(millis) => retry.within_ms = millis,
+                        None => out.push(
+                            self.invalid(
+                                format!("`{}`'s `retry: {{ within: }}` must be a duration up to 5 minutes", self.connection),
+                                span,
+                                "not a duration up to 5 minutes",
+                            )
+                            .reason(reason.clone())
+                            .next(next),
+                        ),
+                    }
+                }
+                other => out.push(
+                    self.invalid(
+                        format!("`{other}` isn't part of `retry:`"),
+                        node_span(self.path, setting.syntax()),
+                        "not a retry setting",
+                    )
+                    .reason(reason.clone())
+                    .next(next),
+                ),
+            }
+        }
+        (out.len() == before).then_some(retry)
     }
 
     /// A setting the package declares: a value of its type, or a setting

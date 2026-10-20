@@ -74,6 +74,9 @@ pub(crate) enum Reach {
         /// Whether the operation was found and checked: one reported
         /// where it is declared can fail with anything.
         checked: bool,
+        /// Whether it may be sent again as it is, so its `attempt` may map
+        /// `timed_out:` (area 11, "Calling"; chunk 7.2c2).
+        safe: bool,
     },
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,

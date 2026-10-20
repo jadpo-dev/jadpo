@@ -499,6 +499,7 @@ impl Program {
                 codecs: &table.codecs,
                 validators: &self.prepared.validators,
                 shapes: &self.shapes,
+                coder: None,
             },
             failures: self.plan().types().failures(),
             json: self.stored_json(),
@@ -541,6 +542,7 @@ impl Program {
             codecs: &self.plan().json().codecs,
             validators: &self.prepared.validators,
             shapes: &self.shapes,
+            coder: None,
         }
     }
 
@@ -724,5 +726,18 @@ impl Executor for Program {
         saved: &'a [Value],
     ) -> LocalFuture<'a, Outcome> {
         Box::pin(async move { drive::row(self, ctx, row, item, saved) })
+    }
+}
+
+/// A provider package's own functions run at a call's site (chunk 7.2c2).
+impl jadpo_runtime::provider::Functions for Program {
+    fn function(
+        &self,
+        ctx: &mut Ctx<'_>,
+        function: &str,
+        args: Vec<Value>,
+        at: u32,
+    ) -> Result<Value, String> {
+        drive::package_function(self, ctx, function, args, at)
     }
 }

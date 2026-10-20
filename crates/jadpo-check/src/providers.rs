@@ -11,8 +11,13 @@
 //! `idempotent:`, the package failures it answers with (`failures:`,
 //! read from the provider's `error_code:`), where the real object is in
 //! an envelope (`output_at:`), and an answer that is really a failure
-//! (`failed_when: { path: equals: }`). `wire_output:` and `decode:` come
-//! with chunk 7.2c2. Problems are `package.operation_invalid`.
+//! (`failed_when: { path: equals: }`). Since chunk 7.2c2 an operation may
+//! read its whole answer as `wire_output:` and turn it into its `output:`
+//! with the package's own function, `decode:`; and a field of the
+//! package's types decoded and encoded by its own `decode:` and `encode:`
+//! functions is checked here too, against what they take and give
+//! (`package.wire_invalid`). Problems with an operation are
+//! `package.operation_invalid`.
 
 use std::collections::BTreeMap;
 
@@ -20,11 +25,12 @@ use jadpo_db::{Db, Folder, Ownership, Place, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
 use jadpo_syntax::ast::{self, AstNode, Decl, Expr};
 
+use crate::lookups::{Lookup, NameView, SigView};
 use crate::tree::{self, name_text, node_span};
 use crate::types::{Const, Def, FieldsBase, Ty, TypeRef, TypeView, type_table};
 
-/// The keys an operation may give (area 11). `wire_output:`, `decode:`
-/// and `large_output:` are read by later chunks.
+/// The keys an operation may give (area 11). `large_output:` is read by
+/// a later chunk.
 pub const OPERATION_KEYS: [&str; 15] = [
     "method",
     "path",
@@ -86,6 +92,9 @@ pub struct Operation {
     pub output: Ty,
     pub output_at: Option<String>,
     pub failed_when: Option<FailedWhen>,
+    /// The answer as sent, `wire_output:`, and the package's function that
+    /// turns it into `output:`, `decode:`, by its key (chunk 7.2c2).
+    pub decode: Option<(Ty, jadpo_graph::Key)>,
     pub changes: bool,
     pub idempotent: bool,
     /// Its failures as the checker knows them.
@@ -100,6 +109,12 @@ impl Operation {
         format!("{}.{}", self.resource, self.name)
     }
 
+    /// Whether it may be sent again as it is: it changes nothing, or is
+    /// marked `idempotent: true` (area 11, "Calling").
+    pub fn safe_to_repeat(&self) -> bool {
+        !self.changes || self.idempotent
+    }
+
     /// Its path as written, placeholders in braces.
     pub fn written_path(&self) -> String {
         self.path
@@ -112,14 +127,37 @@ impl Operation {
     }
 }
 
+/// A provider package's field read and written by the package's own
+/// `decode:` and `encode:` functions (area 11, "Decoding"; chunk 7.2c2).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldDecoder {
+    /// The field's type, as the checker's tables know it, and the field.
+    pub host: String,
+    pub field: String,
+    pub decode: jadpo_graph::Key,
+    pub encode: jadpo_graph::Key,
+    /// The type its value has on the wire: what `decode:` takes and
+    /// `encode:` gives.
+    pub wire: Ty,
+}
+
 /// Every provider package's operations, and the problems with them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Operations {
     pub list: Vec<Operation>,
+    /// The fields the packages' own functions decode and encode.
+    pub decoders: Vec<FieldDecoder>,
     pub problems: Vec<Diagnostic>,
 }
 
 impl Operations {
+    /// The decoder of field `field` of type `host`.
+    pub fn decoder(&self, host: &str, field: &str) -> Option<&FieldDecoder> {
+        self.decoders
+            .iter()
+            .find(|decoder| decoder.host == host && decoder.field == field)
+    }
+
     /// The package in `folder`'s operation `resource.name`.
     pub fn find(&self, folder: &str, resource: &str, name: &str) -> Option<&Operation> {
         self.list.iter().find(|operation| {
@@ -153,6 +191,7 @@ pub fn operations(db: &dyn Db, project: Project) -> Operations {
         };
         let path = file.path(db).clone();
         let canonical = |written: &str| contested.canonical(written, Some(&home.code));
+        let lookup = Lookup::within(db, project, &location.ownership);
         for decl in source.decls() {
             let Decl::ResourceDecl(resource) = decl else {
                 continue;
@@ -168,6 +207,7 @@ pub fn operations(db: &dyn Db, project: Project) -> Operations {
                     path: &path,
                     table,
                     canonical: &canonical,
+                    lookup: &lookup,
                     package: &home.code,
                     operation: format!("{resource_name}.{operation}"),
                 };
@@ -185,7 +225,228 @@ pub fn operations(db: &dyn Db, project: Project) -> Operations {
             }
         }
     }
+    field_decoders(db, project, &mut out);
     out
+}
+
+/// Each provider package's field decoded and encoded by its own functions
+/// (chunk 7.2c2): `decode:` taking one value, the field's on the wire, and
+/// giving the field's type; `encode:` taking the field's type and giving
+/// back what `decode:` takes. Whether the pair is given whole, and only in
+/// a provider package, the declaration check says.
+fn field_decoders(db: &dyn Db, project: Project, out: &mut Operations) {
+    let table = type_table(db, project);
+    let contested = jadpo_db::contested(db, project);
+    for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        let Ownership::Package(home) = &location.ownership else {
+            continue;
+        };
+        if crate::connections::reach(db, project, home).is_none() {
+            continue;
+        }
+        let Some(source) = tree::source(db, file) else {
+            continue;
+        };
+        let path = file.path(db).clone();
+        let lookup = Lookup::within(db, project, &location.ownership);
+        for decl in source.decls() {
+            let Decl::TypeDecl(decl) = decl else {
+                continue;
+            };
+            let Some(name) = decl.name().as_ref().and_then(name_text) else {
+                continue;
+            };
+            let host = contested.canonical(&name, Some(&home.code));
+            let Some(fields) = table.fields(&host) else {
+                continue;
+            };
+            for (key, member) in tree::members(decl.member_list()) {
+                let Some(field) = name_text(&key) else {
+                    continue;
+                };
+                let Some(Expr::RecordExpr(record)) = member.value() else {
+                    continue;
+                };
+                let settings = tree::members(record.member_list());
+                let named = |wanted: &str| {
+                    settings.iter().find_map(|(key, member)| {
+                        (name_text(key).as_deref() == Some(wanted)).then_some(member)
+                    })
+                };
+                let (Some(decode), Some(encode)) =
+                    (named(crate::types::DECODE), named(crate::types::ENCODE))
+                else {
+                    continue;
+                };
+                let Some(def) = fields.iter().find(|def| def.name == field) else {
+                    continue;
+                };
+                let checker = Coder {
+                    path: &path,
+                    table,
+                    lookup: &lookup,
+                    field: &field,
+                    declared: &def.declared,
+                };
+                let before = out.problems.len();
+                let Some((decode_key, wire)) = checker.decode(decode, &mut out.problems) else {
+                    continue;
+                };
+                let Some(encode_key) = checker.encode(encode, &wire, &mut out.problems) else {
+                    continue;
+                };
+                if out.problems.len() == before {
+                    out.decoders.push(FieldDecoder {
+                        host: host.clone(),
+                        field: field.clone(),
+                        decode: decode_key,
+                        encode: encode_key,
+                        wire,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Checks a field's `decode:` and `encode:` against the package's
+/// functions.
+struct Coder<'a, 'db> {
+    path: &'a str,
+    table: &'a crate::types::TypeTable,
+    lookup: &'a Lookup<'db>,
+    field: &'a str,
+    declared: &'a Ty,
+}
+
+impl Coder<'_, '_> {
+    /// `decode:`'s function, with the type it takes.
+    fn decode(
+        &self,
+        member: &ast::Member,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<(jadpo_graph::Key, Ty)> {
+        let (library, function, sig, key, span) = self.function(member, "decode", out)?;
+        let declared = self.declared.strip_nullable();
+        let fits = sig.params.len() == 1 && self.table.assignable(&sig.result, declared);
+        if !fits {
+            out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_INVALID,
+                    format!("`{library}.{function}` can't decode `{}`", self.field),
+                )
+                .at(span, "not a decoder of this field")
+                .reason(format!(
+                    "`decode:` names a function taking one value, the field as the provider sends it, and giving the field's type, `{declared}`; `{library}.{function}` {}.",
+                    shape_of(&sig)
+                ))
+                .next(format!(
+                    "Name a function of one parameter giving `{declared}`, or change `{library}.{function}` to be one"
+                )),
+            );
+            return None;
+        }
+        Some((key, sig.params[0].1.clone()))
+    }
+
+    /// `encode:`'s function, which must turn the field's type back into
+    /// `wire`, what `decode:` takes.
+    fn encode(
+        &self,
+        member: &ast::Member,
+        wire: &Ty,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<jadpo_graph::Key> {
+        let (library, function, sig, key, span) = self.function(member, "encode", out)?;
+        let declared = self.declared.strip_nullable();
+        let fits = sig.params.len() == 1
+            && self.table.assignable(declared, &sig.params[0].1)
+            && self.table.assignable(&sig.result, wire)
+            && sig.fails.is_empty();
+        if !fits {
+            out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_INVALID,
+                    format!("`{library}.{function}` can't encode `{}`", self.field),
+                )
+                .at(span, "not an encoder of this field")
+                .reason(format!(
+                    "`encode:` names a function taking the field's type, `{declared}`, and giving back what `decode:` takes, `{wire}`, without failing; `{library}.{function}` {}.",
+                    shape_of(&sig)
+                ))
+                .next(format!(
+                    "Name a function from `{declared}` to `{wire}`, or change `{library}.{function}` to be one"
+                )),
+            );
+            return None;
+        }
+        Some(key)
+    }
+
+    /// The package's function `member`'s value names.
+    #[allow(clippy::type_complexity)]
+    fn function(
+        &self,
+        member: &ast::Member,
+        key: &str,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<(String, String, crate::types::Sig, jadpo_graph::Key, Span)> {
+        let value = member.value()?;
+        let span = node_span(self.path, value.syntax());
+        let Const::Path(names) = Const::from_expr(&value) else {
+            // The declaration check says it isn't a function.
+            return None;
+        };
+        let [library, function] = names.as_slice() else {
+            return None;
+        };
+        let Some(sig) = self.lookup.library_signature(library, function).cloned() else {
+            out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_WIRE_INVALID,
+                    format!("`{library}.{function}` isn't one of the package's functions"),
+                )
+                .at(span, "no such function")
+                .reason(format!(
+                    "`{key}:` names a function in the package's own `libraries/`, written `library.function`, which the runtime runs at each call that sends or reads the field."
+                ))
+                .next(format!(
+                    "Declare `function {function}(...)` in `library {library}` in the package's `libraries/`, or name one that is there"
+                )),
+            );
+            return None;
+        };
+        let key = crate::graph::library_function_key(
+            self.lookup.registry(),
+            &self.lookup.canonical_name(library),
+            function,
+        );
+        Some((library.clone(), function.clone(), sig, key, span))
+    }
+}
+
+/// What a function takes and gives, as a problem says it: "takes `Text`
+/// and gives `SlotWindow`".
+fn shape_of(sig: &crate::types::Sig) -> String {
+    let takes = match sig.params.as_slice() {
+        [] => "takes nothing".to_string(),
+        params => format!(
+            "takes {}",
+            crate::and_list(
+                &params
+                    .iter()
+                    .map(|(_, ty)| format!("`{ty}`"))
+                    .collect::<Vec<_>>()
+            )
+        ),
+    };
+    let fails = if sig.fails.is_empty() {
+        String::new()
+    } else {
+        format!(", failing with {}", sig.fails.join(", "))
+    };
+    format!("{takes} and gives `{}`{fails}", sig.result)
 }
 
 /// The problems with every provider package's operations.
@@ -198,6 +459,7 @@ struct Reader<'a> {
     path: &'a str,
     table: &'a crate::types::TypeTable,
     canonical: &'a dyn Fn(&str) -> String,
+    lookup: &'a Lookup<'a>,
     package: &'a str,
     /// `bookings.create`, as problems name it.
     operation: String,
@@ -234,6 +496,8 @@ impl Reader<'_> {
         let mut output = None;
         let mut output_at = None;
         let mut failed_when = None;
+        let mut wire_output = None;
+        let mut decode = None;
         let mut changes = None;
         let mut idempotent = false;
         let mut failures = Vec::new();
@@ -259,19 +523,14 @@ impl Reader<'_> {
                         .unwrap_or(false);
                 }
                 "failures" => failures = self.failures(value.as_ref(), value_span, out),
-                // Decoding a whole answer with the package's function comes
-                // with chunk 7.2c2.
-                "wire_output" | "decode" => out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("An operation's `{word}:` isn't built yet"),
-                    )
-                    .at(key_span, "declared, not built")
-                    .reason(format!(
-                        "The language declares an operation's `{word}:`, decoding a whole answer with the package's own function, but this compiler has nothing to run it with yet."
-                    ))
-                    .next(format!("Do without `{word}:` for now")),
-                ),
+                // The whole answer as sent, turned into `output:` by the
+                // package's own function (chunk 7.2c2).
+                "wire_output" => {
+                    wire_output = self
+                        .ty(value.as_ref(), value_span.clone(), "wire_output", out)
+                        .map(|(ty, _)| (ty, key_span, value_span));
+                }
+                "decode" => decode = Some((constant, key_span, value_span)),
                 "source" | "docs" | "scope" | "large_output" => {}
                 other => {
                     let near = nearest(other, OPERATION_KEYS.iter().copied());
@@ -289,7 +548,9 @@ impl Reader<'_> {
                                     .map(|key| format!("`{key}:`"))
                                     .collect::<Vec<_>>()
                             ),
-                            near.map_or_else(String::new, |near| format!(" Did you mean `{near}:`?"))
+                            near.map_or_else(String::new, |near| format!(
+                                " Did you mean `{near}:`?"
+                            ))
                         ));
                     problem = match near {
                         Some(near) => problem
@@ -376,6 +637,8 @@ impl Reader<'_> {
                 );
             }
         }
+        let output = output.map(|(ty, _)| ty);
+        let decode = self.whole_decoder(wire_output, decode, output.as_ref(), &name_span, out);
         if out.len() != before {
             return None;
         }
@@ -389,13 +652,134 @@ impl Reader<'_> {
             method,
             path,
             input,
-            output: output.map_or(Ty::Prim(crate::types::Prim::Unit), |(ty, _)| ty),
+            output: output.unwrap_or(Ty::Prim(crate::types::Prim::Unit)),
             output_at,
             failed_when,
+            decode,
             idempotent,
             failures,
             file: String::new(),
         })
+    }
+
+    /// `wire_output:` with `decode:` (chunk 7.2c2): the answer read as
+    /// `wire_output:`, given whole to the package's function `decode:`,
+    /// which takes that type and gives `output:`.
+    fn whole_decoder(
+        &self,
+        wire_output: Option<(Ty, Span, Span)>,
+        decode: Option<(Const, Span, Span)>,
+        output: Option<&Ty>,
+        name_span: &Span,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<(Ty, jadpo_graph::Key)> {
+        let operation = &self.operation;
+        let (wire, decode) = match (wire_output, decode) {
+            (None, None) => return None,
+            (Some((_, key_span, _)), None) => {
+                out.push(
+                    self.problem(
+                        format!("`{operation}` gives `wire_output:` without `decode:`"),
+                        key_span,
+                        "no `decode:`",
+                    )
+                    .reason("`wire_output:` is the answer as the provider sends it, which the package's own function, `decode:`, turns into `output:`.")
+                    .next("Add `decode: <library>.<function>`, taking the `wire_output:` type and giving the `output:` type"),
+                );
+                return None;
+            }
+            (None, Some((_, key_span, _))) => {
+                out.push(
+                    self.problem(
+                        format!("`{operation}` gives `decode:` without `wire_output:`"),
+                        key_span,
+                        "no `wire_output:`",
+                    )
+                    .reason("An operation's `decode:` turns the answer as the provider sends it, its `wire_output:` type, into its `output:`.")
+                    .next("Add `wire_output: <Type>`, the answer as the provider sends it"),
+                );
+                return None;
+            }
+            (Some(wire), Some(decode)) => (wire, decode),
+        };
+        let (wire, _, _) = wire;
+        let (value, _, value_span) = decode;
+        let Some(output) = output else {
+            out.push(
+                self.problem(
+                    format!("`{operation}` decodes its answer, but gives no `output:`"),
+                    name_span.clone(),
+                    "no `output:`",
+                )
+                .reason("`decode:` turns the answer as the provider sends it into the operation's `output:`, which the call gives.")
+                .next("Add `output: <Type>`, what `decode:` gives"),
+            );
+            return None;
+        };
+        let Const::Path(names) = &value else {
+            out.push(
+                self.problem(
+                    format!("`{operation}`'s `decode:` names one of the package's functions"),
+                    value_span,
+                    "not a function",
+                )
+                .reason("`decode:` is a function in the package's own `libraries/`, written `library.function`, that turns the answer as sent into `output:`.")
+                .next("Write `decode: <library>.<function>`"),
+            );
+            return None;
+        };
+        let [library, function] = names.as_slice() else {
+            out.push(
+                self.problem(
+                    format!("`{operation}`'s `decode:` names one of the package's functions"),
+                    value_span,
+                    "not a function",
+                )
+                .reason("`decode:` is a function in the package's own `libraries/`, written `library.function`.")
+                .next("Write `decode: <library>.<function>`"),
+            );
+            return None;
+        };
+        let Some(sig) = self.lookup.library_signature(library, function).cloned() else {
+            out.push(
+                self.problem(
+                    format!("`{library}.{function}` isn't one of the package's functions"),
+                    value_span,
+                    "no such function",
+                )
+                .reason("`decode:` names a function in the package's own `libraries/`, which the runtime runs on each answer.")
+                .next(format!(
+                    "Declare `function {function}(...)` in `library {library}` in the package's `libraries/`, or name one that is there"
+                )),
+            );
+            return None;
+        };
+        let fits = sig.params.len() == 1
+            && self.table.assignable(&wire, &sig.params[0].1)
+            && self.table.assignable(&sig.result, output);
+        if !fits {
+            out.push(
+                self.problem(
+                    format!("`{library}.{function}` can't decode `{operation}`'s answer"),
+                    value_span,
+                    "not this answer's decoder",
+                )
+                .reason(format!(
+                    "`decode:` names a function taking the answer as sent, `{wire}`, and giving `{output}`; `{library}.{function}` {}.",
+                    shape_of(&sig)
+                ))
+                .next(format!(
+                    "Name a function from `{wire}` to `{output}`, or change `{library}.{function}` to be one"
+                )),
+            );
+            return None;
+        }
+        let key = crate::graph::library_function_key(
+            self.lookup.registry(),
+            &self.lookup.canonical_name(library),
+            function,
+        );
+        Some((wire, key))
     }
 
     fn method(
