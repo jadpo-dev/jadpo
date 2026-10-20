@@ -17,6 +17,9 @@ path = "src/main.rs"
 jadpo-check.workspace = true
 jadpo-db.workspace = true
 jadpo-diag.workspace = true
+# The SMTP driver's writer, so the dev inbox hands SpamAssassin each mail
+# as it would be sent (chunk 7.3c3).
+jadpo-drivers = { workspace = true, features = ["smtp"] }
 jadpo-fmt.workspace = true
 jadpo-graph.workspace = true
 jadpo-host-native.workspace = true
@@ -39,7 +42,6 @@ getrandom.workspace = true
 openssl.workspace = true
 
 [dev-dependencies]
-jadpo-drivers.workspace = true
 # The software authenticator the passkey tests sign in with (area 8).
 jadpo-host-native = { workspace = true, features = ["test-authenticator", "test-outbound"] }
 regex.workspace = true
