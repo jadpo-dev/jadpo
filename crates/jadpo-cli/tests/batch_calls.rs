@@ -575,8 +575,10 @@ fn once(url: &str, sql: &str) -> Vec<Vec<SqlValue>> {
 }
 
 /// How many transactions other than its own are open on the database
-/// `url` names.
-const OPEN: &str = "SELECT count(*)::int4 FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND xact_start IS NOT NULL";
+/// `url` names by a client: the runtime's. The server's own workers are
+/// left out, since an autovacuum worker visiting the database holds a
+/// transaction of its own while it looks.
+const OPEN: &str = "SELECT count(*)::int4 FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend' AND xact_start IS NOT NULL";
 
 /// How many items the run has committed.
 const DONE: &str = "SELECT \"items_done\"::int4 FROM \"jadpo_batch_runs\"";

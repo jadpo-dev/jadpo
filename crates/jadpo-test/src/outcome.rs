@@ -9,6 +9,7 @@
 
 use jadpo_diag::{Rule, rule};
 use jadpo_interp::{CallError, Value};
+use jadpo_runtime::crashes::{Boundary, Reached};
 use jadpo_runtime::test_steps::Undelivered;
 use jadpo_runtime::{
     Assertion, AssertionDetail, Failure, Fault, FaultKind, Frame, Got, Outcome, Places, Report,
@@ -26,6 +27,10 @@ pub struct TestFailure {
     /// For `test.subscriber_failed`: the delivery between the test's steps
     /// that failed for good, whose failure or fault `detail` holds.
     pub delivery: Option<Undelivered>,
+    /// The crash the run that failed was made with, at a step of an
+    /// action with several changing calls (chunk 7.5d); `None` for the
+    /// run without one.
+    pub crash: Option<CrashPoint>,
     /// Where in the test it failed.
     pub location: Located,
     pub detail: Detail,
@@ -33,6 +38,31 @@ pub struct TestFailure {
     pub rerun: String,
     /// The databases kept for inspection (`--keep-failed`).
     pub kept: Vec<String>,
+}
+
+/// Where `jadpo test` crashed a run of a test that reaches an action with
+/// several changing calls (area 13, "Provider calls and capabilities in
+/// tests"; chunk 7.5d): the step and the boundary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CrashPoint {
+    pub step: Reached,
+    pub boundary: Boundary,
+}
+
+impl CrashPoint {
+    /// What happened, as the report says it.
+    pub fn text(&self) -> String {
+        let step = format!(
+            "step {} of `{}`, `{}`,",
+            self.step.position, self.step.action, self.step.operation
+        );
+        let when = match self.boundary {
+            Boundary::BeforeSend => format!("before {step} went out"),
+            Boundary::AfterSend => format!("after {step} was answered, before its answer was kept"),
+            Boundary::AfterAnswer => format!("after {step} had its answer kept"),
+        };
+        format!("{when}; then it ran again")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,10 +182,66 @@ pub(crate) fn recording(
     TestFailure {
         rule: failed,
         delivery: None,
+        crash: None,
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         kept: Vec::new(),
         detail: Detail::Recording(Box::new(info)),
+    }
+}
+
+/// The failure a test gives when a crash at `point` left its fake's
+/// effects other than the run without one did (chunk 7.5d): a keyed call
+/// that acted again under a new key, which the runtime rules out, so a
+/// defect in Jadpo, reported as a fault.
+pub(crate) fn effects_differ(
+    sources: &dyn Sources,
+    test: &Test,
+    point: CrashPoint,
+    first: &[(String, usize)],
+    crashed: &[(String, usize)],
+    rerun: &Rerun,
+) -> TestFailure {
+    let times = |effects: &[(String, usize)], name: &str| {
+        effects
+            .iter()
+            .find(|(operation, _)| operation == name)
+            .map_or(0, |(_, times)| *times)
+    };
+    let operation = crashed
+        .iter()
+        .chain(first)
+        .map(|(operation, _)| operation.as_str())
+        .find(|name| times(first, name) != times(crashed, name))
+        .unwrap_or_default()
+        .to_string();
+    let said = |n: usize| match n {
+        0 => "never".to_string(),
+        1 => "once".to_string(),
+        2 => "twice".to_string(),
+        n => format!("{n} times"),
+    };
+    let location = Located::new(sources, &test.file, None, test.line, "");
+    TestFailure {
+        rule: &rule::TEST_FAULT,
+        delivery: None,
+        crash: Some(point),
+        rerun: rerun.command(&location.path, location.line),
+        kept: Vec::new(),
+        location,
+        detail: Detail::Fault(Box::new(FaultInfo {
+            kind: "internal_fault".to_string(),
+            subject: format!(
+                "`{operation}` acted {} at the provider, {} without a crash",
+                said(times(crashed, &operation)),
+                said(times(first, &operation))
+            ),
+            rule: None,
+            at: None,
+            reason: Some("A step sent again after a crash goes under the key it went under first, so the provider acts once; this one acted under a new key, which the runtime should never send.".to_string()),
+            next: Some("Report it to Jadpo with this test (human)".to_string()),
+            stack: Vec::new(),
+        })),
     }
 }
 
@@ -238,6 +324,7 @@ pub(crate) fn fakes_used(
     Some(Box::new(TestFailure {
         rule,
         delivery: None,
+        crash: None,
         rerun: rerun.command(&location.path, location.line),
         kept: failed.map(|failed| failed.kept).unwrap_or_default(),
         location,
@@ -519,6 +606,7 @@ fn ended(
             TestFailure {
                 rule: &rule::TEST_ASSERTION_FAILED,
                 delivery: None,
+                crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
                 location,
@@ -530,6 +618,7 @@ fn ended(
             TestFailure {
                 rule: &rule::TEST_UNEXPECTED_FAILURE,
                 delivery: None,
+                crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
                 location,
@@ -541,6 +630,7 @@ fn ended(
             TestFailure {
                 rule: &rule::TEST_FAULT,
                 delivery: None,
+                crash: None,
                 rerun: rerun.command(&location.path, location.line),
                 kept: Vec::new(),
                 location,
@@ -568,6 +658,7 @@ pub(crate) fn not_runnable(
     TestFailure {
         rule: &rule::TEST_FAULT,
         delivery: None,
+        crash: None,
         location: Located::new(sources, &test.file, None, test.line, ""),
         rerun: rerun.command(&test.file, test.line),
         kept: Vec::new(),

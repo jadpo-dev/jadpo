@@ -581,6 +581,23 @@ pub async fn step(ctx: &mut Ctx<'_>, proposed: Proposed<'_>) -> Result<Stepped, 
 /// nothing sent, when the store can't be reached or a newer runner holds
 /// the record.
 pub(crate) async fn sending(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
+    written(ctx, at).await?;
+    // A step reached, which `jadpo test` may crash before (chunk 7.5d).
+    let named = ctx.steps_record().and_then(|record| {
+        let kept = record.steps.get((at.position as usize).checked_sub(1)?)?;
+        Some((record.name().to_string(), kept.operation.clone()))
+    });
+    if let Some((action, operation)) = named {
+        crate::crashes::reached(ctx, &action, at.position, &operation);
+        if crate::crashes::due(ctx, crate::crashes::Boundary::BeforeSend) {
+            return Err(Unanswered::Fault(FaultKind::Crashed));
+        }
+    }
+    Ok(())
+}
+
+/// [`sending`]'s writes.
+async fn written(ctx: &mut Ctx<'_>, at: StepAt) -> Result<(), Unanswered> {
     let now = wall(ctx);
     let (database, record_params, step_params) = {
         let Some(record) = ctx.steps_record() else {
@@ -716,6 +733,10 @@ pub async fn answered(ctx: &mut Ctx<'_>, at: StepAt, answer: Answered) -> Result
         && let Some(kept) = record.steps.get_mut(at.position as usize - 1)
     {
         kept.answer = Some(answer);
+    }
+    // Its answer kept, which `jadpo test` may crash after (chunk 7.5d).
+    if crate::crashes::due(ctx, crate::crashes::Boundary::AfterAnswer) {
+        return Err(Unanswered::Fault(FaultKind::Crashed));
     }
     Ok(())
 }

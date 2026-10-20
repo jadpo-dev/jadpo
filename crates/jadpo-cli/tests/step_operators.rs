@@ -85,7 +85,7 @@ async fn generations(harness: &Harness<jadpo_host_native::Postgres>) -> Vec<i32>
 /// What no operator's screen may show: an answer, a request's value or
 /// a key.
 fn nothing_secret(text: &str) {
-    for secret in ["cus_4821", "sub_9930", "ada", "gold", "jd1_", "k-ada-gold"] {
+    for secret in ["cus_4821", "sub_9930", "zoe", "gold", "jd1_", "k-zoe-gold"] {
         assert!(!text.contains(secret), "`{secret}` shown:\n{text}");
     }
 }
@@ -505,9 +505,9 @@ fn a_routes_steps_its_client_left_are_an_item_kept_thirty_days() {
             path: "/partners/subscriptions".to_string(),
             headers: vec![
                 ("content-type".to_string(), "application/json".to_string()),
-                ("idempotency-key".to_string(), "k-ada-gold".to_string()),
+                ("idempotency-key".to_string(), "k-zoe-gold".to_string()),
             ],
-            body: serde_json::json!({ "customer": "ada", "offer_id": offer_id.as_ref() })
+            body: serde_json::json!({ "customer": "zoe", "offer_id": offer_id.as_ref() })
                 .to_string()
                 .into_bytes(),
             address: Some("step test".to_string()),

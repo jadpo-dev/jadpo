@@ -1765,8 +1765,8 @@ call* is a provider's operation with `changes: true` or a store's `put`;
 each way through an `if` or a `match` counts on its own, a `return` ends
 its way, and an action called counts the changing calls of the longest
 way through it. The record and replay came with roadmap 7.5b, the
-operator's items with 7.5c, and the tests' crash points and the warning
-come with 7.5d.
+operator's items with 7.5c, the tests' crash points with 7.5d, and the
+warning comes with 7.5e.
 
 Built in chunk 7.5b, the record: an action whose longest way makes
 several changing calls, run by a subscriber's delivery or by a route
@@ -1801,6 +1801,9 @@ calls each under its own key, then records the payment, in a subscriber:
 
 ```jadpo check project=several-steps file=app.jadpo hidden
 application {
+    events: {
+        store: main
+    }
     connections: {
         main: {
             driver: Driver.postgres
@@ -1829,7 +1832,9 @@ config {
     pay_api_key: Text {
         secret: true
     }
-    pay_environment: ProviderEnvironment
+    pay_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
     step_encryption_key: SigningKey
 }
 ```
@@ -1989,6 +1994,41 @@ action pay_invoice(event: InvoiceApproved) fails SheetNotKept -> Unit {
 }
 ```
 
+Its test scripts one payment. `jadpo test` runs it again with a crash at
+each boundary of both steps; each time, the step sent again goes under
+its key and is answered with what the fake kept, so one answer is enough
+(chunk 7.5d):
+
+```jadpo check project=several-steps file=domains/bakery/actions/approve_invoice.jadpo hidden
+use bakery/types { PriceList }
+use bakery/events { InvoiceApproved }
+use shared/providers/acme_pay
+
+/// Approves a supplier's invoice, which is then paid.
+action approve_invoice(invoice: AcmePay.Reference, lines: PriceList) -> Unit {
+    emit InvoiceApproved {
+        invoice: invoice
+        lines: lines
+    }
+}
+```
+
+```jadpo check project=several-steps file=domains/bakery/actions/approve_invoice.test.jadpo
+use app { pay }
+use shared/providers/acme_pay
+
+test "an approved invoice is paid once" {
+    fakes: {
+        pay.payments.create: [
+            AcmePay.Payment {
+                id: "pay-17"
+            }
+        ]
+    }
+    approve_invoice("inv-17", "rye,4.20")
+}
+```
+
 ## Where events travel
 
 Events stay inside the Jadpo runtime (Richard, 2026-10-13). They are stored
@@ -2122,6 +2162,10 @@ outbox and delivered to subscribers like any event, with the same retries.
   Polls are for feeds that do not depend on the app's data (rates, a price
   list); checking each of the app's own records is the app's schedule
   calling the package, which a package can ship as a recipe.
+  Built in chunk 7.6c (area 11, "Chosen in chunk 7.6c"): each poll the
+  app subscribes to, called by the tick through its connection once due,
+  what it last saw kept in `jadpo_polls` beside the outbox, and its event
+  and deliveries kept with the new digest in one transaction.
 - **Queues, through `receiving`**, the inbound twin of `publishing`.
 
 ```jadpo fragment
@@ -4656,7 +4700,9 @@ per connection ("When a provider keeps failing"), held deliveries in
 keeps of several changing calls in one action, with the errors that name
 `step.` ("Several changing calls in one action"). Built in chunk 7.5c:
 unfinished records as operator items, `new_key_on:` and `jadpo runs
-unfinished` ("What an operator sees").
+unfinished` ("What an operator sees"). Built in chunk 7.5d: fakes keeping
+keys with `lost` and `in_use`, and `jadpo test`'s crash at each step
+boundary (area 13).
 
 Not yet:
 
@@ -4666,9 +4712,11 @@ Not yet:
   call a fake fails, is built (area 13, "Caches and events"; chunk 6.11).
 - `Retry-After`, polls, `receiving`, publishing outward, webhooks and a
   package's own events come with Phase 7; their errors are built with
-  them. The tests' crash points, the fakes' `lost` and `in_use`, each
-  step's state in `jadpo dev` and `jadpo watch`, the warning, and the
-  metric and alert on unfinished records come with roadmap 7.5d.
+  them. The warning and the deadline sum come with roadmap 7.5e; each
+  step's state in `jadpo dev` and the metric and alert on unfinished
+  records with 7.5f; each step's state in `jadpo watch` with `jadpo
+  watch` (area 17), and the record's entry in the personal-data report
+  with the report (area 15), both after the first build.
 - On Cloudflare Workers, the cron tick, outbox delivery after commit, the
   `trigger:` adapter, a batch run carried on in a fresh invocation and
   the budgets: roadmap 8.2.
@@ -4931,6 +4979,7 @@ Not yet:
 | Topic | Decision | Date |
 |---|---|---|
 | Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise (decided for Richard, following grants) | 2026-10-20 |
+| Tests, chosen in chunk 7.5d | Each the conservative reading. A package's fake keeps a keyed call's first answer under its key, as its provider does: the same key and request are given it again without taking a scripted answer, and a different request the package's `reused:` answer (with none, a refusal without a code, a fault). A failure is kept as Stripe keeps one, whatever the package's `replays_failures:`, unless its kind is `unavailable` or `rate_limited`, so a step sent again after a crash is answered as it was the first time. `lost` acted: what it did, the generated default, answers the next call under its key. `in_use` is another runner's request under the key, the one that acts, so it keeps nothing and answers as `unavailable`; `unavailable` and `misconfigured` keep nothing either. `jadpo dev`'s fake keeps keys the same way, its last 10,000. Crash points count every step a test's run reaches under a record, a step sent again counted again, across the whole run; only a run that passed is crashed, once for each boundary of each step, each on its own copy of the database with a fresh fake, and the first crash that fails is the one reported, with a `crash` line first. A crash isn't counted as an attempt: the delivery is given back, due at once, and a route's claim is given up and its request sent again under its key. A crashed run whose fake acted more or less often than the run without one is a defect in Jadpo, reported as `test.fault`. A delivery that stops as `diverged` between a test's steps ends the test as `test.subscriber_failed`, since it never finishes; one parked as `outcome_unknown` still doesn't. Each delivery attempt in a test counts its keyed calls from none under the delivery's own key, as a runner's fresh context does, and gives the test's back after. An `ai.generate` call kept as a step (chunk 5.5v3) gets crash points like any other step; the `ai` fake keeps no keys, area 21 asking none of it, so a step sent again after a crash once it was answered takes the prompt's next scripted answer, as a model asked again answers afresh. Crash points have no switch to turn them off (decided for Richard) | 2026-10-20 |
 | Operators, chosen in chunk 7.5c | Each the conservative reading. A route's record becomes an item once a day has passed since its last run took it (area 11's 24 hours), whatever its own `window:`; before that it is its client's to retry, and an operator can only abandon it, since only its client holds the request. "Not done" acts on the record's last step when it has no answer or failed, clearing its answer and moving its key to the next generation, with its window counted from the operator's action; with nothing in doubt it is a plain retry, and on a delivery with no record it is `retry` (failed) or `resolve --not-done` (in doubt). A retry resets the record's generation to none with the delivery's attempts. A delivery with a record is refused `dismiss` and `resolve --done`, pointing at `abandon`; `abandon` on one without is refused. A record whose answers were dropped can't be retried, only abandoned. Answers are dropped 30 days after the record's last run; an abandoned record and its delivery go 30 days after the abandon. A route's client retrying under an abandoned record's key stops as a fault, answered `500`, sending nothing. `new_key_on:` sends again once per call; a second such answer is the operation's failure. `show` never shows a key: the CLI reads no setting it would be derived from. `jadpo runs unfinished` requires `--build`, refuses a build the checkout doesn't make (naming the one it does), lists a record whose build differs and whose action's step shape the build changes or no longer keeps, and a running batch run whose call the build changes or no longer has; it succeeds whatever it lists, as listing commands do (decided for Richard) | 2026-10-20 |
 | The record, chosen in chunk 7.5b | Each the conservative reading, where the pages left it open. A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for roadmap 7.5c's `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` comes with 7.5c's new key generation (decided for Richard) | 2026-10-20 |
 | Triggers | Carried from area 1: routes, schedules (replacing "jobs") and subscribers each call actions; durable workflows are subscribers | 2026-10-12 |

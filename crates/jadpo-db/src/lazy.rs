@@ -77,14 +77,14 @@ pub fn reached(db: &dyn Db, project: Project) -> BTreeSet<String> {
     }
     // A connected package's capability mappings call its own operations,
     // `call: <resource>.<operation>`, so those resources are reached too
-    // (chunk 7.7c).
+    // (chunk 7.7c), as are those its polls call (chunk 7.6c).
     let folders: BTreeSet<&String> = connected.values().collect();
     for &file in files {
         let path = file.path(db);
-        let Some(folder) = folders
-            .iter()
-            .find(|folder| path.starts_with(&format!("{folder}/provides/")))
-        else {
+        let Some(folder) = folders.iter().find(|folder| {
+            path.starts_with(&format!("{folder}/provides/"))
+                || *path == format!("{folder}/{}", crate::PROVIDER_FILE)
+        }) else {
             continue;
         };
         let tokens: Vec<_> = parse(db, file)

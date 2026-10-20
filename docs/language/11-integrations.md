@@ -1532,8 +1532,8 @@ var postcode: Postcodes.UkPostcode = attempt Postcodes.uk.parse(input.postcode) 
   is idempotent. The package's rate limits space calls out before the
   provider refuses them, and `max_concurrent:` caps how many run at once
   per app instance: further calls wait, and waiting subscriber deliveries
-  retry later. Heavy work such as PDF rendering runs in subscribers, never
-  in the route.
+  retry later (built in chunk 7.6c, under "Chosen in chunk 7.6c"). Heavy
+  work such as PDF rendering runs in subscribers, never in the route.
 - **Pagination.** A list operation returns area 6's `Page<T>`; the package
   says how the provider pages, and `page.next` asks for the next one. Work
   over many pages uses `batches.each(from:, each:, finished:, key:)`
@@ -2468,9 +2468,9 @@ answer passed to the next, and the app calling it through its connection
 and mapping its failure at the call. A package action's changing calls
 are steps of the action that calls it (area 12, "Several changing calls
 in one action"); the record of those steps comes with roadmap 7.5b. Its
-subscribers and the events they emit came with chunk 7.6b (below); polls
-and `max_concurrent:` come with roadmap 7.6c. The choices are in "Chosen
-in chunk 7.6".
+subscribers and the events they emit came with chunk 7.6b (below), and polls
+and `max_concurrent:` with chunk 7.6c ("Polls"). The choices are in
+"Chosen in chunk 7.6".
 
 ```jadpo check project=p76-actions file=app.jadpo hidden
 application {
@@ -2871,6 +2871,153 @@ list). Checking each of the app's own records (each parcel still in
 transit) is the app's schedule calling the package, one event per record,
 and a package gives it as a recipe.
 
+Built in chunk 7.6c, with its choices under "Chosen in chunk 7.6c": a
+poll of Acme Fuel's price list, whose operation takes nothing and
+changes nothing, emitting the package's own public `PricesPublished`
+made from its answer; the connection polls it every six hours instead
+of once a day, and the app keeps each change. `fetched_at`, which the
+event doesn't carry, never counts as a change.
+
+```jadpo check project=p76c-polls file=app.jadpo
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        fuel: {
+            package: FuelPrices.v1
+            domains: [pricing]
+            credential: config.fuel_key
+            environment: config.fuel_environment
+            max_concurrent: 2
+            polls: {
+                latest: 6h
+            }
+        }
+    }
+    events: {
+        store: main
+    }
+}
+```
+
+```jadpo check project=p76c-polls file=config.jadpo hidden
+config {
+    fuel_environment: ProviderEnvironment
+    fuel_key: Text {
+        secret: true
+    }
+}
+```
+
+```jadpo check project=p76c-polls file=shared/providers/fuel_prices/v1/package.jadpo hidden
+/// Acme Fuel's price list.
+package FuelPrices.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p76c-polls file=shared/providers/fuel_prices/v1/provider.jadpo
+/// Acme Fuel's price list, which sends no webhooks.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.fuel-prices.example"
+        sandbox: "https://sandbox.fuel-prices.example"
+    }
+    credential: CredentialScheme.bearer
+    max_concurrent: 4
+    polls: {
+        latest: {
+            call: pump_prices.latest
+            every: 1d
+            emits: PricesPublished
+        }
+    }
+}
+```
+
+```jadpo check project=p76c-polls file=shared/providers/fuel_prices/v1/types/price_list.jadpo hidden
+/// The day's prices, as the API gives them.
+type PriceList = Object {
+    region: Text
+    diesel_pence: Int
+    petrol_pence: Int
+    fetched_at: Instant
+}
+```
+
+```jadpo check project=p76c-polls file=shared/providers/fuel_prices/v1/resources/pump_prices.jadpo hidden
+resource pump_prices {
+    latest: {
+        method: HttpMethod.get
+        path: "/v1/prices/latest"
+        output: PriceList
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76c-polls file=shared/providers/fuel_prices/v1/events/prices_published.jadpo
+/// The day's pump prices, published.
+public type PricesPublished = Event {
+    region: Text
+    diesel_pence: Int
+    petrol_pence: Int
+}
+```
+
+```jadpo check project=p76c-polls file=domains/pricing/entities/pump_price.jadpo hidden
+/// A region's pump prices, as Acme Fuel published them.
+entity PumpPrice {
+    id: Uuid
+    region: Text
+    diesel_pence: Int
+    petrol_pence: Int
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}
+```
+
+```jadpo check project=p76c-polls file=domains/pricing/actions/keep_prices.jadpo hidden
+use pricing/entities { PumpPrice }
+use shared/providers/fuel_prices
+
+/// Keeps the prices Acme Fuel published.
+action keep_prices(event: FuelPrices.PricesPublished) -> PumpPrice {
+    return PumpPrice.create {
+        set: {
+            region: event.region
+            diesel_pence: event.diesel_pence
+            petrol_pence: event.petrol_pence
+        }
+    }
+}
+```
+
+```jadpo check project=p76c-polls file=domains/pricing/subscribers/prices_published.jadpo migrate=initial
+use pricing/actions { keep_prices }
+use shared/providers/fuel_prices
+
+/// Keeps each change of price.
+subscriber prices_published {
+    on: FuelPrices.PricesPublished
+    run: keep_prices(event)
+}
+```
+
+The tick calls `pump_prices.latest` through `fuel` with its credential once
+it is due, keeps `PricesPublished` and its deliveries only when the
+prices changed, and tries a failed call again a minute later; without
+the subscriber the poll never runs. Under `max_concurrent: 1` a call
+waits for the connection's slot and a delivery that would call through
+it waits in the outbox, as `crates/jadpo-cli/tests/package_polls.rs`
+shows against live PostgreSQL.
+
 ### Services
 
 A package's own API may be a container Jadpo runs (`runs:`), which its
@@ -3096,8 +3243,8 @@ errors under area 12's "Errors" (`step.context`, `step.large_output`,
 `step.store_required`, `step.too_many`, `step.unkeyed`) and area 3's
 `effect.call_in_loop`; an operation's `large_output:` is read. The record,
 replay and key windows came with roadmap 7.5b and the operator's items
-with 7.5c; the fakes' `lost` and `in_use`, the tests' crash points and the
-warning come with 7.5d.
+with 7.5c; the fakes' `lost` and `in_use` and the tests' crash points
+with 7.5d; the warning comes with 7.5e.
 
 Built in chunk 7.5b, the record, replay and key windows, as area 12's
 "Several changing calls in one action" says: a provider's `idempotency:`
@@ -3115,6 +3262,14 @@ days, and the package's `new_key_on:` answer sending a step again under
 its next key generation; `jadpo runs unfinished --build` (area 14).
 Choices in area 12's decisions table, "Operators, chosen in chunk
 7.5c".
+
+Built in chunk 7.5d, the tests and tools' fakes and crash points, as
+area 13's "Provider calls and capabilities in tests" says: a fake keeps
+each key's first answer, answers a different request under it with the
+package's `reused:` code, and keeps what `lost` did for the next call
+under its key; `jadpo test` reruns every test that reaches an action with
+several changing calls with a crash at each step boundary. Choices in
+area 12's decisions table, "Tests, chosen in chunk 7.5d".
 
 ## Receiving from outside
 
@@ -7256,7 +7411,7 @@ side (below); the rest is still to build.
 | No transaction open during a call | 7.4 |
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
 | Package subscribers on their own webhooks and the events they emit, recipes compiled against `sample/` at publish | 7.6b |
-| Polls and `max_concurrent:` | 7.6c |
+| Polls and `max_concurrent:` (built) | 7.6c |
 | Package's services; several changing calls in one action; receiving (webhooks as events built in 7.7, replies and handshakes in 7.7b, queues through a package in 7.7c, the Cloudflare Queues driver in 7.7c2, deployed with Phase 8); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
@@ -8798,6 +8953,76 @@ Package subscribers, the events they emit and recipes compiled in
   package has errors. A recipe's own tests run in `sample/` once a recipe
   has some.
 
+### Chosen in chunk 7.6c
+
+Polls and `max_concurrent:` (split from 7.6b on 2026-10-20), each the
+most conservative reading:
+
+- **A poll's keys.** Each entry of `polls:` in `provider.jadpo` is a
+  block of `call:`, `every:` and `emits:`, each required and nothing
+  else (`package.provider_invalid`). `call:` names one of the package's
+  operations, public or not, that takes no `input:` and isn't `changes:
+  true`, since a poll reads a feed that doesn't depend on the app's data
+  (checking each of the app's records is the app's schedule calling the
+  package), and whose `output:` is an `Object` read by the package's
+  types, with no `decode:` of its own, as a queue's mapping is. `every:`
+  is a duration of a minute or more: the tick runs once a minute.
+- **What it emits.** `emits:` names an `Event` of the package that is
+  `public`, since only the app's subscribers hear it, and gives no
+  `wire_name:`, which marks one the provider sends; it is the package's
+  own, as one its action emits is, so a package that receives webhooks
+  needs no `wire_name:` or `occurred_at` on it. Each of its fields is a
+  field of the answer of the same name and type, and only those count
+  when the runtime asks whether the answer changed: a time the answer was
+  fetched, left out of the event, never does. An event of fields the
+  answer hasn't is refused at `emits:`.
+- **The connection's interval.** `polls: { <name>: <interval> }` on a
+  connection gives one of its package's polls another interval, a
+  duration of a minute or more; a name the package's `polls:` hasn't is
+  `connection.key_invalid` with the nearest, a shorter or unwritten
+  interval `connection.value_invalid`, and `polls:` on a connection to a
+  package with none `connection.key_invalid`.
+- **Only while subscribed.** A poll runs for each connection to its
+  package while one of the app's subscribers listens for its event, and
+  is left out of the plan otherwise, so nothing is called and no state
+  kept. Its events are kept where the package's webhooks would be, in
+  `events: { store: }` or the only store of the app's records
+  (`event.store_required` at the connection otherwise), with
+  `jadpo_polls`, by `poll <connection>.<poll>`: when it is next due, the
+  digest of the event it last kept and when that changed.
+- **Running it.** On each tick, after the queues, one statement takes a
+  poll that is due, or has never run, and moves it on by its interval, so
+  of several instances only one calls it; one due later than a whole new
+  interval away, since shortened, is due at once. The operation is called
+  as the runtime's own work, through the connection, with no request and
+  no function of the package's, logged and retried as any call is. The
+  event is made from the answer's fields, written with its codec and
+  read back, and the SHA-256 of what is written compared with the last
+  digest: the same keeps nothing; a change, or the first answer, keeps
+  the event with a delivery for each subscriber and the digest in one
+  transaction, the digest checked again there. A failed call keeps
+  nothing, is reported by the tick under the poll's name, and is due
+  again a minute later. A poll's first answer is emitted, so the app
+  learns the current prices without waiting for them to change.
+- **`max_concurrent:`** in `provider.jadpo` is a whole number of at
+  least 1 (`package.provider_invalid`), and a connection's may only lower
+  it (`connection.value_invalid` past it); a connection may give one when
+  its package gives none. The cap is per app instance: the process's,
+  shared by its worker threads, or an isolate's on Workers, and a test's
+  host keeps its own. A provider call takes one of its connection's slots
+  for each attempt and gives it back once answered, so none is held while
+  a retry waits; a further call waits for one, a route's within its
+  deadline. A subscriber's delivery calling out through a connection
+  whose slots are all out is given back as claimed, its attempt not
+  counted, due again a second later for the next sweep; its wait counts
+  towards `within:`, as a release after a shutdown does. Polls' calls
+  wait as any call does.
+- **The surface.** A poll's event is one of the package's public types
+  and in its surface as any is; the polls themselves and
+  `max_concurrent:` join the provider's entry once the surface tells an
+  addition inside an entry from a breaking change, since any change to
+  the provider's entry counts as breaking today.
+
 ### Chosen in chunk 7.1e
 
 Enum values through a package's name, each the most conservative reading:
@@ -9355,6 +9580,7 @@ packages and extension points, as each note says; 26 was decided then.
 | Where a type is marked reviewed (chunk 7.2e2) | An imported provider package lists the types an agent has gone through in `provider.jadpo`'s `imported:`, `reviewed: [Charge, Shop]`, each one of its own types once; the review covers the types the app's calls reach, worked out on every check, for the app's own integrations only, and stops nothing (decided by the building session) | 2026-10-20 |
 | Webhook replies and handshakes (chunk 7.7b) | `SignatureScheme.slack` joins the built-in schemes, since no named one checks Slack; an SNS connection's `secret:` is its topic's ARN, a message from any other topic refused before its certificate is fetched; SNS's certificate fetched only from AWS's SNS hosts over HTTPS through the host's guard (no redirect, no private address) and kept a day; an SNS message refused once signed 30 days ago, as long as a received id is kept; Microsoft Graph's validation the one request answered unsigned; a reply kept after its action commits, not in its transaction (decided by the building session; details under "Chosen in chunk 7.7b") | 2026-10-20 |
 | Package subscribers and recipes in `sample/` (chunk 7.6b) | A package's subscriber hears only its webhooks' events, once per connection receiving them and through that connection; an event a package's action emits without `wire_name:` is the package's own, and emitting a webhook's event is refused; recipes compile one at a time in the one domain of `sample/`, the package placed as its own integration, migrations and records left to the app (decided by the building session, conservatively; details under "Chosen in chunk 7.6b") | 2026-10-20 |
+| Polls and `max_concurrent:` (chunk 7.6c) | A poll calls an operation that takes and changes nothing at least a minute apart, and emits a public event of its package's own made from the answer's fields of its name and type; it runs only while the app subscribes, its first answer and each change kept, a failed call tried again a minute later; `max_concurrent:` is per process, a slot taken for each attempt of a call, a delivery that would wait given back to the outbox uncounted; neither is in the surface yet (decided by the building session, conservatively; details under "Chosen in chunk 7.6c") | 2026-10-20 |
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |

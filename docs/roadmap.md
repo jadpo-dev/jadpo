@@ -1417,13 +1417,35 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `jadpo runs unfinished` command (`cli.runs_arguments`,
   `runs.unavailable`). Live tests in `step_operators.rs`. Choices in area
   12's "Operators, chosen in chunk 7.5c".
-- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
-  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
-  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
-  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
-  warning (a declinable error) and the deadline sum; the metric and alert
-  on unfinished records; the personal-data report's entry, with the report
-  itself if it isn't built by then.
+- [x] **7.5d Multi-step calls: fakes and crash points** `opus · high`,
+  after 7.5c (split from 7.5c on 2026-10-20, and again into this, 7.5e
+  and 7.5f): fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
+  crash at each step boundary. Built: a provider call carries the key it
+  goes under (`capability::SentKey`), and `fakes::KeptKeys` keeps each
+  key's first answer for the test's fake and `jadpo dev`'s, `lost` keeping
+  what it did; the runtime's `crashes` module counts the steps a test's
+  run reaches under a record and crashes it once at a step's boundary
+  (`FaultKind::Crashed`), a crashed delivery given back and a route's
+  request sent again under its key; `jadpo test` reruns a passing test
+  that reached steps once per boundary per step, reporting the first
+  that fails with its `crash` line (and `--json`'s `crash`), and a
+  difference in the fake's effects as a fault; a diverged delivery between
+  a test's steps ends it as `test.subscriber_failed`; each delivery attempt
+  in a test counts its keyed calls from none under its own key. Live tests
+  in `step_crashes.rs`. Choices in area 12's "Tests, chosen in chunk 7.5d".
+- [ ] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
+  after 7.5d (split from 7.5d on 2026-10-20): the late-failure warning (a
+  declinable error) after the first changing step, reaching through
+  package actions, and the deadline sum: the timeout times the attempts of
+  every step on the longest path against a reaching route's deadline,
+  with the single call's deadline warning (area 11) it sums.
+- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+  high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
+  `jadpo dev`'s request lines and timeline; the metric and the no-setup
+  alert on unfinished records (their number and the oldest's age). Each
+  step's state in `jadpo watch` comes with `jadpo watch` (after the first
+  build, item 6), and the records' entry in the personal-data report with
+  the report itself (area 15, after the first build, item 1).
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1460,14 +1482,21 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-check/tests/package_subscribers.rs`, live ones in
   `crates/jadpo-cli/tests/package_subscribers.rs`, and the bar's in
   `package_recipes.rs`. Choices in area 11's "Chosen in chunk 7.6b".
-- [ ] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
-  (split from 7.6b on 2026-10-20): `polls:` in `provider.jadpo` and the
-  connection's `polls: { <name>: <interval> }`, run only while something
-  subscribes to the poll's event, what it last saw kept as runtime state
-  and only changes emitted; and `max_concurrent:` in `provider.jadpo`,
-  lowered by a connection, capping calls at once per app instance
-  (further calls wait, waiting deliveries retry later). Both keys are
-  accepted without effect today; they are checked and run here.
+- [x] **7.6c Polls and `max_concurrent:`** `opus · high`, after 7.6b
+  (split from 7.6b on 2026-10-20). Built: `polls:` in `provider.jadpo`
+  (`call:` an operation that takes and changes nothing, `every:` a
+  minute or more, `emits:` a public event of the package's own made from
+  the answer's fields) and the connection's `polls: { <name>: <interval>
+  }`, each connection's poll run by the tick only while the app
+  subscribes to its event, claimed by one instance, what it last saw kept
+  in `jadpo_polls` beside the outbox and its event kept with the new
+  digest in one transaction only when the answer changed, a failed call
+  tried again a minute later; and `max_concurrent:` in `provider.jadpo`,
+  lowered by a connection, a slot per call attempt per app instance
+  (further calls wait, a delivery that would wait given back to the
+  outbox uncounted). Tests in `crates/jadpo-check/tests/package_polls.rs`,
+  live ones in `crates/jadpo-cli/tests/package_polls.rs`. Choices in
+  area 11's "Chosen in chunk 7.6c".
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's
@@ -1610,13 +1639,18 @@ The design is area 11 as revised on 2026-10-16, with its research in
   after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
   <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
-- [ ] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
+- [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
   the `ai` schema); and the two tests that failed once and passed on
   rerun made deterministic: `http::an_api_token_signs_its_app_in_until_it_is_ended`
   (compares timestamps as text) and
   `batch_calls::a_files_rows_that_call_are_each_a_batch_of_their_own`.
+  Built: every field's schema, parameter and record line reads the field
+  itself (`wire::field_type`), so its inline rules come before its
+  type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
+  the token test compares instants as instants, and the open-transaction
+  count of the call tests leaves out the server's autovacuum workers.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

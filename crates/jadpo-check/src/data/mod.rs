@@ -2691,6 +2691,19 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
                 .insert(system.table.to_string(), columns::system_table(system));
         }
     }
+    // What each poll last saw is kept beside the outbox its changes are
+    // written to (area 11, "Polls"; chunk 7.6c).
+    if let Some(store) = crate::polls::polls(db, project)
+        .polls
+        .first()
+        .map(|poll| poll.store.clone())
+        && let Some(found) = schema.stores.get_mut(&store)
+    {
+        found.tables.insert(
+            system::POLLS.table.to_string(),
+            columns::system_table(&system::POLLS),
+        );
+    }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).
     if let Some(store) = crate::identity::identity(db, project).sessions_store()

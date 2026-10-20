@@ -290,6 +290,9 @@ pub(crate) struct DevProviders {
     setup: Arc<Mutex<Setup>>,
     sandbox: jadpo_host_native::JsonHttp<jadpo_host_native::fetch::NativeFetch>,
     script: PathBuf,
+    /// What the faked provider keeps under each key, as it would (chunk
+    /// 7.5d): a client's retry under its key is given the first answer.
+    keys: jadpo_runtime::fakes::KeptKeys,
 }
 
 impl DevProviders {
@@ -298,6 +301,7 @@ impl DevProviders {
             setup,
             sandbox: jadpo_host_native::JsonHttp::new(jadpo_host_native::fetch::NativeFetch),
             script: root.join(SCRIPT),
+            keys: jadpo_runtime::fakes::KeptKeys::new(),
         }
     }
 
@@ -328,6 +332,10 @@ impl Capability for DevProviders {
         if self.lets_through(call) {
             return self.sandbox.call(call);
         }
+        if let Some((answer, _)) = self.keys.given(call) {
+            return Box::pin(async move { answer });
+        }
+        let source = self.source_of(call);
         // Scripted, else from the operation's recording, else its
         // generated default (chunk 7.2d2).
         let answer = match take(&self.script, &call.name()) {
@@ -343,6 +351,7 @@ impl Capability for DevProviders {
             None if self.recorded(call) => Answer::Recorded,
             None => Answer::Generated,
         };
+        self.keys.keep(call, &answer, source);
         Box::pin(async move { answer })
     }
 
@@ -353,6 +362,8 @@ impl Capability for DevProviders {
     fn source_of(&self, call: &Call) -> Source {
         if self.lets_through(call) {
             Source::Sandbox
+        } else if let Some(source) = self.keys.source_of(call) {
+            source
         } else if waiting(&self.script, &call.name()) {
             Source::Scripted
         } else if self.recorded(call) {
