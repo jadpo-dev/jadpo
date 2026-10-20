@@ -338,7 +338,7 @@ impl Reader<'_, '_> {
                             at.clone(),
                             format!("`{}` doesn't give `wire_name:`", event.name),
                             "no `wire_name:`",
-                            "Add `wire_name:` to the event with the type its messages carry, such as `wire_name: \"order.shipped\"`",
+                            "Add `wire_name:` to the event with the type its messages carry, such as `wire_name: \"order.placed\"`",
                         );
                         return None;
                     };
@@ -500,7 +500,7 @@ impl Reader<'_, '_> {
                         span,
                         format!("`{event}`'s `wire_name:` isn't text"),
                         "not text",
-                        "Write the type its messages carry as text, such as `wire_name: \"order.shipped\"`",
+                        "Write the type its messages carry as text, such as `wire_name: \"order.placed\"`",
                     );
                     continue;
                 }
