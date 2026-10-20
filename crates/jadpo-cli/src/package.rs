@@ -1,11 +1,12 @@
 //! `jadpo package` (area 11, "The surface" and "Developing and publishing
-//! a package"; area 14; chunk 7.1b): `show` prints a package's
+//! a package"; area 14; chunks 7.1b and 7.1b2): `show` prints a package's
 //! description, licence, version, kind and public surface, or one
 //! declaration in full, or its guide; `check` runs the publishing bar in a
-//! package's own repository and writes its `surface.jadpo_record`.
-//! `import` reads a provider's description into the app's own integration
+//! package's own repository, its examples as tests, and writes its
+//! `surface.jadpo_record` and its changelog's new section. `import` reads
+//! a provider's description into the app's own integration
 //! ([`crate::package_import`], chunk 7.2). Installing (`add`, `update`,
-//! `remove`, `link`, `unlink`) comes with chunk 7.1b2.
+//! `remove`, `link`, `unlink`) is in [`crate::install`].
 //!
 //! `show` answers what the package is first, its facts on the grid, then a
 //! list per section and a footer counting them, and the one command that
@@ -32,12 +33,13 @@
 //!
 //! ```text
 //! Publishing bar
-//! ✓ compiles   passed           no errors
-//! – examples   not checked yet  waits for how a description's example is written
-//! ✓ version    passed           2.1.0, 1 added since 2.0.0
+//! ✓ compiles   passed  no errors
+//! ✓ examples   passed  2 examples, every failure shown
+//! ✓ version    passed  2.1.0, 1 added since 2.0.0
+//! ✓ changelog  passed  2.1.0 says why
 //!
-//! ✓ Wrote surface.jadpo_record
-//! ✓ package check passed  Postcodes.v2 2.1.0 · 5 passed · 2 not checked yet
+//! ✓ Wrote surface.jadpo_record and CHANGELOG.md
+//! ✓ package check passed  Postcodes.v2 2.1.0 · 7 passed
 //! → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 //! ```
 //!
@@ -73,16 +75,31 @@ pub const ACTIONS: &[Value] = &[
         name: "import",
         description: "Read a provider's OpenAPI document into the app",
     },
+    Value {
+        name: "add",
+        description: "Install a package from a folder or a git repository's tag",
+    },
+    Value {
+        name: "update",
+        description: "Move an installed package to its newest release",
+    },
+    Value {
+        name: "remove",
+        description: "Remove an installed package the app no longer uses",
+    },
+    Value {
+        name: "link",
+        description: "Compile the app against a package's live checkout",
+    },
+    Value {
+        name: "unlink",
+        description: "Go back to the installed version of a linked package",
+    },
 ];
 
 /// What the language decides `jadpo package` does, not built yet, and the
 /// work that brings each.
 const LATER: &[(&str, &str)] = &[
-    ("add", "installing packages"),
-    ("update", "installing packages"),
-    ("remove", "installing packages"),
-    ("link", "installing packages"),
-    ("unlink", "installing packages"),
     ("new", "package repositories"),
     ("record", "recordings"),
     ("conform", "capabilities"),
@@ -108,6 +125,11 @@ pub fn package(call: &Call) -> Reply {
         )),
         Some("show") => show(call),
         Some("check") => check(call),
+        Some("add") => crate::install::add(call),
+        Some("update") => crate::install::update(call),
+        Some("remove") => crate::install::remove(call),
+        Some("link") => crate::install::link(call),
+        Some("unlink") => crate::install::unlink(call),
         Some("import") => crate::package_import::import(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
@@ -143,18 +165,18 @@ pub fn package(call: &Call) -> Reply {
     }
 }
 
-fn arguments(message: String, reason: String, next: String) -> Diagnostic {
+pub(crate) fn arguments(message: String, reason: String, next: String) -> Diagnostic {
     Diagnostic::new(&rule::CLI_PACKAGE_ARGUMENTS, message)
         .reason(reason)
         .next(next)
 }
 
-fn plural(count: usize, one: &str, many: &str) -> String {
+pub(crate) fn plural(count: usize, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
 }
 
 /// `a`, `a and b`, `a, b and c`.
-fn and_list(items: &[String]) -> String {
+pub(crate) fn and_list(items: &[String]) -> String {
     match items {
         [] => String::new(),
         [one] => one.clone(),
@@ -828,17 +850,19 @@ impl Item {
 }
 
 /// A scratch app the package is checked in, removed when dropped.
-struct Scratch(PathBuf);
+pub(crate) struct Scratch(pub PathBuf);
 
 impl Scratch {
-    fn new() -> std::io::Result<Scratch> {
+    pub(crate) fn new() -> std::io::Result<Scratch> {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |time| time.as_nanos());
-        let path = std::env::temp_dir().join(format!(
-            "jadpo-package-check-{}-{nanos}",
-            std::process::id()
-        ));
+        // Two scratch apps made in the same tick by one process (tests run
+        // side by side) still get folders of their own.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("jadpo-package-{}-{nanos}-{n}", std::process::id()));
         std::fs::create_dir_all(&path)?;
         Ok(Scratch(path))
     }
@@ -851,7 +875,7 @@ impl Drop for Scratch {
 }
 
 /// The package's name in code from its index's text: `Postcodes.v2`.
-fn index_name(text: &str) -> Option<String> {
+pub(crate) fn index_name(text: &str) -> Option<String> {
     use jadpo_syntax::ast::{self, AstNode};
     let parse = jadpo_syntax::parse_file(text);
     let source = ast::SourceFile::cast(parse.syntax())?;
@@ -923,6 +947,164 @@ fn no_package() -> Reply {
     ))
 }
 
+/// A package's folder compiled as the app's own integration in a scratch
+/// app (the golden rule: a package compiles as the app's own code does).
+pub(crate) struct Compiled {
+    pub scratch: Scratch,
+    pub loaded: jadpo_db::Loaded,
+    /// Where the package sits in the scratch app,
+    /// `shared/providers/postcodes/v2`.
+    pub mount: String,
+    /// Its name and version label, `Postcodes.v2`.
+    pub package: String,
+    pub code: String,
+    pub label: String,
+    /// Its problems, paths still in the scratch app.
+    pub problems: Vec<Diagnostic>,
+}
+
+impl Compiled {
+    /// A path in the scratch app as the package's folder names it.
+    pub fn relative(&self, path: &str) -> String {
+        let prefix = format!("{}/", self.mount);
+        path.strip_prefix(&prefix).unwrap_or(path).to_string()
+    }
+
+    /// The package's source texts, by path in its folder.
+    pub fn sources(&self) -> BTreeMap<String, String> {
+        let prefix = format!("{}/", self.mount);
+        jadpo_db::source_texts(&self.loaded.db, self.loaded.project)
+            .into_iter()
+            .filter_map(|(path, text)| Some((path.strip_prefix(&prefix)?.to_string(), text)))
+            .collect()
+    }
+
+    /// The package's surface, when it has one.
+    pub fn surface(&self) -> Option<Surface> {
+        surface::surface(&self.loaded.db, self.loaded.project, &self.mount)
+    }
+}
+
+/// Compiles the package in `folder`; `Err(None)` when there is no package
+/// there, `Err(Some(reply))` when the scratch app couldn't be written.
+pub(crate) fn compile(folder: &Path, command: &str) -> Result<Compiled, Option<Reply>> {
+    let index = std::fs::read_to_string(folder.join(jadpo_db::PACKAGE_INDEX)).map_err(|_| None)?;
+    let package = index_name(&index).ok_or(None)?;
+    let (code, label) = package.rsplit_once('.').ok_or(None)?;
+    if !jadpo_db::is_version_label(label) || code.is_empty() {
+        return Err(None);
+    }
+    let (code, label) = (code.to_string(), label.to_string());
+    let mount = format!(
+        "shared/{}/{}/{label}",
+        jadpo_db::PROVIDERS,
+        jadpo_db::to_snake(&code)
+    );
+    let scratch = Scratch::new().map_err(|error| {
+        Some(write_failed(
+            command,
+            "a scratch folder",
+            &error.to_string(),
+        ))
+    })?;
+    let copied = std::fs::write(scratch.0.join("app.jadpo"), "application {}\n").and_then(|()| {
+        for file in package_files(folder) {
+            let to = scratch.0.join(&mount).join(&file);
+            if let Some(parent) = to.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(folder.join(&file), to)?;
+        }
+        Ok(())
+    });
+    if let Err(error) = copied {
+        return Err(Some(write_failed(
+            command,
+            "the scratch app the package is checked in",
+            &error.to_string(),
+        )));
+    }
+    let loaded = jadpo_db::load(&scratch.0);
+    let prefix = format!("{mount}/");
+    let relative = |path: &str| path.strip_prefix(&prefix).unwrap_or(path).to_string();
+    let mut problems: Vec<Diagnostic> = loaded
+        .unreadable
+        .iter()
+        .map(|file| {
+            Diagnostic::new(
+                &rule::TOOLCHAIN_SOURCE_READ_FAILED,
+                format!("`{}` couldn't be read", relative(&file.path)),
+            )
+            .reason(format!("Reading it failed: {}.", file.error))
+            .next(format!(
+                "Check it can be read, then run `jadpo {command}` again"
+            ))
+        })
+        .collect();
+    problems.extend(
+        jadpo_check::check(&loaded.db, loaded.project)
+            .into_iter()
+            // The curated packages take the names Jadpo reserves for them.
+            .filter(|d| d.rule.id != rule::PACKAGE_RESERVED_NAME.id),
+    );
+    Ok(Compiled {
+        scratch,
+        loaded,
+        mount,
+        package,
+        code,
+        label,
+        problems,
+    })
+}
+
+/// Shows each problem at its place in the package's folder.
+pub(crate) fn in_package(compiled: &Compiled, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics
+        .into_iter()
+        .map(|mut d| {
+            if let Some(label) = &mut d.primary {
+                label.span.path = compiled.relative(&label.span.path);
+            }
+            for label in &mut d.secondary {
+                label.span.path = compiled.relative(&label.span.path);
+            }
+            d
+        })
+        .collect()
+}
+
+/// Shows a linked package's problems and sources in its checkout: each
+/// path under `packages/<name>/<version>/` as the same path under the
+/// link's folder (area 11, "Developing and publishing a package").
+pub(crate) fn show_in_checkouts(
+    links: &[(String, String)],
+    diagnostics: &mut [Diagnostic],
+    sources: &mut BTreeMap<String, String>,
+) {
+    let moved = |path: &str| -> Option<String> {
+        links.iter().find_map(|(folder, checkout)| {
+            let rest = path.strip_prefix(&format!("{folder}/"))?;
+            Some(format!("{checkout}/{rest}"))
+        })
+    };
+    for d in diagnostics.iter_mut() {
+        for label in d.primary.iter_mut().chain(d.secondary.iter_mut()) {
+            if let Some(path) = moved(&label.span.path) {
+                label.span.path = path;
+            }
+        }
+    }
+    let paths: Vec<String> = sources.keys().cloned().collect();
+    for path in paths {
+        if let Some(to) = moved(&path)
+            && let Some(text) = sources.remove(&path)
+        {
+            sources.insert(to, text);
+        }
+    }
+}
+
 fn check(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     if call.arguments.len() > 2 {
@@ -939,83 +1121,33 @@ fn check(call: &Call) -> Reply {
         Some(argument) => cwd.join(argument),
         None => cwd.clone(),
     };
-    let Ok(index) = std::fs::read_to_string(folder.join(jadpo_db::PACKAGE_INDEX)) else {
-        return no_package();
+    let compiled = match compile(&folder, "package check") {
+        Ok(compiled) => compiled,
+        Err(Some(reply)) => return reply,
+        Err(None) => return no_package(),
     };
-    let Some(package) = index_name(&index) else {
-        return no_package();
-    };
-    let Some((code, label)) = package.rsplit_once('.') else {
-        return no_package();
-    };
-    if !jadpo_db::is_version_label(label) || code.is_empty() {
-        return no_package();
-    }
-    let mount = format!(
-        "shared/{}/{}/{label}",
-        jadpo_db::PROVIDERS,
-        jadpo_db::to_snake(code)
+    let (package, code, label, mount) = (
+        compiled.package.clone(),
+        compiled.code.clone(),
+        compiled.label.clone(),
+        compiled.mount.clone(),
     );
-    let scratch = match Scratch::new() {
-        Ok(scratch) => scratch,
-        Err(error) => return write_failed("a scratch folder", &error.to_string()),
-    };
-    let copied = std::fs::write(scratch.0.join("app.jadpo"), "application {}\n").and_then(|()| {
-        for file in package_files(&folder) {
-            let to = scratch.0.join(&mount).join(&file);
-            if let Some(parent) = to.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::copy(folder.join(&file), to)?;
-        }
-        Ok(())
-    });
-    if let Err(error) = copied {
-        return write_failed(
-            "the scratch app the package is checked in",
-            &error.to_string(),
-        );
-    }
     let shown = jadpo_db::shown_root(&cwd, &folder);
-    let prefix = format!("{mount}/");
-    let relative = |path: &str| path.strip_prefix(&prefix).unwrap_or(path).to_string();
-
-    let loaded = jadpo_db::load(&scratch.0);
-    let (db, project) = (&loaded.db, loaded.project);
-    let mut compile: Vec<Diagnostic> = loaded
-        .unreadable
-        .iter()
-        .map(|file| {
-            Diagnostic::new(
-                &rule::TOOLCHAIN_SOURCE_READ_FAILED,
-                format!("`{}` couldn't be read", relative(&file.path)),
-            )
-            .reason(format!("Reading it failed: {}.", file.error))
-            .next("Check it can be read, then run `jadpo package check` again")
-        })
-        .collect();
-    compile.extend(
-        jadpo_check::check(db, project)
-            .into_iter()
-            // The curated packages take the names Jadpo reserves for them.
-            .filter(|d| d.rule.id != rule::PACKAGE_RESERVED_NAME.id),
-    );
+    let (db, project) = (&compiled.loaded.db, compiled.loaded.project);
+    let compile = compiled.problems.clone();
     let described = publishing::undescribed(db, project, &mount);
-    let found = surface::surface(db, project, &mount);
-    let sources: BTreeMap<String, String> = jadpo_db::source_texts(db, project)
-        .into_iter()
-        .filter_map(|(path, text)| Some((path.strip_prefix(&prefix)?.to_string(), text)))
-        .collect();
+    let found = compiled.surface();
+    let mut sources = compiled.sources();
 
     let mut items: Vec<Item> = Vec::new();
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
-    let compiled = compile.is_empty();
-    items.push(if compiled {
+    let compiled_cleanly = compile.is_empty();
+    items.push(if compiled_cleanly {
         Item::passed("compiles", "no errors")
     } else {
         Item::failed("compiles", plural(compile.len(), "error", "errors"))
     });
-    diagnostics.extend(compile);
+    diagnostics.extend(in_package(&compiled, compile));
     items.push(if described.is_empty() {
         Item::passed("described", "every public declaration")
     } else {
@@ -1024,7 +1156,7 @@ fn check(call: &Call) -> Reply {
             format!("{} no description", plural(described.len(), "has", "have")),
         )
     });
-    diagnostics.extend(described);
+    diagnostics.extend(in_package(&compiled, described));
     // A library package's translations: every language it ships is whole
     // (area 10, "Jadpo's and packages' text").
     let (worded, unworded) = jadpo_check::translations::packages::publishing(db, project, &mount);
@@ -1034,21 +1166,22 @@ fn check(call: &Call) -> Reply {
         } else {
             Item::failed("wording", format!("{} missing", unworded.len()))
         });
-        diagnostics.extend(unworded);
+        diagnostics.extend(in_package(&compiled, unworded));
     }
-    items.push(Item::later(
-        "examples",
-        "waits for how examples are written",
-    ));
     let mut test_blocks: Vec<Block> = Vec::new();
-    items.push(if compiled {
-        let (item, problem, blocks) = run_tests(&scratch.0, &prefix);
-        diagnostics.extend(problem);
-        test_blocks = blocks;
-        item
-    } else {
-        Item::later("tests", "the package has errors")
-    });
+    match (&found, compiled_cleanly) {
+        (Some(surface), true) => {
+            let ran = examples_and_tests(&compiled, surface, &sources);
+            items.push(ran.examples);
+            items.push(ran.tests);
+            diagnostics.extend(ran.problems);
+            test_blocks = ran.blocks;
+        }
+        _ => {
+            items.push(Item::later("examples", "the package has errors"));
+            items.push(Item::later("tests", "the package has errors"));
+        }
+    }
     let data_files: Vec<String> = package_files(&folder);
     if found.as_ref().is_some_and(|s| s.kind == "provider")
         && data_files.iter().any(|f| f.starts_with("recordings/"))
@@ -1061,16 +1194,18 @@ fn check(call: &Call) -> Reply {
 
     // The version, from the last release's surface.
     let git = Git::of(&folder);
-    let mut written: Option<(String, bool)> = None;
+    let releases = git
+        .as_ref()
+        .map(|git| git.releases(&package))
+        .unwrap_or_default();
     let mut version: Option<String> = None;
     let mut hint: Option<String> = None;
-    match (&found, compiled) {
+    // A new version's changes, as its changelog lists them; `None` when
+    // the version is one already released.
+    let mut listed: Option<Vec<String>> = None;
+    match (&found, compiled_cleanly) {
         (Some(surface), true) => {
             let now = surface.text(None);
-            let releases = git
-                .as_ref()
-                .map(|git| git.releases(&package))
-                .unwrap_or_default();
             let outcome = match releases.first() {
                 Some(last)
                     if git
@@ -1080,27 +1215,38 @@ fn check(call: &Call) -> Reply {
                     Ok((
                         last.version.clone(),
                         format!("{}, released as {}", last.version, last.tag),
-                        false,
+                        None,
                     ))
                 }
                 Some(last) => {
-                    publishing::version(label, Some((&last.version, &last.surface)), &now)
-                        .map(|bump| (bump.version.clone(), bump_words(&bump), true))
+                    publishing::version(label.as_str(), Some((&last.version, &last.surface)), &now)
+                        .map(|bump| {
+                            let list = if bump.changes.is_empty() {
+                                vec!["no change to what it offers".to_string()]
+                            } else {
+                                bump.changes
+                                    .iter()
+                                    .map(|(word, heading)| publishing::change_item(word, heading))
+                                    .collect()
+                            };
+                            (bump.version.clone(), bump_words(&bump), Some(list))
+                        })
                 }
-                None => publishing::version(label, None, &now).map(|bump| {
+                None => publishing::version(label.as_str(), None, &now).map(|bump| {
                     (
                         bump.version.clone(),
                         format!("{}, the first release", bump.version),
-                        true,
+                        Some(vec!["first release".to_string()]),
                     )
                 }),
             };
             match outcome {
-                Ok((next, words, new)) => {
+                Ok((next, words, list)) => {
                     items.push(Item::passed("version", words));
-                    if new && git.is_some() {
+                    if list.is_some() && git.is_some() {
                         hint = Some(next.clone());
                     }
+                    listed = list;
                     version = Some(next);
                 }
                 Err(breaking) => {
@@ -1115,13 +1261,67 @@ fn check(call: &Call) -> Reply {
                             plural(breaking.len(), "breaking change", "breaking changes")
                         ),
                     ));
-                    diagnostics.push(breaking_change(&package, code, label, &since, &breaking));
+                    diagnostics.push(breaking_change(&package, &code, &label, &since, &breaking));
                 }
             }
         }
-        _ => items.push(Item::later("version", "the package has errors")),
+        _ => {
+            items.push(Item::later("version", "the package has errors"));
+        }
     }
-    items.push(Item::later("changelog", "waits for the changelog's form"));
+
+    // The changelog: the new version's list written from the surface, and
+    // the author's why beneath it.
+    let log_path = folder.join(publishing::CHANGELOG);
+    let old_log = std::fs::read_to_string(&log_path).ok();
+    let mut wrote_log = false;
+    match (&version, &listed) {
+        (Some(version), Some(list)) => {
+            let released: Vec<String> = releases.iter().map(|r| r.version.clone()).collect();
+            let log = publishing::changelog(old_log.as_deref(), version, list, &released);
+            if old_log.as_deref() != Some(log.text.as_str()) {
+                if let Err(error) = std::fs::write(&log_path, &log.text) {
+                    return write_failed(
+                        "package check",
+                        publishing::CHANGELOG,
+                        &error.to_string(),
+                    );
+                }
+                wrote_log = true;
+            }
+            if log.why {
+                items.push(Item::passed("changelog", format!("{version} says why")));
+            } else {
+                items.push(Item::failed(
+                    "changelog",
+                    format!("{version} doesn't say why"),
+                ));
+                diagnostics.push(changelog_missing(&log.text, log.line, version));
+                sources.insert(publishing::CHANGELOG.to_string(), log.text.clone());
+            }
+        }
+        (Some(version), None) => {
+            let why = old_log
+                .as_deref()
+                .is_some_and(|text| publishing::says_why(text, version));
+            items.push(Item::passed(
+                "changelog",
+                if why {
+                    format!("{version} says why")
+                } else {
+                    format!("{version} is released")
+                },
+            ));
+        }
+        (None, _) => items.push(Item::later(
+            "changelog",
+            if compiled_cleanly && found.is_some() {
+                "waits for an allowed version"
+            } else {
+                "the package has errors"
+            },
+        )),
+    }
     let licence = found.as_ref().and_then(|s| s.licence.clone());
     let jadpo = found.as_ref().and_then(|s| s.jadpo.clone());
     items.push(match (licence, jadpo) {
@@ -1131,33 +1331,21 @@ fn check(call: &Call) -> Reply {
         _ => Item::failed("licence", "the index doesn't say"),
     });
 
+    let mut written: Option<(String, bool)> = None;
     if let (Some(surface), Some(version)) = (&found, &version) {
         let text = surface.text(Some(version));
         let path = folder.join(jadpo_db::record::SURFACE_FILE);
         let same = std::fs::read_to_string(&path).is_ok_and(|old| old == text);
         if !same && let Err(error) = std::fs::write(&path, &text) {
-            return write_failed(jadpo_db::record::SURFACE_FILE, &error.to_string());
+            return write_failed(
+                "package check",
+                jadpo_db::record::SURFACE_FILE,
+                &error.to_string(),
+            );
         }
-        let shown_path = match &shown {
-            Some(root) => format!("{root}/{}", jadpo_db::record::SURFACE_FILE),
-            None => jadpo_db::record::SURFACE_FILE.to_string(),
-        };
-        written = Some((shown_path, !same));
+        written = Some((in_folder(&shown, jadpo_db::record::SURFACE_FILE), !same));
     }
 
-    // Each problem at its place in the package's folder.
-    let diagnostics: Vec<Diagnostic> = diagnostics
-        .into_iter()
-        .map(|mut d| {
-            if let Some(label) = &mut d.primary {
-                label.span.path = relative(&label.span.path);
-            }
-            for label in &mut d.secondary {
-                label.span.path = relative(&label.span.path);
-            }
-            d
-        })
-        .collect();
     let mut screen = Screen::new();
     for diagnostic in &diagnostics {
         screen.push(Block::diagnostic_from(
@@ -1178,10 +1366,17 @@ fn check(call: &Call) -> Reply {
         })
         .collect();
     screen.push(Block::list("Publishing bar", rows));
+    let mut wrote: Vec<String> = Vec::new();
     if let Some((path, true)) = &written {
+        wrote.push(path.clone());
+    }
+    if wrote_log {
+        wrote.push(in_folder(&shown, publishing::CHANGELOG));
+    }
+    if !wrote.is_empty() {
         screen.push(Block::Status {
             outcome: Outcome::Success,
-            text: format!("Wrote {path}"),
+            text: format!("Wrote {}", and_list(&wrote)),
             rows: Vec::new(),
         });
     }
@@ -1221,6 +1416,13 @@ fn check(call: &Call) -> Reply {
             ),
         ));
     }
+    let file_json = |path: Option<(String, bool)>| match path {
+        Some((path, wrote)) => Json::object([
+            ("path", Json::from(path.as_str())),
+            ("written", wrote.into()),
+        ]),
+        None => Json::Null,
+    };
     let data = Json::object([
         ("package", Json::from(package.as_str())),
         ("version", version.as_deref().map_or(Json::Null, Json::from)),
@@ -1241,15 +1443,13 @@ fn check(call: &Call) -> Reply {
                 ])
             })),
         ),
+        ("surface", file_json(written)),
         (
-            "surface",
-            match &written {
-                Some((path, wrote)) => Json::object([
-                    ("path", Json::from(path.as_str())),
-                    ("written", (*wrote).into()),
-                ]),
-                None => Json::Null,
-            },
+            "changelog",
+            file_json(
+                (version.is_some() && listed.is_some())
+                    .then(|| (in_folder(&shown, publishing::CHANGELOG), wrote_log)),
+            ),
         ),
     ]);
     Reply::Report {
@@ -1260,14 +1460,513 @@ fn check(call: &Call) -> Reply {
     }
 }
 
-fn write_failed(what: &str, error: &str) -> Reply {
+/// `file` in the package's folder, as the reader reaches it.
+fn in_folder(shown: &Option<String>, file: &str) -> String {
+    match shown {
+        Some(root) => format!("{root}/{file}"),
+        None => file.to_string(),
+    }
+}
+
+/// `publish.changelog_missing` at the new version's heading.
+fn changelog_missing(text: &str, line: u32, version: &str) -> Diagnostic {
+    let (start, end) = line_span(text, line, 0);
+    Diagnostic::new(
+        &rule::PUBLISH_CHANGELOG_MISSING,
+        format!("{} doesn't say why {version} is released", publishing::CHANGELOG),
+    )
+    .at(
+        jadpo_diag::Span::new(publishing::CHANGELOG, start, end),
+        "no why beneath the list",
+    )
+    .reason("`jadpo package check` writes what changed from the surface; whoever releases it writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.")
+    .next(format!(
+        "Write why {version} is released under `## {version}` in {}, after the list",
+        publishing::CHANGELOG
+    ))
+}
+
+/// The byte range of line `line` (from 1) of `text`, from `skip` bytes in
+/// and without its trailing space.
+fn line_span(text: &str, line: u32, skip: usize) -> (u32, u32) {
+    let mut offset = 0usize;
+    for (at, content) in text.split_inclusive('\n').enumerate() {
+        if at + 1 == line as usize {
+            let trimmed = content.trim_end();
+            let start = offset + skip.min(trimmed.len());
+            return (start as u32, (offset + trimmed.len()) as u32);
+        }
+        offset += content.len();
+    }
+    (offset as u32, offset as u32)
+}
+
+/// What running a package's examples and tests gave.
+struct Ran {
+    examples: Item,
+    tests: Item,
+    problems: Vec<Diagnostic>,
+    blocks: Vec<Block>,
+}
+
+/// One example placed as a test in the scratch app.
+struct Placed {
+    example: publishing::Example,
+    /// The declaration's file, in the package's folder.
+    file: String,
+    /// The test file it is in, in the scratch app.
+    test_file: String,
+    /// The `test` line and its first statement's line there.
+    test_line: u32,
+    first: u32,
+}
+
+/// Writes each example into the test file beside its declaration's file
+/// (the package's own tests first, then the examples), leaving out those
+/// in `dropped`.
+fn place(
+    compiled: &Compiled,
+    found: &[(String, publishing::Example)],
+    sources: &BTreeMap<String, String>,
+    dropped: &[String],
+) -> std::io::Result<Vec<Placed>> {
+    // Every test file an example goes in is written again, even when all
+    // of its examples are left out, so none stays from the last pass.
+    let mut by_file: BTreeMap<String, Vec<&(String, publishing::Example)>> = BTreeMap::new();
+    for entry in found {
+        let test = format!(
+            "{}.test.jadpo",
+            entry.0.strip_suffix(".jadpo").unwrap_or(&entry.0)
+        );
+        let entries = by_file.entry(test).or_default();
+        if !dropped.contains(&entry.1.name()) {
+            entries.push(entry);
+        }
+    }
+    let mut placed = Vec::new();
+    for (test, entries) in by_file {
+        let mut text = sources.get(&test).cloned().unwrap_or_default();
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        if entries.is_empty() && text.is_empty() {
+            let _ = std::fs::remove_file(compiled.scratch.0.join(&compiled.mount).join(&test));
+            continue;
+        }
+        for (file, example) in entries {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            let test_line = text.matches('\n').count() as u32 + 1;
+            text.push_str(&format!("test \"{}\" {{\n", example.name()));
+            for (_, statement) in &example.lines {
+                text.push_str(&format!("    {statement}\n"));
+            }
+            text.push_str("}\n");
+            placed.push(Placed {
+                example: example.clone(),
+                file: file.clone(),
+                test_file: format!("{}/{test}", compiled.mount),
+                test_line,
+                first: test_line + 1,
+            });
+        }
+        std::fs::write(compiled.scratch.0.join(&compiled.mount).join(&test), text)?;
+    }
+    Ok(placed)
+}
+
+/// The placed example a line of a test file in the scratch app is in.
+fn placed_at<'a>(placed: &'a [Placed], file: &str, line: u32) -> Option<&'a Placed> {
+    placed.iter().find(|p| {
+        p.test_file == file && line >= p.test_line && line <= p.first + p.example.lines.len() as u32
+    })
+}
+
+/// The span of an example's statement on line `line` of the scratch's
+/// test file, in its declaration's file: past the `///` and its space.
+fn statement_span(
+    placed: &Placed,
+    line: u32,
+    sources: &BTreeMap<String, String>,
+) -> jadpo_diag::Span {
+    let index = line.saturating_sub(placed.first) as usize;
+    let original = placed
+        .example
+        .lines
+        .get(index)
+        .or(placed.example.lines.first())
+        .map_or(1, |(line, _)| *line);
+    let text = sources.get(&placed.file).map_or("", String::as_str);
+    let content = text.lines().nth(original as usize - 1).unwrap_or("");
+    let skip = content.find("///").map_or(0, |at| {
+        at + 3 + usize::from(content[at + 3..].starts_with(' '))
+    });
+    let (start, end) = line_span(text, original, skip);
+    jadpo_diag::Span::new(&placed.file, start, end)
+}
+
+/// Runs the package's examples and its own tests in the scratch app: the
+/// bar's two rows, the problems they found, and each failed test's report.
+fn examples_and_tests(
+    compiled: &Compiled,
+    surface: &Surface,
+    sources: &BTreeMap<String, String>,
+) -> Ran {
+    let mut problems: Vec<Diagnostic> = Vec::new();
+    let mut found: Vec<(String, publishing::Example)> = Vec::new();
+    for declaration in &surface.declarations {
+        let (Some(line), Some(text)) = (declaration.line, sources.get(&declaration.file)) else {
+            continue;
+        };
+        for example in publishing::examples(text, &declaration.name, line) {
+            found.push((declaration.file.clone(), example));
+        }
+    }
+    // Every function of a public library has an example, and each failure
+    // it can raise is shown by an example or a test.
+    let shown_in: Vec<String> = found
+        .iter()
+        .map(|(_, example)| {
+            example
+                .lines
+                .iter()
+                .map(|(_, line)| line.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .chain(
+            sources
+                .iter()
+                .filter(|(path, _)| path.ends_with(".test.jadpo"))
+                .map(|(_, text)| text.clone()),
+        )
+        .collect();
+    let texts: Vec<&str> = shown_in.iter().map(String::as_str).collect();
+    let (mut without, mut unshown) = (0, 0);
+    for declaration in &surface.declarations {
+        let What::Function { fails, .. } = &declaration.what else {
+            continue;
+        };
+        let span = name_span(declaration, sources);
+        if !found
+            .iter()
+            .any(|(_, example)| example.declaration == declaration.name)
+        {
+            without += 1;
+            problems.push(
+                Diagnostic::new(
+                    &rule::PUBLISH_EXAMPLE_MISSING,
+                    format!("Function `{}` has no example", declaration.name),
+                )
+                .at(span.clone(), "no example in its description")
+                .reason("Every function of a published library shows how it is called with an example in its description, a ```jadpo block run as a test, so what the registry's page and `jadpo package show` say of it always runs.")
+                .next(format!(
+                    "Add a ```jadpo block to `{}`'s `///` description, holding statements as a test does: `assert {}(...) == ...`",
+                    declaration.name, declaration.name
+                )),
+            );
+        }
+        for failure in fails {
+            if !publishing::shows_failure(&texts, &declaration.name, failure) {
+                unshown += 1;
+                problems.push(
+                    Diagnostic::new(
+                        &rule::PUBLISH_EXAMPLE_MISSING,
+                        format!(
+                            "`{}` can fail with `{failure}`, which no example or test shows",
+                            declaration.name
+                        ),
+                    )
+                    .at(span.clone(), format!("fails {failure}"))
+                    .reason("A published function shows each failure it can raise, so an app knows when it happens: an example or a test asserts it with `fails`.")
+                    .next(format!(
+                        "Add `assert {}(...) fails {failure}` to its example or to a test beside it",
+                        declaration.name
+                    )),
+                );
+            }
+        }
+    }
+
+    // Place the examples as tests; one that doesn't compile is shown at
+    // its place and left out, so the rest still run.
+    let mut dropped: Vec<String> = Vec::new();
+    let mut failed_examples = 0;
+    let mut placed: Vec<Placed> = Vec::new();
+    for _ in 0..2 {
+        placed = match place(compiled, &found, sources, &dropped) {
+            Ok(placed) => placed,
+            Err(error) => {
+                return Ran {
+                    examples: Item::failed("examples", "couldn't be placed"),
+                    tests: Item::later("tests", "the examples couldn't be placed"),
+                    problems: vec![
+                        Diagnostic::new(
+                            &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
+                            "`jadpo package check` couldn't write the examples as tests",
+                        )
+                        .reason(format!("Writing them failed: {error}."))
+                        .next("Check that the temporary folder can be written, then run `jadpo package check` again"),
+                    ],
+                    blocks: Vec::new(),
+                };
+            }
+        };
+        let loaded = jadpo_db::load(&compiled.scratch.0);
+        let mut broken = false;
+        for diagnostic in jadpo_check::check(&loaded.db, loaded.project) {
+            let Some(label) = &diagnostic.primary else {
+                continue;
+            };
+            let text = std::fs::read_to_string(compiled.scratch.0.join(&label.span.path))
+                .unwrap_or_default();
+            let line = text[..(label.span.start as usize).min(text.len())]
+                .matches('\n')
+                .count() as u32
+                + 1;
+            let Some(at) = placed_at(&placed, &label.span.path, line) else {
+                continue;
+            };
+            let name = at.example.name();
+            if dropped.contains(&name) {
+                continue;
+            }
+            dropped.push(name);
+            broken = true;
+            failed_examples += 1;
+            problems.push(
+                Diagnostic::new(
+                    &rule::PUBLISH_EXAMPLE_FAILED,
+                    format!("Example of `{}` doesn't compile", at.example.declaration),
+                )
+                .at(statement_span(at, line, sources), "doesn't compile")
+                .reason(format!(
+                    "Run as a test of the package, it gives: {} An example runs as a test, so a description always shows what the code does.",
+                    sentence(&diagnostic.message)
+                ))
+                .next("Correct the example, writing statements as a test's body does"),
+            );
+        }
+        if !broken {
+            break;
+        }
+    }
+
+    let ran = jadpo_test::run(jadpo_test::Options {
+        cwd: compiled.scratch.0.clone(),
+        ..jadpo_test::Options::default()
+    });
+    let run = match ran {
+        jadpo_test::Ran::Done(run) => Some(run),
+        jadpo_test::Ran::Refused { .. } | jadpo_test::Ran::NoProject => {
+            return Ran {
+                examples: if failed_examples > 0 {
+                    Item::failed(
+                        "examples",
+                        format!(
+                            "{failed_examples} of {} failed",
+                            plural(found.len(), "example", "examples")
+                        ),
+                    )
+                } else {
+                    Item::later("examples", "the package has errors")
+                },
+                tests: Item::later("tests", "the package has errors"),
+                problems,
+                blocks: Vec::new(),
+            };
+        }
+        _ => None,
+    };
+    let mut own_total = 0;
+    let mut own_failed = 0;
+    let mut blocks: Vec<Block> = Vec::new();
+    if let Some(mut run) = run {
+        let mut own: Vec<jadpo_test::TestResult> = Vec::new();
+        for result in std::mem::take(&mut run.results) {
+            match placed_at(&placed, &result.test.file, result.test.line) {
+                Some(at) => {
+                    if let Some(failure) = &result.failure {
+                        failed_examples += 1;
+                        let (label, reason) = what_failed(failure);
+                        problems.push(
+                            Diagnostic::new(
+                                &rule::PUBLISH_EXAMPLE_FAILED,
+                                format!("Example of `{}` failed", at.example.declaration),
+                            )
+                            .at(statement_span(at, failure.location.line, sources), label)
+                            .reason(format!(
+                                "{reason} An example runs as a test, so a description always shows what the code does."
+                            ))
+                            .next("Correct the example, or the code if the example says what it should do"),
+                        );
+                    }
+                }
+                None => own.push(result),
+            }
+        }
+        for result in &mut own {
+            result.test.file = compiled.relative(&result.test.file);
+        }
+        own_total = own.len();
+        own_failed = own.iter().filter(|r| r.failure.is_some()).count();
+        run.results = own;
+        if own_failed > 0 {
+            blocks = jadpo_test::screen(&run).into_blocks();
+            blocks.pop();
+            problems.push(
+                Diagnostic::new(
+                    &rule::TEST_FAILED,
+                    format!("{own_failed} of {} failed", plural(own_total, "test", "tests")),
+                )
+                .reason("A package is published only when its own tests pass; each failed test's report is below.")
+                .next("Fix each failure, then run `jadpo package check` again"),
+            );
+        }
+    }
+    let tests = if own_total == 0 {
+        Item::passed("tests", "no tests")
+    } else if own_failed == 0 {
+        Item::passed("tests", plural(own_total, "test", "tests"))
+    } else {
+        Item::failed(
+            "tests",
+            format!("{own_failed} of {}", plural(own_total, "test", "tests")),
+        )
+    };
+    let total = found.len();
+    let mut wrong: Vec<String> = Vec::new();
+    if failed_examples > 0 {
+        wrong.push(format!(
+            "{failed_examples} of {} failed",
+            plural(total, "example", "examples")
+        ));
+    }
+    if without > 0 {
+        wrong.push(format!(
+            "{} no example",
+            plural(without, "function has", "functions have")
+        ));
+    }
+    if unshown > 0 {
+        wrong.push(format!(
+            "{} not shown",
+            plural(unshown, "failure", "failures")
+        ));
+    }
+    let any_fails = surface
+        .declarations
+        .iter()
+        .any(|d| matches!(&d.what, What::Function { fails, .. } if !fails.is_empty()));
+    let examples = if !wrong.is_empty() {
+        Item::failed("examples", wrong.join(", "))
+    } else if total == 0 {
+        Item::passed("examples", "no functions to show")
+    } else if any_fails {
+        Item::passed(
+            "examples",
+            format!(
+                "{}, every failure shown",
+                plural(total, "example", "examples")
+            ),
+        )
+    } else {
+        Item::passed("examples", plural(total, "example", "examples"))
+    };
+    Ran {
+        examples,
+        tests,
+        problems,
+        blocks,
+    }
+}
+
+/// A message as a sentence ending in a full stop.
+fn sentence(message: &str) -> String {
+    if message.ends_with('.') {
+        message.to_string()
+    } else {
+        format!("{message}.")
+    }
+}
+
+/// The caret's label and the reason for an example's failed test.
+fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String) {
+    match &failure.detail {
+        jadpo_test::Detail::Assertion(assertion) => {
+            if let Some(fails) = &assertion.fails {
+                let instead = match (&assertion.returned, &assertion.instead) {
+                    (Some(returned), _) => format!("it returned {returned}"),
+                    (_, Some(other)) => format!("it failed with `{}`", other.name),
+                    _ => "it didn't".to_string(),
+                };
+                (
+                    format!("doesn't fail with `{fails}`"),
+                    format!(
+                        "Run as a test of the package, the call was to fail with `{fails}`, and {instead}."
+                    ),
+                )
+            } else {
+                let reason = match (&assertion.expected, &assertion.actual) {
+                    (Some(expected), Some(actual)) => format!(
+                        "Run as a test of the package, it expected {expected} and got {actual}."
+                    ),
+                    _ => "Run as a test of the package, it doesn't hold.".to_string(),
+                };
+                ("this doesn't hold".to_string(), reason)
+            }
+        }
+        jadpo_test::Detail::Failure(info) => (
+            format!("fails with `{}`", info.name),
+            format!(
+                "Run as a test of the package, it failed with `{}`, which nothing in the example expects.",
+                info.name
+            ),
+        ),
+        jadpo_test::Detail::Fault(info) => (
+            "faults".to_string(),
+            format!(
+                "Run as a test of the package, it faulted: {}.",
+                info.subject
+            ),
+        ),
+    }
+}
+
+/// The span of a declaration's name on its line, in the package's folder.
+fn name_span(declaration: &Declaration, sources: &BTreeMap<String, String>) -> jadpo_diag::Span {
+    let text = sources.get(&declaration.file).map_or("", String::as_str);
+    let line = declaration.line.unwrap_or(1);
+    let content = text.lines().nth(line as usize - 1).unwrap_or("");
+    let name = declaration
+        .name
+        .rsplit('.')
+        .next()
+        .unwrap_or(&declaration.name);
+    let skip = content
+        .match_indices(name)
+        .find(|(at, _)| {
+            let before = content[..*at].chars().next_back();
+            let after = content[at + name.len()..].chars().next();
+            !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                && !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+        .map_or(0, |(at, _)| at);
+    let (start, _) = line_span(text, line, skip);
+    jadpo_diag::Span::new(&declaration.file, start, start + name.len() as u32)
+}
+
+pub(crate) fn write_failed(command: &str, what: &str, error: &str) -> Reply {
     Reply::failed(
         Diagnostic::new(
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
-            format!("`jadpo package check` couldn't write {what}"),
+            format!("`jadpo {command}` couldn't write {what}"),
         )
         .reason(format!("Writing it failed: {error}."))
-        .next("Check that the folder can be written, then run `jadpo package check` again"),
+        .next(format!(
+            "Check that the folder can be written, then run `jadpo {command}` again"
+        )),
     )
 }
 
@@ -1344,54 +2043,8 @@ fn breaking_change(
     .next(next)
 }
 
-/// Runs the package's tests in the scratch app: the bar's row, the
-/// problem a failure gives, and each failed test's report.
-fn run_tests(root: &Path, prefix: &str) -> (Item, Option<Diagnostic>, Vec<Block>) {
-    let ran = jadpo_test::run(jadpo_test::Options {
-        cwd: root.to_path_buf(),
-        ..jadpo_test::Options::default()
-    });
-    match ran {
-        jadpo_test::Ran::Done(mut run) => {
-            for result in &mut run.results {
-                if let Some(relative) = result.test.file.strip_prefix(prefix) {
-                    result.test.file = relative.to_string();
-                }
-            }
-            let (total, failed) = (run.results.len(), run.failed());
-            if failed == 0 {
-                return (
-                    Item::passed("tests", plural(total, "test", "tests")),
-                    None,
-                    Vec::new(),
-                );
-            }
-            let mut blocks = jadpo_test::screen(&run).into_blocks();
-            blocks.pop();
-            (
-                Item::failed("tests", format!("{failed} of {}", plural(total, "test", "tests"))),
-                Some(
-                    Diagnostic::new(
-                        &rule::TEST_FAILED,
-                        format!("{failed} of {} failed", plural(total, "test", "tests")),
-                    )
-                    .reason("A package is published only when its own tests pass; each failed test's report is below.")
-                    .next("Fix each failure, then run `jadpo package check` again"),
-                ),
-                blocks,
-            )
-        }
-        jadpo_test::Ran::Refused { .. } | jadpo_test::Ran::NoProject => (
-            Item::later("tests", "the package has errors"),
-            None,
-            Vec::new(),
-        ),
-        _ => (Item::passed("tests", "no tests"), None, Vec::new()),
-    }
-}
-
 /// The package's repository, when its folder is in one.
-struct Git {
+pub(crate) struct Git {
     folder: PathBuf,
     /// The folder's path in the repository: `""` at its root, or
     /// `packages/postcodes/`.
@@ -1399,14 +2052,14 @@ struct Git {
 }
 
 /// A release: a `v<version>` tag whose surface names the package.
-struct Release {
-    tag: String,
-    version: String,
-    surface: String,
+pub(crate) struct Release {
+    pub tag: String,
+    pub version: String,
+    pub surface: String,
 }
 
 impl Git {
-    fn of(folder: &Path) -> Option<Git> {
+    pub(crate) fn of(folder: &Path) -> Option<Git> {
         let prefix = git(folder, &["rev-parse", "--show-prefix"])?;
         Some(Git {
             folder: folder.to_path_buf(),
@@ -1415,7 +2068,7 @@ impl Git {
     }
 
     /// The package's releases, newest first.
-    fn releases(&self, package: &str) -> Vec<Release> {
+    pub(crate) fn releases(&self, package: &str) -> Vec<Release> {
         let Some(tags) = git(&self.folder, &["tag", "--list", "v*"]) else {
             return Vec::new();
         };
@@ -1460,7 +2113,7 @@ impl Git {
 
 /// `v2.1.0` as numbers to order by; a pre-release orders before its
 /// release.
-fn semver(tag: &str) -> Option<Vec<u64>> {
+pub(crate) fn semver(tag: &str) -> Option<Vec<u64>> {
     let version = tag.strip_prefix('v')?;
     let (core, pre) = match version.split_once('-') {
         Some((core, _)) => (core, 0),
@@ -1476,7 +2129,7 @@ fn semver(tag: &str) -> Option<Vec<u64>> {
 }
 
 /// What `git <args>` prints in `folder`, when it succeeds.
-fn git(folder: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn git(folder: &Path, args: &[&str]) -> Option<String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(folder)

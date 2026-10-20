@@ -67,6 +67,11 @@ pub struct Loaded {
     /// files the folder they were found in.
     pub root: PathBuf,
     pub unreadable: Vec<Unreadable>,
+    /// Each package `jadpo.lock` links to a live checkout (area 11,
+    /// "Developing and publishing a package"): its folder in the project,
+    /// `packages/acme_pricing/v2`, whose files are read from the checkout,
+    /// and the checkout as the lock writes it, `../acme-pricing`.
+    pub links: Vec<(String, String)>,
 }
 
 /// Reads what `target` names. Inside a project (a folder at or above it
@@ -87,26 +92,30 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
             .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     };
     let mut unreadable = Vec::new();
+    let mut links = Vec::new();
     let (root, layout, sources) = match find_root(&folder) {
         Some(root) => {
-            let sources = walk(&root, true, &mut unreadable);
+            let mut sources = shown(&root, walk(&root, true, &mut unreadable));
+            links = linked(&root, &mut sources, &mut unreadable);
             (root, Layout::Project, sources)
         }
         None if target.is_dir() => {
-            let sources = walk(&folder, false, &mut unreadable);
+            let sources = shown(&folder, walk(&folder, false, &mut unreadable));
             (folder.clone(), Layout::Loose, sources)
         }
-        None => (folder, Layout::Loose, vec![target.to_path_buf()]),
+        None => {
+            let sources = shown(&folder, vec![target.to_path_buf()]);
+            (folder, Layout::Loose, sources)
+        }
     };
     let mut files = Vec::new();
     let mut other_files = Vec::new();
     let mut records = Vec::new();
-    for path in sources {
-        let shown = display(&root, &path);
+    for (path, shown) in sources {
         // Loose files keep a prompt's text beside its type (area 21).
         let loose_prompt = layout == Layout::Loose && shown.ends_with(crate::PROMPT_EXTENSION);
         if (layout == Layout::Project && is_record(&shown)) || loose_prompt {
-            records.push(read_record(&root, &shown));
+            records.push(read_record_at(&path, &shown));
             continue;
         }
         if !shown.ends_with(".jadpo") {
@@ -158,7 +167,101 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
         project,
         root,
         unreadable,
+        links,
     }
+}
+
+/// Each path with how the project names it, relative to `root`.
+fn shown(root: &Path, paths: Vec<PathBuf>) -> Vec<(PathBuf, String)> {
+    paths
+        .into_iter()
+        .map(|path| {
+            let shown = display(root, &path);
+            (path, shown)
+        })
+        .collect()
+}
+
+/// Reads each package `jadpo.lock` links to from its live checkout
+/// instead of its folder in `packages/` (area 11, "Developing and
+/// publishing a package"), which stays as installed for `jadpo package
+/// unlink`: the checkout's files take the folder's paths, so the package
+/// is checked and run as the installed one would be. A checkout that isn't
+/// there can't be read. Returns each link's folder and checkout.
+fn linked(
+    root: &Path,
+    sources: &mut Vec<(PathBuf, String)>,
+    unreadable: &mut Vec<Unreadable>,
+) -> Vec<(String, String)> {
+    let Ok(text) = std::fs::read_to_string(root.join(crate::LOCK)) else {
+        return Vec::new();
+    };
+    // A lock that can't be read is the records' to report.
+    let Ok(lines) = crate::parse_lock(&text) else {
+        return Vec::new();
+    };
+    let mut links = Vec::new();
+    for line in lines {
+        let crate::Source::Link { path } = &line.source else {
+            continue;
+        };
+        let folder = line.folder();
+        let prefix = format!("{folder}/");
+        sources.retain(|(_, shown)| !shown.starts_with(&prefix));
+        let checkout = root.join(path);
+        if !checkout.join(crate::PACKAGE_INDEX).is_file() {
+            unreadable.push(Unreadable {
+                path: format!("{path}/"),
+                error: format!(
+                    "`{}` links `{}` to it, and it holds no `{}`",
+                    crate::LOCK,
+                    line.package,
+                    crate::PACKAGE_INDEX
+                ),
+            });
+            links.push((folder, path.clone()));
+            continue;
+        }
+        for file in package_files(&checkout) {
+            let relative = display(&checkout, &file);
+            sources.push((file, format!("{prefix}{relative}")));
+        }
+        links.push((folder, path.clone()));
+    }
+    sources.sort_by(|a, b| a.1.cmp(&b.1));
+    links
+}
+
+/// Every file of a package's own folder, leaving out hidden entries (its
+/// `.git`) and a `build/` at its root, in path order: what installing
+/// copies and what a link reads.
+pub fn package_files(folder: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![folder.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => {
+                    if !(dir == folder && name == "build") {
+                        pending.push(path);
+                    }
+                }
+                Ok(kind) if kind.is_file() => found.push(path),
+                _ => {}
+            }
+        }
+    }
+    found.sort_by_key(|path| display(folder, path));
+    found
 }
 
 /// The identity registry's lines, from its record when the project has
@@ -192,9 +295,14 @@ fn identities(records: &[Record]) -> Result<BTreeMap<String, String>, (String, S
 
 /// The record at `path`, read from `root`.
 fn read_record(root: &Path, path: &str) -> Record {
+    read_record_at(&root.join(path), path)
+}
+
+/// The record the project names `path`, read from `file`.
+fn read_record_at(file: &Path, path: &str) -> Record {
     Record {
         path: path.to_string(),
-        text: std::fs::read_to_string(root.join(path)).map_err(|error| error.to_string()),
+        text: std::fs::read_to_string(file).map_err(|error| error.to_string()),
     }
 }
 

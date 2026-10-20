@@ -67,7 +67,10 @@ pub fn check(call: &Call) -> Reply {
             .next("Check it can be read, then run `jadpo check` again")
         })
         .collect();
-    let checked = jadpo_check::check(db, loaded.project);
+    let mut checked = jadpo_check::check(db, loaded.project);
+    if crate::run::in_ci(&call.environment) {
+        checked.extend(jadpo_check::packages::links_refused(db, loaded.project));
+    }
     if diagnostics.is_empty() {
         diagnostics = checked;
     } else {
@@ -105,7 +108,12 @@ pub fn check(call: &Call) -> Reply {
     }
     let elapsed = started.elapsed();
     let files = loaded.project.files(db);
-    let sources: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
+    let mut sources: BTreeMap<String, String> = jadpo_db::source_texts(db, loaded.project);
+    // A linked package's problems are shown in its checkout, where they
+    // are fixed.
+    if !loaded.links.is_empty() {
+        crate::package::show_in_checkouts(&loaded.links, &mut diagnostics, &mut sources);
+    }
     let paths: Vec<&String> = files.iter().map(|file| file.path(db)).collect();
     let root = jadpo_db::shown_root(&cwd, &loaded.root);
     report(

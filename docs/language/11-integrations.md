@@ -608,6 +608,46 @@ the sandbox for each one (see "Tests and fakes").
 - **Prose is unverified wherever it comes from** (`///` descriptions,
   `GUIDE.md`); nothing safety-relevant relies on it.
 
+> **Built (chunk 7.1b2).** `jadpo package add` from a folder (`../postcodes`)
+> or from a git repository at a release tag
+> (`github.com/acme/postcodes@v2.1.0`): the package is compiled as the
+> app's own integration would be, the surface its code gives has to be its
+> committed `surface.jadpo_record` byte for byte (`install.surface_mismatch`),
+> and only then is it copied into `packages/<name>/<version>/` and locked
+> with its version, digest and source. `update` moves one to its newest
+> release with area 18's review of what changed, `remove` takes out one the
+> app no longer uses (`install.in_use`), and `link` and `unlink` are under
+> "Developing and publishing a package". The registry, another Jadpo app's
+> OpenAPI and publisher trust come later; the choices are in "Chosen in
+> chunk 7.1b2" below.
+>
+> ```text
+> $ jadpo package add github.com/acme/postcodes@v2.1.0
+> ✓ Added Postcodes.v2 2.1.0
+>     folder   packages/postcodes/v2
+>     source   git github.com/acme/postcodes tag v2.1.0
+>     surface  matches its code
+>
+> ✓ package added  Postcodes.v2 2.1.0 · 1 function · 2 types · 1 failure
+>
+> → jadpo package show postcodes  shows what it offers
+> ```
+>
+> ```text
+> $ jadpo package update postcodes
+> ✓ Updated Postcodes.v2 from 2.0.0 to 2.1.0
+>     folder   packages/postcodes/v2
+>     source   git github.com/acme/postcodes tag v2.1.0
+>     surface  matches its code
+>
+>   Changes since 2.0.0
+>     + type OutwardCode
+>
+> ✓ package updated  Postcodes.v2 2.1.0 · 1 added
+>
+> → jadpo check  checks the app against 2.1.0
+> ```
+
 ## The surface
 
 The compiler works out a package's public surface and writes it to
@@ -720,8 +760,8 @@ the capabilities it provides.
 > → jadpo package show postcodes uk.tidy  shows one in full, with its file
 > ```
 >
-> Verifying the surface at install comes with `add` and `update` (chunk
-> 7.1b2); the choices are in "Chosen in chunk 7.1b" below.
+> `add` and `update` verify the surface at install (chunk 7.1b2, under
+> "Installing safely"); the choices are in "Chosen in chunk 7.1b" below.
 
 ## Developing and publishing a package
 
@@ -747,6 +787,26 @@ the capabilities it provides.
   nothing (Go is the precedent). The lock's source field leaves room for a
   private registry later.
 - **Public packages** go to the registry with `jadpo package publish`.
+
+> **Built (chunk 7.1b2).** `jadpo package link <folder>` writes `package
+> Postcodes.v2 link ../postcodes` in the lock and keeps the line it
+> replaced in `.jadpo/links`; from then on every `jadpo check`, `test` and
+> `dev` reads the checkout's files in place of `packages/postcodes/v2/`,
+> which stays as installed, and shows its problems at the checkout's paths.
+> With `CI` set, `jadpo check` and `jadpo test` refuse the link
+> (`install.link_refused`), and `jadpo build` will always. `jadpo package
+> unlink postcodes` puts the installed line back:
+>
+> ```text
+> $ jadpo package link ../postcodes
+> ✓ Linked Postcodes.v2 to ../postcodes
+>     checkout   ../postcodes
+>     installed  2.1.0, restored by jadpo package unlink postcodes
+>
+> ✓ package linked  Postcodes.v2 · the app checks against it
+>
+> → jadpo package unlink postcodes  goes back to the installed version before you push
+> ```
 
 **What publishing requires.** `jadpo package publish`, and `jadpo package
 check` before a tag, refuse a package unless:
@@ -785,28 +845,67 @@ asks the description of every public message (area 10, "Chosen in chunk
 > `publish.description_missing`; item 4's tests are the package's own
 > `.test.jadpo` files; item 5 works out the version from the surface at
 > the last tag and refuses a breaking change (`publish.breaking_change`);
-> item 7 is the index's own check. Item 3's examples and item 6's
-> changelog wait for their forms (questions 27 and 28 below), and item 4's
-> decoders and recipes come with decoding (chunk 7.2) and recipes; the bar
-> says "not checked yet" for each. The surface is written whenever the
-> package compiles and its version is allowed:
+> item 7 is the index's own check. Item 4's decoders and recipes come with
+> decoding (chunk 7.2) and recipes; the bar says "not checked yet" for
+> each. The surface is written whenever the package compiles and its
+> version is allowed.
+>
+> **Built (chunk 7.1b2).** Item 3: each ```` ```jadpo ```` block in a
+> public declaration's `///` description runs as a test of the package
+> (question 27), a function of a public library without one is
+> `publish.example_missing`, as is a failure it can raise that no example
+> or test asserts with `fails`, and an example that doesn't compile or hold
+> is `publish.example_failed` at its line in the description. Item 6: the
+> new version's section of `CHANGELOG.md` is written from the surface's
+> changes, and a release whose section says nothing beneath the list is
+> `publish.changelog_missing` (question 28):
 >
 > ```text
 > $ jadpo package check
 > Publishing bar
 > ✓ compiles      passed                        no errors
 > ✓ described     passed                        every public declaration
-> – examples      not checked yet               waits for how examples are written
+> ✓ examples      passed                        2 examples, every failure shown
 > ✓ tests         passed                        3 tests
 > ✓ version       passed                        2.1.0, 1 added since 2.0.0
-> – changelog     not checked yet               waits for the changelog's form
+> ✓ changelog     passed                        2.1.0 says why
 > ✓ licence       passed                        mit, from Jadpo 1.0
 >
-> ✓ Wrote surface.jadpo_record
+> ✓ Wrote surface.jadpo_record and CHANGELOG.md
 >
-> ✓ package check passed  Postcodes.v2 2.1.0 · 5 passed · 2 not checked yet
+> ✓ package check passed  Postcodes.v2 2.1.0 · 7 passed
 >
 > → git tag v2.1.0  tags the release once surface.jadpo_record is committed
+> ```
+>
+> An example is a test's body in the description; the changelog's list is
+> the first list under its version, and the author writes why beneath it:
+>
+> ```text
+> /// Reads a postcode in upper case.
+> ///
+> /// ```jadpo
+> /// var postcode: UkPostcode = attempt uk.tidy("sw1a 1aa")
+> /// assert postcode == "SW1A 1AA"
+> /// assert uk.tidy("x") fails InvalidPostcode
+> /// ```
+> function tidy(entered: EnteredPostcode) fails InvalidPostcode -> UkPostcode {
+> ```
+>
+> ```text
+> # Changelog
+>
+> ## 2.1.0
+>
+> - added type `OutwardCode`
+>
+> Reads the outward code, for delivery zones.
+>
+> ## 2.0.0
+>
+> - first release
+>
+> UK postcodes, read as people type them.
 > ```
 
 ## Connecting in `app.jadpo`
@@ -1885,7 +1984,7 @@ example and real output under "Errors".
 | Mistake | Reported | Chunk |
 |---|---|---|
 | An installed package whose files do not match its digest in `jadpo.lock`, or whose surface differs from its committed `surface.jadpo_record` | By `jadpo check` and at install | 7.1, the surface at install 7.1b2 |
-| A link in the lock when building for production or in CI | By `jadpo build` | 7.1b2 |
+| A link in the lock when building for production or in CI | By `jadpo check` and `jadpo test` in CI; by `jadpo build` | 7.1b2; `jadpo build` in Phase 8 |
 | An own integration or library taking a reserved brand name; installing a package whose name the app's own code uses | By `jadpo check`; by `jadpo package add` | 7.1 |
 | An `emails/` folder in a package; `requires:` or any key besides `licence:` and `jadpo:` in `package.jadpo`; an unknown key in `provider.jadpo` | By `jadpo check` | 7.1 |
 | A non-public type or failure reachable from a public declaration, in a package or a domain | By `jadpo check` | 7.1 |
@@ -1904,8 +2003,8 @@ example and real output under "Errors".
 > lock, an `emails/` folder, the index's keys, `provider.jadpo`'s keys and
 > `hosts:` with `runs:`, a reserved name and a name the app uses, and the
 > reachable-from-public rule (area 1's `visibility.public_reaches_private`).
-> Still to come: a surface that differs at install and a link in a
-> production or CI build (chunk 7.1b2); a resource and an action with one
+> Chunk 7.1b2 built a surface that differs at install and a link in CI,
+> under "Installing errors". Still to come: a resource and an action with one
 > name, a public action that emits and subscribing to a non-public event
 > (chunk 7.6); a connection's `host:` for a package with fixed `hosts:`
 > (chunk 7.1c).
@@ -2518,11 +2617,79 @@ error: Package `Postcodes.v2` is proprietary but wasn't installed from git
 check failed: 1 error, 2 files
 ```
 
+## Installing errors
+
+> Built in chunk 7.1b2. The installing commands report these, and change
+> nothing when they do; `jadpo check` and `jadpo test` report a link in
+> CI. Like the publishing errors below they come from running a command,
+> so area 14 lists them with its command errors.
+
+### `install.surface_mismatch`
+
+A package is installed only when its committed surface is what its code
+offers. Here a type was added after the surface was written:
+
+```text
+$ jadpo package add ../postcodes
+error: `Postcodes.v2`'s surface.jadpo_record doesn't match its code
+  reason: Its code has `type InwardCode`, which its committed surface doesn't. A package is installed only when its surface, what reviewers read, is what its code offers.
+  next: Run `jadpo package check` in the package's repository, commit its surface.jadpo_record, and release it again (human)
+  rule: install.surface_mismatch
+  help: docs/language/14-tooling.html#command-errors
+```
+
+### `install.fetch_failed`
+
+A git repository that can't be read, or holds no release to install:
+
+```text
+$ jadpo package add github.com/acme/postcodes@v9.0.0
+error: `github.com/acme/postcodes` has no tag `v9.0.0`
+  reason: Its release tags are `v2.0.0` and `v2.1.0`.
+  next: Give one of its release tags, or tag the release in the package's repository after `jadpo package check` passes (human)
+  rule: install.fetch_failed
+  help: docs/language/14-tooling.html#command-errors
+```
+
+### `install.in_use`
+
+A package the app's code still brings in stays installed:
+
+```text
+$ jadpo package remove postcodes
+error: The app still uses `Postcodes.v2`
+  reason: `domains/intake/actions/read_postcode.jadpo` brings it in with `use packages/postcodes`, so removing it would leave that file unable to compile.
+  next: Take `use packages/postcodes` and what it brings in out of the app's code, then run `jadpo package remove postcodes` again (agent)
+  rule: install.in_use
+  help: docs/language/14-tooling.html#command-errors
+```
+
+### `install.link_refused`
+
+A link compiles the app against a checkout on one machine, so it never
+ships:
+
+```text
+$ CI=true jadpo check
+error: `Postcodes.v2` is linked to `../postcodes`
+ --> jadpo.lock:4:1
+  |
+4 | package Postcodes.v2 link ../postcodes
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a live checkout
+  reason: A link compiles the app against a checkout on one machine, so CI (the `CI` variable is set) and production builds refuse it, and a link never ships.
+  next: Run `jadpo package unlink postcodes`, then commit `jadpo.lock` (agent)
+  rule: install.link_refused
+  help: docs/language/14-tooling.html#command-errors
+
+check failed: 1 error, 7 files
+```
+
 ## Publishing errors
 
-> Built in chunk 7.1b. `jadpo package check` reports these in a package's
-> own repository, every path relative to the package's folder; `jadpo
-> check` never does, since the app's own integrations skip the bar.
+> Built in chunk 7.1b, and the examples and the changelog in chunk 7.1b2.
+> `jadpo package check` reports these in a package's own repository, every
+> path relative to the package's folder; `jadpo check` never does, since
+> the app's own integrations skip the bar.
 
 ### `publish.description_missing`
 
@@ -2544,15 +2711,15 @@ error: Public type `OutwardCode` has no description
 Publishing bar
   compiles      passed                        no errors
   described     failed                        1 has no description
-  examples      not checked yet               waits for how examples are written
+  examples      passed                        1 example, every failure shown
   tests         passed                        no tests
   version       passed                        2.1.0, 1 added since 2.0.0
-  changelog     not checked yet               waits for the changelog's form
+  changelog     passed                        2.1.0 says why
   licence       passed                        mit, from Jadpo 1.0
 
 Wrote surface.jadpo_record
 
-package check failed: 1 failed, 4 passed, 2 not checked yet
+package check failed: 1 failed, 6 passed
 ```
 
 ### `publish.breaking_change`
@@ -2572,13 +2739,71 @@ error: `Postcodes.v2` changed in ways that break the apps that use it
 Publishing bar
   compiles      passed                        no errors
   described     passed                        every public declaration
-  examples      not checked yet               waits for how examples are written
+  examples      passed                        1 example, every failure shown
   tests         passed                        no tests
   version       failed                        2 breaking changes since 2.0.0
-  changelog     not checked yet               waits for the changelog's form
+  changelog     not checked yet               waits for an allowed version
   licence       passed                        mit, from Jadpo 1.0
 
-package check failed: 1 failed, 4 passed, 2 not checked yet
+package check failed: 1 failed, 5 passed, 1 not checked yet
+```
+
+### `publish.example_missing`
+
+Every function of a public library has an example in its description, and
+each failure it can raise is shown by an example or a test:
+
+```text
+$ jadpo package check
+error: Function `uk.tidy` has no example
+ --> libraries/uk.jadpo:6:14
+  |
+6 |     function tidy(entered: EnteredPostcode) fails InvalidPostcode -> UkPostcode {
+  |              ^^^^ no example in its description
+  reason: Every function of a published library shows how it is called with an example in its description, a ```jadpo block run as a test, so what the registry's page and `jadpo package show` say of it always runs.
+  next: Add a ```jadpo block to `uk.tidy`'s `///` description, holding statements as a test does: `assert uk.tidy(...) == ...` (agent)
+  rule: publish.example_missing
+  help: docs/language/14-tooling.html#command-errors
+```
+
+A failure no example or test asserts with `fails` is reported the same way,
+as "`uk.tidy` can fail with `InvalidPostcode`, which no example or test
+shows".
+
+### `publish.example_failed`
+
+An example runs as a test, so one that doesn't hold, or doesn't compile,
+is shown at its line in the description:
+
+```text
+$ jadpo package check
+error: Example of `uk.tidy` failed
+ --> libraries/uk.jadpo:7:9
+  |
+7 |     /// assert postcode == "SW1A1AA"
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this doesn't hold
+  reason: Run as a test of the package, it expected "SW1A1AA" and got "SW1A 1AA". An example runs as a test, so a description always shows what the code does.
+  next: Correct the example, or the code if the example says what it should do (agent)
+  rule: publish.example_failed
+  help: docs/language/14-tooling.html#command-errors
+```
+
+### `publish.changelog_missing`
+
+`jadpo package check` writes the new version's list of changes into
+`CHANGELOG.md`; the author says why beneath it:
+
+```text
+$ jadpo package check
+error: CHANGELOG.md doesn't say why 2.1.0 is released
+ --> CHANGELOG.md:3:1
+  |
+3 | ## 2.1.0
+  | ^^^^^^^^ no why beneath the list
+  reason: `jadpo package check` writes what changed from the surface; whoever releases it writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
+  next: Write why 2.1.0 is released under `## 2.1.0` in CHANGELOG.md, after the list (agent)
+  rule: publish.changelog_missing
+  help: docs/language/14-tooling.html#command-errors
 ```
 
 ## Errors
@@ -3476,9 +3701,11 @@ entity Reminder {
 
 ### Status
 
-Chunk 7.1 built the package format, names and the lock, and chunk 7.1b
+Chunk 7.1 built the package format, names and the lock, chunk 7.1b
 the surface, `jadpo package show` and `jadpo package check` with the
-publishing bar (below); the rest is still to build.
+publishing bar, and chunk 7.1b2 installing (`add` from a folder or git,
+`update`, `remove`, `link` and `unlink`) with the bar's examples and
+changelog (below); the rest is still to build.
 
 | Part | Chunk |
 |---|---|
@@ -3489,7 +3716,7 @@ publishing bar (below); the rest is still to build.
 | Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3 |
 | No transaction open during a call | 7.4 |
-| Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; git-sourced packages, links and publisher trust; the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -3514,7 +3741,18 @@ publishing bar (below); the rest is still to build.
 > "What publishing requires"); `publish.description_missing` and
 > `publish.breaking_change` (under "Publishing errors"). The choices are
 > in "Chosen in chunk 7.1b" below, with two questions for Richard (27 and
-> 28).
+> 28), decided on 2026-10-20.
+>
+> **Built (chunk 7.1b2).** Installing: `jadpo package add` from a folder or
+> a git repository's release tag, verified against its committed surface;
+> `update`, with area 18's review of what changed; `remove`; `link` and
+> `unlink`, every check compiling the app against a linked checkout and CI
+> refusing it; and the bar's examples (question 27) and changelog
+> (question 28). The errors are `install.surface_mismatch`,
+> `install.fetch_failed`, `install.in_use` and `install.link_refused`
+> under "Installing errors", and `publish.example_missing`,
+> `publish.example_failed` and `publish.changelog_missing` under
+> "Publishing errors"; the choices are in "Chosen in chunk 7.1b2" below.
 
 > **Built (chunk 7.2).** `jadpo package import openapi <file>`: a local
 > OpenAPI 3 document read into the app's own integration in
@@ -3674,9 +3912,97 @@ What the pages leave to the build, each the most conservative reading:
   installed package's version and source come from its lock line; the
   app's own integration's source is "the app's own". Lists cut a long
   line with `…`; the declaration's own screen and `--json` hold it whole.
-- **Not built yet.** `jadpo package add`, `update`, `remove`, `link`
-  and `unlink` say `toolchain.not_built_yet` until chunk 7.1b2; `new`,
-  `import`, `record`, `conform`, `publish` and `recipe` until theirs.
+- **Not built yet.** `jadpo package new`, `import`, `record`, `conform`,
+  `publish` and `recipe` say `toolchain.not_built_yet` until their
+  chunks; `add`, `update`, `remove`, `link` and `unlink` came with chunk
+  7.1b2.
+
+### Chosen in chunk 7.1b2
+
+What the pages leave to the build, each the most conservative reading:
+
+- **Where `add` installs from.** A folder holding `package.jadpo` is a
+  `path` source, locked relative to the app's root (`../postcodes`);
+  `<repository>@v<version>` is a `git` source. A repository written
+  `host/owner/name` is fetched over HTTPS, a URL (`https://`, `ssh://`,
+  `file://`, `git@host:`) as written, and a folder on this machine
+  (starting `.` or `/`) from its path, locked relative to the root. Git
+  runs with the developer's or CI's own access and never prompts. A Jadpo
+  app's folder (another app's OpenAPI) waits for the importer (chunk 7.2),
+  and a bare name for the registry; both say `toolchain.not_built_yet`. A
+  source whose path has a space is refused, since the lock writes each as
+  one word.
+- **A git release.** The repository is cloned with nothing checked out,
+  the tag's commit is checked out, and the package is at the repository's
+  root. The lock records the repository as written, the tag and its
+  commit. A tag the repository lacks names the tags it has
+  (`install.fetch_failed`).
+- **Verification at install.** The package is compiled as the app's own
+  integration in a scratch app (the golden rule), and must have no errors;
+  the surface its code gives at the version its committed
+  `surface.jadpo_record` names has to be that file byte for byte, and for
+  git that version has to be the tag's (`install.surface_mismatch`). Only
+  then are its files copied, leaving out hidden ones (`.git`) and a
+  `build/` at its root, through a hidden folder beside the target so a
+  failed copy leaves the old one, and its digest is 7.1's.
+- **What `add` refuses.** A package already in the lock (`update` moves
+  it); a package whose name the app's own code uses, which is installed,
+  checked and undone, showing `package.name_taken`. A third party's git
+  package still installs without an acceptance until `jadpo approval`
+  reports publisher trust (area 18).
+- **`update <name>`.** A `path` package is verified again from its folder;
+  a `git` one moves to the newest `v<version>` tag whose committed surface
+  names the same package, never to an older one, and a folder or tag now
+  holding another major version is refused, since that is a new package.
+  It prints area 18's review: each surface entry added, changed or
+  removed, `used by the app` when the app's code writes its name through
+  the package (`Postcodes.uk.tidy`), and `needs a person` for a changed or
+  removed one the app uses. The acceptance itself waits for `jadpo
+  approval`. A linked package is unlinked first.
+- **`remove <name>`.** Refused while a file of the app's has `use
+  packages/<name>` (`install.in_use`), naming each; otherwise the folder
+  and its lock line go, and the lock stays, possibly empty. A linked
+  package is unlinked first.
+- **`link <folder>`.** The lock's line becomes `link <path>`, the path
+  relative to the root, and the line it replaced is kept in
+  `.jadpo/links` (in the lock's format, `.jadpo/` git-ignored) for
+  `unlink`. The installed folder stays. Every load reads the checkout's
+  files, without hidden ones or its `build/`, in the installed folder's
+  place, so `jadpo check`, `test` and `dev` compile the app against it;
+  `jadpo check` and `link` show its problems at the checkout's paths. A
+  checkout with no `package.jadpo` can't be read. `link` itself shows the
+  app's check against it. `jadpo dev` and `jadpo test --watch` read the
+  checkout when they start: an edit there shows at their next start.
+- **Where a link is refused.** CI is the `CI` variable set to anything but
+  empty, as CI services set it and as `jadpo suggest share` and the
+  terminal's animation already read it; there `jadpo check` and `jadpo
+  test` refuse each link (`install.link_refused`). Area 14 names no
+  release or production profile, and every production build goes through
+  `jadpo build` (Phase 8), which will refuse a link whatever the
+  environment.
+- **`unlink <name>`.** Puts back the line `link` kept; with none (a
+  package linked before it was installed), the lock no longer names it and
+  the hint says to add it.
+- **Examples (question 27).** A ```` ```jadpo ```` block in the `///`
+  description of any public declaration; other fences are prose. Each runs
+  as a test named `example of <name>` (then `example 2 of <name>`), placed
+  after the package's own tests in the test file beside the declaration's
+  file, in the scratch app. One that doesn't compile is shown at its line
+  and left out so the rest run. A failure counts as shown when an example
+  or one of the package's tests has a line calling the function with
+  `fails <Failure>`. The bar's row counts examples; the package's own
+  tests stay the `tests` row.
+- **The changelog (question 28).** `CHANGELOG.md` beside `package.jadpo`,
+  part of the package and its digest: `# Changelog`, then a `## <version>`
+  section per version, newest first. For a new version `jadpo package
+  check` writes the list as the first list under its heading (`- first
+  release`, ``- added type `OutwardCode` ``, or `- no change to what it
+  offers` for a patch), and everything beneath it is the author's. While
+  the top section's version isn't a released tag, its heading and list
+  are rewritten and the author's text kept, so a change before the tag
+  updates it; a released section is never rewritten. A new version whose
+  section has no text of the author's fails the bar
+  (`publish.changelog_missing`); an already released one passes.
 
 ### Chosen in chunk 7.2
 
@@ -4210,7 +4536,7 @@ packages and extension points, as each note says; 26 was decided then.
     package, named after its function, and a failure counts as shown when
     an example or a test asserts it with `fails`. It reads as Markdown in
     the registry's page and `jadpo package show`, and uses nothing new.
-    Until decided, the bar says the item is not checked yet.
+    *Decided 2026-10-20 (Richard), as recommended; built in chunk 7.1b2.*
 28. **What does the changelog hold, and who writes it?** Raised 2026-10-20
     by chunk 7.1b. The bar says the changelog's list of changes is
     generated from the surface diff and the author writes only why, but no
@@ -4219,7 +4545,8 @@ packages and extension points, as each note says; 26 was decided then.
     a new version, its generated list of the surface's changes under it
     (`added type OutwardCode`), and keeps the author's text beneath; the
     bar refuses a release whose section has no text of the author's. Until
-    decided, the bar says the item is not checked yet.
+    decided, the bar says the item is not checked yet. *Decided 2026-10-20
+    (Richard), as recommended; built in chunk 7.1b2.*
 
 ### Decisions
 

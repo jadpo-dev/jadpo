@@ -446,6 +446,14 @@ rules! {
         "01-project-layout-and-modules.html#import-unneeded", "Import of a name the file sees without one";
     IMPORT_UNUSED: "import.unused", area 1, Error, Agent,
         "01-project-layout-and-modules.html#import-unused", "Imported name the file does not use";
+    INSTALL_FETCH_FAILED: "install.fetch_failed", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Package's git repository or tag couldn't be read";
+    INSTALL_IN_USE: "install.in_use", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package to remove is still used by the app";
+    INSTALL_LINK_REFUSED: "install.link_refused", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Linked package in a CI or production build";
+    INSTALL_SURFACE_MISMATCH: "install.surface_mismatch", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Package's committed surface doesn't match its code";
     LAYOUT_CALL_DIRECTION: "layout.call_direction", area 1, Error, Human,
         "01-project-layout-and-modules.html#layout-call-direction", "Shared code depends on a domain";
     LAYOUT_FILE_NAME_MISMATCH: "layout.file_name_mismatch", area 1, Error, Agent,
@@ -572,8 +580,14 @@ rules! {
         "21-ai.html#prompt-section-missing", "A prompt and its file don't make its two sections, each once and in order";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "14-tooling.html#command-errors", "Package's surface breaks its last release within one major version";
+    PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's changelog doesn't say why its new version is released";
     PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package's public declaration has no description";
+    PUBLISH_EXAMPLE_FAILED: "publish.example_failed", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Example in a package's description doesn't compile or doesn't hold";
+    PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's function has no example, or a failure it raises is shown by none";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

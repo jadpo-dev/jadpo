@@ -61,7 +61,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
-  package       Show, check, import packages  show, check, import
+  package       Show, check, import and install packages
 
 Data
   migrate       Write and apply migrations    new, apply, status
@@ -132,7 +132,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
-  package       Show, check, import packages  show · check · import
+  package       Show, check, import and install packages
 
 Data
   migrate       Write and apply migrations    new · apply · status
@@ -707,7 +707,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "test\tRun tests",
             "dev\tRun the app and reload on every save",
             "fmt\tFormat source files",
-            "package\tShow, check, import packages",
+            "package\tShow, check, import and install packages",
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
