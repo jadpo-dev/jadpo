@@ -750,6 +750,20 @@ impl Body<'_> {
                 .unwrap_or_default(),
             other => tree::written(other.syntax()),
         };
+        // A provider's operation safe to send again may map `timed_out:`
+        // though it lists no failures (chunk 7.2c2).
+        let provider = matches!(&inner, Expr::CallExpr(call) if matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Provider { .. })
+        ));
+        let fallible = match fallible {
+            Fallible::Never
+                if provider && arms.iter().any(|arm| arm.key == super::provider::TIMED_OUT) =>
+            {
+                Fallible::Fails(Vec::new())
+            }
+            other => other,
+        };
         match &fallible {
             Fallible::Never => {
                 for arm in &arms {
@@ -794,12 +808,7 @@ impl Body<'_> {
             // A provider's operation (area 11, "Calling"): its package's
             // failures are mapped at the call by their codes, and one left
             // unmapped is a fault, never passed on.
-            Fallible::Fails(names)
-                if matches!(&inner, Expr::CallExpr(call) if matches!(
-                    self.facts.reaches.get(&node_key(call.syntax())),
-                    Some(Reach::Provider { .. })
-                )) =>
-            {
+            Fallible::Fails(names) if provider => {
                 let mapped = self.provider_arms(&arms, names, &inner, &written, span);
                 if !mapped.is_empty() {
                     self.facts.mapped.insert(node_key(attempt.syntax()), mapped);

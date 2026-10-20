@@ -1000,6 +1000,37 @@ impl Part<'_> {
         children
     }
 
+    /// How a provider package's field is sent (area 11, "Decoding"; chunk
+    /// 7.2c2): its built-in encoding, or the package's functions that
+    /// decode and encode it, once they are checked.
+    fn coding(
+        &self,
+        host: &str,
+        path: &[String],
+        def: &crate::types::FieldDef,
+    ) -> Option<jadpo_graph::FieldCoding> {
+        self.ownership.package()?;
+        match def.coding.as_ref()? {
+            crate::types::WrittenCoding::Encoding(name) => {
+                jadpo_std::provider::WireEncoding::from_name(name)
+                    .map(|_| jadpo_graph::FieldCoding::Encoding(name.clone()))
+            }
+            crate::types::WrittenCoding::Functions { .. } => {
+                let [field] = path else {
+                    return None;
+                };
+                let host = self.lookup.canonical_name(host);
+                let decoder =
+                    crate::providers::operations(self.db, self.project).decoder(&host, field)?;
+                Some(jadpo_graph::FieldCoding::Functions {
+                    decode: decoder.decode.clone(),
+                    encode: decoder.encode.clone(),
+                    wire: type_ref(self.lookup, &decoder.wire),
+                })
+            }
+        }
+    }
+
     fn field(
         &mut self,
         host: &str,
@@ -1039,6 +1070,7 @@ impl Part<'_> {
             header: def.and_then(|def| def.header.clone()),
             column: def.and_then(|def| def.column.clone()),
             wire_name: def.and_then(|def| def.wire_name.clone()),
+            coding: def.and_then(|def| self.coding(host, &path, def)),
             section,
             copied_from: None,
             replaces: def.and_then(|def| def.replaces.as_ref()).map(|source| {
@@ -1095,6 +1127,7 @@ impl Part<'_> {
             header: field.header.clone(),
             column: field.column.clone(),
             wire_name: field.wire_name.clone(),
+            coding: None,
             section: None,
             copied_from: from.clone(),
             replaces: None,

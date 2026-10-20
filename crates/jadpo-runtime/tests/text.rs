@@ -192,6 +192,7 @@ fn text_a_request_carries_is_composed_before_its_rules() {
         codecs: &codecs,
         validators: &validators,
         shapes: &[],
+        coder: None,
     };
     let id = jadpo_std::http::CodecId(0);
     let mut problems = Vec::new();
