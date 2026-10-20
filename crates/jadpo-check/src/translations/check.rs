@@ -854,8 +854,8 @@ impl Ctx<'_> {
 }
 
 /// What every supported locale that isn't in progress must word: every
-/// message, an enum once any language file words it, and a failure a route
-/// can answer with.
+/// message and email subject, an enum once any language file words it,
+/// and a failure a route can answer with.
 pub(super) fn required<'a>(
     subjects: &'a Subjects,
     files: &[&LanguageFile],
@@ -869,7 +869,8 @@ pub(super) fn required<'a>(
             Kind::Message => true,
             Kind::Enum => files.iter().any(|file| file.member(&subject.key).is_some()),
             Kind::Failure => reachable.contains(&subject.type_name),
-            Kind::Email => false,
+            // An email is sent with its subject (area 16; chunk 7.3).
+            Kind::Email => true,
         })
         .collect()
 }
@@ -886,6 +887,9 @@ fn missing(file: &LanguageFile, subject: &Subject, locale: u32) -> Diagnostic {
     .reason(match subject.kind {
         Kind::Failure => format!(
             "A failure a route can answer with is worded in every supported locale that isn't in progress, so a client app showing `Locale.{tag}` has text for its code."
+        ),
+        Kind::Email => format!(
+            "An email's subject line is its member in its domain's language files, worded in every supported locale that isn't in progress, so an email sent in `Locale.{tag}` has one."
         ),
         _ => format!(
             "A {} is worded in every supported locale that isn't in progress, so a call with `locale: Locale.{tag}` has words to show.",

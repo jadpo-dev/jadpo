@@ -197,9 +197,9 @@ pub async fn call(ctx: &mut Ctx<'_>, call: Call) -> Result<Value, Unanswered> {
         Given::Value(value) => Ok(value),
         // Only a provider's operation is answered as it was sent, or with
         // its generated default.
-        Given::Wire(_) | Given::Generated => Err(Unanswered::Fault(FaultKind::Defect(
-            "an answer as sent where a capability's value was expected".into(),
-        ))),
+        Given::Wire(_) | Given::Generated | Given::Recorded => Err(Unanswered::Fault(
+            FaultKind::Defect("an answer as sent where a capability's value was expected".into()),
+        )),
     }
 }
 
@@ -214,6 +214,9 @@ pub enum Given {
     /// A provider operation's generated default, for its site to make
     /// from the operation's output type (chunk 7.2d).
     Generated,
+    /// A provider operation's recording, for its site to fill (chunk
+    /// 7.2d2).
+    Recorded,
 }
 
 /// [`call`], giving a provider's answer as it was sent where its driver
@@ -279,6 +282,7 @@ pub(crate) fn answered(repeat: Repeat, answer: Answer) -> Result<Given, Unanswer
         Answer::Value(value) => Ok(Given::Value(value)),
         Answer::Wire(text) => Ok(Given::Wire(text)),
         Answer::Generated => Ok(Given::Generated),
+        Answer::Recorded => Ok(Given::Recorded),
         Answer::Failed(code) => Err(Unanswered::Failed(code)),
         Answer::Unavailable | Answer::RetryAfter(_) => raised(crate::unavailable()),
         // Sent again under its key, or a call that changes nothing, it

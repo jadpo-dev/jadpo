@@ -1,0 +1,2 @@
+/// Said to a guest who booked breakfast.
+type BreakfastLine = Message {}

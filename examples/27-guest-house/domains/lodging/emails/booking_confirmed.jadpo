@@ -1,0 +1,20 @@
+// An email is a type with the `EmailMessage` base, in its domain's
+// `emails/` folder. Its fields are the values its templates write, and
+// every email has two more: `to:`, the address it goes to, and
+// `locale:`, the language it is written in. Its words live beside it, in
+// `booking_confirmed.html` and `booking_confirmed.txt`, each checked
+// against these fields as code is: a name that isn't a field, a message
+// that doesn't exist or a value that can't be written out is a compile
+// error.
+
+use lodging/types { GuestName, NightCount, RoomKind }
+
+/// Sent to a guest once their booking is made.
+type BookingConfirmed = EmailMessage {
+    guest_name: GuestName
+    booked_room: RoomKind
+    arrives_on: CalendarDate
+    nights: NightCount
+    breakfast: Bool
+    to_bring: List<PresentationText>
+}

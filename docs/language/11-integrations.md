@@ -16,6 +16,8 @@ rules:
   - semantic.service_secret_sink_invalid
   - package.*
   - connection.*
+  - test.recording_undecodable
+  - test.round_trip_failed
 ---
 
 # External services
@@ -642,8 +644,11 @@ operation and grow.
 ### Mapping imported types to standard types
 
 > Decided 2026-10-17 (Richard). The exact format mappings (its first
-> layer) are built with the importer (chunk 7.2); the rest comes with
-> chunk 7.2e.
+> layer) are built with the importer (chunk 7.2); shape and name
+> detection, decoded at the edge with a field's `wire_parts:` (under
+> "Decoding"), and the findings, `package.standard_candidate`, with chunk
+> 7.2e ("Chosen in chunk 7.2e"); the scoped review and unconfirmed
+> operations come with chunk 7.2e2.
 
 An imported description says little about what a field *is*: OpenAPI's
 `integer` may be pence, Unix seconds or a count. Area 19 decides that a
@@ -714,6 +719,59 @@ environment is live.
 Written operations that are not confirmed are allowed in every build. The
 approval report flags them, and CI requires a passing contract run against
 the sandbox for each one (see "Tests and fakes").
+
+> **Built (chunk 7.2d2).** `jadpo package record <connection>
+> <resource>.<operation>` calls the sandbox once through the connection,
+> with its credential from `.env.local` and the operation's input, written
+> as a route's body is, from `--input`. It checks the answer against the
+> operation's output type and keeps it as the recording: along
+> `output_at:`, only the members the type declares, each plain text or
+> number replaced by a placeholder naming its built-in type (`"{Text}"`),
+> and what the package's own encodings and decoders read kept as sent.
+> The surface then marks the operation `confirmed`, and `jadpo test`
+> decodes the recording ("Recording errors"):
+>
+> ```text
+> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
+> ✓ Recorded `couriers.bookings.create` from the sandbox
+>     sent    POST https://sandbox.acme-couriers.example/v1/bookings
+>     answer  decodes as Booking
+>     values  2 placeholders, 2 kept as sent
+>     file    shared/providers/acme_couriers/v1/recordings/bookings.create.json
+>
+> ✓ operation recorded  AcmeCouriers.v1 bookings.create · confirmed
+>
+> → jadpo test  decodes the recording with every decoder
+> ```
+>
+> ```json
+> {
+>   "data": {
+>     "collectAt": "{Instant}",
+>     "id": "{Text}",
+>     "status": "booked",
+>     "window": "PM"
+>   }
+> }
+> ```
+>
+> It refuses before anything is sent a connection whose environment is
+> live, or whose credential nothing sets (`recording.refused`), and keeps
+> nothing from an answer that doesn't decode or a refusal
+> (`recording.failed`):
+>
+> ```text
+> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
+> error: The sandbox's answer to `couriers.bookings.create` doesn't decode as `Booking`
+>   reason: Reading it found `variant` on `status`: the operation's types and the provider disagree, so a real call would fault. Nothing was recorded.
+>   next: Correct `Booking` against the answer and the provider's documentation, then run it again (agent)
+>   rule: recording.failed
+>   help: docs/language/14-tooling.html#command-errors
+> ```
+>
+> Writing an operation's output type from the answer when it has none
+> comes with chunk 7.2e; a HAR capture's operations with its importer.
+> The choices are in "Chosen in chunk 7.2d2" below.
 
 ### Installing safely
 
@@ -974,7 +1032,9 @@ asks the description of every public message (area 10, "Chosen in chunk
 > the last tag and refuses a breaking change (`publish.breaking_change`);
 > item 7 is the index's own check. Item 4's decoders and recipes come with
 > decoding (chunk 7.2) and recipes; the bar says "not checked yet" for
-> each. The surface is written whenever the package compiles and its
+> each. Built in chunk 7.2d2: the `decoders` row, every decoder over every
+> recording with each field's `decode:` and `encode:` round-tripping
+> ("Recording errors"); recipes still come later. The surface is written whenever the package compiles and its
 > version is allowed.
 >
 > **Built (chunk 7.1b2).** Item 3: each ```` ```jadpo ```` block in a
@@ -2161,6 +2221,141 @@ type WindowUnknown = Failure {
 }
 ```
 
+Built in chunk 7.2e and checked by this checkout's `jadpo`: a standard
+type whose parts the provider sends as members of the object that holds
+it, as Stripe sends `"amount": 1050, "currency": "gbp"` beside a charge's
+other members, is one field whose `wire_parts:` spells the member each part
+is read from and written to. The field has no member of its own on the
+provider's wire, and fields may share one part's member, as a charge's
+amounts share its currency:
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/charge.jadpo
+/// A charge to a card.
+public type Charge = Object {
+    id: ChargeId
+    amount: Amount {
+        wire_parts: {
+            amount: "amount"
+            currency: "currency"
+        }
+    }
+    amount_refunded: Amount {
+        wire_parts: {
+            amount: "amount_refunded"
+            currency: "currency"
+        }
+    }
+    merchant: Point? {
+        wire_parts: {
+            latitude: "lat"
+            longitude: "lng"
+        }
+    }
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/resources/charges.jadpo
+public resource charges {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/charges/{id}"
+        input: ChargeLookup
+        output: Charge
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72e-parts file=domains/billing/actions/refunded_so_far.jadpo
+use app { payments }
+use shared/providers/tidepay
+
+/// How much of a charge has been refunded.
+action refunded_so_far(charge: Tidepay.ChargeId) -> Tidepay.Amount {
+    var paid_charge: Tidepay.Charge = payments.charges.get(
+        Tidepay.ChargeLookup {
+            id: charge
+        }
+    )
+    return paid_charge.amount_refunded
+}
+```
+
+```jadpo check project=p72e-parts file=app.jadpo hidden
+application {
+    connections: {
+        payments: {
+            package: Tidepay.v1
+            domains: [billing]
+            credential: config.payments_api_key
+            environment: config.payments_environment
+        }
+    }
+}
+```
+
+```jadpo check project=p72e-parts file=config.jadpo hidden
+config {
+    payments_api_key: Text {
+        secret: true
+    }
+    payments_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/package.jadpo hidden
+/// Tidepay's card payments.
+package Tidepay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/provider.jadpo hidden
+/// How Tidepay is reached and called.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.tidepay.example"
+        sandbox: "https://sandbox.tidepay.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/charge_lookup.jadpo hidden
+/// Which charge.
+public type ChargeLookup = Object {
+    id: ChargeId
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/charge_id.jadpo hidden
+/// Tidepay's reference for a charge.
+public type ChargeId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72e-parts file=shared/providers/tidepay/v1/types/amount.jadpo hidden
+/// An amount charged.
+public type Amount = Money {}
+```
+
+So `{"id": "ch_1", "amount": 1050, "amount_refunded": 250, "currency":
+"gbp", "lat": 51.5, "lng": -0.125}` is read as a `Charge` of £10.50 with
+£2.50 refunded at a merchant at 51.5° N, 0.125° W, and a `Charge` is sent back
+as those six members, the currency once; two amounts in different
+currencies can't be sent, since they share one member, and the call stops
+as one that doesn't encode. A `Point` is read from its `latitude` and
+`longitude`, which GeoJSON would send as a pair; any other standard type
+made of named parts from those parts (`Money`'s `amount`, in minor units,
+and `currency`; `InstantRange`'s `start` and `end`). A field none of whose
+members is sent is `none` where it may be, and one with only some is a
+fault naming the missing member. Everywhere else, the field is written as
+the contract writes its type.
+
 - **Where they apply.** On the provider's wire: an operation's input,
   its answer and, with chunk 7.6, its webhooks. Everywhere else, a
   `json.write`, a route's answer or an event's payload, the field is
@@ -2933,10 +3128,11 @@ recommends.
   This changes area 17's hashing of text for call payloads in development
   only; production keeps area 16's spans with no values.
 
-> **Built (chunk 7.2d)**, but for recordings (chunk 7.2d2), `jadpo trace`
-> and the timelines: every provider call `jadpo dev` makes is answered by
-> the package's fake, with what `jadpo calls script` scripted or else the
-> operation's generated default ("Tests and fakes"), and a provider
+> **Built (chunk 7.2d)**, but for `jadpo trace` and the timelines: every
+> provider call `jadpo dev` makes is answered by the package's fake, with
+> what `jadpo calls script` scripted, else from the operation's recording
+> with its placeholders filled (chunk 7.2d2, logged as `recording`), else
+> the operation's generated default ("Tests and fakes"), and a provider
 > connection's setting that nothing gives (its credential, environment or
 > address) gets a stand-in, so the app starts with no credential set.
 > `development: { sandbox: }` names operations, `resource.operation`, or
@@ -3169,8 +3365,8 @@ example and real output under "Errors".
 | A non-public type or failure reachable from a public declaration, in a package or a domain | By `jadpo check` | 7.1 |
 | A package's resource and action with the same name; a public action that emits; subscribing to a package's non-public event | By `jadpo check` | 7.1 |
 | A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1c; both `hosts:` and `runs:` 7.1 |
-| A capability's connection whose package does not provide it | By `jadpo check` | 7.3 |
-| A function call or expression in a `provide` mapping | By `jadpo check` | 7.3 |
+| A capability's connection whose package does not provide it | By `jadpo check` | 7.3c |
+| A function call or expression in a `provide` mapping | By `jadpo check` | 7.3c |
 | A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
@@ -3187,7 +3383,9 @@ example and real output under "Errors".
 > name, a public action that emits and subscribing to a non-public event
 > (chunk 7.6). Chunk 7.1c built a connection's `host:` for a package
 > with fixed `hosts:`, with the rest of a connection's keys, under
-> "Connection errors".
+> "Connection errors". Chunk 7.2d2 built a decoder that fails on a
+> recording and a field's `decode:` and `encode:` that don't round-trip,
+> under "Recording errors".
 
 ## Package errors
 
@@ -3991,7 +4189,9 @@ check failed: 1 error, 6 files
 > outside a provider package, both on one field, an encoding that doesn't
 > hold the field's type or `Wire.minor_units` without the field's one
 > currency, and a function that isn't the package's or doesn't take and
-> give the right types.
+> give the right types. Chunk 7.2e adds `wire_parts:`, refused on a type
+> not made of parts, beside another way of sending the field, with a part
+> left out, unknown or given twice, or a spelling that isn't text.
 
 An encoding holds the types its provider sends that way:
 
@@ -4087,6 +4287,106 @@ error: `wire_name` is for a provider package's fields
 check failed: 1 error, 3 files
 ```
 
+### `package.standard_candidate`
+
+> Built in chunk 7.2e (area 11, "Mapping imported types to standard
+> types"): in a provider package's public object, a field the provider
+> sends in its own shape that looks like a standard type the package
+> doesn't use. A whole number named like a time (`created`, `expires`,
+> `paid_at`) may be an `Instant` sent as seconds; one named like an amount
+> (`amount`, `amount_refunded`, `total_amount`) beside a currency, `Money`
+> in minor units; a latitude beside a longitude, a `Point`. A field that
+> says how it is sent (`wire:`, `wire_parts:`, `decode:`) is never one, and
+> an object that is a standard type whole is `type.standard_exists`
+> instead. It is declinable: a field that means something else keeps its
+> type with a reason on the field.
+
+An imported description often says only `integer`, so the importer leaves
+the field as the provider types it and the error asks for the
+documentation to be checked:
+
+```jadpo check project=e72e-candidate file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72e-candidate file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72e-candidate file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72e-candidate file=shared/providers/acme_couriers/v1/types/delivery.jadpo expect=package.standard_candidate
+/// A parcel delivered.
+public type Delivery = Object {
+    id: Text
+    delivered_at: Int
+}
+```
+
+```text output
+error: `Delivery.delivered_at` may be an `Instant` sent as seconds
+ --> shared/providers/acme_couriers/v1/types/delivery.jadpo:4:5
+  |
+4 |     delivered_at: Int
+  |     ^^^^^^^^^^^^ a whole number named like a time
+  reason: `delivered_at` is a whole number named like a time, which providers usually send as seconds since 1970. A package's public types use the standard types, so an app reads an `Instant` rather than a number to convert, and the package decodes it at the edge.
+  next: Check the provider's documentation, then make it `delivered_at: Instant { wire: Wire.unix_seconds }`, or `Wire.unix_milliseconds` for milliseconds, or write `decline package.standard_candidate: "<why>"` above it if this is deliberate (agent)
+  rule: package.standard_candidate
+  help: docs/language/11-integrations.html#package-standard-candidate
+
+check failed: 1 error, 4 files
+```
+
+Swapping it reads the provider's number as the `Instant` it is; a field
+that really is a number keeps its type with a reason, which `jadpo
+declines list` shows:
+
+```jadpo check project=e72e-candidate-declined file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72e-candidate-declined file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72e-candidate-declined file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72e-candidate-declined file=shared/providers/acme_couriers/v1/types/delivery.jadpo
+/// A parcel delivered.
+public type Delivery = Object {
+    id: Text
+    delivered_at: Instant {
+        wire: Wire.unix_seconds
+    }
+    decline package.standard_candidate: "The courier numbers its collection slots 1 to 6; this is that number"
+    slot_time: Int
+}
+```
+
 ## Installing errors
 
 > Built in chunk 7.1b2. The installing commands report these, and change
@@ -4152,6 +4452,242 @@ error: `Postcodes.v2` is linked to `../postcodes`
   help: docs/language/14-tooling.html#command-errors
 
 check failed: 1 error, 7 files
+```
+
+## Recording errors
+
+> Built in chunk 7.2d2. `jadpo test` reads every recording of the app's
+> own integrations as its operation's output, its placeholders filled,
+> through the package's own decoders, each as a test of the `recording`
+> kind (area 13), and the publishing bar does the same as its
+> `decoders` row. `jadpo package record` reports `recording.refused` and
+> `recording.failed`, which area 14 lists with its command errors.
+
+### `test.recording_undecodable`
+
+A recording the operation's output type, or one of the package's own
+decoders, doesn't read: here the provider sent a status the package's
+`Status` doesn't have.
+
+```jadpo check project=e72d2-undecodable file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        output_at: "data"
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/types/status.jadpo hidden
+/// Where a booking stands.
+public type Status = Enum {
+    booked
+    on_hold
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/types/booking.jadpo
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+    status: Status
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/recordings/bookings.create.json expect=test.recording_undecodable
+{
+  "data": {
+    "id": "{Text}",
+    "status": "lost"
+  }
+}
+```
+
+```text output
+FAIL  bookings.create's recording decodes
+ --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1
+
+  decode: `bookings.create`'s recording doesn't decode: `variant` on `status`
+  reason: Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.
+  next: Correct the type or its decoder against the recording and the provider's documentation (agent)
+
+  rule: test.recording_undecodable
+  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1
+
+test failed: 1 failed, 1 recording test
+```
+
+### `test.round_trip_failed`
+
+A field's `encode:` that doesn't give back what its `decode:` read from a
+recording, so what the app sends isn't what the provider sent: here the
+package reads the courier's `EVE` as the afternoon, and writes the
+afternoon back as `PM`.
+
+```jadpo check project=e72d2-round-trip file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        output_at: "data"
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/daypart_code.jadpo hidden
+/// A part of the day as the courier writes it.
+public type DaypartCode = Text {
+    max_length: 3
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/daypart.jadpo hidden
+/// When in the day a collection comes.
+public type Daypart = Enum {
+    morning
+    afternoon
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/failures/daypart_unknown.jadpo hidden
+/// A part of the day the courier names that this package doesn't know.
+type DaypartUnknown = Failure {
+    kind: FailureKind.invalid_value
+    message: "The courier named a part of the day this package doesn't know."
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+    daypart: Daypart {
+        decode: dayparts.read_daypart
+        encode: dayparts.write_daypart
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/libraries/dayparts.jadpo
+/// The courier's part of the days, which it writes as "AM" and "PM".
+library dayparts {
+    /// The part of the day the courier's code names.
+    function read_daypart(code: DaypartCode) fails DaypartUnknown -> Daypart {
+        if (code == "AM") {
+            return Daypart.morning
+        }
+        if (code == "PM" or code == "EVE") {
+            return Daypart.afternoon
+        }
+        reject DaypartUnknown
+    }
+
+    /// The courier's code for a part of the day.
+    function write_daypart(daypart: Daypart) -> DaypartCode {
+        if (daypart == Daypart.morning) {
+            return "AM"
+        }
+        return "PM"
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/recordings/bookings.create.json expect=test.round_trip_failed
+{
+  "data": {
+    "id": "{Text}",
+    "daypart": "EVE"
+  }
+}
+```
+
+```text output
+FAIL  bookings.create's recording decodes
+ --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1
+
+  decode: `dayparts.read_daypart` and `dayparts.write_daypart` don't round-trip `bookings.create`'s recording
+  recorded: "EVE"
+  written: "PM"
+  reason: A field's `encode:` writes back what its `decode:` read, so what the app sends is what the provider sent; `dayparts.write_daypart` doesn't give back the value `dayparts.read_daypart` read from the recording.
+  next: Correct `dayparts.read_daypart` or `dayparts.write_daypart` so each undoes the other (agent)
+
+  rule: test.round_trip_failed
+  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1
+
+test failed: 1 failed, 1 recording test
 ```
 
 ## Publishing errors
@@ -5730,8 +6266,9 @@ side (below); the rest is still to build.
 | Hand-written packages' `wire:`, `decode:` and `encode:`, `wire_output:`, lazy decoding, `retry:` | 7.2c2 |
 | Generated fakes, `fakes:` in tests, provider calls faked in `jadpo dev` with `development: { sandbox: }`, `jadpo calls` | 7.2d |
 | Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
-| Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
-| The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3 |
+| Mapping imported types to standard types beyond the exact format mappings: shape and name detection, `wire_parts:`, `package.standard_candidate` | 7.2e |
+| The scoped review of an import's types, tracked per type, and unconfirmed operations | 7.2e2 |
+| The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
 | Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
@@ -5856,8 +6393,16 @@ side (below); the rest is still to build.
 > `calls script` (area 17). The errors are area 13's
 > `semantic.fake_invalid`, `test.fake_exhausted` and `test.fake_unused`,
 > and `connection.value_invalid` for a `sandbox:` name the package
-> doesn't have; the choices are in "Chosen in chunk 7.2d" below. Next:
-> recordings and `jadpo package record` (chunk 7.2d2).
+> doesn't have; the choices are in "Chosen in chunk 7.2d" below.
+
+> **Built (chunk 7.2d2).** Recordings, under "Provenance and
+> confirmation", "Provider calls in development" and "Recording errors":
+> `jadpo package record` keeps a sandbox's answer as an operation's
+> recording, its values placeholders; `jadpo test` and the publishing bar
+> decode every recording of the app's own integrations with every
+> decoder (`test.recording_undecodable`, `test.round_trip_failed`); and
+> `jadpo dev`'s fake answers an operation from its recording. The choices
+> are in "Chosen in chunk 7.2d2" below.
 
 ### Chosen in chunk 7.1
 
@@ -5885,7 +6430,7 @@ What the pages leave to the build, each the most conservative reading:
   (`fails Postcodes.InvalidPostcode`), a type built from a value
   (`Postcodes.UkPostcode(text)`) and a public library's function
   (`Postcodes.uk.parse(text)`). A package's actions, subscribers and
-  events (chunk 7.6) and capability mappings (chunk 7.3) are
+  events (chunk 7.6) and capability mappings (chunk 7.3c) are
   `toolchain.not_built_yet` where they are declared (a library
   package's translations were too, until chunk 7.1b3); a resource's
   operations are read with provider calls (chunk 7.2c). Two versions of one
@@ -5938,7 +6483,7 @@ What the pages leave to the build, each the most conservative reading:
   function of a `public library`; each `public` type (`type Name =
   Base`), then each `public` failure; each folder in `recipes/`. A
   package's events, actions, polls and capability mappings join with their
-  chunks (7.6, 7.3); its public messages, `message
+  chunks (7.6, 7.3c); its public messages, `message
   translations.<message>` with their fields, after the functions, and a
   `locale` line in the package's entry for each language it words, since
   chunk 7.1b3 (area 10). A library itself has no
@@ -6323,7 +6868,7 @@ conservative reading:
   `<Parent><Field>Element`. A schema named as a built-in type is
   `<Name>Type`, and listed. `oneOf` and `anyOf` of several shapes, and an
   object of any fields, are left out and listed. Shape and name
-  detection come with chunk 7.2e.
+  detection came with chunk 7.2e.
 - **A Jadpo application's document** (one whose operations carry
   `x-jadpo-changes`) is read exactly: each field's type from
   `x-jadpo-constraints`, `changes:` from `x-jadpo-changes`, `idempotent:
@@ -6606,7 +7151,7 @@ Fakes and the development call log, each the most conservative reading:
 - **The call log** is `build/dev/calls.jsonl`, one call a line: its id
   (`call_31`, counted on from the last the log holds), when it went out,
   its connection and operation, its source (`generated`, `scripted`,
-  `sandbox`; `recording` with chunk 7.2d2), its request's id, how long it
+  `sandbox`, and `recording` since chunk 7.2d2), its request's id, how long it
   took, the request as made (method, address and body, never its headers,
   which hold the credential) and the answer as sent or generated, and how
   it ended with a failure's code. It keeps the last 500 calls rather than
@@ -6616,6 +7161,163 @@ Fakes and the development call log, each the most conservative reading:
   calls (files) are not, and a delivery's or a schedule's call has no
   request. Each request's line in `jadpo dev` lists its calls, and its
   `--json` event gives them.
+
+### Chosen in chunk 7.2e
+
+Shape and name detection, decoded at the edge, and the declinable
+findings (layers 2, 3 and 6 for fields); the scoped review and
+unconfirmed operations (layers 4 and 5) are chunk 7.2e2. Each choice the
+most conservative reading:
+
+- **How a provider's shape is decoded at the edge: `wire_parts:`.** The
+  page decides that Stripe's `amount: 1050, currency: "gbp"` decodes to
+  `Money`, but no decoding it names could do it: `wire:` and `decode:`
+  read one member, and `Wire.minor_units` needs one fixed currency. A
+  field's `wire_parts:` names, for each part of its standard type, the
+  member of the object holding the field it is read from and written to;
+  the field has no member of its own on the provider's wire, and is
+  written as the contract writes it everywhere else. It is for the
+  standard types made of named parts (`Money`'s `amount` and `currency`,
+  `InstantRange`'s `start` and `end`, and the others sent as an object of
+  members) and a `Point`, by `latitude` and `longitude`, which GeoJSON
+  sends as a pair. Every part is spelled, as text, once
+  (`package.wire_invalid`), never beside `wire:`, `decode:` or `encode:`.
+  Fields may share a part's member, as a charge's amounts share its
+  currency, but a field of its own can't take one
+  (`package.wire_name_invalid`); written, two values that share a member
+  and differ stop the call as one that doesn't encode, naming the member.
+  None of a field's members sent is `none` where the field may be; some
+  missing is a fault naming each. Recorded in "Decisions" below.
+- **What the importer maps by shape.** Only what the shapes
+  `type.standard_exists` matches name, and only where nothing is guessed
+  but the units: a whole number named as `Money`'s amount (`amount`,
+  `value`, `cents`, `pence`, `minor`, `amount_minor`) beside a currency
+  (`currency`, `currency_code`) of the same optionality is `Money` read
+  from both, the currency's field and its own enumeration gone; a
+  latitude beside a longitude (`lat`, `lng`, `lon`) of the same
+  optionality is a `Point` named `location` (`position` or `point` where
+  that is taken). An object that is only an amount in whole numbers and a
+  currency, or only a `start` and an `end` that are instants, each
+  required and spelled as the contract spells it, is `Money` or
+  `InstantRange` wherever it is used, and isn't declared, since nothing
+  needs decoding. Any other object of a standard shape is left to
+  `type.standard_exists`, whose swap needs a decoding an agent writes.
+- **What it leaves to check: `package.standard_candidate`.** A whole
+  number named like a time (`created`, `updated`, `deleted`, `expires`,
+  `timestamp`, `time`, or ending `_at`, `_time` or `_timestamp`) may be an
+  `Instant` sent as seconds or milliseconds; one named like an amount
+  (`amount_` or `_amount` besides the shape's names) beside a currency
+  may be `Money`; neither is swapped, since only the documentation says
+  which. Each is a declinable error on the field, in a provider package's
+  public objects, until it says how it is sent or is declined with a
+  reason; so is a latitude beside a longitude that isn't mapped. A number
+  named like a time that is text (`"2026-10-20"`) isn't flagged: the page
+  names whole numbers, and a format says when text is a time.
+- **Fakes.** A generated default answer writes a field's parts as their
+  members, and a `Money` as the contract sends one, a whole number of
+  minor units in the currency its type fixes or `GBP`; until now a fake's
+  `Money` was written in a form no reader takes.
+- **The summary.** The status grid counts the fields mapped `by format`
+  and `by shape`; "Mapped by shape" lists each shape mapping and how it is
+  read, since each is a judgement, where a format's is only counted; each
+  guess is under "To check" with its `(agent)` step. `--json` gives every
+  mapping as `mapped`, with `at`, `standard`, `by` and the members it is
+  read `from`.
+
+The import's own output, for a payment provider's document:
+
+```text
+$ jadpo package import openapi tidepay.json
+✓ Imported tidepay.json into shared/providers/tidepay/v2024_06_20
+    package     Tidepay.v2024_06_20
+    read        from its schemas
+    resources   charges
+    operations  1
+    types       3
+    standard    4 by shape
+
+Mapped by shape
+  Charge.amount  Money, read from `amount` and `currency`
+  Charge.fee     Money, sent as the standard type
+  Charge.window  InstantRange, sent as the standard type
+  Shop.location  Point, read from `lat` and `lng`
+
+To check
+  May be `Money` in minor units, its currency in `currency`: check the
+  provider's documentation, then make it `Money` read from both with
+  `wire_parts:`, or decline `package.standard_candidate` with the reason
+  (agent)
+    Charge.amount_refunded
+
+  May be an `Instant` sent as whole seconds: check the provider's
+  documentation, then make it `Instant { wire: Wire.unix_seconds }`, or
+  decline `package.standard_candidate` with the reason (agent)
+    Charge.created
+
+✓ imported  1 operation · 3 types · 4 to check
+
+→ jadpo check  checks the package with the app
+```
+
+(The provider's two findings, its sandbox host and its failures, are left
+out above.)
+
+### Chosen in chunk 7.2d2
+
+Recordings, each choice the most conservative reading:
+
+- **What a recording keeps.** The answer as the provider sent it, only
+  along `output_at:`'s path and only the members the operation's output
+  type declares, written with two spaces of indentation and members in
+  name order. Each text or number the type reads as a plain value is a
+  placeholder naming its built-in type in braces, `"{Text}"`,
+  `"{Instant}"`, `"{Int}"`, so no personal data or account detail from
+  the sandbox is committed. Kept as sent: booleans and `null`, an enum's
+  spellings and a map's keys, which say nothing about anyone; a field in
+  a built-in encoding or with the package's own `decode:` and `encode:`,
+  and the whole answer of an operation with `wire_output:`, which its
+  decoders exist to read, numbers with their digits as written; and a
+  value whose type's rules no generated value keeps (a pattern), which a
+  placeholder couldn't stand in for.
+- **Filling a placeholder** gives a generated value of the type at its
+  place, as the fake's generated default makes one (chunk 7.2d): the
+  invocation's clock, a fresh UUID. Members a hand-written recording adds
+  beyond the type are left as they are and ignored by decoding.
+- **Which recordings `jadpo test` reads.** Every
+  `recordings/<resource>.<operation>.json` of the app's own integrations
+  in `shared/providers/`, connected or not; an installed package's were
+  read when it was published, and its files are held to its digest. Each
+  is a test of a fifth kind, `recording` (area 13), named
+  `<resource>.<operation>'s recording decodes`, run alone by its file;
+  it reads the whole output, never only the fields code reads. A
+  recording named after no operation of its package fails it too.
+- **Round trips** are checked on what a recording holds: each field's
+  `decode:` over the value recorded, then its `encode:` over what that
+  gave, which must be the value recorded (`test.round_trip_failed`,
+  showing both). Built-in encodings round-trip by construction.
+- **The publishing bar** counts the recordings as its `decoders` row,
+  apart from the package's own tests, and shows each failure's report.
+- **`jadpo dev`** answers an unscripted call from its operation's
+  recording where its package keeps one, the generated default
+  otherwise; a script still comes first. Tests keep the generated
+  default, so a test never depends on a recording.
+- **`jadpo package record <connection> <resource>.<operation>`** runs in
+  an app, through one of its connections, since a package alone has no
+  credential or sandbox to call. It records into the app's own
+  integration, or into a linked package's checkout, and refuses an
+  installed package (`recording.refused`), whose files its digest holds.
+  The operation's input is `--input`, JSON as a route's body is written,
+  required when the operation takes one. It refuses before sending
+  anything a connection whose environment setting chooses `live`, one
+  whose credential, environment or address nothing sets (the stand-in
+  `jadpo dev` gives it would reach nobody), and one with no address. A
+  keyed operation takes a key derived as any call's (area 12, "Keys"),
+  from a scope of its own and this run's randomness, so recording again
+  is a new request. A refusal, no answer, or an answer that doesn't
+  decode keeps nothing (`recording.failed`); recording the same answer
+  again leaves the file as it was. An operation with no `output:` is
+  `toolchain.not_built_yet`: writing the type from the answer comes with
+  chunk 7.2e.
 
 ### Chosen in chunk 7.1e
 
@@ -7169,3 +7871,5 @@ packages and extension points, as each note says; 26 was decided then.
 | A provider field's spelling on the wire (after chunk 7.2) | A field or enum variant in a provider package may say its spelling on the wire with `wire_name:`, written only where it differs from the Jadpo name (`collectAt`, `after-noon`); the importer writes it, and the runtime reads and writes that spelling (Richard, as recommended under the 2026-10-19 standing instruction; built in 7.2c) | 2026-10-20 |
 | Wording two versions of a package (after chunk 7.1c2) | While the app holds two versions of a library package that carries translations, the app words each under a key that carries the version (`postcodes_v3: { }`), as its names do; with one version held, the key stays the folder name (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
 | `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
+| A standard type read from its object's members (chunk 7.2e) | A provider package's field gives `wire_parts:`, the member of the object holding it that each part of its standard type is read from and written to, so Stripe's `amount` and `currency` are one `Money` and `lat` and `lng` one `Point`; for the standard types made of named parts and `Point`; fields may share a part's member, and two values that differ there stop the call; the field has no member of its own on the wire and is the contract's everywhere else. Decided by the building session where the page names the decoding but no mechanism could do it; follows `wire_name:`'s shape (decided for Richard) | 2026-10-20 |
+| What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |

@@ -25,6 +25,24 @@ pub struct Package {
     /// Whether it was read exactly, from a Jadpo application's `x-jadpo`
     /// fields.
     pub exact: bool,
+    /// Each field mapped to a standard type, in the order found (area 11,
+    /// "Mapping imported types to standard types").
+    pub mapped: Vec<Mapped>,
+}
+
+/// A field mapped to a standard type: by its format, or by its shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mapped {
+    /// `Charge.amount`.
+    pub at: String,
+    /// `Money`.
+    pub standard: String,
+    /// `format` (the description's own hint, area 11's first layer) or
+    /// `shape` (its second, chunk 7.2e).
+    pub by: &'static str,
+    /// The provider's members a standard type is read from, each its
+    /// spelling; empty for one sent as the standard type is.
+    pub from: Vec<String>,
 }
 
 /// What `provider.jadpo` says.
@@ -103,6 +121,9 @@ pub struct Field {
     /// The provider's spelling, where it differs from `name`: written as
     /// the field's `wire_name:` (area 11, decided 2026-10-20).
     pub wire: Option<String>,
+    /// Its standard type's parts and the members each is read from, its
+    /// `wire_parts:` (chunk 7.2e).
+    pub parts: Vec<(String, String)>,
 }
 
 /// A variant of an enumeration.
@@ -281,7 +302,16 @@ fn type_file(name: &str, ty: &TypeDecl) -> String {
                     .map(|wire| ("wire_name".to_string(), quote(wire)))
                     .collect();
                 settings.extend(field.ty.rules.iter().cloned());
-                out.push_str(&rules_block(&settings, "    "));
+                if field.parts.is_empty() {
+                    out.push_str(&rules_block(&settings, "    "));
+                } else {
+                    // Read from its parts among the object's members.
+                    out.push_str(" {\n        wire_parts: {\n");
+                    for (part, member) in &field.parts {
+                        out.push_str(&format!("            {part}: {}\n", quote(member)));
+                    }
+                    out.push_str("        }\n    }");
+                }
                 out.push('\n');
             }
             out.push_str("}\n");

@@ -289,6 +289,9 @@ std_enum! {
         /// The server's own disk, the `files` capability on the native
         /// target (area 16, "The disk driver"; chunk 6.4b).
         Disk: "disk",
+        /// An SMTP server, the `email` capability (area 16, "Email"; chunk
+        /// 7.3).
+        Smtp: "smtp",
     }
 }
 

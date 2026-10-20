@@ -350,6 +350,32 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
                 .collect(),
         });
     }
+    // The wording of each of Jadpo's enums the app has on, in every
+    // supported locale: the app's own, then what Jadpo ships. What an
+    // email template writes `{{ locale.direction }}` with (area 16;
+    // chunk 7.3).
+    for message in jadpo_text::MESSAGES
+        .iter()
+        .filter(|message| message.kind == jadpo_text::Kind::Enum && on.contains(&message.feature))
+    {
+        let mut by_locale = found.remove(message.key).unwrap_or_default();
+        for &locale in &plan.supported {
+            if by_locale.iter().any(|(at, _)| *at == locale) {
+                continue;
+            }
+            if let Some(wording) = ships_wording(message, variant_name(locale)) {
+                by_locale.push((locale, wording));
+            }
+        }
+        out.entries.push(jadpo_std::translation::TranslationEntry {
+            key: member_name(message.key),
+            params: vec![jadpo_std::translation::TranslationParam {
+                name: "value".to_string(),
+                kind: ParamKind::Choice,
+            }],
+            wordings: by_locale,
+        });
+    }
     out
 }
 

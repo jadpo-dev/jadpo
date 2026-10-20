@@ -22,6 +22,8 @@
 //!   under `.jadpo/files/` (chunk 6.4b).
 //! - [`fetch`]: HTTP for the package driver (chunk 7.2c), HTTPS through
 //!   OpenSSL or plain HTTP to this machine.
+//! - [`smtp`]: SMTP for the email capability (chunk 7.3), upgraded with
+//!   `STARTTLS` through OpenSSL, or in the clear to this machine.
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
 //!
@@ -29,8 +31,8 @@
 //! (chunk 3.1), serving HTTP (chunk 4.1), running a response's
 //! follow-on work in the background (chunk 6.1a), the timer that ticks
 //! the runtime's schedules and sweeps (chunk 6.2), and draining on a stop
-//! (chunk 6.7), and files on the local disk (chunk 6.4b). The inbox
-//! comes with email.
+//! (chunk 6.7), files on the local disk (chunk 6.4b) and SMTP (chunk
+//! 7.3). The dev inbox comes with chunk 7.3c.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -52,6 +54,7 @@ pub mod files;
 pub mod http;
 pub mod passkeys;
 mod signals;
+pub mod smtp;
 #[cfg(feature = "test-authenticator")]
 pub mod test_authenticator;
 

@@ -76,6 +76,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Read a provider's OpenAPI document into the app",
     },
     Value {
+        name: "record",
+        description: "Call a provider's sandbox and keep the answer as a recording",
+    },
+    Value {
         name: "add",
         description: "Install a package from a folder or a git repository's tag",
     },
@@ -101,7 +105,6 @@ pub const ACTIONS: &[Value] = &[
 /// work that brings each.
 const LATER: &[(&str, &str)] = &[
     ("new", "package repositories"),
-    ("record", "recordings"),
     ("conform", "capabilities"),
     ("publish", "the hosted registry"),
     ("recipe", "recipes"),
@@ -131,6 +134,7 @@ pub fn package(call: &Call) -> Reply {
         Some("link") => crate::install::link(call),
         Some("unlink") => crate::install::unlink(call),
         Some("import") => crate::package_import::import(call),
+        Some("record") => crate::package_record::record(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()
@@ -1164,11 +1168,13 @@ fn check(call: &Call) -> Reply {
         diagnostics.extend(in_package(&compiled, unworded));
     }
     let mut test_blocks: Vec<Block> = Vec::new();
+    let mut decoders: Option<Item> = None;
     match (&found, compiled_cleanly) {
         (Some(surface), true) => {
             let ran = examples_and_tests(&compiled, surface, &sources);
             items.push(ran.examples);
             items.push(ran.tests);
+            decoders = ran.decoders;
             diagnostics.extend(ran.problems);
             test_blocks = ran.blocks;
         }
@@ -1178,10 +1184,14 @@ fn check(call: &Call) -> Reply {
         }
     }
     let data_files: Vec<String> = package_files(&folder);
-    if found.as_ref().is_some_and(|s| s.kind == "provider")
+    // Every decoder over every recording, run with its tests (chunk
+    // 7.2d2).
+    if let Some(decoders) = decoders {
+        items.push(decoders);
+    } else if found.as_ref().is_some_and(|s| s.kind == "provider")
         && data_files.iter().any(|f| f.starts_with("recordings/"))
     {
-        items.push(Item::later("decoders", "decoding comes with the importer"));
+        items.push(Item::later("decoders", "the package has errors"));
     }
     if data_files.iter().any(|f| f.starts_with("recipes/")) {
         items.push(Item::later("recipes", "recipes in `sample/` come later"));
@@ -1500,6 +1510,9 @@ fn line_span(text: &str, line: u32, skip: usize) -> (u32, u32) {
 struct Ran {
     examples: Item,
     tests: Item,
+    /// Every decoder over every recording (chunk 7.2d2); `None` when the
+    /// package keeps none.
+    decoders: Option<Item>,
     problems: Vec<Diagnostic>,
     blocks: Vec<Block>,
 }
@@ -1696,6 +1709,7 @@ fn examples_and_tests(
                 return Ran {
                     examples: Item::failed("examples", "couldn't be placed"),
                     tests: Item::later("tests", "the examples couldn't be placed"),
+                    decoders: None,
                     problems: vec![
                         Diagnostic::new(
                             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
@@ -1768,6 +1782,7 @@ fn examples_and_tests(
                     Item::later("examples", "the package has errors")
                 },
                 tests: Item::later("tests", "the package has errors"),
+                decoders: None,
                 problems,
                 blocks: Vec::new(),
             };
@@ -1776,6 +1791,7 @@ fn examples_and_tests(
     };
     let mut own_total = 0;
     let mut own_failed = 0;
+    let (mut recordings, mut undecoded) = (0, 0);
     let mut blocks: Vec<Block> = Vec::new();
     if let Some(mut run) = run {
         let mut own: Vec<jadpo_test::TestResult> = Vec::new();
@@ -1804,12 +1820,25 @@ fn examples_and_tests(
         for result in &mut own {
             result.test.file = compiled.relative(&result.test.file);
         }
-        own_total = own.len();
-        own_failed = own.iter().filter(|r| r.failure.is_some()).count();
+        // Every decoder over every recording, its own row (chunk 7.2d2).
+        let recorded =
+            |result: &jadpo_test::TestResult| result.test.kind == jadpo_test::TestKind::Recording;
+        own_total = own.iter().filter(|r| !recorded(r)).count();
+        own_failed = own
+            .iter()
+            .filter(|r| !recorded(r) && r.failure.is_some())
+            .count();
+        recordings = own.iter().filter(|r| recorded(r)).count();
+        undecoded = own
+            .iter()
+            .filter(|r| recorded(r) && r.failure.is_some())
+            .count();
         run.results = own;
-        if own_failed > 0 {
+        if own_failed + undecoded > 0 {
             blocks = jadpo_test::screen(&run).into_blocks();
             blocks.pop();
+        }
+        if own_failed > 0 {
             problems.push(
                 Diagnostic::new(
                     &rule::TEST_FAILED,
@@ -1817,6 +1846,20 @@ fn examples_and_tests(
                 )
                 .reason("A package is published only when its own tests pass; each failed test's report is below.")
                 .next("Fix each failure, then run `jadpo package check` again"),
+            );
+        }
+        if undecoded > 0 {
+            problems.push(
+                Diagnostic::new(
+                    &rule::TEST_FAILED,
+                    format!(
+                        "{undecoded} of {} {} decode",
+                        plural(recordings, "recording", "recordings"),
+                        if undecoded == 1 { "doesn't" } else { "don't" }
+                    ),
+                )
+                .reason("A package is published only when every decoder decodes every recorded answer; each recording's report is below.")
+                .next("Fix each one, then run `jadpo package check` again"),
             );
         }
     }
@@ -1869,9 +1912,26 @@ fn examples_and_tests(
     } else {
         Item::passed("examples", plural(total, "example", "examples"))
     };
+    let decoders = (recordings > 0).then(|| {
+        if undecoded == 0 {
+            Item::passed(
+                "decoders",
+                format!("{} decoded", plural(recordings, "recording", "recordings")),
+            )
+        } else {
+            Item::failed(
+                "decoders",
+                format!(
+                    "{undecoded} of {}",
+                    plural(recordings, "recording", "recordings")
+                ),
+            )
+        }
+    });
     Ran {
         examples,
         tests,
+        decoders,
         problems,
         blocks,
     }
@@ -1929,6 +1989,10 @@ fn what_failed(failure: &jadpo_test::TestFailure) -> (String, String) {
         jadpo_test::Detail::Fake(info) => (
             "its fakes don't match its calls".to_string(),
             format!("Run as a test of the package, {}.", info.subject()),
+        ),
+        jadpo_test::Detail::Recording(info) => (
+            "its recording doesn't decode".to_string(),
+            format!("{}.", info.subject),
         ),
     }
 }

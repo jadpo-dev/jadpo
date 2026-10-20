@@ -1087,18 +1087,53 @@ The design is area 11 as revised on 2026-10-16, with its research in
   constants, a test's `fakes:`, a variant built with its fields and a
   `match` pattern, one path with a type's name through a package. Choices
   in area 11's "Chosen in chunk 7.1e".
-- [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
+- [x] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
   recordings and `jadpo package record` (against a local HTTP server in
   tests), every decoder run over every recording in `jadpo test` and the
   publishing bar, and `jadpo dev`'s fakes answering from a package's
-  recordings, their placeholders filled.
-- [ ] **7.2e Mapping imported types to standard types** `opus · high`,
+  recordings, their placeholders filled. Built: a recording keeps the
+  answer along `output_at:` and the members the output type declares,
+  each plain text or number a placeholder naming its built-in type
+  (`"{Text}"`), what the package's own encodings and decoders read kept
+  as sent (`jadpo_runtime::recorded`); `jadpo test` reads every recording
+  of the app's own integrations through the package's decoders as a test
+  of kind `recording`, a field's `decode:` and `encode:` checked to give
+  back what was recorded (`test.recording_undecodable`,
+  `test.round_trip_failed`), and the publishing bar as its `decoders`
+  row; `jadpo dev`'s fake answers an operation from its recording, its
+  placeholders filled, logged as `recording`; and `jadpo package record
+  <connection> <operation> --input <json>` calls the sandbox once through
+  the package driver, never live and never with a stand-in credential
+  (`recording.refused`), keeps an answer that decodes and refuses one
+  that doesn't or a refusal (`recording.failed`), into the app's own
+  integration or a linked checkout. Live tests in `recordings.rs`
+  against a local server. Choices in area 11's "Chosen in chunk 7.2d2";
+  writing an operation's output type from the answer waits for 7.2e.
+- [x] **7.2e Mapping imported types to standard types** `opus · high`,
   after 7.2d and 7.1b (area 11, "Mapping imported types to standard
   types", Richard 2026-10-17): shape and name detection decoded at the
-  edge, declinable findings with `(agent)` steps, one review instruction
-  scoped to the types the app's operations reach and tracked per type in
-  `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
-  it in the import's summary.
+  edge, and declinable findings with `(agent)` steps, in the import's
+  summary. Split in this chunk: the scoped review and unconfirmed
+  operations are 7.2e2. Built: `wire_parts:` on a provider package's
+  field, a standard type read from and written as members of the object
+  holding it (`Money` from Stripe's `amount` and `currency`, a `Point` from
+  `lat` and `lng`, fields sharing a member), checked as
+  `package.wire_invalid` and `package.wire_name_invalid`; the importer
+  writing it for an amount beside its currency and a latitude beside a
+  longitude, and an object that is `Money` or `InstantRange` whole as that
+  type; `package.standard_candidate`, a declinable error on a whole
+  number named like a time, one named like an amount beside a currency
+  and an unmapped latitude and longitude; the summary's `standard` count,
+  "Mapped by shape" list and each guess under "To check", `mapped` in
+  `--json`. Choices in area 11's "Chosen in chunk 7.2e".
+- [ ] **7.2e2 The scoped review and unconfirmed operations** `opus ·
+  high`, after 7.2d2 and 7.2e (area 11, "Mapping imported types to
+  standard types", layers 4 and 5): the import's one review instruction
+  scoped to the types the app's operations reach, each imported type
+  tracked as reviewed or not in `jadpo check` (and recorded for `jadpo
+  approval`, which comes after the first build), growing when the app
+  calls something new; operations the app calls still unconfirmed by a
+  recording, listed in `jadpo check` and the import's summary.
 - [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
@@ -1118,13 +1153,44 @@ The design is area 11 as revised on 2026-10-16, with its research in
   with an alert line per connection. Live tests in
   `circuit_breaker.rs` against a local server answering `503`. Choices
   in area 12's "When a provider keeps failing".
-- [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
-  Jadpo-rendered, attachments), the SMTP driver and a mail package as a
-  second connection proving the swap, `emails/` templates and the shared
-  layout, the dev inbox, the health score. Chunk 5.3b refuses a dotted
-  translation key (area 16's old `"welcome_email.subject"`) as
-  `translation.key_invalid`; under translations as messages (5.4c) an
-  email's subject is its own member in its domain's language files.
+- [x] **7.3 Email: templates and the capability over SMTP** `opus · high`
+  (split from 7.3 Email on 2026-10-20): every `EmailMessage`'s `to:` and
+  `locale:`; its `.html` and `.txt` templates in `emails/` under the strict
+  rules, checked by the body checker and run by the executor; the shared
+  layout; `email: { connection: from: }`; `emit` of an email delivered to
+  the capability after commit, rendered whole at send, attachments
+  included, an unknown outcome parked; and the SMTP driver, tested against
+  a local SMTP server. Built: an email's `.html` and `.txt` read as
+  records beside its type, checked as pure callables taking its fields
+  (`email.template_missing`, `template_not_allowed`,
+  `template_value_invalid`, declinable `field_unused`), translations and
+  `text.format` in its locale, `{{ locale.direction }}` from Jadpo's
+  `text_direction` wording, numbers formatted, enums worded, HTML
+  escaped unless `Html`; `shared/emails/layout.*` with `{{ content }}`,
+  `{{ subject }}` and `{{ app.display_name }}` from `application {
+  display_name: }`; `email:` and `Driver.smtp` connections
+  (`email.settings_invalid`, `email.connection_required`, area 11's
+  connection rules for `host:`, `port:` and `credential:`, the network
+  report's row); email subjects required in every complete locale; each
+  email type a subscriber of its own targeting `Target::Email`, the
+  runtime rendering it at send (`jadpo_runtime::email`) and sending it
+  unkeyed; the SMTP driver (`jadpo_drivers::smtp`, MIME and the seam's
+  classification) over the native host's `NativeRelay` (`STARTTLS` or TLS
+  on 465 through OpenSSL, in the clear only to this machine); `jadpo
+  test` catching every email. Live tests in `crates/jadpo-cli/tests/
+  emails.rs` against an SMTP server started in the test; example 27
+  teaches email. Choices in area 16's "Chosen in chunk 7.3", one flagged
+  for Richard: where a partial is declared; recommendation `type X =
+  EmailPartial { ... }` with its templates beside it.
+- [ ] **7.3c Email: the second connection, the dev inbox and the health
+  score** `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20): a
+  mail package as a second connection proving the swap (`provides/email.jadpo`'s
+  `provide email`, `limits: { attachments: }` checked against a `File`
+  field's `max_size`); partials (`{{ include }}`), once where a partial is
+  declared is decided; `email.sent` in tests; the dev inbox in `jadpo dev`
+  and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
+  score, `jadpo check`'s warnings about templates that would fail it, and
+  `jadpo email check-domain`.
 - [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
   generated endpoints (the email links to the frontend's `link:` path,

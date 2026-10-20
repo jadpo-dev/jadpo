@@ -1089,7 +1089,7 @@ fn command_line_mistakes_name_the_fix() {
         kind.stderr,
         "\
 error: `pur` isn't a kind of test
-  reason: A test is `pure`, `action`, `route` or `schedule`. Did you mean `pure`?
+  reason: A test is `pure`, `action`, `route`, `schedule` or `recording`. Did you mean `pure`?
   next: Use `--kind pure` (agent)
   rule: cli.test_arguments
   help: docs/language/14-tooling.html#command-errors
@@ -1166,7 +1166,7 @@ fn help_lists_the_flags_with_examples() {
     );
     for line in [
         "  --name         Run tests whose names contain this text\n",
-        "  --kind         Run one kind: pure, action, route, schedule\n",
+        "  --kind         Run one kind, such as pure or recording\n",
         "  --failed       Rerun the tests that failed last time\n",
         "  --seed         Run in the order this seed gives\n",
         "    jadpo test --failed\n",

@@ -928,7 +928,23 @@ fn is_sink(expr: &ast::FieldExpr) -> bool {
         .member_key()
         .and_then(|key| key.names().last())
         .and_then(|name| name_text(&name));
-    if !key.is_some_and(|key| SECRET_SINKS.contains(&key.as_str())) {
+    // An SMTP server's `credential: { username: password: }` (area 16;
+    // chunk 7.3): its parts are the credential's.
+    let in_credential = || {
+        member
+            .syntax()
+            .ancestors()
+            .skip(1)
+            .find_map(ast::Member::cast)
+            .and_then(|outer| outer.member_key())
+            .and_then(|key| key.names().last())
+            .and_then(|name| name_text(&name))
+            .is_some_and(|key| key == "credential")
+    };
+    let sink = key.as_deref().is_some_and(|key| {
+        SECRET_SINKS.contains(&key) || (matches!(key, "username" | "password") && in_credential())
+    });
+    if !sink {
         return false;
     }
     expr.syntax()

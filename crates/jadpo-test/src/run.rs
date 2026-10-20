@@ -140,6 +140,37 @@ fn one<E: Executor>(
     sources: &dyn Sources,
     stores: &Stores<'_>,
 ) -> Option<Box<TestFailure>> {
+    // A recording of one of the app's own integrations, read by its
+    // operation's decoders (chunk 7.2d2).
+    if test.kind == TestKind::Recording {
+        let env = TestEnv::new(&test.key);
+        let host = env.host();
+        let mut ctx = Ctx::new(executor.places(), &host, env.env);
+        return match executor.recording(&mut ctx, &test.file) {
+            Some(Ok(())) => None,
+            Some(Err(unread)) => {
+                let operation = test
+                    .name
+                    .strip_suffix("'s recording decodes")
+                    .unwrap_or(&test.name);
+                let package = jadpo_db::package_at(&test.file)
+                    .map_or_else(|| test.file.clone(), |(home, _)| home.versioned());
+                Some(Box::new(outcome::recording(
+                    sources,
+                    test,
+                    (&package, operation),
+                    &unread,
+                    rerun,
+                )))
+            }
+            None => Some(Box::new(outcome::not_runnable(
+                sources,
+                test,
+                &CallError::Unknown(test.key.clone()),
+                rerun,
+            ))),
+        };
+    }
     let Some(callable) = executor.callable(&test.key) else {
         return Some(Box::new(outcome::not_runnable(
             sources,
@@ -169,12 +200,18 @@ fn one<E: Executor>(
         env.database = TestDatabase::Copied {
             stores: databases.stores(),
         };
-        let host = TestHost::new(databases).with_file_stores(
-            executor
-                .file_stores()
-                .iter()
-                .map(|store| store.name.as_str()),
-        );
+        let host = TestHost::new(databases)
+            .with_file_stores(
+                executor
+                    .file_stores()
+                    .iter()
+                    .map(|store| store.name.as_str()),
+            )
+            .with_mail(
+                executor
+                    .events()
+                    .and_then(|events| events.plan.emails.connection.clone()),
+            );
         let (outcome, undelivered) = {
             let host = faked(&host, &connections, &fake);
             let mut ctx = Ctx::new(places, &host, env.env);

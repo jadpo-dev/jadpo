@@ -72,7 +72,7 @@ const BUILT_AREAS: [u8; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13];
 
 /// Features no valid, runnable example can use yet, and why.
 const EXEMPT: &[(&str, &str)] = &[
-    // Documentation and templates: never in a `.jadpo` source file.
+    // Documentation only, and partials, which are not built yet.
     ("syntax SNIPPET", "documentation snippets only"),
     (
         "syntax ELISION",
@@ -82,47 +82,9 @@ const EXEMPT: &[(&str, &str)] = &[
         "syntax ELISION_EXPR",
         "`...` marks code left out of documentation",
     ),
-    ("syntax TEMPLATE", "not built: email templates (area 16)"),
-    (
-        "syntax TEMPLATE_BODY",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_LITERAL",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_VALUE",
-        "not built: email templates (area 16)",
-    ),
-    ("syntax TEMPLATE_IF", "not built: email templates (area 16)"),
-    (
-        "syntax TEMPLATE_IF_TAG",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_ELSE",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_ELSE_TAG",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_FOR",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_FOR_TAG",
-        "not built: email templates (area 16)",
-    ),
-    (
-        "syntax TEMPLATE_END_TAG",
-        "not built: email templates (area 16)",
-    ),
     (
         "syntax TEMPLATE_INCLUDE",
-        "not built: email templates (area 16)",
+        "not built: partials, once where one is declared is decided (roadmap chunk 7.3c)",
     ),
     // Later areas' declarations and the syntax only they use.
     ("syntax SEED_DECL", "not built: seeds (area 5)"),
@@ -141,7 +103,6 @@ const EXEMPT: &[(&str, &str)] = &[
     // Later areas' graph kinds and edges are reserved or declared only
     // for their own areas, so they aren't listed as built here.
     // Bases later areas define.
-    ("base EmailMessage", "not built: emails (area 16)"),
     // Typed body parts later areas build.
     (
         "body operator in",
@@ -175,7 +136,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ),
     // Layout places later areas fill.
     ("root file flags.jadpo", "not built: flags (area 16)"),
-    ("domain folder emails", "not built: emails (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
     ("place acceptances", "not built: acceptances (area 18)"),
@@ -960,6 +920,9 @@ fn body_features(
                         Callee::Schedule { .. } => "run a schedule in a test",
                         Callee::Translation(_) => "call translation",
                         Callee::Prompt(_) => "render a prompt",
+                        // What an HTML template's value is written out
+                        // through, which lowering makes, never source.
+                        Callee::Escape => continue,
                         // Objects and variants are built, below; an
                         // unknown callee is a mistake already reported.
                         Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => continue,
@@ -1238,6 +1201,31 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             body_features(&checked.body, &mut body, &mut used, &mut constructed);
             named_arguments(&checked.body, file.text(db), &mut body);
         }
+    }
+    // Each email template's syntax and typed body (area 16, chunk 7.3).
+    for path in jadpo_check::emails::template_paths(db, project) {
+        let Some(text) = project
+            .records(db)
+            .iter()
+            .find(|record| record.path == path)
+            .and_then(|record| record.text.as_ref().ok())
+        else {
+            continue;
+        };
+        for element in jadpo_syntax::parse_template(text)
+            .syntax()
+            .descendants_with_tokens()
+        {
+            if element.as_node().is_some() {
+                used.insert(format!("syntax {:?}", element.kind()));
+            }
+        }
+        let checked = jadpo_check::types::template_body(
+            db,
+            project,
+            jadpo_check::lookups::Name::new(db, path.clone()),
+        );
+        body_features(&checked.body, &mut body, &mut used, &mut constructed);
     }
     let graph = graph(db, project);
     for (ty, value) in &constructed {

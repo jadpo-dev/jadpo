@@ -62,9 +62,14 @@ fn a_project_is_found_from_any_file_inside_it() {
             "shared/libraries/maths.jadpo"
         ]
     );
-    assert_eq!(
-        loaded.project.other_files(db),
-        &["domains/planning/emails/welcome.html".to_string()]
+    // An email's template is read whole, as a record (area 16).
+    assert!(loaded.project.other_files(db).is_empty());
+    assert!(
+        loaded
+            .project
+            .records(db)
+            .iter()
+            .any(|record| record.path == "domains/planning/emails/welcome.html")
     );
     let table = symbols(db, loaded.project);
     assert!(table.domains.contains("planning"));

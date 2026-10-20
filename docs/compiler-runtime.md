@@ -2121,8 +2121,10 @@ Failed`), or the runtime's `unavailable`, `misconfigured` or, for an
 unkeyed call that may have acted, `outcome_unknown` (`boundary::
 outcome_unknown`). A subscriber's plan names its `Target`: an action,
 or a capability's operation handed the event whole
-(`Target::Capability`, which chunk 7.3's email will plan), and
-`runner::attempt_delivery` runs either within the same budget.
+(`Target::Capability`), or an email (`Target::Email`, chunk 7.3),
+rendered whole by `email::message` (its templates' callables run by the
+executor) and sent unkeyed, and `runner::attempt_delivery` runs each
+within the same budget.
 `Logged::may_have_acted` (an unkeyed call answered or still out) turns
 what would be a retry into `After::Park`: the delivery record becomes
 `outcome_unknown`, never claimed again. An unkeyed capability send marks
@@ -2281,6 +2283,30 @@ each call as it ends, with the request as made but its headers and the
 answer as sent or generated (`call_log::Seen`), and the request's id
 (`Ctx::request_id`, which the HTTP component sets); only `jadpo dev`'s
 host has one, writing `build/dev/calls.jsonl` for `jadpo calls`.
+
+**A package's recordings** (chunk 7.2d2; area 11, "Provenance and
+confirmation"): `recordings/<resource>.<operation>.json` in a package is
+a package record (`jadpo_db::Record`), and the plan carries each
+operation's text on `OperationPlan::recording` and every recording of
+the app's own integrations as a `RecordedPlan` (its operation planned
+whether or not a connection calls it). `jadpo_runtime::recorded` keeps an
+answer as a recording (`recorded::kept`: the path to `output_at:` and
+the members the output type declares, each plain text or number a
+placeholder naming its built-in type, `"{Text}"`, where a generated value
+reads back; what the package's own encodings and decoders read kept as
+sent, digits included) and fills one back (`recorded::filled`, from
+`fakes::generated`). `recorded::check` reads a recording whole through
+the package's functions at the call's site, a `RoundTrip` coder checking
+each field's `encode:` gives back what its `decode:` read; it is
+`Executor::recording`, which `jadpo test` runs for each `RecordedPlan` as
+a test of kind `recording` (`test.recording_undecodable`,
+`test.round_trip_failed`), and the publishing bar counts as its
+`decoders` row. `jadpo dev`'s fake answers an operation that has one
+`Answer::Recorded` (`Source::Recording`), which the call's site fills
+before decoding. `jadpo package record` calls the sandbox through
+`Program::call_provider` on a `NativeHost` with the package driver, its
+keyed call given a step outside an action (`Ctx::allow_standalone_calls`),
+and keeps the answer the call log hands it.
 
 **Files and a file's run** (chunk 6.4b; area 16, "Chosen in chunk
 6.4b"; area 12, "How a file's run is kept"). The `files` capability's

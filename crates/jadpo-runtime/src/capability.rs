@@ -127,6 +127,12 @@ pub enum Answer {
     /// scripted, made by the call's site from the operation's output type,
     /// as the provider would send it, and read back as any answer is.
     Generated,
+    /// A provider operation's recording (area 11, "Provider calls in
+    /// development"; chunk 7.2d2): what `jadpo dev`'s fake answers a call
+    /// nothing scripted with when the operation's package keeps one, its
+    /// placeholders filled by the call's site with generated values of
+    /// their types.
+    Recorded,
 }
 
 impl std::fmt::Debug for Answer {
@@ -142,6 +148,7 @@ impl std::fmt::Debug for Answer {
             Answer::RetryAfter(millis) => f.debug_tuple("RetryAfter").field(millis).finish(),
             Answer::Misconfigured => f.write_str("Misconfigured"),
             Answer::Generated => f.write_str("Generated"),
+            Answer::Recorded => f.write_str("Recorded"),
         }
     }
 }
@@ -166,6 +173,9 @@ pub enum Source {
     /// The provider's sandbox, which `jadpo dev` lets the call through to
     /// (area 11, "Provider calls in development"; chunk 7.2d).
     Sandbox,
+    /// A package's fake, answering from the operation's recording with its
+    /// placeholders filled (chunk 7.2d2).
+    Recording,
 }
 
 impl Source {
@@ -178,6 +188,7 @@ impl Source {
             Source::Scripted => "scripted",
             Source::Generated => "generated",
             Source::Sandbox => "sandbox",
+            Source::Recording => "recording",
         }
     }
 }
@@ -242,7 +253,7 @@ impl Ended {
             Answer::Unavailable | Answer::RetryAfter(_) => Ended::Unavailable,
             Answer::Unknown | Answer::TimedOut => Ended::Unknown,
             Answer::Misconfigured => Ended::Misconfigured,
-            Answer::Generated => Ended::Answered,
+            Answer::Generated | Answer::Recorded => Ended::Answered,
         }
     }
 }

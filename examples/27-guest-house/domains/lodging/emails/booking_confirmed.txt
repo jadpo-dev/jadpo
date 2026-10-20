@@ -1,0 +1,4 @@
+{{ translations.lodging.confirmed_heading(name: guest_name) }}
+
+{{ booked_room }}
+{{ translations.lodging.stay_line(nights: nights, arrives_on: text.format(arrives_on, format: TimeFormat.date_long)) }}

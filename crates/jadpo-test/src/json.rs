@@ -93,13 +93,25 @@ fn test(order: usize, result: &TestResult) -> Json {
             Detail::Assertion(assertion) => (assertion_json(assertion), Json::Null, Json::Null),
             Detail::Failure(info) => (Json::Null, failure_json(info), Json::Null),
             Detail::Fault(info) => (Json::Null, Json::Null, fault_json(info)),
-            Detail::Fake(_) => (Json::Null, Json::Null, Json::Null),
+            Detail::Fake(_) | Detail::Recording(_) => (Json::Null, Json::Null, Json::Null),
         };
         let fake = match &failure.detail {
             Detail::Fake(info) => Json::object([
                 ("operation", Json::from(&info.operation)),
                 ("scripted", Json::from(info.scripted as i64)),
                 ("called", Json::from(info.called as i64)),
+            ]),
+            _ => Json::Null,
+        };
+        let recording = match &failure.detail {
+            Detail::Recording(info) => Json::object([
+                ("package", Json::from(&info.package)),
+                ("operation", Json::from(&info.operation)),
+                ("field", info.field.as_ref().into()),
+                ("rule", info.rule.as_ref().into()),
+                ("recorded", info.recorded.as_ref().into()),
+                ("written", info.written.as_ref().into()),
+                ("message", Json::from(&info.subject)),
             ]),
             _ => Json::Null,
         };
@@ -113,6 +125,7 @@ fn test(order: usize, result: &TestResult) -> Json {
                 ("failure", raised),
                 ("fault", fault),
                 ("fake", fake),
+                ("recording", recording),
                 (
                     "delivery",
                     failure.delivery.as_ref().map_or(Json::Null, |delivery| {
@@ -326,7 +339,10 @@ pub fn schema() -> Json {
                 ("file", "Its file"),
                 ("line", "Its first line"),
                 ("endLine", "Its last line"),
-                ("kind", "pure, action, route or schedule"),
+                (
+                    "kind",
+                    "pure, action, route, schedule or recording (a recording of the app's own integration, read by its operation's decoders)",
+                ),
                 ("outcome", "passed or failed"),
                 ("failure", "Only when it failed"),
             ]),
@@ -336,7 +352,7 @@ pub fn schema() -> Json {
             fields(&[
                 (
                     "code",
-                    "test.assertion_failed, test.unexpected_failure, test.fault, test.subscriber_failed, test.fake_exhausted or test.fake_unused",
+                    "test.assertion_failed, test.unexpected_failure, test.fault, test.subscriber_failed, test.fake_exhausted, test.fake_unused, test.recording_undecodable or test.round_trip_failed",
                 ),
                 ("help", "The code's entry on the language pages"),
                 ("location", "Where in the test it failed (a location)"),
@@ -355,6 +371,10 @@ pub fn schema() -> Json {
                 (
                     "fake",
                     "For test.fake_exhausted and test.fake_unused: the faked operation (connection.resource.operation), how many answers its fakes: scripts and how many times it was called",
+                ),
+                (
+                    "recording",
+                    "For test.recording_undecodable and test.round_trip_failed: the package, the operation, the field and rule a decoder refused (when one did), the value recorded and the one written back (for a round trip), and the message",
                 ),
                 (
                     "delivery",

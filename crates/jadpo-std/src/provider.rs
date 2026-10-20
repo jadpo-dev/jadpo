@@ -129,6 +129,79 @@ impl WireEncoding {
     }
 }
 
+/// The setting a provider package's field reads its standard type's parts
+/// from its object's own members with (area 11, "Mapping imported types
+/// to standard types"; chunk 7.2e): `amount: Money { wire_parts: { amount:
+/// "amount" currency: "currency" } }`, so Stripe's `"amount": 1050,
+/// "currency": "gbp"` is one `Money`.
+pub const WIRE_PARTS: &str = "wire_parts";
+
+/// The parts standard type `standard` is read from with `wire_parts:`, in
+/// its own order: a type sent as an object of named members (`Money`'s
+/// `amount` and `currency`, `InstantRange`'s `start` and `end`), and a
+/// `Point` by its `latitude` and `longitude`, which GeoJSON sends as a
+/// pair. `None` for a type made of no parts.
+pub fn wire_parts(standard: &str) -> Option<Vec<&'static str>> {
+    use crate::standard::Json;
+    if standard == crate::standard::geo::POINT {
+        return Some(vec!["latitude", "longitude"]);
+    }
+    match crate::standard_type(standard)?.json {
+        Json::Parts(parts) => Some(parts.iter().map(|(name, _)| *name).collect()),
+        Json::Fields(fields) => Some(fields.to_vec()),
+        _ => None,
+    }
+}
+
+/// The common names a part of a standard type goes by, from the shape
+/// `type.standard_exists` matches (area 19, question 5): a `Money`'s
+/// `amount`, `value`, `cents`; a `Point`'s `lat` and `lng`.
+fn shape_names(standard: &str, meaning: &str) -> &'static [&'static str] {
+    crate::standard_type(standard)
+        .and_then(|entry| entry.shape)
+        .and_then(|shape| shape.iter().find(|field| field.meaning == meaning))
+        .map_or(&[], |field| field.names)
+}
+
+/// Whether a field named `name` is an amount by `Money`'s shape:
+/// `amount`, `value`, `cents`, `pence`.
+pub fn amount_named(name: &str) -> bool {
+    shape_names("Money", "an amount").contains(&name)
+}
+
+/// Whether a field named `name` reads as an amount of money though the
+/// shape doesn't match it: `amount_refunded`, `total_amount`.
+pub fn amount_like(name: &str) -> bool {
+    amount_named(name) || name.starts_with("amount_") || name.ends_with("_amount")
+}
+
+/// Whether a field named `name` is a currency by `Money`'s shape.
+pub fn currency_named(name: &str) -> bool {
+    shape_names("Money", "a currency").contains(&name)
+}
+
+/// Whether a field named `name` is a latitude by `Point`'s shape.
+pub fn latitude_named(name: &str) -> bool {
+    shape_names(crate::standard::geo::POINT, "a latitude").contains(&name)
+}
+
+/// Whether a field named `name` is a longitude by `Point`'s shape.
+pub fn longitude_named(name: &str) -> bool {
+    shape_names(crate::standard::geo::POINT, "a longitude").contains(&name)
+}
+
+/// Whether a whole number named `name` reads as a time (area 11,
+/// "Mapping imported types to standard types"): `created`, `expires`,
+/// `paid_at`, `start_time`, a candidate `Instant` sent as seconds.
+pub fn time_named(name: &str) -> bool {
+    matches!(
+        name,
+        "created" | "updated" | "deleted" | "expires" | "timestamp" | "time"
+    ) || ["_at", "_time", "_timestamp"]
+        .iter()
+        .any(|end| name.len() > end.len() && name.ends_with(end))
+}
+
 /// Every connection to a provider package an application calls, and the
 /// operations it calls through them.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -138,6 +211,28 @@ pub struct ProviderPlan {
     pub application: String,
     pub connections: Vec<ConnectionPlan>,
     pub operations: Vec<OperationPlan>,
+    /// Every recording of the app's own integrations (area 11,
+    /// "Provenance and confirmation"; chunk 7.2d2), which `jadpo test` and
+    /// the publishing bar decode with its operation's decoders.
+    pub recorded: Vec<RecordedPlan>,
+}
+
+/// One recording, `recordings/<resource>.<operation>.json`, of a package
+/// the app's own integration holds (chunk 7.2d2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedPlan {
+    /// Its path in the project.
+    pub file: String,
+    /// The package's name and version, `AcmeCouriers.v1`.
+    pub package: String,
+    /// `pickups.create`, from the file's name.
+    pub operation: String,
+    /// The operation it records, planned as a call through a connection
+    /// would be (its `connection` is `u32::MAX` when no connection calls
+    /// it); `None` when the package has no such operation.
+    pub plan: Option<OperationPlan>,
+    /// The recording as committed.
+    pub text: String,
 }
 
 impl ProviderPlan {
@@ -262,6 +357,10 @@ pub struct OperationPlan {
     /// The identity keys of the package failures it answers with, whose
     /// codes the provider's error code is matched against.
     pub failures: Vec<String>,
+    /// Its recording's text, `recordings/<resource>.<operation>.json` in
+    /// its package, which `jadpo dev`'s fake answers from with its
+    /// placeholders filled (chunk 7.2d2).
+    pub recording: Option<String>,
 }
 
 /// What the call at one site needs besides its operation (chunk 7.2c2):
@@ -275,4 +374,25 @@ pub struct CallSite {
     /// Whether a timeout is the call's `timed_out` failure, which its
     /// `attempt` maps, rather than the runtime's `unavailable`.
     pub timed_out: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The names the importer and `package.standard_candidate` read a
+    /// field's meaning from, and the parts `wire_parts:` takes.
+    #[test]
+    fn names_and_parts_say_what_a_field_may_be() {
+        assert!(time_named("created") && time_named("paid_at") && time_named("start_time"));
+        assert!(!time_named("opened") && !time_named("_at") && !time_named("attempts"));
+        assert!(amount_named("amount") && amount_named("cents") && !amount_named("amount_due"));
+        assert!(amount_like("amount_due") && amount_like("total_amount") && !amount_like("count"));
+        assert!(currency_named("currency_code") && !currency_named("country"));
+        assert!(latitude_named("lat") && longitude_named("lng") && !latitude_named("lng"));
+        assert_eq!(wire_parts("Money"), Some(vec!["amount", "currency"]));
+        assert_eq!(wire_parts("Point"), Some(vec!["latitude", "longitude"]));
+        assert_eq!(wire_parts("InstantRange"), Some(vec!["start", "end"]));
+        assert_eq!(wire_parts("Email"), None);
+    }
 }

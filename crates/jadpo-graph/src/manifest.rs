@@ -142,6 +142,14 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
                     crate::FieldCoding::Functions { decode, encode, .. } => {
                         format!("decode {}, encode {}", name(decode), name(encode))
                     }
+                    crate::FieldCoding::Parts { parts, .. } => format!(
+                        "parts {}",
+                        parts
+                            .iter()
+                            .map(|(part, spelling)| format!("{part} \"{spelling}\""))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
                 }),
             );
             out.set_some("section", section.map(|s| s.word()));
