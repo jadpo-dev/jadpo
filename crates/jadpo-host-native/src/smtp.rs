@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use jadpo_drivers::smtp::{Envelope, Relay, RelayError, Server, Phase, base64, dot_stuffed};
+use jadpo_drivers::smtp::{Envelope, Phase, Relay, RelayError, Server, base64, dot_stuffed};
 use jadpo_runtime::LocalFuture;
 
 /// The port a server speaks TLS on from the start.

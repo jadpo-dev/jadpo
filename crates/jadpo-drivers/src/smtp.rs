@@ -191,8 +191,7 @@ impl<R: Relay> Capability for Smtp<R> {
                 Err(RelayError::NotSent(_)) => Answer::Unavailable,
                 Err(RelayError::NoAnswer(_)) => Answer::Unknown,
                 Err(RelayError::Refused {
-                    phase: Phase::Rcpt,
-                    ..
+                    phase: Phase::Rcpt, ..
                 }) => Answer::Failed(RECIPIENT_REJECTED.to_string()),
                 Err(RelayError::Refused {
                     phase: Phase::Message,
