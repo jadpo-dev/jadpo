@@ -392,6 +392,10 @@ impl<H: Host> Host for Faked<H> {
         self.host.budget_ms(invocation)
     }
 
+    fn rows_per_batch(&self) -> u32 {
+        self.host.rows_per_batch()
+    }
+
     fn stopping(&self) -> LocalFuture<'_, ()> {
         self.host.stopping()
     }

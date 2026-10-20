@@ -315,6 +315,15 @@ pub trait Host {
         crate::budget::GENEROUS_MS
     }
 
+    /// How many of a file's rows a file helper's run reads into one batch
+    /// (area 12, "How a run is kept"; chunk 6.4b): a batch's transaction
+    /// commits that many rows' writes and the run's position together. A
+    /// test's host gives fewer, so every import resumes between batches
+    /// (area 13, "Provider calls and capabilities in tests").
+    fn rows_per_batch(&self) -> u32 {
+        crate::batches::ROWS_PER_BATCH
+    }
+
     /// A future that finishes once the host begins to shut down: natively
     /// on SIGTERM, or ctrl-c under `jadpo dev` (chunk 6.7). Background
     /// work's budget ends there: the piece running is stopped and what it
@@ -431,6 +440,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn budget_ms(&self, invocation: crate::budget::Invocation) -> u64 {
         (**self).budget_ms(invocation)
+    }
+
+    fn rows_per_batch(&self) -> u32 {
+        (**self).rows_per_batch()
     }
 
     fn stopping(&self) -> LocalFuture<'_, ()> {

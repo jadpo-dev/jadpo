@@ -128,11 +128,14 @@ only while the tick's budget lasts, the tick:
 - deletes expired idempotency keys (area 7); an event with its delivery
   records once every delivery succeeded, 24 hours after it was emitted
   (one nothing subscribes to too), so a failed delivery's event stays for
-  an operator; the handled records of those deliveries; browser
+  an operator; a delivery an operator dismissed or cancelled, 30 days
+  after the operator's last action on it ("What an operator sees"); the
+  handled records of those deliveries; browser
   sessions and API tokens that have ended and service keys that have
   expired (area 8), which a lookup already ignores, in the store each is
   kept in, beside its principal's users or services; schedule run
-  records and ended batch runs 30 days old ("How a run is kept");
+  records and ended batch runs 30 days old ("How a run is kept"); and
+  an operator's log rows 30 days old whose delivery or run is gone;
 - picks up batch runs whose lease lapsed.
 
 A handled record goes only once its delivery can no longer repeat, which
@@ -146,8 +149,26 @@ event's statement has committed; a store it can't reach then keeps those
 records, which only cost space, and never loses one early (decided in
 chunk 6.10).
 
+What an operator settled is kept as long as a run record, then goes
+(decided in chunk 6.13). A delivery `dismissed` or `cancelled` never
+runs again, so the tick deletes it 30 days after the last action logged
+on it, with its handled records as above; no other state is deleted
+while its event stays, so a delivery that could still run (`pending`,
+`running`, `failed`, `outcome_unknown`) is never deleted, however old.
+An event goes once every delivery of it left succeeded: one with a
+delivery that could run, or one set aside within the 30 days, stays, so
+`jadpo deliveries` shows that delivery with its event. The tick deletes
+those deliveries before it deletes events, so an event whose last such
+delivery goes is deleted on the same tick. Its time is the log's, not a
+column of the delivery's: each action writes its log row with its
+change, and a log row stays while its delivery does, so the window
+counts from the operator's last action without changing the delivery's
+table.
+
 Each delete takes 1,000 rows at a time, at most ten times a tick: for
-events, 1,000 events, with their delivery and handled records. The tick
+events, 1,000 events, with their delivery and handled records; for
+deliveries an operator settled, 1,000 deliveries, with their handled
+records. The tick
 hands nothing on: what it doesn't reach, the next tick carries on.
 
 ### The purge schedule
@@ -350,10 +371,12 @@ page per subscriber delivery.
 > `finished:` and `key:`, `batches.status` and `batches.cancel`, each page
 > one transaction committing its items' writes and the run's position,
 > and a run resumed after a crash or a deploy ("How a run is kept",
-> below). The `csv`, `tsv`, `json_lines` and `json` file helpers,
-> `store.read`'s whole-read cap and the warning for a `from:` ordered by
-> a field that can be updated come in roadmap 6.4b, with a minimal
-> `files` capability (area 16).
+> below). Built in chunk 6.4b, with the `files` capability's first part
+> (area 16): `csv.read`, `tsv.read` and `json_lines.read`, `column:` and
+> a file row's problems by its row and column ("How a file's run is
+> kept", below). The writers, `json`'s file forms, `CsvFormat`,
+> `ExportSummary`, the warning for a `from:` ordered by a field that can
+> be updated and `estimated_total` come in roadmap 6.4b2.
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -533,7 +556,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   Until then `batches.status` says `running`.
 - **Status.** `batches.status` reads the counts and the state in the
   calling action's transaction; `estimated_total` is `none` until a
-  query's count is built (roadmap 6.4b). A `BatchRun` no store keeps is a
+  query's count is built (roadmap 6.4b2). A `BatchRun` no store keeps is a
   fault. Both find a run by its `id` alone, so they need the
   application's runs in one store: with none, or more than one, they are
   `toolchain.not_built_yet`.
@@ -562,6 +585,62 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   deleted). A run still going is never deleted, however old.
 - **Names.** `batches` is a standard namespace, so, as every one, it names
   no variable.
+
+### How a file's run is kept
+
+What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read`)
+does beyond a query's run, chosen in chunk 6.4b, each the most
+conservative reading of "Batches" above and area 19's "Data formats":
+
+- **Where it is kept.** A file has no query whose store keeps its run,
+  so it is kept in the store the starting action writes, counting what
+  `each:`'s and `finished:`'s actions write, which the one-store rule
+  makes one; when none of them writes, in the application's only
+  database. With several databases and nothing written, the call is
+  `toolchain.not_built_yet`.
+- **A batch is rows.** Each transaction holds a batch of the file's rows,
+  a hundred (`jadpo test` reads two, so every import resumes between
+  batches), and the run's position is where the next row begins: its
+  byte, its row and its line, kept with the run. The file is saved with
+  the run as its `File`, so a resumed run reads the same one.
+- **Read before the transaction.** No outside call goes out while a
+  transaction is open (area 16, chunk 7.0c), and an item's action runs
+  inside its batch's, so each batch's rows are read from the store first,
+  through the `files` capability, a window of at most a megabyte at a
+  time until they are whole, from the position the last batch committed.
+  Then the batch's transaction opens, holds the run's row to that same
+  position, runs the rows' items, and commits their writes with the
+  problems and the position after the last row read. A runner reads the
+  file's opening once each time it picks the run up: its encoding and,
+  for CSV and TSV, its header.
+- **Columns.** The header names the columns, each a field of `as:`'s
+  `Input` by its name or its `column:` (a CSV or TSV column's; JSON
+  Lines' fields are the `Input`'s JSON). A column no field reads, one
+  named twice, or a field that may not be left out with no column, stops
+  the run before any row: an `Input` refuses an unknown field. A row
+  with more cells than the header is a problem (`unknown_field`); an
+  empty cell is left out, so `optional:` and `default:` apply, and a
+  required one is `required`.
+- **Rows and problems.** A row is read as a query string's value is,
+  each cell its field's text, a standard type its canonical text; one
+  that can't be read is a problem with its row as a spreadsheet numbers
+  it (the header row 1, a blank line counted but no item) and its
+  column, by the header's name, and the rule; JSON Lines' row is its
+  line, and its column the field's path. A row whose action fails is a
+  problem with no column and the failure's code. Never the value.
+- **Quotes and lines.** RFC 4180's quoting: a quoted cell holds the
+  delimiter, line breaks and `""`; LF, CRLF and a lone CR end a row. A
+  quote inside an unquoted cell, or text after a cell's closing quote, is
+  kept as written, as spreadsheets read it.
+- **What stops it.** At the file's level, before or at the place it is,
+  the rows before it done: a quote that never closes, named by the line
+  it opened on; bytes that aren't text in the file's encoding (a NUL
+  among them), named by their line; a gzip file, which only
+  `max_unpacked_size:` reads (roadmap 6.4b2); and a row longer than 16 MB.
+  The run ends `failed` with why. A store that can't be reached pauses
+  it, as it does a query's.
+- **Encodings.** UTF-8, a byte-order mark removed, and UTF-16 with its
+  mark, little- or big-endian, never guessed; anything else isn't text.
 
 ### Batches, tenants and grants
 
@@ -1779,9 +1858,9 @@ of its UUID (random in a version 7 UUID, whose first are its time), or
 more. Chosen in chunk 6.12, where the pages left it open:
 
 - **Two more states.** `dismissed` and `cancelled` are a delivery's
-  record set aside by an operator; neither runs again. Their event is
-  kept, as a failed delivery's is, since the tick deletes an event only
-  once every delivery of it succeeded.
+  record set aside by an operator; neither runs again. Each is kept 30
+  days after the operator's last action on it, and its event with it;
+  then the tick deletes it ("The tick"; chunk 6.13).
 - **What each action does to a delivery.** `retry` (from `failed`) makes
   it `pending` and due now with a fresh budget: its attempts counted from
   none, and its `within:` from the retry (the record's `retried_at`), not
@@ -1810,7 +1889,10 @@ more. Chosen in chunk 6.12, where the pages left it open:
   or `USERNAME`), and the database role PostgreSQL authenticated,
   which the statement reads itself (`session_user`), so it can't be
   claimed. The CLI shows both under the result (`logged  sam · role
-  app_owner`). The log is kept; nothing deletes it. Jadpo has no
+  app_owner`). A row is kept 30 days, as a run record is, and then
+  until its delivery or run is gone, so an item still on record keeps
+  the last thing done to it and a dismissed run stays settled; the tick
+  then deletes it (chunk 6.13). Jadpo has no
   operator accounts of its own, as it has no reviewer accounts
   (area 14, question 12): the role is the authenticated identity.
 - **Where.** The commands read every store that holds an entity, where
@@ -2982,6 +3064,124 @@ error: `StopSweep.shelf_run` holds a `BatchRun`, which no request carries
 check failed: 1 error, 2 files
 ```
 
+### `type.batch_row_invalid`
+
+A file helper reads each row as the `Input` its `as:` names. A CSV or
+TSV row holds one value a cell, so a row type holding a list, a map, an
+object or a standard type with no one text form is refused, pointing at
+JSON Lines, whose rows hold any JSON value; so is a row type that isn't
+an `Input`, or two fields reading one column:
+
+```jadpo check project=e-batch-row-invalid file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_code.jadpo hidden
+/// A line's code on an order.
+type OrderCode = Text {
+    min_length: 1
+    max_length: 20
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/code_row.jadpo hidden
+use bakery/types { OrderCode }
+
+/// One code a sheet lists.
+type CodeRow = Input {
+    reference: OrderCode
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/entities/order_sheet.jadpo hidden
+/// A sheet of order_sheet, kept as it was sent.
+entity OrderSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/take_code.jadpo hidden
+use bakery/types { CodeRow }
+
+/// Takes one code a sheet lists.
+action take_code(listed_code: CodeRow) -> Unit {
+    assert listed_code.reference == listed_code.reference
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/read_codes.jadpo hidden migrate=initial
+use bakery/entities { OrderSheet, OrderSheetNotFound }
+use bakery/types { CodeRow }
+use bakery/actions { take_code }
+
+/// Starts taking the codes a kept sheet lists.
+action read_codes(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
+    var code_sheet: OrderSheet = attempt OrderSheet.get(sheet_id)
+    return csv.read(code_sheet.sheet, as: CodeRow, each: listed_code -> take_code(listed_code))
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_row.jadpo
+use bakery/types { OrderCode }
+
+/// One order a sheet lists, with its lines.
+type OrderRow = Input {
+    reference: OrderCode
+    lines: List<OrderCode>
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/take_order.jadpo hidden
+use bakery/types { OrderRow }
+
+/// Takes one order a sheet lists.
+action take_order(order_entry: OrderRow) -> Unit {
+    assert order_entry.reference == order_entry.reference
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/read_orders.jadpo expect=type.batch_row_invalid
+use bakery/entities { OrderSheet, OrderSheetNotFound }
+use bakery/types { OrderRow }
+use bakery/actions { take_order }
+
+/// Starts taking the orders a kept sheet lists.
+action read_orders(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
+    var order_sheet: OrderSheet = attempt OrderSheet.get(sheet_id)
+    return csv.read(order_sheet.sheet, as: OrderRow, each: order_entry -> take_order(order_entry))
+}
+```
+
+```text output
+error: `csv.read` can't read its rows as `OrderRow`
+ --> domains/bakery/actions/read_orders.jadpo:8:44
+  |
+8 |     return csv.read(order_sheet.sheet, as: OrderRow, each: order_entry -> take_order(order_entry))
+  |                                            ^^^^^^^^ `OrderRow.lines` holds a list
+  reason: A CSV row holds one value a cell, and `OrderRow.lines` holds a list; a JSON Lines row holds lists and objects, each line one JSON value.
+  next: Read the file with `json_lines.read`, or give `lines` a type one cell holds (agent)
+  rule: type.batch_row_invalid
+  help: docs/language/12-jobs-and-events.html#type-batch-row-invalid
+
+check failed: 1 error, 9 files
+```
+
 ## Review
 
 ### Status
@@ -3004,13 +3204,17 @@ server draining as it stops; records a later release still reads; and
 alerts raised by the tick, once across instances, with `jadpo why`'s
 answer decided by the runtime; and the tick deleting handled records once
 their delivery's record is gone, and area 8's ended sessions, tokens and
-expired keys.
+expired keys. Built in chunk 6.4b: the file helpers' reads, `csv.read`,
+`tsv.read` and `json_lines.read`, with `column:`, a file row's problems
+by its row and column, the faults that stop a file's run, and
+`type.batch_row_invalid` ("How a file's run is kept"). Built in chunk 6.13: the tick deleting what an operator settled, and
+the operator's log, after 30 days.
 
 Not yet:
 
-- The file helpers (`csv`, `tsv`, `json_lines`, `json`), `store.read`'s
-  whole-read cap, `estimated_total` and the warning for a `from:` ordered
-  by a field that can be updated: roadmap 6.4b.
+- The file helpers' writers, `json`'s file forms, `estimated_total` and
+  the warning for a `from:` ordered by a field that can be updated:
+  roadmap 6.4b2 (the reads came in 6.4b).
 - A test's `fakes:` failing a subscriber's provider call: roadmap 7.2,
   with its generated fakes. Delivering events in tests after each step,
   in an order the printed seed shuffles, and retrying or giving up a

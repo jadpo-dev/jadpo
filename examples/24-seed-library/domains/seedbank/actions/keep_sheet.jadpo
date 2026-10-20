@@ -1,0 +1,24 @@
+// `sheets.put` keeps bytes in the store and gives the stored `File`. It
+// leaves the process, so it comes before the action's first read or
+// write: no call waits on the outside while a transaction is open. A
+// store with no room is `storage_full`, which `attempt` maps.
+
+use app { sheets }
+use seedbank/entities { DonationSheet }
+use seedbank/types { SheetText }
+use seedbank/failures { SheetNotKept }
+
+/// Keeps a donations sheet as it was sent.
+action keep_sheet(sheet_text: SheetText) fails SheetNotKept -> DonationSheet {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    return DonationSheet.create {
+        set: {
+            sheet: sheet
+            shelving: none
+            rows_read: none
+            rows_refused: none
+        }
+    }
+}

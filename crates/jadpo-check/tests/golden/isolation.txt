@@ -64,11 +64,16 @@
   action staff_bench                 read_committed
   fixture saturday_benches           read_committed
 24-seed-library
+  action add_donation                read_committed
   action add_packet                  read_committed
+  action add_sheet                   repeatable_read: reads `DonationSheet` with `get`
   action check_packet                repeatable_read: is handed a record in `packet`
   action check_progress              read_committed
+  action keep_sheet                  read_committed
   action open_check                  read_committed
   action record_check                read_committed
+  action record_sheet                read_committed
+  action sheet_bytes                 read_committed
   action start_check                 repeatable_read: is handed a record in `stocktake`
   action stop_check                  read_committed
 25-allotment-rents

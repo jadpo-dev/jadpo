@@ -177,6 +177,7 @@ impl Body<'_> {
                 Reach::Caller(_)
                 | Reach::Session(_)
                 | Reach::Batch(_)
+                | Reach::Files(..)
                 | Reach::AdvanceClock
                 | Reach::Translation { .. }
                 | Reach::Prompt(_),
@@ -851,6 +852,11 @@ impl Body<'_> {
         match self.facts.reaches.get(&node_key(call.syntax())) {
             Some(Reach::Construct(target)) => self.rules_of(target),
             Some(Reach::Std(jadpo_std::Op::TextParse)) => self.parse_rules(call),
+            // A store with no room for the bytes (area 16, chunk 6.4b).
+            Some(Reach::Files(_, jadpo_std::files::FilesOp::Put)) => {
+                let word = jadpo_std::RuleKey::StorageFull.word();
+                vec![(word, word.to_string())]
+            }
             Some(Reach::Std(op)) => op
                 .operation()
                 .conditions
@@ -1131,7 +1137,14 @@ impl Body<'_> {
             }
             if let Some(failure) = &failure {
                 self.leave(failure, span.clone(), "mapped here");
-                self.mapping_kind(arm, failure, "invalid_value");
+                // A store with no room for a file isn't the value's fault
+                // (area 16, chunk 6.4b).
+                let kind = if arm.key == jadpo_std::RuleKey::StorageFull.word() {
+                    "unavailable"
+                } else {
+                    "invalid_value"
+                };
+                self.mapping_kind(arm, failure, kind);
             } else {
                 self.flow.open = true;
             }
@@ -1183,6 +1196,13 @@ impl Body<'_> {
             .filter(|key| !seen.contains_key(*key))
             .cloned()
             .collect();
+        // A store with no room isn't a value breaking a rule, so `invalid:`
+        // never covers it (chunk 6.4b).
+        let full = jadpo_std::RuleKey::StorageFull.word();
+        if invalid.is_some() && uncovered.iter().any(|key| key == full) {
+            self.rule_unmapped(attempt, &[full.to_string()], rules, written, span);
+            return mapped;
+        }
         match invalid {
             Some(arm) if uncovered.is_empty() => {
                 self.invalid_covers_nothing(arm, breakable, written);
@@ -1222,6 +1242,27 @@ impl Body<'_> {
         span: Span,
     ) {
         self.flow.open = true;
+        // A store's put fails only when the store has no room (area 16,
+        // chunk 6.4b).
+        if uncovered
+            .iter()
+            .any(|key| key == jadpo_std::RuleKey::StorageFull.word())
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::FAILURE_RULE_UNMAPPED,
+                    format!("`{written}` can fail on `storage_full`, and nothing maps it"),
+                )
+                .at(span, "can fail at runtime")
+                .reason(
+                    "A store may have no room for the bytes, which only shows when the program runs; the call needs an arm naming the `unavailable` failure the caller gets, and `invalid:`, which covers a value's broken rules, doesn't cover it.",
+                )
+                .next(format!(
+                    "Add a block after `{written}`: `{{ storage_full: SomeFailure }}`, naming an `unavailable` failure"
+                )),
+            );
+            return;
+        }
         let as_written: Vec<String> = uncovered
             .iter()
             .map(|key| {
@@ -1442,6 +1483,7 @@ impl Body<'_> {
         let meaning = match kind {
             "conflict" => "a write the store refuses because of the records already there",
             "not_found" => "a read that finds nothing",
+            "unavailable" => "a store with no room for what is put in it",
             _ => "a value that breaks a type's rules",
         };
         self.out.push(

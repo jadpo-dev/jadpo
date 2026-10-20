@@ -143,6 +143,9 @@ pub enum RuleKey {
     /// `geo.bearing`'s two points are the same place, which has no
     /// direction to itself (area 20, "Operations").
     SamePoint,
+    /// A store a file is put in has no room for it (area 16, "Files";
+    /// chunk 6.4b): `store.put`'s own condition.
+    StorageFull,
     /// A rule an object type names across its fields (area 2, "Rules
     /// across fields"): its name is carried beside the key, since an
     /// `attempt`'s arm names it by that. Never in [`RuleKey::ALL`], so no
@@ -154,7 +157,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 28] = [
+    pub const ALL: [RuleKey; 29] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -183,6 +186,7 @@ impl RuleKey {
         RuleKey::WrongAudience,
         RuleKey::WrongIssuer,
         RuleKey::SamePoint,
+        RuleKey::StorageFull,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -216,6 +220,7 @@ impl RuleKey {
             RuleKey::WrongAudience => "wrong_audience",
             RuleKey::WrongIssuer => "wrong_issuer",
             RuleKey::SamePoint => "same_point",
+            RuleKey::StorageFull => "storage_full",
             RuleKey::Named => "rule",
         }
     }
@@ -224,7 +229,8 @@ impl RuleKey {
     /// proof settles it and only an `attempt` does: what text or bytes
     /// decode to (`malformed`, `mismatch`), whether a sealed value opens
     /// (`unreadable`), what a token says (`crypto.verify_jwt`'s) and
-    /// whether two points are the same place (`geo.bearing`'s).
+    /// whether two points are the same place (`geo.bearing`'s), and
+    /// whether a store has room for a file (`storage_full`).
     pub fn only_when_run(self) -> bool {
         matches!(
             self,
@@ -237,6 +243,7 @@ impl RuleKey {
                 | RuleKey::WrongAudience
                 | RuleKey::WrongIssuer
                 | RuleKey::SamePoint
+                | RuleKey::StorageFull
         )
     }
 

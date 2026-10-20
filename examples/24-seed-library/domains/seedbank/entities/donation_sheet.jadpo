@@ -1,0 +1,24 @@
+// A `File` field keeps a stored file: its bytes live in the store its
+// `store:` names, and the record keeps the file's key, size and type.
+// `max_size:` is the most it holds, and decides whether `sheets.read`
+// may read it whole.
+
+/// A sheet of donated packets, kept as the volunteers sent it, and how
+/// shelving its packets went.
+entity DonationSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 2mb
+        types: [FileType.csv]
+    }
+    shelving: BatchRun?
+    rows_read: Int?
+    rows_refused: Int?
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}

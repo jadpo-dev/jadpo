@@ -15,11 +15,15 @@ use std::collections::BTreeSet;
 
 use jadpo_db::ItemKind;
 use jadpo_diag::{Diagnostic, Span, rule};
-use jadpo_std::batch::{BATCH_PROGRESS, BATCH_RUN, BatchOp, EACH_PARAMS, IMPORT_SUMMARY};
+use jadpo_std::batch::{
+    BATCH_PROGRESS, BATCH_RUN, BatchOp, EACH_PARAMS, IMPORT_SUMMARY, READ_PARAMS, RowFormat,
+};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::json_form::{JsonUse, no_json_form};
-use super::super::ty::{Prim, Ty};
+use super::super::shape::FieldsBase;
+use super::super::table::Def;
+use super::super::ty::{Prim, Ty, TypeRef};
 use super::facts::Reach;
 use super::{Body, CallKind, Context, LocalKind, node_key, text};
 use crate::tree;
@@ -77,6 +81,8 @@ enum Saved {
     /// A value `each:` or `finished:` captures.
     Captured(&'static str),
     Key,
+    /// The stored file a file helper reads.
+    File,
 }
 
 impl Body<'_> {
@@ -109,6 +115,9 @@ impl Body<'_> {
                 BatchOp::Cancel => {
                     "asks a run to stop, keeping that in the transaction of the action calling it"
                 }
+                BatchOp::Read(_) => {
+                    "starts a run over a stored file's rows once the action calling it commits, keeping it in that action's transaction"
+                }
             };
             self.out.push(
                 Diagnostic::new(
@@ -123,6 +132,7 @@ impl Body<'_> {
         }
         match op {
             BatchOp::Each => self.batch_each(call, written),
+            BatchOp::Read(format) => self.batch_read(format, call, written),
             BatchOp::Status | BatchOp::Cancel => {
                 let args = Self::arguments(call);
                 if args.len() != 1 || args.iter().any(|arg| arg.name().is_some()) {
@@ -225,6 +235,270 @@ impl Body<'_> {
             CallKind::Effect(written.to_string()),
             Reach::Batch(BatchOp::Each),
         )
+    }
+
+    /// `csv.read(file, as:, each:, finished:, key:)`, and `tsv`'s and
+    /// `json_lines`'s (chunk 6.4b): the stored file is saved with the run,
+    /// each row read as the `Input` `as:` names and handed to `each:`.
+    fn batch_read(
+        &mut self,
+        format: RowFormat,
+        call: &ast::CallExpr,
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let args = Self::arguments(call);
+        let mut slots: Vec<Option<usize>> = Vec::new();
+        let mut given: [Option<Expr>; 5] = [None, None, None, None, None];
+        for (index, arg) in args.iter().enumerate() {
+            let slot = match Self::arg_name(arg) {
+                Some(name) => {
+                    let found = READ_PARAMS.iter().position(|param| *param == name);
+                    if found.is_none()
+                        && let Some(node) = arg.name()
+                    {
+                        let params: Vec<(String, Ty)> = READ_PARAMS
+                            .iter()
+                            .map(|param| (param.to_string(), Ty::Error))
+                            .collect();
+                        let at = self.span(&node);
+                        self.unknown_argument(written, &name, &params, at);
+                    }
+                    found
+                }
+                None => (index < READ_PARAMS.len()).then_some(index),
+            };
+            match slot.and_then(|slot| given.get_mut(slot)) {
+                // `as:` is a type, read below rather than as a value.
+                Some(place) if place.is_none() => *place = arg.expr(),
+                _ => {
+                    if let Some(value) = arg.expr() {
+                        self.infer(&value);
+                    }
+                }
+            }
+            slots.push(slot);
+        }
+        self.facts.slots.insert(node_key(call.syntax()), slots);
+        if given[0].is_none() || given[1].is_none() || given[2].is_none() {
+            let at = self.arg_list_span(call);
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_ARGUMENT_COUNT,
+                    format!("`{written}` takes a file, `as:` and `each:`"),
+                )
+                .at(at, "missing")
+                .reason(format!(
+                    "`{written}` reads the rows of a stored `File`, each as the `Input` `as:` names, and runs `each:`, an action called per row; `finished:` and `key:` may follow."
+                ))
+                .next(format!(
+                    "Write `{written}(file, as: RowType, each: row -> action(row))`"
+                )),
+            );
+        }
+        if let Some(file) = &given[0] {
+            let ty = self.infer(file);
+            let stored = Ty::Opaque(jadpo_std::files::FILE.to_string(), Vec::new());
+            if ty.has_error() {
+            } else if self.table.assignable(&ty, &stored) && !self.table.is_nullable(&ty) {
+                self.batch_saved(file, &ty, Saved::File, written);
+            } else {
+                let contents = matches!(
+                    self.table.structure(ty.strip_nullable()),
+                    Ty::Opaque(name, _) if name == jadpo_std::files::FILE_CONTENTS
+                );
+                let reason = if contents {
+                    format!(
+                        "`{written}` reads a stored `File` a page at a time, in the background; `FileContents` is what `store.read` gives, a whole file's bytes for passing on, which the format helpers don't take."
+                    )
+                } else {
+                    format!(
+                        "`{written}` reads the rows of a stored `File`, such as one an entity's `File` field keeps or `store.put` gave."
+                    )
+                };
+                let span = self.span(file);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_MISMATCH,
+                        format!("`{ty}` can't be used where `File` is required"),
+                    )
+                    .at(span, format!("this is `{ty}`"))
+                    .reason(reason)
+                    .next("Pass the stored `File`"),
+                );
+            }
+        }
+        let row = match &given[1] {
+            Some(value) => self.row_type(format, value, written),
+            None => None,
+        }
+        .unwrap_or(Ty::Error);
+        if let Some(each) = &given[2] {
+            self.batch_function(each, &row, written, "each");
+        }
+        if let Some(finished) = &given[3] {
+            self.batch_function(finished, &batch_type(IMPORT_SUMMARY), written, "finished");
+        }
+        if let Some(key) = &given[4] {
+            let ty = self.infer(key);
+            self.batch_saved(key, &ty, Saved::Key, written);
+        }
+        (
+            batch_type(BATCH_RUN),
+            CallKind::Effect(written.to_string()),
+            Reach::Batch(BatchOp::Read(format)),
+        )
+    }
+
+    /// A file helper's `as:`: an `Input` written out, each of whose fields
+    /// a row of `format` can hold; what is wrong is reported.
+    fn row_type(&mut self, format: RowFormat, value: &Expr, written: &str) -> Option<Ty> {
+        let target = match TypeRef::from_expr(value) {
+            TypeRef::Path(names, args)
+                if names
+                    .first()
+                    .is_some_and(|name| name.starts_with(|c: char| c.is_ascii_uppercase())) =>
+            {
+                if !self.resolved_by(|names, out| {
+                    names.type_expr(value, crate::resolve::Want::Type, out)
+                }) {
+                    return None;
+                }
+                Some(self.table.resolve(&TypeRef::Path(names, args)))
+            }
+            _ => None,
+        };
+        let refused = |body: &mut Self, label: String, reason: String, next: String| {
+            let span = body.span(value);
+            body.out.push(
+                Diagnostic::new(
+                    &rule::TYPE_BATCH_ROW_INVALID,
+                    format!(
+                        "`{written}` can't read its rows as `{}`",
+                        tree::written(value.syntax())
+                    ),
+                )
+                .at(span, label)
+                .reason(reason)
+                .next(next),
+            );
+        };
+        let Some(target) = target else {
+            if !super::is_literal(value) {
+                self.infer(value);
+            }
+            refused(
+                self,
+                "not a type".to_string(),
+                format!(
+                    "`{written}` reads each row as the type `as:` names, which is written out, such as `as: ProductRow`: a value can't say which type to read."
+                ),
+                "Write the row type itself, such as `as: ProductRow`".to_string(),
+            );
+            return None;
+        };
+        if target.has_error() {
+            return None;
+        }
+        let fields = match &target {
+            Ty::Named(name) => match self.table.def(name) {
+                Some(Def::Fields {
+                    base: FieldsBase::Input,
+                    fields,
+                    ..
+                }) => Some(fields.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(fields) = fields else {
+            refused(
+                self,
+                "not an `Input`".to_string(),
+                format!(
+                    "A row read from a file is an `Input`, checked with an `Input`'s rules (area 7): its fields are its columns, unknown ones refused, and `optional` and `default` apply; `{target}` isn't one."
+                ),
+                "Declare the row as `type <Name> = Input { ... }`, and read the file as it"
+                    .to_string(),
+            );
+            return None;
+        };
+        if let Some((offending, what)) =
+            no_json_form(self.table, &target, &mut BTreeSet::new(), JsonUse::Read)
+        {
+            refused(
+                self,
+                format!("`{offending}` has no form a row holds"),
+                format!("A row is read as an `Input` is from a request; `{offending}` is {what}."),
+                "Read the row as a type made of values a request carries".to_string(),
+            );
+            return None;
+        }
+        if format != RowFormat::JsonLines {
+            for field in &fields {
+                if let Some(what) = self.not_one_value(&field.declared) {
+                    let name = &field.name;
+                    refused(
+                        self,
+                        format!("`{target}.{name}` holds {what}"),
+                        format!(
+                            "A {} row holds one value a cell, and `{target}.{name}` holds {what}; a JSON Lines row holds lists and objects, each line one JSON value.",
+                            format.namespace().to_uppercase()
+                        ),
+                        format!(
+                            "Read the file with `json_lines.read`, or give `{name}` a type one cell holds"
+                        ),
+                    );
+                    return None;
+                }
+            }
+            let mut columns: Vec<(String, String)> = Vec::new();
+            for field in &fields {
+                let column = field.column.clone().unwrap_or_else(|| field.name.clone());
+                if let Some((_, first)) = columns.iter().find(|(seen, _)| *seen == column) {
+                    let (first, name) = (first.clone(), field.name.clone());
+                    refused(
+                        self,
+                        format!("two fields read column `{column}`"),
+                        format!(
+                            "Each of a row's fields is read from a column of its own, by its name or its `column:`, and `{target}.{first}` and `{target}.{name}` both read `{column}`."
+                        ),
+                        format!("Give `{name}` a `column:` of its own"),
+                    );
+                    return None;
+                }
+                columns.push((column, field.name.clone()));
+            }
+        }
+        Some(target)
+    }
+
+    /// What a CSV cell can't hold that `ty` is, after "holds": a list, a
+    /// map, an object, an enum with data, or a standard type with no one
+    /// text form (area 19, "Data formats").
+    fn not_one_value(&self, ty: &Ty) -> Option<&'static str> {
+        let structure = self.table.structure(ty.strip_nullable());
+        match &structure {
+            Ty::List(_) | Ty::Set(_) => Some("a list"),
+            Ty::Map(..) => Some("a map"),
+            Ty::Named(name) | Ty::Opaque(name, _)
+                if let Some(entry) = jadpo_std::standard_type(name) =>
+            {
+                entry
+                    .text
+                    .is_none()
+                    .then_some("a standard type with no one text form")
+            }
+            Ty::Named(name) => match self.table.def(name) {
+                Some(Def::Enum { variants }) if variants.iter().any(|v| v.fields.is_some()) => {
+                    Some("an enum with data")
+                }
+                Some(Def::Enum { .. }) | Some(Def::Scalar { .. }) => None,
+                Some(_) => Some("an object"),
+                None => None,
+            },
+            Ty::Opaque(..) => Some("an object"),
+            _ => None,
+        }
     }
 
     /// `from:`: a call of a named query giving a `Page<T>`, whose
@@ -439,7 +713,7 @@ impl Body<'_> {
         // among them; the rest is held as an entity field holds it.
         let used = match saved {
             Saved::From => JsonUse::Write,
-            Saved::Captured(_) | Saved::Key => JsonUse::Store,
+            Saved::Captured(_) | Saved::Key | Saved::File => JsonUse::Store,
         };
         let Some((offending, what)) = no_json_form(self.table, ty, &mut BTreeSet::new(), used)
         else {
@@ -450,6 +724,7 @@ impl Body<'_> {
             Saved::From => "`from:`'s query is given".to_string(),
             Saved::Captured(which) => format!("`{which}:` captures"),
             Saved::Key => "`key:` is".to_string(),
+            Saved::File => format!("`{written}` reads"),
         };
         let held = if offending == ty.strip_nullable().to_string() {
             format!("`{shown}` is `{offending}`")

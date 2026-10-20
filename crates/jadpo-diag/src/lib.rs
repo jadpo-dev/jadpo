@@ -252,6 +252,8 @@ rules! {
         "05-data.html#data-field-list-required", "Unique rule or index is not a list of fields";
     DATA_FIELD_WITHOUT_JSON: "data.field_without_json", area 5, Error, Agent,
         "05-data.html#data-field-without-json", "Structured field holds a type with no stored JSON form";
+    DATA_FILE_FIELD_INVALID: "data.file_field_invalid", area 16, Error, Agent,
+        "16-built-in-services.html#data-file-field-invalid", "A `File` field's store, size or types are missing or wrong";
     DATA_GENERATED_TYPE: "data.generated_type", area 5, Error, Agent,
         "05-data.html#data-generated-type", "Generated field is not a required `Instant`";
     DATA_IDENTITY_MISSING: "data.identity_missing", area 5, Error, Agent,
@@ -1032,6 +1034,8 @@ rules! {
         "12-jobs-and-events.html#type-batch-from-invalid", "A batch's `from:` is not a call of a named query giving a `Page`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
         "12-jobs-and-events.html#type-batch-input", "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
+    TYPE_BATCH_ROW_INVALID: "type.batch_row_invalid", area 12, Error, Agent,
+        "12-jobs-and-events.html#type-batch-row-invalid", "A file helper's rows can't be read as the type its `as:` names";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
         "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,
@@ -1070,6 +1074,8 @@ rules! {
         "02-values-and-types.html#type-field-unproved", "Object field value may break the field's rules";
     TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
         "09-policy.html#type-field-update-forbidden", "Update changes a field that never changes";
+    TYPE_FILE_READ_TOO_LARGE: "type.file_read_too_large", area 16, Error, Agent,
+        "16-built-in-services.html#type-file-read-too-large", "A whole read of a file field that can hold more than 10 MB";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
         "02-values-and-types.html#type-foreign-type", "Type named as another language names it";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,
