@@ -1,0 +1,956 @@
+//! Packages (area 11, revised 2026-10-16; chunk 7.1): the package format,
+//! the two kinds, where packages live, their names, and the lock.
+//!
+//! A package is a folder laid out as `shared/` is: installed ones in
+//! `packages/<name>/<version>/`, the app's own integrations in
+//! `shared/providers/<name>/<version>/`. Its index, `package.jadpo`, holds
+//! one `package Name.vN { licence: ... jadpo: ... }` with a `///`
+//! description; a provider package adds `provider.jadpo`, one `provider {
+//! }` with a fixed set of keys. The kind follows from what is inside: a
+//! package with `resources/` is a provider and needs `provider.jadpo`,
+//! one without is a library.
+//!
+//! [`package_problems`] reads every package the project holds and the
+//! lock: each installed package has its line in `jadpo.lock` and matches
+//! its digest there, and each line has its package. A package's name joins
+//! the names of the app's domains and libraries, so the app can't already
+//! use it, and the app's own integration can't take a provider's reserved
+//! brand name. Names inside a package are bare and its own (`jadpo-db`'s
+//! symbol table scopes them to it); the app writes them through it.
+
+use std::collections::BTreeMap;
+
+use jadpo_db::{
+    Db, File, Folder, ItemKind, Locked, Ownership, PackageHome, Place, Project, Source, item_tree,
+    location, package_digest, parse_lock, symbols,
+};
+use jadpo_diag::{Diagnostic, Span, rule};
+use jadpo_syntax::ast::{self, AstNode, Decl};
+
+use crate::case::to_snake;
+use crate::tree::{self, file_span, node_span};
+
+/// The keys every package index has, and the only ones (area 11, "The
+/// index: `package.jadpo`").
+pub const INDEX_KEYS: [&str; 2] = ["licence", "jadpo"];
+
+/// The licences a package may declare (area 11): `Licence.<name>`.
+pub const LICENCES: [&str; 8] = [
+    "mit",
+    "apache_2_0",
+    "bsd_2_clause",
+    "bsd_3_clause",
+    "isc",
+    "mpl_2_0",
+    "unlicense",
+    "proprietary",
+];
+
+/// The licence only a package installed from git may have.
+pub const PROPRIETARY: &str = "proprietary";
+
+/// The keys `provider.jadpo`'s `provider { }` may hold (area 11, "How the
+/// API is reached").
+pub const PROVIDER_KEYS: [&str; 14] = [
+    "protocol",
+    "hosts",
+    "runs",
+    "credential",
+    "oauth",
+    "idempotency",
+    "error_code",
+    "webhooks",
+    "polls",
+    "erasure",
+    "max_concurrent",
+    "settings",
+    "imported",
+    "description",
+];
+
+/// How a provider's bodies are sent: `Protocol.<name>`.
+pub const PROTOCOLS: [&str; 4] = ["json_http", "form_http", "multipart_http", "aws_json"];
+
+/// The keys of `hosts:`.
+pub const HOST_KEYS: [&str; 2] = ["live", "sandbox"];
+
+/// The keys of `idempotency:`.
+pub const IDEMPOTENCY_KEYS: [&str; 7] = [
+    "header",
+    "window",
+    "max_length",
+    "in_use",
+    "reused",
+    "new_key_on",
+    "replays_failures",
+];
+
+/// The keys of `runs:`.
+pub const RUNS_KEYS: [&str; 3] = ["image", "port", "asks"];
+
+/// Provider brand names Jadpo reserves for its curated packages (area 11,
+/// "Names"), as folders: the app's own integration can't take one, so
+/// `Stripe` in code always means the official package.
+pub const RESERVED: [&str; 3] = ["stripe", "twilio", "github"];
+
+/// One package the project holds: where it is, and its files.
+struct Package {
+    home: PackageHome,
+    /// Its source files, by path.
+    files: Vec<File>,
+}
+
+/// The packages the project holds, by folder.
+fn packages(db: &dyn Db, project: Project) -> BTreeMap<String, Package> {
+    let mut out: BTreeMap<String, Package> = BTreeMap::new();
+    for &file in project.files(db) {
+        if let Ownership::Package(home) = &location(db, project, file).ownership {
+            out.entry(home.folder.clone())
+                .or_insert_with(|| Package {
+                    home: home.clone(),
+                    files: Vec::new(),
+                })
+                .files
+                .push(file);
+        }
+    }
+    for record in project.records(db) {
+        if let Some((home, _)) = jadpo_db::package_at(&record.path) {
+            out.entry(home.folder.clone()).or_insert_with(|| Package {
+                home,
+                files: Vec::new(),
+            });
+        }
+    }
+    out
+}
+
+/// Every problem with the project's packages and its lock.
+#[salsa::tracked(returns(ref))]
+pub fn package_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let all = packages(db, project);
+    let lock = lock(db, project);
+    for package in all.values() {
+        let index = index(db, package, &mut out);
+        provider(db, project, package, &mut out);
+        names(db, project, package, &mut out);
+        if package.home.installed {
+            locked(
+                db,
+                project,
+                package,
+                index.as_ref(),
+                lock.as_ref(),
+                &mut out,
+            );
+        }
+    }
+    if let Some((path, locked)) = &lock {
+        for line in locked {
+            if matches!(line.source, Source::Link { .. }) {
+                continue;
+            }
+            let installed = all
+                .values()
+                .any(|package| package.home.installed && package.home.versioned() == line.package);
+            if !installed {
+                out.push(not_installed(path, line));
+            }
+        }
+    }
+    out
+}
+
+/// The lock's lines, when the project has one that reads; one that
+/// doesn't is the records' to report.
+fn lock(db: &dyn Db, project: Project) -> Option<(String, Vec<Locked>)> {
+    let record = project
+        .records(db)
+        .iter()
+        .find(|record| record.path == jadpo_db::LOCK)?;
+    let text = record.text.as_ref().ok()?;
+    Some((record.path.clone(), parse_lock(text).ok()?))
+}
+
+/// What a package's index says, once read.
+struct Index {
+    /// The licence's name, `mit`.
+    licence: Option<String>,
+    /// Where the licence is written, for a problem with it.
+    licence_span: Option<Span>,
+}
+
+fn index_path(home: &PackageHome) -> String {
+    format!("{}/{}", home.folder, jadpo_db::PACKAGE_INDEX)
+}
+
+/// The package's index: present, one `package` declaration naming the
+/// package its folder holds, a description, and exactly `licence:` and
+/// `jadpo:`.
+fn index(db: &dyn Db, package: &Package, out: &mut Vec<Diagnostic>) -> Option<Index> {
+    let home = &package.home;
+    let path = index_path(home);
+    let Some(file) = package
+        .files
+        .iter()
+        .copied()
+        .find(|file| *file.path(db) == path)
+    else {
+        let at = package
+            .files
+            .first()
+            .map_or_else(|| home.folder.clone(), |file| file.path(db).clone());
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_INDEX_INVALID,
+                format!("Package `{}` has no index", home.versioned()),
+            )
+            .at(file_span(&at), "")
+            .reason(format!(
+                "Every package has `{}` at its root: its description, its licence and the earliest Jadpo version it needs. It is how a package is known and installed.",
+                jadpo_db::PACKAGE_INDEX
+            ))
+            .next(format!(
+                "Add `{path}` holding `/// <what it does>` and `package {} {{ licence: Licence.mit  jadpo: \"1.0\" }}`",
+                home.versioned()
+            )),
+        );
+        return None;
+    };
+    let source = tree::source(db, file)?;
+    let decls: Vec<ast::PackageDecl> = source
+        .decls()
+        .filter_map(|decl| match decl {
+            Decl::PackageDecl(decl) => Some(decl),
+            _ => None,
+        })
+        .collect();
+    let Some(decl) = decls.first() else {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_INDEX_INVALID,
+                format!("`{path}` declares no package"),
+            )
+            .at(file_span(&path), "")
+            .reason("A package's index holds its one `package` declaration.")
+            .next(format!(
+                "Write `package {} {{ licence: Licence.mit  jadpo: \"1.0\" }}` here, with a `///` description",
+                home.versioned()
+            )),
+        );
+        return None;
+    };
+    for extra in decls.iter().skip(1) {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_INDEX_INVALID,
+                format!("`{path}` declares a second package"),
+            )
+            .at(node_span(&path, extra.syntax()), "a second `package`")
+            .reason("A package's index holds its one `package` declaration; one folder is one package at one version.")
+            .next("Remove this declaration"),
+        );
+    }
+    let written = decl
+        .path()
+        .map(|path| tree::written(path.syntax()))
+        .unwrap_or_default();
+    let name_span = decl.path().map_or_else(
+        || node_span(&path, decl.syntax()),
+        |p| node_span(&path, p.syntax()),
+    );
+    if written != home.versioned() {
+        out.push(name_mismatch(name_span.clone(), &written, home));
+    }
+    if crate::graph::text::doc(decl.syntax()).is_none() {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_INDEX_INVALID,
+                format!("Package `{written}` has no description"),
+            )
+            .at(name_span.clone(), "no `///` description")
+            .reason("A package's index starts with a `///` description of what the package is for: it heads `jadpo package show` and the registry's page.")
+            .next("Add a `///` line above `package` saying what the package does"),
+        );
+    }
+    let mut licence = None;
+    let mut licence_span = None;
+    let mut seen: Vec<String> = Vec::new();
+    for (name, member) in tree::members(decl.member_list()) {
+        let key = tree::name_text(&name).unwrap_or_default();
+        let span = node_span(&path, member.syntax());
+        if !INDEX_KEYS.contains(&key.as_str()) {
+            let (reason, next) = if key == "requires" {
+                (
+                    "Packages have no dependencies: a package that needs another's code carries a copy, so installing one is one folder and one line in the lock.".to_string(),
+                    "Remove `requires:`, and copy what the package needs into it".to_string(),
+                )
+            } else {
+                (
+                    format!(
+                        "Every package's index is the same: a `///` description and two keys, `licence:` and `jadpo:`, and nothing else; `{key}:` isn't one of them. Files are found by name, so the index lists none."
+                    ),
+                    format!("Remove `{key}:`"),
+                )
+            };
+            out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_INDEX_INVALID,
+                    format!("A package's index can't hold `{key}:`"),
+                )
+                .at(span.clone(), "not an index key")
+                .reason(reason)
+                .next(next)
+                .edit(tree::removal(&path, &member), ""),
+            );
+            continue;
+        }
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key.clone());
+        match key.as_str() {
+            "licence" => {
+                let value = member.value().map(|value| tree::written(value.syntax()));
+                match value.as_deref().and_then(|value| value.strip_prefix("Licence.")) {
+                    Some(name) if LICENCES.contains(&name) => {
+                        licence = Some(name.to_string());
+                        licence_span = Some(span);
+                    }
+                    _ => out.push(bad_value(
+                        span,
+                        "licence",
+                        value.as_deref().unwrap_or(""),
+                        &format!(
+                            "A package's licence is one of {}.",
+                            crate::and_list(
+                                &LICENCES
+                                    .iter()
+                                    .map(|name| format!("`Licence.{name}`"))
+                                    .collect::<Vec<_>>()
+                            )
+                        ),
+                        "Write `licence: Licence.mit`, or the licence the package is published under",
+                    )),
+                }
+            }
+            _ => {
+                let value = member.value().map(|value| tree::written(value.syntax()));
+                let version = value
+                    .as_deref()
+                    .and_then(|value| value.strip_prefix('"')?.strip_suffix('"'));
+                if !version.is_some_and(is_language_version) {
+                    out.push(bad_value(
+                        span,
+                        "jadpo",
+                        value.as_deref().unwrap_or(""),
+                        "`jadpo:` is the earliest Jadpo version the package needs, its major and minor numbers as text.",
+                        "Write `jadpo: \"1.0\"`, or the earliest version the package needs",
+                    ));
+                }
+            }
+        }
+    }
+    let span = node_span(&path, decl.syntax());
+    for key in INDEX_KEYS {
+        if !seen.iter().any(|seen| seen == key) {
+            out.push(
+                Diagnostic::new(
+                    &rule::PACKAGE_INDEX_INVALID,
+                    format!("Package `{written}` doesn't give `{key}:`"),
+                )
+                .at(span.clone(), format!("no `{key}:`"))
+                .reason(if key == "licence" {
+                    "Every package declares its licence, from a fixed list, so an app knows on what terms it uses the code.".to_string()
+                } else {
+                    "Every package gives the earliest Jadpo version it needs, so an older Jadpo refuses it rather than misreading it.".to_string()
+                })
+                .next(if key == "licence" {
+                    "Add `licence: Licence.mit`, or the licence the package is published under"
+                        .to_string()
+                } else {
+                    "Add `jadpo: \"1.0\"`, or the earliest version the package needs".to_string()
+                }),
+            );
+        }
+    }
+    Some(Index {
+        licence,
+        licence_span,
+    })
+}
+
+/// `"1.0"`: a major and a minor number.
+fn is_language_version(text: &str) -> bool {
+    let parts: Vec<&str> = text.split('.').collect();
+    parts.len() == 2
+        && parts.iter().all(|part| {
+            !part.is_empty()
+                && part.bytes().all(|b| b.is_ascii_digit())
+                && (*part == "0" || !part.starts_with('0'))
+        })
+}
+
+fn bad_value(span: Span, key: &str, written: &str, reason: &str, next: &str) -> Diagnostic {
+    Diagnostic::new(
+        &rule::PACKAGE_INDEX_INVALID,
+        format!("`{written}` isn't a package's `{key}:`"),
+    )
+    .at(span, "not one Jadpo reads")
+    .reason(reason)
+    .next(next)
+}
+
+fn name_mismatch(span: Span, written: &str, home: &PackageHome) -> Diagnostic {
+    Diagnostic::new(
+        &rule::PACKAGE_NAME_MISMATCH,
+        format!(
+            "`{written}` is in the folder of `{}`",
+            home.versioned()
+        ),
+    )
+    .at(span.clone(), format!("the folder says `{}`", home.versioned()))
+    .reason(format!(
+        "A package's folder is its name in `lower_snake_case` and its version, `{}/{}`, so its name in code is `{}`, the folder's in `UpperCamelCase`, and the index gives the same.",
+        home.name,
+        home.version,
+        home.versioned()
+    ))
+    .next(format!("Write `package {}`", home.versioned()))
+    .edit(span, home.versioned())
+}
+
+/// `provider.jadpo`: one `provider { }` with the fixed keys, `protocol:`
+/// among them, and where the API is from one place; and the kind: a
+/// package with resources has one, and a provider carries no
+/// translations.
+fn provider(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnostic>) {
+    let home = &package.home;
+    let provider_path = format!("{}/{}", home.folder, jadpo_db::PROVIDER_FILE);
+    let provider_file = package
+        .files
+        .iter()
+        .copied()
+        .find(|file| *file.path(db) == provider_path);
+    let in_folder = |folder: Folder| {
+        package
+            .files
+            .iter()
+            .copied()
+            .filter(move |file| location(db, project, *file).place == Place::Folder(folder))
+    };
+    if provider_file.is_none()
+        && let Some(file) = in_folder(Folder::Resources).next()
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_MISSING,
+                format!(
+                    "Package `{}` has resources but no `{}`",
+                    home.versioned(),
+                    jadpo_db::PROVIDER_FILE
+                ),
+            )
+            .at(file_span(file.path(db)), "")
+            .reason(format!(
+                "A package with `resources/` describes an API, so it says how the API is reached in `{}`: its protocol, hosts and credential. A package without resources is a library.",
+                jadpo_db::PROVIDER_FILE
+            ))
+            .next(format!(
+                "Add `{provider_path}` with `provider {{ protocol: Protocol.json_http ... }}`, or move the resources out if this is a library"
+            )),
+        );
+    }
+    let Some(file) = provider_file else {
+        return;
+    };
+    for translations in in_folder(Folder::Translations) {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_TRANSLATIONS,
+                format!(
+                    "Provider package `{}` carries translations",
+                    home.versioned()
+                ),
+            )
+            .at(file_span(translations.path(db)), "")
+            .reason("A provider package shows no text of its own: its failures are always mapped to the app's own, which the app words. Only a library package carries translations, for its own messages and failures.")
+            .next("Remove the package's `translations/`, and word what users see in the app's own failures"),
+        );
+    }
+    let path = provider_path;
+    let Some(source) = tree::source(db, file) else {
+        return;
+    };
+    let Some(decl) = source.decls().find_map(|decl| match decl {
+        Decl::SingletonDecl(decl)
+            if decl
+                .keyword()
+                .is_some_and(|keyword| keyword.text() == "provider") =>
+        {
+            Some(decl)
+        }
+        _ => None,
+    }) else {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                format!("`{path}` declares no `provider`"),
+            )
+            .at(file_span(&path), "")
+            .reason("A provider package's `provider.jadpo` holds one `provider { }`: how its API is reached and called.")
+            .next("Write `provider { protocol: Protocol.json_http ... }` here"),
+        );
+        return;
+    };
+    let mut seen: BTreeMap<String, Span> = BTreeMap::new();
+    for (name, member) in tree::members(decl.member_list()) {
+        let key = tree::name_text(&name).unwrap_or_default();
+        let span = node_span(&path, member.syntax());
+        if !PROVIDER_KEYS.contains(&key.as_str()) {
+            let near = jadpo_diag::nearest(&key, PROVIDER_KEYS.iter().copied());
+            let mut problem = Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                format!("`provider` has no key `{key}:`"),
+            )
+            .at(node_span(&path, name.syntax()), "not a provider key")
+            .reason(format!(
+                "`provider {{ }}` has one fixed set of keys: {}.{}",
+                crate::and_list(
+                    &PROVIDER_KEYS
+                        .iter()
+                        .map(|key| format!("`{key}:`"))
+                        .collect::<Vec<_>>()
+                ),
+                near.map_or_else(String::new, |near| format!(" Did you mean `{near}:`?"))
+            ));
+            problem = match near {
+                Some(near) => problem
+                    .next(format!("Use `{near}:` instead of `{key}:`"))
+                    .edit(node_span(&path, name.syntax()), near),
+                None => problem.next(format!("Remove `{key}:`")),
+            };
+            out.push(problem);
+            continue;
+        }
+        seen.entry(key.clone()).or_insert(span.clone());
+        match key.as_str() {
+            "protocol" => {
+                let value = member
+                    .value()
+                    .map(|value| tree::written(value.syntax()))
+                    .unwrap_or_default();
+                let known = value
+                    .strip_prefix("Protocol.")
+                    .is_some_and(|name| PROTOCOLS.contains(&name));
+                if !known {
+                    out.push(
+                        Diagnostic::new(
+                            &rule::PACKAGE_PROVIDER_INVALID,
+                            format!("`{value}` isn't a protocol"),
+                        )
+                        .at(span, "not a protocol")
+                        .reason(format!(
+                            "`protocol:` says how bodies are sent: {}.",
+                            crate::and_list(
+                                &PROTOCOLS
+                                    .iter()
+                                    .map(|name| format!("`Protocol.{name}`"))
+                                    .collect::<Vec<_>>()
+                            )
+                        ))
+                        .next("Write `protocol: Protocol.json_http`, or the protocol the API uses"),
+                    );
+                }
+            }
+            "hosts" => nested_keys(&path, &key, &member, &HOST_KEYS, out),
+            "idempotency" => {
+                nested_keys(&path, &key, &member, &IDEMPOTENCY_KEYS, out);
+                let has_window = tree::members(member.block())
+                    .iter()
+                    .any(|(name, _)| tree::name_text(name).as_deref() == Some("window"));
+                if member.block().is_some() && !has_window {
+                    out.push(
+                        Diagnostic::new(
+                            &rule::PACKAGE_PROVIDER_INVALID,
+                            "`idempotency:` doesn't give `window:`",
+                        )
+                        .at(span, "no `window:`")
+                        .reason("`window:` is how long the provider keeps an idempotency key; a retry after it would make the change again, so it is required.")
+                        .next("Add `window:` with the provider's documented time, such as `window: 24h`"),
+                    );
+                }
+            }
+            "runs" => nested_keys(&path, &key, &member, &RUNS_KEYS, out),
+            _ => {}
+        }
+    }
+    if !seen.contains_key("protocol") {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                "`provider` doesn't give `protocol:`",
+            )
+            .at(node_span(&path, decl.syntax()), "no `protocol:`")
+            .reason("`protocol:` says how the API's bodies are sent, and is required.")
+            .next("Add `protocol: Protocol.json_http`, or the protocol the API uses"),
+        );
+    }
+    if let (Some(hosts), Some(_)) = (seen.get("hosts"), seen.get("runs")) {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                "`provider` gives both `hosts:` and `runs:`",
+            )
+            .at(hosts.clone(), "a fixed host")
+            .reason("Where an API is comes from exactly one place: `hosts:` when it is on the internet, `runs:` when Jadpo runs it in a container, or neither when the app gives `host:` on the connection.")
+            .next("Keep `hosts:` or `runs:`, and remove the other"),
+        );
+    }
+}
+
+/// A block's keys, each one of `keys`.
+fn nested_keys(
+    path: &str,
+    key: &str,
+    member: &ast::Member,
+    keys: &[&str],
+    out: &mut Vec<Diagnostic>,
+) {
+    for (name, _) in tree::members(member.block()) {
+        let inner = tree::name_text(&name).unwrap_or_default();
+        if keys.contains(&inner.as_str()) {
+            continue;
+        }
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_PROVIDER_INVALID,
+                format!("`{key}:` has no key `{inner}:`"),
+            )
+            .at(node_span(path, name.syntax()), "not one of its keys")
+            .reason(format!(
+                "`{key}:` holds {}.",
+                crate::and_list(
+                    &keys
+                        .iter()
+                        .map(|key| format!("`{key}:`"))
+                        .collect::<Vec<_>>()
+                )
+            ))
+            .next(format!("Remove `{inner}:`")),
+        );
+    }
+}
+
+/// A package's name against the app's (area 11, "Names"): its own
+/// integration can't take a reserved brand name, and no package's name
+/// can be a domain's, a library's or a declaration's of the app, or
+/// another package's.
+fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnostic>) {
+    let home = &package.home;
+    let Some(first) = package.files.first() else {
+        return;
+    };
+    let at = package
+        .files
+        .iter()
+        .find(|file| *file.path(db) == index_path(home))
+        .unwrap_or(first)
+        .path(db)
+        .clone();
+    let span = file_span(&at);
+    let folded = home.name.replace('_', "");
+    if !home.installed && RESERVED.contains(&folded.as_str()) {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_RESERVED_NAME,
+                format!("`{}` is a reserved provider name", home.code),
+            )
+            .at(span.clone(), "")
+            .reason(format!(
+                "Jadpo reserves the names of the providers it curates packages for, so `{}` in code always means the official package. The app's own integration takes a name of its own.",
+                home.code
+            ))
+            .next(format!(
+                "Rename the folder `{}` to a name of the app's own, such as `{}_api`, and the index with it",
+                home.folder, home.name
+            )),
+        );
+    }
+    let table = symbols(db, project);
+    let mut taken: Vec<String> = Vec::new();
+    if table.domains.contains(&home.name) {
+        taken.push(format!("domain `{}`", home.name));
+    }
+    for (name, found) in &table.declarations {
+        if *name != home.code && to_snake(name) != home.name {
+            continue;
+        }
+        for symbol in found {
+            if symbol.ownership.package().is_some() || symbol.provided.is_some() {
+                continue;
+            }
+            let is_library = symbol.kind == ItemKind::Library && symbol.library.is_none();
+            if *name == home.code || is_library {
+                taken.push(format!(
+                    "{} `{name}` in `{}`",
+                    symbol.kind.word(),
+                    symbol.path
+                ));
+            }
+        }
+    }
+    if let Some(homes) = table.homes.get(&home.code)
+        && let Some(other) = homes
+            .iter()
+            .find(|other| other.folder != home.folder && other.folder < home.folder)
+    {
+        if other.installed == home.installed {
+            // Two versions side by side, names carrying the version
+            // (`Postcodes.v3.UkPostcode`), come with a later chunk.
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!(
+                        "Two versions of package `{}` side by side aren't built yet",
+                        home.code
+                    ),
+                )
+                .at(span.clone(), "")
+                .reason(format!(
+                    "The language lets `{}` and `{}` sit side by side while callers move across, each written with its version, but this compiler can hold one version of a package at a time.",
+                    other.versioned(),
+                    home.versioned()
+                ))
+                .next(format!("Keep one of `{}/` and `{}/` for now", other.folder, home.folder)),
+            );
+        } else {
+            taken.push(format!(
+                "package `{}` in `{}`",
+                other.versioned(),
+                other.folder
+            ));
+        }
+    }
+    if taken.is_empty() {
+        return;
+    }
+    out.push(
+        Diagnostic::new(
+            &rule::PACKAGE_NAME_TAKEN,
+            format!("Package `{}`'s name is already taken", home.code),
+        )
+        .at(span, "")
+        .reason(format!(
+            "A package's name joins the names of the app's domains and libraries, which are unique among themselves, and two packages never share a name in code, so `{}.` means one thing; it is already {}.",
+            home.code,
+            crate::and_list(&taken)
+        ))
+        .next(if home.installed {
+            "Rename the app's own declaration with `jadpo rename` first, then install the package".to_string()
+        } else {
+            "Rename one of them".to_string()
+        }),
+    );
+}
+
+/// An installed package against the lock: its line, its digest and, for a
+/// proprietary package, a git source.
+fn locked(
+    db: &dyn Db,
+    project: Project,
+    package: &Package,
+    index: Option<&Index>,
+    lock: Option<&(String, Vec<Locked>)>,
+    out: &mut Vec<Diagnostic>,
+) {
+    let home = &package.home;
+    let at = index_path(home);
+    let at = if package.files.iter().any(|file| *file.path(db) == at) {
+        at
+    } else {
+        package
+            .files
+            .first()
+            .map_or_else(|| home.folder.clone(), |file| file.path(db).clone())
+    };
+    let line =
+        lock.and_then(|(_, lines)| lines.iter().find(|line| line.package == home.versioned()));
+    let Some(line) = line else {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_NOT_LOCKED,
+                format!("Package `{}` isn't in `{}`", home.versioned(), jadpo_db::LOCK),
+            )
+            .at(file_span(&at), "")
+            .reason(format!(
+                "`{}/` holds only installed packages, each with its line in `{}`: its version, digest and source. A package with no line was copied in rather than installed, so nothing says where it came from.",
+                jadpo_db::PACKAGES,
+                jadpo_db::LOCK
+            ))
+            .next(format!(
+                "Install it with `jadpo package add`, or, if it is the app's own code, move it to `shared/{}/{}/{}/`",
+                jadpo_db::PROVIDERS,
+                home.name,
+                home.version
+            )),
+        );
+        return;
+    };
+    let digest = match &line.source {
+        Source::Registry { digest, .. }
+        | Source::Git { digest, .. }
+        | Source::Path { digest, .. } => digest,
+        Source::Link { .. } => return,
+    };
+    let now = digest_of(db, project, home);
+    if now.as_deref() != Ok(digest.as_str()) {
+        let found = match &now {
+            Ok(now) => format!("its files now give `{now}`"),
+            Err(path) => format!("`{path}` can't be read"),
+        };
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_DIGEST_MISMATCH,
+                format!(
+                    "Package `{}` differs from what was installed",
+                    home.versioned()
+                ),
+            )
+            .at(file_span(&at), "")
+            .reason(format!(
+                "An installed package is read-only: `{}` locks it with digest `{digest}`, and {found}, so a file in `{}/` was changed, added or removed since it was installed.",
+                jadpo_db::LOCK,
+                home.folder
+            ))
+            .next(format!(
+                "Restore `{}/` from version control, or install the package again with `jadpo package add`; change the app's own code instead",
+                home.folder
+            )),
+        );
+    }
+    if let Some(Index {
+        licence: Some(licence),
+        licence_span: Some(span),
+    }) = index
+        && licence == PROPRIETARY
+        && !matches!(line.source, Source::Git { .. })
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::PACKAGE_LICENCE_NOT_ALLOWED,
+                format!(
+                    "Package `{}` is proprietary but wasn't installed from git",
+                    home.versioned()
+                ),
+            )
+            .at(span.clone(), "proprietary")
+            .reason("Only a package installed from git, a company's private package, may be `Licence.proprietary`; the registry and other sources carry packages others may use.")
+            .next("Install the package from its git repository, or publish it under one of the open licences"),
+        );
+    }
+}
+
+/// An installed package's digest from the files it holds now, or the path
+/// of one that can't be read.
+pub fn digest_of(db: &dyn Db, project: Project, home: &PackageHome) -> Result<String, String> {
+    let prefix = format!("{}/", home.folder);
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for &file in project.files(db) {
+        if let Some(relative) = file.path(db).strip_prefix(&prefix) {
+            files.push((relative.to_string(), file.text(db).clone().into_bytes()));
+        }
+    }
+    for record in project.records(db) {
+        if let Some(relative) = record.path.strip_prefix(&prefix) {
+            match &record.text {
+                Ok(text) => files.push((relative.to_string(), text.clone().into_bytes())),
+                Err(_) => return Err(record.path.clone()),
+            }
+        }
+    }
+    let borrowed: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+        .collect();
+    Ok(package_digest(&borrowed))
+}
+
+fn not_installed(path: &str, line: &Locked) -> Diagnostic {
+    let folder = folder_of(&line.package);
+    Diagnostic::new(
+        &rule::PACKAGE_NOT_INSTALLED,
+        format!("`{}` names `{}`, which isn't installed", jadpo_db::LOCK, line.package),
+    )
+    .at(file_span(path), "")
+    .reason(format!(
+        "Each line of the lock is a package in `{}/`; `{}` has none at `{folder}/`, so the lock and the folder disagree, as removing the folder by hand leaves them.",
+        jadpo_db::PACKAGES,
+        line.package
+    ))
+    .next(format!(
+        "Restore `{folder}/` from version control, or remove the package with `jadpo package remove`"
+    ))
+}
+
+/// `packages/<name>/<version>` for `Name.vN`.
+fn folder_of(package: &str) -> String {
+    match package.rsplit_once('.') {
+        Some((name, version)) => format!("{}/{}/{version}", jadpo_db::PACKAGES, to_snake(name)),
+        None => format!("{}/{package}", jadpo_db::PACKAGES),
+    }
+}
+
+/// The package declarations of a file that the first part of chunk 7.1
+/// doesn't run: a package's actions, subscribers and events (chunk 7.6),
+/// its capability mappings (chunk 7.3) and a library package's
+/// translations (chunk 7.1b).
+#[salsa::tracked(returns(ref))]
+pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let location = location(db, project, file);
+    let Ownership::Package(home) = &location.ownership else {
+        return Vec::new();
+    };
+    let what = match location.place {
+        Place::Folder(Folder::Actions) => "A package's actions",
+        Place::Folder(Folder::Subscribers) => "A package's subscribers",
+        Place::Folder(Folder::Events) => "A package's events",
+        Place::Folder(Folder::Provides) => "A package's capability mappings",
+        // A provider package's are `package.provider_translations`.
+        Place::Folder(Folder::Translations) => {
+            let provider = format!("{}/{}", home.folder, jadpo_db::PROVIDER_FILE);
+            if crate::lookups::file_at(db, project, crate::lookups::Name::new(db, provider))
+                .is_some()
+            {
+                return Vec::new();
+            }
+            "A library package's translations"
+        }
+        _ => return Vec::new(),
+    };
+    let path = file.path(db);
+    let Some(source) = tree::source(db, file) else {
+        return Vec::new();
+    };
+    item_tree(db, file)
+        .items
+        .iter()
+        .map(|item| {
+            Diagnostic::new(
+                &rule::TOOLCHAIN_NOT_BUILT_YET,
+                format!("{what} aren't built yet"),
+            )
+            .at(
+                tree::name_span(&source, path, item.index, None),
+                "declared, not built",
+            )
+            .reason(format!(
+                "The language declares {} in `{}`, but this compiler can't run them yet.",
+                what.to_lowercase(),
+                home.versioned()
+            ))
+            .next(format!("Do without `{}` for now", item.name))
+        })
+        .collect()
+}

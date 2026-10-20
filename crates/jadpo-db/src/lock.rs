@@ -81,22 +81,54 @@ impl Locked {
         }
     }
 
-    /// What it sorts by: the name, then the major version as a number.
-    fn order(&self) -> (String, u64) {
-        let (name, major) = split_package(&self.package).unwrap_or((&self.package, 0));
+    /// What it sorts by: the name, then the major version as numbers.
+    fn order(&self) -> (String, Vec<u64>) {
+        let (name, major) = split_package(&self.package).unwrap_or((&self.package, Vec::new()));
         (name.to_string(), major)
     }
 }
 
-/// `AcmeCouriers.v1` as its name and major version.
-fn split_package(package: &str) -> Option<(&str, u64)> {
-    let (name, major) = package.rsplit_once(".v")?;
+/// `AcmeCouriers.v1` as its name and major version, the version's groups
+/// as numbers: `Stripe.v2024_06_20` is `[2024, 6, 20]` (area 11, question
+/// 16).
+fn split_package(package: &str) -> Option<(&str, Vec<u64>)> {
+    let (name, label) = package.rsplit_once('.')?;
     let starts_upper = name.chars().next().is_some_and(|c| c.is_ascii_uppercase());
     let named = starts_upper && name.chars().all(|c| c.is_ascii_alphanumeric());
-    let digits = !major.is_empty() && major.bytes().all(|b| b.is_ascii_digit());
-    (named && digits && (major == "0" || !major.starts_with('0')))
-        .then(|| Some((name, major.parse().ok()?)))
-        .flatten()
+    if !named || !crate::places::is_version_label(label) {
+        return None;
+    }
+    let groups: Option<Vec<u64>> = label[1..].split('_').map(|g| g.parse().ok()).collect();
+    let groups = groups?;
+    // `v01` would sort as `v1`: one spelling per version.
+    let canonical = label[1..]
+        .split('_')
+        .next()
+        .is_some_and(|first| first == "0" || !first.starts_with('0'));
+    canonical.then_some((name, groups))
+}
+
+/// A package's digest (area 18, "The lock"): `sha256:` and the SHA-256,
+/// in lower-case hex, of one line for each of its files, `<the SHA-256 of
+/// its bytes>  <its path>`, each ended by a newline, the paths relative to
+/// the package's folder with `/` and in byte order, as Go's `dirhash`
+/// summarises a module. Hidden files are never part of a package.
+pub fn package_digest(files: &[(&str, &[u8])]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut sorted: Vec<&(&str, &[u8])> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    let mut summary = String::new();
+    for (path, bytes) in sorted {
+        summary.push_str(&hex(&Sha256::digest(bytes)));
+        summary.push_str("  ");
+        summary.push_str(path);
+        summary.push('\n');
+    }
+    format!("sha256:{}", hex(&Sha256::digest(summary.as_bytes())))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// The lock's text for `packages`: sorted by name and major version.

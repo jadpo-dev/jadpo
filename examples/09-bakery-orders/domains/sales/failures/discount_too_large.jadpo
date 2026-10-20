@@ -1,7 +1,7 @@
 use shared/types { Sterling }
 
 /// A fixed discount would take the total below zero.
-type DiscountTooLarge = Failure {
+public type DiscountTooLarge = Failure {
     kind: FailureKind.invalid_value
     message: "That discount is worth more than the basket."
     client: {

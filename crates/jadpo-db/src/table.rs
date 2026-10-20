@@ -54,6 +54,10 @@ impl Symbol {
     pub fn visible_from(&self, from: &Ownership) -> bool {
         match (&self.ownership, from) {
             (Ownership::Domain(a), Ownership::Domain(b)) => a == b || self.public,
+            // A package's own code sees all of it; anything else only what
+            // it makes `public` (area 11, "What is public").
+            (Ownership::Package(theirs), Ownership::Package(ours)) => theirs == ours || self.public,
+            (Ownership::Package(_), _) => self.public,
             _ => true,
         }
     }
@@ -96,6 +100,11 @@ pub fn domain_scope(
     in_library: bool,
     ownership: &Ownership,
 ) -> Option<String> {
+    // Every name a package declares is its own: bare inside it, written
+    // through it outside (`Postcodes.UkPostcode`, area 11).
+    if let Ownership::Package(home) = ownership {
+        return Some(home.code.clone());
+    }
     let Ownership::Domain(domain) = ownership else {
         return None;
     };
@@ -122,6 +131,7 @@ pub fn identity_name(
     ownership: &Ownership,
 ) -> String {
     match (kind, ownership) {
+        (_, Ownership::Package(home)) => format!("{}.{name}", home.code),
         (ItemKind::Type(_), Ownership::Domain(domain)) => format!("{domain}.{name}"),
         (ItemKind::Function | ItemKind::Constant, Ownership::Domain(domain)) if !in_library => {
             format!("{domain}.{name}")
@@ -140,8 +150,12 @@ pub struct Symbols {
     pub domains: BTreeSet<String>,
     /// Connection names declared in `application { }` (area 11).
     pub connections: BTreeSet<String>,
-    /// Package names the connections use, and local provider packages.
+    /// Package names the connections use, and every package the project
+    /// holds, by its name in code.
     pub packages: BTreeSet<String>,
+    /// The packages the project holds, by their name in code: installed in
+    /// `packages/` and its own in `shared/providers/` (area 11).
+    pub homes: BTreeMap<String, Vec<crate::places::PackageHome>>,
     /// Tests by their sentence, each as its file's path and position, in
     /// path order; more than one is a duplicate (area 13).
     pub tests: BTreeMap<String, Vec<(String, u32)>>,
@@ -234,6 +248,13 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
         if let Some(domain) = location.ownership.domain() {
             table.domains.insert(domain.to_string());
         }
+        if let Some(home) = location.ownership.package() {
+            table.packages.insert(home.code.clone());
+            let homes = table.homes.entry(home.code.clone()).or_default();
+            if !homes.contains(home) {
+                homes.push(home.clone());
+            }
+        }
         let symbol = |item: &Item, library: Option<(String, u32)>, index: u32| Symbol {
             scope: domain_scope(
                 &item.kind,
@@ -266,11 +287,16 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
                     table.connections.extend(item.connections.iter().cloned());
                     table.packages.extend(item.packages.iter().cloned());
                 }
-                ItemKind::Package => {
-                    let ownership = item.name.split('.').next().unwrap_or_default();
-                    table.packages.insert(ownership.to_string());
-                }
+                // A package's name is its folder's (`Postcodes` in
+                // `packages/postcodes/v2/`), which its index has to give.
+                ItemKind::Package => {}
                 ItemKind::Library => {
+                    // A package's library is known through its package,
+                    // `Postcodes.uk`, so its functions say so.
+                    let library = match location.ownership.package() {
+                        Some(home) => format!("{}.{}", home.code, item.name),
+                        None => item.name.clone(),
+                    };
                     for function in &item.functions {
                         table
                             .declarations
@@ -278,7 +304,7 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
                             .or_default()
                             .push(symbol(
                                 function,
-                                Some((item.name.clone(), function.index)),
+                                Some((library.clone(), function.index)),
                                 item.index,
                             ));
                     }
@@ -339,6 +365,10 @@ pub fn symbols(db: &dyn Db, project: Project) -> Symbols {
         let contested = scopes.len() > 1;
         for symbol in found.iter_mut() {
             symbol.canonical = match &symbol.scope {
+                // A package's names are always known through it.
+                Some(package) if symbol.ownership.package().is_some() => {
+                    format!("{package}.{name}")
+                }
                 Some(domain) if contested => format!("{domain}.{name}"),
                 _ => name.clone(),
             };
