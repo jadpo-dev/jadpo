@@ -12,8 +12,10 @@
 # `json.read`'s `mismatch` receives (area 19), its fields in `jadpo-std`.
 # `FirstSignIn` is what `on_first_sign_in:`'s action is given (area 8),
 # and `MagicLinkRedeemed` what `magic_links.redeem` gives; `SignedIn`,
-# `SignInRefused` and `SignInCodesDisabled` are the events sign-in
-# publishes, which only the runtime emits (area 8, "Events").
+# `SignInRefused`, `SignInCodesDisabled`, `PasskeyAdded` and
+# `PasskeyRemoved` are the events sign-in publishes, which only the
+# runtime emits (area 8, "Events"), and `TestPasskey` the device
+# `test_passkeys.register` gives a route test.
 # `MagicLinkEmail` is what the application's own sign-in email picks its
 # fields from, and `MagicLinkRequest` what its own sending is given (area
 # 16, "Built-in emails"), their fields in `jadpo-std`'s `email`.
@@ -25,7 +27,8 @@
 Page Nearest
 File FileContents Principal Response Access
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
-MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled
+MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
+PasskeyRemoved TestPasskey
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
@@ -51,13 +54,15 @@ collection:
 # members are listed here (area 10). `prompts.render` renders a value of any
 # prompt the project declares (area 21). `magic_links.request`, `.redeem`
 # and `.redeem_code` are magic links' operations an application's own
-# routes call (area 8).
+# routes call, and `test_passkeys.register` and `.sign_in` a software
+# authenticator only route tests call (area 8).
 [generated]
 clock: now advance
 config:
 translations:
 sessions:
 magic_links:
+test_passkeys:
 batches:
 csv:
 tsv:

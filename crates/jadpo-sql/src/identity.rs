@@ -134,3 +134,19 @@ pub fn user_by(entity_table: &str, column: &str, active: &str, wheres: &[String]
         conditions = conditions.join(" AND "),
     )
 }
+
+/// A user's address by its `id` (area 8, "Passkeys"; chunk 5.5z2): `$1`
+/// the user's `id`, `$2` the time now, read from `entity_table`'s
+/// `column` where `wheres` hold. What a person's device lists a new
+/// passkey under.
+pub fn address_of(entity_table: &str, column: &str, wheres: &[String]) -> String {
+    let mut conditions = vec![format!("{} = $1", ident("id"))];
+    conditions.extend(wheres.iter().cloned());
+    conditions.push("$2::timestamptz IS NOT NULL".to_string());
+    format!(
+        "SELECT {column} FROM {entity_table} WHERE {conditions} LIMIT 1",
+        column = ident(column),
+        entity_table = ident(entity_table),
+        conditions = conditions.join(" AND "),
+    )
+}

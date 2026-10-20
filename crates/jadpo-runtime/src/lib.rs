@@ -114,6 +114,7 @@ pub mod statements;
 pub mod steps;
 mod store;
 pub mod test_steps;
+pub mod unfinished;
 pub mod webhooks;
 mod write;
 
@@ -131,7 +132,7 @@ pub use fault::{Fault, FaultKind};
 pub use host::{
     Database, Event, Host, LocalFuture, MemoryHost, NoStore, Outbound, PasskeyAnswer, PasskeyError,
     PasskeyParts, Passkeys, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType,
-    SqlValue, StoreError, Transaction,
+    SqlValue, StoreError, TestAuthenticators, Transaction,
 };
 pub use jadpo_std::Isolation;
 pub use jadpo_std::geography;

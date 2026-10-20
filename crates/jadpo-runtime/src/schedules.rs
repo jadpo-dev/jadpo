@@ -212,12 +212,12 @@ pub const SETTLED: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_outbox\" WHERE 
 pub const HANDLED: &str =
     "DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" = ANY($1::uuid[]) RETURNING 1";
 
-/// Deliveries an operator dismissed or cancelled, with no action on them
-/// logged after `$1`, at most `$2` (chunk 6.13): neither state is ever
-/// left, so neither could run again. Their handled records kept in this
+/// Deliveries an operator dismissed, cancelled or abandoned (chunk 7.5c),
+/// with no action on them logged after `$1`, at most `$2` (chunk 6.13):
+/// none of those states is ever left, so none could run again. Their handled records kept in this
 /// store go in the same statement, as [`SETTLED`]'s do. A row for each:
 /// its id, and whether its handled record was here.
-pub const SETTLED_BY_HAND: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_deliveries\" WHERE \"id\" IN (SELECT \"d\".\"id\" FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"status\" IN ('dismissed', 'cancelled') AND NOT EXISTS (SELECT 1 FROM \"jadpo_operator_actions\" AS \"a\" WHERE \"a\".\"item\" = \"d\".\"id\" AND \"a\".\"acted_at\" > $1) LIMIT $2) AND \"status\" IN ('dismissed', 'cancelled') RETURNING \"id\"), \"handled\" AS (DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" IN (SELECT \"id\" FROM \"gone\") RETURNING \"id\") SELECT \"g\".\"id\", \"h\".\"id\" IS NOT NULL FROM \"gone\" AS \"g\" LEFT JOIN \"handled\" AS \"h\" ON \"h\".\"id\" = \"g\".\"id\"";
+pub const SETTLED_BY_HAND: &str = "WITH \"gone\" AS (DELETE FROM \"jadpo_deliveries\" WHERE \"id\" IN (SELECT \"d\".\"id\" FROM \"jadpo_deliveries\" AS \"d\" WHERE \"d\".\"status\" IN ('dismissed', 'cancelled', 'abandoned') AND NOT EXISTS (SELECT 1 FROM \"jadpo_operator_actions\" AS \"a\" WHERE \"a\".\"item\" = \"d\".\"id\" AND \"a\".\"acted_at\" > $1) LIMIT $2) AND \"status\" IN ('dismissed', 'cancelled', 'abandoned') RETURNING \"id\"), \"handled\" AS (DELETE FROM \"jadpo_handled_deliveries\" WHERE \"id\" IN (SELECT \"id\" FROM \"gone\") RETURNING \"id\") SELECT \"g\".\"id\", \"h\".\"id\" IS NOT NULL FROM \"gone\" AS \"g\" LEFT JOIN \"handled\" AS \"h\" ON \"h\".\"id\" = \"g\".\"id\"";
 
 /// An operator's log rows on deliveries, written at or before `$1`, whose
 /// delivery is gone, at most `$2` (chunk 6.13): a delivery still on
@@ -358,6 +358,12 @@ pub struct Deleted {
     /// The ids of events received from outside, once no sender would send
     /// one again (chunk 7.7).
     pub received: u64,
+    /// Steps of unfinished records of several changing calls whose
+    /// answers were dropped after 30 days (chunk 7.5c).
+    pub answers: u64,
+    /// Records of several changing calls an operator abandoned, 30 days
+    /// on (chunk 7.5c).
+    pub step_records: u64,
     /// Parked queue messages an operator dismissed 30 days before (chunk
     /// 7.7c).
     pub parked: u64,
@@ -518,6 +524,27 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
             .deliveries
             .extend(runner::run_within(executor, host, &budget, polled.deferred).await);
         ticked.polled = Some((polled.called, polled.changed)).filter(|&(called, _)| called > 0);
+    }
+    // Unfinished records of several changing calls keep their answers 30
+    // days after their last run, then only their step list; an abandoned
+    // one goes 30 days after it was abandoned (chunk 7.5c).
+    let kept = now.saturating_sub(crate::unfinished::ANSWERS_KEPT_MS);
+    for store in &plan.steps {
+        if budget.spent() {
+            return ticked;
+        }
+        match delete(host, store, crate::unfinished::OLD_ANSWERS, kept).await {
+            Ok(count) => ticked.deleted.answers += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
+        }
+        match delete(host, store, crate::unfinished::ABANDONED, kept).await {
+            Ok(count) => ticked.deleted.step_records += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
+        }
+        match delete(host, store, crate::unfinished::OLD_ACTIONS, kept).await {
+            Ok(count) => ticked.deleted.actions += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
+        }
     }
     for hook in HOOKS {
         if budget.spent() {
