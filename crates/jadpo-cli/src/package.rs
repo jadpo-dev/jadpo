@@ -191,7 +191,9 @@ fn show(call: &Call) -> Reply {
     let Some(root) = jadpo_db::find_root(&cwd) else {
         return project_needed("package show");
     };
-    let loaded = jadpo_db::load(&root);
+    // A package is shown whole, its resources the app doesn't call
+    // included (chunk 7.1c2).
+    let loaded = jadpo_db::load_whole(&root);
     let (db, project) = (&loaded.db, loaded.project);
     let homes = surface::homes(db, project);
     let folders: Vec<String> = homes.values().map(|home| home.name.clone()).collect();

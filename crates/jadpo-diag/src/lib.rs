@@ -536,6 +536,10 @@ rules! {
         "11-integrations.html#package-provider-translations", "Provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
+    PACKAGE_VERSION_NEEDED: "package.version_needed", area 11, Error, Agent,
+        "11-integrations.html#package-version-needed", "Name written through a package held in two versions doesn't say which";
+    PACKAGE_VERSION_UNNEEDED: "package.version_unneeded", area 11, Error, Agent,
+        "11-integrations.html#package-version-unneeded", "Name written through a package held in one version carries a version";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,

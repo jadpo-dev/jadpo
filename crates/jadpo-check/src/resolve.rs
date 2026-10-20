@@ -439,7 +439,11 @@ impl Names<'_> {
                 if let Some(first) = names.first() {
                     let packaged = names.len() > 1 && self.table.is_package(&text(first));
                     if packaged {
-                        self.package_type(first, &names[1], want, out);
+                        if let Some(Through::Package(via, taken)) = self.through(&names, out)
+                            && let Some(member) = names.get(taken)
+                        {
+                            self.package_type(&via, member, want, out);
+                        }
                     } else {
                         self.type_name(first, want, out);
                     }
@@ -466,8 +470,14 @@ impl Names<'_> {
                 if let Some((first, rest)) = dotted(expr) {
                     if !self.table.is_package(&text(&first)) {
                         self.type_name(&first, want, out);
-                    } else if let Some(member) = rest.first() {
-                        self.package_type(&first, member, want, out);
+                    } else {
+                        let names: Vec<ast::NameRef> =
+                            std::iter::once(first).chain(rest).collect();
+                        if let Some(Through::Package(via, taken)) = self.through(&names, out)
+                            && let Some(member) = names.get(taken)
+                        {
+                            self.package_type(&via, member, want, out);
+                        }
                     }
                 }
             }
@@ -929,6 +939,13 @@ impl Names<'_> {
     /// function of its public library, or `Postcodes.UkPostcode(...)`, its
     /// type built from a value.
     fn package_call(&self, first: &ast::NameRef, rest: &[ast::NameRef], out: &mut Vec<Diagnostic>) {
+        let names: Vec<ast::NameRef> = std::iter::once(first.clone())
+            .chain(rest.iter().cloned())
+            .collect();
+        let Some(Through::Package(via, taken)) = self.through(&names, out) else {
+            return;
+        };
+        let rest = &names[taken..];
         let Some((member, after)) = rest.split_first() else {
             return;
         };
@@ -937,13 +954,13 @@ impl Names<'_> {
         if text(member) == crate::translations::TRANSLATIONS {
             return;
         }
-        let Some(symbol) = self.package_member(first, member, out) else {
+        let Some(symbol) = self.package_member(&via, member, out) else {
             return;
         };
         if symbol.kind != ItemKind::Library {
             return;
         }
-        let library = format!("{}.{}", text(first), text(member));
+        let library = format!("{}.{}", via.package, text(member));
         match after {
             [function] => {
                 let name = text(function);
@@ -972,7 +989,7 @@ impl Names<'_> {
                 }
             }
             [] => {}
-            _ => out.push(self.too_many_names(first, rest)),
+            _ => out.push(self.too_many_names(first, &names[1..])),
         }
     }
 
@@ -1173,14 +1190,71 @@ impl Names<'_> {
         if let Some((first, rest)) = dotted(expr)
             && starts_upper(&text(&first))
         {
-            if self.table.is_package(&text(&first))
-                && let Some(member) = rest.first()
-            {
-                self.package_member(&first, member, out);
+            if self.table.is_package(&text(&first)) && !rest.is_empty() {
+                let names: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
+                if let Some(Through::Package(via, taken)) = self.through(&names, out)
+                    && let Some(member) = names.get(taken)
+                {
+                    self.package_member(&via, member, out);
+                }
                 return;
             }
             self.type_qualifier(&first, false, out);
         }
+    }
+
+    /// How a dotted name whose first name is a package's reaches it (area
+    /// 11, "Where packages live"; chunk 7.1c2): through `Postcodes` while
+    /// the project holds one version, through `Postcodes.v3` while it holds
+    /// two side by side. A version missing while two are held, or written
+    /// while one is, is reported here; one written needlessly is still
+    /// followed, so the rest of the name is checked once.
+    fn through(&self, names: &[ast::NameRef], out: &mut Vec<Diagnostic>) -> Option<Through> {
+        let first = names.first()?;
+        let code = text(first);
+        if !self.table.is_package(&code) {
+            return None;
+        }
+        let start = self.span(first).start;
+        let second = names.get(1).map(text);
+        let member = |at: usize| names.get(at).map(text);
+        let versions = self.table.versions(&code);
+        if !versions.is_empty() {
+            if let Some(version) = &second {
+                let via = format!("{code}.{version}");
+                if versions.contains(&via) {
+                    return Some(Through::Package(
+                        Via {
+                            package: via,
+                            start,
+                        },
+                        2,
+                    ));
+                }
+            }
+            out.push(version_needed(
+                &code,
+                &versions,
+                second.as_deref(),
+                self.span(first),
+            ));
+            return Some(Through::Reported);
+        }
+        let via = Via {
+            package: code.clone(),
+            start,
+        };
+        if let Some(version) = &second
+            && names.len() > 2
+            && jadpo_db::is_version_label(version)
+            && self.table.declared(&format!("{code}.{version}")).is_empty()
+        {
+            let at = self.span(&names[1]);
+            let dot = Span::new(self.path, self.span(first).end, at.end);
+            out.push(version_unneeded(&code, version, member(2).as_deref(), dot));
+            return Some(Through::Package(via, 2));
+        }
+        Some(Through::Package(via, 1))
     }
 
     /// A name written through a package, `Postcodes.UkPostcode` or
@@ -1188,11 +1262,11 @@ impl Names<'_> {
     /// it has none by that name or doesn't make it public.
     fn package_member(
         &self,
-        first: &ast::NameRef,
+        via: &Via,
         member: &ast::NameRef,
         out: &mut Vec<Diagnostic>,
     ) -> Option<Symbol> {
-        let package = text(first);
+        let package = via.package.clone();
         let name = text(member);
         let joined = format!("{package}.{name}");
         let found = self
@@ -1214,7 +1288,7 @@ impl Names<'_> {
                         && symbol
                             .ownership
                             .package()
-                            .is_some_and(|home| home.code == package)
+                            .is_some_and(|home| home.through == package)
                 })
                 .map(|symbol| symbol.name.clone())
                 .collect();
@@ -1237,7 +1311,7 @@ impl Names<'_> {
             });
             return None;
         };
-        let span = Span::new(self.path, self.span(first).start, self.span(member).end);
+        let span = Span::new(self.path, via.start, self.span(member).end);
         self.access(&symbol, span, out);
         Some(symbol)
     }
@@ -1246,16 +1320,16 @@ impl Names<'_> {
     /// position that wants a type or a failure.
     fn package_type(
         &self,
-        first: &ast::NameRef,
+        via: &Via,
         member: &ast::NameRef,
         want: Want,
         out: &mut Vec<Diagnostic>,
     ) {
-        let Some(symbol) = self.package_member(first, member, out) else {
+        let Some(symbol) = self.package_member(via, member, out) else {
             return;
         };
-        let written = format!("{}.{}", text(first), text(member));
-        let span = Span::new(self.path, self.span(first).start, self.span(member).end);
+        let written = format!("{}.{}", via.package, text(member));
+        let span = Span::new(self.path, via.start, self.span(member).end);
         match (&symbol.kind, want) {
             (ItemKind::Type(Base::Failure), _) => {}
             (ItemKind::Type(_), Want::Type) => {}
@@ -1949,4 +2023,60 @@ fn call_direction(symbol: &Symbol, domain: &str, span: Span) -> Diagnostic {
     .next(format!(
         "Move the shared declaration into `{domain}`, or stop it depending on `{name}`"
     ))
+}
+
+/// How a dotted name reaches a package ([`Resolver::through`]).
+enum Through {
+    /// Through this package, after this many of the names.
+    Package(Via, usize),
+    /// A version missing, already reported.
+    Reported,
+}
+
+/// A package as a name is written through it: `Postcodes`, or
+/// `Postcodes.v3` side by side, starting at `start`.
+struct Via {
+    package: String,
+    start: u32,
+}
+
+/// `package.version_needed`: a name through a package held in two versions
+/// that doesn't say which (chunk 7.1c2).
+fn version_needed(
+    code: &str,
+    versions: &[String],
+    member: Option<&str>,
+    span: Span,
+) -> Diagnostic {
+    let held: Vec<String> = versions.iter().map(|via| format!("`{via}`")).collect();
+    let written: Vec<String> = versions
+        .iter()
+        .map(|via| format!("`{via}.{}`", member.unwrap_or("<name>")))
+        .collect();
+    Diagnostic::new(
+        &rule::PACKAGE_VERSION_NEEDED,
+        format!("`{code}` is held in two versions, so a name through it says which"),
+    )
+    .at(span, "which version?")
+    .reason(format!(
+        "The project holds {} side by side while callers move across, so a name written through the package carries its version, and each use says which one it means.",
+        crate::and_list(&held)
+    ))
+    .next(format!("Write {}", crate::or_list(&written)))
+}
+
+/// `package.version_unneeded`: a version written through a package the
+/// project holds in one version (chunk 7.1c2).
+fn version_unneeded(code: &str, version: &str, member: Option<&str>, span: Span) -> Diagnostic {
+    let bare = format!("{code}.{}", member.unwrap_or("<name>"));
+    Diagnostic::new(
+        &rule::PACKAGE_VERSION_UNNEEDED,
+        format!("`{code}` is held in one version, so its names don't carry it"),
+    )
+    .at(span.clone(), "not needed")
+    .reason(format!(
+        "A name carries its package's version only while two versions sit side by side; with one held, `{bare}` is the one way to write it, and `.{version}` would have to change when the next version arrives and leaves."
+    ))
+    .next(format!("Write `{bare}`"))
+    .edit(span, "")
 }

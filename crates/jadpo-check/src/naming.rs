@@ -211,7 +211,9 @@ impl Here<'_> {
     /// package's.
     fn clash(&self, a: &Symbol, b: &Symbol) -> bool {
         match (a.ownership.package(), b.ownership.package()) {
-            (Some(a), Some(b)) => return a.code == b.code,
+            // One package is one folder: two versions side by side are
+            // two packages (chunk 7.1c2).
+            (Some(a), Some(b)) => return a.folder == b.folder,
             (Some(_), None) | (None, Some(_)) => return false,
             (None, None) => {}
         }
