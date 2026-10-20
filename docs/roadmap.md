@@ -1447,12 +1447,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   a test's steps ends it as `test.subscriber_failed`; each delivery attempt
   in a test counts its keyed calls from none under its own key. Live tests
   in `step_crashes.rs`. Choices in area 12's "Tests, chosen in chunk 7.5d".
-- [ ] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
+- [x] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
   after 7.5d (split from 7.5d on 2026-10-20): the late-failure warning (a
   declinable error) after the first changing step, reaching through
   package actions, and the deadline sum: the timeout times the attempts of
   every step on the longest path against a reaching route's deadline,
-  with the single call's deadline warning (area 11) it sums.
+  with the single call's deadline warning (area 11) it sums. Built: the
+  steps walk keeps each way's first changing call and how long its
+  outside calls can take; `step.late_failure` (declinable) once for each
+  action at its first `attempt`, `reject` or `propagate` after one that
+  can end it for good (a failure not `unavailable` or `rate_limited`),
+  unless a `match` handles it; a package's action lists them on its
+  surface as `after_effect` (and `jadpo package show`'s "after effect"),
+  and the app's call of it is the point; `route.calls_past_deadline` at a
+  route whose action's provider and `ai.generate` calls, each `timeout:`
+  times its attempts, add up on the longest way past its `deadline:`,
+  the one check chunk 5.5v6's streaming routes rely on. Example 26's
+  route waits 20 seconds. Choices in area 12's "The late-failure warning
+  and the deadline sum, chosen in chunk 7.5e".
 - [ ] **7.5f Multi-step calls: development and the metric** `opus ·
   high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
   `jadpo dev`'s request lines and timeline; the metric and the no-setup
@@ -1692,6 +1704,13 @@ The design is area 11 as revised on 2026-10-16, with its research in
   type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
   the token test compares instants as instants, and the open-transaction
   count of the call tests leaves out the server's autovacuum workers.
+- [ ] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
+  7.5e): `ai.stream`'s `timeout:` counted once in the route-deadline sum
+  (`Calls::time` in `jadpo-check`'s `steps.rs`), now that 5.5v6 has
+  landed; and in a package's own action, a `match` on its own
+  operation's outcome reporting both `failure.outcome_missing_arm` for
+  `AcmePay.CardDeclined` and `failure.outcome_unknown_arm` for the bare
+  `CardDeclined` — one name for a package's failure inside its own code.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

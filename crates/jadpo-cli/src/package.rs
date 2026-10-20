@@ -352,6 +352,7 @@ fn summary(declaration: &Declaration) -> String {
             params,
             result,
             fails,
+            ..
         } => {
             let params: Vec<String> = params.iter().map(|(n, t)| format!("{n}: {t}")).collect();
             let mut out = format!("({})", params.join(", "));
@@ -665,6 +666,7 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             params,
             result,
             fails,
+            ..
         } => {
             let params: Vec<String> = params.iter().map(|(n, t)| format!("{n}: {t}")).collect();
             fields.push((
@@ -681,6 +683,12 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             ));
             if !fails.is_empty() {
                 fields.push(("fails".into(), fails.join(", ")));
+            }
+            // What can follow its own changing call (chunk 7.5e).
+            if let What::Action { after_effect, .. } = &found.what
+                && !after_effect.is_empty()
+            {
+                fields.push(("after effect".into(), after_effect.join(", ")));
             }
         }
         What::Type {

@@ -726,6 +726,8 @@ rules! {
         "07-http.html#route-authentication-invalid", "Route authentication is not RouteAuthentication.none or .fresh";
     ROUTE_BINDING_UNUSED: "route.binding_unused", area 7, Error, Agent,
         "07-http.html#route-binding-unused", "Route reads a placeholder or input it never passes on";
+    ROUTE_CALLS_PAST_DEADLINE: "route.calls_past_deadline", area 11, Error, Agent,
+        "11-integrations.html#route-calls-past-deadline", "Outside calls a route reaches can take longer than its deadline";
     ROUTE_DEADLINE_INVALID: "route.deadline_invalid", area 7, Error, Agent,
         "07-http.html#route-deadline-invalid", "Route deadline is not a duration up to 60 seconds";
     ROUTE_HEADER_CREDENTIAL: "route.header_credential", area 7, Error, Agent,
@@ -872,6 +874,8 @@ rules! {
         "12-jobs-and-events.html#step-encryption-key-required", "Actions make several changing calls but no key encrypts their answers";
     STEP_LARGE_OUTPUT: "step.large_output", area 12, Error, Agent,
         "12-jobs-and-events.html#step-large-output", "Operation with a large answer among several changing calls";
+    STEP_LATE_FAILURE: "step.late_failure", area 12, Declinable, Agent,
+        "12-jobs-and-events.html#step-late-failure", "Action can fail for good after a changing call took effect";
     STEP_SETTINGS_INVALID: "step.settings_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#step-settings-invalid", "Steps setting in `application { }` doesn't read";
     STEP_STORE_REQUIRED: "step.store_required", area 12, Error, Human,
@@ -1585,6 +1589,7 @@ mod tests {
                 "library.similar_exists",
                 "package.standard_candidate",
                 "query.nearest_exact",
+                "step.late_failure",
                 "translation.field_unused",
                 "type.batch_order_updatable",
                 "type.standard_exists",

@@ -5,12 +5,14 @@ use courier_desk/actions { book_pickup }
 routes Pickups {
     prefix: /pickups
 
-    /// Anyone at the desk books a pickup.
+    /// Anyone at the desk books a pickup. The courier's call may wait 5
+    /// seconds on each of its 3 attempts, so the route waits 20.
     POST / {
         authentication: RouteAuthentication.none
         input: PickupForm
         output: BookedPickup
         status: SuccessStatus.created
+        deadline: 20s
         run: book_pickup(input)
     }
 }

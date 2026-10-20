@@ -534,3 +534,7 @@ subscription
 # Wrangler's queue consumer setting `max_batch_size`, which the consumer
 # written for Cloudflare Queues names (area 11, chunk 7.7c2)
 batch_size
+
+# Area 12's rule `step.late_failure` (chunk 7.5e): a failure that comes
+# late, after a changing call took effect; ordinary English.
+late

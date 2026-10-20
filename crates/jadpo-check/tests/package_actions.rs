@@ -125,8 +125,16 @@ fn files(actions: &[(&str, &str)], call: &str, more: &[(&str, &str)]) -> Vec<(St
 }
 
 /// Each problem, as `path rule: message`, but for unused imports and
-/// declarations, migrations and records, which these projects don't keep.
+/// declarations, migrations and records, which these projects don't keep,
+/// and a failure after a changing call, which [`all_problems`] keeps.
 fn problems(actions: &[(&str, &str)], call: &str, more: &[(&str, &str)]) -> Vec<String> {
+    all_problems(actions, call, more)
+        .into_iter()
+        .filter(|problem| !problem.contains(" step.late_failure:"))
+        .collect()
+}
+
+fn all_problems(actions: &[(&str, &str)], call: &str, more: &[(&str, &str)]) -> Vec<String> {
     let files = files(actions, call, more);
     let files: Vec<(&str, &str)> = files
         .iter()
@@ -145,6 +153,36 @@ fn problems(actions: &[(&str, &str)], call: &str, more: &[(&str, &str)]) -> Vec<
 }
 
 // --- the package's side -----------------------------------------------------
+
+/// A package's action that can fail for good after its own changing call
+/// isn't told; it lists the failure on its surface (`after_effect`), and
+/// the app's call of it is the point that can end the app's action for
+/// good (area 12, "Ending for good after a step took effect is warned";
+/// chunk 7.5e).
+#[test]
+fn the_late_failure_warning_reaches_through_a_package_action() {
+    assert_eq!(
+        all_problems(
+            &[("start_subscription", START)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
+        [
+            "domains/billing/actions/subscribe.jadpo step.late_failure: `subscribe` can fail for good inside `pay.start_subscription`, after its `customers.create` took effect"
+        ]
+    );
+    // One whose failure comes only before its changing call has nothing
+    // to tell.
+    let first = "/// Attaches the card.\npublic action start_subscription(input: PayRequest) fails CardDeclined -> PayReply {\n    return attempt cards.create(input)\n}\n";
+    assert_eq!(
+        all_problems(
+            &[("start_subscription", first)],
+            "pay.start_subscription",
+            &[SUBSCRIBER]
+        ),
+        Vec::<String>::new()
+    );
+}
 
 #[test]
 fn a_package_action_calls_its_own_operations_and_the_app_calls_it() {
@@ -413,7 +451,7 @@ fn a_public_package_action_is_on_the_surface() {
         .expect("an action's entry");
     assert_eq!(
         entry,
-        "action start_subscription\n    /// Creates the customer, then attaches the card.\n    file actions/start_subscription.jadpo\n    signature (input: PayRequest) -> PayReply\n    fails CardDeclined"
+        "action start_subscription\n    /// Creates the customer, then attaches the card.\n    file actions/start_subscription.jadpo\n    signature (input: PayRequest) -> PayReply\n    fails CardDeclined\n    after_effect CardDeclined"
     );
     // One without `public` isn't.
     let private = START.replace("public action", "action");

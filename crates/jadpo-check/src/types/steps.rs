@@ -36,6 +36,19 @@
 //!   steps: { encryption_key: } }` names no `SigningKey` setting to encrypt
 //!   their answers with; `step.settings_invalid` for a `steps:` block that
 //!   doesn't read ([`steps_settings`]).
+//! - **`step.late_failure`** (chunk 7.5e, declinable): a point that can
+//!   end an action for good after a changing call took effect on its way:
+//!   an `attempt` whose call or write can fail with a failure that isn't
+//!   retried, a `reject` or a `propagate`. Reported once for each action,
+//!   at the first such point, the others beside it. A package's action is
+//!   never told: the failures it can end with after its own changing call
+//!   are its [`Steps::after_effect`], listed on its surface, and the app's
+//!   call of it is the point.
+//! - **`route.calls_past_deadline`** (chunk 7.5e): a route whose action's
+//!   outside calls, each its `timeout:` times its attempts, add up on the
+//!   longest way through it to more than the route's `deadline:`; a
+//!   provider's operation and an `ai` call alike (area 11, "Retries"; area
+//!   21).
 //!
 //! The runtime's record of such an action is planned here too
 //! ([`record_plans`]): the store it is kept in and a digest of its step
@@ -47,7 +60,7 @@ use std::sync::Arc;
 
 use jadpo_db::{Db, File, ItemKind, Project, item_tree};
 use jadpo_diag::{Diagnostic, rule};
-use jadpo_graph::body::{ArmBody, Body, Callee, Expr, Node, SiteId, Stmt};
+use jadpo_graph::body::{ArmBody, Body, Callee, Expr, Fallible, Node, SiteId, Stmt};
 use jadpo_graph::{Key, Kind};
 use jadpo_std::files::FilesOp;
 
@@ -79,6 +92,13 @@ struct Calls {
     /// Each package's operations by its folder, for its own actions'
     /// calls, which name no connection (chunk 7.6).
     own: BTreeMap<(String, String), (Call, bool)>,
+    /// How long a call through each connection can take, by its name: its
+    /// `timeout:` times its `retry: { attempts: }`, in milliseconds.
+    budgets: BTreeMap<String, u64>,
+    /// The failures that are retried rather than ending a run for good,
+    /// by name: those of kind `unavailable` or `rate_limited` (area 12,
+    /// "Retries and giving up").
+    retried: BTreeSet<String>,
 }
 
 impl Calls {
@@ -93,7 +113,16 @@ impl Calls {
             (call, operation.large_output)
         };
         let mut out = BTreeMap::new();
+        let mut budgets = BTreeMap::new();
         for connection in &crate::connections::package_connections(db, project).connections {
+            let timeout = connection
+                .timeout_ms
+                .unwrap_or(jadpo_std::provider::DEFAULT_TIMEOUT_MS);
+            let attempts = connection.retry.unwrap_or_default().attempts;
+            budgets.insert(
+                connection.name.clone(),
+                timeout.saturating_mul(u64::from(attempts)),
+            );
             for operation in operations.of(&connection.folder) {
                 out.insert(
                     (connection.name.clone(), operation.full_name()),
@@ -111,9 +140,51 @@ impl Calls {
                 )
             })
             .collect();
+        let table = crate::failures::failure_table(db, project);
+        let retried = table
+            .names()
+            .filter(|name| {
+                table.get(name).is_some_and(|info| {
+                    matches!(info.kind.as_deref(), Some("unavailable" | "rate_limited"))
+                })
+            })
+            .map(str::to_string)
+            .collect();
         Calls {
             operations: out,
             own,
+            budgets,
+            retried,
+        }
+    }
+
+    /// Whether failure `key` ends a run for good: it isn't retried.
+    fn ends(&self, key: &Key) -> bool {
+        !(self.retried.contains(key.name()) || self.retried.contains(key.written()))
+    }
+
+    /// How long the outside call at `node` can take, in milliseconds, and
+    /// how many calls it makes through the connection its package's action
+    /// was called through (chunk 7.6), which the caller prices.
+    fn time(&self, node: &Node) -> (u64, u32) {
+        let Node::Expr(Expr::Call { callee, .. }) = node else {
+            return (0, 0);
+        };
+        match callee {
+            Callee::Provider { connection, .. }
+                if connection == jadpo_graph::body::OWN_CONNECTION =>
+            {
+                (0, 1)
+            }
+            Callee::Provider { connection, .. } => {
+                (self.budgets.get(connection).copied().unwrap_or(0), 0)
+            }
+            Callee::Generate {
+                timeout_ms,
+                attempts,
+                ..
+            } => (timeout_ms.saturating_mul(u64::from(*attempts)), 0),
+            _ => (0, 0),
         }
     }
 
@@ -170,6 +241,18 @@ pub struct Steps {
     pub unkeyed: Option<String>,
     /// Its first call of an operation marked `large_output: true`.
     pub large: Option<String>,
+    /// The longest its outside calls can take on one way through it, each
+    /// its `timeout:` times its attempts, in milliseconds (chunk 7.5e).
+    pub slowest_ms: u64,
+    /// For a package's action, the most calls one way through it makes
+    /// through the connection it was called through, which its caller
+    /// prices with that connection's budget.
+    pub own_calls: u32,
+    /// The failures that can end it for good after one of its changing
+    /// calls took effect, sorted: what a package's surface lists for its
+    /// action, and what makes the app's call of that action warned (area
+    /// 11, "The surface"; chunk 7.5e).
+    pub after_effect: Vec<Key>,
 }
 
 impl Steps {
@@ -180,24 +263,35 @@ impl Steps {
     }
 }
 
-/// One way through a body: whether it is still running, and how many
-/// changing calls it has made.
+/// One way through a body: whether it is still running, how many
+/// changing calls it has made, the first of them, and how long its outside
+/// calls can take.
 #[derive(Clone, Copy, Debug, Default)]
 struct Way {
     live: bool,
     count: u32,
+    /// The first changing call made on it, by its place in
+    /// [`Walk::made`]: after it, a failure ends the action for good with
+    /// something already done.
+    effect: Option<usize>,
+    /// How long its outside calls can take, in milliseconds.
+    ms: u64,
+    /// How many calls it makes through the connection its package's
+    /// action was called through.
+    own: u32,
 }
 
 impl Way {
     fn start() -> Way {
         Way {
             live: true,
-            count: 0,
+            ..Way::default()
         }
     }
 
     /// Where two ways meet again: the one with more calls is the longer
-    /// from here on.
+    /// from here on, and a changing call made on either may have been
+    /// made.
     fn join(self, other: Way) -> Way {
         match (self.live, other.live) {
             (false, _) => other,
@@ -205,9 +299,42 @@ impl Way {
             _ => Way {
                 live: true,
                 count: self.count.max(other.count),
+                effect: match (self.effect, other.effect) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (a, b) => a.or(b),
+                },
+                ms: self.ms.max(other.ms),
+                own: self.own.max(other.own),
             },
         }
     }
+}
+
+/// What a point that can end an action for good is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Ending {
+    /// An `attempt` of a call or a write, at the call or write.
+    Attempt,
+    /// An `attempt` of a package's action that can fail for good after
+    /// its own changing call, with none made before it.
+    Inside,
+    Reject,
+    Propagate,
+}
+
+/// A point that can end an action for good after a changing call took
+/// effect (area 12, "Ending for good after a step took effect is
+/// warned").
+#[derive(Clone, Debug)]
+struct Late {
+    site: SiteId,
+    ending: Ending,
+    /// The changing call before it, in [`Walk::made`]; `None` for
+    /// [`Ending::Inside`].
+    effect: Option<usize>,
+    /// The failures it can end the action with, each one that isn't
+    /// retried.
+    failures: Vec<Key>,
 }
 
 /// A site that makes a changing call, itself or through an action.
@@ -247,6 +374,13 @@ struct Walk<'a> {
     past: Option<Made>,
     /// An action called passes it on its own, and is reported there.
     called_past: bool,
+    /// The longest any way's outside calls can take, and the most calls
+    /// any makes through its package action's connection.
+    slowest_ms: u64,
+    own_calls: u32,
+    /// Each point that can end it for good after a changing call, in the
+    /// order walked.
+    late: Vec<Late>,
 }
 
 impl<'a> Walk<'a> {
@@ -266,6 +400,9 @@ impl<'a> Walk<'a> {
             in_loops: Vec::new(),
             past: None,
             called_past: false,
+            slowest_ms: 0,
+            own_calls: 0,
+            late: Vec::new(),
         }
     }
 
@@ -278,6 +415,8 @@ impl<'a> Walk<'a> {
     /// A way that ends here.
     fn end(&mut self, way: Way) {
         self.longest = self.longest.max(way.count);
+        self.slowest_ms = self.slowest_ms.max(way.ms);
+        self.own_calls = self.own_calls.max(way.own);
     }
 
     fn block(&mut self, block: &[SiteId], mut way: Way) -> Way {
@@ -340,17 +479,34 @@ impl<'a> Walk<'a> {
                 }
                 out
             }
-            Node::Expr(Expr::Reject { .. } | Expr::Propagate { .. }) => {
+            Node::Expr(Expr::Reject { failure, .. } | Expr::Propagate { failure }) => {
                 let way = self.all(children(node), way);
+                let ending = if matches!(node, Node::Expr(Expr::Reject { .. })) {
+                    Ending::Reject
+                } else {
+                    Ending::Propagate
+                };
+                if let Some(effect) = way.effect {
+                    self.late_at(id, ending, Some(effect), failure.iter().cloned().collect());
+                }
                 self.end(way);
                 Way::default()
             }
             _ => {
+                let before = way.effect;
                 let mut way = self.all(children(node), way);
                 match does(node) {
                     Does::Calls => self.call(id, node, &mut way),
-                    Does::Joins(callee) => self.joins(id, callee, &mut way),
+                    Does::Joins(callee) => self.joins(id, node, callee, &mut way),
                     Does::Writes | Does::Nothing => {}
+                }
+                if let Node::Expr(Expr::Attempt {
+                    inner: Some(inner),
+                    arms,
+                }) = node
+                {
+                    let failures: Vec<Key> = arms.iter().map(|arm| arm.failure.clone()).collect();
+                    self.attempt(*inner, before, failures);
                 }
                 way
             }
@@ -359,6 +515,9 @@ impl<'a> Walk<'a> {
 
     /// The site's own outside call.
     fn call(&mut self, site: SiteId, node: &Node, way: &mut Way) {
+        let (ms, own) = self.calls.time(node);
+        way.ms = way.ms.saturating_add(ms);
+        way.own = way.own.saturating_add(own);
         let Some((call, large)) = self.calls.of(node, self.package.as_deref()) else {
             return;
         };
@@ -383,6 +542,7 @@ impl<'a> Walk<'a> {
         }
         self.changing = self.changing.saturating_add(1);
         way.count = way.count.saturating_add(1);
+        way.effect.get_or_insert(self.made.len());
         self.made.push(made.clone());
         if way.count > MOST_STEPS && self.past.is_none() {
             self.past = Some(made);
@@ -390,8 +550,29 @@ impl<'a> Walk<'a> {
     }
 
     /// A call of an action, which makes what it makes as part of this one.
-    fn joins(&mut self, site: SiteId, callee: &Key, way: &mut Way) {
+    fn joins(&mut self, site: SiteId, node: &Node, callee: &Key, way: &mut Way) {
         let steps = (self.steps)(callee);
+        // A package's action's own calls go through the connection the
+        // app called it through.
+        let budget = match node {
+            Node::Expr(Expr::Call {
+                callee: Callee::PackageAction { connection, .. },
+                ..
+            }) => Some(self.calls.budgets.get(connection).copied().unwrap_or(0)),
+            _ => None,
+        };
+        match budget {
+            Some(budget) => {
+                way.ms = way
+                    .ms
+                    .saturating_add(steps.slowest_ms)
+                    .saturating_add(budget.saturating_mul(u64::from(steps.own_calls)));
+            }
+            None => {
+                way.ms = way.ms.saturating_add(steps.slowest_ms);
+                way.own = way.own.saturating_add(steps.own_calls);
+            }
+        }
         if steps.calls.is_none() {
             return;
         }
@@ -418,12 +599,73 @@ impl<'a> Walk<'a> {
         }
         self.changing = self.changing.saturating_add(steps.changing);
         way.count = way.count.saturating_add(steps.longest);
+        way.effect.get_or_insert(self.made.len());
         self.made.push(made.clone());
         if steps.longest > MOST_STEPS {
             self.called_past = true;
         } else if way.count > MOST_STEPS && self.past.is_none() {
             self.past = Some(made);
         }
+    }
+
+    /// An `attempt` of the call or write at `inner`, with `mapped` the
+    /// failures its arms map to, a provider's or a construction's;
+    /// `effect` is the first changing call made before it on its way.
+    /// After one, every failure it passes on that isn't retried ends the
+    /// action for good. Before one, only a package's action can: with the
+    /// failures it lists as following its own changing call. An app's
+    /// action called is told of its own.
+    fn attempt(&mut self, inner: SiteId, effect: Option<usize>, mapped: Vec<Key>) {
+        let node = &self.body.site(inner).node;
+        let mut ending = Ending::Attempt;
+        let mut failures = mapped;
+        // What it passes on unmapped: an action's or a write's own.
+        if failures.is_empty()
+            && let Node::Expr(
+                Expr::Call {
+                    fallible: Fallible::Fails(keys),
+                    ..
+                }
+                | Expr::Write {
+                    fallible: Fallible::Fails(keys),
+                    ..
+                },
+            ) = node
+        {
+            failures.extend(keys.iter().cloned());
+        }
+        if effect.is_none() {
+            let Node::Expr(Expr::Call {
+                callee: Callee::PackageAction { action, .. },
+                ..
+            }) = node
+            else {
+                return;
+            };
+            failures = (self.steps)(action).after_effect;
+            ending = Ending::Inside;
+        }
+        self.late_at(inner, ending, effect, failures);
+    }
+
+    /// Keeps a point that can end the action with `failures`, those that
+    /// aren't retried, if any.
+    fn late_at(&mut self, site: SiteId, ending: Ending, effect: Option<usize>, failures: Vec<Key>) {
+        let mut failures: Vec<Key> = failures
+            .into_iter()
+            .filter(|failure| self.calls.ends(failure))
+            .collect();
+        failures.sort();
+        failures.dedup();
+        if failures.is_empty() {
+            return;
+        }
+        self.late.push(Late {
+            site,
+            ending,
+            effect,
+            failures,
+        });
     }
 
     /// What the walk found, each call named as `names` writes it.
@@ -451,6 +693,18 @@ impl<'a> Walk<'a> {
                 .large
                 .first()
                 .and_then(|made| name(made, |steps| steps.large.clone())),
+            slowest_ms: self.slowest_ms,
+            own_calls: self.own_calls,
+            after_effect: {
+                let mut all: Vec<Key> = self
+                    .late
+                    .iter()
+                    .flat_map(|late| late.failures.iter().cloned())
+                    .collect();
+                all.sort();
+                all.dedup();
+                all
+            },
         }
     }
 }
@@ -757,6 +1011,16 @@ fn body_problems(
             .next("Add `steps: { encryption_key: config.step_encryption_key }` to `application { }` in `app.jadpo`, and declare `step_encryption_key: SigningKey` in `config.jadpo`"),
         );
     }
+    // Ending for good after a changing call took effect (chunk 7.5e):
+    // once for each action, at its first such point. A package's action
+    // lists its own on its surface instead, and the app's call of it is
+    // told.
+    if walk.package.is_none()
+        && key.kind() == Some(Kind::Action)
+        && let Some(first) = walk.late.first()
+    {
+        out.push(late_failure(names, body, action, &walk, first));
+    }
     // A run's items and its end, each run as a batch of its own.
     for (fact, site) in facts_of(body) {
         let Fact::Batch(batch) = fact else {
@@ -793,8 +1057,90 @@ fn body_problems(
     }
 }
 
-/// `step.context` at each route in `file` whose action makes several
-/// changing calls when its API doesn't require `Idempotency-Key`.
+/// Where a point that can end an action is written, and how it reads:
+/// the call or write an `attempt` makes, or `reject X` or `propagate` up to
+/// its block.
+fn point(names: &Names<'_>, body: &Body, late: &Late) -> (jadpo_diag::Span, String) {
+    let span = names.span(body, late.site);
+    let written = names.name(body, late.site);
+    match late.ending {
+        Ending::Attempt | Ending::Inside => (span, written),
+        Ending::Reject | Ending::Propagate => {
+            let end = span
+                .start
+                .saturating_add(u32::try_from(written.len()).unwrap_or(0));
+            (
+                jadpo_diag::Span::new(span.path.clone(), span.start, end.min(span.end)),
+                written,
+            )
+        }
+    }
+}
+
+/// `step.late_failure` for action `action`, at its first point `first`.
+fn late_failure(
+    names: &Names<'_>,
+    body: &Body,
+    action: &str,
+    walk: &Walk<'_>,
+    first: &Late,
+) -> Diagnostic {
+    let (span, written) = point(names, body, first);
+    let effect = first.effect.and_then(|at| walk.made.get(at));
+    // The call that took effect as written where it is made: an
+    // operation, or the action that makes it.
+    let effect_name = effect.map(|made| names.name(body, made.site));
+    let message = match &effect_name {
+        Some(effect) => {
+            format!("`{action}` can fail for good at `{written}`, after `{effect}` took effect")
+        }
+        None => {
+            let inside = match &body.site(first.site).node {
+                Node::Expr(Expr::Call {
+                    callee: Callee::PackageAction { action: called, .. },
+                    ..
+                }) => (walk.steps)(called).first,
+                _ => None,
+            }
+            .unwrap_or_default();
+            format!(
+                "`{action}` can fail for good inside `{written}`, after its `{inside}` took effect"
+            )
+        }
+    };
+    let failures: Vec<String> = first
+        .failures
+        .iter()
+        .map(|failure| {
+            format!(
+                "`{}`",
+                failure.written().rsplit('.').next().unwrap_or_default()
+            )
+        })
+        .collect();
+    let mut diagnostic = Diagnostic::new(&rule::STEP_LATE_FAILURE, message)
+        .at(span, format!("can fail with {}", crate::or_list(&failures)));
+    if let Some(made) = effect {
+        diagnostic = diagnostic.also(names.span(body, made.site), "takes effect first");
+    }
+    for other in walk.late.iter().skip(1) {
+        let (span, _) = point(names, body, other);
+        diagnostic = diagnostic.also(span, "can fail for good too");
+    }
+    let before = effect_name.clone().unwrap_or_else(|| written.clone());
+    diagnostic
+        .reason(format!(
+            "Once a changing call has taken effect, a failure that ends `{action}` for good rolls back its writes but not what `{before}` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it."
+        ))
+        .next(format!(
+            "Check the condition before `{before}`, record what happened and finish in a subscriber of an event `{action}` emits, or undo `{before}` as another step in a `match` arm"
+        ))
+}
+
+/// At each route in `file`: `step.context` when its action makes several
+/// changing calls and its API doesn't require `Idempotency-Key`, and
+/// `route.calls_past_deadline` when its action's outside calls can take
+/// longer than its deadline (chunk 7.5e).
 fn route_problems(
     db: &dyn Db,
     project: Project,
@@ -819,16 +1165,13 @@ fn route_problems(
         let Some(group) = &read.model else {
             continue;
         };
-        if requires_key(db, project, &group.api) {
-            continue;
-        }
+        let required = requires_key(db, project, &group.api);
         for route in &group.routes {
             if route.run.query || route.run.generated.is_some() {
                 continue;
             }
             let Some(steps) = crate::graph::declaration_key(&lookup, &route.run.name)
                 .and_then(|key| all.get(&key))
-                .filter(|steps| steps.several())
             else {
                 continue;
             };
@@ -837,22 +1180,80 @@ fn route_problems(
                 continue;
             };
             let api = &group.api;
-            out.push(
-                Diagnostic::new(
-                    &rule::STEP_CONTEXT,
-                    format!(
-                        "`{label}` runs `{}`, which makes {} changing calls, but API `{api}` doesn't require `Idempotency-Key`",
-                        route.run.name, steps.longest
-                    ),
-                )
-                .at(span.clone(), "a retry can't resume them")
-                .reason("Several changing calls are each recorded under their action's key, so a retry carries on from the last answer instead of sending them again; a route keeps its key across a retry only when its API requires the client's `Idempotency-Key`.")
-                .next(format!(
-                    "Require the key with `idempotency: Idempotency.required` on API `{api}`, or answer `202` and make the calls in a subscriber"
-                )),
-            );
+            if !required && steps.several() {
+                out.push(
+                    Diagnostic::new(
+                        &rule::STEP_CONTEXT,
+                        format!(
+                            "`{label}` runs `{}`, which makes {} changing calls, but API `{api}` doesn't require `Idempotency-Key`",
+                            route.run.name, steps.longest
+                        ),
+                    )
+                    .at(span.clone(), "a retry can't resume them")
+                    .reason("Several changing calls are each recorded under their action's key, so a retry carries on from the last answer instead of sending them again; a route keeps its key across a retry only when its API requires the client's `Idempotency-Key`.")
+                    .next(format!(
+                        "Require the key with `idempotency: Idempotency.required` on API `{api}`, or answer `202` and make the calls in a subscriber"
+                    )),
+                );
+            }
+            if steps.slowest_ms > u64::from(route.deadline_ms) {
+                out.push(past_deadline(
+                    &label,
+                    &route.run.name,
+                    steps.slowest_ms,
+                    route.deadline_ms,
+                    span.clone(),
+                ));
+            }
         }
     }
+}
+
+/// A duration as Jadpo writes one: `30s`, `1500ms`.
+fn duration(ms: u64) -> String {
+    if ms.is_multiple_of(1000) {
+        format!("{}s", ms / 1000)
+    } else {
+        format!("{ms}ms")
+    }
+}
+
+/// `route.calls_past_deadline` at route `label`, which runs `action`,
+/// whose outside calls can take `slowest_ms` against its `deadline_ms`.
+fn past_deadline(
+    label: &str,
+    action: &str,
+    slowest_ms: u64,
+    deadline_ms: u32,
+    span: jadpo_diag::Span,
+) -> Diagnostic {
+    let most = u64::from(jadpo_std::http::MAX_DEADLINE_MS);
+    let needed = slowest_ms.div_ceil(1000) * 1000;
+    let lower = "the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`)";
+    let next = if needed <= most {
+        format!(
+            "Give the route `deadline: {}`, lower {lower}, or answer `202` and make the calls in a subscriber",
+            duration(needed)
+        )
+    } else {
+        format!(
+            "Lower {lower}, or answer `202` and make the calls in a subscriber, since a route's deadline is at most {}",
+            duration(most)
+        )
+    };
+    Diagnostic::new(
+        &rule::ROUTE_CALLS_PAST_DEADLINE,
+        format!(
+            "`{label}` runs `{action}`, whose outside calls can take {}, longer than its {} deadline",
+            duration(slowest_ms),
+            duration(u64::from(deadline_ms))
+        ),
+    )
+    .at(span, format!("deadline {}", duration(u64::from(deadline_ms))))
+    .reason(format!(
+        "Each outside call can wait its `timeout:` on each of its attempts, and a route's deadline covers every call on the longest way through `{action}`, those of the actions it calls included; at the deadline the route stops, so a call still waiting, or still to be tried again, never finishes."
+    ))
+    .next(next)
 }
 
 /// `step.context` at each schedule in `file` whose action makes several
