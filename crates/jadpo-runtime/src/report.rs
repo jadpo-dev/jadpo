@@ -259,6 +259,7 @@ impl Report {
             FaultKind::Store(_) => "the store refused".to_string(),
             FaultKind::Provider(_) => "the provider's answer".to_string(),
             FaultKind::CallInTransaction(_) => "not sent".to_string(),
+            FaultKind::Diverged(_) => "differs from its record".to_string(),
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
         let written = text.as_ref().map_or("", |text| text.written.as_str());
@@ -341,6 +342,13 @@ impl Report {
                 ),
                 "Make the call before the action's first write".to_string(),
                 "agent",
+            ),
+            FaultKind::Diverged(what) => (
+                format!(
+                    "This run no longer matches the record of the steps an earlier run of it took: {what}. It stopped before sending anything more, and is held for an operator."
+                ),
+                "Deploy code that makes the recorded steps again and retry it, or abandon it and set right at the provider what it did".to_string(),
+                "human",
             ),
         };
         Report {

@@ -41,6 +41,9 @@ openssl.workspace = true
 
 [features]
 test-authenticator = []
+# A test's server on this machine standing in for AWS's SNS host
+# (`fetch::Outward::reaching`, chunk 7.7b): never built outside a test.
+test-outbound = []
 
 [lints]
 workspace = true

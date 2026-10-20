@@ -26,7 +26,8 @@ license.workspace = true
 # (`crypto.verify_jwt`, area 19, chunk 5.5r). subtle compares a secret
 # value in constant time (area 19, chunk 5.5r2). x509-parser reads a
 # `Certificate`'s DER (area 19, chunk 5.5r5). rsa and p256 check RS256 and
-# ES256 tokens' signatures (area 19, chunk 5.5r4).
+# ES256 tokens' signatures (area 19, chunk 5.5r4). sha1 checks Twilio's and
+# AWS SNS's webhook signatures (area 11, chunk 7.7b).
 [dependencies]
 jadpo-std.workspace = true
 jiff.workspace = true
@@ -48,6 +49,7 @@ writeable.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 sha2.workspace = true
+sha1.workspace = true
 chacha20poly1305.workspace = true
 argon2.workspace = true
 hmac.workspace = true

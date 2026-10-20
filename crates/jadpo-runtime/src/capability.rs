@@ -49,6 +49,10 @@ pub struct Call {
     /// runtime (area 11, "Calling"; chunk 7.2c). `None` for every other
     /// capability's call, and for a fake, which reads `input`.
     pub request: Option<Box<crate::provider::Request>>,
+    /// Its place among the steps of the running action's record, when one
+    /// is kept and the call is a step (chunk 7.5b): written before it goes
+    /// out.
+    pub step: Option<crate::steps::StepAt>,
 }
 
 impl Call {
@@ -65,6 +69,7 @@ impl Call {
             input,
             repeat,
             request: None,
+            step: None,
         }
     }
 
@@ -472,6 +477,10 @@ impl<H: Host> Host for Faked<H> {
 
     fn passkeys(&self) -> Option<&dyn Passkeys> {
         self.host.passkeys()
+    }
+
+    fn outbound(&self) -> Option<&dyn crate::Outbound> {
+        self.host.outbound()
     }
 
     fn database(&self, store: &str) -> Option<&dyn Database> {

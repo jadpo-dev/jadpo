@@ -20,10 +20,14 @@ use jadpo_db::{Database, Layout};
 
 const APP: (&str, &str) = (
     "app.jadpo",
-    "application {\n    connections: {\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/sheets\"\n        }\n    }\n}\n",
+    "application {\n    connections: {\n        sheets: {\n            driver: Driver.disk\n            path: \"/var/lib/pantry/sheets\"\n        }\n    }\n    steps: {\n        encryption_key: config.step_encryption_key\n    }\n}\n",
 );
 
 const BASE: &[(&str, &str)] = &[
+    (
+        "config.jadpo",
+        "config {\n    step_encryption_key: SigningKey\n}\n",
+    ),
     (
         "domains/pantry/types/note.jadpo",
         "type Note = Text {\n    max_length: 40\n}\n",

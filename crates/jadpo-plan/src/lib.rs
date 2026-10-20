@@ -110,6 +110,11 @@ pub struct CallablePlan {
     /// the one it writes or the one `events: { store: }` names (area 12,
     /// chunk 6.1b).
     pub outbox: Option<String>,
+    /// For an action whose longest way makes several changing calls, run
+    /// where its key survives a retry: where the runtime keeps its record
+    /// and its step shape (area 12, "Several changing calls in one
+    /// action"; chunk 7.5b).
+    pub record: Option<jadpo_std::steps::RecordPlan>,
 }
 
 impl CallablePlan {
@@ -355,6 +360,16 @@ pub struct Plan {
     /// The connections to provider packages and their operations (area
     /// 11, chunk 7.2c).
     providers: jadpo_std::provider::ProviderPlan,
+    /// The `SigningKey` setting a record's answers are encrypted with,
+    /// by its number: `application { steps: { encryption_key: } }` (area
+    /// 12; chunk 7.5b).
+    steps_key: Option<u32>,
+    /// What a record of several changing calls keeps of the build it
+    /// started under (area 11, "Deploys"; chunk 7.5b): a digest of every
+    /// node's identity key and digest, so the same source gives the same
+    /// one; area 18's build id, which adds the compiler, the target and the
+    /// lock, replaces it when the build stamp is built.
+    build: String,
 }
 
 /// A structured field the latest migration checks, rewrites or fills as
@@ -640,6 +655,9 @@ impl Plan {
             })
             .collect();
         let mut callables = Vec::with_capacity(found.len());
+        // What the runtime keeps for an action with several changing calls
+        // (area 12; chunk 7.5b).
+        let record_plans = jadpo_check::types::record_plans(db, project);
         // Each `batches.each` call, as its site decodes it (area 12).
         let mut batch_sites: Vec<sites::BatchSite> = Vec::new();
         for (key, kind, file, body) in found {
@@ -704,9 +722,11 @@ impl Plan {
             let outbox = (kind == Kind::Action)
                 .then(|| jadpo_check::events::outbox_store(db, project, key.name()))
                 .flatten();
+            let record = record_plans.get(&key).cloned();
             callables.push(CallablePlan {
                 clock,
                 outbox,
+                record,
                 key,
                 kind,
                 file,
@@ -906,6 +926,36 @@ impl Plan {
                 .copied()
         });
         let schedules = schedules_plan(db, project, &by_key, &purges);
+        let build = {
+            let mut nodes: Vec<(String, String)> = graph
+                .ids()
+                .map(|id| {
+                    let node = graph.node(id);
+                    let digest = node.digest.as_ref().map(|d| d.short()).unwrap_or_default();
+                    (node.key.as_str().to_string(), digest)
+                })
+                .collect();
+            nodes.sort();
+            let mut hasher = blake3::Hasher::new();
+            for (key, digest) in &nodes {
+                for part in [key, digest] {
+                    hasher.update(&(part.len() as u64).to_le_bytes());
+                    hasher.update(part.as_bytes());
+                }
+            }
+            hasher.finalize().to_hex()[..32].to_string()
+        };
+        let steps_key = jadpo_check::types::steps_settings(db, project)
+            .encryption_key
+            .as_ref()
+            .and_then(|name| {
+                setting_ids
+                    .get(&config::key(
+                        jadpo_check::graph::registry(db, project),
+                        name,
+                    ))
+                    .copied()
+            });
         routes.client_address = jadpo_check::client_address::client_address(db, project)
             .plan
             .clone();
@@ -933,7 +983,21 @@ impl Plan {
             batch_numbers,
             file_stores: jadpo_check::data::files_connections(db, project).clone(),
             providers,
+            steps_key,
+            build,
         }
+    }
+
+    /// The digest of the graph a record of several changing calls keeps
+    /// as the build it started under (chunk 7.5b).
+    pub fn build_id(&self) -> &str {
+        &self.build
+    }
+
+    /// The `SigningKey` setting a record's answers are encrypted with, by
+    /// its number (area 12; chunk 7.5b).
+    pub fn steps_key(&self) -> Option<u32> {
+        self.steps_key
     }
 
     /// The connections to provider packages and the operations called

@@ -446,7 +446,8 @@ pub(crate) async fn attempt_delivery(
     within: Option<&mut crate::LocalFuture<'_, ()>>,
 ) -> Option<(Outcome, &'static str)> {
     use crate::outbox::{
-        self, After, CHAIN_LIMIT, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED, failure_json, micros,
+        self, After, CHAIN_LIMIT, DIVERGED, FAILED, OUTCOME_UNKNOWN, PENDING, SUCCEEDED,
+        failure_json, micros,
     };
     if ctx.in_action() {
         return Some((
@@ -591,6 +592,10 @@ pub(crate) async fn attempt_delivery(
     // A provider call's key is derived from the delivery's id, which every
     // attempt shares (area 12, "Keys"; chunk 7.2c).
     ctx.set_call_key("delivery", jadpo_value::encoding::to_hex(&delivery.id));
+    // Its key survives a retry, so an action with several changing calls
+    // keeps a record of its steps, held by this attempt (area 12, "One
+    // runner per record"; chunk 7.5b).
+    ctx.set_resumable(Some(i64::from(attempt)));
     let ran = match &subscriber.target {
         // A capability's operation is handed the event whole (chunk 7.0c).
         Target::Capability {
@@ -607,6 +612,7 @@ pub(crate) async fn attempt_delivery(
                     .await;
                 if !matches!(marked, Ok(rows) if !rows.is_empty()) {
                     let state = retried("unavailable", Some("unavailable")).await;
+                    ctx.set_resumable(None);
                     return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                 }
             }
@@ -640,6 +646,7 @@ pub(crate) async fn attempt_delivery(
                         .await;
                     if !matches!(marked, Ok(rows) if !rows.is_empty()) {
                         let state = retried("unavailable", Some("unavailable")).await;
+                        ctx.set_resumable(None);
                         return Some((Outcome::Failed(Box::new(crate::unavailable())), state));
                     }
                     let call = Call::new(
@@ -692,6 +699,7 @@ pub(crate) async fn attempt_delivery(
         Target::Action { callable, args } => {
             let Some(args) = outbox::arguments(args, &delivery.value) else {
                 settle(FAILED, None, Some(failure_json("internal_fault", None))).await;
+                ctx.set_resumable(None);
                 return Some((
                     Outcome::Fault(ctx.fault(
                         FaultKind::Defect(
@@ -712,6 +720,7 @@ pub(crate) async fn attempt_delivery(
             run_job(executor, ctx, &delivery, subscriber, job, budget, within).await
         }
     };
+    ctx.set_resumable(None);
     // Whether a call the run made may have acted outside in a way sending
     // it again would repeat: then the delivery is never given back nor
     // retried, but parked for an operator (area 16).
@@ -761,6 +770,10 @@ pub(crate) async fn attempt_delivery(
             )
             .await;
             OUTCOME_UNKNOWN
+        }
+        After::Diverge { problem } => {
+            settle(DIVERGED, None, Some(outbox::diverged_json(&problem))).await;
+            DIVERGED
         }
     };
     Some((outcome, state))

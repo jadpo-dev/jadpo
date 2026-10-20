@@ -26,8 +26,19 @@
 //!
 //! Each accepted request is answered `204`, a repeat as the first was. An
 //! event whose payload is over 64 KB, every event's limit, is `413`.
+//!
+//! Since chunk 7.7b: Twilio's HMAC-SHA1 over its form body and Slack's
+//! scheme ([`check`]), AWS SNS's certificates ([`sns`]); the handshakes a
+//! package names ([`handshake`]); and a webhook that needs a reply,
+//! answered by the app's action inside the request ([`replies`]).
 
-use jadpo_std::provider::{SignatureScheme, WebhookEvent, WebhookPlan, WireEncoding};
+mod handshake;
+pub mod replies;
+pub mod sns;
+
+use jadpo_std::provider::{
+    SignatureScheme, WebhookEvent, WebhookHandshake, WebhookPlan, WireEncoding,
+};
 use jadpo_value::Value;
 use jadpo_value::json::{Path, Problem};
 
@@ -113,6 +124,10 @@ pub fn check(
         SignatureScheme::StandardWebhooks => standard(secrets, request, now).map(Some),
         SignatureScheme::HmacSha256 { header } => hmac(secrets, request, header).map(|()| None),
         SignatureScheme::Basic => basic(secrets, request).map(|()| None),
+        SignatureScheme::Twilio => twilio(secrets, request).map(|()| None),
+        SignatureScheme::Slack => slack(secrets, request, now).map(Some),
+        // Checked against its certificate, which is fetched ([`sns::check`]).
+        SignatureScheme::Sns => Err(Refusal::Unsigned),
     }
 }
 
@@ -238,6 +253,111 @@ fn basic(secrets: &[&str], request: &Request) -> Result<(), Refusal> {
     }
 }
 
+/// Twilio's `X-Twilio-Signature`: the Base64 of the HMAC-SHA1, under the
+/// auth token, of the URL Twilio requested and then each of the form
+/// body's members, name then value, sorted by name (and by value for a
+/// name sent twice). The URL is `https://`, the request's `Host`, its path
+/// and its query: Twilio sends only to HTTPS, and a proxy in front of the
+/// host ends the TLS. With the port `:443` written and without, as Twilio's
+/// own libraries try both.
+fn twilio(secrets: &[&str], request: &Request) -> Result<(), Refusal> {
+    let given = request
+        .header("x-twilio-signature")
+        .ok_or(Refusal::Unsigned)?;
+    let mac = jadpo_value::encoding::from_base64(given.trim()).ok_or(Refusal::Unsigned)?;
+    let host = request
+        .header("host")
+        .map(str::trim)
+        .filter(|host| !host.is_empty())
+        .ok_or(Refusal::Unsigned)?;
+    let mut members = form_pairs(&request.body).ok_or(Refusal::Unsigned)?;
+    members.sort();
+    let mut signed = String::new();
+    for (name, value) in &members {
+        signed.push_str(name);
+        signed.push_str(value);
+    }
+    let query = request
+        .query
+        .as_deref()
+        .map(|query| format!("?{query}"))
+        .unwrap_or_default();
+    let bare = host.strip_suffix(":443").unwrap_or(host);
+    let mut matched = false;
+    for written in [bare.to_string(), format!("{bare}:443")] {
+        let url = format!("https://{written}{}{query}", request.path);
+        for secret in secrets {
+            matched |= jadpo_value::crypto::signed_by_sha1(
+                secret.as_bytes(),
+                &[url.as_bytes(), signed.as_bytes()],
+                &mac,
+            );
+        }
+    }
+    if matched {
+        Ok(())
+    } else {
+        Err(Refusal::Mismatch)
+    }
+}
+
+/// Slack's `X-Slack-Signature: v0=<hex>`, HMAC-SHA-256 of
+/// `v0:<X-Slack-Request-Timestamp>:<body>` under the signing secret.
+fn slack(secrets: &[&str], request: &Request, now: i64) -> Result<i64, Refusal> {
+    let (Some(signature), Some(time)) = (
+        request.header("x-slack-signature"),
+        request.header("x-slack-request-timestamp"),
+    ) else {
+        return Err(Refusal::Unsigned);
+    };
+    let mac = signature
+        .trim()
+        .strip_prefix("v0=")
+        .and_then(jadpo_value::encoding::from_hex)
+        .ok_or(Refusal::Unsigned)?;
+    let at = fresh(time, now)?;
+    let signed = [b"v0:", time.trim().as_bytes(), b":", &request.body];
+    any(
+        secrets,
+        &[mac],
+        |secret| secret.as_bytes().to_vec(),
+        &signed,
+    )?;
+    Ok(at)
+}
+
+/// A form body's members, each name and value decoded, in the order sent;
+/// `None` when it isn't a form.
+fn form_pairs(body: &[u8]) -> Option<Vec<(String, String)>> {
+    let text = std::str::from_utf8(body).ok()?;
+    let mut out = Vec::new();
+    for pair in text.split('&').filter(|pair| !pair.is_empty()) {
+        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+        out.push((
+            crate::http::percent_decode(name, true)?,
+            crate::http::percent_decode(value, true)?,
+        ));
+    }
+    Some(out)
+}
+
+/// A form body as the JSON its event is read from: each member's text,
+/// and a name sent more than once a list of them.
+fn form_json(body: &[u8]) -> Option<serde_json::Value> {
+    let mut members = serde_json::Map::new();
+    for (name, value) in form_pairs(body)? {
+        let value = serde_json::Value::String(value);
+        match members.get_mut(&name) {
+            None => {
+                members.insert(name, value);
+            }
+            Some(serde_json::Value::Array(items)) => items.push(value),
+            Some(first) => *first = serde_json::Value::Array(vec![first.clone(), value]),
+        }
+    }
+    Some(serde_json::Value::Object(members))
+}
+
 /// Whether any of `macs` is the HMAC-SHA-256 of `signed` under any of
 /// `secrets`, each made a key by `key`: every pair is compared, in
 /// constant time, so the time says nothing of which matched.
@@ -271,6 +391,12 @@ const SIGNATURE: (u16, &str, &str) = (
     "The webhook's signature doesn't match.",
 );
 const NOT_JSON: (u16, &str, &str) = (400, "invalid_request", "A webhook's body is JSON.");
+const NOT_FORM: (u16, &str, &str) = (400, "invalid_request", "A webhook's body is a form.");
+const NO_TOKEN: (u16, &str, &str) = (
+    400,
+    "invalid_request",
+    "The webhook's validation token can't be answered.",
+);
 const EVENT_TOO_LARGE: (u16, &str, &str) = (
     413,
     "request_too_large",
@@ -285,6 +411,7 @@ const NO_EVENT: (u16, &str, &str) = (
 /// Answers `request` to webhook `plan`, at place `at` in `webhooks`, in
 /// `ctx`: the request's path is the webhook's route.
 pub(crate) async fn answer(
+    app: &crate::http::App<'_>,
     executor: &dyn Executor,
     webhooks: &Webhooks<'_>,
     (at, plan): (usize, &WebhookPlan),
@@ -294,7 +421,18 @@ pub(crate) async fn answer(
 ) -> Response {
     use crate::http::{METHOD_NOT_ALLOWED, runtime_failure as failure};
     let mut response = match request.method.as_str() {
-        "POST" => receive(executor, webhooks, (at, plan), ctx, request, request_id).await,
+        "POST" => {
+            receive(
+                app,
+                executor,
+                webhooks,
+                (at, plan),
+                ctx,
+                request,
+                request_id,
+            )
+            .await
+        }
         "OPTIONS" => Response {
             status: 204,
             headers: vec![("allow".to_string(), "OPTIONS, POST".to_string())],
@@ -321,6 +459,7 @@ fn path(plan: &WebhookPlan) -> String {
 }
 
 async fn receive(
+    app: &crate::http::App<'_>,
     executor: &dyn Executor,
     webhooks: &Webhooks<'_>,
     (at, plan): (usize, &WebhookPlan),
@@ -332,13 +471,38 @@ async fn receive(
     if request.too_large || request.body.len() > crate::http::BODY_LIMIT {
         return failure(REQUEST_TOO_LARGE, request_id, None);
     }
+    // Microsoft Graph checks an address with a request it doesn't sign, so
+    // its validation is answered before any signature is looked for.
+    if plan.handshake == Some(WebhookHandshake::MicrosoftGraph)
+        && let Some(answered) = handshake::graph(request, request_id)
+    {
+        return answered;
+    }
     let now = ctx.now();
-    let signed = match check(
-        &plan.scheme,
-        &webhooks.credentials.webhook(at),
-        request,
-        now,
-    ) {
+    let secrets = webhooks.credentials.webhook(at);
+    let signed = match &plan.scheme {
+        SignatureScheme::Sns => {
+            match sns::check(ctx.host().outbound(), &secrets, request, now).await {
+                Ok(message) => {
+                    // A confirmation, signed as every message is, from the
+                    // connection's topic; anything but a notification carries
+                    // no event.
+                    if message.kind != "Notification" {
+                        return handshake::sns(ctx, plan, &message, request_id).await;
+                    }
+                    Ok(Some(message.signed_at))
+                }
+                Err(sns::Unchecked::Refused(refusal)) => Err(refusal),
+                Err(sns::Unchecked::Unreachable) => {
+                    let mut unavailable = failure(UNAVAILABLE, request_id, None);
+                    unavailable.code = Some("unavailable (certificate)".into());
+                    return unavailable;
+                }
+            }
+        }
+        scheme => check(scheme, &secrets, request, now),
+    };
+    let signed = match signed {
         Ok(signed) => signed,
         Err(refusal) => {
             let mut refused = failure(SIGNATURE, request_id, None);
@@ -346,9 +510,25 @@ async fn receive(
             return refused;
         }
     };
-    let Some((mut json, numbers)) = jadpo_value::json::parse(&request.body) else {
-        return failure(NOT_JSON, request_id, None);
+    let (mut json, numbers) = if plan.scheme.form_body() {
+        match form_json(&request.body) {
+            Some(json) => (json, jadpo_value::json::Numbers::default()),
+            None => return failure(NOT_FORM, request_id, None),
+        }
+    } else {
+        match jadpo_value::json::parse(&request.body) {
+            Some(parsed) => parsed,
+            None => return failure(NOT_JSON, request_id, None),
+        }
     };
+    if plan.scheme == SignatureScheme::Sns {
+        sns_message(&mut json);
+    }
+    if plan.handshake == Some(WebhookHandshake::Slack)
+        && let Some(answered) = handshake::slack(&json)
+    {
+        return answered;
+    }
     let id = match crate::provider::at_path(&json, &plan.event_id) {
         Some(serde_json::Value::String(text)) if !text.is_empty() => text.clone(),
         Some(serde_json::Value::Number(number)) if number.is_u64() || number.is_i64() => {
@@ -385,6 +565,21 @@ async fn receive(
         Ok(value) => value,
         Err(problems) => return invalid_input(request_id, &problems),
     };
+    // A webhook that needs a reply is answered by the app's action, inside
+    // the request, and not kept for subscribers (chunk 7.7b).
+    if let Some(reply) = &event.reply {
+        return replies::answer(
+            app,
+            executor,
+            webhooks,
+            plan,
+            reply,
+            ctx,
+            request_id,
+            (&id, value),
+        )
+        .await;
+    }
     let payload = match webhooks.json.write(event.number, &value) {
         Ok(SqlValue::Json(text)) => text,
         _ => return internal(request_id, "a webhook's event that doesn't write as JSON"),
@@ -406,6 +601,21 @@ async fn receive(
     }
 }
 
+/// An SNS notification's `Message`, read as the JSON it holds when it
+/// holds JSON, so the package's places reach inside it
+/// (`"Message.order_id"`); left as its text otherwise.
+fn sns_message(json: &mut serde_json::Value) {
+    let serde_json::Value::Object(members) = json else {
+        return;
+    };
+    let Some(serde_json::Value::String(message)) = members.get("Message") else {
+        return;
+    };
+    if let Some((inner, _)) = jadpo_value::json::parse(message.as_bytes()) {
+        members.insert("Message".to_string(), inner);
+    }
+}
+
 /// The field of every webhook event the runtime fills.
 pub const OCCURRED_AT: &str = "occurred_at";
 
@@ -418,7 +628,7 @@ fn accepted() -> Response {
 }
 
 /// `500 internal_fault`, with the fault for the host's log.
-fn internal(request_id: &str, reason: &str) -> Response {
+pub(crate) fn internal(request_id: &str, reason: &str) -> Response {
     let mut response = crate::http::runtime_failure(crate::http::INTERNAL_FAULT, request_id, None);
     response.fault = Some(Box::new(crate::Fault {
         kind: crate::FaultKind::Defect(reason.to_string()),
@@ -477,7 +687,7 @@ fn read(
 /// The provider's wire for a webhook's body: the built-in encodings, and
 /// no package function, which the checker keeps from a webhook's event.
 #[derive(Debug)]
-struct Wire;
+pub(crate) struct Wire;
 
 impl jadpo_value::json::Coder for Wire {
     fn decode(&self, _function: &str, _wire: Value) -> Option<Value> {
@@ -783,6 +993,105 @@ mod tests {
             check(&basic, &["postmark:hunter2"], &request(&[], body), NOW),
             Err(Refusal::Unsigned)
         );
+    }
+
+    /// Twilio's own example from its security documentation and its
+    /// libraries' tests: the auth token `12345`, the URL and form below,
+    /// and the signature they give.
+    #[test]
+    fn a_twilio_webhook_is_checked_as_twilios_example_signs_one() {
+        let body = "CallSid=CA1234567890ABCDE&Caller=%2B14158675309&Digits=1234&From=%2B14158675309&To=%2B18005551212";
+        let signed = |signature: &str, host: &str| Request {
+            method: "POST".into(),
+            path: "/myapp.php".into(),
+            query: Some("foo=1&bar=2".into()),
+            headers: vec![
+                ("Host".into(), host.into()),
+                ("X-Twilio-Signature".into(), signature.into()),
+            ],
+            body: body.as_bytes().to_vec(),
+            ..Request::default()
+        };
+        let scheme = SignatureScheme::Twilio;
+        let good = "RSOYDt4T1cUTdK1PDd93/VVr8B8=";
+        assert_eq!(
+            check(&scheme, &["12345"], &signed(good, "mycompany.com"), NOW),
+            Ok(None)
+        );
+        // With the port written, as a proxy may pass it on.
+        assert_eq!(
+            check(&scheme, &["12345"], &signed(good, "mycompany.com:443"), NOW),
+            Ok(None)
+        );
+        assert_eq!(
+            check(&scheme, &["54321"], &signed(good, "mycompany.com"), NOW),
+            Err(Refusal::Mismatch)
+        );
+        assert_eq!(
+            check(&scheme, &["12345"], &signed(good, "evil.example"), NOW),
+            Err(Refusal::Mismatch)
+        );
+        let mut changed = signed(good, "mycompany.com");
+        changed.body = body.replace("1234&", "9999&").into_bytes();
+        assert_eq!(
+            check(&scheme, &["12345"], &changed, NOW),
+            Err(Refusal::Mismatch)
+        );
+        let mut unsigned = signed(good, "mycompany.com");
+        unsigned
+            .headers
+            .retain(|(name, _)| name != "X-Twilio-Signature");
+        assert_eq!(
+            check(&scheme, &["12345"], &unsigned, NOW),
+            Err(Refusal::Unsigned)
+        );
+    }
+
+    /// Slack's own example from "Verifying requests from Slack": its
+    /// signing secret, time, body and signature.
+    #[test]
+    fn a_slack_webhook_is_checked_as_slacks_example_signs_one() {
+        let body = "token=xyzz0WbapA4vBCDEFasx0q6G&team_id=T1DC2JH3J&team_domain=testteamnow&channel_id=G8PSS9T3V&channel_name=foobar&user_id=U2CERLKJA&user_name=roadrunner&command=%2Fwebhook-collect&text=&response_url=https%3A%2F%2Fhooks.slack.com%2Fcommands%2FT1DC2JH3J%2F397700885554%2F96rGlfmibIGlgcZRskXaIFfN&trigger_id=398738663015.47445629121.803a0bc887a14d10d2c447fce8b6703c";
+        let secret = "8f742231b10e8888abcd99yyyzzz85a5";
+        let headers = [
+            ("X-Slack-Request-Timestamp", "1531420618"),
+            (
+                "X-Slack-Signature",
+                "v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503",
+            ),
+        ];
+        let at = 1_531_420_618_000;
+        let scheme = SignatureScheme::Slack;
+        assert_eq!(
+            check(&scheme, &[secret], &request(&headers, body), at + 60_000),
+            Ok(Some(at))
+        );
+        assert_eq!(
+            check(&scheme, &[secret], &request(&headers, body), at + 360_000),
+            Err(Refusal::Stale)
+        );
+        assert_eq!(
+            check(&scheme, &["other"], &request(&headers, body), at),
+            Err(Refusal::Mismatch)
+        );
+        assert_eq!(
+            check(&scheme, &[secret], &request(&headers[..1], body), at),
+            Err(Refusal::Unsigned)
+        );
+    }
+
+    /// A form body is read as text members, a name sent twice a list.
+    #[test]
+    fn a_form_body_is_read_as_its_members() {
+        assert_eq!(
+            form_json(b"From=%2B4420&Body=Hello+there&Media=a&Media=b"),
+            Some(serde_json::json!({
+                "From": "+4420",
+                "Body": "Hello there",
+                "Media": ["a", "b"],
+            }))
+        );
+        assert_eq!(form_json(b"Bad=%FF"), None);
     }
 
     fn hmac_sha256(key: &[u8], message: &str) -> Vec<u8> {

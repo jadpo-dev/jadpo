@@ -514,3 +514,8 @@ unlinked
 occurred_at
 replies
 received
+# The members AWS SNS names its messages with, which the runtime reads to
+# check and confirm them (area 11, chunk 7.7b): `SubscribeURL`, and the
+# `SubscriptionConfirmation` type
+subscribe
+subscription

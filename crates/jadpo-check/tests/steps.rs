@@ -23,10 +23,18 @@ use jadpo_db::{Database, Layout};
 /// The application: a database, the payment provider's connection, a
 /// store of files, and an API whose writes require `Idempotency-Key`.
 fn app(events: bool) -> String {
+    app_with(
+        events,
+        "    steps: {\n        encryption_key: config.step_encryption_key\n    }\n",
+    )
+}
+
+/// [`app`], with `steps` in place of its `steps:` block.
+fn app_with(events: bool, steps: &str) -> String {
     let events = if events {
-        "    events: {\n        store: main\n    }\n"
+        format!("    events: {{\n        store: main\n    }}\n{steps}")
     } else {
-        ""
+        steps.to_string()
     };
     format!(
         "application {{\n    connections: {{\n        main: {{\n            driver: Driver.postgres\n        }}\n        pay: {{\n            package: AcmePay.v1\n            domains: [billing]\n            credential: config.pay_api_key\n            environment: config.pay_environment\n        }}\n        sheets: {{\n            driver: Driver.disk\n            path: \"/var/lib/billing/sheets\"\n        }}\n    }}\n    apis: {{\n        main: {{\n            prefix: /\n        }}\n        partners: {{\n            prefix: /partners\n            idempotency: Idempotency.required\n        }}\n    }}\n{events}}}\n"
@@ -103,7 +111,7 @@ fn package() -> Vec<(String, String)> {
 const BILLING: &[(&str, &str)] = &[
     (
         "config.jadpo",
-        "config {\n    pay_api_key: Text {\n        secret: true\n    }\n    pay_environment: ProviderEnvironment\n}\n",
+        "config {\n    pay_api_key: Text {\n        secret: true\n    }\n    pay_environment: ProviderEnvironment\n    step_encryption_key: SigningKey\n}\n",
     ),
     (
         "domains/billing/failures/payment_refused.jadpo",
@@ -720,4 +728,125 @@ fn a_read_inside_for_is_an_outside_call_too() {
             "{KEEP} effect.call_in_loop: `pay.invoices.get` is called once for every item of the loop"
         )]
     );
+}
+
+// --- the record (chunk 7.5b) -----------------------------------------------------
+
+/// The project's problems with `steps` in place of `app.jadpo`'s `steps:`
+/// block.
+fn problems_with_steps(steps: &str, keep: &str, more: &[(&str, &str)]) -> Vec<String> {
+    let mut files = files(true, keep, more);
+    files[0].1 = app_with(true, steps);
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|problem| {
+            ![
+                "import.unused",
+                "layout.unused_declaration",
+                "semantic.unused_variable",
+            ]
+            .iter()
+            .any(|rule| problem.contains(&format!(" {rule}:")))
+                && !problem.contains(" migration.")
+                && !problem.contains(" record.")
+        })
+        .collect()
+}
+
+/// The answers of an action with several changing calls are kept
+/// encrypted, so `app.jadpo` names the key: one error, at the first such
+/// action's first changing call (area 12's decisions, 2026-10-20).
+#[test]
+fn several_changing_calls_need_a_key_to_encrypt_their_answers() {
+    let (path, text) = renew();
+    assert_eq!(
+        problems_with_steps("", &subscribe(), &[SUBSCRIBER, (path, &text)]),
+        [
+            "domains/billing/actions/keep.jadpo step.encryption_key_required: `keep` makes 3 changing calls, but `app.jadpo` names no key to encrypt their answers with"
+        ]
+    );
+    // One changing call on each way keeps no answers.
+    assert_eq!(
+        problems_with_steps(
+            "",
+            "/// Opens the customer.\naction keep(plan: AcmePay.Reference) fails PaymentRefused -> Unit {\n    var opened: AcmePay.PayReply = attempt open_customer(plan)\n    assert opened.id == plan\n}\n",
+            &[SUBSCRIBER],
+        ),
+        Vec::<String>::new()
+    );
+}
+
+/// `steps:` holds one setting, `encryption_key:`, reading a `SigningKey`
+/// setting.
+#[test]
+fn the_steps_key_is_a_signing_key_setting() {
+    let steps = |inner: &str| format!("    steps: {{\n        {inner}\n    }}\n");
+    let cases = [
+        (
+            steps("encryption_key: config.pay_api_key"),
+            "app.jadpo step.settings_invalid: `encryption_key:` reads `pay_api_key`, which isn't a `SigningKey`",
+        ),
+        (
+            steps("encryption_key: \"kept in the source\""),
+            "app.jadpo step.settings_invalid: An encryption key is written in the source",
+        ),
+        (
+            steps("key: config.step_encryption_key"),
+            "app.jadpo step.settings_invalid: `key` isn't a steps setting",
+        ),
+    ];
+    for (block, expected) in cases {
+        let found = problems_with_steps(&block, &subscribe(), &[SUBSCRIBER]);
+        assert!(found.contains(&expected.to_string()), "{block}: {found:?}");
+    }
+}
+
+/// An action a subscriber runs making several changing calls has its
+/// record planned in the store it writes, and the store keeps the
+/// record's tables; one making a single changing call has none.
+#[test]
+fn the_record_is_planned_in_the_store_its_action_writes() {
+    let files = files(true, &subscribe(), &[SUBSCRIBER]);
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let db = Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let plans = jadpo_check::types::record_plans(&db, project);
+    let planned: Vec<(&str, &str, usize)> = plans
+        .iter()
+        .map(|(key, plan)| (key.name(), plan.store.as_str(), plan.shape.len()))
+        .collect();
+    assert_eq!(planned, [("keep", "main", 64)]);
+    let schema = jadpo_check::data::schema(&db, project);
+    let tables = &schema.stores.get("main").expect("main").tables;
+    assert!(
+        tables.contains_key("jadpo_step_records"),
+        "{:?}",
+        tables.keys()
+    );
+    assert!(tables.contains_key("jadpo_steps"));
+    // The shape follows the calls: another order is another shape.
+    let swapped = subscribe()
+        .replace("customers.create", "TEMP")
+        .replace("cards.attach", "customers.create")
+        .replace("TEMP", "cards.attach");
+    let files = self::files(true, &swapped, &[SUBSCRIBER]);
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let other = Database::default();
+    let project = support::project(&other, Layout::Project, &files);
+    let shape = &jadpo_check::types::record_plans(&other, project)
+        .values()
+        .next()
+        .expect("planned")
+        .shape;
+    assert_ne!(shape, &plans.values().next().expect("planned").shape);
 }

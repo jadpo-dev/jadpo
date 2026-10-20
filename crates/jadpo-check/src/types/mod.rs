@@ -53,11 +53,14 @@ pub use outside::{Outside, call_order_problems, outside_calls};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules, show as show_number};
 pub use shape::{
-    COPY_LINES, DECODE, ENCODE, FieldsBase, Shape, WIRE, WIRE_NAME, is_wire_name, looks_like_type,
-    type_shapes, variant_block,
+    COPY_LINES, DECODE, ENCODE, FieldsBase, REPLY, Shape, WIRE, WIRE_NAME, is_wire_name,
+    looks_like_type, type_shapes, variant_block,
 };
 pub use signatures::{Callables, Sig, callables};
-pub use steps::{MOST_STEPS, Steps, action_steps, resumable_runs, step_problems};
+pub use steps::{
+    MOST_STEPS, Steps, StepsRead, action_steps, first_several, record_plans, record_store,
+    resumable_runs, step_problems, steps_settings,
+};
 pub use stores::{
     Reach as StoreReach, batch_store_problems, batch_stores, file_run_problems, file_run_stores,
     store_problems, store_reaches, unkept_responses, used_stores, written_stores,

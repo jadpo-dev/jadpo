@@ -36,6 +36,156 @@ impl Fetch for NativeFetch {
     }
 }
 
+/// What the runtime fetches on its own account natively (area 11,
+/// "Receiving from outside"; chunk 7.7b): AWS SNS's signing certificates
+/// and subscription confirmations. A `GET` over HTTPS only, the
+/// certificate and the host checked by OpenSSL, connected only to an
+/// address that is public (never loopback, private, link-local, shared,
+/// reserved or multicast, IPv4 inside IPv6 included) and only to the
+/// address checked, so a name that resolves again elsewhere can't move
+/// it; no redirect followed; at most the bytes asked for.
+#[derive(Clone, Debug, Default)]
+pub struct Outward {
+    /// A test's server on this machine, reached over plain HTTP for the
+    /// one host named: what a test reaches AWS's host with, never built
+    /// outside a test.
+    #[cfg(feature = "test-outbound")]
+    reach: Option<(String, std::net::SocketAddr)>,
+}
+
+impl Outward {
+    /// Requests for `host` go over plain HTTP to `at`, a server on this
+    /// machine: a test's stand-in for AWS's SNS host.
+    #[cfg(feature = "test-outbound")]
+    pub fn reaching(host: &str, at: std::net::SocketAddr) -> Outward {
+        Outward {
+            reach: Some((host.to_string(), at)),
+        }
+    }
+
+    /// The test's server for `host`, when it is the one reached.
+    fn reached(&self, host: &str) -> Option<std::net::SocketAddr> {
+        #[cfg(feature = "test-outbound")]
+        if let Some((reached, at)) = &self.reach
+            && reached == host
+        {
+            return Some(*at);
+        }
+        let _ = host;
+        None
+    }
+}
+
+impl jadpo_runtime::Outbound for Outward {
+    fn get<'a>(
+        &'a self,
+        url: &'a str,
+        limit: usize,
+        timeout_ms: u64,
+    ) -> LocalFuture<'a, Result<(u16, Vec<u8>), String>> {
+        let url = url.to_string();
+        let this = self.clone();
+        Box::pin(async move {
+            let timeout = Duration::from_millis(timeout_ms.max(1));
+            let exchange = tokio::task::spawn_blocking(move || this.exchange(&url, limit, timeout));
+            match tokio::time::timeout(timeout, exchange).await {
+                Ok(Ok(answered)) => answered,
+                Ok(Err(_)) => Err("the exchange stopped".into()),
+                Err(_) => Err("no answer in time".into()),
+            }
+        })
+    }
+}
+
+impl Outward {
+    fn exchange(
+        &self,
+        url: &str,
+        limit: usize,
+        timeout: Duration,
+    ) -> Result<(u16, Vec<u8>), String> {
+        let target = target(url)
+            .filter(|target| target.secure)
+            .ok_or("not HTTPS")?;
+        let bare = target.host.trim_start_matches('[').trim_end_matches(']');
+        let reached = self.reached(bare);
+        let address = match reached {
+            Some(at) => at,
+            None => (bare, target.port)
+                .to_socket_addrs()
+                .map_err(|_| format!("`{bare}` couldn't be found"))?
+                .find(|address| public(address.ip()))
+                .ok_or_else(|| format!("`{bare}` has no public address"))?,
+        };
+        let stream = TcpStream::connect_timeout(&address, CONNECT.min(timeout))
+            .map_err(|error| format!("no connection: {error}"))?;
+        stream
+            .set_read_timeout(Some(timeout))
+            .and_then(|()| stream.set_write_timeout(Some(timeout)))
+            .map_err(|error| error.to_string())?;
+        let head = format!(
+            "GET {} HTTP/1.1\r\nHost: {}\r\nAccept: */*\r\nConnection: close\r\n\r\n",
+            target.path, target.host
+        );
+        let raw = if reached.is_some() {
+            send(stream, head.as_bytes())
+        } else {
+            let connector =
+                openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
+                    .map_err(|error| error.to_string())?
+                    .build();
+            let tls = connector
+                .connect(bare, stream)
+                .map_err(|error| format!("no secure connection: {error}"))?;
+            send(tls, head.as_bytes())
+        }
+        .map_err(|error| format!("{error:?}"))?;
+        let answer = parse(&raw).ok_or("an answer that isn't HTTP")?;
+        if answer.body.len() > limit {
+            return Err("an answer too long".into());
+        }
+        Ok((answer.status, answer.body))
+    }
+}
+
+/// Whether `ip` is an address on the public internet: not loopback,
+/// private, link-local, shared (100.64/10), reserved, documentation,
+/// benchmarking, unspecified, broadcast or multicast; IPv4 inside IPv6
+/// judged as itself.
+pub fn public(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..128).contains(&b))
+                || (a == 192 && b == 0 && c == 0)
+                || (a == 198 && (18..20).contains(&b)))
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped().or_else(|| v6.to_ipv4()) {
+                return public(IpAddr::V4(v4));
+            }
+            let first = v6.segments()[0];
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || first & 0xfe00 == 0xfc00
+                || first & 0xffc0 == 0xfe80
+                || first == 0x2001 && v6.segments()[1] == 0x0db8
+                || first == 0x0064 && v6.segments()[1] == 0xff9b)
+        }
+    }
+}
+
 /// Where a request goes.
 struct Target {
     secure: bool,
@@ -345,6 +495,39 @@ mod tests {
         );
         let answer = runtime.block_on(NativeFetch.fetch(&request(base))).unwrap();
         assert_eq!(answer.body, b"{\"a\":1}");
+    }
+
+    /// Only a public address is reached on the runtime's own account.
+    #[test]
+    fn only_a_public_address_is_reached() {
+        for private in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "224.0.0.1",
+            "255.255.255.255",
+            "::1",
+            "fe80::1",
+            "fd00::1",
+            "::ffff:10.0.0.1",
+            "::ffff:127.0.0.1",
+        ] {
+            assert!(!public(private.parse().unwrap()), "{private}");
+        }
+        for open in ["52.94.236.248", "2600:1f18::1"] {
+            assert!(public(open.parse().unwrap()), "{open}");
+        }
+        // Plain HTTP and a name with only a private address are refused.
+        let runtime = crate::Runtime::new().unwrap();
+        use jadpo_runtime::Outbound;
+        let plain = runtime.block_on(Outward::default().get("http://example.com/a.pem", 100, 1000));
+        assert!(plain.is_err(), "{plain:?}");
+        let local = runtime.block_on(Outward::default().get("https://localhost/a.pem", 100, 1000));
+        assert_eq!(local, Err("`localhost` has no public address".to_string()));
     }
 
     /// Nothing listening is a call that never left; a server that never

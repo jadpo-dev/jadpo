@@ -2647,6 +2647,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             }
         }
     }
+    // The record of an action with several changing calls lives in the
+    // store it writes, beside its outbox (area 12; chunk 7.5b).
+    for plan in crate::types::record_plans(db, project).values() {
+        if let Some(found) = schema.stores.get_mut(&plan.store) {
+            for system in jadpo_std::system::STEP_TABLES {
+                found
+                    .tables
+                    .insert(system.table.to_string(), columns::system_table(system));
+            }
+        }
+    }
     // The ids of webhooks' events already received are kept beside the
     // outbox they are written to (area 11, "Receiving from outside"; chunk
     // 7.7).
