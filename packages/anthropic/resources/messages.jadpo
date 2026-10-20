@@ -1,0 +1,20 @@
+public resource messages {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/messages"
+        input: MessageRequest
+        output: MessageResponse
+        changes: false
+        source: PackageSource.written
+        docs: "https://platform.claude.com/docs/en/api/messages/create"
+    }
+    stream: {
+        method: HttpMethod.post
+        path: "/v1/messages"
+        input: StreamedMessageRequest
+        output: MessageStreamEvent
+        changes: false
+        source: PackageSource.written
+        docs: "https://platform.claude.com/docs/en/build-with-claude/streaming"
+    }
+}

@@ -19,15 +19,26 @@
 //!   `context:`, each model's context window, which `too_long` is checked
 //!   against before sending, and `prices:`, read by chunk 5.5v5's cost
 //!   estimate.
-//! - **`stream:`** and **`embed:`** come with chunk 5.5v7: chunks 5.5v6
-//!   and 5.5v4 built `ai.stream` and `ai.embed` through the built-in
-//!   driver alone.
+//! - **`stream:`** (chunk 5.5v7) calls an operation whose answer is a
+//!   stream of server-sent events, its input made as `generate:`'s is,
+//!   and names where each event's piece of text is (`pieces:
+//!   event.<field>...`), what says the model declined (`refused_when:`),
+//!   was cut off (`cut_off_when:`) or is done (`done_when:`).
+//! - **`embed:`** (chunk 5.5v7) calls an operation with `request.model`,
+//!   `request.texts` and `request.dimensions`, and names the answer's
+//!   list of vectors (`vectors: response.<field>`), each item's vector
+//!   (`vector: item.<field>`) and its place among the texts (`index:`),
+//!   and the most texts the provider takes at once (`batch:`).
+//! - **`refused_when:`** is a place that holds anything, or `{ holds:
+//!   path: equals: }`, any of them saying so; **`schema: { envelope: }`**
+//!   names the provider's own shape for the structured mode
+//!   (`AiEnvelope.openai`, the default, or `AiEnvelope.anthropic`).
 
 use std::collections::BTreeMap;
 
 use jadpo_db::{Db, Folder, ItemKind, Ownership, PackageHome, Place, Project};
 use jadpo_diag::{Diagnostic, Span, nearest, rule};
-use jadpo_std::ai::SchemaMode;
+use jadpo_std::ai::{AiEnvelope, AiMarker, EACH, SchemaMode};
 use jadpo_syntax::ast::{self, AstNode, Decl};
 
 use crate::tree::{self, dotted, name_text, node_span};
@@ -47,8 +58,30 @@ const GENERATE_KEYS: [&str; 7] = [
     "schema",
 ];
 
-/// The operations later chunks map, with the chunk that does.
-const LATER: [(&str, &str); 2] = [("stream", "5.5v7"), ("embed", "5.5v7")];
+/// What `stream:` holds (chunk 5.5v7).
+const STREAM_KEYS: [&str; 7] = [
+    "call",
+    "input",
+    "pieces",
+    "refused_when",
+    "cut_off_when",
+    "done_when",
+    "usage",
+];
+
+/// What `embed:` holds (chunk 5.5v7).
+const EMBED_KEYS: [&str; 7] = [
+    "call", "input", "vectors", "vector", "index", "batch", "usage",
+];
+
+/// Which of the capability's operations a mapping's input is made for:
+/// what `request.<part>` it may read.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Asked {
+    Generate,
+    Stream,
+    Embed,
+}
 
 /// A value a mapping gives a member of the operation's input.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -60,6 +93,11 @@ pub enum MappedInput {
     Messages(Vec<(String, MappedInput)>),
     Role,
     Content,
+    /// `request.texts`, onto a list of text (`embed:`).
+    Texts,
+    /// `request.dimensions`, `ai: { embedding_dimensions: }`, onto a whole
+    /// number (`embed:`).
+    Dimensions,
     /// `settings.<name>`: the package's setting, which each connection
     /// gives.
     Setting(String),
@@ -83,15 +121,46 @@ pub struct AiMapping {
     pub input: Vec<(String, MappedInput)>,
     pub instructions_apart: bool,
     pub answer: Vec<String>,
-    pub refused_when: Option<Vec<String>>,
+    /// By field names, for a [`AiMarker::Holds`].
+    pub refused_when: Vec<AiMarker>,
     pub cut_off_when: Option<(String, String)>,
     pub usage: UsageModel,
     pub schema: SchemaMode,
     pub schema_at: Option<String>,
+    pub envelope: AiEnvelope,
     /// Each model's context window, by its name after its provider.
     pub contexts: Vec<(String, u64)>,
+    pub stream: Option<StreamMapping>,
+    pub embed: Option<EmbedMapping>,
     /// Each model's prices, from `models: { prices: }` (chunk 5.5v5).
     pub prices: Vec<jadpo_std::ai::AiPrice>,
+}
+
+/// A package's `stream:`, read (chunk 5.5v7): each place by spellings on
+/// the wire, `0` for a list's first item.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StreamMapping {
+    pub operation: String,
+    pub input: Vec<(String, MappedInput)>,
+    pub instructions_apart: bool,
+    pub pieces: Vec<String>,
+    pub refused_when: Vec<AiMarker>,
+    pub cut_off_when: Option<(String, String)>,
+    pub done_when: Option<(String, String)>,
+    pub usage: UsageModel,
+}
+
+/// A package's `embed:`, read (chunk 5.5v7): each place by spellings on
+/// the wire.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EmbedMapping {
+    pub operation: String,
+    pub input: Vec<(String, MappedInput)>,
+    pub vectors: Vec<String>,
+    pub vector: Vec<String>,
+    pub index: Option<Vec<String>>,
+    pub batch: u32,
+    pub usage: UsageModel,
 }
 
 /// Every provider package's `provide ai`, by its folder.
@@ -103,7 +172,23 @@ pub struct AiMappings {
     pub problems: Vec<Diagnostic>,
 }
 
-const REASON: &str = "`provide ai` maps the capability onto the package's own operations, as data: `generate:` calls an operation that changes nothing with an `input:` made of `request.model`, `request.max_output`, `request.instructions`, `request.messages` (as `{ each: request.messages  as: { role: item.role  content: item.content } }`), `settings.<name>` or a value written there; it names the `answer:`'s text in the operation's output (`response.<field>`), `refused_when:`, `cut_off_when: { path: equals: }`, `usage: { input: output: cached: }` and `schema: { mode: at: }`. `models: { context: }` names the package's table of each model's context window.";
+const REASON: &str = "`provide ai` maps the capability onto the package's own operations, as data: `generate:` calls an operation that changes nothing with an `input:` made of `request.model`, `request.max_output`, `request.instructions`, `request.messages` (as `{ each: request.messages  as: { role: item.role  content: item.content } }`), `settings.<name>` or a value written there; it names the `answer:`'s text in the operation's output (`response.<field>`), `refused_when:`, `cut_off_when: { path: equals: }`, `usage: { input: output: cached: }` and `schema: { mode: at: envelope: }`. `stream:` reads each event of its operation's stream (`pieces: event.<field>`, `refused_when:`, `cut_off_when:`, `done_when:`); `embed:` sends `request.texts` and reads `vectors:`, `vector:` and `index:`, with `batch:` and `usage:`. `models: { context: prices: }` names the package's tables of each model's context window and price.";
+
+/// Whether the package connection `connection` maps `what` (`stream`,
+/// `embed`) in its `provide ai`; `None` when it isn't a package's
+/// connection whose mapping reads.
+pub fn maps(db: &dyn Db, project: Project, connection: &str, what: &str) -> Option<bool> {
+    let folder = crate::connections::package_connections(db, project)
+        .connections
+        .iter()
+        .find(|known| known.name == connection)
+        .map(|known| known.folder.clone())?;
+    let mapping = mappings(db, project).of.get(&folder)?;
+    Some(match what {
+        "stream" => mapping.stream.is_some(),
+        _ => mapping.embed.is_some(),
+    })
+}
 
 /// Every provider package's `provides/ai.jadpo`, read and checked against
 /// its operations, its settings and its libraries.
@@ -173,6 +258,10 @@ enum Ends {
     Text,
     Count,
     Anything,
+    /// A `Vector`, or a list of numbers.
+    Vector,
+    /// A list of objects.
+    Objects,
 }
 
 impl Reader<'_> {
@@ -201,21 +290,6 @@ impl Reader<'_> {
         let mut ok = true;
         for (key, member) in tree::members(decl.member_list()) {
             let written = name_text(&key).unwrap_or_default();
-            if let Some((_, chunk)) = LATER.iter().find(|(later, _)| *later == written) {
-                ok = false;
-                self.out.push(
-                    Diagnostic::new(
-                        &rule::TOOLCHAIN_NOT_BUILT_YET,
-                        format!("`provide ai {{ {written}: }}` isn't built yet"),
-                    )
-                    .at(self.span(&key), "decided, not built")
-                    .reason(format!(
-                        "Area 21 decides how a package maps `ai.{written}`, and roadmap chunk {chunk} builds it; this compiler can't run it yet."
-                    ))
-                    .next(format!("Leave `{written}:` out for now")),
-                );
-                continue;
-            }
             if !KEYS.contains(&written.as_str()) {
                 ok = false;
                 let next = match nearest(&written, KEYS.iter().copied()) {
@@ -252,6 +326,22 @@ impl Reader<'_> {
         };
         let contexts = self.models(models);
         let generate = self.generate(generate);
+        let stream = match members.get("stream") {
+            Some(stream) => {
+                let read = self.stream(stream);
+                ok &= read.is_some();
+                read
+            }
+            None => None,
+        };
+        let embed = match members.get("embed") {
+            Some(embed) => {
+                let read = self.embed(embed);
+                ok &= read.is_some();
+                read
+            }
+            None => None,
+        };
         let (Some(contexts), Some(mut mapping)) = (contexts, generate) else {
             return None;
         };
@@ -259,69 +349,99 @@ impl Reader<'_> {
             return None;
         }
         (mapping.contexts, mapping.prices) = contexts;
+        mapping.stream = stream;
+        mapping.embed = embed;
         Some(mapping)
     }
 
-    fn generate(&mut self, member: &ast::Member) -> Option<AiMapping> {
+    /// The members of `member`'s block, each one of `keys`, and every one
+    /// of `needed` among them; `what` names the block.
+    fn block(
+        &mut self,
+        member: &ast::Member,
+        what: &str,
+        keys: &[&str],
+        needed: &[(&str, &str)],
+        shape: &str,
+    ) -> Option<BTreeMap<String, ast::Member>> {
         let Some(block) = member.block() else {
             self.invalid(
                 self.span(member),
-                "`generate:` isn't a block".to_string(),
+                format!("`{what}:` isn't a block"),
                 "not a block",
-                "Write `generate: { call: <resource>.<operation>  input: { }  answer: response.<field> }`".to_string(),
+                shape.to_string(),
             );
             return None;
         };
         let mut members: BTreeMap<String, ast::Member> = BTreeMap::new();
         for (key, inner) in tree::members(Some(block)) {
             let written = name_text(&key).unwrap_or_default();
-            if !GENERATE_KEYS.contains(&written.as_str()) {
-                let next = match nearest(&written, GENERATE_KEYS.iter().copied()) {
+            if !keys.contains(&written.as_str()) {
+                let next = match nearest(&written, keys.iter().copied()) {
                     Some(near) => format!("Use `{near}:` instead of `{written}:`"),
                     None => format!("Remove `{written}:`"),
                 };
                 self.invalid(
                     self.span(&key),
-                    format!("`generate:` has no `{written}:`"),
-                    "not part of `generate`",
+                    format!("`{what}:` has no `{written}:`"),
+                    &format!("not part of `{what}`"),
                     next,
                 );
                 return None;
             }
             members.insert(written, inner);
         }
-        for needed in ["call", "input", "answer", "usage", "schema"] {
-            if !members.contains_key(needed) {
+        for (key, next) in needed {
+            if !members.contains_key(*key) {
                 self.invalid(
                     self.span(member),
-                    format!("`generate:` doesn't give `{needed}:`"),
-                    &format!("no `{needed}:`"),
-                    match needed {
-                        "call" => "Add `call: <resource>.<operation>`, the operation that asks the model".to_string(),
-                        "input" => "Add `input: { model: request.model  ... }`".to_string(),
-                        "answer" => "Add `answer: response.<field>`, where the answer's text is".to_string(),
-                        "usage" => "Add `usage: { input: response.<field>  output: response.<field> }`".to_string(),
-                        _ => "Add `schema: { mode: AiSchema.none }`, or the mode the provider's structured output has".to_string(),
-                    },
+                    format!("`{what}:` doesn't give `{key}:`"),
+                    &format!("no `{key}:`"),
+                    (*next).to_string(),
                 );
                 return None;
             }
         }
+        Some(members)
+    }
+
+    fn generate(&mut self, member: &ast::Member) -> Option<AiMapping> {
+        let members = self.block(
+            member,
+            "generate",
+            &GENERATE_KEYS,
+            &[
+                ("call", "Add `call: <resource>.<operation>`, the operation that asks the model"),
+                ("input", "Add `input: { model: request.model  ... }`"),
+                ("answer", "Add `answer: response.<field>`, where the answer's text is"),
+                ("usage", "Add `usage: { input: response.<field>  output: response.<field> }`"),
+                ("schema", "Add `schema: { mode: AiSchema.none }`, or the mode the provider's structured output has"),
+            ],
+            "Write `generate: { call: <resource>.<operation>  input: { }  answer: response.<field> }`",
+        )?;
         let operation = self.operation(&members["call"])?;
         let table = type_table(self.db, self.project);
-        let (input, instructions_apart) = self.input(&members["input"], &operation, table)?;
+        let (input, instructions_apart) =
+            self.input(&members["input"], &operation, Asked::Generate, table)?;
         let output = operation.output.clone();
-        let answer = self.walk(&members["answer"], &output, Ends::Text, table)?;
+        let (answer, _, _) = self.place(
+            &members["answer"],
+            "response",
+            &output,
+            Ends::Text,
+            true,
+            table,
+        )?;
         let refused_when = match members.get("refused_when") {
-            Some(refused) => Some(self.walk(refused, &output, Ends::Anything, table)?),
-            None => None,
+            Some(refused) => self.markers(refused, "response", &output, false, table)?,
+            None => Vec::new(),
         };
         let cut_off_when = match members.get("cut_off_when") {
             Some(cut) => Some(self.cut_off(cut, &output, table)?),
             None => None,
         };
-        let usage = self.usage(&members["usage"], &output, table)?;
-        let (schema, schema_at) = self.schema(&members["schema"])?;
+        let usage = self.usage(&members["usage"], "response", &output, table)?;
+        let (schema, schema_at, envelope) = self.schema(&members["schema"])?;
         Some(AiMapping {
             operation: operation.full_name(),
             input,
@@ -332,8 +452,168 @@ impl Reader<'_> {
             usage,
             schema,
             schema_at,
+            envelope,
             contexts: Vec::new(),
+            stream: None,
+            embed: None,
             prices: Vec::new(),
+        })
+    }
+
+    /// `stream:` (chunk 5.5v7): an operation whose answer is a stream of
+    /// events, each read as its output type says, by spellings on the
+    /// wire.
+    fn stream(&mut self, member: &ast::Member) -> Option<StreamMapping> {
+        let members = self.block(
+            member,
+            "stream",
+            &STREAM_KEYS,
+            &[
+                ("call", "Add `call: <resource>.<operation>`, the operation whose answer is the model's stream"),
+                ("input", "Add `input: { model: request.model  ...  stream: true }`"),
+                ("pieces", "Add `pieces: event.<field>`, where each event's piece of text is"),
+            ],
+            "Write `stream: { call: <resource>.<operation>  input: { }  pieces: event.<field> }`",
+        )?;
+        let operation = self.operation(&members["call"])?;
+        let table = type_table(self.db, self.project);
+        let (input, instructions_apart) =
+            self.input(&members["input"], &operation, Asked::Stream, table)?;
+        let event = operation.output.clone();
+        let (_, pieces, _) = self.place(
+            &members["pieces"],
+            "event",
+            &event,
+            Ends::Text,
+            false,
+            table,
+        )?;
+        let refused_when = match members.get("refused_when") {
+            Some(refused) => self.markers(refused, "event", &event, true, table)?,
+            None => Vec::new(),
+        };
+        let cut_off_when = match members.get("cut_off_when") {
+            Some(cut) => Some(self.cut_off(cut, &event, table)?),
+            None => None,
+        };
+        let done_when = match members.get("done_when") {
+            Some(done) => Some(self.cut_off(done, &event, table)?),
+            None => None,
+        };
+        let usage = match members.get("usage") {
+            Some(usage) => self.usage(usage, "event", &event, table)?,
+            None => UsageModel::default(),
+        };
+        Some(StreamMapping {
+            operation: operation.full_name(),
+            input,
+            instructions_apart,
+            pieces,
+            refused_when,
+            cut_off_when,
+            done_when,
+            usage,
+        })
+    }
+
+    /// `embed:` (chunk 5.5v7): an operation sent `request.texts`, the list
+    /// of vectors in its answer, each item's vector and its place, and the
+    /// most texts the provider takes at once.
+    fn embed(&mut self, member: &ast::Member) -> Option<EmbedMapping> {
+        let members = self.block(
+            member,
+            "embed",
+            &EMBED_KEYS,
+            &[
+                ("call", "Add `call: <resource>.<operation>`, the operation that embeds the texts"),
+                ("input", "Add `input: { model: request.model  input: request.texts }`"),
+                ("vectors", "Add `vectors: response.<field>`, the answer's list of embeddings"),
+                ("vector", "Add `vector: item.<field>`, where each item's vector is"),
+                ("batch", "Add `batch: <n>`, the most texts the provider embeds in one request"),
+                ("usage", "Add `usage: { input: response.<field>  output: 0 }`"),
+            ],
+            "Write `embed: { call: <resource>.<operation>  input: { }  vectors: response.<field>  vector: item.<field>  batch: <n>  usage: { } }`",
+        )?;
+        let operation = self.operation(&members["call"])?;
+        let table = type_table(self.db, self.project);
+        let (input, _) = self.input(&members["input"], &operation, Asked::Embed, table)?;
+        if !input
+            .iter()
+            .any(|(_, mapped)| *mapped == MappedInput::Texts)
+        {
+            self.invalid(
+                self.span(&members["input"]),
+                "`embed:` doesn't send the texts".to_string(),
+                "no `request.texts`",
+                "Map the field the provider takes its texts in to `request.texts`".to_string(),
+            );
+            return None;
+        }
+        let output = operation.output.clone();
+        let (_, vectors, item) = self.place(
+            &members["vectors"],
+            "response",
+            &output,
+            Ends::Objects,
+            false,
+            table,
+        )?;
+        let (_, vector, _) = self.place(
+            &members["vector"],
+            "item",
+            &item,
+            Ends::Vector,
+            false,
+            table,
+        )?;
+        let index = match members.get("index") {
+            Some(index) => Some(
+                self.place(index, "item", &item, Ends::Count, false, table)?
+                    .1,
+            ),
+            None => None,
+        };
+        let batch_member = &members["batch"];
+        let batch = match batch_member.value().as_ref().map(Const::from_expr) {
+            Some(Const::Number {
+                value,
+                decimal: false,
+            }) if value.scale == 0 => u32::try_from(value.mantissa).ok().filter(|n| *n >= 1),
+            _ => None,
+        };
+        let Some(batch) = batch else {
+            self.invalid(
+                self.span(batch_member),
+                "`batch:` isn't a whole number of texts".to_string(),
+                "not a count",
+                "Write `batch: <n>`, the most texts the provider embeds in one request, such as `batch: 2048`".to_string(),
+            );
+            return None;
+        };
+        if (batch as usize) < jadpo_std::embed::MOST_TEXTS {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("Embedding fewer than {} texts a request isn't built yet", jadpo_std::embed::MOST_TEXTS),
+                )
+                .at(self.span(batch_member), "decided, not built")
+                .reason(format!(
+                    "Area 21 has the package split an `ai.embed_all` of up to {} texts into the provider's batch size; this compiler sends them in one request, so it needs a provider that takes at least that many.",
+                    jadpo_std::embed::MOST_TEXTS
+                ))
+                .next(format!("Use a `batch:` of at least {}", jadpo_std::embed::MOST_TEXTS)),
+            );
+            return None;
+        }
+        let usage = self.usage(&members["usage"], "response", &output, table)?;
+        Some(EmbedMapping {
+            operation: operation.full_name(),
+            input,
+            vectors,
+            vector,
+            index,
+            batch,
+            usage,
         })
     }
 
@@ -395,6 +675,7 @@ impl Reader<'_> {
         &mut self,
         member: &ast::Member,
         operation: &crate::providers::Operation,
+        asked: Asked,
         table: &dyn TypeView,
     ) -> Option<(Vec<(String, MappedInput)>, bool)> {
         let host = match &operation.input {
@@ -411,7 +692,7 @@ impl Reader<'_> {
             return None;
         };
         let mut apart = false;
-        let input = self.object(member, &host, false, &mut apart, table)?;
+        let input = self.object(member, &host, false, &mut apart, asked, table)?;
         Some((input, apart))
     }
 
@@ -423,6 +704,7 @@ impl Reader<'_> {
         host: &str,
         item: bool,
         apart: &mut bool,
+        asked: Asked,
         table: &dyn TypeView,
     ) -> Option<Vec<(String, MappedInput)>> {
         let Some(block) = member.block() else {
@@ -452,7 +734,7 @@ impl Reader<'_> {
                 );
                 return None;
             };
-            let mapped = self.value(value, &field.declared, item, apart, table)?;
+            let mapped = self.value(value, &field.declared, item, apart, asked, table)?;
             out.push((field.wire_name.clone().unwrap_or(name), mapped));
         }
         for field in &fields {
@@ -479,10 +761,20 @@ impl Reader<'_> {
         ty: &Ty,
         item: bool,
         apart: &mut bool,
+        asked: Asked,
         table: &dyn TypeView,
     ) -> Option<MappedInput> {
         if member.block().is_some() {
-            return self.each(member, ty, apart, table);
+            if asked == Asked::Embed {
+                self.invalid(
+                    self.span(member),
+                    "An embedding's input maps no list of messages".to_string(),
+                    "not an embedding's input",
+                    "Give `request.model`, `request.texts`, `request.dimensions`, `settings.<name>` or a value".to_string(),
+                );
+                return None;
+            }
+            return self.each(member, ty, apart, asked, table);
         }
         let value = member.value()?;
         let written = Self::written(&value);
@@ -494,18 +786,29 @@ impl Reader<'_> {
         if let Some((first, rest)) = dotted(&value) {
             let first = tree::name_ref_text(&first).unwrap_or_default();
             let rest: Vec<String> = rest.iter().filter_map(tree::name_ref_text).collect();
+            let chat = asked != Asked::Embed;
             let (mapped, fits, what) = match (first.as_str(), rest.as_slice()) {
+                ("request", [name]) if name == "texts" && !chat => (
+                    MappedInput::Texts,
+                    matches!(ty.strip_nullable(), Ty::List(inner) if table.base_prim(inner) == Some(Prim::Text)),
+                    "a list of text",
+                ),
+                ("request", [name]) if name == "dimensions" && !chat => (
+                    MappedInput::Dimensions,
+                    table.base_prim(ty) == Some(Prim::Int),
+                    "a whole number",
+                ),
                 ("request", [name]) if name == "model" && !item => (
                     MappedInput::Model,
                     table.base_prim(ty) == Some(Prim::Text),
                     "text",
                 ),
-                ("request", [name]) if name == "max_output" && !item => (
+                ("request", [name]) if name == "max_output" && !item && chat => (
                     MappedInput::MaxOutput,
                     table.base_prim(ty) == Some(Prim::Int),
                     "a whole number",
                 ),
-                ("request", [name]) if name == "instructions" && !item => {
+                ("request", [name]) if name == "instructions" && !item && chat => {
                     *apart = true;
                     (
                         MappedInput::Instructions,
@@ -524,7 +827,7 @@ impl Reader<'_> {
                 ("settings", [name]) if self.settings.contains(name) => {
                     return Some(MappedInput::Setting(name.clone()));
                 }
-                ("request", [name]) if name == "messages" && !item => {
+                ("request", [name]) if name == "messages" && !item && chat => {
                     self.invalid(
                         span,
                         "`request.messages` is mapped one message at a time".to_string(),
@@ -536,8 +839,10 @@ impl Reader<'_> {
                 _ => {
                     let next = if item {
                         "Give `item.role`, `item.content`, `settings.<name>` or a value"
-                    } else {
+                    } else if chat {
                         "Give `request.model`, `request.max_output`, `request.instructions`, `settings.<name>` or a value"
+                    } else {
+                        "Give `request.model`, `request.texts`, `request.dimensions`, `settings.<name>` or a value"
                     };
                     self.invalid(
                         span,
@@ -586,6 +891,7 @@ impl Reader<'_> {
         member: &ast::Member,
         ty: &Ty,
         apart: &mut bool,
+        asked: Asked,
         table: &dyn TypeView,
     ) -> Option<MappedInput> {
         let shape =
@@ -624,20 +930,25 @@ impl Reader<'_> {
             );
             return None;
         };
-        let parts = self.object(&shaped, &item, true, apart, table)?;
+        let parts = self.object(&shaped, &item, true, apart, asked, table)?;
         Some(MappedInput::Messages(parts))
     }
 
-    /// `response.<field>...` walked through the operation's output, `first`
-    /// stepping into a list's first item: the field names, `0` for
-    /// `first`.
-    fn walk(
+    /// `<root>.<field>...` walked through `ty`, `first` stepping into a
+    /// list's first item and, where `join` allows, a field after a list
+    /// read from every item: the field names and the spellings on the
+    /// wire, `0` for `first` and [`EACH`] for every item, and the type it
+    /// ends at.
+    #[allow(clippy::type_complexity)]
+    fn place(
         &mut self,
         member: &ast::Member,
-        output: &Ty,
+        root: &str,
+        ty: &Ty,
         ends: Ends,
+        join: bool,
         table: &dyn TypeView,
-    ) -> Option<Vec<String>> {
+    ) -> Option<(Vec<String>, Vec<String>, Ty)> {
         let value = member.value()?;
         let written = Self::written(&value);
         let span = self.span(&value);
@@ -647,27 +958,35 @@ impl Reader<'_> {
                 .filter_map(|part| tree::name_ref_text(&part))
                 .collect::<Vec<_>>()
         });
-        let Some(parts) = parts.filter(|parts| {
-            parts.first().map(String::as_str) == Some("response") && parts.len() > 1
-        }) else {
+        let Some(parts) = parts
+            .filter(|parts| parts.first().map(String::as_str) == Some(root) && parts.len() > 1)
+        else {
+            let what = if root == "event" { "event" } else { "answer" };
             self.invalid(
                 span,
-                format!("`{written}` isn't a place in the answer"),
+                format!("`{written}` isn't a place in the {what}"),
                 "not a place",
-                "Write `response.<field>`, `first` for a list's first item".to_string(),
+                format!("Write `{root}.<field>`, `first` for a list's first item"),
             );
             return None;
         };
-        let mut at = output.clone();
-        let mut path = Vec::new();
+        let mut at = ty.clone();
+        let mut names = Vec::new();
+        let mut wire = Vec::new();
         for name in &parts[1..] {
-            let inner = at.strip_nullable().clone();
-            if let Ty::List(item) = &inner
-                && name == "first"
-            {
-                at = (**item).clone();
-                path.push("0".to_string());
-                continue;
+            let mut inner = at.strip_nullable().clone();
+            if let Ty::List(item) = &inner {
+                if name == "first" {
+                    at = (**item).clone();
+                    names.push("0".to_string());
+                    wire.push("0".to_string());
+                    continue;
+                }
+                if join {
+                    inner = item.strip_nullable().clone();
+                    names.push(EACH.to_string());
+                    wire.push(EACH.to_string());
+                }
             }
             let field = match &inner {
                 Ty::Named(host) => table
@@ -686,18 +1005,25 @@ impl Reader<'_> {
                 return None;
             };
             at = field.declared.clone();
-            path.push(name.clone());
+            wire.push(field.wire_name.clone().unwrap_or_else(|| name.clone()));
+            names.push(name.clone());
         }
         let fits = match ends {
             Ends::Text => table.base_prim(&at) == Some(Prim::Text),
             Ends::Count => count(table, &at),
             Ends::Anything => true,
+            Ends::Vector => vector(table, &at),
+            Ends::Objects => matches!(
+                at.strip_nullable(),
+                Ty::List(item) if matches!(item.strip_nullable(), Ty::Named(name) if table.fields(name).is_some())
+            ),
         };
         if !fits {
-            let what = if ends == Ends::Text {
-                "text"
-            } else {
-                "a count of tokens"
+            let what = match ends {
+                Ends::Text => "text",
+                Ends::Vector => "a vector",
+                Ends::Objects => "a list of objects",
+                _ => "a count of tokens",
             };
             self.invalid(
                 span,
@@ -707,7 +1033,73 @@ impl Reader<'_> {
             );
             return None;
         }
-        Some(path)
+        let at = match (ends, at.strip_nullable()) {
+            (Ends::Objects, Ty::List(item)) => item.strip_nullable().clone(),
+            _ => at,
+        };
+        Some((names, wire, at))
+    }
+
+    /// `refused_when:`: a place that holds anything, or `{ holds: <place>
+    /// path: "<dotted>"  equals: <value> }`, any of them saying so; a
+    /// place by spellings on the wire where `wire`, by field names
+    /// otherwise.
+    fn markers(
+        &mut self,
+        member: &ast::Member,
+        root: &str,
+        output: &Ty,
+        wire: bool,
+        table: &dyn TypeView,
+    ) -> Option<Vec<AiMarker>> {
+        let shape = format!(
+            "Write `refused_when: {root}.<field>`, or `refused_when: {{ holds: {root}.<field>  path: \"<member>\"  equals: <value> }}`"
+        );
+        if member.block().is_none() {
+            let (names, spelled, _) =
+                self.place(member, root, output, Ends::Anything, false, table)?;
+            return Some(vec![AiMarker::Holds(if wire { spelled } else { names })]);
+        }
+        let mut out = Vec::new();
+        let mut path = None;
+        let mut equals = None;
+        for (key, inner) in tree::members(member.block()) {
+            match name_text(&key).as_deref() {
+                Some("holds") => {
+                    let (names, spelled, _) =
+                        self.place(&inner, root, output, Ends::Anything, false, table)?;
+                    out.push(AiMarker::Holds(if wire { spelled } else { names }));
+                }
+                Some("path") => path = Some(inner),
+                Some("equals") => equals = Some(inner),
+                _ => {
+                    self.invalid(
+                        self.span(&key),
+                        "`refused_when:` takes `holds:`, `path:` and `equals:` alone".to_string(),
+                        "not part of `refused_when`",
+                        shape,
+                    );
+                    return None;
+                }
+            }
+        }
+        match (path, equals) {
+            (Some(path), Some(equals)) => {
+                let marker = self.path_equals(member, &path, &equals, output, table, &shape)?;
+                out.push(AiMarker::Equals(marker.0, marker.1));
+            }
+            (None, None) if !out.is_empty() => {}
+            _ => {
+                self.invalid(
+                    self.span(member),
+                    "`refused_when:` needs a `path:` with the value it `equals:`, or a place it `holds:`".to_string(),
+                    "incomplete",
+                    shape,
+                );
+                return None;
+            }
+        }
+        Some(out)
     }
 
     /// `cut_off_when: { path: "<dotted>"  equals: <value> }`, on the answer
@@ -719,48 +1111,86 @@ impl Reader<'_> {
         output: &Ty,
         table: &dyn TypeView,
     ) -> Option<(String, String)> {
-        let shape =
-            "Write `cut_off_when: { path: \"choices.0.finish_reason\"  equals: \"length\" }`";
+        let what = member
+            .member_key()
+            .and_then(|key| key.names().next())
+            .and_then(|name| name_text(&name))
+            .unwrap_or_else(|| "cut_off_when".to_string());
+        let shape = if what == "done_when" {
+            "Write `done_when: { path: \"type\"  equals: \"message_stop\" }`".to_string()
+        } else {
+            format!("Write `{what}: {{ path: \"choices.0.finish_reason\"  equals: \"length\" }}`")
+        };
         let mut path = None;
         let mut equals = None;
         for (key, inner) in tree::members(member.block()) {
-            let value = inner.value();
             match name_text(&key).as_deref() {
-                Some("path") => {
-                    path = value.as_ref().map(Const::from_expr).and_then(|c| match c {
-                        Const::Str(text) => Some((text, self.span(&inner))),
-                        _ => None,
-                    })
-                }
-                Some("equals") => {
-                    equals = value.as_ref().map(Const::from_expr).and_then(|c| match c {
-                        Const::Str(text) => {
-                            Some(jadpo_graph::json::Value::from(text.as_str()).to_document())
-                        }
-                        Const::Bool(flag) => Some(flag.to_string()),
-                        Const::Number {
-                            value: number,
-                            decimal: false,
-                        } if number.scale == 0 => Some(number.mantissa.to_string()),
-                        _ => None,
-                    })
-                }
+                Some("path") => path = Some(inner),
+                Some("equals") => equals = Some(inner),
                 _ => {
                     self.invalid(
                         self.span(&key),
-                        "`cut_off_when:` takes `path:` and `equals:` alone".to_string(),
-                        "not part of `cut_off_when`",
-                        shape.to_string(),
+                        format!("`{what}:` takes `path:` and `equals:` alone"),
+                        &format!("not part of `{what}`"),
+                        shape,
                     );
                     return None;
                 }
             }
         }
-        let (Some((path, span)), Some(equals)) = (path, equals) else {
+        let (Some(path), Some(equals)) = (path, equals) else {
             self.invalid(
                 self.span(member),
-                "`cut_off_when:` needs a `path:` and the value it `equals:`".to_string(),
+                format!("`{what}:` needs a `path:` and the value it `equals:`"),
                 "incomplete",
+                shape,
+            );
+            return None;
+        };
+        self.path_equals(member, &path, &equals, output, table, &shape)
+    }
+
+    /// `path: "<dotted>"  equals: <value>`, on the answer as sent: its
+    /// members by their spelling on the wire, a list's items by number;
+    /// the value as JSON.
+    fn path_equals(
+        &mut self,
+        member: &ast::Member,
+        path: &ast::Member,
+        equals: &ast::Member,
+        output: &Ty,
+        table: &dyn TypeView,
+        shape: &str,
+    ) -> Option<(String, String)> {
+        let span = self.span(path);
+        let written = path
+            .value()
+            .as_ref()
+            .map(Const::from_expr)
+            .and_then(|c| match c {
+                Const::Str(text) if !text.is_empty() => Some(text),
+                _ => None,
+            });
+        let value = equals
+            .value()
+            .as_ref()
+            .map(Const::from_expr)
+            .and_then(|c| match c {
+                Const::Str(text) => {
+                    Some(jadpo_graph::json::Value::from(text.as_str()).to_document())
+                }
+                Const::Bool(flag) => Some(flag.to_string()),
+                Const::Number {
+                    value: number,
+                    decimal: false,
+                } if number.scale == 0 => Some(number.mantissa.to_string()),
+                _ => None,
+            });
+        let (Some(path), Some(value)) = (written, value) else {
+            self.invalid(
+                self.span(member),
+                "A `path:` is dotted text, and the value it `equals:` text, a whole number or a flag".to_string(),
+                "not a marker",
                 shape.to_string(),
             );
             return None;
@@ -796,16 +1226,19 @@ impl Reader<'_> {
             };
             at = field.declared.clone();
         }
-        Some((path, equals))
+        Some((path, value))
     }
 
     fn usage(
         &mut self,
         member: &ast::Member,
+        root: &str,
         output: &Ty,
         table: &dyn TypeView,
     ) -> Option<UsageModel> {
-        let shape = "Write `usage: { input: response.<field>  output: response.<field> }`, with `cached:` where the provider says";
+        let shape = format!(
+            "Write `usage: {{ input: {root}.<field>  output: {root}.<field> }}`, with `cached:` where the provider says"
+        );
         let mut out = UsageModel::default();
         let mut given = (false, false);
         for (key, inner) in tree::members(member.block()) {
@@ -822,7 +1255,10 @@ impl Reader<'_> {
             // `0` for a count the provider never has.
             let path = match inner.value().as_ref().map(Const::from_expr) {
                 Some(Const::Number { value, .. }) if value.mantissa == 0 => None,
-                _ => Some(self.walk(&inner, output, Ends::Count, table)?),
+                _ => Some(
+                    self.place(&inner, root, output, Ends::Count, false, table)?
+                        .0,
+                ),
             };
             match word.as_str() {
                 "input" => {
@@ -848,12 +1284,16 @@ impl Reader<'_> {
         Some(out)
     }
 
-    /// `schema: { mode: AiSchema.<mode>  at: "<dotted>" }`: `at:` where a
-    /// mode with an envelope writes it, never for `none`.
-    fn schema(&mut self, member: &ast::Member) -> Option<(SchemaMode, Option<String>)> {
+    /// `schema: { mode: AiSchema.<mode>  at: "<dotted>"  envelope:
+    /// AiEnvelope.<shape> }`: `at:` where a mode with an envelope writes
+    /// it, never for `none`, and the envelope's shape, OpenAI's unless it
+    /// says.
+    #[allow(clippy::type_complexity)]
+    fn schema(&mut self, member: &ast::Member) -> Option<(SchemaMode, Option<String>, AiEnvelope)> {
         let shape = "Write `schema: { mode: AiSchema.strict_subset  at: \"response_format\" }`, or `mode: AiSchema.none` for a provider with no structured output";
         let mut mode = None;
         let mut at = None;
+        let mut envelope: Option<(AiEnvelope, Span)> = None;
         for (key, inner) in tree::members(member.block()) {
             match name_text(&key).as_deref() {
                 Some("mode") => {
@@ -872,6 +1312,23 @@ impl Reader<'_> {
                             return None;
                         }
                     };
+                }
+                Some("envelope") => {
+                    let written = inner.value().map(|v| Self::written(&v)).unwrap_or_default();
+                    let shaped = match written.as_str() {
+                        "AiEnvelope.openai" => AiEnvelope::OpenAi,
+                        "AiEnvelope.anthropic" => AiEnvelope::Anthropic,
+                        _ => {
+                            self.invalid(
+                                self.span(&inner),
+                                format!("`{written}` isn't an envelope"),
+                                "not an `AiEnvelope`",
+                                "Use `AiEnvelope.openai` or `AiEnvelope.anthropic`".to_string(),
+                            );
+                            return None;
+                        }
+                    };
+                    envelope = Some((shaped, self.span(&inner)));
                 }
                 Some("at") => match inner.value().as_ref().map(Const::from_expr) {
                     Some(Const::Str(text))
@@ -892,7 +1349,7 @@ impl Reader<'_> {
                 _ => {
                     self.invalid(
                         self.span(&key),
-                        "`schema:` takes `mode:` and `at:` alone".to_string(),
+                        "`schema:` takes `mode:`, `at:` and `envelope:` alone".to_string(),
                         "not part of `schema`",
                         shape.to_string(),
                     );
@@ -909,6 +1366,27 @@ impl Reader<'_> {
             );
             return None;
         };
+        if let Some((shaped, span)) = envelope.clone() {
+            let refused = match (mode, shaped) {
+                (SchemaMode::None, _) => {
+                    Some("`AiSchema.none` sends no envelope, so it has no shape to name")
+                }
+                (SchemaMode::JsonOnly, AiEnvelope::Anthropic) => Some(
+                    "Anthropic's structured outputs take a schema; they have no mode that promises JSON alone",
+                ),
+                _ => None,
+            };
+            if let Some(reason) = refused {
+                self.invalid(
+                    span,
+                    "This envelope doesn't go with the schema's mode".to_string(),
+                    "no such envelope for the mode",
+                    format!("Remove `envelope:`, or change `mode:`: {reason}"),
+                );
+                return None;
+            }
+        }
+        let envelope = envelope.map(|(shaped, _)| shaped).unwrap_or_default();
         match (mode, at) {
             (SchemaMode::None, Some((_, span))) => {
                 self.invalid(
@@ -920,8 +1398,8 @@ impl Reader<'_> {
                 );
                 None
             }
-            (SchemaMode::None, None) => Some((mode, None)),
-            (_, Some((at, _))) => Some((mode, Some(at))),
+            (SchemaMode::None, None) => Some((mode, None, envelope)),
+            (_, Some((at, _))) => Some((mode, Some(at), envelope)),
             (_, None) => {
                 self.invalid(
                     self.span(member),
@@ -1155,6 +1633,15 @@ fn count(table: &dyn TypeView, ty: &Ty) -> bool {
             Ty::Opaque(name, args)
                 if args.is_empty() && name == jadpo_std::standard::ai::TOKEN_COUNT
         )
+}
+
+/// Whether `ty` is a vector: a `Vector`, or a list of numbers.
+fn vector(table: &dyn TypeView, ty: &Ty) -> bool {
+    match table.structure(ty.strip_nullable()) {
+        Ty::Opaque(name, _) => name == jadpo_std::standard::ai::VECTOR,
+        Ty::List(item) => matches!(table.base_prim(&item), Some(Prim::Decimal | Prim::Int)),
+        _ => false,
+    }
 }
 
 /// A type's name as its own package writes it, without the package's.

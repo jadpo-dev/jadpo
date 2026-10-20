@@ -1,0 +1,67 @@
+/// The models Anthropic serves through this package, as Anthropic's own
+/// pages gave them on 2026-10-20: the models overview and the context
+/// windows page for each model's context window, and the pricing page
+/// for its standard prices. They need refreshing whenever Anthropic
+/// changes them; a model either table leaves out isn't checked or priced.
+library models {
+    /// Each model's context window, in tokens: 1M for each, as the
+    /// context windows page says.
+    constant context_windows: List<ModelContext> = [
+        ModelContext {
+            model: "claude-fable-5-1"
+            tokens: 1000000
+        },
+        ModelContext {
+            model: "claude-opus-5-5"
+            tokens: 1000000
+        },
+        ModelContext {
+            model: "claude-sonnet-5-5"
+            tokens: 1000000
+        },
+        ModelContext {
+            model: "claude-haiku-5-5"
+            tokens: 1000000
+        }
+    ]
+
+    /// Each model's standard price per million tokens, in US dollars, as
+    /// the pricing page gave it on 2026-10-20: base input, cache hits and
+    /// output. Claude Haiku 5.5's are for prompts up to 100,000 tokens; a
+    /// longer prompt is billed at $0.50, $0.05 and $2.50, which this table
+    /// doesn't hold, nor the prices of writing to the prompt cache.
+    constant prices: List<ModelPrice> = [
+        ModelPrice {
+            model: "claude-fable-5-1"
+            currency: Currency.usd
+            input: 10.00
+            cached: 0.25
+            output: 50.00
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "claude-opus-5-5"
+            currency: Currency.usd
+            input: 4.00
+            cached: 0.20
+            output: 20.00
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "claude-sonnet-5-5"
+            currency: Currency.usd
+            input: 2.00
+            cached: 0.10
+            output: 10.00
+            from: "2026-10-20"
+        },
+        ModelPrice {
+            model: "claude-haiku-5-5"
+            currency: Currency.usd
+            input: 0.10
+            cached: 0.01
+            output: 0.50
+            from: "2026-10-20"
+        }
+    ]
+}

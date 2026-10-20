@@ -1,0 +1,10 @@
+/// A model's price per million tokens, in `currency`, from the day
+/// `from`: its input, cached input and output tokens.
+type ModelPrice = Object {
+    model: Text
+    currency: Currency
+    input: Decimal
+    cached: Decimal
+    output: Decimal
+    from: CalendarDate
+}

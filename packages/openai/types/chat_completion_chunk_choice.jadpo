@@ -1,0 +1,9 @@
+/// One answer's part in a chunk, and why the model stopped, in the last.
+public type ChatCompletionChunkChoice = Object {
+    index: Int {
+        min: 0
+        max: 1000
+    }
+    delta: ChatCompletionDelta
+    finish_reason: Text?
+}

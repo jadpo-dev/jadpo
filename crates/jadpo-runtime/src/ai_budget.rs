@@ -138,6 +138,53 @@ fn cost_of(used: Used, price: &AiPrice) -> u64 {
         .saturating_add(cost(used.output, price.output))
 }
 
+/// The settings a call's limits read: the day's cost limit, and each
+/// price the application sets (chunk 5.5v7).
+pub(crate) fn settings_read(plan: &jadpo_std::ai::AiPlan) -> Vec<u32> {
+    let mut read: Vec<u32> = plan
+        .limits
+        .as_ref()
+        .and_then(|limits| limits.cost)
+        .into_iter()
+        .collect();
+    for price in &plan.prices {
+        read.extend([price.input, price.output]);
+        read.extend(price.cached);
+    }
+    read
+}
+
+/// The price `set` gives `model` (its `ModelId` text), read from its
+/// `Money` settings in `settings`, each in millionths of their currency
+/// for a million tokens: `None` when one has no value, or they are in
+/// more than one currency.
+fn set_price(
+    set: &jadpo_std::ai::AiPriceSetting,
+    model: &str,
+    settings: &[(u32, Value)],
+) -> Option<AiPrice> {
+    let read = |at: u32| {
+        settings
+            .iter()
+            .find(|(number, _)| *number == at)
+            .and_then(|(_, value)| cost_limit(value))
+    };
+    let (input, currency) = read(set.input)?;
+    let (output, output_in) = read(set.output)?;
+    let (cached, cached_in) = match set.cached {
+        Some(at) => read(at)?,
+        None => (input, currency),
+    };
+    (output_in == currency && cached_in == currency).then(|| AiPrice {
+        model: crate::ai::model_name(model).to_string(),
+        from: String::new(),
+        currency: currency.to_string(),
+        input,
+        cached,
+        output,
+    })
+}
+
 /// The day's cost limit in millionths of its currency, and its code,
 /// from the `Money` setting's value.
 fn cost_limit(value: &Value) -> Option<(u64, &'static str)> {
@@ -173,6 +220,8 @@ fn caller_key(ctx: &Ctx<'_>) -> Option<String> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Asked<'a> {
     pub prompt: &'a str,
+    /// The model's name in `ai: { models: }`, `default`.
+    pub model: &'a str,
     pub max_output: u32,
     pub attempts: u32,
 }
@@ -182,6 +231,7 @@ impl<'a> Asked<'a> {
     pub(crate) fn of(site: &'a jadpo_std::ai::GenerateSite) -> Asked<'a> {
         Asked {
             prompt: &site.prompt,
+            model: &site.model,
             max_output: site.max_output,
             attempts: site.attempts,
         }
@@ -215,11 +265,24 @@ pub(crate) async fn take(
         return Err(Refused::OverBudget);
     }
     let day = day_of(ctx.now());
-    let price = match &ai.plan.driver {
-        AiDriver::Package(package) => package
-            .price(crate::ai::model_name(model), &jadpo_std::format_date(day))
-            .cloned(),
-        AiDriver::OpenAiCompatible(_) => None,
+    // The application's own price for the model, else its package's
+    // (chunk 5.5v7).
+    let price = match ai
+        .plan
+        .prices
+        .iter()
+        .find(|price| price.model == site.model)
+    {
+        Some(set) => match set_price(set, model, settings) {
+            Some(price) => Some(price),
+            None => return Err(Refused::Misconfigured),
+        },
+        None => match &ai.plan.driver {
+            AiDriver::Package(package) => package
+                .price(crate::ai::model_name(model), &jadpo_std::format_date(day))
+                .cloned(),
+            AiDriver::OpenAiCompatible(_) => None,
+        },
     };
     let limit = match limits.cost {
         Some(at) => {

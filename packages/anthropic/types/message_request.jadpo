@@ -1,0 +1,14 @@
+/// What asking a model for a message takes: the model, the most tokens it
+/// may answer with (its thinking included), the system prompt and the
+/// conversation.
+public type MessageRequest = Object {
+    model: Text {
+        max_length: 200
+    }
+    max_tokens: Int {
+        min: 1
+        max: 1000000
+    }
+    system: Text
+    messages: List<MessageParam>
+}

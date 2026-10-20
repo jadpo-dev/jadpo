@@ -1,0 +1,10 @@
+/// One answer of a chat completion, and why the model stopped: `stop`,
+/// `length`, `tool_calls`, `content_filter` or `function_call`.
+public type ChatCompletionChoice = Object {
+    index: Int {
+        min: 0
+        max: 1000
+    }
+    message: ChatCompletionReply
+    finish_reason: Text?
+}
