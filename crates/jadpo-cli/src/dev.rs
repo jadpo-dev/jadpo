@@ -735,7 +735,8 @@ pub(crate) fn prepare(
     let diagnostics = jadpo_check::check(db, project);
     let errors = diagnostics.len();
     let graph = jadpo_check::graph::graph(db, project);
-    let openapi = crate::derived::openapi(db, project, &crate::check::title(root));
+    let openapi =
+        crate::derived::openapi(db, project, &jadpo_check::routes::openapi::title(db, project));
     let permissions = jadpo_check::policy::policy_clean(db, project)
         .then(|| jadpo_check::policy::report::report(db, project));
     let _ = crate::derived::write(root, graph, errors, &openapi, permissions.as_ref());

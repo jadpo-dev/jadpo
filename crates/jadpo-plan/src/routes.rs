@@ -383,6 +383,40 @@ pub(crate) fn table(
             });
         }
     }
+    // Each API's own OpenAPI document (area 7, "OpenAPI"), as `jadpo
+    // check` writes it to `build/openapi/<api>.json`.
+    let served = jadpo_check::routes::served::served(db, project);
+    if !served.is_empty() {
+        let title = jadpo_check::routes::openapi::title(db, project);
+        let documents = jadpo_check::routes::openapi::documents(db, project, &title);
+        for served in served {
+            let Some(api) = out.apis.iter().position(|api| api.name == served.api) else {
+                continue;
+            };
+            let Some((_, document)) = documents.iter().find(|(name, _)| *name == served.api)
+            else {
+                continue;
+            };
+            out.routes.push(RoutePlan {
+                key: format!("route GET {}", served.path()),
+                method: jadpo_std::HttpMethod::Get,
+                segments: served.segments.iter().cloned().map(Segment::Fixed).collect(),
+                api: api as u32,
+                input: None,
+                output: None,
+                status: jadpo_std::SuccessStatus::Ok,
+                deadline_ms: jadpo_std::http::DEFAULT_DEADLINE_MS,
+                run: Run::OpenApi(document.to_document()),
+                settle: None,
+                keys: None,
+                args: Vec::new(),
+                authentication: served.authentication,
+                caller: None,
+                file: "generated".to_string(),
+                line: 0,
+            });
+        }
+    }
     out.codecs = codecs.codecs;
     out
 }

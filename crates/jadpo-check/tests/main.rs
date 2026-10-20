@@ -77,6 +77,7 @@ mod secrets;
 mod security_records;
 mod sets_maps;
 mod setting_move;
+mod served_openapi;
 mod signed;
 mod software;
 mod soundness;

@@ -102,6 +102,8 @@ rules! {
         "07-http.html#api-prefix-overlap", "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "07-http.html#api-prefix-required", "Declared API has no prefix";
+    API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
+        "07-http.html#api-serve-openapi-invalid", "API serve_openapi is not true or false";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "07-http.html#api-setting-unknown", "API setting is not one an API takes";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
