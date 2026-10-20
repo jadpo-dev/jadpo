@@ -253,6 +253,25 @@ pub const PARKED_MESSAGES: SystemTable = SystemTable {
     }],
 };
 
+/// What each poll last saw (area 11, "Polls"; chunk 7.6c), by its name,
+/// `poll <connection>.<poll>`, in the store its events are kept in: when
+/// it is next due, and the digest of the event its last answer made, so an
+/// answer that changes nothing keeps nothing. A digest changes in the
+/// transaction that keeps the event.
+pub const POLLS: SystemTable = SystemTable {
+    table: "jadpo_polls",
+    columns: &[
+        column("poll", "text", false),
+        column("next_at", "timestamptz(3)", false),
+        column("digest", "text", true),
+        column("last_change", "timestamptz(3)", true),
+    ],
+    primary_key: &["poll"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
+};
+
 /// Idempotency keys (area 7): one stored response per key and caller.
 pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
     table: "jadpo_idempotency_keys",
@@ -734,7 +753,7 @@ pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATC
 pub const STEP_TABLES: [&SystemTable; 2] = [&STEP_RECORDS, &STEPS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 20] = [
+pub const ALL: [&SystemTable; 21] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -755,6 +774,7 @@ pub const ALL: [&SystemTable; 20] = [
     &STEPS,
     &RECEIVED_EVENTS,
     &PARKED_MESSAGES,
+    &POLLS,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

@@ -186,7 +186,7 @@ pub async fn receive(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> 
 }
 
 /// A context for the runtime's own work at `now`: no request, no seed.
-fn system_ctx<'p>(executor: &'p dyn Executor, host: &'p dyn Host, now: i64) -> Ctx<'p> {
+pub(crate) fn system_ctx<'p>(executor: &'p dyn Executor, host: &'p dyn Host, now: i64) -> Ctx<'p> {
     Ctx::new(
         executor.places(),
         host,
@@ -257,19 +257,18 @@ impl Functions for NoFunctions {
     }
 }
 
-/// The values of the settings a call through `queue`'s connection reads,
-/// for its address, as the program started with them.
+/// The values of the settings a call through `connection` reads, for its
+/// address, as the program started with them.
 fn settings_of(
     executor: &dyn Executor,
-    receiving: &Receiving<'_>,
-    queue: &QueuePlan,
+    providers: &Providers<'_>,
+    connection: &str,
 ) -> Vec<(u32, Value)> {
-    receiving
-        .providers
+    providers
         .plan
         .connections
         .iter()
-        .find(|connection| connection.name == queue.connection)
+        .find(|known| known.name == connection)
         .map(crate::provider::settings_read)
         .unwrap_or_default()
         .into_iter()
@@ -355,12 +354,32 @@ async fn call(
     operation: &str,
     input: Option<Value>,
 ) -> Result<Value, StoreError> {
-    let settings = settings_of(executor, receiving, queue);
+    call_through(
+        executor,
+        &receiving.providers,
+        (&queue.connection, operation),
+        ctx,
+        input,
+    )
+    .await
+}
+
+/// Calls `operation` of `connection` with `input` from the runtime's own
+/// work, with no function of the package's: its output, or why it gave
+/// none, never naming a value. A poll's call too (chunk 7.6c).
+pub(crate) async fn call_through(
+    executor: &dyn Executor,
+    providers: &Providers<'_>,
+    (connection, operation): (&str, &str),
+    ctx: &mut Ctx<'_>,
+    input: Option<Value>,
+) -> Result<Value, StoreError> {
+    let settings = settings_of(executor, providers, connection);
     let site = CallSite::default();
     let done = crate::provider::call(
         ctx,
-        &receiving.providers,
-        (&queue.connection, operation),
+        providers,
+        (connection, operation),
         input,
         &settings,
         Site {
@@ -373,15 +392,14 @@ async fn call(
     match done {
         Done::Value(value) => Ok(value),
         Done::Failed(failure) => Err(StoreError::Fault(format!(
-            "`{}.{operation}` failed: {}",
-            queue.connection, failure.code
+            "`{connection}.{operation}` failed: {}",
+            failure.code
         ))),
         // A provider's fault names the operation, the field and the rule,
         // never a value (area 11, "Decoding").
         Done::Fault(crate::FaultKind::Provider(why)) => Err(StoreError::Fault(why)),
         Done::Fault(kind) => Err(StoreError::Fault(format!(
-            "`{}.{operation}` ended in a fault: {}",
-            queue.connection,
+            "`{connection}.{operation}` ended in a fault: {}",
             kind.classification()
         ))),
     }

@@ -539,6 +539,10 @@ impl<H: Host> Host for Faked<H> {
     ) -> LocalFuture<'a, crate::Allowed> {
         self.host.rate_limit(key, limit, now)
     }
+
+    fn slots(&self) -> &crate::slots::Slots {
+        self.host.slots()
+    }
 }
 
 #[cfg(test)]

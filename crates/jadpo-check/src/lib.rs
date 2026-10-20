@@ -33,6 +33,7 @@ mod not_value;
 pub mod package_code;
 pub mod packages;
 pub mod policy;
+pub mod polls;
 pub mod prompts;
 pub mod providers;
 pub mod publishing;
@@ -265,6 +266,8 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
         out.extend(receiving::mappings(db, project).problems.iter().cloned());
         out.extend(receiving::receiving(db, project).problems.iter().cloned());
+        out.extend(polls::declared(db, project).problems.iter().cloned());
+        out.extend(polls::polls(db, project).problems.iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

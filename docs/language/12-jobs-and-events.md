@@ -2121,6 +2121,10 @@ outbox and delivered to subscribers like any event, with the same retries.
   Polls are for feeds that do not depend on the app's data (rates, a price
   list); checking each of the app's own records is the app's schedule
   calling the package, which a package can ship as a recipe.
+  Built in chunk 7.6c (area 11, "Chosen in chunk 7.6c"): each poll the
+  app subscribes to, called by the tick through its connection once due,
+  what it last saw kept in `jadpo_polls` beside the outbox, and its event
+  and deliveries kept with the new digest in one transaction.
 - **Queues, through `receiving`**, the inbound twin of `publishing`.
 
 ```jadpo fragment
