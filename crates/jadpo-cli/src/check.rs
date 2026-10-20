@@ -93,7 +93,8 @@ pub fn check(call: &Call) -> Reply {
         );
         let permissions = jadpo_check::policy::policy_clean(db, loaded.project)
             .then(|| jadpo_check::policy::report::report(db, loaded.project));
-        let surfaces = derived::surfaces(db, loaded.project);
+        let mut surfaces = derived::surfaces(db, loaded.project);
+        surfaces.extend(derived::network(db, loaded.project));
         match derived::write(
             &loaded.root,
             graph,

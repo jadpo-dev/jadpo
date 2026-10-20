@@ -14,7 +14,9 @@
 //! and `.json` once policy reads cleanly (area 9). Since chunk 7.1b each
 //! of the app's own integrations' surfaces to
 //! `build/providers/<name>/<version>/surface.jadpo_record` (area 11, "The
-//! surface"): an installed package carries its own, committed.
+//! surface"): an installed package carries its own, committed. Since
+//! chunk 7.1c the network report to `build/report/network.md` and `.json`
+//! once the connections read cleanly (area 11).
 
 use std::path::Path;
 
@@ -60,6 +62,25 @@ pub fn surfaces(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(Strin
             ))
         })
         .collect()
+}
+
+/// The network report (area 11, question 9; chunk 7.1c), once the
+/// connections read cleanly: `build/report/network.md` and its `.json`
+/// twin, every host the app can reach by the connection that reaches it.
+pub fn network(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(String, String)> {
+    if !jadpo_check::connections::connection_problems(db, project).is_empty()
+        || !jadpo_check::config::connection_problems(db, project).is_empty()
+    {
+        return Vec::new();
+    }
+    let report = jadpo_check::connections::report(db, project);
+    vec![
+        ("build/report/network.md".to_string(), report.markdown),
+        (
+            "build/report/network.json".to_string(),
+            report.json.to_document(),
+        ),
+    ]
 }
 
 /// Writes every derived file; the paths written, relative to the root.
@@ -111,7 +132,8 @@ pub fn write(
             report.json.to_document(),
         ));
     }
-    // The app's own integrations' surfaces (area 11).
+    // The app's own integrations' surfaces and the network report (area
+    // 11).
     files.extend(surfaces.iter().cloned());
     let mut written = Vec::new();
     for (path, text) in files {

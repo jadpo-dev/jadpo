@@ -36,6 +36,8 @@ const DERIVED: &[&str] = &[
     "build/catalogue/failures.json",
     "build/report/permissions.md",
     "build/report/permissions.json",
+    "build/report/network.md",
+    "build/report/network.json",
 ];
 
 use crate::support;

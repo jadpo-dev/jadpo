@@ -292,6 +292,18 @@ std_enum! {
     }
 }
 
+std_enum! {
+    /// Which of a provider package's hosts a connection reaches (area 11,
+    /// "Connecting in `app.jadpo`"): the `environment:` setting a
+    /// connection to a package with `hosts:` reads (chunk 7.1c).
+    ProviderEnvironment: "ProviderEnvironment" {
+        /// The provider's sandbox: `hosts: { sandbox: }`.
+        Sandbox: "sandbox",
+        /// The provider's live API: `hosts: { live: }`.
+        Live: "live",
+    }
+}
+
 /// The name of the built-in enum of IANA time zones (area 10).
 pub const ZONE: &str = "Zone";
 
@@ -604,6 +616,10 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (IndexKind::NAME, IndexKind::NAMES.to_vec()),
         (FieldChange::NAME, FieldChange::NAMES.to_vec()),
         (Driver::NAME, Driver::NAMES.to_vec()),
+        (
+            ProviderEnvironment::NAME,
+            ProviderEnvironment::NAMES.to_vec(),
+        ),
         (SuccessStatus::NAME, SuccessStatus::NAMES.to_vec()),
         (HttpMethod::NAME, HttpMethod::NAMES.to_vec()),
         (Idempotency::NAME, Idempotency::NAMES.to_vec()),
@@ -679,6 +695,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         IndexKind::NAME => position(IndexKind::NAMES),
         FieldChange::NAME => position(FieldChange::NAMES),
         Driver::NAME => position(Driver::NAMES),
+        ProviderEnvironment::NAME => position(ProviderEnvironment::NAMES),
         SuccessStatus::NAME => position(SuccessStatus::NAMES),
         HttpMethod::NAME => position(HttpMethod::NAMES),
         Idempotency::NAME => position(Idempotency::NAMES),

@@ -516,6 +516,24 @@ A project that declares no database has one called `main` on PostgreSQL, and
 it opens at `config.database_url` when the project declares one (and it is a
 `PostgresUrl`).
 
+A connection to a provider package (area 11, "Connecting in `app.jadpo`")
+reads its settings the same way, never a value written in source:
+`credential:` a `secret: true` setting, `environment:` a
+`ProviderEnvironment` setting (the built-in enum `.sandbox` or `.live`,
+choosing between the package's hosts), and `host:`, for a package with no
+fixed hosts, a `Url` setting. Built in chunk 7.1c; a wrong one is area 11's
+`connection.value_invalid`.
+
+```jadpo fragment
+// config.jadpo
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
 ## Values on your machine and in production
 
 Production values come from the platform's environment (or its secret

@@ -460,4 +460,20 @@ mod tests {
         }
         let _ = fs::remove_dir_all(&root);
     }
+
+    /// A native host gives the disk driver for the connections that keep
+    /// files and for no other: a package's connection has no driver yet
+    /// (chunk 7.1c).
+    #[test]
+    fn a_host_gives_the_disk_driver_only_for_stores_of_files() {
+        use jadpo_runtime::Host;
+        let root = root("narrowed");
+        let host = crate::NativeHost::new().with_files(DiskFiles::under(&root), |connection| {
+            connection == "imports"
+        });
+        assert!(host.capability("imports").is_some());
+        assert!(host.capability("couriers").is_none());
+        assert!(crate::NativeHost::new().capability("imports").is_none());
+        let _ = fs::remove_dir_all(&root);
+    }
 }
