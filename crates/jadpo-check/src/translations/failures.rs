@@ -50,6 +50,7 @@ pub fn failure_scopes(db: &dyn Db, project: Project) -> Vec<String> {
                 symbol.kind,
                 jadpo_db::ItemKind::Type(jadpo_db::Base::Failure)
             ) && !symbol.test
+                && symbol.ownership.package().is_none()
                 && let Some(scope) = super::declared::scope_of(&symbol.ownership)
             {
                 found.insert(scope);

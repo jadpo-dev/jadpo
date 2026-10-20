@@ -270,6 +270,9 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     };
     let on = features(db, project);
     let subjects = subjects();
+    // A library package's group is checked with the package
+    // ([`super::packages`]).
+    let packages = super::packages::scopes(db, project);
     let reachable = BTreeSet::new();
     let mut ctx = Ctx {
         subjects: &subjects,
@@ -278,6 +281,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         reachable: &reachable,
         scope: GROUP,
         features: Some(on),
+        owner: None,
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -301,8 +305,11 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
                 continue;
             }
             seen_groups.insert(&group.name, group.key_span.clone());
+            if packages.contains(&group.name) {
+                continue;
+            }
             if group.name != GROUP {
-                ctx.problems.push(group_unknown(file, group));
+                ctx.problems.push(group_unknown(file, group, &packages));
                 continue;
             }
             ctx.members(file, locale, in_progress, &group.members);
@@ -343,15 +350,22 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
     out
 }
 
-fn group_unknown(file: &LanguageFile, group: &super::language::Group) -> Diagnostic {
-    let near = nearest(&group.name, [GROUP]);
+fn group_unknown(
+    file: &LanguageFile,
+    group: &super::language::Group,
+    packages: &[String],
+) -> Diagnostic {
+    let near = nearest(
+        &group.name,
+        std::iter::once(GROUP).chain(packages.iter().map(String::as_str)),
+    );
     let problem = Diagnostic::new(
         &rule::TRANSLATION_GROUP_UNKNOWN,
         format!("`{}` isn't a group Jadpo reads", group.name),
     )
     .at(group.key_span.clone(), "no such group")
     .reason(format!(
-        "The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the name of a library package the application uses for that package's (library packages come with Phase 7).{}",
+        "The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses, such as `postcodes`, for that package's.{}",
         near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
     ));
     match near {

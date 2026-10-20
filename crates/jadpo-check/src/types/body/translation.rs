@@ -13,7 +13,7 @@ use super::facts::Reach;
 use super::{Body, CallKind, is_literal, node_key};
 use crate::lookups::Name;
 use crate::translations::{
-    Callable, ParamSpec, SHARED, accepts, callable, callable_keys, is_scope,
+    Callable, ParamSpec, SHARED, accepts, callable, callable_keys, is_scope, package_of,
 };
 use crate::types::{Prim, Ty, TypeRef};
 use jadpo_std::translation::ParamKind;
@@ -34,7 +34,10 @@ impl Body<'_> {
         };
         if !is_scope(self.db, self.project, scope) {
             self.args_only(call);
-            self.message_unknown(callee, written, rest, Why::NotAScope);
+            match package_of(self.db, self.project, scope) {
+                Some(home) => self.through_package(callee, written, &home, key),
+                None => self.message_unknown(callee, written, rest, Why::NotAScope),
+            }
             return (text, CallKind::Pure(written.to_string()), Reach::Unknown);
         }
         let found = callable(
@@ -66,6 +69,164 @@ impl Body<'_> {
                 (text, CallKind::Pure(written.to_string()), Reach::Unknown)
             }
         }
+    }
+
+    /// `Postcodes.translations.<message>(...)`: a library package's public
+    /// message or enum with wording (area 10, "Jadpo's and packages'
+    /// text"), called as a domain's is, through the package's name.
+    pub(super) fn package_translation_call(
+        &mut self,
+        call: &ast::CallExpr,
+        callee: &Expr,
+        package: &str,
+        rest: &[String],
+        written: &str,
+    ) -> (Ty, CallKind, Reach) {
+        let text = Ty::Prim(Prim::PresentationText);
+        let home = jadpo_db::symbols(self.db, self.project)
+            .homes
+            .get(package)
+            .and_then(|homes| homes.first())
+            .cloned();
+        let scope = home
+            .as_ref()
+            .filter(|home| package_of(self.db, self.project, &home.name).is_some())
+            .map(|home| home.name.clone());
+        let (Some(scope), [key]) = (scope, rest) else {
+            self.args_only(call);
+            let span = self.span(callee);
+            let reason = if rest.len() == 1 {
+                format!(
+                    "Package `{package}` carries no translations: a library package's messages are `type X = Message` in its `translations/` folder."
+                )
+            } else {
+                format!(
+                    "A package's message is called through the package and the message: `{package}.translations.<message>(...)`."
+                )
+            };
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TRANSLATION_MESSAGE_UNKNOWN,
+                    format!("`{written}` is not a message"),
+                )
+                .at(span, "no such message")
+                .reason(reason)
+                .next(format!(
+                    "Run `jadpo package show {package}` to see what it offers"
+                )),
+            );
+            return (text, CallKind::Pure(written.to_string()), Reach::Unknown);
+        };
+        let found = callable(
+            self.db,
+            self.project,
+            Name::new(self.db, scope.clone()),
+            Name::new(self.db, key.clone()),
+        )
+        .clone();
+        let path = format!("{scope}.{key}");
+        match found {
+            Callable::Found { params, symbol, .. } if symbol.public => {
+                let reach = self.translation_arguments(call, &path, &params, written);
+                (text, CallKind::Pure(written.to_string()), reach)
+            }
+            Callable::Found { symbol, .. } => {
+                self.args_only(call);
+                let span = self.span(callee);
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::PACKAGE_NOT_PUBLIC,
+                        format!("`{written}` isn't public"),
+                    )
+                    .at(span, "not part of the package's API")
+                    .reason(format!(
+                        "A package offers only what it marks `public`; `{}` is a message in `{}` that only the package itself words, and may change in any version.",
+                        crate::translations::bare_name(&symbol),
+                        symbol.path
+                    ))
+                    .next(format!("Use a message `{package}` marks `public` instead")),
+                );
+                (text, CallKind::Pure(written.to_string()), Reach::Unknown)
+            }
+            Callable::Broken => {
+                self.args_only(call);
+                let reach = Reach::Translation {
+                    key: path,
+                    arity: Self::arguments(call).len(),
+                };
+                (text, CallKind::Pure(written.to_string()), reach)
+            }
+            Callable::Unknown => {
+                self.args_only(call);
+                let span = self.span(callee);
+                let offered: Vec<String> = crate::translations::subjects(
+                    self.db,
+                    self.project,
+                    Name::new(self.db, scope.clone()),
+                )
+                .list
+                .iter()
+                .filter(|subject| subject.callable() && subject.symbol.public)
+                .map(|subject| subject.key.clone())
+                .collect();
+                let near = nearest(key, offered.iter().map(String::as_str)).map(str::to_string);
+                let listed: Vec<String> = offered.iter().map(|name| format!("`{name}`")).collect();
+                let reason = match &near {
+                    Some(_) => format!(
+                        "`{key}` is not a public message or enum package `{package}` words.{}",
+                        super::did_you_mean(near.as_deref())
+                    ),
+                    None if offered.is_empty() => {
+                        format!("Package `{package}` offers no message to call.")
+                    }
+                    None => format!(
+                        "`{key}` is not a public message or enum package `{package}` words. It offers {}.",
+                        crate::and_list(&listed)
+                    ),
+                };
+                let problem = Diagnostic::new(
+                    &rule::TRANSLATION_MESSAGE_UNKNOWN,
+                    format!("`{written}` is not a message"),
+                )
+                .at(span.clone(), "no such message")
+                .reason(reason);
+                self.out.push(match near {
+                    Some(near) => problem
+                        .next(format!("Use `{package}.translations.{near}`"))
+                        .edit(span, format!("{package}.translations.{near}")),
+                    None => problem.next(format!(
+                        "Run `jadpo package show {package}` to see what it offers"
+                    )),
+                });
+                (text, CallKind::Pure(written.to_string()), Reach::Unknown)
+            }
+        }
+    }
+
+    /// `translations.postcodes.<message>(...)`: a package's message
+    /// written as a domain's is, reported with the call to write.
+    fn through_package(
+        &mut self,
+        callee: &Expr,
+        written: &str,
+        home: &jadpo_db::PackageHome,
+        key: &str,
+    ) {
+        let span = self.span(callee);
+        let right = format!("{}.translations.{key}", home.code);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TRANSLATION_MESSAGE_UNKNOWN,
+                format!("`{written}` is not a message"),
+            )
+            .at(span.clone(), "a package's message")
+            .reason(format!(
+                "`{}` is a package, not a domain: a library package's messages are called through its name in code, as its other names are, `{right}(...)`.",
+                home.name
+            ))
+            .next(format!("Call `{right}(...)`"))
+            .edit(span, right),
+        );
     }
 
     /// Whether the code calling may name a message of this scope: a

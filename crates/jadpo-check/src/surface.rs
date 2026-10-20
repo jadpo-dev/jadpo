@@ -48,6 +48,9 @@ pub struct Surface {
     pub jadpo: Option<String>,
     /// Whether it carries `GUIDE.md`.
     pub guide: bool,
+    /// The locales a library package words its text in, as `Locale`'s
+    /// variants write them (`en_gb`), in order: one `locale` line each.
+    pub locales: Vec<String>,
     /// How its API is reached, for a provider.
     pub provider: Option<Provider>,
     /// Its public declarations, in the record's order.
@@ -120,6 +123,12 @@ pub enum What {
         message: Option<String>,
         fields: Vec<(String, String)>,
     },
+    /// A library package's public message, called as
+    /// `Postcodes.translations.<message>(...)` (area 10).
+    Message {
+        /// Its fields, by name: the call's values.
+        fields: Vec<(String, String)>,
+    },
     /// A recipe an app copies in.
     Recipe,
 }
@@ -132,6 +141,7 @@ impl What {
             What::Function { .. } => "function",
             What::Type { .. } => "type",
             What::Failure { .. } => "failure",
+            What::Message { .. } => "message",
             What::Recipe => "recipe",
         }
     }
@@ -141,9 +151,10 @@ impl What {
         match self {
             What::Operation { .. } => 0,
             What::Function { .. } => 1,
-            What::Type { .. } => 2,
-            What::Failure { .. } => 3,
-            What::Recipe => 4,
+            What::Message { .. } => 2,
+            What::Type { .. } => 3,
+            What::Failure { .. } => 4,
+            What::Recipe => 5,
         }
     }
 }
@@ -261,6 +272,9 @@ impl Declaration {
                 }
                 out.extend(fields.iter().map(|(n, t)| line(format!("{n}: {t}"))));
             }
+            What::Message { fields } => {
+                out.extend(fields.iter().map(|(n, t)| line(format!("{n}: {t}"))));
+            }
             What::Recipe => {}
         }
         out
@@ -308,6 +322,9 @@ impl Surface {
         }
         if let Some(jadpo) = &self.jadpo {
             package.push(format!("jadpo {jadpo}"));
+        }
+        for locale in &self.locales {
+            package.push(format!("locale {locale}"));
         }
         if self.guide {
             package.push(format!("guide {GUIDE}"));
@@ -399,6 +416,16 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
         licence: None,
         jadpo: None,
         guide: data.contains(&GUIDE),
+        locales: crate::translations::packages::analyse_package(
+            db,
+            project,
+            crate::lookups::Name::new(db, home.name.clone()),
+        )
+        .locales
+        .iter()
+        .filter_map(|&locale| jadpo_std::LOCALES.get(locale as usize))
+        .map(|(variant, _)| (*variant).to_string())
+        .collect(),
         provider: None,
         declarations: Vec::new(),
     };
@@ -470,9 +497,24 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                         base.render(&|key| name_of(graph, key))
                     }
                     Base::Refines(parent) => parent.render(&|key| name_of(graph, key)),
-                    // A package's events and messages come with their
-                    // chunks (7.6 and 7.1b3); emails and prompts are the
-                    // app's own.
+                    // A library package's message is called through its
+                    // `translations` (area 10), and named as the app calls
+                    // it.
+                    Base::Message if relative.starts_with("translations/") => {
+                        declarations.push(Declaration {
+                            name: format!(
+                                "{}.{}",
+                                crate::translations::TRANSLATIONS,
+                                crate::case::to_snake(name)
+                            ),
+                            ..made(What::Message {
+                                fields: fields(graph, node),
+                            })
+                        });
+                        continue;
+                    }
+                    // A package's events come with chunk 7.6; emails and
+                    // prompts are the app's own.
                     _ => continue,
                 };
                 let variants = if *base == Base::Enum {
