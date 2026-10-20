@@ -1620,14 +1620,14 @@ use shared/providers/acme_couriers
 action parcel_status(
     parcel: AcmeCouriers.ParcelRef
 ) fails CourierUnavailable -> AcmeCouriers.Status {
-    var found: AcmeCouriers.Parcel = attempt couriers.parcels.get(
+    var tracked_parcel: AcmeCouriers.Parcel = attempt couriers.parcels.get(
         AcmeCouriers.ParcelLookup {
             id: parcel
         }
     ) {
         timed_out: CourierUnavailable
     }
-    return found.status
+    return tracked_parcel.status
 }
 ```
 
@@ -1916,15 +1916,15 @@ public type Parcel = Object {
         wire: Wire.minor_units
     }
     slot: SlotWindow {
-        decode: slots.parse_window
-        encode: slots.format_window
+        decode: courier_windows.parse_window
+        encode: courier_windows.format_window
     }
 }
 ```
 
-```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/slots.jadpo
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/courier_windows.jadpo
 /// The courier's collection windows, which it writes as "AM" and "PM".
-library slots {
+library courier_windows {
     /// The window the courier's code names.
     function parse_window(code: WindowCode) fails WindowUnknown -> SlotWindow {
         if (code == "AM") {
@@ -1937,8 +1937,8 @@ library slots {
     }
 
     /// The courier's code for a window.
-    function format_window(window: SlotWindow) -> WindowCode {
-        if (window == SlotWindow.morning) {
+    function format_window(pickup_window: SlotWindow) -> WindowCode {
+        if (pickup_window == SlotWindow.morning) {
             return "AM"
         }
         return "PM"
@@ -1957,7 +1957,7 @@ public resource tracking {
         input: ParcelLookup
         wire_output: TrackingTable
         output: List<TrackingEvent>
-        decode: tables.to_events
+        decode: tracking_sheets.to_events
         output_at: "data"
         changes: false
         source: PackageSource.written
@@ -1965,15 +1965,15 @@ public resource tracking {
 }
 ```
 
-```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/tables.jadpo
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/tracking_sheets.jadpo
 /// The courier's tracking history, as a list of where a parcel was seen.
-library tables {
-    /// Each scan as an event.
-    function to_events(table: TrackingTable) -> List<TrackingEvent> {
+library tracking_sheets {
+    /// Each sighting as an event.
+    function to_events(history_sheet: TrackingTable) -> List<TrackingEvent> {
         return list.map(
-            table.scans,
-            scan -> TrackingEvent {
-                place: scan.place
+            history_sheet.sightings,
+            sighting -> TrackingEvent {
+                hub: sighting.hub
             }
         )
     }
@@ -1990,12 +1990,12 @@ use shared/providers/acme_couriers
 
 /// Where a parcel is.
 action parcel_status(parcel: AcmeCouriers.ParcelRef) -> AcmeCouriers.Status {
-    var found: AcmeCouriers.Parcel = couriers.parcels.get(
+    var tracked_parcel: AcmeCouriers.Parcel = couriers.parcels.get(
         AcmeCouriers.ParcelLookup {
             id: parcel
         }
     )
-    return found.status
+    return tracked_parcel.status
 }
 ```
 
@@ -2128,14 +2128,14 @@ public type WindowCode = Text {
 ```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/tracking_table.jadpo hidden
 /// The courier's tracking history as it sends it.
 public type TrackingTable = Object {
-    scans: List<Scan>
+    sightings: List<Scan>
 }
 ```
 
 ```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/scan.jadpo hidden
-/// One scan as the courier sends it.
+/// One sighting as the courier sends it.
 public type Scan = Object {
-    place: Text {
+    hub: Text {
         wire_name: "where"
     }
 }
@@ -2144,7 +2144,7 @@ public type Scan = Object {
 ```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/tracking_event.jadpo hidden
 /// Where a parcel was seen.
 public type TrackingEvent = Object {
-    place: Text
+    hub: Text
 }
 ```
 
@@ -2166,7 +2166,7 @@ type WindowUnknown = Failure {
   any function the action calls would; one that fails, or gives no value,
   is a fault naming the operation and the field, never the value.
 - **Only the fields read.** The answer to a call held in a variable that
-  code only reads fields of (`found.status`) is decoded for those fields
+  code only reads fields of (`tracked_parcel.status`) is decoded for those fields
   alone; returning it, passing it on, or anything else uses it whole.
   Fields further in are decoded with the field that holds them. An
   answer decoded whole by an operation's `decode:` is read whole.
@@ -3849,14 +3849,14 @@ provider {
 /// A parcel and where it is.
 public type Parcel = Object {
     status: Text
-    collected: Text {
+    collected_on: Text {
         wire: Wire.unix_seconds
     }
 }
 ```
 
 ```text output
-error: `Wire.unix_seconds` sends an `Instant`, and `collected` is a `Text`
+error: `Wire.unix_seconds` sends an `Instant`, and `collected_on` is a `Text`
  --> shared/providers/acme_couriers/v1/types/parcel.jadpo:5:15
   |
 5 |         wire: Wire.unix_seconds
