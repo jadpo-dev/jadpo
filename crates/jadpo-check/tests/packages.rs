@@ -1092,3 +1092,20 @@ fn a_connection_is_never_named_like_a_domain_or_a_library() {
         "{found:#?}"
     );
 }
+
+#[test]
+fn two_versions_with_translations_wait_for_a_later_chunk() {
+    // The app words a package's messages under its folder's name, which
+    // two versions would share (chunk 7.1c2, flagged for Richard).
+    let hint = (
+        "packages/postcodes/v3/translations/postcode_hint.jadpo",
+        "/// Shown under a postcode field.\npublic type PostcodeHint = Message {}\n",
+    );
+    let found = both_installed(&with(&[hint]));
+    assert!(
+        found.iter().any(|p| p.starts_with(
+            "packages/postcodes/v3/translations/postcode_hint.jadpo toolchain.not_built_yet: Two versions of package `Postcodes` with translations side by side aren't built yet"
+        )),
+        "{found:#?}"
+    );
+}
