@@ -971,6 +971,11 @@ The design is area 11 as revised on 2026-10-16, with its research in
   area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
   field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
   the importer lists each; recommendation `wire_name:`.
+- [ ] **7.1c3 Wording two versions of a package** `opus · high` (area 11,
+  decided 2026-10-20): two versions of a library package with
+  `translations/` held side by side, the app wording each under
+  `<package>_v<n>: { }`, in the root file, the record, the translation
+  commands and the publishing bar.
 - [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
   and 7.1c: a provider operation called through its connection over
   7.0c's seam by the package driver (JSON over HTTP), tested against a
