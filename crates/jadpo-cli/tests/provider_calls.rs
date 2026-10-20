@@ -715,3 +715,224 @@ fn an_address_that_isnt_https_is_refused_unsent() {
     assert_eq!(ctx.capabilities().calls()[0].ended, Ended::Refused);
     assert!(provider.requests().is_empty());
 }
+
+// --- with a store: no transaction is open while a call is out -----------------
+
+/// The couriers' package and a domain that keeps what it books, in
+/// PostgreSQL.
+fn kept_files(sandbox: &str) -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> = files(sandbox)
+        .into_iter()
+        .filter(|(path, _)| {
+            path.starts_with("shared/providers/acme_couriers")
+                || *path == "domains/shipping/failures/collection_slot_gone.jadpo"
+        })
+        .collect();
+    out.extend([
+        (
+            "app.jadpo",
+            r#"application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+"#
+            .to_string(),
+        ),
+        (
+            "config.jadpo",
+            r#"config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+"#
+            .to_string(),
+        ),
+        (
+            "domains/shipping/types/courier_ref.jadpo",
+            "/// A courier's booking reference, as the shop keeps it.\ntype CourierRef = Text {\n    max_length: 40\n}\n"
+                .to_string(),
+        ),
+        (
+            "domains/shipping/failures/reference_invalid.jadpo",
+            "type ReferenceInvalid = Failure {\n    kind: FailureKind.invalid_value\n    message: \"The courier's reference is too long to keep.\"\n}\n"
+                .to_string(),
+        ),
+        (
+            "domains/shipping/entities/collection.jadpo",
+            r#"use shipping/types { CourierRef }
+
+entity Collection {
+    id: Uuid
+    reference: CourierRef
+
+    policy: {
+        create: [Access.public, Access.system]
+        read: [Access.public, Access.system]
+    }
+}
+"#
+            .to_string(),
+        ),
+        (
+            "domains/shipping/actions/book_and_keep.jadpo",
+            r#"use app { couriers }
+use shipping/entities { Collection }
+use shipping/failures { CollectionSlotGone, ReferenceInvalid }
+use shipping/types { CourierRef }
+use shared/providers/acme_couriers
+
+/// Books a collection, then keeps its reference: the call comes before
+/// the action's first write.
+action book_and_keep(postcode: AcmeCouriers.Postcode, slot: AcmeCouriers.SlotId) fails CollectionSlotGone, ReferenceInvalid -> Collection {
+    var booking: AcmeCouriers.Booking = attempt couriers.bookings.create(AcmeCouriers.CreateBooking {
+        postcode: postcode
+        slot_id: slot
+    }) {
+        slot_taken: CollectionSlotGone
+    }
+    var reference: CourierRef = attempt CourierRef(booking.id) {
+        invalid: ReferenceInvalid
+    }
+    return Collection.create {
+        set: {
+            reference: reference
+        }
+    }
+}
+"#
+            .to_string(),
+        ),
+        (
+            "domains/shipping/actions/keep_then_book.jadpo",
+            r#"use app { couriers }
+use shipping/entities { Collection }
+use shipping/failures { CollectionSlotGone }
+use shipping/types { CourierRef }
+use shared/providers/acme_couriers
+
+/// Keeps a reference, then books: the call comes after the action's first
+/// write, while its transaction is open.
+action keep_then_book(reference: CourierRef, postcode: AcmeCouriers.Postcode, slot: AcmeCouriers.SlotId) fails CollectionSlotGone -> Collection {
+    var kept: Collection = Collection.create {
+        set: {
+            reference: reference
+        }
+    }
+    var booking: AcmeCouriers.Booking = attempt couriers.bookings.create(AcmeCouriers.CreateBooking {
+        postcode: postcode
+        slot_id: slot
+    }) {
+        slot_taken: CollectionSlotGone
+    }
+    if (booking.id == "") {
+        return kept
+    }
+    return kept
+}
+"#
+            .to_string(),
+        ),
+    ]);
+    out
+}
+
+/// No transaction is open while a call is out (area 6, "Outside calls
+/// hold no transaction"; 7.0c's guard, which chunk 7.4 restructures): a
+/// call before the action's first write goes out, and what the action
+/// writes after it commits; a call after a write is refused before it
+/// goes out, and the write is rolled back.
+#[test]
+fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
+    let provider = FakeProvider::start();
+    let root = root("kept");
+    let _ = std::fs::remove_dir_all(&root);
+    for (path, text) in kept_files(&provider.url) {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        std::fs::write(path, text).expect("write");
+    }
+    let terminal = jadpo_term::Environment::empty()
+        .with_var("SOURCE_DATE_EPOCH", "1792504800")
+        .with_cwd(&root);
+    let migrated = jadpo_cli::run(
+        &["migrate".to_string(), "new".into(), "initial".into()],
+        &terminal,
+    );
+    assert_eq!(migrated.code, 0, "{}{}", migrated.stdout, migrated.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let prepared = Prepared::load(&loaded.db, loaded.project).expect("the project checks");
+    let variables = |name: &str| -> Option<String> {
+        match name {
+            "COURIERS_API_KEY" => Some("ck_test_123".into()),
+            "COURIERS_ENVIRONMENT" => Some("sandbox".into()),
+            _ => None,
+        }
+    };
+    let values = prepared
+        .config(&variables, jadpo_runtime::config::Mode::Environment, &|_: &mut [u8]| false)
+        .unwrap_or_else(|problems| panic!("the settings read: {problems:?}"));
+    let program = Program::new(prepared).with_config(&values);
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    let runtime = Runtime::new().expect("a runtime");
+    let store = jadpo_host_native::postgres(&url).expect("a store");
+    let driver: Rc<dyn Capability> = Rc::new(JsonHttp::new(NativeFetch));
+    let host = Faked::new(jadpo_host_native::NativeHost::new().with_store("main", store))
+        .with("couriers", driver);
+    provider.answer(
+        201,
+        r#"{"ok": true, "data": {"id": "b-7", "collectAt": "2026-10-20T09:00:00Z", "window": "morning"}}"#,
+    );
+    let mut ctx = Ctx::new(program.places(), &host, env());
+    let kept = run(&runtime, &program, &mut ctx, "book_and_keep", vec![text("N1"), text("am")]);
+    let Outcome::Value(collection) = kept else {
+        panic!("{kept:?}");
+    };
+    assert_eq!(field(&collection, "reference"), &text("b-7"));
+    assert_eq!(provider.requests().len(), 1);
+
+    let mut ctx = Ctx::new(program.places(), &host, env());
+    let refused = run(
+        &runtime,
+        &program,
+        &mut ctx,
+        "keep_then_book",
+        vec![text("kept-first"), text("N1"), text("am")],
+    );
+    match &refused {
+        Outcome::Fault(fault) => assert_eq!(
+            fault.kind,
+            FaultKind::CallInTransaction("couriers.bookings.create".into())
+        ),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(provider.requests().len(), 1, "the call after the write never went out");
+    assert_eq!(ctx.capabilities().calls()[0].ended, Ended::Refused);
+    // Only the first action's record was kept.
+    let rows = runtime
+        .block_on(jadpo_runtime::Database::query_once(
+            jadpo_runtime::Host::database(host.host(), "main").expect("main"),
+            "SELECT count(*)::int4 FROM \"collection\"",
+            &[],
+        ))
+        .expect("a count");
+    assert_eq!(
+        rows.first().and_then(|row| row.first()),
+        Some(&jadpo_runtime::SqlValue::Int4(1))
+    );
+}
