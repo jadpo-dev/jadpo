@@ -677,7 +677,17 @@ impl Body<'_> {
         expr: &Expr,
         resolved: bool,
     ) -> Ty {
-        let host = &text(first);
+        // A package's enum is written through the package's name, and its
+        // version while two are held, as its type is (area 11; chunk
+        // 7.1e): `Postcodes.Round.morning`, `Postcodes.v3.Round.morning`.
+        let names: Vec<String> = std::iter::once(first).chain(rest).map(text).collect();
+        let (host, rest, end) = match self.package_path(&names) {
+            Some(Some((name, taken))) => (name, &rest[taken - 1..], &rest[taken - 2]),
+            // A version missing, or the package alone: resolution's.
+            Some(None) => return Ty::Error,
+            None => (names[0].clone(), rest, first),
+        };
+        let host = &host;
         if host == super::super::ty::TIME_FORMAT {
             // A built-in format is named only in `format:` (area 10).
             let written = tree::written(expr.syntax());
@@ -689,12 +699,17 @@ impl Body<'_> {
         let Some(variants) = self.table.variants(host) else {
             // `Placed.level`: a type has no members to read as a value.
             if resolved {
-                let span = self.span(first);
+                let span = self.span_between(first, end);
                 self.declaration_as_value(host, span);
             }
             return Ty::Error;
         };
         let [variant] = rest else {
+            // `Postcodes.Round`: an enum through its package, no value.
+            if rest.is_empty() && resolved {
+                let span = self.span_between(first, end);
+                self.declaration_as_value(host, span);
+            }
             return Ty::Error;
         };
         let name = text(variant);
@@ -1133,10 +1148,22 @@ impl Body<'_> {
         };
         let mut name = text(&first);
         let mut rest = rest;
-        // A package's type is written through it (area 11):
-        // `AcmeCouriers.CreateBooking { ... }`.
-        if !rest.is_empty() && self.symbols.is_package(&name) && !self.is_local(&name) {
-            name = format!("{name}.{}", text(&rest.remove(0)));
+        // A package's type, or its enum's variant, is written through it,
+        // with its version while two are held (area 11):
+        // `AcmeCouriers.CreateBooking { ... }`, `Postcodes.v3.Round.shared
+        // { ... }`.
+        let names: Vec<String> = std::iter::once(&first).chain(&rest).map(text).collect();
+        match self.package_path(&names) {
+            Some(Some((reached, taken))) => {
+                name = reached;
+                rest.drain(..taken - 1);
+            }
+            // A version missing, or the package alone: resolution's.
+            Some(None) => {
+                self.walk(|walk| walk.member_values(record.member_list()));
+                return Ty::Error;
+            }
+            None => {}
         }
         if !starts_upper(&name) {
             self.failure_value(&Expr::RecordExpr(record.clone()));

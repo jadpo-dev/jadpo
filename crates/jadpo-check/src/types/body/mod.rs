@@ -1146,6 +1146,22 @@ impl Body<'_> {
         self.find(name).is_some()
     }
 
+    /// A dotted name through a package, as the declaration it reaches and
+    /// the number of names that took ([`NameView::through_package`]); a
+    /// local of the package's name is no package.
+    fn package_path(&self, names: &[String]) -> Option<Option<(String, usize)>> {
+        if self.is_local(names.first()?) {
+            return None;
+        }
+        self.symbols.through_package(names)
+    }
+
+    /// The span from `first`'s start to `last`'s end.
+    fn span_between(&self, first: &impl AstNode, last: &impl AstNode) -> Span {
+        let (start, end) = (self.span(first), self.span(last));
+        Span::new(self.path, start.start, end.end)
+    }
+
     fn pop_scope(&mut self) {
         let Some(scope) = self.scopes.pop() else {
             return;

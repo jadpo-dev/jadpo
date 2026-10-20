@@ -205,7 +205,10 @@ impl Body<'_> {
         for arm in &arms {
             self.scopes.push(Vec::new());
             if let Some(ast::Pat::CasePat(case)) = arm.pat() {
-                self.resolved_by(|names, out| crate::resolve::pattern(names, &case, out));
+                // A name resolution reports, such as a package's version
+                // missing, leaves the case unknown too.
+                misread |=
+                    !self.resolved_by(|names, out| crate::resolve::pattern(names, &case, out));
             }
             if let Some(pat) = arm.pat() {
                 let span = self.span(&pat);
@@ -424,7 +427,19 @@ impl Body<'_> {
         span: Span,
         written: &str,
     ) -> Reading {
-        let names: Vec<String> = path.iter().map(text).collect();
+        let mut names: Vec<String> = path.iter().map(text).collect();
+        // A package's enum is written through the package, with its version
+        // while two are held (area 11; chunk 7.1e): `Postcodes.Round.morning`
+        // matches as `Postcodes.Round`'s `morning`.
+        let mut path = path;
+        match self.package_path(&names) {
+            Some(Some((host, taken))) => {
+                names.splice(..taken, [host]);
+                path = &path[taken - 1..];
+            }
+            Some(None) => return self.silenced(name),
+            None => {}
+        }
         let bind = |ty: Ty| match (name.clone(), brackets.clone()) {
             (Some(name), Some(brackets)) => Some((name, ty, brackets)),
             _ => None,

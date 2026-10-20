@@ -271,6 +271,49 @@ pub trait NameView {
             .find(|symbol| symbol.kind == ItemKind::Library)
     }
 
+    /// How `head.rest[0]...` reaches a package (area 11, "Where packages
+    /// live"; chunk 7.1c2): `Some(Some(via))` when `rest[0]` is a version
+    /// to take into the package's name, `Postcodes.v3` (or one written
+    /// needlessly, which reads as the package itself), `Some(None)` when a
+    /// version is missing while two are held, and `None` when the name
+    /// needs nothing. Resolution reports the version's mistakes.
+    fn through_version(&self, head: &str, rest: &[String]) -> Option<Option<String>> {
+        let versions = self.versions(head);
+        let next = rest.first()?;
+        if !versions.is_empty() {
+            let via = format!("{head}.{next}");
+            return Some(versions.contains(&via).then_some(via));
+        }
+        let needless = rest.len() > 1
+            && jadpo_db::is_version_label(next)
+            && self.declared(&format!("{head}.{next}")).is_empty();
+        needless.then(|| Some(head.to_string()))
+    }
+
+    /// A dotted name whose first name is a package's, as the declaration
+    /// it reaches (area 11; chunk 7.1e): `Postcodes.Round.morning` reaches
+    /// `Postcodes.Round`, and `Postcodes.v3.Round.morning`, while two
+    /// versions are held, `Postcodes.v3.Round`, with the number of names
+    /// that took. `None` when the first name is no package's; `Some(None)`
+    /// when the name stops at the package or misses its version, which
+    /// resolution reports. A type's name and an enum's value are written
+    /// through a package the same way.
+    fn through_package(&self, names: &[String]) -> Option<Option<(String, usize)>> {
+        let (head, rest) = names.split_first()?;
+        if rest.is_empty() || !self.is_package(head) {
+            return None;
+        }
+        let (via, at) = match self.through_version(head, rest) {
+            Some(Some(via)) => (via, 1),
+            Some(None) => return Some(None),
+            None => (head.clone(), 0),
+        };
+        Some(
+            rest.get(at)
+                .map(|member| (format!("{via}.{member}"), at + 2)),
+        )
+    }
+
     /// The function `function` of library `library`.
     fn library_function(&self, library: &str, function: &str) -> Option<&Symbol> {
         self.declared(function).iter().find(|symbol| {

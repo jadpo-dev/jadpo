@@ -1112,3 +1112,157 @@ action read_postcode(written: Postcodes.v3.WrittenPostcode) -> Postcodes.v3.UkPo
         "{found:#?}"
     );
 }
+
+// --- a package's enum values (chunk 7.1e) --------------------------------
+
+/// A package's enum, one variant carrying fields.
+const ROUND: (&str, &str) = (
+    "packages/postcodes/v2/types/round.jadpo",
+    "/// When a postcode's collections run.
+public type Round = Enum {
+    morning
+    evening
+    /// Collected with another postcode's round.
+    shared: {
+        postcode: UkPostcode
+    }
+}
+",
+);
+
+/// The app writing the package's enum values through the package's name:
+/// a value, one with fields, a constant, a comparison and patterns.
+const ROUNDS: (&str, &str) = (
+    "domains/addresses/actions/round_for.jadpo",
+    "use packages/postcodes
+
+/// The round a new postcode starts on.
+constant first_round: Postcodes.Round = Postcodes.Round.morning
+
+/// The round a postcode's collections run in.
+action round_for(postcode: Postcodes.UkPostcode) -> Postcodes.Round {
+    if (postcode == \"SW1A 1AA\") {
+        return Postcodes.Round.morning
+    }
+    if (postcode == \"SW1A 2AA\") {
+        return first_round
+    }
+    return Postcodes.Round.shared {
+        postcode: postcode
+    }
+}
+",
+);
+
+const LATER: (&str, &str) = (
+    "domains/addresses/actions/later_round.jadpo",
+    "use packages/postcodes
+
+/// The round after `round`.
+action later_round(round: Postcodes.Round) -> Postcodes.Round {
+    if (round == Postcodes.Round.evening) {
+        return round
+    }
+    return match round {
+        Postcodes.Round.morning -> Postcodes.Round.evening
+        Postcodes.Round.evening -> Postcodes.Round.evening
+        Postcodes.Round.shared -> round
+    }
+}
+",
+);
+
+#[test]
+fn a_package_s_enum_value_is_written_through_its_name() {
+    assert_eq!(
+        installed(&with(&[ROUND, ROUNDS, LATER])),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_package_s_unknown_variant_is_reported_by_its_name() {
+    let wrong = (
+        "domains/addresses/actions/round_for.jadpo",
+        "use packages/postcodes
+
+/// The round a postcode's collections run in.
+action round_for() -> Postcodes.Round {
+    return Postcodes.Round.mornin
+}
+",
+    );
+    let found = installed(&with(&[ROUND, wrong]));
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert!(
+        found[0].contains("type.unknown_enum_variant"),
+        "{found:#?}"
+    );
+}
+
+/// The app's enum values with both versions held: the package's enum in
+/// each, and the app's files as `version` rewrites them.
+fn rounds_in_both(version: impl Fn(&str) -> String) -> Vec<String> {
+    let three = (ROUND.0.replace("/v2/", "/v3/"), ROUND.1.to_string());
+    let app: Vec<(&str, String)> = [ROUNDS, LATER]
+        .iter()
+        .map(|(path, text)| (*path, version(text)))
+        .collect();
+    let mut files: Vec<(&str, &str)> = with(&[ROUND]);
+    files.push((three.0.as_str(), three.1.as_str()));
+    files.extend(app.iter().map(|(path, text)| (*path, text.as_str())));
+    both_installed(&files)
+}
+
+#[test]
+fn a_package_s_enum_value_carries_the_version_while_two_are_held() {
+    let moved = rounds_in_both(|text| text.replace("Postcodes.", "Postcodes.v3."));
+    assert_eq!(moved, Vec::<String>::new());
+}
+
+#[test]
+fn a_package_s_enum_value_without_its_version_is_refused_while_two_are_held() {
+    let found = rounds_in_both(str::to_string);
+    assert!(!found.is_empty(), "{found:#?}");
+    assert!(
+        found.iter().all(|p| p.contains("package.version_needed")),
+        "only the missing versions are reported: {found:#?}"
+    );
+}
+
+#[test]
+fn a_package_s_variant_pattern_or_block_without_its_version_is_refused_once() {
+    let found = rounds_in_both(|text| {
+        text.replace("Postcodes.", "Postcodes.v3.")
+            .replace("Postcodes.v3.Round.morning ->", "Postcodes.Round.morning ->")
+            .replace("Postcodes.v3.Round.shared {", "Postcodes.Round.shared {")
+    });
+    assert_eq!(
+        found,
+        vec![
+            "domains/addresses/actions/later_round.jadpo package.version_needed: `Postcodes` is held in two versions, so a name through it says which".to_string(),
+            "domains/addresses/actions/round_for.jadpo package.version_needed: `Postcodes` is held in two versions, so a name through it says which".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn a_package_s_enum_alone_is_not_a_value() {
+    let alone = (
+        "domains/addresses/actions/round_for.jadpo",
+        "use packages/postcodes
+
+/// The round a postcode's collections run in.
+action round_for() -> Postcodes.Round {
+    return Postcodes.Round
+}
+",
+    );
+    assert_eq!(
+        installed(&with(&[ROUND, alone])),
+        vec![
+            "domains/addresses/actions/round_for.jadpo type.not_a_value: `Postcodes.Round` is an enum, not a value"
+                .to_string()
+        ]
+    );
+}
