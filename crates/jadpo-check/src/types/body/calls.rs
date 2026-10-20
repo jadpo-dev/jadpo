@@ -365,6 +365,14 @@ impl Body<'_> {
             return (Ty::Error, CallKind::Other, Reach::Unknown);
         }
         if self.symbols.is_connection(&head) {
+            // A store of files' own operations (area 16, chunk 6.4b).
+            if let [member] = rest.as_slice()
+                && let Some(op) = jadpo_std::files::FilesOp::from_name(member)
+                && crate::data::connections(self.db, self.project).kind(&head)
+                    == Some(crate::data::ConnectionKind::Files)
+            {
+                return self.files_call(op, &head, call, callee, &written);
+            }
             // A connection's operations, `connection.resource.operation`,
             // come with area 11.
             let span = self.span(callee);
@@ -392,6 +400,18 @@ impl Body<'_> {
                 && let Some(op) = jadpo_std::batch::BatchOp::from_name(member)
             {
                 return self.batch_call(op, call, callee, &written);
+            }
+            // A file helper's read (area 19, "Data formats"; chunk 6.4b);
+            // its `write` comes with roadmap 6.4b2.
+            if member == "read"
+                && let Some(format) = jadpo_std::batch::RowFormat::from_namespace(&head)
+            {
+                return self.batch_call(
+                    jadpo_std::batch::BatchOp::Read(format),
+                    call,
+                    callee,
+                    &written,
+                );
             }
             if head == "clock" && member == "advance" {
                 return self.advance_clock(call, callee, &written);

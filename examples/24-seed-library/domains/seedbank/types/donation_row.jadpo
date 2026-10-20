@@ -1,0 +1,19 @@
+// A row read from a file is an `Input`, checked with an `Input`'s rules:
+// each field is read from the column its name or its `column:` names, a
+// cell as its type's text, and a row that breaks a rule is kept as a
+// problem, by its row and column, never its value.
+
+use seedbank/types { DonatedDay, Season, VarietyName }
+
+/// One row of a donations sheet, by the sheet's column names.
+type DonationRow = Input {
+    variety: VarietyName {
+        column: "Variety"
+    }
+    saved_in: Season {
+        column: "Saved in"
+    }
+    donated_on: DonatedDay {
+        column: "Donated on"
+    }
+}

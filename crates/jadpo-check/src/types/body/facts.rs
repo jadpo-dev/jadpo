@@ -61,6 +61,9 @@ pub(crate) enum Reach {
     /// `batches.each(...)`, `batches.status(run)` or `batches.cancel(run)`
     /// (area 12).
     Batch(jadpo_std::batch::BatchOp),
+    /// `store.put(bytes, type)` or `store.read(file)` through the `files`
+    /// connection it names (area 16; chunk 6.4b).
+    Files(String, jadpo_std::files::FilesOp),
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,
     /// `schedule.run()` in a test (area 13, "Kinds of test"; chunk 6.2c):

@@ -758,9 +758,14 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
   (`unavailable`) or a write (`storage_full`). A real file sits in a
   domain's `fixtures/` folder (`fixtures/files/customers.csv`), and a test
   turns it into a stored `File` with `fixture_file("customers.csv", store:
-  imports)`.
+  imports)`. Built in chunk 6.4b: one in-memory store, in every `files`
+  connection's place, which the runtime's Rust tests tell to have no room
+  and to read a few bytes at a time; `fixture_file` and telling it to
+  fail from a test come with the fakes (chunk 7.2).
 - **Batches** (area 12) run to the end within the test, after the action
-  that started them commits, like events. `jadpo test` runs them in batches
+  that started them commits, like events (not built yet: a test sees a
+  run as it starts; a file's run reads two rows a batch on a test's host,
+  chunk 6.4b). `jadpo test` runs them in batches
   of two items and simulates a restart between every batch, so every
   import or export test also tests resuming; a test asserts on what the
   app recorded and on the summary `finished:` received, and can read

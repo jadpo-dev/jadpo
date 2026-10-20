@@ -1630,6 +1630,19 @@ impl Decls<'_> {
             self.header(value, value_span, field);
             return;
         }
+        // The column a file helper reads the field from (area 12,
+        // "Batches"; chunk 6.4b).
+        if key == "column" {
+            if !matches!(value, Const::Str(name) if !name.is_empty()) {
+                self.out.push(
+                    Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`column` takes the column's name")
+                        .at(value_span, format!("{} here", value.describe()))
+                        .reason("`column:` names the column of a CSV or TSV file a row's field is read from, when it isn't the field's name, as text: `column: \"Email address\"`.")
+                        .next("Write the column's name in quotes"),
+                );
+            }
+            return;
+        }
         if key == "optional" {
             if !matches!(value, Const::Bool(_)) {
                 self.out.push(
@@ -1795,17 +1808,20 @@ struct FieldCtx {
 }
 
 /// Settings later areas give an entity's or event's fields: data (area 5),
-/// policy (area 9) and personal data (area 15). They are checked when
-/// those areas are built.
-const LATER_FIELD_SETTINGS: [&str; 9] = [
+/// policy (area 9), personal data (area 15) and a `File` field's store,
+/// size and types (area 16). They are checked when those areas are built.
+const LATER_FIELD_SETTINGS: [&str; 12] = [
     "erase",
     "generated",
     "immutable",
+    "max_size",
     "on_delete",
     "personal",
     "policy",
     "retention",
     "role",
+    "store",
+    "types",
     "unique",
 ];
 

@@ -32,6 +32,9 @@ pub struct FieldDef {
     /// An `Input` field read from a request header, by the header's name
     /// as written (area 7, "One input").
     pub header: Option<String>,
+    /// An `Input` field's `column:`: the column a file helper reads it
+    /// from, when not its name (area 12, "Batches"; chunk 6.4b).
+    pub column: Option<String>,
     /// Brought in by `include` or `pick`.
     pub copied: bool,
     /// For a written field that replaces one an `include` or `pick` above
@@ -178,6 +181,8 @@ pub struct RawField {
     pub default: Option<Const>,
     /// An `Input` field's `header:`, as written.
     pub header: Option<String>,
+    /// An `Input` field's `column:`, as written.
+    pub column: Option<String>,
     /// The type a copied field it replaced came from.
     pub replaces: Option<String>,
 }
@@ -256,6 +261,13 @@ pub fn derive(
                         .find(|(key, _)| input && key == "header")
                         .and_then(|(_, value)| match value {
                             rules::Const::Str(text) => Some(text.clone()),
+                            _ => None,
+                        }),
+                    column: settings
+                        .iter()
+                        .find(|(key, _)| input && key == "column")
+                        .and_then(|(_, value)| match value {
+                            rules::Const::Str(text) if !text.is_empty() => Some(text.clone()),
                             _ => None,
                         }),
                     replaces: None,
@@ -397,6 +409,7 @@ fn copy(fields: &mut Vec<RawField>, host: &str, name: &str, problem: &mut dyn Fn
         optional: false,
         default: None,
         header: None,
+        column: None,
         replaces: None,
     });
 }
@@ -480,6 +493,7 @@ impl TypeTable {
             optional: raw.optional,
             default: raw.default.clone(),
             header: raw.header.clone(),
+            column: raw.column.clone(),
             copied: matches!(raw.source, Source::Copied { .. }),
             replaces: raw.replaces.clone(),
         };
@@ -1350,6 +1364,7 @@ fn standard_field(name: &str, part: jadpo_std::Part) -> FieldDef {
         optional: false,
         default: None,
         header: None,
+        column: None,
         copied: false,
         replaces: None,
         generated: false,

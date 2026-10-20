@@ -466,6 +466,19 @@ class PostgresServer:
                 self.process.kill()
 
 
+def strays(binary: TestBinary, prefixes: list[str]) -> list[str]:
+    """`--skip` arguments for the tests `prefixes` would match by substring
+    but whose names don't start with one of them."""
+    ok, out = run([binary.executable, '--list', '--format', 'terse'], cwd=binary.manifest_dir)
+    if not ok:
+        return []
+    names = [line.rsplit(': ', 1)[0] for line in out.splitlines() if line.endswith(': test')]
+    stray = sorted({name for name in names
+                    if any(prefix in name for prefix in prefixes)
+                    and not any(name.startswith(prefix) for prefix in prefixes)})
+    return [arg for name in stray for arg in ('--skip', name)]
+
+
 def test_jobs(step: Step, binaries: list[TestBinary]):
     """The (label, command, cwd, env) of each binary `step` runs, as `cargo
     test` would run it: from its package's folder."""
@@ -478,8 +491,12 @@ def test_jobs(step: Step, binaries: list[TestBinary]):
         missing = [package for package in packages if package not in integration]
         if missing:
             raise LookupError(f'no integration test binary for {missing}')
-        chosen = [(integration[package], [filter for p, filter in step.tests if p == package])
-                  for package in packages]
+        # libtest matches a filter anywhere in a test's name, so `deliveries::`
+        # would also run `step_deliveries::`; skip every listed test whose
+        # module only ends with the one asked for.
+        chosen = [(integration[package], [*prefixes, *strays(integration[package], prefixes)])
+                  for package in packages
+                  for prefixes in [[filter for p, filter in step.tests if p == package]]]
     for binary, filters in chosen:
         # How to run it again on its own.
         selector = {'lib': '--lib', 'bin': f'--bin {binary.target}'}.get(binary.kind, f'--test {binary.target}')

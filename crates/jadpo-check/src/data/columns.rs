@@ -95,9 +95,10 @@ pub fn column_type(table: &dyn TypeView, ty: &Ty) -> Result<String, String> {
         {
             entry.column_type().into()
         }
-        // A batch run an entity keeps, as its type's JSON (area 12).
+        // A batch run an entity keeps, as its type's JSON (area 12), and a
+        // stored file (area 16, chunk 6.4b).
         Ty::Opaque(name, args)
-            if args.is_empty() && jadpo_std::batch::object_fields(name).is_some() =>
+            if args.is_empty() && jadpo_std::batch::kept_fields(name).is_some() =>
         {
             "jsonb".into()
         }

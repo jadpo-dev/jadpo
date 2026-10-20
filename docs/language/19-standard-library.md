@@ -6791,10 +6791,10 @@ function share_code(title: RecipeTitle) -> ShareCode {
 function attachment(
     sent: SentAttachment
 ) fails AttachmentUnreadable, AttachmentTooLarge -> PhotoBytes {
-    var unpacked: Bytes = attempt encoding.from_base64(sent) {
+    var sent_bytes: Bytes = attempt encoding.from_base64(sent) {
         malformed: AttachmentUnreadable
     }
-    return attempt PhotoBytes(unpacked) {
+    return attempt PhotoBytes(sent_bytes) {
         max_length: AttachmentTooLarge
     }
 }
@@ -6806,20 +6806,20 @@ function sent_photo(photo: PhotoBytes) -> LinkPart {
 
 /// A photo's key read back as its 32 bytes, in either case.
 function key_bytes(key: PhotoKey) fails AttachmentUnreadable, AttachmentTooLarge -> PhotoBytes {
-    var unpacked: Bytes = attempt encoding.from_hex(key) {
+    var sent_bytes: Bytes = attempt encoding.from_hex(key) {
         malformed: AttachmentUnreadable
     }
-    return attempt PhotoBytes(unpacked) {
+    return attempt PhotoBytes(sent_bytes) {
         max_length: AttachmentTooLarge
     }
 }
 
 /// A share code read back as the digest it was written from.
 function code_digest(code: ShareCode) fails AttachmentUnreadable, AttachmentTooLarge -> PhotoBytes {
-    var unpacked: Bytes = attempt encoding.from_base64url(code) {
+    var sent_bytes: Bytes = attempt encoding.from_base64url(code) {
         malformed: AttachmentUnreadable
     }
-    return attempt PhotoBytes(unpacked) {
+    return attempt PhotoBytes(sent_bytes) {
         max_length: AttachmentTooLarge
     }
 }
@@ -6938,6 +6938,176 @@ stays area 12's.
   and logs.
 - **No CSV in memory.** A provider's CSV answer goes into a store and
   through `csv.read`, so there is one way to read rows.
+
+> Built in chunk 6.4b: `csv.read`, `tsv.read` and `json_lines.read`, on
+> the runs `batches.each` runs (area 12, "How a file's run is kept"),
+> with `column:` and a row's problems by its row and column. The
+> writers, `json.read`'s and `json.write`'s file forms, `CsvFormat`,
+> `ExportSummary`, gzip with `max_unpacked_size:` and legacy encodings
+> come in roadmap 6.4b2.
+
+A bakery reads its suppliers' price sheets into its loaves. The sheet's
+header names the columns, `column:` naming one that isn't the field's
+name; a row whose price isn't a price, or whose loaf's code is taken, is
+a problem by its row and column, and the rest carry on:
+
+```jadpo check project=csv-prices file=app.jadpo
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/types/loaf_code.jadpo hidden
+/// A loaf's code on the bakery's lists.
+type LoafCode = Text {
+    min_length: 1
+    max_length: 20
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/types/loaf_price.jadpo hidden
+/// What a loaf costs.
+type LoafPrice = Decimal {
+    scale: 2
+    min: 0.00
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/types/price_row.jadpo
+use bakery/types { LoafCode, LoafPrice }
+
+/// One sheet_line of a supplier's price sheet.
+type PriceRow = Input {
+    code: LoafCode {
+        column: "Loaf code"
+    }
+    price: LoafPrice {
+        column: "Price"
+    }
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/failures/code_taken.jadpo hidden
+/// Another loaf has that code.
+type CodeTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/entities/loaf.jadpo hidden
+use bakery/types { LoafCode, LoafPrice }
+
+/// A loaf the bakery sells.
+entity Loaf {
+    id: Uuid
+    code: LoafCode {
+        unique: true
+    }
+    price: LoafPrice
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/entities/price_sheet.jadpo hidden
+/// A supplier's price sheet, and how loaf_run it went.
+entity PriceSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+        types: [FileType.csv]
+    }
+    loaf_run: BatchRun?
+    priced: Int?
+    refused: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/actions/add_loaf.jadpo hidden
+use bakery/entities { Loaf }
+use bakery/types { PriceRow }
+use bakery/failures { CodeTaken }
+
+/// Adds the loaf one sheet_line of a price sheet lists.
+action add_loaf(sheet_line: PriceRow) fails CodeTaken -> Unit {
+    attempt Loaf.create {
+        set: {
+            code: sheet_line.code
+            price: sheet_line.price
+        }
+        conflict: {
+            Loaf.code: CodeTaken
+        }
+    }
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/actions/prices_read.jadpo hidden
+use bakery/entities { PriceSheet, PriceSheetNotFound }
+
+/// Keeps how loaf_run a price sheet went.
+action prices_read(
+    summary: ImportSummary,
+    sheet_id: PriceSheet.id
+) fails PriceSheetNotFound -> Unit {
+    attempt PriceSheet.update(sheet_id) {
+        set: {
+            priced: summary.items - summary.items_with_problems
+            refused: summary.items_with_problems
+        }
+    }
+}
+```
+
+```jadpo check project=csv-prices file=domains/bakery/actions/read_prices.jadpo migrate=initial
+use bakery/entities { PriceSheet, PriceSheetNotFound }
+use bakery/types { PriceRow }
+use bakery/actions { add_loaf, prices_read }
+
+/// Starts loaf_run a kept price sheet into the loaves, once.
+action read_prices(sheet_id: PriceSheet.id) fails PriceSheetNotFound -> PriceSheet {
+    var supplier_sheet: PriceSheet = attempt PriceSheet.get(sheet_id)
+    var loaf_run: BatchRun = csv.read(
+        supplier_sheet.sheet,
+        as: PriceRow,
+        each: sheet_line -> add_loaf(sheet_line),
+        finished: summary -> prices_read(summary, supplier_sheet.id),
+        key: supplier_sheet.id
+    )
+    return PriceSheet.update(supplier_sheet) {
+        set: {
+            loaf_run: loaf_run
+        }
+    }
+}
+```
+
+A sheet like this one adds two loaves; row 3's price and row 4's code
+are problems, `(3, "Price", "type")` and `(4, "", "code_taken")`, and
+`finished:` hears of four rows, two with problems:
+
+```text
+Loaf code,Price
+rye,3.50
+spelt,cheap
+rye,3.80
+oat,2.95
+```
 
 ### `tsv`
 
@@ -10597,7 +10767,7 @@ check failed: 1 error, 1 file
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
-| The format namespaces | File forms decided with batches (area 12), built on them in 6.4b; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
+| The format namespaces | File forms decided with batches (area 12), built on them: the reads in 6.4b, the writers and `json`'s file forms in 6.4b2; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b, with the operators' and conditionals' forms, and by aggregate queries in 5.6c |
 | Geospatial, AI | Decided as their own areas, [area 20](20-geospatial.md) (5.5u) and [area 21](21-ai.md) (5.5v); the geospatial types' baselines built in 5.5s and the AI types' in 5.5s2; area 20 built through 5.5u8 and 5.11, area 21 in part, as each page's "Status" says |
 

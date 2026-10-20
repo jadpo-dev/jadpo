@@ -665,6 +665,11 @@ impl JsonCodecs<'static> {
 }
 
 impl JsonCodecs<'_> {
+    /// The codec of the type numbered `number` in the plan's JSON table.
+    pub fn codec_of(&self, number: u32) -> Option<jadpo_std::http::CodecId> {
+        self.types.get(number as usize).copied()
+    }
+
     fn codec(&self, number: u32) -> Result<jadpo_std::http::CodecId, String> {
         self.types
             .get(number as usize)

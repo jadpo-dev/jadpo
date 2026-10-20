@@ -25,7 +25,7 @@ use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_graph::Kind;
 
 use super::body::{callables_of, typed_body};
-use super::facts::{Fact, body_facts, facts_at};
+use super::facts::{BatchFact as BatchFactRef, Fact, body_facts, facts_at};
 use crate::lookups::Name;
 
 /// What one action or fixture does that reaches a store, in source order:
@@ -83,13 +83,15 @@ fn reaches_of(fact: &Fact) -> Vec<Reach> {
 }
 
 /// The stores that keep batch runs (area 12; chunk 6.4): each one a
-/// `batches.each` call's query reads.
+/// `batches.each` call's query reads, or a file helper's run is kept in
+/// ([`file_run_stores`]).
 #[salsa::tracked(returns(ref))]
 pub fn batch_stores(db: &dyn Db, project: Project) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for &file in project.files(db) {
         for callable in callables_of(db, file) {
-            for fact in &body_facts(db, project, callable).facts {
+            let facts = body_facts(db, project, callable);
+            for fact in &facts.facts {
                 if let Fact::Batch(batch) = fact
                     && let Some(query) = &batch.query
                     && let Some(entity) =
@@ -98,7 +100,133 @@ pub fn batch_stores(db: &dyn Db, project: Project) -> BTreeSet<String> {
                 {
                     out.insert(store);
                 }
+                if let Fact::Batch(BatchFactRef { file: true, .. }) = fact
+                    && let Some(key) = &facts.key
+                    && let Some(Some(store)) = file_run_stores(db, project).get(key.name())
+                {
+                    out.insert(store.clone());
+                }
             }
+        }
+    }
+    out
+}
+
+/// Where each action starting a file helper's run keeps it (chunk 6.4b):
+/// a file has no query whose store keeps its run, so it is kept in the
+/// one store the action writes, counting what its run's actions write,
+/// which area 6's one-store rule makes one; when none of them writes, in
+/// the application's only database. `None` when that leaves no one store:
+/// the actions write several, which [`store_problems`] reports, or none,
+/// in an application with several databases ([`file_run_problems`]).
+///
+/// It reads what each action writes without the runs `batches.cancel`
+/// keeps, so it never waits on [`batch_stores`].
+#[salsa::tracked(returns(ref))]
+pub fn file_run_stores(db: &dyn Db, project: Project) -> BTreeMap<String, Option<String>> {
+    let mut reached: BTreeMap<String, BTreeSet<Reach>> = BTreeMap::new();
+    let mut starters: BTreeSet<String> = BTreeSet::new();
+    for &file in project.files(db) {
+        for (name, found) in store_reaches(db, project, file) {
+            reached
+                .entry(name.clone())
+                .or_default()
+                .extend(found.iter().cloned());
+        }
+        for callable in callables_of(db, file) {
+            let facts = body_facts(db, project, callable);
+            if facts
+                .facts
+                .iter()
+                .any(|fact| matches!(fact, Fact::Batch(BatchFactRef { file: true, .. })))
+                && let Some(key) = &facts.key
+            {
+                starters.insert(key.name().to_string());
+            }
+        }
+    }
+    let databases = crate::data::connections(db, project).databases();
+    let mut out = BTreeMap::new();
+    for name in starters {
+        let mut stores: BTreeSet<String> = BTreeSet::new();
+        let mut seen = BTreeSet::from([name.clone()]);
+        let mut queue = vec![name.clone()];
+        while let Some(current) = queue.pop() {
+            for reach in reached.get(&current).into_iter().flatten() {
+                match reach {
+                    Reach::Calls(callee) => {
+                        if seen.insert(callee.clone()) {
+                            queue.push(callee.clone());
+                        }
+                    }
+                    Reach::Runs(_) => {}
+                    other => {
+                        if let Some((store, _)) = store_of(db, project, other, false) {
+                            stores.insert(store);
+                        }
+                    }
+                }
+            }
+        }
+        let store = match (stores.len(), databases.as_slice()) {
+            (1, _) => stores.into_iter().next(),
+            (0, [only]) => Some(only.clone()),
+            _ => None,
+        };
+        out.insert(name, store);
+    }
+    out
+}
+
+/// The file helpers' reads in `file` whose run no one store keeps: their
+/// actions write nothing, in an application with several databases
+/// (chunk 6.4b).
+#[salsa::tracked(returns(ref))]
+pub fn file_run_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
+    let path = file.path(db);
+    let mut out = Vec::new();
+    let runs = file_run_stores(db, project);
+    for callable in callables_of(db, file) {
+        let checked = typed_body(db, project, callable);
+        let Some(key) = checked.key.as_ref() else {
+            continue;
+        };
+        if !matches!(runs.get(key.name()), Some(None)) {
+            continue;
+        }
+        if written_stores(db, project)
+            .get(key.name())
+            .is_some_and(|stores| stores.len() > 1)
+        {
+            continue;
+        }
+        for site in &checked.body.sites {
+            let jadpo_graph::body::Node::Expr(jadpo_graph::body::Expr::Call {
+                callee: jadpo_graph::body::Callee::Batch(jadpo_std::batch::BatchOp::Read(format)),
+                ..
+            }) = &site.node
+            else {
+                continue;
+            };
+            let written = format!("{}.read", format.namespace());
+            let databases = crate::data::connections(db, project).databases();
+            let listed: Vec<String> = databases.iter().map(|d| format!("`{d}`")).collect();
+            out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{written}` here keeps its run in no one store"),
+                )
+                .at(Span::new(path, site.start, site.end), "which store keeps the run?")
+                .reason(format!(
+                    "A file has no query whose store keeps its run, so it is kept in the store its actions write; `{}` and the actions its run calls write nothing, and the application's databases are {}.",
+                    key.name(),
+                    crate::and_list(&listed)
+                ))
+                .next(format!(
+                    "Have `{written}`'s `each:` action write the records it reads, for now"
+                ))
+                .help_at("12-jobs-and-events.html#how-a-run-is-kept"),
+            );
         }
     }
     out

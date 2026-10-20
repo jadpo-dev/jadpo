@@ -17,6 +17,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ("batches::END", crate::batches::END.to_string()),
         ("batches::ENDED", crate::batches::ENDED.to_string()),
         ("batches::LOCK", crate::batches::LOCK.to_string()),
+        (
+            "batches::file::PLACE",
+            crate::batches::file::PLACE.to_string(),
+        ),
         ("batches::PROBLEM", crate::batches::PROBLEM.to_string()),
         ("batches::PROBLEMS", crate::batches::PROBLEMS.to_string()),
         ("batches::RELEASE", crate::batches::RELEASE.to_string()),
