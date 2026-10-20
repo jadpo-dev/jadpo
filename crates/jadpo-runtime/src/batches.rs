@@ -110,7 +110,10 @@ pub(crate) const CLAIM: &str = "UPDATE \"jadpo_batch_runs\" SET \"lease_until\" 
 
 pub(crate) const LOCK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1 FOR NO KEY UPDATE";
 
-pub(crate) const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"stepped_at\" = $7 WHERE \"id\" = $1";
+/// A page's commit: the run's position, its counts and its lease, and,
+/// when the page worked one out, the total it estimates (chunk 6.4b3);
+/// `NULL` keeps the estimate it had.
+pub(crate) const ADVANCE: &str = "UPDATE \"jadpo_batch_runs\" SET \"position\" = $2, \"read_all\" = $3, \"items_done\" = $4, \"problems\" = $5, \"lease_until\" = $6, \"stepped_at\" = $7, \"estimated_total\" = COALESCE($8, \"estimated_total\") WHERE \"id\" = $1";
 
 pub(crate) const PROBLEM: &str = "INSERT INTO \"jadpo_batch_problems\" (\"run_id\", \"row\", \"column\", \"rule\") VALUES ($1, $2, $3, $4)";
 
@@ -136,8 +139,7 @@ impl crate::lease::Leased for Leased {
     }
 }
 
-pub(crate) const STATUS: &str =
-    "SELECT \"items_done\", \"problems\", \"state\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
+pub(crate) const STATUS: &str = "SELECT \"items_done\", \"problems\", \"state\", \"estimated_total\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
 
 pub(crate) const PROBLEMS: &str = "SELECT \"row\", \"column\", \"rule\" FROM \"jadpo_batch_problems\" WHERE \"run_id\" = $1 ORDER BY \"row\"";
 
@@ -379,28 +381,37 @@ pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: 
                 SqlValue::Int8(done),
                 SqlValue::Int8(problems),
                 SqlValue::Text(state),
+                likely_total,
             ],
         ) => {
             let Some(state) = BatchState::from_name(state) else {
                 return fault(ctx, "a batch run in a state the runtime doesn't keep", site);
             };
-            Stored::Value(progress(*done, *problems, state))
+            // Once finished, the total is known: the items it did.
+            let likely_total = match (state, likely_total) {
+                (BatchState::Finished, _) => Some(*done),
+                (_, SqlValue::Int8(total)) => Some(*total),
+                _ => None,
+            };
+            Stored::Value(progress(*done, *problems, state, likely_total))
         }
         Some(_) => fault(ctx, "a batch run's row the runtime didn't write", site),
         None => fault(ctx, "no batch run is kept with this `BatchRun`'s id", site),
     }
 }
 
-/// A `BatchProgress`.
-fn progress(done: i64, problems: i64, state: BatchState) -> Value {
+/// A `BatchProgress`, with the total its run estimates, if it has one
+/// yet.
+fn progress(done: i64, problems: i64, state: BatchState, likely_total: Option<i64>) -> Value {
     let ordinal = jadpo_std::variant_ordinal(BatchState::NAME, state.name()).unwrap_or(0);
     Value::record(
         jadpo_std::batch::BATCH_PROGRESS,
         vec![
             (Rc::from("items_done"), Value::Int(done)),
-            // How many items `from:` holds is not counted yet (chosen in
-            // chunk 6.4).
-            (Rc::from("estimated_total"), Value::None),
+            (
+                Rc::from("estimated_total"),
+                likely_total.map_or(Value::None, Value::Int),
+            ),
             (Rc::from("problems"), Value::Int(problems)),
             (
                 Rc::from("state"),
@@ -697,9 +708,13 @@ async fn step(
     // stops once the budget is spent (chunk 6.7).
     ctx.set_deadline(Some(budget.limit_ms()));
     let lease_until = crate::lease::until(budget, now);
+    // Each kind of page's future is boxed (chunk 6.4b3): a file's reads,
+    // its unpacking and a query's count make them large, and whatever
+    // runs a batch, the tick among them, would otherwise hold each inline
+    // and could run out of a thread's stack.
     let stepped = match (&plan.from, &plan.to) {
         (BatchFrom::Query(_), Some(write)) => {
-            export::page(
+            Box::pin(export::page(
                 executor,
                 &mut ctx,
                 batches,
@@ -708,11 +723,11 @@ async fn step(
                 start,
                 saved,
                 (now, lease_until),
-            )
+            ))
             .await
         }
         (BatchFrom::Query(_), None) => {
-            batch(
+            Box::pin(batch(
                 executor,
                 &mut ctx,
                 batches,
@@ -720,11 +735,11 @@ async fn step(
                 start,
                 saved,
                 (now, lease_until),
-            )
+            ))
             .await
         }
         (BatchFrom::File(rows), _) => {
-            file::page(
+            Box::pin(file::page(
                 executor,
                 &mut ctx,
                 batches,
@@ -734,7 +749,7 @@ async fn step(
                 saved,
                 opened,
                 (now, lease_until),
-            )
+            ))
             .await
         }
     };
@@ -829,6 +844,22 @@ async fn batch(
         open.rollback().await;
         return Step::Ended(Ran::Failed("a run with no action to call".into()));
     };
+    // The query's count, as its first page reads it, the total the run
+    // estimates (chunk 6.4b3).
+    let likely_total = if held.position.is_none() {
+        match counted(&mut open, batches, plan, values).await {
+            Ok(likely_total) => likely_total,
+            Err(unread) => {
+                open.rollback().await;
+                return match unread {
+                    Unread::Changed => Step::Changed,
+                    Unread::Paused(why) | Unread::Refused(why) => Step::Ended(Ran::Paused(why)),
+                };
+            }
+        }
+    } else {
+        None
+    };
     // The page after the position that committed, as the system.
     let (items, next) =
         match read_page(&mut open, batches, plan, values, held.position.as_deref()).await {
@@ -911,6 +942,7 @@ async fn batch(
                 SqlValue::Int8(had),
                 at(lease_until),
                 at(now),
+                total(likely_total),
             ],
         )
         .await;
@@ -922,6 +954,35 @@ async fn batch(
         Err(StoreError::ConcurrentChange) => Step::Changed,
         Err(error) => Step::Ended(Ran::Paused(format!(
             "its batch couldn't commit ({error:?})"
+        ))),
+    }
+}
+
+/// A total a run estimates, as [`ADVANCE`] keeps it: `NULL` keeps the
+/// one it had.
+fn total(likely_total: Option<i64>) -> SqlValue {
+    likely_total.map_or(SqlValue::Null(SqlType::Int8), SqlValue::Int8)
+}
+
+/// How many items `from:`'s query holds, counted in `open`'s transaction
+/// as the system, as its first page reads them (chunk 6.4b3).
+async fn counted(
+    open: &mut Batch<'_, '_>,
+    batches: Batches<'_>,
+    plan: &BatchPlan,
+    values: &[Value],
+) -> Result<Option<i64>, Unread> {
+    let Some(query) = plan.from.query() else {
+        return Ok(None);
+    };
+    let args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
+    match crate::read::count(open.ctx(), query, batches.json, &args).await {
+        Ok(likely_total) => Ok(likely_total),
+        Err(_) if open.changed() => Err(Unread::Changed),
+        Err(StoreError::ConcurrentChange) => Err(Unread::Changed),
+        Err(StoreError::Unavailable) => Err(Unread::Paused("its store couldn't be reached".into())),
+        Err(error) => Err(Unread::Paused(format!(
+            "counting its query failed ({error:?})"
         ))),
     }
 }

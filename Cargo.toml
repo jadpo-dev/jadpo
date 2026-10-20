@@ -180,6 +180,13 @@ x509-parser = { version = "=0.16.0", default-features = false }
 # reached.
 rsa = { version = "=0.9.10", default-features = false }
 p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa"] }
+# gzip for the file helpers' reads given `max_unpacked_size:` (area 12,
+# "Rows and formats"; chunk 6.4b3; jadpo-runtime only): miniz_oxide's
+# streaming inflate, MIT OR Zlib OR Apache-2.0, pure Rust with `adler2` as
+# its one dependency and built for wasm32, unpacking a window at a time so
+# a run never holds more than it reads. The gzip members around the
+# deflate data (RFC 1952) and their CRC-32 are jadpo-runtime's own.
+miniz_oxide = { version = "=0.9.1", default-features = false, features = ["with-alloc"] }
 # Pinned exactly and confined to jadpo-db and jadpo-check (docs/compiler-runtime.md §2.4).
 salsa = { version = "=0.28.5", default-features = false, features = ["macros", "inventory"] }
 # Node digests (docs/compiler-runtime.md §2.3). `pure` keeps the build free of

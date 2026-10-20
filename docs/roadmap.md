@@ -820,12 +820,25 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `file_exports.rs`; example 24 writes a shelf list. Choices in area 12's
   "How an export's run is kept", area 16's "Chosen in chunk 6.4b2" and
   area 19's "How a row is written".
-- [ ] **6.4b3 The rest of the file helpers** `opus · xhigh`, after
-  6.4b2: `json.read`'s file form (`items_at:`); gzip read with
-  `max_unpacked_size:`; and from 6.4, the warning for a `from:` ordered by
-  a field that can be updated (a declinable error, area 1, which every
-  batch example and test ordered by such a field then answers) and
-  `estimated_total` from a query's count or a file's size.
+- [x] **6.4b3 The rest of the file helpers** `opus · xhigh`, after
+  6.4b2. Built: `json.read`'s file form, given `each:`, walking the list
+  `items_at:` names (member names between dots, written out; left out
+  when the document is the list) a window at a time, holding only the
+  item in hand, each item a row by its place in the list and the rest of
+  the document held to JSON's structure; `max_unpacked_size:` on every
+  reader, a gzip file (every member, each header and trailer checked)
+  unpacked as it is read and the run stopped at the row that would pass
+  it, a resumed run unpacking from the start; `type.batch_order_updatable`
+  for a `from:` ordered by a field that isn't `id`, `immutable: true` or
+  generated on create, declinable on the action; and `estimated_total`
+  from the query's count as its first page reads it, or a file run's
+  items scaled by how far into its file they end, the items done once
+  finished (`jadpo_batch_runs.estimated_total`). Example 25 walks plots
+  by `id`; the tests that walk by a code or a title mark it `immutable:
+  true`. Live tests in `file_imports.rs` and `batches.rs`. Choices in
+  area 12's "How a run is kept" and "How a file's run is kept", area
+  16's "Chosen in chunk 6.4b3" and area 19's "How a JSON file's list is
+  read".
 - [x] **7.1 Packages: format, kinds, names and the lock** `opus · high`
   (split from 7.1 Packages and connections on 2026-10-20). Built:
   `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`

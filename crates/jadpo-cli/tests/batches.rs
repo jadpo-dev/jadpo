@@ -7,7 +7,9 @@
 //! resumed from the last committed page with no item done twice and none
 //! skipped; `key:` giving a second start the same run; `batches.cancel`
 //! stopping it after the batch in hand; and `batches.status` reporting
-//! progress and problems.
+//! progress, problems and, from chunk 6.4b3, the total its query's count
+//! estimates. A product's code is `immutable: true`, so the walk in code
+//! order meets each product once (chunk 6.4b3).
 //!
 //! A stock check: each product is counted once per check, and one with
 //! none in stock fails `OutOfStock` after it was counted, so a problem's
@@ -88,6 +90,7 @@ entity Product {
     id: Uuid
     code: ShelfCode {
         unique: true
+        immutable: true
     }
     stock: StockCount
     checks: Int
@@ -497,7 +500,6 @@ async fn kept(host: &Store, run: &Value) -> (String, i64, i64) {
 async fn progress(program: &Program, host: &Store, run: &Value) -> (String, i64, i64) {
     let (outcome, _) = call(program, host, "check_progress", vec![run.clone()]).await;
     let progress = value(outcome);
-    assert_eq!(field(&progress, "estimated_total"), Value::None);
     let state = match field(&progress, "state") {
         Value::Variant(variant) => variant.name.to_string(),
         other => panic!("not a state: {other:?}"),
@@ -507,6 +509,17 @@ async fn progress(program: &Program, host: &Store, run: &Value) -> (String, i64,
         int(field(&progress, "items_done")),
         int(field(&progress, "problems")),
     )
+}
+
+/// The total `batches.status` estimates (chunk 6.4b3): `none` before the
+/// first page is read, then the query's count as that page read it, and
+/// the items done once the run has finished.
+async fn estimate(program: &Program, host: &Store, run: &Value) -> Option<i64> {
+    let (outcome, _) = call(program, host, "check_progress", vec![run.clone()]).await;
+    match field(&value(outcome), "estimated_total") {
+        Value::None => None,
+        total => Some(int(total)),
+    }
 }
 
 /// Adds `count` products, codes `p00` up, every seventh with none in
@@ -599,6 +612,7 @@ fn a_run_commits_page_by_page_keeps_problems_and_finishes_once() {
         // Nothing runs before the runner does: the action only kept it.
         assert_eq!(kept(&host, &run).await, ("running".to_string(), 0, 0));
         assert_eq!(progress(program, &host, &run).await, ("running".into(), 0, 0));
+        assert_eq!(estimate(program, &host, &run).await, None, "nothing counted yet");
         assert!(counts(&host).await.iter().all(|(_, n)| *n == 0));
 
         let outcomes = run_deferred(program, &host, work).await;
@@ -620,6 +634,7 @@ fn a_run_commits_page_by_page_keeps_problems_and_finishes_once() {
             progress(program, &host, &run).await,
             ("finished".into(), 60, failed)
         );
+        assert_eq!(estimate(program, &host, &run).await, Some(60));
         // Each problem is its row, as the walk numbers items from 1, and
         // the failure's code; never a value.
         let problems = host
@@ -706,6 +721,8 @@ fn a_crash_mid_batch_resumes_with_no_item_done_twice_and_none_skipped() {
             progress(program, &host, &run).await,
             ("running".into(), 6, 1)
         );
+        // The query's count, taken as its first page was read.
+        assert_eq!(estimate(program, &host, &run).await, Some(21));
 
         // Its lease hasn't lapsed: a sweep leaves it to the runner that
         // holds it.
@@ -781,6 +798,7 @@ fn a_key_gives_a_second_start_the_same_run_and_cancel_stops_after_the_batch_in_h
             progress(program, &host, &run).await,
             ("running".into(), 3, 0)
         );
+        assert_eq!(estimate(program, &host, &run).await, Some(12));
         // The second start's runner finds the run held, and the sweep,
         // once the lease lapses, finds the cancel at its next batch.
         let (ran, _) = jadpo_runtime::batches::run(program, &host, &starts(&second_work)[0]).await;
@@ -799,6 +817,8 @@ fn a_key_gives_a_second_start_the_same_run_and_cancel_stops_after_the_batch_in_h
             progress(program, &host, &run).await,
             ("cancelled".into(), 3, 0)
         );
+        // A run that didn't finish keeps the count it was given.
+        assert_eq!(estimate(program, &host, &run).await, Some(12));
         let counted: i64 = counts(&host).await.iter().map(|(_, n)| n).sum();
         assert_eq!(counted, 3, "only the first page's counts");
         // `finished:` never ran for a cancelled run.

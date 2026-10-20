@@ -10,6 +10,11 @@
 //! it and its column, never its value; a run resumed from the position its
 //! last page committed, no row done twice and none skipped; the faults
 //! that stop a run at the file's level; and `store.read`'s whole read.
+//! From chunk 6.4b3: `json.read`'s file form, walking the list `items_at:`
+//! names a few bytes at a time, each item a row by its place in the list;
+//! a gzip file unpacked up to `max_unpacked_size:`, as it is read, and
+//! again from its start when a run resumes; and `batches.status`'s
+//! estimate from how far into its file a run is.
 //!
 //! The store is the `files` capability's in-memory fake, on the shared
 //! test host, reading a few bytes at a time so pages straddle its reads.
@@ -286,6 +291,59 @@ use pantry/types { ItemRow }
 
 action read_lines(sheet: File) -> BatchRun {
     return json_lines.read(sheet, as: ItemRow, each: row -> save_item(row))
+}
+"#,
+    ),
+    (
+        "domains/pantry/actions/read_list.jadpo",
+        r#"use pantry/actions { save_item }
+use pantry/types { ItemRow }
+
+action read_list(sheet: File) -> BatchRun {
+    return json.read(sheet, items_at: "data.items", as: ItemRow, each: row -> save_item(row))
+}
+"#,
+    ),
+    (
+        "domains/pantry/actions/read_whole_list.jadpo",
+        r#"use pantry/actions { save_item }
+use pantry/types { ItemRow }
+
+action read_whole_list(sheet: File) -> BatchRun {
+    return json.read(sheet, as: ItemRow, each: row -> save_item(row))
+}
+"#,
+    ),
+    (
+        "domains/pantry/actions/read_packed_sheet.jadpo",
+        r#"use pantry/actions { save_item }
+use pantry/types { ItemRow }
+
+action read_packed_sheet(sheet: File) -> BatchRun {
+    return csv.read(sheet, as: ItemRow, each: row -> save_item(row), max_unpacked_size: 1kb)
+}
+"#,
+    ),
+    (
+        "domains/pantry/actions/read_packed_list.jadpo",
+        r#"use pantry/actions { save_item }
+use pantry/types { ItemRow }
+
+action read_packed_list(sheet: File) -> BatchRun {
+    return json.read(
+        sheet,
+        items_at: "items",
+        as: ItemRow,
+        each: row -> save_item(row),
+        max_unpacked_size: 1mb
+    )
+}
+"#,
+    ),
+    (
+        "domains/pantry/actions/sheet_progress.jadpo",
+        r#"action sheet_progress(run: BatchRun) -> BatchProgress {
+    return batches.status(run)
 }
 "#,
     ),
@@ -917,5 +975,370 @@ fn a_whole_read_gives_the_bytes_and_a_full_store_fails_as_mapped() {
             .rows("SELECT count(*) FROM \"item_import\"")
             .await;
         assert_eq!(imports, [vec![SqlValue::Int8(0)]]);
+    });
+}
+
+/// `text` as one gzip member (RFC 1952), its deflate data in stored
+/// blocks: what a test can write without a compressor of its own.
+fn gzip(text: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff];
+    let chunks: Vec<&[u8]> = text.chunks(65_535).collect();
+    if chunks.is_empty() {
+        out.extend([1, 0, 0, 0xff, 0xff]);
+    }
+    for (n, chunk) in chunks.iter().enumerate() {
+        out.push(u8::from(n + 1 == chunks.len()));
+        let len = u16::try_from(chunk.len()).expect("a stored block");
+        out.extend(len.to_le_bytes());
+        out.extend((!len).to_le_bytes());
+        out.extend_from_slice(chunk);
+    }
+    out.extend(crc32(text).to_le_bytes());
+    out.extend((text.len() as u32).to_le_bytes());
+    out
+}
+
+/// CRC-32 as gzip's trailer holds it, bit by bit.
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+/// Starts `action` over `bytes` kept as a file and runs it to its end,
+/// after clearing the runs before it.
+async fn read_through(stand: &Stand, program: &Program, action: &str, bytes: &[u8]) {
+    stand.rows("DELETE FROM \"jadpo_batch_problems\"").await;
+    stand.rows("DELETE FROM \"jadpo_batch_runs\"").await;
+    let file = stand.keep(bytes);
+    let (started, work) = stand.call(program, action, vec![file]).await;
+    value(started);
+    run_deferred(program, &stand.host(), work).await;
+}
+
+/// The items whose codes start with `prefix`, by code.
+async fn codes(stand: &Stand, prefix: &str) -> Vec<String> {
+    items(stand)
+        .await
+        .into_iter()
+        .map(|(code, _, _)| code)
+        .filter(|code| code.starts_with(prefix))
+        .collect()
+}
+
+/// A document whose list of items sits at `data.items`, among values a
+/// run skips that hold brackets and quotes in their text; each item a row
+/// by its place in the list, from 1, its problems' columns the field's
+/// path, never a value.
+const LIST: &str = r#"{
+  "meta": {"note": "a [tricky] \"string\", with {braces}", "pages": [1, [2, 3], {"x": null}]},
+  "data": {
+    "source": "pantry",
+    "items": [
+      {"code": "K1", "name": "Kale", "count": 2},
+      {"code": "K2", "name": "Kiwi, gold", "count": -1},
+      {"code": "K3", "name": "Kelp", "colour": "green"},
+      {"code": "K4", "name": tru},
+      7,
+      {"code": "K5", "name": "Kohlrabi ]}\"[{", "count": 1},
+      {"code": "K6",
+       "name": "Kumquat"}
+    ],
+    "total": 7
+  }
+}
+"#;
+
+/// `json.read`'s file form reads the list `items_at:` names, or the
+/// document when it is the list, a few bytes and two items at a time.
+#[test]
+fn a_json_files_list_is_read_where_items_at_says() {
+    let Some(loaded) = load("json") else {
+        return;
+    };
+    let program = &loaded.program;
+    let stand = Stand::new(&loaded.url, 7, 2);
+    Runtime::new().expect("runtime").block_on(async {
+        read_through(&stand, program, "read_list", LIST.as_bytes()).await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 7, 4));
+        assert_eq!(codes(&stand, "K").await, ["K1", "K5", "K6"]);
+        let names: Vec<String> = items(&stand)
+            .await
+            .into_iter()
+            .filter(|(code, _, _)| code == "K5")
+            .map(|(_, name, _)| name)
+            .collect();
+        assert_eq!(names, ["Kohlrabi ]}\"[{"]);
+        assert_eq!(
+            problems(&stand).await,
+            [
+                problem(2, "count", "min"),
+                problem(3, "colour", "unknown_field"),
+                problem(4, "", "malformed"),
+                problem(5, "", "type"),
+            ]
+        );
+
+        // The document itself the list, and an empty one.
+        read_through(
+            &stand,
+            program,
+            "read_whole_list",
+            b"\xef\xbb\xbf [{\"code\": \"R1\", \"name\": \"Rye\"}, {\"code\": \"R2\", \"name\": \"Rice\", \"count\": 3}]\n",
+        )
+        .await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 2, 0));
+        assert_eq!(codes(&stand, "R").await, ["R1", "R2"]);
+        read_through(&stand, program, "read_whole_list", b"  [ ]  \n").await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 0, 0));
+    });
+}
+
+/// What stops a JSON file's run, at the place it is, the items before it
+/// done: no list where `items_at:` says, a document that isn't one, one
+/// that ends early, a member on the way named twice, and text that isn't
+/// text.
+#[test]
+fn a_json_files_faults_stop_its_run_where_they_are() {
+    let Some(loaded) = load("json-faults") else {
+        return;
+    };
+    let program = &loaded.program;
+    let stand = Stand::new(&loaded.url, 5, 2);
+    Runtime::new().expect("runtime").block_on(async {
+        let failed = |why: &str| ("failed".to_string(), Some(why.to_string()));
+        let no_list = || failed("its file has no list at `data.items`");
+        let cases: Vec<(&str, &str, Vec<u8>, Ended)> = vec![
+            ("read_list", "absent", b"{\"data\": {\"other\": []}}".to_vec(), no_list()),
+            (
+                "read_list",
+                "an object",
+                b"{\"data\": {\"items\": {\"code\": \"X\"}}}".to_vec(),
+                no_list(),
+            ),
+            ("read_list", "a list on the way", b"{\"data\": [1]}".to_vec(), no_list()),
+            ("read_list", "a list at the top", b"[1]".to_vec(), no_list()),
+            (
+                "read_whole_list",
+                "no list",
+                b"{\"items\": []}".to_vec(),
+                failed("its file isn't a JSON list"),
+            ),
+            (
+                "read_whole_list",
+                "no comma",
+                b"[{\"code\": \"M1\", \"name\": \"Mint\"},\n{\"code\": \"M2\", \"name\": \"Mace\"}\n{\"code\": \"M3\", \"name\": \"Mallow\"}]".to_vec(),
+                failed("line 3 of its file isn't JSON"),
+            ),
+            (
+                "read_whole_list",
+                "cut short",
+                b"[{\"code\": \"N1\", \"name\": \"Nut\"},".to_vec(),
+                failed("its file ends before its JSON does"),
+            ),
+            (
+                "read_list",
+                "unclosed",
+                b"{\"data\": {\"items\": [{\"code\": \"O1\", \"name\": \"Okra\"}]}".to_vec(),
+                failed("its file ends before its JSON does"),
+            ),
+            (
+                "read_whole_list",
+                "after the list",
+                b"[] x".to_vec(),
+                failed("line 1 of its file isn't JSON"),
+            ),
+            (
+                "read_packed_list",
+                "named twice",
+                b"{\"items\": [{\"code\": \"D1\", \"name\": \"Dill\"}],\n \"items\": []}".to_vec(),
+                failed("its file names `items` twice"),
+            ),
+            (
+                "read_list",
+                "not text",
+                b"{\"data\": {\"items\": [{\"code\": \"U1\", \"name\": \"Ugli\"}]},\n \"extra\": \"\xff\"}".to_vec(),
+                failed("line 2 of its file isn't UTF-8 text"),
+            ),
+        ];
+        for (action, case, bytes, expected) in cases {
+            read_through(&stand, program, action, &bytes).await;
+            let (state, why, _, _) = run_row(&stand).await;
+            assert_eq!((state, why), expected, "{case}");
+        }
+        // The items before each fault were done.
+        assert_eq!(codes(&stand, "M").await, ["M1", "M2"]);
+        for code in ["N1", "O1", "D1", "U1"] {
+            assert_eq!(codes(&stand, code).await, [code], "{code}");
+        }
+    });
+}
+
+/// A gzip file is read when the helper is given `max_unpacked_size:`,
+/// unpacked as it is read, every member of it in turn; one that unpacks
+/// past it stops at the row that would, the rows before it done; a damaged
+/// or cut one stops; and a file that isn't gzip is read as it is.
+#[test]
+fn a_gzip_file_is_unpacked_up_to_max_unpacked_size() {
+    let Some(loaded) = load("gzip") else {
+        return;
+    };
+    let program = &loaded.program;
+    let stand = Stand::new(&loaded.url, 6, 2);
+    Runtime::new().expect("runtime").block_on(async {
+        let failed = |why: &str| ("failed".to_string(), Some(why.to_string()));
+        read_through(
+            &stand,
+            program,
+            "read_packed_sheet",
+            &gzip(b"code,Item name\nG1,Garlic\nG2,Ginger\n"),
+        )
+        .await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 2, 0));
+        let mut members = gzip(b"code,Item name\nG3,Grapes\n");
+        members.extend(gzip(b"G4,Guava\n"));
+        read_through(&stand, program, "read_packed_sheet", &members).await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 2, 0));
+        read_through(
+            &stand,
+            program,
+            "read_packed_sheet",
+            b"code,Item name\nG5,Gooseberry\n",
+        )
+        .await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 1, 0));
+        read_through(
+            &stand,
+            program,
+            "read_packed_list",
+            &gzip(b"{\"items\": [{\"code\": \"G6\", \"name\": \"Gherkin\"}]}"),
+        )
+        .await;
+        assert_eq!(run_row(&stand).await, ("finished".into(), None, 1, 0));
+        assert_eq!(
+            codes(&stand, "G").await,
+            ["G1", "G2", "G3", "G4", "G5", "G6"]
+        );
+
+        // Past 1 kB: the 98 rows wholly inside it are done.
+        let mut large = String::from("code,Item name\n");
+        for n in 0..200 {
+            large.push_str(&format!("H{n:03},Herb\n"));
+        }
+        read_through(
+            &stand,
+            program,
+            "read_packed_sheet",
+            &gzip(large.as_bytes()),
+        )
+        .await;
+        let (state, why, done, _) = run_row(&stand).await;
+        assert_eq!(
+            (state, why),
+            failed("its file unpacks to more than 1 kB, its `max_unpacked_size:`")
+        );
+        assert_eq!(done, 98);
+        assert_eq!(codes(&stand, "H").await.len(), 98);
+
+        let mut damaged = gzip(b"code,Item name\nI1,Iceberg\n");
+        let at = damaged.len() - 8;
+        damaged[at] ^= 0xff;
+        read_through(&stand, program, "read_packed_sheet", &damaged).await;
+        let (state, why, _, _) = run_row(&stand).await;
+        assert_eq!((state, why), failed("its gzip file is damaged"));
+        let mut cut = gzip(b"code,Item name\nJ1,Jicama\n");
+        cut.truncate(cut.len() - 4);
+        read_through(&stand, program, "read_packed_sheet", &cut).await;
+        let (state, why, _, _) = run_row(&stand).await;
+        assert_eq!(
+            (state, why),
+            failed("its gzip file ends before its data does")
+        );
+    });
+}
+
+/// A gzip file's run resumes from the row its last page committed,
+/// unpacking the file again from its start; `batches.status` estimates
+/// the total from how far into its file the run is, and gives the items
+/// done once it has finished.
+#[test]
+fn a_gzip_run_resumes_and_its_status_estimates_the_total_from_the_file() {
+    let Some(loaded) = load("gzip-resume") else {
+        return;
+    };
+    let program = &loaded.program;
+    let stand = Stand::new(&loaded.url, 64, 4);
+    let mut sheet = String::from("code,Item name\n");
+    for n in 0..30 {
+        sheet.push_str(&format!("B{n:02},Tin\n"));
+    }
+    Runtime::new().expect("runtime").block_on(async {
+        // A plain file first: after two pages of four, the estimate is the
+        // items done scaled by the file's size over how far in they end.
+        let file = stand.keep(sheet.as_bytes());
+        let (started, work) = stand.call(program, "read_sheet", vec![file]).await;
+        let run = value(started);
+        let status = |run: Value| {
+            let stand = &stand;
+            async move {
+                let (outcome, _) = stand.call(program, "sheet_progress", vec![run]).await;
+                let progress = value(outcome);
+                (
+                    field(&progress, "items_done"),
+                    field(&progress, "estimated_total"),
+                )
+            }
+        };
+        assert_eq!(status(run.clone()).await, (Value::Int(0), Value::None));
+        stand.crash_in.set(Some(3));
+        let start = starts(&work).remove(0);
+        let (ran, _) = jadpo_runtime::batches::run(program, &stand.host(), &start).await;
+        assert!(matches!(ran, Ran::Paused(_)), "{ran:?}");
+        let size = sheet.len() as i64;
+        let at = ("code,Item name\n".len() + 8 * "B00,Tin\n".len()) as i64;
+        assert_eq!(
+            status(run.clone()).await,
+            (Value::Int(8), Value::Int((8 * size + at / 2) / at))
+        );
+        let later = T0 + jadpo_runtime::lease::LONGEST_MS + 1_000;
+        stand.harness.set_now(later);
+        let (resumed, _) = jadpo_runtime::batches::resume(program, &stand.host(), later).await;
+        assert_eq!(resumed.len(), 1, "{resumed:?}");
+        assert_eq!(status(run.clone()).await, (Value::Int(30), Value::Int(30)));
+
+        // The same rows packed: the resumed run unpacks from the start and
+        // goes on from its row, none done twice.
+        stand.rows("DELETE FROM \"item\"").await;
+        stand.rows("DELETE FROM \"jadpo_batch_runs\"").await;
+        let file = stand.keep(&gzip(sheet.as_bytes()));
+        let (started, work) = stand.call(program, "read_packed_sheet", vec![file]).await;
+        let run = value(started);
+        stand.crash_in.set(Some(3));
+        let start = starts(&work).remove(0);
+        stand.harness.set_now(T0);
+        let (ran, _) = jadpo_runtime::batches::run(program, &stand.host(), &start).await;
+        assert!(matches!(ran, Ran::Paused(_)), "{ran:?}");
+        let (done, estimate) = status(run.clone()).await;
+        assert_eq!(done, Value::Int(8));
+        assert!(
+            matches!(estimate, Value::Int(n) if (8..=60).contains(&n)),
+            "{estimate:?}"
+        );
+        stand.harness.set_now(later);
+        let (resumed, _) = jadpo_runtime::batches::resume(program, &stand.host(), later).await;
+        assert_eq!(resumed.len(), 1, "{resumed:?}");
+        assert_eq!(resumed[0].1, Ran::Finished);
+        let expected: Vec<String> = (0..30).map(|n| format!("B{n:02}")).collect();
+        assert_eq!(codes(&stand, "B").await, expected);
+        assert_eq!(status(run).await, (Value::Int(30), Value::Int(30)));
     });
 }

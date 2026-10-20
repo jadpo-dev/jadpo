@@ -1,11 +1,12 @@
 use plots/entities { Plot, Society }
 use plots/types { PlotPage }
 
-/// A society's plots, a page at a time, in number order.
+/// A society's plots, a page at a time, in an order no change to a plot
+/// moves, so a rent round meets each plot once.
 query society_plots(society_id: Society.id, page: PlotPage) -> Page<Plot> {
     from: Plot
     where: Plot.society_id == society_id
-    order: [Plot.number asc]
+    order: [Plot.id asc]
     page: {
         size: page.page_size
         after: page.after

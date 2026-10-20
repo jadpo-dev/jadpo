@@ -5,8 +5,9 @@
 //! are the item, a field inside it, or a value saved with the run, every
 //! saved value one an entity field could hold; `batches.status` and
 //! `batches.cancel` given a `BatchRun`; the batch types read but never
-//! built; a `BatchRun` kept in an entity field; and a run's tables beside
-//! the store its query reads.
+//! built; a `BatchRun` kept in an entity field; a run's tables beside
+//! the store its query reads; and a `from:` ordered by a field an update
+//! can change, which a decline with its reason answers (chunk 6.4b3).
 
 use crate::support;
 
@@ -32,7 +33,7 @@ const BASE: &[(&str, &str)] = &[
     ),
     (
         "domains/shop/queries/items.jadpo",
-        "use shop/entities { Item }\nuse shop/types { ItemPage }\n\nquery items(page: ItemPage) -> Page<Item> {\n    from: Item\n    order: [Item.code asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n",
+        "use shop/entities { Item }\nuse shop/types { ItemPage }\n\nquery items(page: ItemPage) -> Page<Item> {\n    from: Item\n    order: [Item.id asc]\n    page: {\n        size: page.page_size\n        after: page.after\n    }\n}\n",
     ),
     (
         "domains/shop/queries/all_items.jadpo",
@@ -1080,4 +1081,106 @@ fn a_status_read_by_a_runs_own_action_is_solved() {
         "use journal/actions { check_after }\nuse journal/queries { diaries }\nuse journal/types { DiaryPage }\n\naction post_all(page: DiaryPage, earlier: BatchRun) -> BatchRun {\n    return batches.each(\n        from: diaries(page),\n        each: diary -> check_after(diary, earlier)\n    )\n}\n",
     );
     assert_eq!(diaries(&[after, draft, start]), Vec::<String>::new());
+}
+
+/// `from:` ordered by a field an update can change is a declinable error
+/// (area 12, "No other way"; chunk 6.4b3): a run walks live records a
+/// page at a time, so a record whose order moves mid-run is missed or met
+/// twice. `id`, a field marked `immutable: true` and one generated as the
+/// record is created can't change, and a written order is judged only up
+/// to its `id`; a decline above the action answers it.
+#[test]
+fn a_from_ordered_by_a_field_an_update_can_change_is_declinable() {
+    let entity = "use shop/types { ShelfCode }\n\nentity Item {\n    id: Uuid\n    code: ShelfCode\n    seen: Bool\n    label: ShelfCode {\n        immutable: true\n    }\n    added_at: Instant {\n        generated: Generated.on_create\n    }\n    touched_at: Instant {\n        generated: Generated.on_change\n    }\n\n    policy: {\n        create: [Access.public]\n        read: [Access.public, Access.system]\n        update: [Access.system]\n    }\n}\n";
+    let ordered = |order: &str| {
+        format!(
+            "use shop/entities {{ Item }}\nuse shop/types {{ ItemPage }}\n\nquery items(page: ItemPage) -> Page<Item> {{\n    from: Item\n    order: [{order}]\n    page: {{\n        size: page.page_size\n        after: page.after\n    }}\n}}\n"
+        )
+    };
+    let start = |decline: &str| {
+        format!(
+            "{IMPORTS}{decline}action start(page: ItemPage, sweep_id: Sweep.id) -> BatchRun {{\n    return batches.each(\n        from: items(page),\n        each: item -> see(item, sweep_id)\n    )\n}}\n"
+        )
+    };
+    let found = |order: &str, decline: &str| -> Vec<String> {
+        let query = ordered(order);
+        let start = start(decline);
+        let mut files: Vec<(&str, &str)> = BASE
+            .iter()
+            .copied()
+            .filter(|(path, _)| {
+                !path.ends_with("entities/item.jadpo") && !path.ends_with("queries/items.jadpo")
+            })
+            .collect();
+        files.push(("domains/shop/entities/item.jadpo", entity));
+        files.push(("domains/shop/queries/items.jadpo", &query));
+        files.push(("domains/shop/actions/start.jadpo", &start));
+        files.push(SEE_PAGE);
+        let db = jadpo_db::Database::default();
+        let project = support::project(&db, Layout::Project, &files);
+        jadpo_check::check(&db, project)
+            .iter()
+            .filter(|d| d.rule.id != "import.unused" && !d.rule.id.starts_with("migration."))
+            .map(|d| {
+                format!(
+                    "{} {}",
+                    d.rule.id,
+                    d.primary
+                        .as_ref()
+                        .map(|l| l.text.as_str())
+                        .unwrap_or_default()
+                )
+            })
+            .collect()
+    };
+    let changes = |field: &str| {
+        vec![format!(
+            "type.batch_order_updatable ordered by `Item.{field}`, which an update can change"
+        )]
+    };
+    for (order, expected) in [
+        ("Item.id asc", vec![]),
+        ("Item.id desc", vec![]),
+        ("Item.label asc", vec![]),
+        ("Item.added_at asc, Item.id asc", vec![]),
+        // Nothing after `id` can move a record.
+        ("Item.id asc, Item.code asc", vec![]),
+        ("Item.code asc", changes("code")),
+        ("Item.added_at desc, Item.code asc", changes("code")),
+        ("Item.touched_at asc", changes("touched_at")),
+    ] {
+        assert_eq!(found(order, ""), expected, "{order}");
+    }
+    // Declined on the action, with its reason, it is answered.
+    let decline = "/// Starts the sweep.\ndecline type.batch_order_updatable: \"Codes are fixed once a shelf is labelled\"\n";
+    assert_eq!(found("Item.code asc", decline), Vec::<String>::new());
+    // A writer's `from:` is held to the same.
+    let writer = format!(
+        "{IMPORTS}use app {{ shelf_lists }}\n\naction start(page: ItemPage) -> BatchRun {{\n    return json_lines.write(\n        shelf_lists,\n        name: \"items.jsonl\",\n        from: items(page),\n        each: item -> ItemLine {{\n            code: item.code\n        }}\n    )\n}}\n"
+    );
+    let line = "use shop/types { ShelfCode }\n\ntype ItemLine = Output {\n    code: ShelfCode\n}\n";
+    let app = "application {\n    connections: {\n        shelf_lists: {\n            driver: Driver.disk\n            path: \"/var/lib/shop/lists\"\n        }\n    }\n}\n";
+    let query = ordered("Item.code asc");
+    let writer = writer.replace(
+        "use shop/types { ItemPage, ShelfCode }",
+        "use shop/types { ItemLine, ItemPage, ShelfCode }",
+    );
+    let mut files: Vec<(&str, &str)> = BASE
+        .iter()
+        .copied()
+        .filter(|(path, _)| *path != "app.jadpo" && !path.ends_with("queries/items.jadpo"))
+        .collect();
+    files.push(("app.jadpo", app));
+    files.push(("domains/shop/types/item_line.jadpo", line));
+    files.push(("domains/shop/queries/items.jadpo", &query));
+    files.push(("domains/shop/actions/start.jadpo", &writer));
+    files.push(SEE_PAGE);
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let rules: Vec<&str> = jadpo_check::check(&db, project)
+        .iter()
+        .map(|d| d.rule.id)
+        .filter(|id| *id != "import.unused" && !id.starts_with("migration."))
+        .collect();
+    assert_eq!(rules, ["type.batch_order_updatable"]);
 }

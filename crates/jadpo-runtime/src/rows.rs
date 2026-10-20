@@ -20,8 +20,16 @@
 //! - **JSON Lines** ([`records`] without one): a record a line, its one
 //!   cell the line's text, LF or CRLF ending it.
 //!
+//! - **JSON** ([`json`], chunk 6.4b3): `json.read`'s file form walks the
+//!   document to the list `items_at:` names, an item a record.
+//! - **gzip** ([`gzip`], chunk 6.4b3): a file unpacked as it is read, when
+//!   the helper is given `max_unpacked_size:`.
+//!
 //! A record is whole only once what ends it has been read: the last in
 //! a window that the file goes on past waits for the next window.
+
+pub mod gzip;
+pub mod json;
 
 /// A file's text encoding, from the mark it starts with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -111,6 +119,19 @@ pub enum RowFault {
     Unterminated { line: u64 },
     /// Bytes on this line aren't text in the file's encoding.
     NotText { line: u64, encoding: Encoding },
+    /// A JSON document with no list where `items_at:` says, as it writes
+    /// it (chunk 6.4b3).
+    NoList(String),
+    /// A JSON document read as a list that isn't one.
+    NotList,
+    /// What is on this line isn't JSON.
+    NotJson { line: u64 },
+    /// The document ends before its JSON does.
+    Ended,
+    /// An object on the way to the list names this member twice.
+    Twice(String),
+    /// The item beginning on this line is longer than a row may be.
+    TooLong { line: u64 },
 }
 
 impl RowFault {
@@ -123,6 +144,15 @@ impl RowFault {
             RowFault::NotText { line, encoding } => {
                 format!("line {line} of its file isn't {} text", encoding.name())
             }
+            RowFault::NoList(path) => format!("its file has no list at `{path}`"),
+            RowFault::NotList => "its file isn't a JSON list".to_string(),
+            RowFault::NotJson { line } => format!("line {line} of its file isn't JSON"),
+            RowFault::Ended => "its file ends before its JSON does".to_string(),
+            RowFault::Twice(name) => format!("its file names `{name}` twice"),
+            RowFault::TooLong { line } => format!(
+                "the item beginning on line {line} of its file is longer than {}",
+                jadpo_std::files::shown_size(crate::batches::MAX_ROW_BYTES)
+            ),
         }
     }
 }

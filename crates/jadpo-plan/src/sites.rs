@@ -145,6 +145,10 @@ pub(crate) struct BatchSite {
     /// For a file helper's read (chunk 6.4b): its format and the JSON
     /// table's number of the row type, each row read as one.
     pub file: Option<(jadpo_std::batch::RowFormat, u32, TypeRef)>,
+    /// For `json.read`'s file form, the members `items_at:` names; and for
+    /// any read, `max_unpacked_size:`'s bytes (chunk 6.4b3).
+    pub items_at: Vec<String>,
+    pub max_unpacked: Option<u64>,
     /// For a file helper's write (chunk 6.4b2): what it writes, and where.
     pub write: Option<WriteSite>,
     /// The action or fixture starting it, by name.
@@ -417,6 +421,33 @@ impl Decoder<'_> {
                 },
             ))
         };
+        // `json.read`'s `items_at:` and any read's `max_unpacked_size:`,
+        // both written out, the plan's rather than saved (chunk 6.4b3).
+        // Where the list sits is part of the run's shape: a position in
+        // one list means nothing in another.
+        let written = |at: usize| match node(args.get(at).copied().flatten()) {
+            Some((
+                _,
+                Site {
+                    node: Node::Expr(Expr::Literal(jadpo_std::Literal::Text(text))),
+                    ..
+                },
+            )) => Some(text.clone()),
+            _ => None,
+        };
+        let (items_at, max_unpacked) = match read {
+            Some(_) => (
+                written(jadpo_std::batch::ITEMS_AT)
+                    .map(|path| path.split('.').map(str::to_string).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+                written(jadpo_std::batch::MAX_UNPACKED_SIZE)
+                    .and_then(|size| jadpo_std::files::size(&size)),
+            ),
+            None => (Vec::new(), None),
+        };
+        if !items_at.is_empty() {
+            shape.push_str(&format!(" items_at {}", items_at.join(".")));
+        }
         // A file helper's row type: what `each:`'s item is.
         let row_read = read.and_then(|format| {
             let (_, inline) = node(args.get(calls).copied().flatten())?;
@@ -585,6 +616,8 @@ impl Decoder<'_> {
             from_args,
             key,
             file: row_read,
+            items_at,
+            max_unpacked,
             write,
             starter: self.starter.name().to_string(),
         });
