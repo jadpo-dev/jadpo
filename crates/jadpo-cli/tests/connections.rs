@@ -163,13 +163,13 @@ provider {
 "#,
     ),
     (
-        "shared/providers/ledger/v1/resources/entries.jadpo",
-        r#"public resource entries {
+        "shared/providers/ledger/v1/resources/postings.jadpo",
+        r#"public resource postings {
     create: {
         method: HttpMethod.post
-        path: "/v1/entries"
-        input: NewEntry
-        output: Entry
+        path: "/v1/postings"
+        input: NewPosting
+        output: Posting
         changes: true
         idempotent: false
         source: PackageSource.written
@@ -178,17 +178,17 @@ provider {
 "#,
     ),
     (
-        "shared/providers/ledger/v1/types/entry.jadpo",
+        "shared/providers/ledger/v1/types/posting.jadpo",
         r#"/// A recorded amount.
-public type Entry = Object {
+public type Posting = Object {
     id: Text
 }
 "#,
     ),
     (
-        "shared/providers/ledger/v1/types/new_entry.jadpo",
+        "shared/providers/ledger/v1/types/new_posting.jadpo",
         r#"/// An amount to record.
-public type NewEntry = Object {
+public type NewPosting = Object {
     reference: Text
     pence: Int
 }

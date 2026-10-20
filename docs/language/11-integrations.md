@@ -1097,13 +1097,13 @@ provider {
 }
 ```
 
-```jadpo check project=p71c-connect file=shared/providers/ledger/v1/resources/entries.jadpo hidden
-public resource entries {
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/resources/postings.jadpo hidden
+public resource postings {
     create: {
         method: HttpMethod.post
-        path: "/v1/entries"
-        input: NewEntry
-        output: Entry
+        path: "/v1/postings"
+        input: NewPosting
+        output: Posting
         changes: true
         idempotent: false
         source: PackageSource.written
@@ -1111,17 +1111,17 @@ public resource entries {
 }
 ```
 
-```jadpo check project=p71c-connect file=shared/providers/ledger/v1/types/new_entry.jadpo hidden
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/types/new_posting.jadpo hidden
 /// An amount to record.
-public type NewEntry = Object {
+public type NewPosting = Object {
     reference: Text
     pence: Int
 }
 ```
 
-```jadpo check project=p71c-connect file=shared/providers/ledger/v1/types/entry.jadpo hidden
+```jadpo check project=p71c-connect file=shared/providers/ledger/v1/types/posting.jadpo hidden
 /// A recorded amount.
-public type Entry = Object {
+public type Posting = Object {
     id: Text
 }
 ```
