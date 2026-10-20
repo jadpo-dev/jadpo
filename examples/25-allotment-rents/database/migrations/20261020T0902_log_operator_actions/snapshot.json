@@ -951,11 +951,13 @@
             }
           },
           "indexes": {
-            "reminder_plot_id_idx": {
+            "reminder_plot_id_sent_on_id_idx": {
               "columns": [
-                "plot_id"
+                "plot_id",
+                "sent_on",
+                "id"
               ],
-              "reason": "reference Reminder.plot_id"
+              "reason": "query plot_reminders"
             },
             "reminder_society_id_idx": {
               "columns": [

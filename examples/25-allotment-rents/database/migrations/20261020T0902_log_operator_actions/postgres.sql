@@ -1,4 +1,4 @@
--- 20261020T0059_log_operator_actions: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T0902_log_operator_actions: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "jadpo_operator_actions" (

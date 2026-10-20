@@ -422,11 +422,12 @@
             }
           },
           "indexes": {
-            "thank_you_note_repair_id_idx": {
+            "thank_you_note_repair_id_id_idx": {
               "columns": [
-                "repair_id"
+                "repair_id",
+                "id"
               ],
-              "reason": "reference ThankYouNote.repair_id"
+              "reason": "query pinned_notes"
             }
           },
           "primary_key": {
