@@ -530,6 +530,8 @@ rules! {
         "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    PACKAGE_ACTION_INVALID: "package.action_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-action-invalid", "Package action does what package code may not";
     PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
         "11-integrations.html#package-digest-mismatch", "Installed package's files differ from its digest in the lock";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,

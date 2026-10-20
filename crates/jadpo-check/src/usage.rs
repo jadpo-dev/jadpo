@@ -107,6 +107,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
                 | Callee::Action(key)
                 | Callee::Query(key)
                 | Callee::Fixture(key)
+                | Callee::PackageAction { action: key, .. }
                 | Callee::Schedule { schedule: key, .. } => {
                     found.names.insert(canonical_of(contested, key));
                 }

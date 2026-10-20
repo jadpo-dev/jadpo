@@ -279,7 +279,7 @@ impl Body<'_> {
         let span = self.span(call);
         let provider = matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Provider { .. })
+            Some(Reach::Provider { own: false, .. })
         );
         let problem = match &fallible {
             // A provider's failures are mapped at the call by their codes
@@ -754,7 +754,7 @@ impl Body<'_> {
         // though it lists no failures (chunk 7.2c2).
         let provider = matches!(&inner, Expr::CallExpr(call) if matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Provider { .. })
+            Some(Reach::Provider { own: false, .. })
         ));
         let fallible = match fallible {
             Fallible::Never

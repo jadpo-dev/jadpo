@@ -739,7 +739,9 @@ the fake has responses, or fewer, the test fails and says so (question 7).
 > test's `fakes:` scripts an operation's answers in order, each a value of
 > its output type, one of its failures by its code, or a condition.
 > `.requests` and the capabilities' fakes (`email.sent`) are not built
-> yet. The choices are in area 11's "Chosen in chunk 7.2d".
+> yet. The choices are in area 11's "Chosen in chunk 7.2d". Since chunk
+> 7.6 a package's action runs its real code in a test, and `fakes:`
+> scripts the operations it calls, its package's own included.
 
 Here a courier's booking is faked three ways: with a scripted
 `AcmeCouriers.Booking`, with the operation's `slot_taken`, which the

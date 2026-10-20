@@ -1346,12 +1346,37 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `jadpo watch`; the late-failure warning (a declinable error) and the
   deadline sum; the personal-data report's entry, and the metric and
   alert.
-- [ ] **7.6 What package code may do** `opus · high`: package actions
-  calling only their own API (their changing calls counted as steps of
-  the calling action, as 7.5 counts an app action's, and a package action
-  over 8 refused at publishing), package subscribers on their own webhooks,
-  public and non-public package events, `polls:` run only while
-  subscribed, `max_concurrent:`, and recipes with `jadpo package recipe`.
+- [x] **7.6 What package code may do: actions and recipes** `opus ·
+  high` (split on 2026-10-20 into this and 7.6b; public and non-public
+  package events came with 7.7). Built: a package's action calls its own
+  operations, public or not, by their bare names (`customers.create`),
+  their failures passed on as its own; the app calls a `public` one as
+  `connection.action(input)` from a listed domain, its failures mapped at
+  the call by their codes (`Callee::PackageAction`, run by the interpreter
+  with its operations going through that connection); its changing calls
+  count as the caller's steps, at check time and in the keys the runtime
+  derives, and a package action over 8 is `step.too_many` where it is
+  declared, so `jadpo package check` refuses it; `package.action_invalid`
+  for a package action calling another action, a `public` one that emits
+  and an action named as a resource; public actions on the surface; a
+  test's `fakes:` scripting the package's own operations; and `jadpo
+  package recipe <package> <recipe> --into <domain>`, all or nothing.
+  Tests in `crates/jadpo-check/tests/package_actions.rs` and live ones in
+  `crates/jadpo-cli/tests/package_actions.rs` and `package_recipes.rs`;
+  example 26 calls a package action. Choices in area 11's "Chosen in
+  chunk 7.6".
+- [ ] **7.6b Package subscribers, polls and `max_concurrent:`** `opus ·
+  high`, after 7.6 (split from 7.6 on 2026-10-20): package subscribers on
+  their own webhooks (non-public events included), running a non-public
+  package action that enriches the event through the connection the
+  webhook came in on and emits the package's own declared events through
+  the app's outbox; `polls:` in `provider.jadpo` and the connection's
+  `polls: { <name>: <interval> }`, run only while something subscribes to
+  the poll's event, what it last saw kept as runtime state and only
+  changes emitted; `max_concurrent:` in `provider.jadpo`, lowered by a
+  connection, capping calls at once per app instance (further calls wait,
+  waiting deliveries retry later); and recipes compiled against the
+  package's `sample/` app by `jadpo package check`.
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's

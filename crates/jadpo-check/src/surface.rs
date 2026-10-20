@@ -103,6 +103,13 @@ pub enum What {
         /// The recording that confirms it.
         confirmed: Option<String>,
     },
+    /// A provider package's public action, called through its connection
+    /// (chunk 7.6).
+    Action {
+        params: Vec<(String, String)>,
+        result: Option<String>,
+        fails: Vec<String>,
+    },
     /// A public library's function.
     Function {
         params: Vec<(String, String)>,
@@ -142,6 +149,7 @@ impl What {
     pub fn word(&self) -> &'static str {
         match self {
             What::Operation { .. } => "operation",
+            What::Action { .. } => "action",
             What::Function { .. } => "function",
             What::Type { .. } => "type",
             What::Failure { .. } => "failure",
@@ -154,11 +162,12 @@ impl What {
     fn section(&self) -> u8 {
         match self {
             What::Operation { .. } => 0,
-            What::Function { .. } => 1,
-            What::Message { .. } => 2,
-            What::Type { .. } => 3,
-            What::Failure { .. } => 4,
-            What::Recipe => 5,
+            What::Action { .. } => 1,
+            What::Function { .. } => 2,
+            What::Message { .. } => 3,
+            What::Type { .. } => 4,
+            What::Failure { .. } => 5,
+            What::Recipe => 6,
         }
     }
 }
@@ -176,7 +185,9 @@ impl Declaration {
     /// Its parameters and result as Jadpo writes a signature, without its
     /// failures: `(written: WrittenPostcode) -> UkPostcode`.
     pub fn signature(&self) -> Option<String> {
-        let What::Function { params, result, .. } = &self.what else {
+        let (What::Function { params, result, .. } | What::Action { params, result, .. }) =
+            &self.what
+        else {
             return None;
         };
         let params: Vec<String> = params
@@ -241,7 +252,7 @@ impl Declaration {
                     out.push(line(format!("confirmed {confirmed}")));
                 }
             }
-            What::Function { fails, .. } => {
+            What::Function { fails, .. } | What::Action { fails, .. } => {
                 out.push(line(format!(
                     "signature {}",
                     self.signature().unwrap_or_default()
@@ -539,6 +550,24 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                         fields(graph, node)
                     },
                     variants,
+                }));
+            }
+            // A provider package's public action (chunk 7.6).
+            (Kind::Action, Detail::Callable { signature, .. }) if node.public => {
+                let name = |key: &Key| name_of(graph, key);
+                let mut fails: Vec<String> =
+                    signature.fails.iter().map(|ty| ty.render(&name)).collect();
+                fails.sort();
+                fails.dedup();
+                declarations.push(made(What::Action {
+                    params: signature
+                        .params
+                        .iter()
+                        .map(|(param, ty)| (param.clone(), ty.render(&name)))
+                        .collect(),
+                    result: (signature.result != TypeRef::Builtin(jadpo_std::Builtin::Unit))
+                        .then(|| signature.result.render(&name)),
+                    fails,
                 }));
             }
             (Kind::Function, Detail::Callable { signature, .. }) => {
