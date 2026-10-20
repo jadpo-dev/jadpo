@@ -265,6 +265,11 @@ pub const POLLS: SystemTable = SystemTable {
         column("next_at", "timestamptz(3)", false),
         column("digest", "text", true),
         column("last_change", "timestamptz(3)", true),
+        // The interval it was last claimed under, so only one claimed
+        // under another counts as shortened (chunk 7.9c). Added to a
+        // table that may hold rows, so it may be `NULL`: a row claimed
+        // before.
+        column("every_ms", "bigint", true),
     ],
     primary_key: &["poll"],
     unique: &[],

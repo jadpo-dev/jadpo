@@ -605,23 +605,52 @@ fn open(mail: &Mail, wanted: &str, environment: &jadpo_term::Environment) -> Rep
 /// Starts the browser on `link`: `$BROWSER` when set, else the system's
 /// opener. It isn't waited for.
 fn start_browser(link: &str, environment: &jadpo_term::Environment) -> std::io::Result<()> {
-    let mut command = match environment.var("BROWSER").filter(|value| !value.is_empty()) {
-        Some(browser) => std::process::Command::new(browser),
-        None if cfg!(target_os = "macos") => std::process::Command::new("open"),
-        None if cfg!(windows) => {
-            let mut command = std::process::Command::new("cmd");
-            command.args(["/C", "start", ""]);
-            command
-        }
-        None => std::process::Command::new("xdg-open"),
+    let browser = environment
+        .var("BROWSER")
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let system = if cfg!(target_os = "macos") {
+        System::Mac
+    } else if cfg!(windows) {
+        System::Windows
+    } else {
+        System::Other
     };
-    command
-        .arg(link)
+    let (program, args) = opener(link, browser, system);
+    std::process::Command::new(program)
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
         .map(|_| ())
+}
+
+/// The operating systems whose openers differ.
+#[derive(Clone, Copy, Debug)]
+enum System {
+    Mac,
+    Windows,
+    Other,
+}
+
+/// The program that opens `link`, and its arguments: `browser` when set,
+/// else `system`'s opener, the link always one argument of its own and
+/// never read by a shell, so a `&` in it is only a character of the link
+/// (on Windows, `url.dll`'s handler, not `cmd /C start`; Phase 7 review,
+/// chunk 7.9c).
+fn opener(link: &str, browser: Option<String>, system: System) -> (String, Vec<String>) {
+    let (program, mut args) = match (browser, system) {
+        (Some(browser), _) => (browser, Vec::new()),
+        (None, System::Mac) => ("open".to_string(), Vec::new()),
+        (None, System::Windows) => (
+            "rundll32".to_string(),
+            vec!["url.dll,FileProtocolHandler".to_string()],
+        ),
+        (None, System::Other) => ("xdg-open".to_string(), Vec::new()),
+    };
+    args.push(link.to_string());
+    (program, args)
 }
 
 // --- clear --------------------------------------------------------------------
@@ -1121,6 +1150,35 @@ fn check_domain(domain: &str, selectors: &[&str], resolver: &dyn Resolver) -> Re
 
 #[cfg(test)]
 mod tests {
+    /// Each system's opener is handed the link as one argument and no
+    /// shell reads it, so a link's `&` runs nothing (Phase 7 review, chunk
+    /// 7.9c).
+    #[test]
+    fn a_link_is_opened_as_one_argument_with_no_shell() {
+        use super::{System, opener};
+        let link = "https://example.test/verify?a=1&calc.exe&b=\"2\"";
+        let opened = |system| opener(link, None, system);
+        assert_eq!(
+            opened(System::Windows),
+            (
+                "rundll32".to_string(),
+                vec!["url.dll,FileProtocolHandler".to_string(), link.to_string()]
+            )
+        );
+        assert_eq!(
+            opened(System::Mac),
+            ("open".to_string(), vec![link.to_string()])
+        );
+        assert_eq!(
+            opened(System::Other),
+            ("xdg-open".to_string(), vec![link.to_string()])
+        );
+        assert_eq!(
+            opener(link, Some("firefox".into()), System::Windows),
+            ("firefox".to_string(), vec![link.to_string()])
+        );
+    }
+
     use super::*;
     use std::collections::BTreeMap;
 

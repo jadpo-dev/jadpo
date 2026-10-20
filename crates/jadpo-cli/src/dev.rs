@@ -773,6 +773,7 @@ pub fn serve_to(
     let Some(root) = jadpo_db::find_root(&args.cwd) else {
         return 1;
     };
+    ignore_build(&root);
     let started = crate::watch::time_now();
     if !args.json {
         out.screen(Screen::new().with(Block::header("jadpo dev", [format!("started {started}")])));
@@ -1121,6 +1122,27 @@ pub fn serve_to(
 
 /// Writes the address of each database started for the session to
 /// [`crate::schedules::DEV_STORES`]; nothing when there are none.
+/// Makes sure `.gitignore` in `root` names `build/`, where the session's
+/// inbox and call log are kept with every prompt and mail in full, so
+/// they are never committed (area 14, "The `build/` folder"; chunk 7.9c).
+/// A file that can't be written is left alone.
+fn ignore_build(root: &Path) {
+    let path = root.join(".gitignore");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let ignored = text
+        .lines()
+        .any(|line| matches!(line.trim(), "build" | "build/" | "/build" | "/build/"));
+    if ignored {
+        return;
+    }
+    let mut added = text;
+    if !added.is_empty() && !added.ends_with('\n') {
+        added.push('\n');
+    }
+    added.push_str("build/\n");
+    let _ = std::fs::write(&path, added);
+}
+
 fn remember_stores(root: &Path, started: &BTreeMap<String, String>) {
     let path = root.join(crate::schedules::DEV_STORES);
     if started.is_empty() {

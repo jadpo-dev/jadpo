@@ -416,3 +416,31 @@ fn check_scores_templates_and_a_decline_keeps_one_on_purpose() {
     let declined = jadpo(&root, &["check"]);
     assert_eq!(declined.code, 0, "{}{}", declined.stdout, declined.stderr);
 }
+
+/// `jadpo dev` keeps `build/`, where its inbox and call log live, out of
+/// git: it adds `build/` to `.gitignore` when it starts, once, keeping
+/// what the file held (area 14, "The `build/` folder"; Phase 7 review,
+/// chunk 7.9c).
+#[test]
+fn dev_keeps_build_out_of_git() {
+    let (_dir, root) = project();
+    write(&root, ".gitignore", ".env.local");
+    let started = |root: &Path| {
+        let args = jadpo_cli::dev::DevArgs {
+            cwd: root.to_path_buf(),
+            port: 0,
+            url: None,
+            no_run: true,
+            json: false,
+            choice: jadpo_term::ColorChoice::Never,
+            fake: Vec::new(),
+            sandbox: Vec::new(),
+        };
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        jadpo_cli::dev::serve_to(&args, &Environment::empty(), &mut out, &mut err, &|| true);
+    };
+    started(&root);
+    started(&root);
+    let ignored = std::fs::read_to_string(root.join(".gitignore")).expect(".gitignore");
+    assert_eq!(ignored, ".env.local\nbuild/\n");
+}

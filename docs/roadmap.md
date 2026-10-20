@@ -1949,13 +1949,20 @@ side by side, then 7.9d, then 7.9e).
   magic-link `send:` action run with the tenant of its delivery, reply
   actions and `on_first_sign_in:` with no tenant, and
   `policy.system_grant_missing` checked for all three.
-- [ ] **7.9c Phase 7 review fixes: ticks, queues and budgets** `opus ·
-  high`: a poll's claim compared against the interval kept on its row, so
-  two ticks can't both take it; a queue message the store always refuses
-  parked `unreadable`; the AI budget reserving each repair's growing
-  conversation and charging resends after a 5xx; a success claimed before
-  a breaker opened closing it; `jadpo email open` on Windows passing the
-  link without a shell; `build/` in a new app's `.gitignore`.
+- [x] **7.9c Phase 7 review fixes: ticks, queues and budgets** `opus ·
+  high`. Built: a poll's row keeps the interval it was claimed under
+  (`jadpo_polls.every_ms`, 26-delivery-desk's migration adding it), so
+  only one claimed under another interval counts as shortened and two
+  ticks, or a slower clock, can't both take it; a queue message whose
+  event the store refuses as a statement is parked `unreadable`; an `ai`
+  call's reservation counts each repair's growing conversation, a longer
+  repair or a send again after a provider's error taking what it sends
+  first and charged what it sent (`ai.generate`, `ai.embed` and
+  `ai.stream`); a delivery's answer closes its connection's breaker
+  whatever the breaker was at its claim; `jadpo email open` on Windows
+  hands the link to `rundll32 url.dll,FileProtocolHandler` as one
+  argument, no shell; `jadpo dev` adds `build/` to `.gitignore`. Each
+  choice is in its area's Decisions (11, 12, 14, 16, 21).
 - [ ] **7.9d One outside-call path** `opus · xhigh`, after 7.9a: one
   `exchange` for whole and streamed answers, owning `max_concurrent:`'s
   slots and the time left (the route's remaining deadline, the background

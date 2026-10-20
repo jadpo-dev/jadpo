@@ -810,15 +810,8 @@ pub async fn stream(
         max_output: site.max_output,
         attempts: 1,
     };
-    match crate::ai_budget::take(ctx, ai, asked, &model, input, settings).await {
-        Ok(taken) => {
-            let most = crate::ai_budget::Used {
-                input,
-                output: u64::from(site.max_output),
-                cached: 0,
-            };
-            crate::ai_budget::debit(ctx, taken, most).await;
-        }
+    let mut taken = match crate::ai_budget::take(ctx, ai, asked, &model, input, settings).await {
+        Ok(taken) => taken,
         Err(crate::ai_budget::Refused::OverBudget) => {
             let now = ctx.now();
             ctx.capabilities_mut().refused(&made, now);
@@ -830,11 +823,25 @@ pub async fn stream(
         Err(crate::ai_budget::Refused::Misconfigured) => {
             return Done::Failed(Box::new(crate::misconfigured()));
         }
-    }
+    };
     let host = ctx.host();
     let began = host.monotonic_ms();
     let ends_at = began.map(|began| began.saturating_add(site.timeout_ms));
-    let (opened, source) = match opened(ctx, made, &request, began, site.timeout_ms).await {
+    // Charged its whole most possible use once open, and what each send
+    // again before it opened sent (chunk 7.9c).
+    let mut used = crate::ai_budget::Used {
+        input,
+        output: u64::from(site.max_output),
+        cached: 0,
+    };
+    let resend = crate::ai_budget::Resend {
+        taken: &mut taken,
+        used: &mut used,
+        input,
+    };
+    let opened = opened(ctx, made, &request, began, site.timeout_ms, resend).await;
+    crate::ai_budget::debit(ctx, taken, used).await;
+    let (opened, source) = match opened {
         Ok(opened) => opened,
         Err(done) => return done,
     };
@@ -910,16 +917,20 @@ fn request_body(model: &str, messages: &[(String, String)], max_output: u32) -> 
 /// Sends the request through the capability seam, and again while the
 /// provider couldn't be reached or asked for it later, as long as the
 /// call's `timeout:` lasts, until its answer starts to come: nothing has
-/// reached the client yet, so asking again is safe.
+/// reached the client yet, so asking again is safe. Each send again takes
+/// what it sends from the call's limits first, as `ai.generate`'s do
+/// ([`crate::ai::sent`]).
 async fn opened(
     ctx: &mut Ctx<'_>,
     made: Call,
     asked: &Request,
     began: Option<u64>,
     timeout_ms: u64,
+    resend: crate::ai_budget::Resend<'_>,
 ) -> Result<(Streamed, Source), Done> {
     let host = ctx.host();
     let mut sends = 1;
+    let mut unanswered: Option<(Streamed, Source)> = None;
     loop {
         let spent = match (began, host.monotonic_ms()) {
             (Some(began), Some(now)) => now.saturating_sub(began),
@@ -928,6 +939,15 @@ async fn opened(
         let left = timeout_ms.saturating_sub(spent);
         if left == 0 {
             return Ok((Streamed::Whole(Answer::TimedOut), Source::Live));
+        }
+        if let Some((streamed, source)) = unanswered.take() {
+            if !crate::ai_budget::top_up(ctx, resend.taken, resend.input).await {
+                return Ok((streamed, source));
+            }
+            resend.used.add(crate::ai_budget::Used {
+                input: resend.input,
+                ..Default::default()
+            });
         }
         let mut request = asked.clone();
         request.timeout_ms = left;
@@ -961,19 +981,19 @@ async fn opened(
             return Ok((streamed, source));
         }
         sends += 1;
-        let Some(began) = began else {
-            continue;
-        };
-        let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
-        let left = timeout_ms.saturating_sub(spent);
-        let mut random = [0u8; 8];
-        let random = host.random(&mut random).then_some(random);
-        let Some(wait) = crate::provider::retry_wait(sends - 1, later, left, random) else {
-            return Ok((streamed, source));
-        };
-        if wait > 0 {
-            host.sleep(wait).await;
+        if let Some(began) = began {
+            let spent = host.monotonic_ms().unwrap_or(began).saturating_sub(began);
+            let left = timeout_ms.saturating_sub(spent);
+            let mut random = [0u8; 8];
+            let random = host.random(&mut random).then_some(random);
+            let Some(wait) = crate::provider::retry_wait(sends - 1, later, left, random) else {
+                return Ok((streamed, source));
+            };
+            if wait > 0 {
+                host.sleep(wait).await;
+            }
         }
+        unanswered = Some((streamed, source));
     }
 }
 

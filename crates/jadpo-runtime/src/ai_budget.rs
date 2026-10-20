@@ -2,16 +2,20 @@
 //! limits `ai: { limits: }` sets, checked before a call is sent and
 //! charged what it used after.
 //!
-//! - **Before sending** ([`take`]), a call's most possible use, its
-//!   prompt's estimated tokens and `max_output:` for each of its
-//!   `attempts:`, is taken from every limit it counts against: the
+//! - **Before sending** ([`take`]), a call's most possible use, what
+//!   each of its `attempts:` sends, each repair resending the
+//!   conversation so far ([`most`]), and `max_output:` for each answer, is
+//!   taken from every limit it counts against: the
 //!   request's, kept by the invocation; and the day's, the application's
 //!   and the caller's, each a row of `jadpo_ai_usage` in the limits'
 //!   store, taken by one conditional statement, so concurrent calls on
 //!   several instances never pass a limit between them. A call any limit
 //!   can't cover is `over_budget` with nothing sent, and a store that
 //!   can't be reached refuses it `unavailable` rather than spend
-//!   unmetered.
+//!   unmetered. A send it didn't count, a send again after the provider
+//!   couldn't answer or a repair longer than counted, takes what it sends
+//!   before it goes ([`top_up`]), and isn't made when a limit can't cover
+//!   it (chunk 7.9c).
 //! - **After** ([`debit`]), it is charged what the provider says it used,
 //!   or, for an answer that says nothing, the estimate of what was sent
 //!   and answered, and what it took is given back; its prompt and model's
@@ -89,8 +93,13 @@ pub(crate) struct Taken {
     /// The store the counts are in, and the day taken from.
     store: String,
     day: i32,
-    /// Each window it took from, with what it took.
-    windows: Vec<(&'static str, String)>,
+    /// Each window it took from, with its limit.
+    windows: Vec<(&'static str, String, u64)>,
+    /// The day's cost limit, and the request's, which more taken keeps
+    /// to.
+    cost_limit: Option<u64>,
+    per_request: Option<u64>,
+    /// What it took, more taken since included.
     tokens: u64,
     micros: u64,
     /// The prompt and model, for its own count.
@@ -253,12 +262,7 @@ pub(crate) async fn take(
     let Some(limits) = ai.plan.limits.as_ref() else {
         return Ok(None);
     };
-    let attempts = u64::from(site.attempts.max(1));
-    let most = Used {
-        input: input.saturating_mul(attempts),
-        output: u64::from(site.max_output).saturating_mul(attempts),
-        cached: 0,
-    };
+    let most = most(input, site);
     if let Some(per_request) = limits.per_request
         && ctx.ai_spent().saturating_add(most.tokens()) > per_request
     {
@@ -318,7 +322,7 @@ pub(crate) async fn take(
         return Err(Refused::Unavailable);
     };
     let now = crate::outbox::micros(ctx.now());
-    let mut taken: Vec<(&'static str, String)> = Vec::new();
+    let mut taken: Vec<(&'static str, String, u64)> = Vec::new();
     for (scope, key, most_tokens) in windows {
         let cost_limit = match (scope, limit) {
             (APP, Some((limit, _))) => SqlValue::Int8(clamp(limit)),
@@ -340,22 +344,122 @@ pub(crate) async fn take(
             Err(_) => Some(Refused::Unavailable),
         };
         if let Some(refused) = refused {
-            for (scope, key) in &taken {
+            for (scope, key, _) in &taken {
                 give_back(database, day, scope, key, (tokens, micros), ctx.now()).await;
             }
             return Err(refused);
         }
-        taken.push((scope, key));
+        taken.push((scope, key, most_tokens));
     }
     Ok(Some(Taken {
         store: limits.store.clone(),
         day,
         windows: taken,
+        cost_limit: limit.map(|(limit, _)| limit),
+        per_request: limits.per_request,
         tokens,
         micros,
         prompt: format!("{} {model}", site.prompt),
         price,
     }))
+}
+
+/// The tokens a repair's correction is counted at, beside the answer it
+/// follows: its fixed words and a path and rule of usual length. A longer
+/// one takes the rest before it is sent ([`top_up`]).
+pub(crate) const CORRECTION_TOKENS: u64 = 64;
+
+/// The most attempt number `attempt` of a call whose prompt is `input`
+/// estimated tokens sends: the prompt, and each earlier answer, at most
+/// `max_output` tokens, with the correction asking again (chunk 7.9c).
+pub(crate) fn sent_most(input: u64, max_output: u32, attempt: u32) -> u64 {
+    let asked_again = u64::from(max_output).saturating_add(CORRECTION_TOKENS);
+    let earlier = u64::from(attempt.max(1) - 1);
+    input.saturating_add(asked_again.saturating_mul(earlier))
+}
+
+/// A call's most possible use: what each of its `attempts:` sends, the
+/// conversation growing with each repair, and `max_output:` for each
+/// answer. A send again after a provider's error takes what it sends
+/// before it goes ([`top_up`]).
+pub(crate) fn most(input: u64, site: Asked<'_>) -> Used {
+    let attempts = site.attempts.max(1);
+    Used {
+        input: (1..=attempts).fold(0, |sum: u64, attempt| {
+            sum.saturating_add(sent_most(input, site.max_output, attempt))
+        }),
+        output: u64::from(site.max_output).saturating_mul(u64::from(attempts)),
+        cached: 0,
+    }
+}
+
+/// Takes `tokens` more input from every limit `taken` took from, before a
+/// send it didn't count is made: a send again after the provider couldn't
+/// answer, or a repair longer than counted (chunk 7.9c). Whether the
+/// limits cover it; a store that can't be reached doesn't. With no limits
+/// to keep, it always does.
+pub(crate) async fn top_up(ctx: &Ctx<'_>, taken: &mut Option<Taken>, tokens: u64) -> bool {
+    let Some(taken) = taken.as_mut() else {
+        return true;
+    };
+    if tokens == 0 {
+        return true;
+    }
+    let more = Used {
+        input: tokens,
+        ..Used::default()
+    };
+    let micros = taken.price.as_ref().map_or(0, |price| cost_of(more, price));
+    if let Some(per_request) = taken.per_request
+        && ctx
+            .ai_spent()
+            .saturating_add(taken.tokens)
+            .saturating_add(tokens)
+            > per_request
+    {
+        return false;
+    }
+    let Some(database) = ctx.host().database(&taken.store) else {
+        return false;
+    };
+    let at = ctx.now();
+    let mut took: Vec<(&'static str, &str)> = Vec::new();
+    for (scope, key, limit) in &taken.windows {
+        let cost_limit = match (*scope, taken.cost_limit) {
+            (APP, Some(limit)) => SqlValue::Int8(clamp(limit)),
+            _ => SqlValue::Null(SqlType::Int8),
+        };
+        let params = [
+            SqlValue::Date(taken.day),
+            SqlValue::Text(scope.to_string()),
+            SqlValue::Text(key.clone()),
+            SqlValue::Int8(clamp(tokens)),
+            SqlValue::Int8(clamp(micros)),
+            SqlValue::Int8(clamp(*limit)),
+            cost_limit,
+            crate::outbox::micros(at),
+        ];
+        let covered =
+            matches!(database.query_once(TAKE, &params).await, Ok(rows) if !rows.is_empty());
+        if !covered {
+            for (scope, key) in &took {
+                give_back(database, taken.day, scope, key, (tokens, micros), at).await;
+            }
+            return false;
+        }
+        took.push((scope, key));
+    }
+    taken.tokens = taken.tokens.saturating_add(tokens);
+    taken.micros = taken.micros.saturating_add(micros);
+    true
+}
+
+/// What a send again is counted with: what its call took from the
+/// limits, what it used so far, and the input each send of it sends.
+pub(crate) struct Resend<'m> {
+    pub taken: &'m mut Option<Taken>,
+    pub used: &'m mut Used,
+    pub input: u64,
 }
 
 fn clamp(value: u64) -> i64 {
@@ -408,7 +512,7 @@ pub(crate) async fn debit(ctx: &mut Ctx<'_>, taken: Option<Taken>, used: Used) {
     let windows = taken
         .windows
         .iter()
-        .map(|(scope, key)| (*scope, key.clone(), taken.tokens, taken.micros))
+        .map(|(scope, key, _)| (*scope, key.clone(), taken.tokens, taken.micros))
         .chain([prompt]);
     for (scope, key, tokens, reserved_micros) in windows {
         let _ = database
@@ -466,6 +570,38 @@ mod tests {
         assert_eq!(cost_of(used, &price()), 320 + 20 + 800);
         assert_eq!(cost(1, 1), 1);
         assert_eq!(cost(0, 400_000), 0);
+    }
+
+    /// A call's most possible use counts the conversation each repair
+    /// sends: the prompt, and every answer before it at `max_output:` with
+    /// the correction asking again (Phase 7 review, chunk 7.9c).
+    #[test]
+    fn each_repair_is_counted_with_the_conversation_it_sends() {
+        let asked = |attempts| Asked {
+            prompt: "answer_question",
+            model: "default",
+            max_output: 300,
+            attempts,
+        };
+        assert_eq!(
+            most(1_000, asked(1)),
+            Used {
+                input: 1_000,
+                output: 300,
+                cached: 0
+            }
+        );
+        // The repair resends the prompt, the answer and the correction.
+        let asked_again = 300 + CORRECTION_TOKENS;
+        assert_eq!(most(1_000, asked(2)).input, 1_000 + 1_000 + asked_again);
+        assert_eq!(most(1_000, asked(2)).output, 600);
+        assert_eq!(
+            most(1_000, asked(3)).input,
+            1_000 + (1_000 + asked_again) + (1_000 + 2 * asked_again)
+        );
+        // The most an attempt sends, which a repair is topped up past.
+        assert_eq!(sent_most(1_000, 300, 1), 1_000);
+        assert_eq!(sent_most(1_000, 300, 3), 1_000 + 2 * asked_again);
     }
 
     /// The day's cost limit is read in millionths of its currency's

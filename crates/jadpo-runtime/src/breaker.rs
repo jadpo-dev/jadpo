@@ -37,7 +37,7 @@
 //! [`Source::Live`]: crate::capability::Source::Live
 //! [`SubscriberPlan::calls_through`]: jadpo_std::subscriber::SubscriberPlan::calls_through
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::budget::Budget;
 use crate::capability::{Ended, Logged, Source};
@@ -162,9 +162,6 @@ pub fn called(calls: &[Logged]) -> BTreeMap<String, Called> {
 pub(crate) struct Watch {
     /// The connections it is the probe of, with the pauses so far.
     probes: Vec<(String, u32)>,
-    /// The connections whose breaker has a run to end or deliveries to
-    /// release, so an answer from their provider closes it.
-    open: BTreeSet<String>,
 }
 
 /// Whether a claimed delivery runs or is held.
@@ -179,7 +176,6 @@ pub(crate) enum Gate {
 struct Row {
     connection: String,
     state: String,
-    failures: i32,
     probe_at: Option<i64>,
     probe_until: Option<i64>,
 }
@@ -220,15 +216,10 @@ pub(crate) async fn gate(
     };
     let rows: Vec<Row> = rows
         .iter()
-        .filter_map(|row| match (row.first(), row.get(1), row.get(2)) {
-            (
-                Some(SqlValue::Text(connection)),
-                Some(SqlValue::Text(state)),
-                Some(SqlValue::Int4(failures)),
-            ) => Some(Row {
+        .filter_map(|row| match (row.first(), row.get(1)) {
+            (Some(SqlValue::Text(connection)), Some(SqlValue::Text(state))) => Some(Row {
                 connection: connection.clone(),
                 state: state.clone(),
-                failures: *failures,
                 probe_at: millis(row.get(3)),
                 probe_until: millis(row.get(4)),
             }),
@@ -242,9 +233,6 @@ pub(crate) async fn gate(
             OPEN if row.probe_at.is_none_or(|at| at <= now) => due.push(row),
             PROBING if row.probe_until.is_none_or(|until| until <= now) => due.push(row),
             OPEN | PROBING => hold = hold.or(Some(row.connection.as_str())),
-            _ if row.failures > 0 => {
-                watch.open.insert(row.connection.clone());
-            }
             _ => {}
         }
     }
@@ -274,7 +262,6 @@ pub(crate) async fn gate(
                     Some(SqlValue::Int4(n)) => u32::try_from(*n).unwrap_or(0),
                     _ => 0,
                 };
-                watch.open.insert(row.connection.clone());
                 watch.probes.push((row.connection.clone(), pauses));
             }
             // Another delivery took the probe first: this one waits.
@@ -358,7 +345,10 @@ pub(crate) async fn record(
                     )
                     .await;
             }
-            Called::Answered if watch.open.contains(connection) => {
+            // Whatever its breaker was at the claim: one that opened while
+            // the delivery ran closes on its answer too (area 12; chunk
+            // 7.9c). A closed breaker with no run is left as it is.
+            Called::Answered => {
                 let _ = database
                     .query_once(
                         &succeeded_sql(),
@@ -366,7 +356,6 @@ pub(crate) async fn record(
                     )
                     .await;
             }
-            Called::Answered => {}
         }
     }
     for (connection, _) in &watch.probes {
@@ -504,6 +493,42 @@ mod tests {
         assert_eq!(went.get("mail"), None);
         assert_eq!(went.get("files"), None);
         assert_eq!(went.get("maps"), None);
+    }
+
+    /// A store that keeps each statement run on its own and answers none.
+    #[derive(Default)]
+    struct Statements(std::cell::RefCell<Vec<String>>);
+
+    impl Database for Statements {
+        fn begin_at(
+            &self,
+            _isolation: crate::Isolation,
+        ) -> crate::LocalFuture<'_, Result<Box<dyn crate::Transaction>, StoreError>> {
+            Box::pin(async { Err(StoreError::Unavailable) })
+        }
+
+        fn query_once<'a>(
+            &'a self,
+            sql: &'a str,
+            _params: &'a [SqlValue],
+        ) -> crate::LocalFuture<'a, Result<Vec<crate::Row>, StoreError>> {
+            self.0.borrow_mut().push(sql.to_string());
+            Box::pin(async { Ok(Vec::new()) })
+        }
+    }
+
+    /// A delivery claimed while its connection's breaker was closed with
+    /// no failures, which the breaker opened on while it ran, closes it
+    /// when its provider answers, releasing what it held (area 12, "A
+    /// delivery already running when the breaker opened finishes, and its
+    /// answer closes the breaker too"; Phase 7 review, chunk 7.9c).
+    #[test]
+    fn an_answer_to_a_delivery_claimed_before_the_breaker_opened_closes_it() {
+        let store = Statements::default();
+        let calls = [logged("couriers", Source::Live, Ended::Answered)];
+        crate::block_on(record(&store, &Watch::default(), [1; 16], &calls, 0))
+            .expect("nothing waits");
+        assert_eq!(store.0.borrow().as_slice(), [succeeded_sql()]);
     }
 
     #[test]

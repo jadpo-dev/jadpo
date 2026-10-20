@@ -8,7 +8,7 @@
 //!   <connection>.<poll>`. One statement takes a poll that is due, or has
 //!   never run, and moves it to its next time, so of several instances
 //!   ticking only one calls it. A poll whose interval was shortened since
-//!   is due at once.
+//!   it was claimed, the interval kept on its row, is due at once.
 //! - **Called as the runtime's own work**: its operation, which takes
 //!   nothing, through its connection with its credential and host, as the
 //!   system, with no request, logged as any call is and capped by the
@@ -41,9 +41,12 @@ use crate::{Ctx, Executor, SqlValue, StoreError};
 pub const AGAIN_MS: i64 = 60_000;
 
 /// Takes poll `$1` at `$2` when it is due, or has never run, moving it to
-/// `$3`, its next time; and when it was due later than that, its interval
-/// shortened since. The digest of the event it last kept.
-pub const CLAIM: &str = "INSERT INTO \"jadpo_polls\" AS \"p\" (\"poll\", \"next_at\") VALUES ($1, $3) ON CONFLICT (\"poll\") DO UPDATE SET \"next_at\" = $3 WHERE \"p\".\"next_at\" <= $2 OR \"p\".\"next_at\" > $3 RETURNING \"p\".\"digest\"";
+/// `$3`, its next time, under interval `$4`; and when it was claimed
+/// under another interval and is due later than `$3`, its interval
+/// shortened since. A claim under the same interval is due only at its
+/// time, so neither a second tick nor an instance whose clock is behind
+/// takes it again (chunk 7.9c). The digest of the event it last kept.
+pub const CLAIM: &str = "INSERT INTO \"jadpo_polls\" AS \"p\" (\"poll\", \"next_at\", \"every_ms\") VALUES ($1, $3, $4::bigint) ON CONFLICT (\"poll\") DO UPDATE SET \"next_at\" = $3, \"every_ms\" = $4::bigint WHERE \"p\".\"next_at\" <= $2 OR (\"p\".\"every_ms\" IS DISTINCT FROM $4::bigint AND \"p\".\"next_at\" > $3) RETURNING \"p\".\"digest\"";
 
 /// Poll `$1`, whose call failed, due again at `$2`.
 pub const AGAIN: &str = "UPDATE \"jadpo_polls\" SET \"next_at\" = $2 WHERE \"poll\" = $1";
@@ -98,6 +101,7 @@ pub async fn poll(executor: &dyn Executor, budget: &Budget<'_>, now: i64) -> Pol
                     SqlValue::Text(plan.key()),
                     micros(now),
                     micros(now.saturating_add(every)),
+                    SqlValue::Int8(every),
                 ],
             )
             .await;
