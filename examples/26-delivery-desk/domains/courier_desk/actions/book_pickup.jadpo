@@ -5,14 +5,22 @@
 // action's first read or write, while no transaction is open.
 
 use app { couriers }
+use courier_desk/types { BookedPickup, PickupForm }
 use courier_desk/failures { PickupSlotGone }
 use shared/providers/swift_couriers
 
 /// Books a pickup with the courier.
-action book_pickup(
-    request: SwiftCouriers.PickupRequest
-) fails PickupSlotGone -> SwiftCouriers.Pickup {
-    return attempt couriers.pickups.create(request) {
+action book_pickup(form: PickupForm) fails PickupSlotGone -> BookedPickup {
+    var pickup: SwiftCouriers.Pickup = attempt couriers.pickups.create(
+        SwiftCouriers.PickupRequest {
+            postcode: form.postcode
+            slot: form.slot
+        }
+    ) {
         slot_taken: PickupSlotGone
+    }
+    return BookedPickup {
+        id: pickup.id
+        collect_at: pickup.collect_at
     }
 }
