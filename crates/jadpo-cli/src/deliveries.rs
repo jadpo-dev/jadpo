@@ -289,6 +289,7 @@ impl Project {
         let schema = jadpo_check::data::schema(&loaded.db, loaded.project);
         let deliveries = jadpo_std::system::DELIVERIES.table;
         let runs = jadpo_std::system::SCHEDULE_RUNS.table;
+        let messages = jadpo_std::system::PARKED_MESSAGES.table;
         let stores = schema
             .stores
             .iter()
@@ -298,10 +299,11 @@ impl Project {
                     Holds {
                         deliveries: store.tables.contains_key(deliveries),
                         runs: store.tables.contains_key(runs),
+                        messages: store.tables.contains_key(messages),
                     },
                 )
             })
-            .filter(|(_, holds)| holds.deliveries || holds.runs)
+            .filter(|(_, holds)| holds.deliveries || holds.runs || holds.messages)
             .collect();
         let schedules = jadpo_check::schedules::schedules(&loaded.db, loaded.project)
             .iter()
@@ -485,6 +487,7 @@ fn subject(project: &Project, item: &Item) -> String {
             bare(&item.target)
         ),
         Kind::ScheduleRun => format!("`{}`", project.schedule_name(&item.target)),
+        Kind::Message => format!("the message from `{}`", item.target),
     }
 }
 
@@ -497,6 +500,12 @@ fn item_cell(project: &Project, item: &Item) -> String {
             bare(&item.target)
         ),
         Kind::ScheduleRun => format!("schedule {}", project.schedule_name(&item.target)),
+        // A parked queue message (chunk 7.7c): its queue, and the event it
+        // was read as when it got that far.
+        Kind::Message => match item.event.as_deref() {
+            Some(event) => format!("queue {} · {}", item.target, bare(event)),
+            None => format!("queue {}", item.target),
+        },
     }
 }
 
@@ -591,14 +600,21 @@ fn item_json(project: &Project, store: &str, item: &Item) -> Json {
             "subscriber",
             match item.kind {
                 Kind::Delivery => Json::from(item.target.as_str()),
-                Kind::ScheduleRun => Json::Null,
+                Kind::ScheduleRun | Kind::Message => Json::Null,
             },
         ),
         (
             "schedule",
             match item.kind {
                 Kind::ScheduleRun => Json::from(project.schedule_name(&item.target).as_str()),
-                Kind::Delivery => Json::Null,
+                Kind::Delivery | Kind::Message => Json::Null,
+            },
+        ),
+        (
+            "queue",
+            match item.kind {
+                Kind::Message => Json::from(item.target.as_str()),
+                Kind::Delivery | Kind::ScheduleRun => Json::Null,
             },
         ),
         (
@@ -982,8 +998,14 @@ fn list_screen(
                     format!("jadpo deliveries retry {id}"),
                     "runs it again, once the cause is fixed",
                 ),
+                Kind::Message => (
+                    format!("jadpo deliveries retry {id}"),
+                    "reads it again, once the package or the app is fixed",
+                ),
             }),
-            PENDING => Some((format!("jadpo deliveries cancel {id}"), "stops it running")),
+            PENDING if item.kind != Kind::Message => {
+                Some((format!("jadpo deliveries cancel {id}"), "stops it running"))
+            }
             _ => None,
         }
     });
@@ -1107,6 +1129,9 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
                 (Kind::ScheduleRun, _) => {
                     runtime::settle_run(database, &host, &item, action, &operator, now).await
                 }
+                (Kind::Message, _) => {
+                    runtime::act_on_message(database, &host, &item, action, &operator, now).await
+                }
             }
         })
     });
@@ -1151,6 +1176,10 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
             "Resolved `{id}` as not done: the app's next tick sends {} again",
             delivery_words(&item)
         ),
+        (Kind::Message, Action::Retry) => {
+            format!("Queued `{id}` for retry: the app's next tick reads {subject} again")
+        }
+        (Kind::Message, _) => format!("Dismissed `{id}`: {subject} won't be kept"),
         (Kind::ScheduleRun, Action::Cancel) => {
             format!("Cancelled `{id}`: the run asked of {subject} won't happen")
         }
@@ -1210,7 +1239,27 @@ fn wrong_state(project: &Project, item: &Item, action: Action, id: &str) -> Diag
     let what = match item.kind {
         Kind::Delivery => format!("Its delivery of {}", delivery_words(item)),
         Kind::ScheduleRun => format!("This run of {}", subject(project, item)),
+        Kind::Message => {
+            let words = subject(project, item);
+            let mut chars = words.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_ascii_uppercase().to_string() + chars.as_str()
+            })
+        }
     };
+    if item.kind == Kind::Message && !matches!(action, Action::Retry | Action::Dismiss) {
+        return Diagnostic::new(
+            &rule::DELIVERIES_WRONG_STATE,
+            format!("`{id}` is a parked message, which is only retried or dismissed"),
+        )
+        .reason(format!(
+            "{what} {}. A queue message parked for an operator is read again with `retry`, or set aside with `dismiss`.",
+            state_words(&item.state)
+        ))
+        .next(format!(
+            "Run `jadpo deliveries retry {id}`, or `jadpo deliveries dismiss {id}`"
+        ));
+    }
     let (message, applies) = match action {
         Action::Retry => (
             format!("`{id}` hasn't failed, so there is nothing to retry"),
@@ -1236,6 +1285,9 @@ fn wrong_state(project: &Project, item: &Item, action: Action, id: &str) -> Diag
         OUTCOME_UNKNOWN => format!(
             "Check with the provider, then run `jadpo deliveries resolve {id} --done` or `--not-done`"
         ),
+        PENDING if item.kind == Kind::Message => {
+            "Wait for the app's next tick to read it again".to_string()
+        }
         PENDING => format!("Wait for it to run, or run `jadpo deliveries cancel {id}`"),
         RUNNING => "Wait for it to end, then run `jadpo deliveries` again".to_string(),
         _ => "Run `jadpo deliveries` to see what needs an operator".to_string(),

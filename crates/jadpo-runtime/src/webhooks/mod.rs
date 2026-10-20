@@ -36,9 +36,7 @@ mod handshake;
 pub mod replies;
 pub mod sns;
 
-use jadpo_std::provider::{
-    SignatureScheme, WebhookEvent, WebhookHandshake, WebhookPlan, WireEncoding,
-};
+use jadpo_std::provider::{SignatureScheme, WebhookHandshake, WebhookPlan, WireEncoding};
 use jadpo_value::Value;
 use jadpo_value::json::{Path, Problem};
 
@@ -561,7 +559,7 @@ async fn receive(
     if let serde_json::Value::Object(members) = &mut json {
         members.insert(crate::webhooks::OCCURRED_AT.to_string(), occurred);
     }
-    let value = match read(webhooks.json, event, &json, &numbers) {
+    let value = match read(webhooks.json, event.number, &json, &numbers) {
         Ok(value) => value,
         Err(problems) => return invalid_input(request_id, &problems),
     };
@@ -589,8 +587,14 @@ async fn receive(
     if payload.len() > crate::outbox::MAX_EVENT_BYTES {
         return failure(EVENT_TOO_LARGE, request_id, None);
     }
-    match keep(executor, plan, event, ctx, &id, value, payload).await {
+    let kept = Kept {
+        store: &plan.store,
+        source: source(plan),
+        event: &event.key,
+    };
+    match keep(executor, &kept, ctx, &id, value, payload).await {
         Ok(deliveries) => {
+            let deliveries = deliveries.unwrap_or_default();
             if !deliveries.is_empty() {
                 ctx.defer(crate::runner::Deferred::Deliveries(deliveries));
             }
@@ -648,15 +652,16 @@ fn instant(sent: &serde_json::Value) -> Option<serde_json::Value> {
     jadpo_value::json::from_wire(encoding, sent).ok()
 }
 
-/// The value `json`, a webhook's body, holds as `event`, read with its
-/// codec on the provider's wire; each problem by field and rule otherwise.
-fn read(
+/// The value `json`, a webhook's body or a queue's message, holds as the
+/// event numbered `number`, read with its codec on the provider's wire;
+/// each problem by field and rule otherwise.
+pub(crate) fn read(
     json: JsonCodecs<'_>,
-    event: &WebhookEvent,
+    number: u32,
     body: &serde_json::Value,
     numbers: &jadpo_value::json::Numbers,
 ) -> Result<Value, Vec<Problem>> {
-    let Some(codec) = json.codec_of(event.number) else {
+    let Some(codec) = json.codec_of(number) else {
         return Err(vec![Problem {
             field: String::new(),
             rule: "type".into(),
@@ -701,19 +706,26 @@ impl jadpo_value::json::Coder for Wire {
     fn unwritten(&self, _rule: &str) {}
 }
 
-/// Keeps event `value` with the provider's id `id` in `plan`'s store: its
-/// id recorded, then its outbox row and a delivery for each subscriber,
-/// in one transaction; nothing for a repeat. The deliveries to make once
-/// it commits.
-async fn keep(
+/// Where an event received from outside is kept: its store, the source
+/// its id is recorded under, and its event type's key.
+pub(crate) struct Kept<'a> {
+    pub(crate) store: &'a str,
+    pub(crate) source: String,
+    pub(crate) event: &'a str,
+}
+
+/// Keeps event `value` with the sender's id `id` as `kept` says: its id
+/// recorded, then its outbox row and a delivery for each subscriber, in
+/// one transaction; nothing for a repeat. The deliveries to make once it
+/// commits.
+pub(crate) async fn keep(
     executor: &dyn Executor,
-    plan: &WebhookPlan,
-    event: &WebhookEvent,
+    kept: &Kept<'_>,
     ctx: &mut Ctx<'_>,
     id: &str,
     value: Value,
     payload: String,
-) -> Result<Vec<Delivery>, StoreError> {
+) -> Result<Option<Vec<Delivery>>, StoreError> {
     let now = ctx.now();
     let trace = ctx.trace();
     let subscribers: Vec<String> = executor
@@ -721,7 +733,7 @@ async fn keep(
         .map(|events| {
             events
                 .plan
-                .subscribers_of(&event.key)
+                .subscribers_of(kept.event)
                 .map(|subscriber| subscriber.key.clone())
                 .collect()
         })
@@ -732,7 +744,7 @@ async fn keep(
         ));
     };
     let mut sealed = Sealed {
-        outbox: vec![(outbox, event.key.clone(), payload)],
+        outbox: vec![(outbox, kept.event.to_string(), payload)],
         deliveries: Vec::with_capacity(subscribers.len()),
     };
     for subscriber in subscribers {
@@ -742,11 +754,11 @@ async fn keep(
             ));
         };
         sealed.deliveries.push(Delivery {
-            store: plan.store.clone(),
+            store: kept.store.to_string(),
             id: delivery,
             outbox,
             subscriber,
-            event: event.key.clone(),
+            event: kept.event.to_string(),
             value: value.clone(),
             emitted_at: now,
             trace,
@@ -755,14 +767,14 @@ async fn keep(
     }
     let database = ctx
         .capabilities()
-        .database(&plan.store)
-        .ok_or_else(|| StoreError::Fault(format!("no store called `{}`", plan.store)))?;
+        .database(kept.store)
+        .ok_or_else(|| StoreError::Fault(format!("no store called `{}`", kept.store)))?;
     let mut transaction = database.begin_at(Isolation::ReadCommitted).await?;
     let first = transaction
         .query(
             RECEIVE,
             &[
-                SqlValue::Text(source(plan)),
+                SqlValue::Text(kept.source.clone()),
                 SqlValue::Text(id.to_string()),
                 crate::outbox::micros(now),
             ],
@@ -771,7 +783,7 @@ async fn keep(
     match first {
         Ok(rows) if rows.is_empty() => {
             transaction.rollback().await?;
-            return Ok(Vec::new());
+            return Ok(None);
         }
         Ok(_) => {}
         Err(error) => {
@@ -784,7 +796,7 @@ async fn keep(
         return Err(error);
     }
     transaction.commit().await?;
-    Ok(sealed.deliveries)
+    Ok(Some(sealed.deliveries))
 }
 
 /// Where a webhook's events come from, as their ids are recorded:

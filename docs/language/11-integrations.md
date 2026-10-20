@@ -3277,6 +3277,15 @@ receiving: {
   the Wrangler configuration) and a package from a native server (its HTTP
   pull API); Kafka is a built-in driver in a later release.
 
+> **Built (chunk 7.7c)**, with its choices under "Chosen in chunk 7.7c"
+> below: `receiving:` with `type_at:`, `id_at:` and `events:`, an app
+> event's `wire_name:`, a package's `provides/receiving.jadpo`, each
+> message kept once as its event and then acknowledged, the ones that
+> can't be kept parked for `jadpo deliveries`, and the SQS package
+> (`packages/amazon_sqs`), its calls in AWS's JSON protocol signed with
+> Signature Version 4. The Cloudflare Queues driver on Workers is chunk
+> 7.7c2.
+
 ### Senders with no package
 
 A system that signs webhooks and has no package gets the app's own
@@ -4162,7 +4171,7 @@ error: `provider` has no key `host:`
   |
 3 |     host: "https://api.acme-couriers.example"
   |     ^^^^ not a provider key
-  reason: `provider { }` has one fixed set of keys: `protocol:`, `hosts:`, `runs:`, `credential:`, `oauth:`, `idempotency:`, `error_code:`, `webhooks:`, `polls:`, `erasure:`, `max_concurrent:`, `settings:`, `imported:` and `description:`. Did you mean `hosts:`?
+  reason: `provider { }` has one fixed set of keys: `protocol:`, `hosts:`, `runs:`, `credential:`, `oauth:`, `idempotency:`, `error_code:`, `webhooks:`, `polls:`, `erasure:`, `max_concurrent:`, `settings:`, `imported:`, `description:` and `aws:`. Did you mean `hosts:`?
   next: Use `hosts:` instead of `host:` (agent)
   rule: package.provider_invalid
   help: docs/language/11-integrations.html#package-provider-invalid
@@ -6916,7 +6925,7 @@ side (below); the rest is still to build.
 | No transaction open during a call | 7.4 |
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
 | Package subscribers on their own webhooks and the events they emit, polls, `max_concurrent:`, recipes compiled against `sample/` at publish | 7.6b |
-| Package's services; several changing calls in one action; receiving (queues, chunk 7.7c; webhooks as events built in 7.7, replies and handshakes in 7.7b); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package's services; several changing calls in one action; receiving (the Cloudflare Queues driver, chunk 7.7c2; webhooks as events built in 7.7, replies and handshakes in 7.7b, queues through a package in 7.7c); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -8044,6 +8053,98 @@ replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
   non-public package event is kept and reaches no subscriber, subscribing
   to one being `package.not_public`; package subscribers come with 7.6.
 
+### Chosen in chunk 7.7c
+
+Queues through `receiving` (the first part of chunk 7.7c, split on
+2026-10-20: the Cloudflare Queues driver on Workers is 7.7c2), each the
+most conservative reading:
+
+- **When a message is acknowledged.** Once the transaction keeping its
+  event commits: in one read-committed transaction in the events' store,
+  its id is recorded under `queue <connection>` in `jadpo_received_events`
+  and its outbox row and a delivery for each subscriber are written, as a
+  webhook's are; then the message is deleted from the queue. Its
+  subscribers run from the outbox with their usual retries, and one that
+  gives up is parked as any delivery is, so "after the subscriber's
+  transaction commits" is read as the transaction that hands the event to
+  them; tying the message to each subscriber's run would keep a second
+  retry budget beside the outbox's. A repeat, its id recorded already, is
+  deleted and keeps nothing. Ids are deleted by the tick after 30 days, as
+  a webhook's are.
+- **Parked, never dropped.** A message whose type the queue doesn't list
+  (`unlisted_type`), one that can't be read as its event (`unreadable`:
+  not JSON, no id or type where the queue says, a field its event refuses,
+  each problem kept by field and rule, never a value) and one over 64 KB as
+  its event (`too_large`) are kept whole in `jadpo_parked_messages`, once
+  per queue and body, and deleted from the queue. `jadpo deliveries` lists
+  each as `failed` (`queue warehouse_queue · OrderShipped`, its reason as
+  the code); `retry` makes it `pending` and the app's next tick reads it
+  again with the build running then, keeping it or parking it again;
+  `dismiss` sets it aside, deleted by the tick 30 days later. A message the
+  store can't take now is left on the queue, which sends it again, and the
+  queue's own dead-letter queue takes one that keeps failing.
+- **Reading a message.** Its body is JSON; its id is the text or whole
+  number at `id_at:`, its type the text at `type_at:`, matched against
+  each listed event's `wire_name:`; a queue of one kind has no type. The
+  event is read from the body's root, every member it doesn't declare left
+  out, the queue's own id and type among them, as a webhook's are.
+- **Naming the events.** `events:` names each event as code does: the
+  app's own imported on a `use` line in `app.jadpo` (`use stock/events {
+  OrderShipped }`), or a package's public one as `Package.Event`. With
+  `type_at:` each gives a text `wire_name:`, no two alike; without it the
+  queue lists one event. Anything else is `receiving.invalid`, and with no
+  store to keep the events in, `event.store_required`.
+- **When it is received.** On the tick: each queue is asked for up to ten
+  messages at a time, again while a batch comes back full, at most ten
+  times a tick, within the tick's budget; up to 20 parked messages an
+  operator retried are read first. An app that receives a queue ticks at
+  least every 10 seconds. On Workers the queue's consumer is handed
+  batches instead (7.7c2).
+- **How a package provides it.** `provides/receiving.jadpo` holds
+  `provide receiving` with `receive:` (`call:`, `input:`, `messages:
+  response.<field>`, `body: item.<field>`, `handle: item.<field>`) and
+  `acknowledge:` (`call:`, `input:` with `message.handle`). Each input is
+  keyed by the operation's input field and given `settings.<name>`, a
+  setting the package declares, or text, a whole number or a flag; every
+  required field is mapped, the list is a list of objects, and the body and
+  the handle are text. An operation whose answer the package's own
+  `decode:` reads can't be mapped. Problems are `package.provider_invalid`
+  in the mapping's file. Other capabilities' mappings stay
+  `toolchain.not_built_yet`. An installed package's resources a mapping
+  calls are loaded with it.
+- **AWS's JSON protocol.** `Protocol.aws_json` sends every call as a
+  `POST` with `Content-Type: application/x-amz-json-1.0`, its body the
+  input (`{}` without one), naming the operation in `X-Amz-Target:
+  <target>.<Operation>`, its name in UpperCamelCase
+  (`receive_message` is `ReceiveMessage`). A refusal's code at
+  `error_code:` is AWS's error type, read after its `#` in
+  lower_snake_case (`com.amazonaws.sqs#QueueDoesNotExist` is
+  `queue_does_not_exist`). A new provider key, `aws: { service: target:
+  }`, names the service requests are signed for and the operations'
+  prefix; `aws_json` needs `target:` and `aws_sigv4` needs `service:`
+  (`package.provider_invalid`).
+- **AWS Signature Version 4.** `CredentialScheme.aws_sigv4` signs every
+  header but `user-agent`, with `Host` and `X-Amz-Date`, over the body's
+  SHA-256, as AWS's published test suite and worked example sign, which
+  its tests check. The connection gives `credential: { key_id:
+  config.<name>  secret: config.<name> }`, the secret a secret setting
+  (`connection.value_invalid` otherwise). The region is read from an AWS
+  host, `<service>.<region>.amazonaws.com`, and is `us-east-1` for any
+  other, as AWS's own tools sign for a local emulator; host placeholders
+  wait for a package with fixed regional hosts, so the SQS package's
+  connection gives its endpoint with `host:`. The secret appears in no
+  header, problem or log line.
+- **A member a provider leaves out.** On a provider's wire, a field its
+  type may hold `none` in reads as `none` when the provider leaves its
+  member out, as SQS leaves `Messages` out of an empty receive; the app's
+  own contract still needs the member.
+- **The SQS package**, `AmazonSqs.v2012_11_05`, is in this repository at
+  `packages/amazon_sqs` and is installed with `jadpo package add`; it maps
+  `ReceiveMessage` and `DeleteMessage`, marking `ReceiveMessage` safe to
+  send again, since repeating it only hides other messages for a while.
+  Its tests run against a local fake of SQS's JSON API that checks each
+  signature (`crates/jadpo-cli/tests/receiving.rs`).
+
 ### Chosen in chunk 7.7b
 
 Webhook replies, handshakes, and Twilio's, Slack's and SNS's schemes,
@@ -8755,3 +8856,5 @@ packages and extension points, as each note says; 26 was decided then.
 | What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |
 | Webhook replies and handshakes (chunk 7.7b) | `SignatureScheme.slack` joins the built-in schemes, since no named one checks Slack; an SNS connection's `secret:` is its topic's ARN, a message from any other topic refused before its certificate is fetched; SNS's certificate fetched only from AWS's SNS hosts over HTTPS through the host's guard (no redirect, no private address) and kept a day; an SNS message refused once signed 30 days ago, as long as a received id is kept; Microsoft Graph's validation the one request answered unsigned; a reply kept after its action commits, not in its transaction (decided by the building session; details under "Chosen in chunk 7.7b") | 2026-10-20 |
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
+| Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
+| `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |

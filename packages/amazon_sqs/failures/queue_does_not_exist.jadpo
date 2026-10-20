@@ -1,0 +1,5 @@
+/// The queue the connection names doesn't exist.
+public type QueueDoesNotExist = Failure {
+    kind: FailureKind.not_found
+    message: "The queue doesn't exist."
+}

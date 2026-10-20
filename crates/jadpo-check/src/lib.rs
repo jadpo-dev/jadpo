@@ -36,6 +36,7 @@ pub mod policy;
 pub mod prompts;
 pub mod providers;
 pub mod publishing;
+pub mod receiving;
 pub mod records;
 mod resolve;
 pub mod routes;
@@ -261,6 +262,8 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 .cloned(),
         );
         out.extend(webhooks::webhooks(db, project).problems.iter().cloned());
+        out.extend(receiving::mappings(db, project).problems.iter().cloned());
+        out.extend(receiving::receiving(db, project).problems.iter().cloned());
         out.extend(types::call_problems(db, project).iter().cloned());
         out.extend(
             data::migrations::migration_problems(db, project)

@@ -2672,6 +2672,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             columns::system_table(&system::RECEIVED_EVENTS),
         );
     }
+    // A queue's events are kept as a webhook's are, with the ids received
+    // and the messages parked for an operator beside them (chunk 7.7c).
+    if let Some(store) = crate::receiving::store(db, project)
+        && let Some(found) = schema.stores.get_mut(&store)
+    {
+        for system in [&system::RECEIVED_EVENTS, &system::PARKED_MESSAGES] {
+            found
+                .tables
+                .insert(system.table.to_string(), columns::system_table(system));
+        }
+    }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).
     if let Some(store) = crate::identity::identity(db, project).sessions_store()
