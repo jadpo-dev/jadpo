@@ -384,7 +384,7 @@ impl Body<'_> {
                 .collect();
             let near = nearest(prompt, known.iter().map(String::as_str));
             let mut problem = invalid(format!("`{prompt}` isn't a prompt"), span, "no such prompt")
-                .reason("`fakes: { ai.<prompt>: [...] }` scripts a model's answers to a prompt, named as its type's name in lower_snake_case, `answer_question` for `AnswerQuestion`.");
+                .reason("`fakes: { ai.<prompt>: [...] }` scripts a model's answers to a prompt, named as its type's name in lower_snake_case.");
             problem = match near {
                 Some(near) => problem.next(format!("Use `ai.{near}` instead of `{written}`")),
                 None => problem.next(format!("Remove `{written}:`")),
@@ -481,7 +481,7 @@ impl Body<'_> {
                             let at = self.arg_list_span(call);
                             self.out.push(
                                 invalid("`raw` takes the text the model answers with".to_string(), at, "not one text")
-                                    .reason("`raw(\"...\")` scripts the text a model answers with, which runs through the call's real decoding and repair, so a test can script an answer that doesn't decode.")
+                                    .reason("`raw(\"...\")` scripts the text a model answers with, which runs through the call's real decoding and correction, so a test can script an answer that doesn't decode.")
                                     .next("Write `raw(\"{\\\"reply\\\": 1}\")`, with the text the model answers"),
                             );
                         }

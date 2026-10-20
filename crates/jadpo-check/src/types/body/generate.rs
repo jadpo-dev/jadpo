@@ -320,9 +320,9 @@ impl Body<'_> {
                 )
                 .at(self.span(value), "not a type")
                 .reason(format!(
-                    "`{written}` decodes the model's answer into the type `as:` names, written out, such as `as: SupportAnswer`: a value can't say which type to read."
+                    "`{written}` decodes the model's answer into the type `as:` names, written out, such as `as: <Type>`: a value can't say which type to read."
                 ))
-                .next("Write the type itself, such as `as: SupportAnswer`"),
+                .next("Write the type itself, `as: <Type>`"),
             );
             return None;
         };
@@ -572,8 +572,8 @@ impl Body<'_> {
                 written,
                 "attempts",
                 "a whole number from 1 to 3, written out",
-                "`attempts:` is how many answers the call asks for in all while one doesn't decode into its type, each after the first sent the problem with the one before; each counts against every limit. Without it the call asks twice: an answer, and one repair.",
-                "Write `attempts: 3`, or leave it out for one repair",
+                "`attempts:` is how many answers the call asks for in all while one doesn't decode into its type, each after the first sent the problem with the one before; each counts against every limit. Without it the call asks twice: an answer, and one corrected.",
+                "Write `attempts: 3`, or leave it out to correct an answer once",
             );
         }
         options.attempts = given;
@@ -634,7 +634,7 @@ impl Body<'_> {
                 format!("`{prompt}` isn't a prompt"),
             )
             .at(span, "no such prompt")
-            .reason("`ai.<prompt>.requests` names a prompt by its name, its type's name in lower_snake_case, `answer_question` for `AnswerQuestion`.");
+            .reason("`ai.<prompt>.requests` names a prompt by its name, its type's name in lower_snake_case.");
             problem = match near {
                 Some(near) => problem.next(format!("Use `ai.{near}.requests`")),
                 None => problem.next("Name one of the project's prompts"),

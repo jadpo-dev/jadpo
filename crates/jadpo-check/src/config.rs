@@ -1362,7 +1362,9 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                                 crate::ai::model_connections(db, project)
                                     .list
                                     .iter()
-                                    .filter(|found| settings.connection.as_ref() == Some(&found.name))
+                                    .filter(|found| {
+                                        settings.connection.as_ref() == Some(&found.name)
+                                    })
                                     .filter_map(|found| match &found.url {
                                         Some(crate::ai::ModelUrl::Setting(name)) => {
                                             Some(name.clone())

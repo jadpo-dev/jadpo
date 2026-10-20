@@ -433,7 +433,9 @@ fn a_model_asked_with_no_attempt_is_reported() {
     )]);
     assert_eq!(
         of("failure.attempt_required", found),
-        ["domains/support/actions/draft.jadpo failure.attempt_required: `ai.generate(...)` can fail at runtime, and nothing handles it"]
+        [
+            "domains/support/actions/draft.jadpo failure.attempt_required: `ai.generate(...)` can fail at runtime, and nothing handles it"
+        ]
     );
 }
 

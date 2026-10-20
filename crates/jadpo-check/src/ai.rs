@@ -559,7 +559,7 @@ pub fn schema(
     if !done.is_empty() {
         root.set("$defs", defs);
     }
-    tidied(&mut root);
+    without_openapi_words(&mut root);
     Some((root.to_document(), object))
 }
 
@@ -590,7 +590,7 @@ fn described(graph: &Graph, key: &Key, schema: &mut Value) {
 }
 
 /// OpenAPI's own words taken out, and references pointed at `$defs`.
-fn tidied(json: &mut Value) {
+fn without_openapi_words(json: &mut Value) {
     match json {
         Value::Object(members) => {
             members.retain(|name, _| !name.starts_with("x-"));
@@ -600,12 +600,12 @@ fn tidied(json: &mut Value) {
                 *target = format!("#/$defs/{name}");
             }
             for member in members.values_mut() {
-                tidied(member);
+                without_openapi_words(member);
             }
         }
         Value::Array(items) => {
             for item in items {
-                tidied(item);
+                without_openapi_words(item);
             }
         }
         _ => {}
