@@ -734,6 +734,7 @@ fn write(loaded: &Loaded, cwd: &Path, accept: Option<String>) -> Reply {
                 Change::Recorded => "recorded",
                 Change::Reworded => "reworded, acceptance dropped",
                 Change::Removed => "removed, its translation is gone",
+                Change::Moved => "moved with its wording to the package's new key",
                 Change::Accepted => "accepted",
                 Change::StillStale => "still stale, reword it first",
             };
@@ -741,7 +742,7 @@ fn write(loaded: &Loaded, cwd: &Path, accept: Option<String>) -> Reply {
                 Change::Recorded | Change::Reworded => recorded += 1,
                 Change::Accepted => accepted += 1,
                 Change::StillStale => stale += 1,
-                Change::Removed => {}
+                Change::Removed | Change::Moved => {}
             }
             rows.push((format!("{locale}.{member}"), what.to_string()));
         }
@@ -800,6 +801,7 @@ fn write(loaded: &Loaded, cwd: &Path, accept: Option<String>) -> Reply {
                                 Change::Recorded => "recorded",
                                 Change::Reworded => "reworded",
                                 Change::Removed => "removed",
+                                Change::Moved => "moved",
                                 Change::Accepted => "accepted",
                                 Change::StillStale => "still_stale",
                             }),

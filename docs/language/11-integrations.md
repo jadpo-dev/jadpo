@@ -551,9 +551,10 @@ action read_typed_postcode(
 A name without its version while two are held is
 `package.version_needed`; once the old version goes, a name that still
 carries the version is `package.version_unneeded`, whose edit drops it
-(both under "Package errors"). Two versions of a package with
-translations side by side wait for a later chunk ("Chosen in chunk
-7.1c2").
+(both under "Package errors"). While two versions of a library package
+that carries translations are held, the app words each under a key
+carrying the version, `postcodes_v3: { }`, as its names carry it (built in
+chunk 7.1c3; area 10, "Jadpo's and packages' text").
 
 ### Names
 
@@ -4500,6 +4501,7 @@ side (below); the rest is still to build.
 | The package format (both kinds, `package.jadpo`, `provider.jadpo`, folders laid out as `shared/`, `public` and the reachability rule), `packages/<name>/<version>/` committed and checked against `jadpo.lock`, the app's own integrations in `shared/providers/`, reserved names, the surface and `jadpo package show`, the publishing bar | 7.1, 7.1b, 7.1b2 |
 | `connections:` to packages (`package:`, `domains:`, `credential:`, `environment:`, `host:`, settings) and the network report | 7.1c |
 | Lazy loading of a package's resources, cached per digest; two versions side by side, names carrying the version | 7.1c2 |
+| Two versions of a package with translations, each worded under a key carrying the version | 7.1c3 |
 | The OpenAPI importer (writing into `shared/providers/`, reading `x-jadpo` fields) | 7.2 |
 | Hand-written packages' wire and decoding, provider calls through the connection, derived idempotency keys | 7.2c |
 | Generated fakes, recordings checked by decoders, `jadpo package record`, provider calls faked in `jadpo dev`, `jadpo calls` | 7.2d |
@@ -4573,7 +4575,13 @@ side (below); the rest is still to build.
 > "Connecting in `app.jadpo`"). The errors are `package.version_needed` and
 > `package.version_unneeded` under "Package errors"; the choices are in
 > "Chosen in chunk 7.1c2" below, with one flagged for Richard
-> (translations side by side).
+> (translations side by side), since decided.
+
+> **Built (chunk 7.1c3).** Two versions of a library package with
+> translations side by side, the app wording each under
+> `<folder>_<version>` (`postcodes_v3: { }`) in the root files, the root
+> record and the translation commands, and the move between one version
+> and two; the choices are in area 10's "Chosen in chunk 7.1c3".
 
 > **Built (chunk 7.2).** `jadpo package import openapi <file>`: a local
 > OpenAPI 3 document read into the app's own integration in
@@ -4962,10 +4970,10 @@ What the pages leave to the build, each the most conservative reading:
 - **Translations side by side.** The app words a library package's
   messages under its folder's name (`postcodes: { }`, area 10), which two
   versions would share, so two versions of a package carrying
-  `translations/` are `toolchain.not_built_yet`. *Flagged for Richard:*
-  the pages don't say how an app rewords each version's messages apart.
-  Recommendation: the version joins the key while two are held
-  (`postcodes_v3: { }`), as it joins the names.
+  `translations/` were `toolchain.not_built_yet`. *Flagged for Richard,*
+  and decided as recommended (Decisions, "Wording two versions of a
+  package"): the version joins the key while two are held
+  (`postcodes_v3: { }`), as it joins the names; built in chunk 7.1c3.
 - **Lazy loading.** A package's index and `provider.jadpo` are always
   read; an installed package's `resources/<resource>.jadpo` is compiled
   only once code outside every package writes `<connection>.<resource>`

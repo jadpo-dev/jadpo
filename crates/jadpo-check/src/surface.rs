@@ -419,7 +419,7 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
         locales: crate::translations::packages::analyse_package(
             db,
             project,
-            crate::lookups::Name::new(db, home.name.clone()),
+            crate::lookups::Name::new(db, home.wording_key()),
         )
         .locales
         .iter()

@@ -263,7 +263,7 @@ action new_hint(reader_locale: Locale) -> PresentationText {
     assert_eq!(
         unknown,
         vec![
-            "`postcodes_v2` words `Postcodes.v2`, which the app no longer holds".to_string(),
+            "`postcodes_v2` words `Postcodes.v2`, which the app doesn't hold".to_string(),
             "`postcodes_v3` words package `Postcodes`, which is held in one version".to_string(),
         ],
         "{:#?}",
@@ -281,12 +281,19 @@ fn a_domain_can_t_take_a_version_s_key() {
     let mut extra = CALLS.to_vec();
     extra.push(ROOT_DE);
     extra.push(domain);
-    let found = lines(&check(&["v2", "v3"], &extra, &[]));
+    let found = check(&["v2", "v3"], &extra, &[]);
+    let taken: Vec<&Diagnostic> = found
+        .iter()
+        .filter(|d| d.rule.id == "package.name_taken")
+        .collect();
+    assert_eq!(taken.len(), 1, "{:#?}", lines(&found));
     assert!(
-        found
-            .iter()
-            .any(|p| p.contains("package.name_taken") && p.contains("domain `postcodes_v3`")),
-        "{found:#?}"
+        taken[0]
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("domain `postcodes_v3`")),
+        "{:#?}",
+        taken[0]
     );
 }
 
@@ -322,7 +329,9 @@ fn the_record_s_line_follows_the_wording_to_its_new_key() {
         &[("translations/sources.jadpo_record", &record)],
     );
     assert!(
-        !lines(&found).iter().any(|p| p.contains("translation.stale")),
+        !lines(&found)
+            .iter()
+            .any(|p| p.contains("translation.stale")),
         "{:#?}",
         lines(&found)
     );
