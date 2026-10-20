@@ -89,6 +89,12 @@ impl<'p> Capabilities<'p> {
         self.host.passkeys()
     }
 
+    /// The host's software authenticator, which only a test's has (area
+    /// 8, `test_passkeys`).
+    pub fn test_devices(&self) -> Option<&'p dyn crate::TestDevices> {
+        self.host.test_devices()
+    }
+
     /// Bytes for a new trace or span id at `now`, `chain` events deep: the
     /// host's, or worked out from the seed and the clock, without drawing
     /// on what `random` gives, so tracing never changes a test's values

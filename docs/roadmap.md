@@ -1187,7 +1187,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   mail package as a second connection proving the swap (`provides/email.jadpo`'s
   `provide email`, `limits: { attachments: }` checked against a `File`
   field's `max_size`); partials (`{{ include }}`), once where a partial is
-  declared is decided; `email.sent` in tests; the dev inbox in `jadpo dev`
+  declared is decided; `email.sent` in tests, with which area 8's
+  passkey route test recovers through the magic link (chunk 5.5z2); the
+  dev inbox in `jadpo dev`
   and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
   score, `jadpo check`'s warnings about templates that would fail it, and
   `jadpo email check-domain`.
@@ -1270,7 +1272,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   the answer; `FirstSignIn` and the events built in tests, fixtures and
   seeds. Live tests in `crates/jadpo-cli/tests/magic_links.rs`. Choices
   in area 8's "Sign-in events (chosen in chunk 7.3b4)".
-- [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
+- [x] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
   from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
@@ -1278,7 +1280,16 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and `.sign_in` with `TestPasskey` in route tests; `SignedIn` and
   `SignInRefused` for passkeys, `PasskeyAdded` and `PasskeyRemoved`. Done
   when a person with no passkey left recovers through a magic link and
-  adds a new one, in a route test written with `test_passkeys`.
+  adds a new one, in a route test written with `test_passkeys`. Built: the
+  check and area 8's example with magic links and a route test; the
+  device's name read from the address field; the passkey events published
+  through 7.3b4's code, committed with the session or passkey, refusals
+  logged; `test_passkeys` checked in tests only and run on the test
+  host's software authenticator. Recovery through the link's code is
+  proved live (`crates/jadpo-cli/tests/passkeys.rs`); in a route test
+  `as:` stands in for the link until `email.sent` (7.3c). Choices in area
+  8's "Passkey recovery, events and route tests (chosen in chunk
+  5.5z2)".
 - [x] **7.4 Outside calls hold no transaction** `opus · xhigh` (areas 6 and
   11, 2026-10-15): reads before a call in a read-only snapshot closed before
   it, the transaction opened after it, a write to a record loaded before the

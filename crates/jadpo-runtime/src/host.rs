@@ -265,6 +265,22 @@ pub trait Passkeys {
     ) -> Result<PasskeyParts, PasskeyError>;
 }
 
+/// A software authenticator (area 8, "In development and tests"; chunk
+/// 5.5z2): what a browser and a device do between a passkey route's
+/// options and the answer posted back, so `test_passkeys` drives the
+/// generated routes for real. Only a test's host has one: a `TestPasskey`
+/// exists nowhere else.
+pub trait TestDevices {
+    /// A new device in a browser at `origin`, making a passkey from the
+    /// registration `options` (`navigator.credentials.create`): the
+    /// device's number and its answer, as WebAuthn's `toJSON()` writes it.
+    fn create(&self, origin: &str, options: &str) -> Result<(u32, String), String>;
+
+    /// Device `device`'s answer to the sign-in `options`
+    /// (`navigator.credentials.get`).
+    fn get(&self, device: u32, options: &str) -> Result<String, String>;
+}
+
 /// What the runtime fetches from outside on its own account (area 11,
 /// "Receiving from outside"; chunk 7.7b): AWS SNS's signing certificate
 /// and its subscription confirmation. The runtime decides which addresses
@@ -308,6 +324,12 @@ pub trait Host {
     /// carries no WebAuthn implementation, whose passkey routes answer
     /// `authentication_misconfigured`.
     fn passkeys(&self) -> Option<&dyn Passkeys> {
+        None
+    }
+
+    /// The software authenticator `test_passkeys` drives the passkey
+    /// routes with (chunk 5.5z2): only a test's host has one.
+    fn test_devices(&self) -> Option<&dyn TestDevices> {
         None
     }
 
@@ -464,6 +486,10 @@ impl<H: Host + ?Sized> Host for &H {
 
     fn passkeys(&self) -> Option<&dyn Passkeys> {
         (**self).passkeys()
+    }
+
+    fn test_devices(&self) -> Option<&dyn TestDevices> {
+        (**self).test_devices()
     }
 
     fn database(&self, store: &str) -> Option<&dyn Database> {

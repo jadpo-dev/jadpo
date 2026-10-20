@@ -95,6 +95,9 @@ impl Planner<'_> {
                         jadpo_std::standard::security::WEB_AUTHN_CREDENTIAL.to_string(),
                         Vec::new(),
                     ))?,
+                    address: identity
+                        .magic_links()
+                        .and_then(|magic| self.address_lookup(user?, &magic.address)),
                 })
             }),
             magic_links: identity.magic_links().and_then(|magic| {
@@ -146,6 +149,25 @@ impl Planner<'_> {
             &statements::active(active.as_deref()),
             &wheres,
         ))
+    }
+
+    /// A user's address by its `id`, the field `address` names (area 8,
+    /// "Passkeys"; chunk 5.5z2): `$1` the `id`, `$2` the time now.
+    fn address_lookup(
+        &self,
+        variant: &jadpo_check::identity::Variant,
+        address: &str,
+    ) -> Option<String> {
+        let entity = self.model.entity(&variant.entity)?;
+        let column = entity
+            .fields
+            .iter()
+            .find(|f| f.name == address)?
+            .born
+            .clone();
+        let mut bind = Lookup;
+        let wheres = self.access(&mut bind, entity, Reach::Read)?;
+        Some(statements::address_of(&entity.table, &column, &wheres))
     }
 
     /// How a passkey is found by its credential ID with its user's record

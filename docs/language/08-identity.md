@@ -742,8 +742,8 @@ output MagicLinkToken
 
 > Decided 2026-10-18 (Richard). Registering, signing in and managing
 > passkeys built in chunk 5.5z; recovery through a magic link, the check
-> that magic links are on, the route-test helpers and the events come in
-> chunk 5.5z2, once magic links (7.3b) and events (area 12) are built.
+> that magic links are on, the route-test helpers and the events built in
+> chunk 5.5z2.
 
 A passkey (WebAuthn, FIDO2) is the third built-in way to check a person,
 beside magic links and providers. The person unlocks a key held on their
@@ -956,19 +956,36 @@ credential ID and its last use.
 its code, then adds a new passkey through the routes above. Nothing else
 recovers an account, so a lost phone never needs an operator.
 
-A whole application with passkeys: the origin setting, the user, and
-`passkey:` beside the browser session.
+A whole application with passkeys: the origin setting, the user,
+`passkey:` beside the browser session, and magic links beside it, with
+the email connection and the application's name their email needs.
 
 ```jadpo check project=passkeys file=config.jadpo
 config {
-    browser_origin: Url
+    browser_origin: Url {
+        test: "https://notes.example"
+    }
+    mail_sender: Email
+    smtp_host: Hostname
 }
 ```
 
 ```jadpo check project=passkeys file=app.jadpo
 use journal/entities { Member }
 
-application {}
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
 
 principal {
     user: {
@@ -984,6 +1001,9 @@ authentication {
         origin: config.browser_origin
     }
     sign_in: {
+        magic_link: {
+            link: "/sign-in/confirm"
+        }
         passkey: {
             expires_after: 2m
         }
@@ -999,8 +1019,80 @@ entity Member {
     }
 
     policy: {
+        create: [Access.public]
         read: [id]
     }
+}
+```
+
+```jadpo check project=passkeys file=domains/journal/failures/email_taken.jadpo hidden
+/// The address has an account already.
+type EmailTaken = Failure {
+    kind: FailureKind.conflict
+}
+```
+
+```jadpo check project=passkeys file=domains/journal/types/joining.jadpo hidden
+type Joining = Input {
+    email: Email
+}
+```
+
+```jadpo check project=passkeys file=domains/journal/actions/join.jadpo hidden
+use journal/entities { Member }
+use journal/types { Joining }
+use journal/failures { EmailTaken }
+
+/// Adds a member with an address.
+action join(input: Joining) fails EmailTaken -> Member {
+    return attempt Member.create {
+        set: {
+            email: input.email
+        }
+        conflict: {
+            Member.email: EmailTaken
+        }
+    }
+}
+```
+
+```jadpo check project=passkeys file=policy.jadpo hidden
+use journal
+
+policy {
+    actions: {
+        journal.join: [Access.public]
+    }
+}
+```
+
+```jadpo check project=passkeys file=domains/journal/fixtures/member_called.jadpo hidden
+use journal/entities { Member }
+use journal/types { Joining }
+use journal/actions { join }
+
+/// A member with `address`, signed up with no passkey.
+public fixture member_called(address: Email) -> Principal.user {
+    var member: Member = attempt join(
+        Joining {
+            email: address
+        }
+    )
+    return Principal.user(member)
+}
+```
+
+A route test drives the generated routes with `test_passkeys` (see "In
+development and tests"): Ada adds a passkey and signs in with it.
+
+```jadpo check project=passkeys file=tests/passkeys.test.jadpo
+use journal
+
+test "a passkey signs Ada in" {
+    var ada: Principal.user = journal.member_called("ada@example.com")
+    var phone: TestPasskey = test_passkeys.register(ada, "Phone")
+    var response: Response = test_passkeys.sign_in(phone)
+    assert response.status == 204
 }
 ```
 
@@ -1014,6 +1106,19 @@ record api 1
 
 api main
     authentication browser_session
+
+POST /auth/magic-link
+    generated magic link
+    authentication none
+    input MagicLinkAsk (body)
+    status 202
+
+POST /auth/magic-link/confirm
+    generated magic link
+    authentication none
+    input MagicLinkConfirmation (body)
+    output MagicLinkConfirmed
+    status 200
 
 GET /auth/passkey
     generated passkey
@@ -1062,6 +1167,9 @@ GET /openapi.json
     generated openapi
     status 200
 
+output MagicLinkConfirmed
+    return_to: Text
+
 output PasskeyView
     id: Uuid
     last_used_at: Instant?
@@ -1103,6 +1211,51 @@ error: `passkey:` needs the browser session's `origin:`
    |         ^^^^^^^ no origin to bind to
   reason: A passkey works only on the site it was made for: every answer from a device is checked against the origin `browser_session:`'s `origin:` reads from configuration (area 10), never one the request names.
   next: Add `origin: config.<name>` to `browser_session:`, reading a `Url` setting (agent)
+  rule: semantic.auth_setting_required
+  help: docs/language/08-identity.html#semantic-auth-setting-required
+
+check failed: 1 error, 1 file
+```
+
+Without magic links, a person who loses every device has no way back in:
+
+```jadpo check project=e-passkey-recovery expect=semantic.auth_setting_required
+config {
+    browser_origin: Url
+}
+
+principal {
+    user: {
+        subject: Member.email
+    }
+}
+
+authentication {
+    browser_session: {
+        cookie: "session"
+        origin: config.browser_origin
+    }
+    sign_in: {
+        passkey: {}
+    }
+}
+
+entity Member {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+}
+```
+
+```text output
+error: `passkey:` needs `magic_link:` beside it
+ --> main.jadpo:17:9
+   |
+17 |         passkey: {}
+   |         ^^^^^^^ no way back in
+  reason: A person who loses every device holding a passkey signs in with a magic link or its code and adds a new one; with no `magic_link:` in the same `sign_in:`, nothing gets them back in.
+  next: Add `magic_link: { link: "<path>" }` to `sign_in:`, beside `passkey:` (agent)
   rule: semantic.auth_setting_required
   help: docs/language/08-identity.html#semantic-auth-setting-required
 
@@ -1216,6 +1369,13 @@ the generated routes for real:
 | `test_passkeys.register(user: Principal.user, name: Text) -> TestPasskey` | Adds a passkey for `user` through `POST /auth/passkey/register/options` and `POST /auth/passkey/register`, signed in as `as:` signs in, and gives the device holding it |
 | `test_passkeys.sign_in(passkey: TestPasskey) -> Response` | Signs in with it through the two sign-in routes and gives the second's `Response` |
 
+Each `TestPasskey` is a device of its own holding one passkey, made by the
+test's host, so only a test ever holds one: called anywhere else,
+`test_passkeys` is `semantic.request_invalid`. A route that refuses
+`register`, or the options of `sign_in`, ends the test as a fault naming
+the route and its code, since the test meant to have a passkey; the
+sign-in's own refusal comes back in its `Response`.
+
 ```jadpo fragment
 test "a passkey signs Ada in" {
     var ada: Principal.user = member_called("ada")
@@ -1292,6 +1452,11 @@ For passkeys (chunk 5.5z, except where marked):
   `semantic.auth_method_unknown`.
 - A route the application writes at a generated passkey path is
   `route.path_overlap`.
+- In chunk 5.5z2: a subscriber of `PasskeyAdded` or `PasskeyRemoved`
+  with no `passkey:` is `subscriber.event_invalid`, and `emit` of one
+  `event.emit_invalid`; `test_passkeys.register` or `.sign_in` anywhere
+  but a test is `semantic.request_invalid`, and with no `passkey:`
+  `semantic.auth_setting_required`.
 
 ## Who is calling: `current_principal`
 
@@ -3713,7 +3878,14 @@ chunk 7.3b3)" below). Since chunk 7.3b4 every way in through a magic
 link publishes `SignedIn`, `SignInRefused` and `SignInCodesDisabled` to
 the app's subscribers, the refusal's reason kept on the request's log
 line, and a test builds a `FirstSignIn` to call `on_first_sign_in:`'s
-action directly ("Sign-in events (chosen in chunk 7.3b4)" below).
+action directly ("Sign-in events (chosen in chunk 7.3b4)" below). Since
+chunk 5.5z2 `passkey:` needs `magic_link:` beside it, how a person with
+no passkey left gets back in; the device lists a passkey under the
+person's address; a passkey's sign-in publishes `SignedIn` and
+`SignInRefused`, and adding and removing one `PasskeyAdded` and
+`PasskeyRemoved`; and a route test drives the routes with
+`test_passkeys` ("Passkey recovery, events and route tests (chosen in
+chunk 5.5z2)" below).
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
@@ -3721,10 +3893,6 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   after the first build, and with them `on_first_sign_in:` for those
   ways in.
 - A setting loosened past its limit, until acceptances (area 18).
-- Passkeys' recovery through a magic link, the check that `passkey:` has
-  `magic_link:` beside it, `test_passkeys` in route tests, and their
-  events (chunk 5.5z2, after magic links and events). Until then the
-  device lists a passkey under the principal's subject.
 - Passkeys on Workers: `webauthn-rs` 0.5 verifies with OpenSSL, which
   doesn't build for wasm32, so the Workers host waits for a pure-Rust
   release (its 0.6 line, on RustCrypto, is a pre-release).
@@ -4009,3 +4177,4 @@ builds it.
 | The app's own sign-in email and sending (chosen in chunk 7.3b2) | `email:` and `send:` name a type or an action as `on_first_sign_in:` does, `<domain>.<name>`. `SignInCode` is a built-in type made of text (six digits); like an API token it is never kept in an entity (`type.auth_credential_stored`), nor put in an `Output`, a failure or an event (`type.secret_exposed`), nor written as JSON. `MagicLinkEmail` is a built-in object only an email copies from, with `pick:` or `include:` (`type.not_record` elsewhere); the email `email:` names may hold no field of its own and is never emitted (`event.emit_invalid`), so the outbox never holds its link or code. Its delivery is still Jadpo's: the link and the code are made as it is sent, the app's email filled from them and rendered as any of its emails is, in the request's locale. `send:` keeps `display_name:` required; its action is a subscriber's of `jadpo.MagicLinkEmail`, run as the system, reaching no tenant, retried and given up under area 12's defaults, each attempt given a link and a code of its own, so only the latest works; a request used or replaced since runs nothing | 2026-10-20 |
 | The app's own routes (chosen in chunk 7.3b3) | `generate_routes:` is `true` or `false`, and `false` beside `path:` is refused (`semantic.auth_setting_invalid`). The operations need `magic_link:` with `generate_routes: false` (`semantic.auth_setting_required`), so each link is asked for and used one way; only an action calls them (`type.auth_sessions_context`), and a route's `run:` never does (`route.run_invalid`). Their arguments are positional: `request` takes all three, `none` for the path meaning `/`, and a `locale` the app doesn't support falls back to its default. They run the generated routes' own code. `request` keeps the request in the action's transaction and leaves Jadpo's email as the action's own event, so it goes once the action commits, and an action that fails sends nothing and counts no send; the sweep of rows nothing counts runs on its own. `redeem` and `redeem_code` use the link or the code in a transaction of their own, before the action's writes, as the routes do: a wrong code stays counted though the action fails, and a used link or code stays used if the action fails after, so the person asks again; `on_first_sign_in:`'s action runs in its own transaction while the app's waits. An action that has asked for a link can't use one (a fault: it would wait on its own row). `same_browser:`'s cookie is read from the request; the response of the route whose action asked sets it, and the response of one whose action used a link clears it; neither response is kept for an idempotent repeat. `SignInToken` is a built-in type made of text (64 lower-case hexadecimal digits), held only by an `Input` or an `Object`: never kept (`type.auth_credential_stored`), nor put in an `Output`, a failure, an event, an email, a message or a prompt (`type.secret_exposed`), nor written as JSON. `MagicLinkRedeemed` is a built-in object only the runtime makes: `user_id`, the user entity's `id`, and `return_to: Text`, `/` unless the person gave a path. Their failures are the routes' own, raised by the runtime and passing through the action: `rate_limited` and `sign_in_codes_disabled` with `Retry-After`, and `sign_in_return_invalid` (`invalid_value`, 422), worded under the `magic_link_routes` feature of Jadpo's text. The API record and OpenAPI list the app's routes as its own, and no generated ones | 2026-10-20 |
 | Sign-in events (chosen in chunk 7.3b4) | `SignedIn`, `SignInRefused` and `SignInCodesDisabled` are built-in types only the runtime emits (`event.emit_invalid`), named in `on:` as an app's events are, and reserved as names; a subscriber of one needs `magic_link:` (`subscriber.event_invalid`), and its fields are area 8's, `user_id` typed as the user entity's `id`. A test, fixture or seed may build one, or a `FirstSignIn`, with every field, to call an action directly; elsewhere `type.not_record`. Each is kept in the outbox of the store sessions are kept in, under `jadpo.<Name>`, its payload the runtime's own (the user's `id`, the way in, the reason, `until` in milliseconds), and only when a subscriber listens, so nothing records who signed in that no one asked for. `SignedIn` commits with the session or token it reports; from the app's own routes it is the action's event, delivered only if that action commits. `SignInRefused` and `SignInCodesDisabled` are kept in a transaction of their own once the refusal is decided, so they stay though the action fails, and a store that can't keep them leaves the refusal unchanged. `user_id` is given when the link's or code's address has a user (looked up only when something listens) or the user is disabled; never for an expired link or a first sign-in the app refused. A first sign-in with no `on_first_sign_in:`, or whose action named no visible user, is `refused_by_app`; a fault or an unavailable store publishes nothing. `SignInCodesDisabled` is published by the wrong code that reaches `failed_codes_per_day:`, `until` the next midnight UTC. The reason, and for `refused_by_app` the failure the action declared, goes on the request's log line (`jadpo dev`: `└─ sign-in refused · refused_by_app · SignUpClosed`; `refused` in `--json`), never in the answer. Passkeys' events come in chunk 5.5z2 | 2026-10-20 |
+| Passkey recovery, events and route tests (chosen in chunk 5.5z2) | `passkey:` with no `magic_link:` written in the same `sign_in:` is `semantic.auth_setting_required`, reported only once the browser session's origin is there, so a project missing both hears about the origin first. The device lists a passkey under the user's `magic_link:` `address:` field, read by the user's `id` as the request reads the record; a user without one is listed under the subject. A passkey's sign-in publishes `SignedIn` (`method: passkey`, `first_time: false`) committed with the session, and `SignInRefused` for `passkey_challenge_expired`, `passkey_rejected` and `user_disabled` in a transaction of its own, its reason on the request's log line; `user_id` is given when the answer named a registered passkey, never for an unreadable answer, a challenge that expired or a passkey removed or never registered. A malformed body, a missing `Origin` and an unavailable store publish nothing, as for magic links. `PasskeyAdded` and `PasskeyRemoved` carry `user_id` and `passkey_id` (the routes' `id`, never the credential ID), commit with the passkey they report, and need `passkey:` for a subscriber (`subscriber.event_invalid`); they are kept under `jadpo.<Name>` only when a subscriber listens, as the sign-in events are. `test_passkeys.register(user, name)` and `.sign_in(passkey)` are checked in tests only (`semantic.request_invalid` elsewhere, as `request` is; `semantic.auth_setting_required` with no `passkey:`), `name` any value built on `Text`; each `TestPasskey` is a software authenticator of its own (ES256, discoverable, verifying, no attestation) that only `jadpo test`'s host has (the `jadpo` tool links it through the test runner; no deployable does), opaque to code. `register` signs in as `as:` does and sends the application's own `Origin`; `sign_in` starts from a browser with no cookies. A refusal on the way to a passkey ends the test as a fault naming the route and its code. A test calling only `test_passkeys` counts as the kind its other calls make it (an action test when a fixture makes its user), since the generated routes are not graph nodes. Until `email.sent` (chunk 7.3c) a route test can't read the magic link's email, so `as:` stands in for it; the live test in `crates/jadpo-cli/tests/passkeys.rs` recovers through the link's code | 2026-10-20 |

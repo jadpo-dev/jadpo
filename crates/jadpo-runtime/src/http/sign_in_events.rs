@@ -1,5 +1,6 @@
 //! The events every sign-in publishes (area 8, "Events"; chunk 7.3b4):
-//! `SignedIn`, `SignInRefused` and `SignInCodesDisabled`, which only the
+//! `SignedIn`, `SignInRefused` and `SignInCodesDisabled`, and a passkey's
+//! `PasskeyAdded` and `PasskeyRemoved` (chunk 5.5z2), which only the
 //! runtime emits, kept in the outbox of the store sessions are kept in,
 //! each with a delivery for every subscriber that listens for it.
 //!
@@ -12,13 +13,19 @@
 //! - **`SignInRefused` and `SignInCodesDisabled`** are kept in a
 //!   transaction of their own once the refusal is decided, and a store
 //!   that can't keep them leaves the refusal as it was.
-//! - **What they carry** is the user's `id`, the way in, the reason and a
-//!   time: never an address, a link, a code or a token. Their payload is
+//! - **`PasskeyAdded` and `PasskeyRemoved`** commit with the passkey
+//!   they report.
+//! - **What they carry** is the user's `id`, the way in, the reason, a
+//!   time and a passkey's `id`: never an address, a link, a code, a
+//!   token, a challenge or a passkey's credential ID or key. Their payload is
 //!   the runtime's own, read back by [`read_payload`].
 
 use std::rc::Rc;
 
-use jadpo_std::http::{SIGN_IN_CODES_DISABLED, SIGN_IN_REFUSED, SIGNED_IN, sign_in_event_key};
+use jadpo_std::http::{
+    PASSKEY_ADDED, PASSKEY_REMOVED, SIGN_IN_CODES_DISABLED, SIGN_IN_REFUSED, SIGNED_IN,
+    sign_in_event_key,
+};
 use jadpo_std::{SignInMethod, SignInRefusal};
 use jadpo_value::Value;
 
@@ -44,6 +51,10 @@ pub(crate) enum SignInEvent {
     /// An address reached `failed_codes_per_day:`; codes work again at
     /// `until`, in milliseconds.
     CodesDisabled { user: Option<[u8; 16]>, until: i64 },
+    /// A person registered a passkey.
+    PasskeyAdded { user: [u8; 16], passkey: [u8; 16] },
+    /// A person removed one of their passkeys.
+    PasskeyRemoved { user: [u8; 16], passkey: [u8; 16] },
 }
 
 impl SignInEvent {
@@ -52,6 +63,8 @@ impl SignInEvent {
             SignInEvent::SignedIn { .. } => SIGNED_IN,
             SignInEvent::Refused { .. } => SIGN_IN_REFUSED,
             SignInEvent::CodesDisabled { .. } => SIGN_IN_CODES_DISABLED,
+            SignInEvent::PasskeyAdded { .. } => PASSKEY_ADDED,
+            SignInEvent::PasskeyRemoved { .. } => PASSKEY_REMOVED,
         }
     }
 
@@ -90,6 +103,11 @@ impl SignInEvent {
             SignInEvent::CodesDisabled { user: id, until } => {
                 vec![("user_id", user(id)), ("until", Value::Instant(*until))]
             }
+            SignInEvent::PasskeyAdded { user: id, passkey }
+            | SignInEvent::PasskeyRemoved { user: id, passkey } => vec![
+                ("user_id", user(&Some(*id))),
+                ("passkey_id", user(&Some(*passkey))),
+            ],
         };
         Value::record(
             self.name(),
@@ -129,6 +147,11 @@ impl SignInEvent {
             SignInEvent::CodesDisabled { user: id, until } => serde_json::json!({
                 "user_id": user(id),
                 "until": until,
+            }),
+            SignInEvent::PasskeyAdded { user: id, passkey }
+            | SignInEvent::PasskeyRemoved { user: id, passkey } => serde_json::json!({
+                "user_id": user(&Some(*id)),
+                "passkey_id": user(&Some(*passkey)),
             }),
         };
         object.to_string()
@@ -198,6 +221,16 @@ pub(crate) fn read_payload(key: &str, payload: &str) -> Option<Result<Value, Str
                     reason,
                     user,
                 },
+                _ => return Some(Err(not())),
+            }
+        }
+        PASSKEY_ADDED | PASSKEY_REMOVED => {
+            let passkey = text("passkey_id").and_then(super::magic_links::parse_uuid);
+            match (user, passkey) {
+                (Ok(Some(user)), Some(passkey)) if name == PASSKEY_ADDED => {
+                    SignInEvent::PasskeyAdded { user, passkey }
+                }
+                (Ok(Some(user)), Some(passkey)) => SignInEvent::PasskeyRemoved { user, passkey },
                 _ => return Some(Err(not())),
             }
         }
@@ -282,6 +315,38 @@ pub(crate) async fn write(
     Ok(())
 }
 
+/// Writes `events` in `transaction` and commits it, the deliveries left
+/// for once it has: what a passkey's sign-in, registration and removal
+/// keep beside the session or the passkey they report (chunk 5.5z2). A
+/// transaction that can't keep them is rolled back, and nothing is
+/// delivered.
+pub(crate) async fn commit_with(
+    ctx: &mut Ctx<'_>,
+    executor: &dyn Executor,
+    store: &str,
+    mut transaction: Box<dyn crate::Transaction>,
+    events: &[SignInEvent],
+) -> Result<(), StoreError> {
+    let earlier = ctx.take_deferred();
+    let written = write(ctx, executor, store, transaction.as_mut(), events).await;
+    let kept = match written {
+        Ok(()) => transaction.commit().await,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            Err(error)
+        }
+    };
+    let mine = ctx.take_deferred();
+    for work in earlier {
+        ctx.defer(work);
+    }
+    kept?;
+    for work in mine {
+        ctx.defer(work);
+    }
+    Ok(())
+}
+
 /// Publishes `events` in a transaction of their own in `store`: what a
 /// refusal keeps once it is decided. A store that can't keep them leaves
 /// the refusal as it was.
@@ -360,6 +425,24 @@ mod tests {
             SignInEvent::CodesDisabled {
                 user: Some([2; 16]),
                 until: 1_792_540_800_000,
+            },
+            SignInEvent::SignedIn {
+                user: [3; 16],
+                method: SignInMethod::Passkey,
+                first_time: false,
+            },
+            SignInEvent::Refused {
+                method: SignInMethod::Passkey,
+                reason: SignInRefusal::PasskeyRejected,
+                user: Some([4; 16]),
+            },
+            SignInEvent::PasskeyAdded {
+                user: [5; 16],
+                passkey: [6; 16],
+            },
+            SignInEvent::PasskeyRemoved {
+                user: [5; 16],
+                passkey: [6; 16],
             },
         ] {
             let payload = event.payload();
