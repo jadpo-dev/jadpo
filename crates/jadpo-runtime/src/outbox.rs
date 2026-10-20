@@ -295,6 +295,11 @@ impl Events<'_> {
         if event == jadpo_std::email::MAGIC_LINK_EMAIL {
             return crate::http::magic_links::read_payload(payload);
         }
+        // An event sign-in publishes, whose payload is the runtime's too
+        // (chunk 7.3b4).
+        if let Some(read) = crate::http::sign_in_events::read_payload(event, payload) {
+            return read;
+        }
         let number = self
             .numbers
             .iter()

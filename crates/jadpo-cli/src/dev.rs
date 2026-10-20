@@ -125,6 +125,8 @@ struct Line {
     fault: Option<(String, Vec<String>)>,
     /// The calls it made outside the process (chunk 7.2d).
     calls: Vec<jadpo_runtime::capability::Logged>,
+    /// Why a sign-in it answered was refused (chunk 7.3b4).
+    refused: Option<jadpo_runtime::SignInRefused>,
 }
 
 /// What the session prints, as it happens: a request answered, a
@@ -222,6 +224,7 @@ impl Observer for Lines {
                 )
             }),
             calls: response.calls.clone(),
+            refused: response.refused.clone(),
         })]);
     }
 
@@ -386,6 +389,18 @@ impl Out<'_> {
                     })),
                 ),
                 (
+                    "refused",
+                    line.refused.as_ref().map_or(Json::Null, |refused| {
+                        Json::object([
+                            ("reason", Json::from(refused.reason)),
+                            (
+                                "failure",
+                                refused.failure.as_deref().map_or(Json::Null, Json::from),
+                            ),
+                        ])
+                    }),
+                ),
+                (
                     "fault",
                     line.fault.as_ref().map_or(Json::Null, |(kind, frames)| {
                         Json::object([
@@ -437,6 +452,14 @@ impl Out<'_> {
                 word
             ));
         }
+        // Why a sign-in was refused, which the person was never told
+        // (area 8, "Events"): a muted line of its trace, the reason in
+        // the colour of the refusal's status.
+        if let Some(refused) = &line.refused {
+            text.push_str(&refusal_line(refused, &|token, text| {
+                self.paint(token, text)
+            }));
+        }
         if let Some((kind, frames)) = &line.fault {
             text.push_str(&format!(
                 "  {} {kind}\n",
@@ -449,6 +472,25 @@ impl Out<'_> {
         let _ = self.out.write_all(text.as_bytes());
         let _ = self.out.flush();
     }
+}
+
+/// A sign-in refusal's line under its request: `└─ sign-in refused ·
+/// refused_by_app · SignUpClosed`, the reason painted as a warning.
+fn refusal_line(
+    refused: &jadpo_runtime::SignInRefused,
+    paint: &dyn Fn(Token, &str) -> String,
+) -> String {
+    let failure = refused
+        .failure
+        .as_deref()
+        .map_or_else(String::new, |failure| {
+            format!(" {}", paint(Token::Muted, &format!("· {failure}")))
+        });
+    format!(
+        "  {} {}{failure}\n",
+        paint(Token::Muted, "└─ sign-in refused ·"),
+        paint(Token::Warning, refused.reason),
+    )
 }
 
 /// How a call ended, as a request line says it.
@@ -1455,4 +1497,30 @@ fn report_failure(out: &mut Out<'_>, problem: Diagnostic) {
     ));
     let _ = out.err.write_all(screen.render(&out.err_style).as_bytes());
     let _ = out.err.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_sign_in_shows_its_reason_under_its_request() {
+        let plain = |_: Token, text: &str| text.to_string();
+        let refused = jadpo_runtime::SignInRefused {
+            reason: "refused_by_app",
+            failure: Some("SignUpClosed".to_string()),
+        };
+        assert_eq!(
+            refusal_line(&refused, &plain),
+            "  └─ sign-in refused · refused_by_app · SignUpClosed\n"
+        );
+        let refused = jadpo_runtime::SignInRefused {
+            reason: "code_invalid",
+            failure: None,
+        };
+        assert_eq!(
+            refusal_line(&refused, &plain),
+            "  └─ sign-in refused · code_invalid\n"
+        );
+    }
 }

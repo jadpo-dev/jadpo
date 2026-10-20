@@ -337,6 +337,8 @@ sign_out
 sign_in
 # a field of the built-in `MagicLinkEmail` (area 16), part of Jadpo's own message names
 sign_in_link
+# area 8's built-in sign-in event `SignedIn` (chunk 7.3b4)
+signed_in
 security
 # area 8's sign-in methods, route authentication and runtime failure codes
 browser_session
