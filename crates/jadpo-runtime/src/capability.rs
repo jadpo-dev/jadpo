@@ -276,6 +276,13 @@ pub trait Capability {
         false
     }
 
+    /// Sends `call` and gives its answer as it comes, for `ai.stream`
+    /// (area 21; chunk 5.5v6): the whole answer, as [`Capability::call`]
+    /// gives it, unless the driver can read it piece by piece.
+    fn stream<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, crate::stream::Streamed> {
+        Box::pin(async move { crate::stream::Streamed::Whole(self.call(call).await) })
+    }
+
     /// The inputs of the calls of `operation` through `connection` it was
     /// sent, in order, one per call however often it asked again: what a
     /// test reads as `.requests` (area 13; area 21, chunk 5.5v3). Only a

@@ -132,6 +132,9 @@ pub struct Response {
     /// Why a sign-in was refused, for the host's log line (area 8,
     /// "Events"; chunk 7.3b4); never sent.
     pub refused: Option<crate::ctx::SignInRefused>,
+    /// A model's answer to send after the head, event by event, in place
+    /// of `body` (area 7, "Streaming a model's answer"; chunk 5.5v6).
+    pub stream: Option<crate::stream::EventStream>,
 }
 
 impl Response {
@@ -623,6 +626,10 @@ async fn run_route(
     // The deadline counts from here; the timer is made at once.
     let host = ctx.host();
     let mut deadline = host.sleep(u64::from(route.deadline_ms));
+    // A stream the route sends ends by it too (chunk 5.5v6).
+    let ends_at = host
+        .monotonic_ms()
+        .map(|now| now.saturating_add(u64::from(route.deadline_ms)));
     // So does how long a route waits for its follow-on work (chunk 6.3).
     let within = route
         .settle
@@ -710,8 +717,18 @@ async fn run_route(
         (None, Run::OpenApi(document)) => openapi(request, request_id, document),
         (None, _) => {
             run_with_caller(
-                app, executor, ctx, request, request_id, route, segments, deadline, within, caller,
-                scope, reissued,
+                app,
+                executor,
+                ctx,
+                request,
+                request_id,
+                route,
+                segments,
+                (deadline, ends_at),
+                within,
+                caller,
+                scope,
+                reissued,
             )
             .await
         }
@@ -808,7 +825,7 @@ async fn run_with_caller(
     request_id: &str,
     route: &RoutePlan,
     segments: &[String],
-    deadline: crate::LocalFuture<'_, ()>,
+    (deadline, ends_at): (crate::LocalFuture<'_, ()>, Option<u64>),
     mut within: Option<crate::LocalFuture<'_, ()>>,
     caller: Option<crate::Caller>,
     scope: String,
@@ -1132,9 +1149,16 @@ async fn run_with_caller(
         let binding = held.as_ref().and_then(|held| held.binding.clone());
         // Successes and the failures the action returns are kept for a
         // repeat; `unavailable` and faults are not, so a retry runs again.
+        // Nor a model's answer streamed, which a repeat can't be given
+        // again (chunk 5.5v6).
+        let streamed = match &outcome {
+            Outcome::Value(value) if route.stream => crate::stream::number_of(value),
+            _ => None,
+        };
         let storable = session.is_none()
             && !issued
             && binding.is_none()
+            && !route.stream
             && match &outcome {
                 Outcome::Value(_) => true,
                 Outcome::Failed(failure) => failure.kind.as_deref() != Some("unavailable"),
@@ -1186,6 +1210,31 @@ async fn run_with_caller(
                     idempotency::release(ctx, guard).await;
                 }
                 return runtime_failure(UNAVAILABLE, request_id, None);
+            }
+        }
+        // The action has committed: its stream is sent as it comes, ended
+        // by the call's `timeout:` or the route's deadline (area 7,
+        // "Streaming a model's answer"; chunk 5.5v6).
+        if let Some(number) = streamed {
+            match ctx.take_stream(number) {
+                Some(mut events) => {
+                    events.end_by(ends_at);
+                    response.headers = vec![
+                        (
+                            "content-type".to_string(),
+                            jadpo_std::ai::events::CONTENT_TYPE.to_string(),
+                        ),
+                        ("cache-control".to_string(), "no-store".to_string()),
+                    ];
+                    response.stream = Some(crate::stream::EventStream::new(events, request_id));
+                }
+                None => {
+                    response = runtime_failure(INTERNAL_FAULT, request_id, None);
+                    response.fault = Some(ctx.fault(
+                        crate::FaultKind::Defect("a stream its action didn't open".into()),
+                        Frame::ENTRY,
+                    ));
+                }
             }
         }
         if let Some((settle, args)) = &settling {
@@ -1432,7 +1481,12 @@ fn list_fields(app: &App<'_>, codec: CodecId) -> Vec<String> {
 
 /// The envelope (area 4): `code`, `message`, `request_id` and, when given,
 /// `details`, already written as JSON.
-fn envelope(code: &str, message: &str, request_id: &str, details: Option<&str>) -> Vec<u8> {
+pub(crate) fn envelope(
+    code: &str,
+    message: &str,
+    request_id: &str,
+    details: Option<&str>,
+) -> Vec<u8> {
     let mut out = String::from("{\"error\":{\"code\":");
     write_string(code, &mut out);
     out.push_str(",\"message\":");
@@ -1461,6 +1515,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
         calls: Vec::new(),
         steps: Vec::new(),
         refused: None,
+        stream: None,
     }
 }
 
@@ -1560,7 +1615,15 @@ pub async fn route_test(
     if let Some(fault) = response.fault.take() {
         return Err(fault);
     }
-    Ok(response_value(app, route, &response))
+    // A streaming route's events, read to the last as a client reads
+    // them (area 7, "Streaming a model's answer"; chunk 5.5v6).
+    let mut events = Vec::new();
+    if let Some(stream) = response.stream.take() {
+        while let Some(event) = stream.next_on(Some(ctx.host())).await {
+            events.push(event);
+        }
+    }
+    Ok(response_value(app, route, &response, &events))
 }
 
 /// The request a route test sends: route `route`'s method and path, its
@@ -1699,9 +1762,41 @@ fn percent_encode(text: &str) -> String {
 
 /// What a route test gets back: a `Response` with its `status`, the
 /// failure's `code` (`none` on success) and route `route`'s output read
-/// back from the body (`none` unless it succeeded).
-pub fn response_value(app: &App<'_>, route: u32, response: &Response) -> Value {
+/// back from the body (`none` unless it succeeded). A streaming route's
+/// has `pieces`, the text of each `piece` event of `events`, in place of
+/// its output, and `code` the `error` event's that ended it (chunk 5.5v6).
+pub fn response_value(
+    app: &App<'_>,
+    route: u32,
+    response: &Response,
+    events: &[crate::stream::ServerEvent],
+) -> Value {
     let plan = app.table.routes.get(route as usize);
+    if plan.is_some_and(|plan| plan.stream) {
+        let pieces = events
+            .iter()
+            .filter_map(|event| match event {
+                crate::stream::ServerEvent::Piece(text) => Some(Value::text(text)),
+                _ => None,
+            })
+            .collect();
+        let code = events
+            .iter()
+            .find_map(|event| match event {
+                crate::stream::ServerEvent::Failed { code, .. } => Some(Value::text(code)),
+                _ => None,
+            })
+            .or_else(|| response.code.as_deref().map(Value::text))
+            .unwrap_or(Value::None);
+        return Value::record(
+            "Response",
+            vec![
+                ("status".into(), Value::Int(i64::from(response.status))),
+                ("code".into(), code),
+                ("pieces".into(), Value::list(pieces)),
+            ],
+        );
+    }
     let output = match plan.and_then(|plan| plan.output) {
         Some(codec) if (200..300).contains(&response.status) => {
             jadpo_value::json::parse(&response.body)

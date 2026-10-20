@@ -125,6 +125,9 @@ impl Body<'_> {
             Some(Reach::Embed { .. }) => {
                 "A model may take too long, or be sent more text than it takes, which only shows when the program runs"
             }
+            Some(Reach::Stream { .. }) => {
+                "A model may refuse, take too long, be cut off or be sent too long a prompt before its first piece, which only shows when the program runs"
+            }
             _ => {
                 "A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs"
             }
@@ -201,7 +204,9 @@ impl Body<'_> {
             ) => Fallible::Never,
             // How a model answers is a condition of the call, recorded
             // where it is checked (area 21; chunk 5.5v3).
-            Some(Reach::Generate { .. } | Reach::Embed { .. }) => Fallible::Unknown,
+            Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. }) => {
+                Fallible::Unknown
+            }
             Some(Reach::Entity { entity, operation }) => self.entity_fallible(entity, operation),
             Some(Reach::Construct(_) | Reach::Unknown) | None => Fallible::Unknown,
         }
@@ -356,7 +361,7 @@ impl Body<'_> {
             Fallible::Construction(breakable)
                 if matches!(
                     self.facts.reaches.get(&node_key(call.syntax())),
-                    Some(Reach::Generate { .. } | Reach::Embed { .. })
+                    Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. })
                 ) =>
             {
                 let arms: Vec<String> = breakable
@@ -963,6 +968,11 @@ impl Body<'_> {
                 .iter()
                 .map(|condition| (condition.word(), condition.word().to_string()))
                 .collect(),
+            // A stream's, before its first piece (chunk 5.5v6).
+            Some(Reach::Stream { .. }) => super::stream::CONDITIONS
+                .iter()
+                .map(|condition| (condition.word(), condition.word().to_string()))
+                .collect(),
             // An embedding asked for (chunk 5.5v4).
             Some(Reach::Embed { .. }) => super::embed::CONDITIONS
                 .iter()
@@ -1221,10 +1231,11 @@ impl Body<'_> {
         ));
         // `ai.generate`'s `malformed` carries the last answer's
         // `DecodeProblem` (area 21, "Typed output"; chunk 5.5v3), and each
-        // of its conditions is a model giving no answer to use.
+        // of its conditions is a model giving no answer to use, as each of
+        // `ai.stream`'s is (chunk 5.5v6).
         let generates = matches!(attempt.expr(), Some(Expr::CallExpr(call)) if matches!(
             self.facts.reaches.get(&node_key(call.syntax())),
-            Some(Reach::Generate { .. } | Reach::Embed { .. })
+            Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. })
         ));
         let own: Vec<&str> = arms
             .iter()
@@ -1375,7 +1386,7 @@ impl Body<'_> {
         if let Some(Expr::CallExpr(call)) = attempt.expr()
             && matches!(
                 self.facts.reaches.get(&node_key(call.syntax())),
-                Some(Reach::Generate { .. } | Reach::Embed { .. })
+                Some(Reach::Generate { .. } | Reach::Stream { .. } | Reach::Embed { .. })
             )
         {
             let conditions = self.model_conditions(&call);

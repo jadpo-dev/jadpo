@@ -404,6 +404,7 @@ mod tests {
             deadline_ms: 10_000,
             run: Run::Action(0),
             settle: None,
+            stream: false,
             keys: Some("main".into()),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,

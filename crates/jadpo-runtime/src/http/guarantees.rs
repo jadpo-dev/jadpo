@@ -466,6 +466,7 @@ fn table(keys: Option<&str>, required: bool) -> RouteTable {
             deadline_ms: 10_000,
             run: Run::Action(0),
             settle: None,
+            stream: false,
             keys: keys.map(str::to_string),
             args: Vec::new(),
             authentication: jadpo_std::http::Authentication::Public,

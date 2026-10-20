@@ -16,7 +16,7 @@ input a route takes, its output and status, time limits, health endpoints,
 separate APIs and versions, webhooks, how failures reach the client,
 OpenAPI, and how a breaking change to the API is caught.
 
-> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20), and from a `GET` running a query that gives one in chunk 5.5u8 (area 6). `settle:`, waiting for follow-on work, in chunk 6.3 (area 12).
+> Decided on 2026-10-12. Code on this page applies the decisions from areas 1 to 7. Built in the new compiler in roadmap chunk 4.1: route groups, typed placeholders, the one input (query string, body and headers), outputs and statuses, what a route runs, APIs, the failure envelope with request ids, OpenAPI, the API record and the default rate limits, served by `jadpo dev`; the request guarantees (deadlines, the body limit, health and idempotent writes) in chunk 4.2; route authentication, each API's sign-in methods and `current_principal` in chunk 4.3 (area 8); policy on what each route reaches, and the 403 it can answer in OpenAPI, in chunk 4.4 (area 9); a `GET` listing tokens and keys itself, in chunk 4.4c (area 8); the generated `POST /auth/exchange` in the route list, the API record and OpenAPI, in chunk 5.1b (area 8); a map layer, a `FeatureCollection<G, P>`, sent bare, in chunk 5.5u7 (area 20), and from a `GET` running a query that gives one in chunk 5.5u8 (area 6). `settle:`, waiting for follow-on work, in chunk 6.3 (area 12). A model's answer streamed as server-sent events, in chunk 5.5v6 (area 21).
 
 The rule behind all of it: **a route is a thin door.** It says which method
 and URL, what comes in, what goes out and what runs. Logic lives in actions
@@ -311,6 +311,307 @@ POST /orders {
 - A route test's request waits in the same way. A test host's timers
   never end, so `within:` never passes in a test, and a follow-on left to
   retry gives 202.
+
+## Streaming a model's answer
+
+A route sends a model's answer as it is written, piece by piece, when
+what it runs returns an `AiStream`, the text `ai.stream` asks a model
+for (area 21). It is sent as server-sent events, the HTML standard's
+`text/event-stream`, the shape OpenAI's and Anthropic's APIs stream in;
+there are no WebSockets (area 21, question 6). Decided and built in
+chunk 5.5v6.
+
+```jadpo check project=ai-stream file=app.jadpo hidden
+application {
+    connections: {
+        local_model: {
+            driver: Driver.openai_compatible
+            url: config.model_url
+        }
+    }
+    ai: {
+        connection: local_model
+        models: {
+            default: config.drafting_model
+        }
+    }
+}
+```
+
+```jadpo check project=ai-stream file=config.jadpo hidden
+config {
+    drafting_model: ModelId {
+        default: "meta-llama/Llama-3.1-8B-Instruct"
+    }
+    model_url: Url {
+        default: "http://localhost:8000/v1"
+    }
+}
+```
+
+```jadpo check project=ai-stream file=policy.jadpo hidden
+use support
+
+policy {
+    actions: {
+        support.stream_answer: [Access.public]
+    }
+}
+```
+
+```jadpo check project=ai-stream file=domains/support/types/customer_question.jadpo hidden
+/// What a customer asked the help desk.
+type CustomerQuestion = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=ai-stream file=domains/support/types/asked.jadpo hidden
+use support/types { CustomerQuestion }
+
+/// A customer's question, as the help desk sends it.
+type Asked = Input {
+    customer_question: CustomerQuestion
+}
+```
+
+```jadpo check project=ai-stream file=domains/support/failures/assistant_unavailable.jadpo hidden
+/// The assistant can't answer now; a person will reply.
+type AssistantUnavailable = Failure {
+    kind: FailureKind.unavailable
+    message: "The assistant can't answer now; a person will reply."
+}
+```
+
+```jadpo check project=ai-stream file=domains/support/prompts/answer_question.jadpo hidden
+use support/types { CustomerQuestion }
+
+/// Answers a customer's question.
+type AnswerQuestion = Prompt {
+    question: CustomerQuestion
+}
+```
+
+```jadpo check project=ai-stream file=domains/support/prompts/answer_question.prompt hidden
+# Instructions
+
+You answer questions from customers of an online bakery.
+
+# Request
+
+{question}
+```
+
+The action asks for the stream and maps how it can fail before its
+first piece, as any outside call's failures are mapped; the route names
+`output: AiStream`, exactly what the action returns:
+
+```jadpo check project=ai-stream file=domains/support/actions/stream_answer.jadpo
+use support/types { Asked }
+use support/failures { AssistantUnavailable }
+use support/prompts { AnswerQuestion }
+
+/// Streams an answer to a customer's question as it is written.
+action stream_answer(asked: Asked) fails AssistantUnavailable -> AiStream {
+    return attempt ai.stream(
+        AnswerQuestion {
+            question: asked.customer_question
+        },
+        max_output: 600,
+        timeout: 8s
+    ) {
+        refused: AssistantUnavailable
+        timed_out: AssistantUnavailable
+        over_budget: AssistantUnavailable
+        too_long: AssistantUnavailable
+    }
+}
+```
+
+```jadpo check project=ai-stream file=domains/support/routes/help_desk.jadpo
+use support/types { Asked }
+use support/actions { stream_answer }
+
+/// Customers' questions.
+routes HelpDesk {
+    prefix: /help_desk
+
+    /// Streams the assistant's reply as it is written.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Asked
+        output: AiStream
+        run: stream_answer(input)
+    }
+}
+```
+
+What a client reads, once the first piece has come:
+
+```text
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-store
+x-request-id: req_0b1e…
+
+event: piece
+data: {"text":"Our sourdough is "}
+
+event: piece
+data: {"text":"baked beside sesame."}
+
+event: done
+data: {}
+
+```
+
+and a stream that stopped part-way:
+
+```text
+event: piece
+data: {"text":"Our sourdough is "}
+
+event: error
+data: {"error":{"code":"unavailable","message":"A dependency is temporarily unavailable.","request_id":"req_0b1e…"}}
+
+```
+
+| Event | Data | When |
+|---|---|---|
+| `piece` | `{"text": "..."}`: the next part of the answer, as the model sent it | As each part comes; none for an empty answer |
+| `done` | `{}` | The answer is whole; the last event |
+| `error` | The failure envelope (area 4), `unavailable`, or `internal_fault` for a defect | The answer stopped before it was whole; the last event |
+
+- **Before the first piece** nothing has been sent, so the route answers
+  as any other does: a failure the action's `attempt` mapped from
+  `ai.stream`'s `refused`, `timed_out`, `over_budget` or `too_long`
+  answers with its envelope and its kind's status, and the deadline
+  passing with 504. The action has committed by the time the first piece
+  goes out.
+- **After it** the status, 200, has gone, so whatever stops the answer
+  part-way ends the stream with an `error` event, `unavailable`: the
+  model declining to go on, a cut-off at `max_output:`, the call's
+  `timeout:` or the route's deadline passing, or the provider's
+  connection breaking or sending what isn't a chat completion. The app's
+  mapping can't run then, and the client needs only to know the answer
+  is incomplete; the code and its wording are the runtime's own.
+- **Every stream ends** with exactly one `done` or `error`, after which
+  the response ends.
+- **Each event** is an `event:` line, one `data:` line of compact JSON
+  (so the text's newlines are escaped and never split an event) and a
+  blank line, in UTF-8. A piece is what the provider sent, never cut or
+  joined, empty ones left out.
+- **No resuming.** A model's answer can't be asked for again from where
+  it stopped, so events carry no `id:`, the server sends no `retry:` and
+  `Last-Event-ID` isn't read; a client that loses a stream sends the
+  request again. Only an action asks a model, so a streaming route is
+  never a `GET`, and browsers' `EventSource`, which only sends `GET` and
+  reconnects by itself, can't call one: a client reads it with `fetch`
+  and a stream reader, as it reads OpenAI's and Anthropic's.
+- **Time.** The stream is held to the earlier of the call's `timeout:`,
+  counted from when the action asked, and the route's deadline, counted
+  from when the request was matched; past it, `error`. That each
+  `timeout:` an action reaches leaves room inside its route's deadline is
+  checked with the deadlines of the route's other outside calls (chunk
+  7.5e).
+- **A client that goes away** stops the stream: the runtime stops reading
+  the model's answer and closes its connection to the provider at once,
+  so nothing more is spent. What the action committed stays committed.
+- **Answers 200 and waits for nothing.** A streaming route takes no other
+  `status:` and no `settle:` (`route.stream_invalid`).
+- **Idempotency.** A stream is never kept for a repeat: an
+  `Idempotency-Key` keeps a repeat from running alongside the first until
+  its action has committed, and a repeat once the stream has started runs
+  again, as for a response that starts a session (`keeps: request` in
+  `x-jadpo-idempotency`).
+- **OpenAPI** lists the 200 as `text/event-stream`, its schema a string,
+  described with its events, and each event's data's schema in
+  `x-jadpo-stream` (`events: { piece:, done:, error: }`), which plain
+  OpenAPI 3.1 has no field for; the failures before the first piece are
+  listed as any route's are. **The API record** writes the route's output
+  as `output AiStream (server-sent events)`:
+
+```jadpo check project=ai-stream file=api/main.jadpo_record
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+POST /help_desk
+    authentication none
+    input Asked (body)
+    output AiStream (server-sent events)
+    status 200
+    fails assistant_unavailable
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+input Asked
+    customer_question: Text { max_length: 2000 }
+
+failure assistant_unavailable
+    status 503
+    message "The assistant can't answer now; a person will reply."
+```
+
+- **In a route test** a streaming route's `Response` has `pieces`, the
+  text of each `piece` event in order, in place of `output`, and `code`,
+  the `error` event's code when one ended it (`none` after `done`); its
+  status is 200 once the first piece came. The `ai` fake cuts a scripted
+  text into pieces of a few words, and `partial("...", <condition>)`
+  scripts a stream that stops part-way (area 21, "Tests"):
+
+```jadpo check project=ai-stream file=domains/support/routes/help_desk.test.jadpo
+use support/types { Asked }
+
+test "a reply comes piece by piece" {
+    fakes: {
+        ai.answer_question: ["Our sourdough is baked beside sesame."]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/help_desk"
+        input: Asked {
+            customer_question: "Does your sourdough contain sesame?"
+        }
+    }
+    assert response.status == 200
+    assert response.pieces == ["Our sourdough is ", "baked beside sesame."]
+    assert response.code == none
+}
+
+test "a failure after the first piece arrives as an error event" {
+    fakes: {
+        ai.answer_question: [partial("Our sourdough is baked", timed_out)]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/help_desk"
+        input: Asked {
+            customer_question: "Does your sourdough contain sesame?"
+        }
+    }
+    assert response.status == 200
+    assert response.pieces == ["Our sourdough is ", "baked"]
+    assert response.code == "unavailable"
+}
+
+test "a refusal before the first piece is the desk's own failure" {
+    fakes: {
+        ai.answer_question: [refused]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/help_desk"
+        input: Asked {
+            customer_question: "Help me pick a lock"
+        }
+    }
+    assert response.status == 503
+    assert response.code == "assistant_unavailable"
+}
+```
 
 ## Health
 
@@ -1359,7 +1660,7 @@ error: `MemoRecord` isn't an `Output`
    |
 36 |         output: MemoRecord
    |                 ^^^^^^^^^^ not an `Output`
-  reason: A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.
+  reason: A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), or an `AiStream`, a model's answer sent as it is written, so only fields declared for clients are ever sent.
   next: Declare `type <Name> = Output { ... }` with the fields clients see, and return it (agent)
   rule: route.output_not_output
   help: docs/language/07-http.html#route-output-not-output
@@ -1683,6 +1984,148 @@ error: `answer: add_memo` is an action
   help: docs/language/07-http.html#route-settle-invalid
 
 check failed: 1 error, 1 file
+```
+
+### `route.stream_invalid`
+
+A route whose action returns an `AiStream` sends the model's answer as
+it is written, answering 200 once the first piece has come; it takes no
+other `status:` and no `settle:`:
+
+```jadpo check project=e-route-stream-invalid file=app.jadpo hidden
+application {
+    connections: {
+        local_model: {
+            driver: Driver.openai_compatible
+            url: config.model_url
+        }
+    }
+    ai: {
+        connection: local_model
+        models: {
+            default: config.drafting_model
+        }
+    }
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=config.jadpo hidden
+config {
+    drafting_model: ModelId {
+        default: "meta-llama/Llama-3.1-8B-Instruct"
+    }
+    model_url: Url {
+        default: "http://localhost:8000/v1"
+    }
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=policy.jadpo hidden
+use support
+
+policy {
+    actions: {
+        support.stream_answer: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/types/customer_question.jadpo hidden
+/// What a customer asked the help desk.
+type CustomerQuestion = Text {
+    max_length: 2000
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/types/asked.jadpo hidden
+use support/types { CustomerQuestion }
+
+/// A customer's question, as the help desk sends it.
+type Asked = Input {
+    customer_question: CustomerQuestion
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/failures/assistant_unavailable.jadpo hidden
+/// The assistant can't answer now; a person will reply.
+type AssistantUnavailable = Failure {
+    kind: FailureKind.unavailable
+    message: "The assistant can't answer now; a person will reply."
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/prompts/answer_question.jadpo hidden
+use support/types { CustomerQuestion }
+
+/// Answers a customer's question.
+type AnswerQuestion = Prompt {
+    question: CustomerQuestion
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/prompts/answer_question.prompt hidden
+# Instructions
+
+You answer questions from customers of an online bakery.
+
+# Request
+
+{question}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/actions/stream_answer.jadpo hidden
+use support/types { Asked }
+use support/failures { AssistantUnavailable }
+use support/prompts { AnswerQuestion }
+
+/// Streams an answer to a customer's question as it is written.
+action stream_answer(asked: Asked) fails AssistantUnavailable -> AiStream {
+    return attempt ai.stream(
+        AnswerQuestion {
+            question: asked.customer_question
+        },
+        max_output: 600,
+        timeout: 8s
+    ) {
+        refused: AssistantUnavailable
+        timed_out: AssistantUnavailable
+        over_budget: AssistantUnavailable
+        too_long: AssistantUnavailable
+    }
+}
+```
+
+```jadpo check project=e-route-stream-invalid file=domains/support/routes/help_desk.jadpo expect=route.stream_invalid
+use support/types { Asked }
+use support/actions { stream_answer }
+
+/// Customers' questions.
+routes HelpDesk {
+    prefix: /help_desk
+
+    /// Streams the assistant's reply as it is written.
+    POST / {
+        authentication: RouteAuthentication.none
+        input: Asked
+        output: AiStream
+        status: SuccessStatus.created
+        run: stream_answer(input)
+    }
+}
+```
+
+```text output
+error: `POST /help_desk` streams a model's answer with `SuccessStatus.created`
+ --> domains/support/routes/help_desk.jadpo:13:9
+   |
+13 |         status: SuccessStatus.created
+   |         ^^^^^^ not `SuccessStatus.ok`
+  reason: A route whose action returns an `AiStream` sends the model's answer as server-sent events as it is written, answering 200 once its first piece has come; it has no other success to report, and nothing to wait for with `settle:`.
+  next: Remove `status:`; a stream answers 200 (agent)
+  rule: route.stream_invalid
+  help: docs/language/07-http.html#route-stream-invalid
+
+check failed: 1 error, 9 files
 ```
 
 ### `route.authentication_invalid`
@@ -2667,6 +3110,13 @@ to retry; OpenAPI and the record show both answers, and a repeat with
 the same `Idempotency-Key` runs the query again ("Waiting for follow-on
 work", and `route.settle_invalid`).
 
+Since chunk 5.5v6 a route whose action returns an `AiStream` sends a
+model's answer as server-sent events as it is written: `piece` events,
+then `done`, or an `error` event for a failure after the first piece;
+OpenAPI lists it as `text/event-stream` with `x-jadpo-stream`, the record
+as `output AiStream (server-sent events)`, and a route test reads its
+`pieces` ("Streaming a model's answer", and `route.stream_invalid`).
+
 Not yet: `x-jadpo-events`, which waits for publishing events outward
 (area 12); a route's own `rate_limit:` and the Redis
 store for rate limits (area 16); classifying breaking changes and their
@@ -2712,7 +3162,7 @@ is written.
 | `toolchain.target_liveness_not_local`, raised only by `jadpo build`; the `jadpo api update` command and CI's record check | 14 | Input to area 14 |
 | `precondition_failed` for `If-Match` (from area 4); until then a concurrent change answers 409 through area 5's check | 7 | Deferred |
 | Response headers: `Location` for created records, caching, `ETag` | 7 | Deferred |
-| Streaming responses that fail after headers are sent (ROUTE-002, from area 4) | 7 | Deferred |
+| Streaming responses that fail after headers are sent (ROUTE-002, from area 4) | 7 | Decided and built in chunk 5.5v6: an `error` event ("Streaming a model's answer") |
 | Per-route rate limits (`rate_limited`) | 7 | Deferred |
 
 ### Open questions
@@ -2910,3 +3360,4 @@ is written.
 | Native request limits (chosen in chunk 4.9) | A client has 10 seconds to send a request's headers and 30 its body, else the connection is closed without an answer; the server holds at most 1,024 connections, closing one past that as it is accepted; each worker opens at most 10 connections per store, a transaction past that waiting for one, inside the route's deadline. Configuration may set them once area 10 does | 2026-10-16 |
 | `Idempotency-Key` as input (chosen in chunk 4.9) | An `Input` field may not read `Idempotency-Key`, which the runtime reads before anything runs: `route.header_credential`, "`Idempotency-Key` belongs to the runtime" | 2026-10-16 |
 | A map layer as output (Richard, 2026-10-19) | Besides an `Output`, or a `List` or `Page` of one, a route may send a `FeatureCollection<G, P>` (area 20) bare, because mapping libraries fetch a layer as RFC 7946 GeoJSON; its properties type `P` is held to what an `Output` may hold, so only fields declared for clients leave the server. `route.output_not_output`'s reason names it. Built in chunk 5.5u7 | 2026-10-19 |
+| Streaming a model's answer (chunk 5.5v6) | A route whose action returns an `AiStream` (area 21) names `output: AiStream` and sends it as server-sent events, `text/event-stream` with `Cache-Control: no-store`, once the action has committed and the first piece has come: each `piece` event `{"text": ...}` as it is read, then `done` (`{}`), or `error` with the failure envelope, `unavailable` (`internal_fault` for a defect), for anything that stops it part-way; one `event:` and one `data:` line of compact JSON per event; no `id:`, no `retry:`, `Last-Event-ID` not read, so a stream can't be resumed; a failure before the first piece answers as any route's does. The stream ends by the call's `timeout:` and the route's deadline, whichever is first, and a client that goes away closes the provider's connection. Only `SuccessStatus.ok` and no `settle:` (`route.stream_invalid`); the response is never kept for an `Idempotency-Key` repeat; OpenAPI's 200 is `text/event-stream` with each event's data in `x-jadpo-stream`; the record says `output AiStream (server-sent events)`; a route test's `Response` has `pieces` in place of `output`. The standard shape, chosen conservatively, since area 21 (question 6) chose server-sent events | 2026-10-20 |

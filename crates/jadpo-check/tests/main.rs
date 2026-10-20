@@ -14,6 +14,7 @@ mod ai;
 mod ai_embed;
 mod ai_generate;
 mod ai_providers;
+mod ai_stream;
 mod batches;
 mod bodies;
 mod calendar;

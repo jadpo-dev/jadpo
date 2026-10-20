@@ -10,9 +10,10 @@ use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-use jadpo_drivers::package::{Fetch, FetchError};
+use jadpo_drivers::package::{Fetch, FetchError, Opened};
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::provider::{MOST_ANSWER, Request, Response};
+use jadpo_runtime::stream::{Chunk, Coming};
 
 /// The longest a connection is waited for, within the call's timeout.
 const CONNECT: Duration = Duration::from_secs(5);
@@ -33,6 +34,312 @@ impl Fetch for NativeFetch {
                 Err(_) => Err(FetchError::TimedOut),
             }
         })
+    }
+
+    /// The answer's head once it comes, its body read on a thread of its
+    /// own and handed over as it arrives (chunk 5.5v6): what a model's
+    /// streamed answer is read with. Dropping the body closes the
+    /// connection at once, so a client that went away stops the reading.
+    fn open<'a>(&'a self, request: &'a Request) -> LocalFuture<'a, Result<Opened, FetchError>> {
+        let request = request.clone();
+        Box::pin(async move {
+            let timeout = Duration::from_millis(request.timeout_ms.max(1));
+            let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+            let (closer_sender, closer) = std::sync::mpsc::channel::<TcpStream>();
+            std::thread::spawn(move || streamed(&request, timeout, &sender, &closer_sender));
+            let head = tokio::time::timeout(timeout, receiver.recv()).await;
+            let closing = closer.try_recv().ok();
+            match head {
+                Ok(Some(Part::Head(status, headers))) => Ok(Opened {
+                    status,
+                    headers,
+                    body: Box::new(Body { receiver, closing }),
+                }),
+                Ok(Some(Part::Failed(error))) => Err(error),
+                Ok(_) => Err(FetchError::NoAnswer("the exchange stopped".into())),
+                Err(_) => {
+                    if let Some(stream) = closing {
+                        let _ = stream.shutdown(std::net::Shutdown::Both);
+                    }
+                    Err(FetchError::TimedOut)
+                }
+            }
+        })
+    }
+}
+
+/// What the thread reading a streamed answer hands over.
+enum Part {
+    Head(u16, Vec<(String, String)>),
+    Failed(FetchError),
+    Chunk(Chunk),
+}
+
+/// A streamed answer's body as its thread hands it over; dropped, it
+/// shuts its connection, which ends the thread's read.
+struct Body {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<Part>,
+    closing: Option<TcpStream>,
+}
+
+impl Coming for Body {
+    fn next(&mut self) -> LocalFuture<'_, Chunk> {
+        Box::pin(async move {
+            match self.receiver.recv().await {
+                Some(Part::Chunk(chunk)) => chunk,
+                _ => Chunk::Broken,
+            }
+        })
+    }
+}
+
+impl Drop for Body {
+    fn drop(&mut self) {
+        if let Some(stream) = self.closing.take() {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+    }
+}
+
+/// One streamed exchange, blocking, on its own thread: connect, send the
+/// request whole, hand over the head, then each part of the body as it is
+/// read, a chunked body's framing taken off, until it ends or no one is
+/// reading.
+fn streamed(
+    request: &Request,
+    timeout: Duration,
+    out: &tokio::sync::mpsc::UnboundedSender<Part>,
+    closer: &std::sync::mpsc::Sender<TcpStream>,
+) {
+    let failed = |error: FetchError| {
+        let _ = out.send(Part::Failed(error));
+    };
+    let Some(target) = target(&request.url) else {
+        return failed(FetchError::Refused("an address it can't send to".into()));
+    };
+    let bare = target.host.trim_start_matches('[').trim_end_matches(']');
+    let Ok(addresses) = (bare, target.port).to_socket_addrs() else {
+        return failed(FetchError::NotSent(format!(
+            "`{}` couldn't be found",
+            target.host
+        )));
+    };
+    let mut stream = None;
+    let mut last = String::from("nothing to connect to");
+    for address in addresses {
+        match TcpStream::connect_timeout(&address, CONNECT.min(timeout)) {
+            Ok(connected) => {
+                stream = Some(connected);
+                break;
+            }
+            Err(error) => last = error.to_string(),
+        }
+    }
+    let Some(stream) = stream else {
+        return failed(FetchError::NotSent(format!("no connection: {last}")));
+    };
+    let _ = stream.set_nodelay(true);
+    if let Err(error) = stream
+        .set_read_timeout(Some(timeout))
+        .and_then(|()| stream.set_write_timeout(Some(timeout)))
+    {
+        return failed(FetchError::NotSent(error.to_string()));
+    }
+    if let Ok(copy) = stream.try_clone() {
+        let _ = closer.send(copy);
+    }
+    let bytes = request_bytes(request, &target);
+    let reading = if target.secure {
+        let connector =
+            match openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client()) {
+                Ok(builder) => builder.build(),
+                Err(error) => return failed(FetchError::NotSent(error.to_string())),
+            };
+        match connector.connect(bare, stream) {
+            Ok(tls) => read_streamed(tls, &bytes, out),
+            Err(error) => {
+                return failed(FetchError::NotSent(format!(
+                    "no secure connection: {error}"
+                )));
+            }
+        }
+    } else {
+        read_streamed(stream, &bytes, out)
+    };
+    if let Err(error) = reading {
+        failed(error);
+    }
+}
+
+/// Writes `request` and hands over the answer's head, then its body as it
+/// is read. `Err` only before the head came.
+fn read_streamed<S: Read + Write>(
+    mut stream: S,
+    request: &[u8],
+    out: &tokio::sync::mpsc::UnboundedSender<Part>,
+) -> Result<(), FetchError> {
+    stream
+        .write_all(request)
+        .and_then(|()| stream.flush())
+        .map_err(|error| FetchError::NoAnswer(error.to_string()))?;
+    let mut raw = Vec::new();
+    let mut buffer = [0; 8192];
+    let start = loop {
+        if let Some((start, _)) = head(&raw) {
+            break start;
+        }
+        match stream.read(&mut buffer) {
+            Ok(0) => return Err(FetchError::NoAnswer("an answer that isn't HTTP".into())),
+            Ok(n) => raw.extend_from_slice(buffer.get(..n).unwrap_or_default()),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Err(FetchError::TimedOut);
+            }
+            Err(error) => return Err(FetchError::NoAnswer(error.to_string())),
+        }
+        if raw.len() > MOST_ANSWER {
+            return Err(FetchError::NoAnswer("an answer too long".into()));
+        }
+    };
+    let Some((_, lines)) = head(&raw) else {
+        return Err(FetchError::NoAnswer("an answer that isn't HTTP".into()));
+    };
+    let mut status_line = lines
+        .first()
+        .into_iter()
+        .flat_map(|line| line.split_whitespace());
+    let status = match (status_line.next(), status_line.next()) {
+        (Some(version), Some(code)) if version.starts_with("HTTP/1.") => code.parse().ok(),
+        _ => None,
+    }
+    .ok_or_else(|| FetchError::NoAnswer("an answer that isn't HTTP".into()))?;
+    let headers: Vec<(String, String)> = lines
+        .iter()
+        .skip(1)
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            Some((name.trim().to_ascii_lowercase(), value.trim().to_string()))
+        })
+        .collect();
+    let chunked =
+        header(&lines, "transfer-encoding").is_some_and(|v| v.eq_ignore_ascii_case("chunked"));
+    let mut left = header(&lines, "content-length").and_then(|v| v.parse::<usize>().ok());
+    if out.send(Part::Head(status, headers)).is_err() {
+        return Ok(());
+    }
+    let mut body = Chunking::new(chunked);
+    let mut pending: Vec<u8> = raw.get(start..).unwrap_or_default().to_vec();
+    let mut total = 0usize;
+    loop {
+        if !pending.is_empty() {
+            let mut data = body.take(&mut pending);
+            if let Some(length) = left.as_mut() {
+                data.truncate(*length);
+                *length -= data.len();
+            }
+            total += data.len();
+            if total > MOST_ANSWER {
+                let _ = out.send(Part::Chunk(Chunk::Broken));
+                return Ok(());
+            }
+            if !data.is_empty() && out.send(Part::Chunk(Chunk::Bytes(data))).is_err() {
+                return Ok(());
+            }
+            if body.ended || left == Some(0) {
+                let _ = out.send(Part::Chunk(Chunk::End));
+                return Ok(());
+            }
+        }
+        match stream.read(&mut buffer) {
+            Ok(0) => {
+                let ended = !chunked && left.is_none();
+                let _ = out.send(Part::Chunk(if ended { Chunk::End } else { Chunk::Broken }));
+                return Ok(());
+            }
+            Ok(n) => pending.extend_from_slice(buffer.get(..n).unwrap_or_default()),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                let _ = out.send(Part::Chunk(Chunk::TimedOut));
+                return Ok(());
+            }
+            Err(_) => {
+                let _ = out.send(Part::Chunk(Chunk::Broken));
+                return Ok(());
+            }
+        }
+    }
+}
+
+/// How a streamed body is framed, and how far its chunks have been read.
+struct Chunking {
+    chunked: bool,
+    /// Bytes left of the chunk being read, or `None` before a size line.
+    in_chunk: Option<usize>,
+    ended: bool,
+}
+
+impl Chunking {
+    fn new(chunked: bool) -> Chunking {
+        Chunking {
+            chunked,
+            in_chunk: None,
+            ended: false,
+        }
+    }
+
+    /// The body's data in `pending`, its chunks' framing taken off; what
+    /// can't be read yet stays.
+    fn take(&mut self, pending: &mut Vec<u8>) -> Vec<u8> {
+        if !self.chunked {
+            return std::mem::take(pending);
+        }
+        let mut data = Vec::new();
+        loop {
+            match self.in_chunk {
+                Some(0) => {
+                    // The line ending after a chunk's data.
+                    if pending.len() < 2 {
+                        return data;
+                    }
+                    pending.drain(..2);
+                    self.in_chunk = None;
+                }
+                Some(left) => {
+                    if pending.is_empty() {
+                        return data;
+                    }
+                    let n = left.min(pending.len());
+                    data.extend(pending.drain(..n));
+                    self.in_chunk = Some(left - n);
+                }
+                None => {
+                    let Some(end) = pending.windows(2).position(|w| w == b"\r\n") else {
+                        return data;
+                    };
+                    let size = std::str::from_utf8(pending.get(..end).unwrap_or_default())
+                        .ok()
+                        .and_then(|line| line.split(';').next())
+                        .and_then(|size| usize::from_str_radix(size.trim(), 16).ok());
+                    pending.drain(..end + 2);
+                    match size {
+                        Some(0) | None => {
+                            self.ended = true;
+                            pending.clear();
+                            return data;
+                        }
+                        Some(size) => self.in_chunk = Some(size),
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -259,6 +566,23 @@ fn exchange(request: &Request, timeout: Duration) -> Result<Response, FetchError
         .set_read_timeout(Some(timeout))
         .and_then(|()| stream.set_write_timeout(Some(timeout)))
         .map_err(|error| FetchError::NotSent(error.to_string()))?;
+    let bytes = request_bytes(request, &target);
+    let raw = if target.secure {
+        let connector = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
+            .map_err(|error| FetchError::NotSent(error.to_string()))?
+            .build();
+        let tls = connector
+            .connect(bare, stream)
+            .map_err(|error| FetchError::NotSent(format!("no secure connection: {error}")))?;
+        send(tls, &bytes)?
+    } else {
+        send(stream, &bytes)?
+    };
+    parse(&raw).ok_or_else(|| FetchError::NoAnswer("an answer that isn't HTTP".into()))
+}
+
+/// `request` as it is written to `target`: its head, then its body.
+fn request_bytes(request: &Request, target: &Target) -> Vec<u8> {
     let default = if target.secure { 443 } else { 80 };
     let port = if target.port == default {
         String::new()
@@ -284,18 +608,7 @@ fn exchange(request: &Request, timeout: Duration) -> Result<Response, FetchError
     head.push_str("Connection: close\r\n\r\n");
     let mut bytes = head.into_bytes();
     bytes.extend_from_slice(body.as_bytes());
-    let raw = if target.secure {
-        let connector = openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls_client())
-            .map_err(|error| FetchError::NotSent(error.to_string()))?
-            .build();
-        let tls = connector
-            .connect(bare, stream)
-            .map_err(|error| FetchError::NotSent(format!("no secure connection: {error}")))?;
-        send(tls, &bytes)?
-    } else {
-        send(stream, &bytes)?
-    };
-    parse(&raw).ok_or_else(|| FetchError::NoAnswer("an answer that isn't HTTP".into()))
+    bytes
 }
 
 /// Writes `request` and reads the answer until it is whole or the other
