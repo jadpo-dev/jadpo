@@ -1634,14 +1634,20 @@ The design is area 11 as revised on 2026-10-16, with its research in
   prompt's recordings warned about. Done when the support example on area
   21 runs end to end in a test: embed, nearest query, typed answer from a
   recording.
-- [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
-  21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
-  per-day and per-caller limits counted in the main store, the cost
-  estimate from the package's prices, `jadpo ai usage`, `personal_data: {
-  allowed: }` with the flow check from placeholders back to marked
-  fields, `to_models: false`, and the prompts in the personal-data report.
-  Done when a test exhausts each limit and is refused `over_budget`, and
-  a marked field reaching a prompt unlisted fails to compile.
+- [ ] **5.5v5 Budgets** `opus · high` (area 21, "Budgets"), after 5.5v3b
+  (split on 2026-10-20: personal data to models is 5.5v5b): the per-call,
+  per-request, per-day and per-caller limits counted in the main store,
+  the cost estimate from the package's prices, `jadpo ai usage`, and the
+  development daily limit on sandboxed prompts (left from 5.5v3b). Done
+  when a test exhausts each limit and is refused `over_budget`.
+- [ ] **5.5v5b Personal data to models** `opus · high` (area 21, "Personal
+  data sent to a model"), after 5.5v5 (split from 5.5v5 on 2026-10-20):
+  `personal_data: { allowed: }` with the flow check from placeholders back
+  to marked fields (`personal:` read on fields for it, and the standard
+  types' own categories), `to_models: false`. Done when a marked field
+  reaching a prompt unlisted fails to compile. The prompts' entry in the
+  personal-data report comes with the report itself (area 15, after the
+  first build, item 1).
 - [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
   an `AiStream`, the final and error events, the stream fake, and the
