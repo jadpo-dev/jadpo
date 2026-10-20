@@ -2627,6 +2627,20 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
             }
         }
     }
+    // The ids of webhooks' events already received are kept beside the
+    // outbox they are written to (area 11, "Receiving from outside"; chunk
+    // 7.7).
+    if let Some(store) = crate::webhooks::webhooks(db, project)
+        .routes
+        .first()
+        .map(|route| route.store.clone())
+        && let Some(found) = schema.stores.get_mut(&store)
+    {
+        found.tables.insert(
+            system::RECEIVED_EVENTS.table.to_string(),
+            columns::system_table(&system::RECEIVED_EVENTS),
+        );
+    }
     // Sessions live beside the users they sign in, so one statement reads
     // a session with its user's record (area 8).
     if let Some(store) = crate::identity::identity(db, project).sessions_store()

@@ -176,7 +176,7 @@ pub(crate) const METHOD_NOT_ALLOWED: (u16, &str, &str) = (
     "This path doesn't answer this method.",
 );
 const RATE_LIMITED: (u16, &str, &str) = (429, "rate_limited", "Too many requests.");
-const REQUEST_TOO_LARGE: (u16, &str, &str) =
+pub(crate) const REQUEST_TOO_LARGE: (u16, &str, &str) =
     (413, "request_too_large", "The request body is over 1 MB.");
 const DEADLINE_EXCEEDED: (u16, &str, &str) = (
     504,
@@ -203,12 +203,12 @@ const KEY_IN_FLIGHT: (u16, &str, &str) = (
     "conflict",
     "A request with this Idempotency-Key is still running.",
 );
-const UNAVAILABLE: (u16, &str, &str) = (
+pub(crate) const UNAVAILABLE: (u16, &str, &str) = (
     503,
     "unavailable",
     "A dependency is temporarily unavailable.",
 );
-const INTERNAL_FAULT: (u16, &str, &str) = (
+pub(crate) const INTERNAL_FAULT: (u16, &str, &str) = (
     500,
     "internal_fault",
     "The server failed to answer the request.",
@@ -368,6 +368,23 @@ async fn respond(
             health::answer(app.table, ctx, request, request_id, segments, ready).await
     {
         return response;
+    }
+    // A webhook's route is the runtime's own (area 11, "Receiving from
+    // outside"; chunk 7.7), counted against its address before anything
+    // in it is read, whatever credential it carries.
+    let webhooks = executor.webhooks();
+    let webhook = segments
+        .as_ref()
+        .zip(webhooks.as_ref())
+        .and_then(|(segments, webhooks)| webhooks.route(segments));
+    if let (Some(found), Some(webhooks)) = (webhook, &webhooks) {
+        if let Some(response) = by_address(ctx, request_id).await {
+            return response;
+        }
+        if !headers_readable(request) {
+            return runtime_failure(HEADER_UNREADABLE, request_id, None);
+        }
+        return crate::webhooks::answer(executor, webhooks, found, ctx, request, request_id).await;
     }
     // A request with a credential counts against its caller once signed
     // in, or against its address if it isn't; every other request against
@@ -1367,7 +1384,7 @@ fn json_response(status: u16, code: &str, body: Vec<u8>) -> Response {
     }
 }
 
-fn runtime_failure(
+pub(crate) fn runtime_failure(
     (status, code, message): (u16, &str, &str),
     request_id: &str,
     details: Option<&str>,
@@ -1376,7 +1393,7 @@ fn runtime_failure(
 }
 
 /// 422 `invalid_input`, each problem as `{ field, rule }`.
-fn invalid_input(request_id: &str, problems: &[Problem]) -> Response {
+pub(crate) fn invalid_input(request_id: &str, problems: &[Problem]) -> Response {
     let mut details = String::from("{\"problems\":[");
     for (at, problem) in problems.iter().enumerate() {
         if at > 0 {

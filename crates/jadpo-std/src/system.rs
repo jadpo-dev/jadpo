@@ -195,6 +195,28 @@ pub const HANDLED_DELIVERIES: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// The events received from outside, by where they came from and the
+/// sender's own id (area 11, "Receiving from outside"; chunk 7.7): a
+/// webhook's provider event id, under `webhook <connection>`, so a repeat
+/// is dropped. Committed with the event's outbox row, in the store webhook
+/// events are kept in, and deleted by the tick once a provider no longer
+/// sends it again.
+pub const RECEIVED_EVENTS: SystemTable = SystemTable {
+    table: "jadpo_received_events",
+    columns: &[
+        column("source", "text", false),
+        column("event_id", "text", false),
+        column("received_at", "timestamptz(3)", false),
+    ],
+    primary_key: &["source", "event_id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["received_at"],
+        reason: "system received events",
+    }],
+};
+
 /// Idempotency keys (area 7): one stored response per key and caller.
 pub const IDEMPOTENCY_KEYS: SystemTable = SystemTable {
     table: "jadpo_idempotency_keys",
@@ -545,7 +567,7 @@ pub const SCHEDULE_TABLES: [&SystemTable; 3] = [&SCHEDULES, &SCHEDULE_RUNS, &OPE
 pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATCH_CANCELS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 15] = [
+pub const ALL: [&SystemTable; 16] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -561,6 +583,7 @@ pub const ALL: [&SystemTable; 15] = [
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,
+    &RECEIVED_EVENTS,
 ];
 
 /// The system table called `name`, without its prefix; `None` for a name

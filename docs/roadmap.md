@@ -733,7 +733,7 @@ chunks below, taken before Phase 7, in this order.
   database role; a retried delivery's fresh budget (`retried_at`), and a
   schedule's run retried through the app's tick. `show`, `retry
   --not-done` and `abandon` come with multi-step calls (7.5), and batch
-  runs and parked queue messages with 6.4b and 7.7.
+  runs and parked queue messages with 6.4b and 7.7c.
 - [x] **5.13b `jadpo dev` and half-written files** `opus · high`.
   Built: the watcher behind `jadpo dev` and `jadpo test --watch` takes a
   file that had text and is empty now as a save in place not yet
@@ -1199,10 +1199,40 @@ The design is area 11 as revised on 2026-10-16, with its research in
   calling only their own API, package subscribers on their own webhooks,
   public and non-public package events, `polls:` run only while
   subscribed, `max_concurrent:`, and recipes with `jadpo package recipe`.
-- [ ] **7.7 Receiving from outside** `opus · high`: webhook replies and
-  handshakes, `occurred_at`, and the `receiving` capability for queues
-  (`type_at`, `id_at`, `events`), with the SQS package and, on Workers,
-  the Cloudflare Queues driver.
+- [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
+  from outside on 2026-10-20: no webhook was received before it, so
+  replies and handshakes had nothing to build on). Built: a provider's
+  `webhooks:` (`check:` one of `SignatureScheme.stripe`,
+  `.standard_webhooks`, `.hmac_sha256` with `header:` and `.basic`;
+  `event_id:`, `event_type:` and `occurred_at:` places in the body), a
+  package's `events/` read (each with its `wire_name:` and `occurred_at:
+  Instant`) and subscribed to by the app, a connection's `webhooks: {
+  secret: }`, and `POST <prefix>/<connection>` in the `webhooks` API
+  (`/webhooks` when none is declared; `jadpo routes`, and the declared
+  API's record and OpenAPI document), answered by the runtime: the
+  signature checked over the raw body with a five-minute tolerance, the
+  body read with the event's codec on the provider's wire, `occurred_at`
+  filled from the provider's time, the provider's id recorded in
+  `jadpo_received_events` with the outbox row and deliveries in one
+  transaction, a repeat answered and dropped, and the ids deleted by the
+  tick after 30 days. Live tests in `webhooks.rs`. Choices in area 11's
+  "Chosen in chunk 7.7".
+- [ ] **7.7b Webhook replies and handshakes** `opus · high`, after 7.7:
+  `reply:` on a package's event and the connection's `webhooks: {
+  replies: }`, the answering action run inside the request after the
+  signature check, a repeat given the stored reply; `handshake:`
+  (`WebhookHandshake.sns`, `.slack`, `.microsoft_graph`); and Twilio's
+  HMAC-SHA1 over a form body and SNS's certificates, which fetch the
+  signing certificate from AWS through an outbound guard.
+- [ ] **7.7c Queues through `receiving`** `opus · high`, after 7.7: the
+  `receiving` capability (`type_at:`, `id_at:`, `events:`, an app event's
+  `wire_name:`), each message its event for the app's subscribers,
+  acknowledged after the subscriber's transaction commits, repeats dropped
+  by id in `jadpo_received_events`, an unlisted type or a message that
+  keeps failing parked for an operator in `jadpo deliveries`; the SQS
+  package, tested against a local fake of SQS's JSON API; and on Workers
+  the Cloudflare Queues driver, its seam and consumer configuration built
+  and unit-tested here, deploying it Phase 8's.
 - [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
   xhigh` (area 21, "The `ai` capability" and "Typed output"), after
   5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`

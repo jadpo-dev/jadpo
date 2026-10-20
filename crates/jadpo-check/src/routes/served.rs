@@ -1,6 +1,7 @@
 //! Each API's own OpenAPI document, served at `<prefix>/openapi.json`
 //! (area 7, "OpenAPI"; chunk 7.2): every API that has a document, that is
-//! routes of its own or the passkey routes, unless its entry in `apis: { }`
+//! routes of its own, the passkey routes or, for the `webhooks` API, the
+//! connections' webhooks (chunk 7.7), unless its entry in `apis: { }`
 //! says `serve_openapi: false`. The route is the runtime's, listed like
 //! any generated route: in the API's record (`generated openapi`), its
 //! OpenAPI document (`x-jadpo-generated`) and `jadpo routes`.
@@ -56,6 +57,7 @@ pub fn served(db: &dyn Db, project: Project) -> Vec<Served> {
         .filter(|api| {
             passkey_api == Some(api.name.as_str())
                 || groups.routes().any(|(group, _)| group.api == api.name)
+                || !crate::webhooks::declared_in(db, project, &api.name).is_empty()
         })
         .map(|api| {
             let signs_in = super::apis::accepted_methods(db, project, &api.name)

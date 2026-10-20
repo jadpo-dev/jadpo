@@ -366,6 +366,13 @@ the outbox for subscribers (area 12). A webhook that needs a reply runs
 the app's answering action inside the request (area 11, "Receiving from
 outside", 2026-10-16). Its path can change; it cannot be switched off.
 
+Built in chunk 7.7 (area 11, "Chosen in chunk 7.7"): the route is
+`<prefix>/<connection>` under the prefix of the `webhooks` API the app
+declares, whose record and OpenAPI document list it, or `/webhooks/<connection>`
+outside every declared API; `jadpo routes` shows it as `generated webhook`
+with `signature` for its authentication, and an app route at its path is
+`route.path_overlap`. Replies and handshakes come with chunk 7.7b.
+
 Two senders still reach ordinary routes (decided 2026-10-16): a system that
 signs webhooks and has no package gets the app's own integration in
 `shared/providers/`, whose webhooks are generated the same way; a partner

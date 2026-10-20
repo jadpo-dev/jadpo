@@ -214,7 +214,8 @@ pub fn document(
             })
             .is_some_and(|found| found.name == api)
     });
-    if routes.is_empty() && passkeys.is_none() {
+    let webhooks = crate::webhooks::declared_in(db, project, api);
+    if routes.is_empty() && passkeys.is_none() && webhooks.is_empty() {
         return None;
     }
     let wire = Wire {
@@ -265,6 +266,10 @@ pub fn document(
             .entry(format!("/{}", jadpo_std::http::EXCHANGE_PATH.join("/")))
             .or_insert_with(Value::object);
         entry.set("post", exchange_operation(&methods, &mut failure_schemas));
+    }
+    for webhook in &webhooks {
+        let entry = paths.entry(webhook.path()).or_insert_with(Value::object);
+        entry.set("post", webhook_operation(webhook, &mut failure_schemas));
     }
     if let Some(passkey) = passkeys {
         for step in jadpo_std::http::PasskeyStep::ALL {
@@ -475,6 +480,75 @@ fn served_operation(
     responses.set("429", shared_response("RateLimited"));
     responses.set("500", shared_response("InternalFault"));
     responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+/// A connection's generated webhook (area 11, "Receiving from outside";
+/// chunk 7.7): the provider's JSON body, checked by its signature and kept
+/// for the app's subscribers, answered with no content.
+fn webhook_operation(
+    webhook: &crate::webhooks::WebhookModel,
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "post_{}",
+            webhook
+                .segments
+                .iter()
+                .map(|segment| segment.replace(['-', '.'], "_"))
+                .collect::<Vec<_>>()
+                .join("_")
+        ),
+    );
+    out.set(
+        "description",
+        format!(
+            "Receives `{}`'s webhooks from its provider: each checked by its signature, a repeat of an event already received answered alike, and each event its package declares kept for the app's subscribers.",
+            webhook.package
+        ),
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", true);
+    out.set("security", Vec::<Value>::new());
+    let mut object = Value::object();
+    object.set("type", "object");
+    let mut json = Value::object();
+    json.set("schema", object);
+    let mut content = Value::object();
+    content.set("application/json", json);
+    let mut body = Value::object();
+    body.set("required", true);
+    body.set("content", content);
+    out.set("requestBody", body);
+    let mut responses = Value::object();
+    let mut received = Value::object();
+    received.set("description", "Received.");
+    responses.set("204", received);
+    failure_schemas.insert(
+        "SignatureMismatch".to_string(),
+        envelope(
+            "unauthenticated",
+            "The webhook's signature doesn't match, or it was signed more than five minutes ago.",
+            None,
+        ),
+    );
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set(
+        "401",
+        response(
+            "Fails with `unauthenticated`.",
+            Some(reference("SignatureMismatch")),
+        ),
+    );
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("503", shared_response("Unavailable"));
     out.set("responses", responses);
     out
 }
