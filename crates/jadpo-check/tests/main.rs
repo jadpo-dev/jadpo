@@ -11,6 +11,7 @@ mod support;
 mod across;
 mod aggregates;
 mod ai;
+mod ai_embed;
 mod ai_generate;
 mod ai_providers;
 mod batches;

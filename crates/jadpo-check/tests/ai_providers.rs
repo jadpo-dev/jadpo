@@ -30,7 +30,12 @@ fn provides(body: &str) -> String {
 /// The package and the app's desk, `provides/ai.jadpo` as given (none
 /// for `None`), with `app.jadpo` as given.
 fn problems_with(app: &str, mapping: Option<&str>) -> Vec<String> {
-    let files: Vec<(String, String)> = vec![
+    problems_with_extra(app, mapping, &[])
+}
+
+/// [`problems_with`], with `extra` files besides.
+fn problems_with_extra(app: &str, mapping: Option<&str>, extra: &[(&str, &str)]) -> Vec<String> {
+    let mut files: Vec<(String, String)> = vec![
         ("app.jadpo".into(), app.into()),
         (CONFIG.0.into(), CONFIG.1.into()),
         (
@@ -98,7 +103,11 @@ fn problems_with(app: &str, mapping: Option<&str>) -> Vec<String> {
             "use support/failures { AssistantUnavailable }\nuse support/prompts { AnswerQuestion }\nuse support/types { CustomerQuestion, SupportAnswer }\n\n/// Answers a customer's question.\naction answer_customer(question: CustomerQuestion) fails AssistantUnavailable -> SupportAnswer {\n    return attempt ai.generate(AnswerQuestion { question: question }, as: SupportAnswer) {\n        refused: AssistantUnavailable\n        malformed: AssistantUnavailable\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: AssistantUnavailable\n    }\n}\n".into(),
         ),
     ];
-    let mut files = files;
+    files.extend(
+        extra
+            .iter()
+            .map(|(path, text)| (path.to_string(), text.to_string())),
+    );
     if let Some(mapping) = mapping {
         files.push((format!("{PACKAGE}/provides/ai.jadpo"), mapping.to_string()));
     }
@@ -277,6 +286,33 @@ fn a_sandbox_names_a_prompt_only_of_the_connection_that_fills_ai() {
         found,
         [
             "app.jadpo connection.value_invalid: `acme`'s `sandbox:` lists `answer_questions`, which `AcmeModels.v1` doesn't have"
+        ],
+        "{found:#?}"
+    );
+}
+
+/// A package's mapping has no `embed:` yet (chunk 5.5v7), so an embedding
+/// asked through a package's connection isn't built yet (chunk 5.5v4).
+#[test]
+fn an_embedding_through_a_package_waits_for_its_mapping() {
+    let found = problems_with_extra(
+        APP,
+        Some(&provides(&format!("{GENERATE}{MODELS}"))),
+        &[
+            (
+                "domains/support/types/question_meaning.jadpo",
+                "/// A question's meaning.\ntype QuestionMeaning = Vector {\n    dimensions: 3\n}\n",
+            ),
+            (
+                "domains/support/actions/meaning_of.jadpo",
+                "use support/types { CustomerQuestion, QuestionMeaning }\nuse support/failures { AssistantUnavailable }\n\n/// A question's meaning.\naction meaning_of(question: CustomerQuestion) fails AssistantUnavailable -> QuestionMeaning {\n    return attempt ai.embed(question, as: QuestionMeaning, model: default) {\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: AssistantUnavailable\n    }\n}\n",
+            ),
+        ],
+    );
+    assert_eq!(
+        found,
+        [
+            "domains/support/actions/meaning_of.jadpo toolchain.not_built_yet: `ai.embed` through a package isn't built yet"
         ],
         "{found:#?}"
     );

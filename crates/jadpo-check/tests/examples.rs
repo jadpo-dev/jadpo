@@ -925,6 +925,7 @@ fn body_features(
                         Callee::Translation(_) => "call translation",
                         Callee::Prompt(_) => "render a prompt",
                         Callee::Generate { .. } => "ask a model",
+                        Callee::Embed { .. } => "ask a model for embeddings",
                         Callee::AiFake { .. } => "script a model's answers",
                         Callee::AiRequests { .. } => "read what a model was asked",
                         // What an HTML template's value is written out

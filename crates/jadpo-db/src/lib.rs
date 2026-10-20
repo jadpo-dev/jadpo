@@ -65,8 +65,9 @@ pub struct File {
 /// 18): a migration's `snapshot.json` and `postgres.sql`, every
 /// `.jadpo_record` ([`record::kind_of`]) and `jadpo.lock`, a record still
 /// under its name from before chunk 7.0 (`api/<api>.api`,
-/// `database/identities.json`), a prompt's text, `<name>.prompt`
-/// (area 21), an email's templates, `<name>.html` and `<name>.txt` (area
+/// `database/identities.json`), a prompt's text, `<name>.prompt`, and
+/// its recordings, `recordings/<prompt>/<name>.json` (area 21), an
+/// email's templates, `<name>.html` and `<name>.txt` (area
 /// 16), and a package's files that aren't its source
 /// ([`is_package_data`]), read whole for its digest.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -88,7 +89,7 @@ pub fn is_record(path: &str) -> bool {
     if places::is_package_data(path) {
         return true;
     }
-    if is_prompt_text(path) || is_email_template(path) {
+    if is_prompt_text(path) || is_prompt_recording(path) || is_email_template(path) {
         return true;
     }
     matches!(
@@ -114,6 +115,31 @@ pub fn is_prompt_text(path: &str) -> bool {
         _ => return false,
     };
     file.len() > PROMPT_EXTENSION.len() && file.ends_with(PROMPT_EXTENSION)
+}
+
+/// Whether a project-relative path is a recording of a prompt's answer,
+/// `recordings/<prompt>/<name>.json` in a domain's `prompts/` folder or
+/// `shared/prompts/` (area 21, "Tests"; chunk 5.5v4).
+pub fn is_prompt_recording(path: &str) -> bool {
+    prompt_recording(path).is_some()
+}
+
+/// The prompts folder, the prompt's name and the recording's name of a
+/// recording of a prompt's answer at `path` (chunk 5.5v4):
+/// `("domains/support/prompts", "answer_question", "sesame")`.
+pub fn prompt_recording(path: &str) -> Option<(String, &str, &str)> {
+    let parts: Vec<&str> = path.split('/').collect();
+    let (folder, prompt, file) = match parts.as_slice() {
+        ["domains", domain, "prompts", "recordings", prompt, file] => {
+            (format!("domains/{domain}/prompts"), *prompt, *file)
+        }
+        ["shared", "prompts", "recordings", prompt, file] => {
+            ("shared/prompts".to_string(), *prompt, *file)
+        }
+        _ => return None,
+    };
+    let name = file.strip_suffix(".json").filter(|name| !name.is_empty())?;
+    (!prompt.is_empty()).then_some((folder, prompt, name))
 }
 
 /// The extensions of an email's templates (area 16, "Email"): its HTML
