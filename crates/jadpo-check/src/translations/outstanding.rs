@@ -204,9 +204,11 @@ impl Unshown {
 /// nothing shows (chunk 7.1b4).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnusedWording {
-    /// The group: the package's folder name.
+    /// The group: the package's wording key, its folder name, or with the
+    /// version while two are held (`postcodes_v3`).
     pub group: String,
-    /// The package, as code names it (`Postcodes`), when one is installed.
+    /// The package, as code names it (`Postcodes`, or `Postcodes.v3` while
+    /// two versions are held), when one is installed.
     pub package: Option<String>,
     pub member: String,
     /// The root file it is in, and its name there.
@@ -254,7 +256,7 @@ pub fn unused_package_wording(db: &dyn Db, project: Project) -> Vec<UnusedWordin
                 };
                 out.push(UnusedWording {
                     group: group.name.clone(),
-                    package: home.as_ref().map(|home| home.code.clone()),
+                    package: home.as_ref().map(|home| home.through.clone()),
                     member: member.name.clone(),
                     path: file.path.clone(),
                     span: member.key_span.clone(),

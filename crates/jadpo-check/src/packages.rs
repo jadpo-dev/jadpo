@@ -757,31 +757,20 @@ fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnos
             }
         }
     }
-    // A library package's messages are worded under its folder's name
-    // (`postcodes: { }`, area 10), which two versions would share; how an
-    // app words each version apart isn't decided (chunk 7.1c2).
+    // While two versions are held, a library package's text is worded
+    // under its folder's name and version (`postcodes_v3: { }`), which no
+    // domain can share either (chunk 7.1c3).
     if home.through != home.code
-        && let Some(file) = package
+        && table.domains.contains(&home.wording_key())
+        && package
             .files
             .iter()
-            .find(|file| location(db, project, **file).place == Place::Folder(Folder::Translations))
+            .any(|file| location(db, project, *file).place == Place::Folder(Folder::Translations))
     {
-        out.push(
-            Diagnostic::new(
-                &rule::TOOLCHAIN_NOT_BUILT_YET,
-                format!(
-                    "Two versions of package `{}` with translations side by side aren't built yet",
-                    home.code
-                ),
-            )
-            .at(file_span(file.path(db)), "")
-            .reason(format!(
-                "The app words a package's messages under its folder's name, `{}: {{ }}`, which `{}` shares with the other version held beside it, so the two versions' messages can't be told apart yet.",
-                home.name,
-                home.versioned()
-            ))
-            .next("Move every caller to one version and remove the other, then add the new one"),
-        );
+        taken.push(format!(
+            "domain `{}`, the key its wording takes while two versions are held",
+            home.wording_key()
+        ));
     }
     // Two versions of one package, both installed or both the app's own,
     // sit side by side with names carrying the version (chunk 7.1c2); an

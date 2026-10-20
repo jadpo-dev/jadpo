@@ -2437,7 +2437,9 @@ translations {
 > lines in the root record and its place in the publishing bar; the
 > choices are under "Chosen in chunk 7.1b3" below. Built in chunk 7.1b4:
 > its text in `jadpo translations export`, `import` and `unused`, under
-> "Chosen in chunk 7.1b4".
+> "Chosen in chunk 7.1b4". Built in chunk 7.1c3: two versions of a
+> package worded side by side (area 11, "Wording two versions of a
+> package", decided 2026-10-20), under "Chosen in chunk 7.1c3".
 
 Text Jadpo writes itself (built-in emails and its failures' wording; it
 generates endpoints only, never pages) is Jadpo's own messages. Jadpo ships
@@ -2674,6 +2676,191 @@ are not judged. A library package is published with
 complete wording in its own default locale and a `///` description on
 every public message.
 
+While the app holds two versions of a library package side by side (area
+11, "Where packages live"), it words each under a key carrying the
+version, `postcodes_v2: { }` and `postcodes_v3: { }`, as its names carry
+it; with one version held, the key is the folder's name. Here the app's
+own `Postcodes` is held at `v2` and `v3` while callers move across, and
+the French words each:
+
+```jadpo check project=translation-package-versions file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
+```
+
+```jadpo check project=translation-package-versions file=shared/providers/postcodes/v2/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=translation-package-versions file=shared/providers/postcodes/v2/translations/postcode_hint.jadpo hidden
+/// Shown under a postcode field.
+public type PostcodeHint = Message {}
+```
+
+```jadpo check project=translation-package-versions file=shared/providers/postcodes/v2/translations/en_gb.jadpo hidden
+translations {
+    postcode_hint: "Write it as it is on a letter, such as SW1A 1AA."
+}
+```
+
+```jadpo check project=translation-package-versions file=shared/providers/postcodes/v3/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v3 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=translation-package-versions file=shared/providers/postcodes/v3/translations/postcode_hint.jadpo hidden
+/// Shown under a postcode field.
+public type PostcodeHint = Message {}
+```
+
+```jadpo check project=translation-package-versions file=shared/providers/postcodes/v3/translations/en_gb.jadpo
+translations {
+    postcode_hint: "Write it as it is on a letter, spaces and all."
+}
+```
+
+```jadpo check project=translation-package-versions file=domains/intake/actions/old_hint.jadpo
+use shared/providers/postcodes
+
+/// The hint as callers showed it before the upgrade.
+action old_hint(reader_locale: Locale) -> PresentationText {
+    return Postcodes.v2.translations.postcode_hint(locale: reader_locale)
+}
+```
+
+```jadpo check project=translation-package-versions file=domains/intake/actions/new_hint.jadpo
+use shared/providers/postcodes
+
+/// The hint with the next version.
+action new_hint(reader_locale: Locale) -> PresentationText {
+    return Postcodes.v3.translations.postcode_hint(locale: reader_locale)
+}
+```
+
+```jadpo check project=translation-package-versions file=translations/fr_fr.jadpo
+translations {
+    postcodes_v2: {
+        postcode_hint: "Écrivez-le comme sur une lettre."
+    }
+    postcodes_v3: {
+        postcode_hint: "Écrivez-le comme sur une lettre, espaces compris."
+    }
+}
+```
+
+```jadpo check project=translation-package-versions file=domains/intake/actions/old_hint.test.jadpo
+test "the earlier version is worded under its key" {
+    assert old_hint(Locale.fr_fr) == "Écrivez-le comme sur une lettre."
+}
+```
+
+```jadpo check project=translation-package-versions file=domains/intake/actions/new_hint.test.jadpo
+test "the next version is worded under its key" {
+    assert new_hint(Locale.fr_fr) == "Écrivez-le comme sur une lettre, espaces compris."
+    assert new_hint(Locale.en_gb) == "Write it as it is on a letter, spaces and all."
+}
+```
+
+When the second version is added, the app's wording under the folder's
+name no longer says which version it words. It was written while the
+earlier version was held alone, so the check's edit moves it to that
+version's key; the new version is worded afresh. When one of two is
+removed, the other's key goes back to the folder's name, and the removed
+version's group is the app's to delete:
+
+```jadpo check project=translation-package-versions-moved file=app.jadpo hidden
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+    in_progress: [Locale.fr_fr]
+}
+```
+
+```jadpo check project=translation-package-versions-moved file=shared/providers/postcodes/v2/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v2 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=translation-package-versions-moved file=shared/providers/postcodes/v2/translations/postcode_hint.jadpo hidden
+/// Shown under a postcode field.
+public type PostcodeHint = Message {}
+```
+
+```jadpo check project=translation-package-versions-moved file=shared/providers/postcodes/v2/translations/en_gb.jadpo hidden
+translations {
+    postcode_hint: "Write it as it is on a letter, such as SW1A 1AA."
+}
+```
+
+```jadpo check project=translation-package-versions-moved file=shared/providers/postcodes/v3/package.jadpo hidden
+/// UK postcodes: reading them as people write them.
+package Postcodes.v3 {
+    licence: Licence.mit
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=translation-package-versions-moved file=shared/providers/postcodes/v3/translations/postcode_hint.jadpo hidden
+/// Shown under a postcode field.
+public type PostcodeHint = Message {}
+```
+
+```jadpo check project=translation-package-versions-moved file=shared/providers/postcodes/v3/translations/en_gb.jadpo hidden
+translations {
+    postcode_hint: "Write it as it is on a letter, spaces and all."
+}
+```
+
+```jadpo check project=translation-package-versions-moved file=domains/intake/actions/old_hint.jadpo hidden
+use shared/providers/postcodes
+
+/// The hint as callers showed it before the upgrade.
+action old_hint(reader_locale: Locale) -> PresentationText {
+    return Postcodes.v2.translations.postcode_hint(locale: reader_locale)
+}
+```
+
+```jadpo check project=translation-package-versions-moved file=translations/fr_fr.jadpo expect=translation.group_unknown
+translations {
+    postcodes: {
+        postcode_hint: "Écrivez-le comme sur une lettre."
+    }
+    postcodes_v3: {
+        postcode_hint: "Écrivez-le comme sur une lettre, espaces compris."
+    }
+}
+```
+
+```text output
+error: `postcodes` words package `Postcodes`, which is held in two versions
+ --> translations/fr_fr.jadpo:2:5
+  |
+2 |     postcodes: {
+  |     ^^^^^^^^^ which version?
+  reason: While two versions of a package are held side by side, the application words each under its folder name and version, as its names carry the version: `postcodes_v2: { }` for `Postcodes.v2` and `postcodes_v3: { }` for `Postcodes.v3`. This group was written while one version was held, so it words the earlier one unless it says otherwise.
+  next: Rename the group to `postcodes_v2`, or to the other version's key if it words that one (agent)
+  rule: translation.group_unknown
+  help: docs/language/10-configuration-and-time.html#translation-group-unknown
+
+check failed: 1 error, 9 files
+```
+
 #### Chosen in chunk 7.1b3
 
 What the pages leave to the build, each the most conservative reading:
@@ -2750,6 +2937,51 @@ What the pages leave to the build, each the most conservative reading:
   failure is shown by being reachable, as the app's are; Jadpo's group
   is not a package's. `--json` gives them as `packageWording`, each with
   a `reason` (`uncalled`, `notInPackage`, `private`, `noPackage`).
+
+#### Chosen in chunk 7.1c3
+
+Two versions of a library package side by side (area 11, Decisions,
+"Wording two versions of a package", Richard 2026-10-20), each the most
+conservative reading:
+
+- **The key.** Exactly while names through the package carry the version
+  (area 11, "Chosen in chunk 7.1c2"), the app words each version's text
+  under `<folder>_<version>`, `postcodes_v3: { }`, even when only one of
+  the two carries translations; otherwise under the folder's name. The
+  key is the same everywhere the folder's name was: the root files'
+  groups, the root record's members (`de_de.postcodes_v3.postcode_hint`),
+  `jadpo translations missing`, `export`'s `<file id="postcodes_v3">` and
+  unit ids, what `import` writes into, and `unused`, which names the
+  package with its version (`not in Postcodes.v3`). The errors name the
+  package as code does, `Postcodes.v3`. A domain named like a version's
+  key is `package.name_taken` while two versions are held, as one named
+  like the folder always is.
+- **Adding a second version moves nothing by itself.** The app's wording
+  under the folder's name was written while one version was held, so
+  `jadpo check` reports the group (`translation.group_unknown`, "held in
+  two versions") with the edit that renames it to the earlier version's
+  key, unless the file already has that group, when its members are moved
+  by hand. The new version starts with none of the app's wording: it may
+  have changed its messages, so nothing is copied, and the check's
+  missing wording lists what each supported locale needs of it.
+- **Removing one of two** puts the other's key back to the folder's name,
+  reported with the edit that renames it ("held in one version"); the
+  removed version's group words nothing (`translation.group_unknown`,
+  "which the app doesn't hold"), and is the author's to delete. Neither
+  `jadpo package add` nor `remove` rewrites the app's root files, as they
+  don't rewrite its names (chunk 7.1c2), and `jadpo fix` stays the type
+  clashes' (area 14).
+- **The record follows the wording.** A translation with no line under
+  its new key takes the line it had under the package's other key in the
+  same locale, the folder's name or another version's, when nothing is
+  worded under that key any more and the wording is the one the line
+  hashes; so it keeps its acceptance, and is stale when the version it
+  now words has different default wording from what it was translated
+  from. Wording changed on the way is a new translation, recorded afresh. `jadpo translations update` writes the
+  line under the new key (`moved with its wording to the package's new
+  key`) and drops the old one.
+- **The publishing bar** checks one package in its own folder, where one
+  version is held, so its `wording` row is unchanged.
 
 ### What the compiler checks
 

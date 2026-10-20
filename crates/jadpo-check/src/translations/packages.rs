@@ -122,7 +122,7 @@ pub fn analyse_package<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>)
         reachable,
         scope: &scope_name,
         features: None,
-        package_code: Some(&home.code),
+        package_code: Some(&home.through),
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -287,7 +287,8 @@ fn wording_missing(
     locale: u32,
 ) -> Diagnostic {
     let tag = variant_name(locale);
-    let name = format!("{}.{}", home.name, subject.key);
+    let key = home.wording_key();
+    let name = format!("{key}.{}", subject.key);
     Diagnostic::new(
         &rule::TRANSLATION_WORDING_MISSING,
         format!("`{name}` has no wording in `{}`", root.path),
@@ -298,16 +299,14 @@ fn wording_missing(
         format!("`{}` declared here", subject.type_name),
     )
     .reason(format!(
-        "Package `{}` doesn't word its {} `{}` in `Locale.{tag}`, which the application supports, so the application words it in the root file, under `{}: {{ }}`, for a call with `locale: Locale.{tag}` to have words to show.",
-        home.code,
+        "Package `{}` doesn't word its {} `{}` in `Locale.{tag}`, which the application supports, so the application words it in the root file, under `{key}: {{ }}`, for a call with `locale: Locale.{tag}` to have words to show.",
+        home.through,
         subject.kind.word(),
         subject.key,
-        home.name
     ))
     .next(format!(
-        "Add `{}` to the `{}` group of `{}`{}",
+        "Add `{}` to the `{key}` group of `{}`{}",
         subject.key,
-        home.name,
         root.path,
         placeholders(subject)
     ))
@@ -338,20 +337,25 @@ fn file_missing(
         &rule::TRANSLATION_FILE_MISSING,
         format!(
             "`Locale.{tag}` is supported but package `{}` has no wording in it for {}",
-            home.code,
+            home.through,
             crate::and_list(&names)
         ),
     )
     .at(at, format!("no `{path}`"))
     .reason(format!(
-        "Package `{}` ships no `Locale.{tag}` wording of {}, and the application supports `Locale.{tag}`, so the application words it in its root file, under the package's folder name. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.",
-        home.code,
-        crate::and_list(&names)
+        "Package `{}` ships no `Locale.{tag}` wording of {}, and the application supports `Locale.{tag}`, so the application words it in its root file, under {}. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.",
+        home.through,
+        crate::and_list(&names),
+        if home.through == home.code {
+            "the package's folder name".to_string()
+        } else {
+            format!("`{}`, its folder name and version, as two versions are held", home.wording_key())
+        }
     ))
     .next(format!(
         "Add `{path}` wording {} under `{}: {{ }}`",
         crate::and_list(&names),
-        home.name
+        home.wording_key()
     ))
 }
 

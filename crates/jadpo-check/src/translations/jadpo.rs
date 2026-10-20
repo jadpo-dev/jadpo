@@ -309,7 +309,10 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
                 continue;
             }
             if group.name != GROUP {
-                ctx.problems.push(group_unknown(file, group, &packages));
+                ctx.problems.push(
+                    misplaced(db, project, file, group)
+                        .unwrap_or_else(|| group_unknown(file, group, &packages)),
+                );
                 continue;
             }
             ctx.members(file, locale, in_progress, &group.members);
@@ -348,6 +351,127 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         });
     }
     out
+}
+
+/// A group keyed for a package as it was held before a version was added
+/// or removed (chunk 7.1c3): the folder's name while two versions are
+/// held, which goes to the earlier version, the wording having been
+/// written while it was held alone; a version's key while one is held,
+/// which goes back to the folder's name; or a version the app doesn't
+/// hold, whose wording nothing shows. Nothing is moved for the author:
+/// the edit renames the group, and `jadpo translations update` carries
+/// its record lines over ([`super::sources`]).
+fn misplaced(
+    db: &dyn Db,
+    project: Project,
+    file: &LanguageFile,
+    group: &super::language::Group,
+) -> Option<Diagnostic> {
+    let held: Vec<jadpo_db::PackageHome> = super::declared::package_scopes(db, project)
+        .iter()
+        .map(|(_, home)| home.clone())
+        .collect();
+    // The folder's name while two versions are held.
+    let mut beside: Vec<&jadpo_db::PackageHome> = held
+        .iter()
+        .filter(|home| home.name == group.name && home.through != home.code)
+        .collect();
+    // In version order, `v2` before `v10`.
+    beside.sort_by_key(|home| {
+        home.version
+            .trim_start_matches('v')
+            .split('_')
+            .map(|part| part.parse::<u64>().unwrap_or(0))
+            .collect::<Vec<_>>()
+    });
+    if let Some(earlier) = beside.first() {
+        let keys: Vec<String> = beside
+            .iter()
+            .map(|home| format!("`{}: {{ }}` for `{}`", home.wording_key(), home.through))
+            .collect();
+        let to = earlier.wording_key();
+        let problem = Diagnostic::new(
+            &rule::TRANSLATION_GROUP_UNKNOWN,
+            format!(
+                "`{}` words package `{}`, which is held in two versions",
+                group.name, earlier.code
+            ),
+        )
+        .at(group.key_span.clone(), "which version?")
+        .reason(format!(
+            "While two versions of a package are held side by side, the application words each under its folder name and version, as its names carry the version: {}. This group was written while one version was held, so it words the earlier one unless it says otherwise.",
+            crate::and_list(&keys)
+        ));
+        return Some(if file.group(&to).is_some() {
+            problem.next(format!(
+                "Move its members into `{to}: {{ }}`, or the other version's group if they word that one"
+            ))
+        } else {
+            problem
+                .next(format!(
+                    "Rename the group to `{to}`, or to the other version's key if it words that one"
+                ))
+                .edit(group.key_span.clone(), to)
+        });
+    }
+    // A version's key, `<folder>_<version>`.
+    let (alone, version) = held.iter().find_map(|home| {
+        let version = group.name.strip_prefix(&format!("{}_", home.name))?;
+        jadpo_db::is_version_label(version).then_some((home, version))
+    })?;
+    let named = format!("{}.{version}", alone.code);
+    if alone.through == alone.code && alone.version == version {
+        let to = alone.name.clone();
+        let problem = Diagnostic::new(
+            &rule::TRANSLATION_GROUP_UNKNOWN,
+            format!(
+                "`{}` words package `{}`, which is held in one version",
+                group.name, alone.code
+            ),
+        )
+        .at(group.key_span.clone(), "not needed")
+        .reason(format!(
+            "A key carries its package's version only while two versions are held side by side; with one version of `{}` held, its wording is under its folder name, `{to}: {{ }}`, as its names don't carry the version.",
+            alone.code
+        ));
+        return Some(if file.group(&to).is_some() {
+            problem.next(format!("Move its members into `{to}: {{ }}`"))
+        } else {
+            problem
+                .next(format!("Rename the group to `{to}`"))
+                .edit(group.key_span.clone(), to)
+        });
+    }
+    if held
+        .iter()
+        .any(|home| home.name == alone.name && home.version == version)
+    {
+        return None;
+    }
+    let holds: Vec<String> = held
+        .iter()
+        .filter(|home| home.name == alone.name)
+        .map(|home| format!("`{}`", home.versioned()))
+        .collect();
+    Some(
+        Diagnostic::new(
+            &rule::TRANSLATION_GROUP_UNKNOWN,
+            format!(
+                "`{}` words `{named}`, which the app doesn't hold",
+                group.name
+            ),
+        )
+        .at(group.key_span.clone(), "no such version")
+        .reason(format!(
+            "The application holds {} of `{}`, so nothing shows the wording of `{named}`.",
+            crate::and_list(&holds),
+            alone.code
+        ))
+        .next(format!(
+            "Remove the `{}` group from `{}`",
+            group.name, file.path
+        )),
+    )
 }
 
 fn group_unknown(
