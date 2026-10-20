@@ -3529,8 +3529,11 @@ receiving: {
 > message kept once as its event and then acknowledged, the ones that
 > can't be kept parked for `jadpo deliveries`, and the SQS package
 > (`packages/amazon_sqs`), its calls in AWS's JSON protocol signed with
-> Signature Version 4. The Cloudflare Queues driver on Workers is chunk
-> 7.7c2.
+> Signature Version 4. **Built (chunk 7.7c2)**, deploying it Phase 8's,
+> with its choices under "Chosen in chunk 7.7c2": the Cloudflare Queues
+> driver, a connection with `driver: Driver.cloudflare_queues`, `queue:`
+> and `dead_letter_queue:`, its consumer handed batches through the
+> runtime's seam and written into the Wrangler file.
 
 ### Senders with no package
 
@@ -7254,7 +7257,7 @@ side (below); the rest is still to build.
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
 | Package subscribers on their own webhooks and the events they emit, recipes compiled against `sample/` at publish | 7.6b |
 | Polls and `max_concurrent:` | 7.6c |
-| Package's services; several changing calls in one action; receiving (the Cloudflare Queues driver, chunk 7.7c2; webhooks as events built in 7.7, replies and handshakes in 7.7b, queues through a package in 7.7c); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package's services; several changing calls in one action; receiving (webhooks as events built in 7.7, replies and handshakes in 7.7b, queues through a package in 7.7c, the Cloudflare Queues driver in 7.7c2, deployed with Phase 8); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -8439,6 +8442,62 @@ replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
   to one being `package.not_public`; the package's own subscribers hear
   it since chunk 7.6b.
 
+### Chosen in chunk 7.7c2
+
+The Cloudflare Queues driver on Workers, built and tested in-process
+here, deployed with Phase 8; each the most conservative reading:
+
+```jadpo fragment
+// app.jadpo
+connections: {
+    warehouse_queue: {
+        driver: Driver.cloudflare_queues
+        queue: "warehouse-events"
+        dead_letter_queue: "warehouse-events-dead"
+    }
+}
+```
+
+- **The connection.** `driver: Driver.cloudflare_queues` names one queue
+  by `queue:`, its name in Cloudflare, and `dead_letter_queue:`, another
+  queue Cloudflare moves a message to once its retries are spent, so none
+  is dropped: both required, both written out, since the consumer is
+  written into the Wrangler file when the app is built, each lowercase
+  letters, digits and dashes, starting and ending with a letter or digit,
+  at most 63 characters (Jadpo's own form, to be checked against
+  Cloudflare's rule when Phase 8 deploys it). The two differ, and no two
+  connections name one queue. It takes no `domains:`, since nothing but
+  `receiving:` reads it, and reaches no host, so the network report lists
+  none. Problems are `connection.key_missing`, `connection.key_invalid`
+  and `connection.value_invalid`; `receiving:` takes it as it takes a
+  package's connection.
+- **A batch.** The Workers host's queue consumer hands each batch to the
+  runtime's seam (`receiving::consume`): the queue's name and each
+  message's body, as text (a text body as sent, any other as its JSON),
+  with the times it was handed over. Each message is read and kept as the
+  tick keeps a fetched one ("Chosen in chunk 7.7c"), and answered in the
+  batch's order: acknowledged once its event and id commit, as a repeat,
+  or once parked; retried when the store can't take it now, after 10
+  seconds doubled for each earlier attempt, at most 5 minutes. The host
+  answers each message on its own, never the batch whole, then runs the
+  kept events' deliveries after answering (`waitUntil`). A batch from a
+  queue the program doesn't receive is retried whole.
+- **The tick.** Nothing is fetched from a queue Cloudflare pushes; the
+  tick still reads again the parked messages an operator retried with
+  `jadpo deliveries retry`, as for any queue.
+- **The Wrangler file.** Each such queue is a consumer under `queues: {
+  consumers: [] }`: its `queue`, `max_batch_size` 10 (as many as one
+  receive asks a package's queue for), `max_batch_timeout` 5 seconds,
+  `max_retries` 3 and its `dead_letter_queue`
+  (`jadpo_std::receiving::wrangler_queues`, as JSON). The setting names
+  follow Wrangler's documented consumer settings as recalled when built;
+  Phase 8 checks them against Wrangler's schema when it writes the file.
+- **Natively.** A server off Workers can't receive the binding: it reads
+  no message from the queue, only the parked ones an operator retried.
+  Refusing the driver in a native deployable waits for deployables to be
+  declared (Phase 8); a native server reads a Cloudflare queue through a
+  package over its HTTP pull API instead.
+
 ### Chosen in chunk 7.7c
 
 Queues through `receiving` (the first part of chunk 7.7c, split on
@@ -9299,3 +9358,4 @@ packages and extension points, as each note says; 26 was decided then.
 | What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
 | Queues through `receiving` (chunk 7.7c) | A message is deleted from its queue once the transaction keeping its event and id commits, its subscribers then retried from the outbox; unlisted types, unreadable messages and ones over 64 KB parked whole in `jadpo_parked_messages`, listed, retried and dismissed by `jadpo deliveries`; undeclared members left out; received on the tick, at least every 10 seconds; details under "Chosen in chunk 7.7c" (decided conservatively) | 2026-10-20 |
 | `provide receiving`, `Protocol.aws_json` and `CredentialScheme.aws_sigv4` (chunk 7.7c) | The mapping as data (`receive:` with `messages:`, `body:` and `handle:`, `acknowledge:` with `message.handle`); a new provider key `aws: { service: target: }`; a credential of `key_id:` and `secret:`; the region from an AWS host, `us-east-1` otherwise; a `T?` member a provider leaves out read as `none` (decided conservatively) | 2026-10-20 |
+| Cloudflare Queues on Workers (chunk 7.7c2) | `driver: Driver.cloudflare_queues` with `queue:` and a required, different `dead_letter_queue:`, both written out; each batch handed to `receiving::consume` and each message answered on its own, acknowledged once kept, as a repeat or parked, retried after 10 seconds doubled per attempt (at most 5 minutes) when the store can't take it now; a consumer of 10 messages, 5 seconds and 3 retries in the Wrangler file, as JSON; the tick only rereads retried parked messages; details under "Chosen in chunk 7.7c2" (decided conservatively by the building session) | 2026-10-20 |

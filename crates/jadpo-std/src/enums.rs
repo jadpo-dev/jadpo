@@ -296,6 +296,10 @@ std_enum! {
         /// capability's local driver: Ollama, llama.cpp's server, vLLM, LM
         /// Studio (area 21, "How a provider fills it"; chunk 5.5v3).
         OpenaiCompatible: "openai_compatible",
+        /// A queue on Cloudflare Queues, the `receiving` capability on
+        /// Workers, its batches pushed to the app's consumer (area 11,
+        /// "Queues"; chunk 7.7c2).
+        CloudflareQueues: "cloudflare_queues",
     }
 }
 

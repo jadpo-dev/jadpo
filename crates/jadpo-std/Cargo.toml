@@ -12,16 +12,15 @@ license.workspace = true
 # it builds for wasm32-unknown-unknown.
 # idna checks a domain name by UTS 46, and spdx holds the SPDX licence list
 # (area 19, "Web and software"); ammonia is the HTML sanitiser `Html` is
-# built with, over html5ever (area 19, "Text formats").
+# built with, over html5ever (area 19, "Text formats"); serde_json writes a
+# queue's consumer for the Wrangler file (chunk 7.7c2).
 [dependencies]
 regex.workspace = true
+serde_json.workspace = true
 idna.workspace = true
 spdx.workspace = true
 ammonia.workspace = true
 html5ever.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
 
 [lints]
 workspace = true
