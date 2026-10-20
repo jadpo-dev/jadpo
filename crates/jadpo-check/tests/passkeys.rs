@@ -164,13 +164,13 @@ fn only_the_languages_ways_go_in_sign_in() {
     );
     let found = with(
         SESSION,
-        "        passkey: {}\n        magic_link: {\n            link: \"/sign-in/confirm\"\n        }",
+        "        passkey: {}\n        providers: [google]",
         "",
     );
     assert!(
         has(
             &found,
-            "toolchain.not_built_yet: `magic_link:` isn't built yet"
+            "toolchain.not_built_yet: `providers:` isn't built yet"
         ),
         "{found:?}"
     );

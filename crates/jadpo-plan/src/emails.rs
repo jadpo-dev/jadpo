@@ -2,14 +2,18 @@
 //! callables its templates became, its subject's wording and its
 //! attachments, the shared layout's callables, who emails are from and
 //! the SMTP connections; and a subscriber for each email type, so emitting
-//! one leaves a delivery that sends it once its action commits.
+//! one leaves a delivery that sends it once its action commits. Jadpo's own
+//! magic-link email is one of them, written by the runtime (chunk 7.3b).
 
 use std::collections::HashMap;
 
 use jadpo_check::lookups::Name;
 use jadpo_db::{Db, Project};
 use jadpo_graph::Key;
-use jadpo_std::email::{EmailPlan, EmailsPlan, Sender, SmtpConnection, SmtpHost};
+use jadpo_std::email::{
+    BuiltinEmail, EmailPlan, EmailsPlan, MAGIC_LINK_EMAIL, MAGIC_LINK_EMAIL_FIELDS,
+    MagicLinkEmailPlan, Sender, SmtpConnection, SmtpHost,
+};
 use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
 use jadpo_std::translation::TranslationParam;
 
@@ -75,9 +79,15 @@ pub(crate) fn plan(
                 text: callable_of(&email.text),
                 subject,
                 attachments: email.attachments.clone(),
+                builtin: None,
             },
             email.path.clone(),
         ));
+    }
+    // Jadpo's own magic-link email (area 16, "Built-in emails"; chunk
+    // 7.3b), written by the runtime in Jadpo's wording.
+    if let Some(builtin) = magic_link_email(db, project, &translations, setting) {
+        emails.push(builtin);
     }
     emails.sort_by(|a, b| a.0.key.cmp(&b.0.key));
     let files: Vec<String> = emails.iter().map(|(_, path)| path.clone()).collect();
@@ -143,4 +153,82 @@ pub(crate) fn plan(
         })
         .collect();
     (plan, subscribers)
+}
+
+/// Jadpo's own magic-link email, with the file `sign_in:` is written in,
+/// when `magic_link:` is declared and its email can be written: the
+/// browser session's origin read from a setting, the application's
+/// `display_name:` and Jadpo's wording.
+fn magic_link_email(
+    db: &dyn Db,
+    project: Project,
+    translations: &jadpo_std::translation::TranslationPlan,
+    setting: &dyn Fn(&str) -> Option<u32>,
+) -> Option<(EmailPlan, String)> {
+    let identity = jadpo_check::identity::identity(db, project);
+    let magic = identity.magic_links()?;
+    let store = identity.sessions_store()?.to_string();
+    let origin = identity
+        .method(jadpo_std::AuthenticationMethod::BrowserSession)?
+        .origin
+        .as_deref()
+        .and_then(setting)?;
+    let app_name = jadpo_check::emails::settings(db, project)
+        .display_name
+        .clone()?;
+    let messages: Vec<_> = translations
+        .entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .key
+                .strip_prefix("jadpo.")
+                .and_then(jadpo_std::jadpo_text::message_named)
+                .is_some_and(|message| {
+                    message.feature == jadpo_std::jadpo_text::Feature::MagicLink
+                        && message.kind == jadpo_std::jadpo_text::Kind::Message
+                })
+        })
+        .cloned()
+        .collect();
+    let subject = messages
+        .iter()
+        .find(|entry| entry.key == "jadpo.magic_link_email")
+        .cloned()?;
+    let locales = jadpo_check::locales::locales(db, project)
+        .plan
+        .clone()
+        .unwrap_or_else(|| {
+            let en_gb = jadpo_std::locale_ordinal("en_gb").unwrap_or_default();
+            jadpo_std::LocalePlan {
+                default: en_gb,
+                supported: vec![en_gb],
+                in_progress: Vec::new(),
+            }
+        });
+    let file = magic.span.path.clone();
+    Some((
+        EmailPlan {
+            key: MAGIC_LINK_EMAIL.to_string(),
+            name: MAGIC_LINK_EMAIL.to_string(),
+            fields: MAGIC_LINK_EMAIL_FIELDS
+                .iter()
+                .map(|f| f.to_string())
+                .collect(),
+            html: None,
+            text: None,
+            subject: Some(subject),
+            attachments: Vec::new(),
+            builtin: Some(BuiltinEmail::MagicLink(MagicLinkEmailPlan {
+                store,
+                origin,
+                link: magic.link.clone(),
+                expires_after_ms: magic.expires_after_ms,
+                app_name,
+                messages,
+                locales,
+            })),
+        },
+        file,
+    ))
 }

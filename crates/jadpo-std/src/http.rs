@@ -204,6 +204,9 @@ pub enum Run {
     /// One of the routes `passkey:` generates (area 8, "Passkeys"), which
     /// the runtime answers itself.
     Passkey(PasskeyStep),
+    /// One of the routes `magic_link:` generates (area 8, "Magic links"),
+    /// which the runtime answers itself.
+    MagicLink(MagicLinkStep),
     /// `GET <prefix>/openapi.json` (area 7, "OpenAPI"): the API's own
     /// OpenAPI document, its text as `jadpo check` writes it, which the
     /// runtime answers with as it is.
@@ -361,6 +364,151 @@ pub struct PasskeyPlan {
     /// writes and reads a passkey as the contract's JSON (chunk 5.9).
     pub credential: u32,
 }
+
+/// The routes `sign_in: { magic_link: }` generates (area 8, "Magic
+/// links"), each under its `path:`, each open to anyone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum MagicLinkStep {
+    /// `POST <path>`: an address asks for a link and a code.
+    Request,
+    /// `POST <path>/confirm`: a link's token, or an address and its code,
+    /// which starts a browser session.
+    Confirm,
+    /// `POST <path>/redeem`: an address and its code, traded for an API
+    /// token; only with `api_token:`.
+    Redeem,
+}
+
+impl MagicLinkStep {
+    pub const ALL: [MagicLinkStep; 3] = [
+        MagicLinkStep::Request,
+        MagicLinkStep::Confirm,
+        MagicLinkStep::Redeem,
+    ];
+
+    pub fn method(self) -> crate::HttpMethod {
+        crate::HttpMethod::Post
+    }
+
+    /// Its segments after `path:`.
+    pub fn tail(self) -> &'static [&'static str] {
+        match self {
+            MagicLinkStep::Request => &[],
+            MagicLinkStep::Confirm => &["confirm"],
+            MagicLinkStep::Redeem => &["redeem"],
+        }
+    }
+
+    /// Anyone may call each: the person isn't signed in yet.
+    pub fn authentication(self) -> Authentication {
+        Authentication::Public
+    }
+
+    /// A request is accepted whether or not an account has the address.
+    pub fn status(self) -> crate::SuccessStatus {
+        match self {
+            MagicLinkStep::Request => crate::SuccessStatus::Accepted,
+            _ => crate::SuccessStatus::Ok,
+        }
+    }
+
+    /// What `jadpo routes` and the API record say it runs: `magic link
+    /// request`.
+    pub fn label(self) -> &'static str {
+        match self {
+            MagicLinkStep::Request => "magic link request",
+            MagicLinkStep::Confirm => "magic link confirmation",
+            MagicLinkStep::Redeem => "magic link redemption",
+        }
+    }
+
+    /// What it reads from the body, by the name the API record gives it.
+    pub fn input(self) -> &'static str {
+        match self {
+            MagicLinkStep::Request => MAGIC_LINK_ASK,
+            MagicLinkStep::Confirm => MAGIC_LINK_CONFIRMATION,
+            MagicLinkStep::Redeem => MAGIC_LINK_CODE,
+        }
+    }
+
+    /// What it answers with, by the name the API record gives it.
+    pub fn output(self) -> Option<&'static str> {
+        match self {
+            MagicLinkStep::Request => None,
+            MagicLinkStep::Confirm => Some(MAGIC_LINK_CONFIRMED),
+            MagicLinkStep::Redeem => Some(MAGIC_LINK_TOKEN),
+        }
+    }
+
+    /// Its full path's segments under `path`.
+    pub fn segments(self, path: &[String]) -> Vec<String> {
+        path.iter()
+            .cloned()
+            .chain(self.tail().iter().map(|text| text.to_string()))
+            .collect()
+    }
+}
+
+/// Where `magic_link:`'s routes go unless its `path:` says otherwise.
+pub const MAGIC_LINK_PATH: [&str; 2] = ["auth", "magic-link"];
+
+/// What the magic-link routes read and answer with, as the API record
+/// names them.
+pub const MAGIC_LINK_ASK: &str = "MagicLinkAsk";
+pub const MAGIC_LINK_CONFIRMATION: &str = "MagicLinkConfirmation";
+pub const MAGIC_LINK_CODE: &str = "MagicLinkCode";
+pub const MAGIC_LINK_CONFIRMED: &str = "MagicLinkConfirmed";
+pub const MAGIC_LINK_TOKEN: &str = "MagicLinkToken";
+
+/// `magic_link:`'s defaults (area 8, "Magic links"), and the furthest
+/// each may be loosened without an acceptance.
+pub const MAGIC_LINK_EXPIRES_MS: i64 = 15 * 60 * 1000;
+pub const MAGIC_LINK_EXPIRES_MAX_MS: i64 = 60 * 60 * 1000;
+pub const MAGIC_LINK_CODE_ATTEMPTS: u32 = 5;
+pub const MAGIC_LINK_CODE_ATTEMPTS_MAX: u32 = 10;
+pub const MAGIC_LINK_CODES_PER_HOUR: u32 = 10;
+pub const MAGIC_LINK_FAILED_CODES_PER_DAY: u32 = 20;
+pub const MAGIC_LINK_FAILED_CODES_PER_DAY_MAX: u32 = 50;
+pub const MAGIC_LINK_RESEND_AFTER_MS: i64 = 60 * 1000;
+
+/// The longest `return_to` a request may give, in bytes.
+pub const RETURN_TO_MAX: usize = 2048;
+
+/// What `magic_link:` generates and how the runtime answers it (area 8,
+/// "Magic links").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MagicLinkPlan {
+    /// `path:`'s segments.
+    pub path: Vec<String>,
+    /// `link:`, the frontend path the email's link opens: `/sign-in/confirm`.
+    pub link: String,
+    /// How long a link and its code last, in milliseconds.
+    pub expires_after_ms: i64,
+    /// Wrong guesses that end a code.
+    pub code_attempts: u32,
+    /// Sends to one address in an hour.
+    pub codes_per_hour: u32,
+    /// Wrong guesses for one address in a UTC day before codes stop.
+    pub failed_codes_per_day: u32,
+    /// The least time between two sends to one address, in milliseconds.
+    pub resend_after_ms: i64,
+    /// Whether a link works only in the browser that asked for it.
+    pub same_browser: bool,
+    /// The user found by the address, `$1` the address as stored and `$2`
+    /// the time now: the user's `id`, and whether its `active:` holds.
+    /// None when no visible user has it.
+    pub lookup: String,
+    /// The same, `$1` the user's `id`: the user `on_first_sign_in:`'s
+    /// action gave.
+    pub lookup_id: String,
+    /// `on_first_sign_in:`'s action, by callable number: run for an
+    /// address no user has.
+    pub first_sign_in: Option<u32>,
+}
+
+/// The built-in `FirstSignIn` (area 8, "A person the app has not seen"):
+/// what `on_first_sign_in:`'s action is given.
+pub const FIRST_SIGN_IN: &str = "FirstSignIn";
 
 /// What one argument of the call is made from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -630,6 +778,8 @@ pub struct IdentityPlan {
     pub origin: Option<String>,
     /// `sign_in: { passkey: }` (area 8, "Passkeys"), when declared.
     pub passkeys: Option<PasskeyPlan>,
+    /// `sign_in: { magic_link: }` (area 8, "Magic links"), when declared.
+    pub magic_links: Option<MagicLinkPlan>,
 }
 
 /// Listing, issuing and revoking credentials, limited to holders whose

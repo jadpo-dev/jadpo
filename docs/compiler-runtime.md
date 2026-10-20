@@ -1624,6 +1624,21 @@ pure-Rust release; `jadpo_host_native::test_authenticator` (feature
 `test-authenticator`, tests only) is a software device the live tests
 sign in with.
 
+Built in chunk 7.3b: magic links (area 8, "Magic links"). The identity
+reads `sign_in: { magic_link: }` into `Identity::magic_link` and
+`on_first_sign_in:` into `Identity::first_sign_in`, whose action
+`first_sign_in_action` checks once every signature is known; the schema
+adds `jadpo_sign_in_requests` beside `jadpo_sessions`. The plan appends a
+`RoutePlan` per `jadpo_std::http::MagicLinkStep` with `Run::MagicLink`
+in the first API that accepts browser sessions, writes
+`MagicLinkPlan::lookup` and `lookup_id` (a user by its address or `id`,
+with its `active:`), numbers the first sign-in's callable, and adds
+Jadpo's own email to the email plan (`EmailPlan::builtin`) with its
+subscriber. The HTTP component answers the routes in
+`http::magic_links`, with no idempotency key; the email's delivery makes
+the link and the code (`magic_links::mint`) and `email::message` writes
+it from Jadpo's messages, wrapped in the app's layout.
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving

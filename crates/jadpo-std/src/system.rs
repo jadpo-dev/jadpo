@@ -400,6 +400,64 @@ pub const PASSKEY_CHALLENGES: SystemTable = SystemTable {
     }],
 };
 
+/// Magic-link sign-ins (area 8, "Magic links"; chunk 7.3b): one row per
+/// address, found by the address's digest, never the address. It holds
+/// the latest request's link and code, each only as a verifier and filled
+/// as its email is sent, the address sealed under the link's token so a
+/// confirmed link can name it, where to go after signing in, the browser
+/// a `same_browser:` link is bound to, and the counts the send and
+/// wrong-code limits read. Nothing in it signs anyone in.
+pub const SIGN_IN_REQUESTS: SystemTable = SystemTable {
+    table: "jadpo_sign_in_requests",
+    columns: &[
+        column("id", "uuid", false),
+        // The address's digest in lower case, so the limits count every
+        // way of writing it as one; and as it was written, which the
+        // address a code is confirmed with must match.
+        column("address", "text", false),
+        column("exact", "text", true),
+        // The latest request, which its email's delivery names; `NULL`
+        // once its link or code is used.
+        column("request", "uuid", true),
+        column("token", "text", true),
+        column("code", "text", true),
+        column("sealed", "bytea", true),
+        column("return_to", "text", true),
+        column("binding", "text", true),
+        column("wrong_codes", "integer", false),
+        column("requested_at", "timestamptz(3)", true),
+        column("expires_at", "timestamptz(3)", true),
+        // The hour the sends are counted in, and how many.
+        column("sends_since", "timestamptz(3)", true),
+        column("sends", "integer", false),
+        // The UTC day the wrong codes are counted in, and how many.
+        column("failed_since", "timestamptz(3)", true),
+        column("failed", "integer", false),
+        // When nothing in the row counts any more.
+        column("kept_until", "timestamptz(3)", false),
+    ],
+    primary_key: &["id"],
+    unique: &[
+        SystemUnique {
+            columns: &["address"],
+            rule: "system sign-in requests",
+        },
+        SystemUnique {
+            columns: &["request"],
+            rule: "system sign-in requests",
+        },
+        SystemUnique {
+            columns: &["token"],
+            rule: "system sign-in requests",
+        },
+    ],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["kept_until"],
+        reason: "system sign-in requests",
+    }],
+};
+
 /// Batch runs (area 12, "How a run goes"; chunk 6.4): which `batches.each`
 /// call each is and the shape it saved under, its `key:` and saved values
 /// as their types' JSON, how far it got (the cursor of the next page, or
@@ -545,7 +603,7 @@ pub const SCHEDULE_TABLES: [&SystemTable; 3] = [&SCHEDULES, &SCHEDULE_RUNS, &OPE
 pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATCH_CANCELS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 15] = [
+pub const ALL: [&SystemTable; 16] = [
     &OUTBOX,
     &DELIVERIES,
     &CIRCUIT_BREAKERS,
@@ -558,6 +616,7 @@ pub const ALL: [&SystemTable; 15] = [
     &SERVICE_KEYS,
     &PASSKEYS,
     &PASSKEY_CHALLENGES,
+    &SIGN_IN_REQUESTS,
     &BATCH_RUNS,
     &BATCH_PROBLEMS,
     &BATCH_CANCELS,

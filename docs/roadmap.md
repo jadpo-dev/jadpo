@@ -1173,15 +1173,48 @@ The design is area 11 as revised on 2026-10-16, with its research in
   and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
   score, `jadpo check`'s warnings about templates that would fail it, and
   `jadpo email check-domain`.
-- [ ] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
-  2026-10-16): `sign_in:` with `magic_link:` and `providers:`, the
-  generated endpoints (the email links to the frontend's `link:` path,
-  which posts to `POST /auth/magic-link/confirm`), link and six-digit code,
-  the wrong-code and send limits, `on_first_sign_in` for every way in, the
-  built-in emails' five levels (area 16), the sign-in failures and events.
-  Google and other providers stay after the first build.
+- [x] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
+  2026-10-16; split on 2026-10-20, the rest in 7.3b2): `sign_in:` with
+  `magic_link:`, the generated endpoints, link and six-digit code, the
+  wrong-code and send limits, `on_first_sign_in`, the built-in email's
+  first three levels and the sign-in failures. Built: `magic_link:` read
+  and checked (`address:`, `link:`, `expires_after:`, `code_attempts:`,
+  `codes_per_hour:`, `failed_codes_per_day:`, `resend_after:`,
+  `same_browser:`, `path:`; a limit loosened is `toolchain.not_built_yet`
+  until acceptances), needing the browser session's `origin:`, the
+  `email:` connection and `display_name:`; `sign_in_providers:` refused
+  with its rename; `on_first_sign_in:` checked as an action taking the
+  built-in `FirstSignIn` and returning the user's `id`, with
+  `SignInMethod`; the runtime's `POST /auth/magic-link`, `/confirm` and
+  `/redeem` (`http::magic_links`), one row per address in
+  `jadpo_sign_in_requests`, the link and code made as the email is sent
+  and kept only as verifiers, codes compared in constant time, only the
+  latest valid, single use, per-address send limits alike for every
+  address, wrong codes ending a code and the day's stopping codes but not
+  links, `same_browser:`, and the first sign-in run as the system; Jadpo's
+  own email at levels 1 to 3 (its wording, rewordable under `jadpo: { }`,
+  wrapped in the app's layout); the routes in the API record, OpenAPI and
+  `jadpo routes`, and route overlaps refused. Live tests in
+  `crates/jadpo-cli/tests/magic_links.rs` with the email connection
+  faked; area 8 gains a whole magic-link application. Choices in area 8's
+  "Magic links (chosen in chunk 7.3b)" rows and area 16's "Chosen in
+  chunk 7.3b"; one flagged for Richard, area 8's question 15: `routes`
+  is a reserved word, so `routes: false` can't be written;
+  recommendation `generate_routes: false`.
+- [ ] **7.3b2 Magic links: the app's own email, its own routes, and the
+  sign-in events** `opus · high`, after 7.3b (split from 7.3b on
+  2026-10-20), and once Richard has answered area 8's question 15:
+  `magic_link: { email: }` (level 4, `MagicLinkEmail` with `pick:`,
+  `SignInCode`) and `send:` (level 5, an action taking
+  `MagicLinkRequest`, retried as a subscriber), `email.connection_required`
+  waived with `send:`; the setting that switches the generated routes off
+  and `magic_links.request`, `.redeem` and `.redeem_code` for the app's
+  own routes, keeping every protection; the events `SignedIn`,
+  `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, the
+  refusal's reason logged; `FirstSignIn` made in tests to call
+  `on_first_sign_in:`'s action directly.
 - [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
-  from 5.5z), after 7.3b and the events of area 12: `passkey:` needs
+  from 5.5z), after 7.3b2 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
   `address:` rather than the principal's subject; `test_passkeys.register`
