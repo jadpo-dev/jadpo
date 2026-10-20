@@ -120,6 +120,22 @@ pub fn kept(
     Ok(out)
 }
 
+/// [`kept`], its generated stand-ins made at `ctx`'s clock.
+pub fn keep(
+    ctx: &mut Ctx<'_>,
+    json: &JsonCodecs<'_>,
+    op: &OperationPlan,
+    answer: &str,
+) -> Result<String, Unread> {
+    let now = ctx.now();
+    let mut uuid = || crate::fakes::uuid_text(ctx.new_id().unwrap_or_default());
+    let mut making = Making {
+        now,
+        uuid: &mut uuid,
+    };
+    kept(json, op, answer, &mut making)
+}
+
 /// `text`, operation `op`'s recording, with each placeholder filled with a
 /// generated value of its type: the answer as the provider would send it.
 /// `None` when it isn't JSON.

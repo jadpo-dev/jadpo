@@ -15,6 +15,7 @@ use jadpo_term::Environment;
 
 use crate::http::{Dev, wait_for};
 use crate::support;
+use crate::support::fake_provider::FakeProvider;
 
 fn folder(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("recordings-7.2d2-{name}"));
@@ -45,6 +46,11 @@ const PACKAGE: &str = "shared/providers/acme_couriers/v1";
 /// it doesn't give back what it read), and its status one of two
 /// spellings.
 fn integration(root: &Path, at: &str) {
+    integration_at(root, at, "https://sandbox.acme-couriers.example");
+}
+
+/// [`integration`], its sandbox at `sandbox`.
+fn integration_at(root: &Path, at: &str, sandbox: &str) {
     let file = |path: &str, text: &str| write(root, &format!("{at}/{path}"), text);
     file(
         "package.jadpo",
@@ -52,7 +58,9 @@ fn integration(root: &Path, at: &str) {
     );
     file(
         "provider.jadpo",
-        "/// Acme Couriers' API.\nprovider {\n    protocol: Protocol.json_http\n    hosts: {\n        live: \"https://api.acme-couriers.example\"\n        sandbox: \"https://sandbox.acme-couriers.example\"\n    }\n    credential: CredentialScheme.bearer\n    idempotency: {\n        header: \"Idempotency-Key\"\n        window: 24h\n    }\n    error_code: \"error.code\"\n}\n",
+        &format!(
+            "/// Acme Couriers' API.\nprovider {{\n    protocol: Protocol.json_http\n    hosts: {{\n        live: \"https://api.acme-couriers.example\"\n        sandbox: \"{sandbox}\"\n    }}\n    credential: CredentialScheme.bearer\n    idempotency: {{\n        header: \"Idempotency-Key\"\n        window: 24h\n    }}\n    error_code: \"error.code\"\n}}\n"
+        ),
     );
     file(
         "resources/bookings.jadpo",
@@ -129,6 +137,11 @@ fn recording(status: &str, window: &str) -> String {
 /// integration, with `recordings` (each a name and its text) in the
 /// integration's `recordings/`.
 fn desk(name: &str, recordings: &[(&str, String)]) -> PathBuf {
+    desk_at(name, "https://sandbox.acme-couriers.example", recordings)
+}
+
+/// [`desk`], its courier's sandbox at `sandbox`.
+fn desk_at(name: &str, sandbox: &str, recordings: &[(&str, String)]) -> PathBuf {
     let root = folder(name);
     write(
         &root,
@@ -145,7 +158,7 @@ fn desk(name: &str, recordings: &[(&str, String)]) -> PathBuf {
         "policy.jadpo",
         "use shipping\n\npolicy {\n    actions: {\n        shipping.book: [Access.public]\n    }\n}\n",
     );
-    integration(&root, PACKAGE);
+    integration_at(&root, PACKAGE, sandbox);
     for (file, text) in recordings {
         write(&root, &format!("{PACKAGE}/recordings/{file}"), text);
     }
@@ -347,4 +360,216 @@ fn jadpo_dev_answers_from_a_recording() {
     assert_eq!(answer["data"]["window"], "AM");
     assert_eq!(answer["data"]["id"], "example");
     assert_ne!(answer["data"]["collectAt"], "{Instant}");
+}
+
+// --- jadpo package record ------------------------------------------------------
+
+const ANSWER: &str = r#"{"data": {"id": "bk_481", "collectAt": "2026-10-21T09:00:00Z", "status": "booked", "window": "PM", "driver": "Ada Lovelace"}, "meta": {"trace": "t_99"}}"#;
+
+fn record(root: &Path, extra: &[&str]) -> Output {
+    let mut args = vec![
+        "package",
+        "record",
+        "couriers",
+        "bookings.create",
+        "--input",
+        r#"{"postcode": "N1 9GU"}"#,
+    ];
+    args.extend_from_slice(extra);
+    jadpo(root, &args)
+}
+
+/// `jadpo package record` calls the sandbox once through the connection,
+/// with its credential, checks the answer against the operation's types
+/// and keeps it as the operation's recording: only what the types
+/// declare, along `output_at:`, each plain value a placeholder and the
+/// values the package's own decoders read as sent. `jadpo test` then
+/// decodes it, and recording the same answer again changes nothing.
+#[test]
+fn jadpo_package_record_keeps_the_sandboxs_answer() {
+    let sandbox = FakeProvider::start();
+    let root = desk_at("record", &sandbox.url, &[]);
+    write(&root, ".env.local", "COURIERS_API_KEY=sk_test_481\n");
+    sandbox.answer(200, ANSWER);
+    let recorded = record(&root, &[]);
+    assert_eq!(recorded.code, 0, "{}{}", recorded.stdout, recorded.stderr);
+    let file = "shared/providers/acme_couriers/v1/recordings/bookings.create.json";
+    assert_eq!(
+        fs::read_to_string(root.join(file)).expect("the recording"),
+        recording("booked", "PM")
+    );
+    assert_eq!(
+        recorded.stdout,
+        format!(
+            "Recorded `couriers.bookings.create` from the sandbox\n    sent    POST {}/v1/bookings\n    answer  decodes as Booking\n    values  2 placeholders, 2 kept as sent\n    file    {file}\n\noperation recorded: AcmeCouriers.v1 bookings.create, confirmed\n\nnext: jadpo test  decodes the recording with every decoder\n",
+            sandbox.url
+        )
+    );
+    let requests = sandbox.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].path, "/v1/bookings");
+    assert_eq!(
+        requests[0].header("authorization"),
+        Some("Bearer sk_test_481")
+    );
+    assert_eq!(requests[0].json()["postcode"], "N1 9GU");
+    assert!(
+        requests[0]
+            .header("idempotency-key")
+            .is_some_and(|key| key.starts_with("jd1_")),
+        "{:?}",
+        requests[0].headers
+    );
+
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.stdout, "tested: 1 passed, 1 recording test\n");
+    let shown = jadpo(
+        &root,
+        &[
+            "package",
+            "show",
+            "acme_couriers",
+            "bookings.create",
+            "--json",
+        ],
+    );
+    assert!(
+        shown.stdout.contains("recordings/bookings.create.json"),
+        "{}",
+        shown.stdout
+    );
+
+    sandbox.answer(200, ANSWER);
+    let again = record(&root, &["--json"]);
+    let document: serde_json::Value = serde_json::from_str(&again.stdout).expect("JSON");
+    assert_eq!(document["data"]["written"], false);
+    assert_eq!(document["data"]["placeholders"], 2);
+    assert_eq!(document["data"]["file"], file);
+}
+
+/// `record` never calls a live API, nor a sandbox with nothing set for
+/// its credential: it refuses before anything is sent.
+#[test]
+fn jadpo_package_record_refuses_live_and_missing_credentials() {
+    let sandbox = FakeProvider::start();
+    let root = desk_at("record-refused", &sandbox.url, &[]);
+    let unset = record(&root, &[]);
+    assert_eq!(unset.code, 1, "{}{}", unset.stdout, unset.stderr);
+    assert!(
+        unset.stderr.contains("rule: recording.refused"),
+        "{}",
+        unset.stderr
+    );
+    assert!(
+        unset
+            .stderr
+            .contains("next: Set `COURIERS_API_KEY` in `.env.local` to the sandbox's, then run it again (human)"),
+        "{}",
+        unset.stderr
+    );
+    write(
+        &root,
+        ".env.local",
+        "COURIERS_API_KEY=sk_live_1\nCOURIERS_ENVIRONMENT=live\n",
+    );
+    let live = record(&root, &[]);
+    assert_eq!(live.code, 1, "{}{}", live.stdout, live.stderr);
+    assert!(
+        live.stderr
+            .contains("error: `couriers` calls its provider's live API"),
+        "{}",
+        live.stderr
+    );
+    assert!(sandbox.requests().is_empty());
+    assert!(!root.join(PACKAGE).join("recordings").exists());
+}
+
+/// An answer the operation's types refuse, or a refusal, is recorded as
+/// nothing, and says why.
+#[test]
+fn jadpo_package_record_keeps_only_an_answer_that_decodes() {
+    let sandbox = FakeProvider::start();
+    let root = desk_at("record-mismatch", &sandbox.url, &[]);
+    write(&root, ".env.local", "COURIERS_API_KEY=sk_test_481\n");
+    sandbox.answer(200, &ANSWER.replace("booked", "lost"));
+    let lost = record(&root, &[]);
+    assert_eq!(lost.code, 1, "{}{}", lost.stdout, lost.stderr);
+    assert!(
+        lost.stderr.contains(
+            "error: The sandbox's answer to `couriers.bookings.create` doesn't decode as `Booking`"
+        ),
+        "{}",
+        lost.stderr
+    );
+    assert!(
+        lost.stderr.contains("`variant` on `status`"),
+        "{}",
+        lost.stderr
+    );
+    assert!(
+        lost.stderr.contains("rule: recording.failed"),
+        "{}",
+        lost.stderr
+    );
+    sandbox.answer(409, r#"{"error": {"code": "slot_taken"}}"#);
+    let taken = record(&root, &[]);
+    assert!(
+        taken
+            .stderr
+            .contains("error: The sandbox refused `couriers.bookings.create` with `slot_taken`"),
+        "{}",
+        taken.stderr
+    );
+    assert!(!root.join(PACKAGE).join("recordings").exists());
+}
+
+/// What to record is checked against the app first, naming the nearest.
+#[test]
+fn jadpo_package_record_checks_what_it_is_asked_for() {
+    let root = desk("record-arguments", &[]);
+    let connection = jadpo(&root, &["package", "record", "courier", "bookings.create"]);
+    assert_eq!(
+        connection.code, 2,
+        "{}{}",
+        connection.stdout, connection.stderr
+    );
+    assert!(
+        connection
+            .stderr
+            .contains("next: Use `jadpo package record couriers bookings.create`"),
+        "{}",
+        connection.stderr
+    );
+    let operation = jadpo(&root, &["package", "record", "couriers", "bookings.creat"]);
+    assert!(
+        operation
+            .stderr
+            .contains("next: Use `jadpo package record couriers bookings.create`"),
+        "{}",
+        operation.stderr
+    );
+    let input = jadpo(&root, &["package", "record", "couriers", "bookings.create"]);
+    assert!(
+        input
+            .stderr
+            .contains("error: `couriers.bookings.create` needs its input"),
+        "{}",
+        input.stderr
+    );
+    let wrong = jadpo(
+        &root,
+        &[
+            "package",
+            "record",
+            "couriers",
+            "bookings.create",
+            "--input",
+            r#"{"postcode": "far too long a postcode"}"#,
+        ],
+    );
+    assert!(
+        wrong.stderr.contains("`max_length` on `postcode`"),
+        "{}",
+        wrong.stderr
+    );
 }

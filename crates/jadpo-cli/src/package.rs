@@ -76,6 +76,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Read a provider's OpenAPI document into the app",
     },
     Value {
+        name: "record",
+        description: "Call a provider's sandbox and keep the answer as a recording",
+    },
+    Value {
         name: "add",
         description: "Install a package from a folder or a git repository's tag",
     },
@@ -101,7 +105,6 @@ pub const ACTIONS: &[Value] = &[
 /// work that brings each.
 const LATER: &[(&str, &str)] = &[
     ("new", "package repositories"),
-    ("record", "recordings"),
     ("conform", "capabilities"),
     ("publish", "the hosted registry"),
     ("recipe", "recipes"),
@@ -131,6 +134,7 @@ pub fn package(call: &Call) -> Reply {
         Some("link") => crate::install::link(call),
         Some("unlink") => crate::install::unlink(call),
         Some("import") => crate::package_import::import(call),
+        Some("record") => crate::package_record::record(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()
