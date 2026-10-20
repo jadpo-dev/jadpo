@@ -77,6 +77,7 @@ pub mod budget;
 pub mod call_log;
 pub mod capability;
 pub mod config;
+pub mod crashes;
 mod ctx;
 pub mod deliveries;
 pub mod effects;

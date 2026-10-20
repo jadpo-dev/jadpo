@@ -48,6 +48,11 @@ pub enum FaultKind {
     /// 7.5b): stopped before anything more is sent, and held for an
     /// operator rather than failed.
     Diverged(String),
+    /// A crash `jadpo test` made at a step of an action with several
+    /// changing calls (area 13; chunk 7.5d): the run stops as a process
+    /// that died would, nothing it wrote kept, and what ran it starts it
+    /// again.
+    Crashed,
 }
 
 impl FaultKind {
@@ -65,6 +70,7 @@ impl FaultKind {
             FaultKind::NotBuiltYet(_) => "not_built_yet",
             FaultKind::CallInTransaction(_) => "call_in_transaction",
             FaultKind::Diverged(_) => "diverged",
+            FaultKind::Crashed => "crashed",
             FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => "internal_fault",
         }
     }
