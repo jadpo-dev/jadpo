@@ -55,7 +55,7 @@ impl DiskFiles {
     }
 
     /// Whether anything from the root to `path` is a symbolic link.
-    fn linked(&self, path: &Path) -> bool {
+    fn through_link(&self, path: &Path) -> bool {
         let mut at = self.root.clone();
         let Ok(rest) = path.strip_prefix(&self.root) else {
             return true;
@@ -74,7 +74,7 @@ impl DiskFiles {
         let Some(folder) = path.parent() else {
             return Answer::Misconfigured;
         };
-        if self.linked(path) {
+        if self.through_link(path) {
             return Answer::Failed(NOT_FOUND.into());
         }
         if let Err(error) = private_folder(folder) {
@@ -102,7 +102,7 @@ impl DiskFiles {
     }
 
     fn read(&self, path: &Path, from: u64, length: u64) -> Answer {
-        if self.linked(path) {
+        if self.through_link(path) {
             return Answer::Failed(NOT_FOUND.into());
         }
         let mut file = match File::open(path) {

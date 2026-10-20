@@ -4,7 +4,7 @@
 // may read it whole.
 
 /// A sheet of donated packets, kept as the volunteers sent it, and how
-/// adding its packets went.
+/// shelving its packets went.
 entity DonationSheet {
     id: Uuid
     sheet: File {
@@ -12,7 +12,7 @@ entity DonationSheet {
         max_size: 2mb
         types: [FileType.csv]
     }
-    adding: BatchRun?
+    shelving: BatchRun?
     rows_read: Int?
     rows_refused: Int?
 

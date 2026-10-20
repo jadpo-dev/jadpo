@@ -3059,25 +3059,25 @@ application {
 }
 ```
 
-```jadpo check project=e-batch-row-invalid file=domains/bakery/types/line_code.jadpo hidden
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_code.jadpo hidden
 /// A line's code on an order.
-type LineCode = Text {
+type OrderCode = Text {
     min_length: 1
     max_length: 20
 }
 ```
 
 ```jadpo check project=e-batch-row-invalid file=domains/bakery/types/code_row.jadpo hidden
-use bakery/types { LineCode }
+use bakery/types { OrderCode }
 
 /// One code a sheet lists.
 type CodeRow = Input {
-    reference: LineCode
+    reference: OrderCode
 }
 ```
 
 ```jadpo check project=e-batch-row-invalid file=domains/bakery/entities/order_sheet.jadpo hidden
-/// A sheet of orders, kept as it was sent.
+/// A sheet of order_sheet, kept as it was sent.
 entity OrderSheet {
     id: Uuid
     sheet: File {
@@ -3096,8 +3096,8 @@ entity OrderSheet {
 use bakery/types { CodeRow }
 
 /// Takes one code a sheet lists.
-action take_code(row: CodeRow) -> Unit {
-    assert row.reference == row.reference
+action take_code(listed_code: CodeRow) -> Unit {
+    assert listed_code.reference == listed_code.reference
 }
 ```
 
@@ -3108,18 +3108,18 @@ use bakery/actions { take_code }
 
 /// Starts taking the codes a kept sheet lists.
 action read_codes(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
-    var codes: OrderSheet = attempt OrderSheet.get(sheet_id)
-    return csv.read(codes.sheet, as: CodeRow, each: row -> take_code(row))
+    var code_sheet: OrderSheet = attempt OrderSheet.get(sheet_id)
+    return csv.read(code_sheet.sheet, as: CodeRow, each: listed_code -> take_code(listed_code))
 }
 ```
 
 ```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_row.jadpo
-use bakery/types { LineCode }
+use bakery/types { OrderCode }
 
 /// One order a sheet lists, with its lines.
 type OrderRow = Input {
-    reference: LineCode
-    lines: List<LineCode>
+    reference: OrderCode
+    lines: List<OrderCode>
 }
 ```
 
@@ -3127,8 +3127,8 @@ type OrderRow = Input {
 use bakery/types { OrderRow }
 
 /// Takes one order a sheet lists.
-action take_order(row: OrderRow) -> Unit {
-    assert row.reference == row.reference
+action take_order(order_entry: OrderRow) -> Unit {
+    assert order_entry.reference == order_entry.reference
 }
 ```
 
@@ -3139,17 +3139,17 @@ use bakery/actions { take_order }
 
 /// Starts taking the orders a kept sheet lists.
 action read_orders(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
-    var orders: OrderSheet = attempt OrderSheet.get(sheet_id)
-    return csv.read(orders.sheet, as: OrderRow, each: row -> take_order(row))
+    var order_sheet: OrderSheet = attempt OrderSheet.get(sheet_id)
+    return csv.read(order_sheet.sheet, as: OrderRow, each: order_entry -> take_order(order_entry))
 }
 ```
 
 ```text output
 error: `csv.read` can't read its rows as `OrderRow`
- --> domains/bakery/actions/read_orders.jadpo:8:39
+ --> domains/bakery/actions/read_orders.jadpo:8:44
   |
-8 |     return csv.read(orders.sheet, as: OrderRow, each: row -> take_order(row))
-  |                                       ^^^^^^^^ `OrderRow.lines` holds a list
+8 |     return csv.read(order_sheet.sheet, as: OrderRow, each: order_entry -> take_order(order_entry))
+  |                                            ^^^^^^^^ `OrderRow.lines` holds a list
   reason: A CSV row holds one value a cell, and `OrderRow.lines` holds a list; a JSON Lines row holds lists and objects, each line one JSON value.
   next: Read the file with `json_lines.read`, or give `lines` a type one cell holds (agent)
   rule: type.batch_row_invalid

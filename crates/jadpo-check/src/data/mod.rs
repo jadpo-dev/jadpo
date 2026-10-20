@@ -1510,9 +1510,7 @@ impl Reader<'_> {
                 }
             }
         };
-        let max_size = match setting("max_size")
-            .and_then(|(key, member)| Some((key, member.value())))
-        {
+        let max_size = match setting("max_size").map(|(key, member)| (key, member.value())) {
             None => {
                 problem(
                     &mut self.out,

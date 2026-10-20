@@ -45,7 +45,7 @@ pub(crate) const PLACE: &str =
 
 /// The most bytes a page reads looking for its rows: past it, a page takes
 /// the rows it has, and a row longer than it stops the run.
-pub const MAX_ROW_BYTES: u64 = 16 << 20;
+pub const MAX_ROW_BYTES: u64 = 16_000_000;
 
 /// Where the next row begins: its byte, its row as a spreadsheet numbers
 /// it, and its line. A run's row keeps it as JSON text.
@@ -89,6 +89,9 @@ pub(crate) struct Opened {
     names: Vec<String>,
     codec: CodecId,
 }
+
+/// A row read as the row type, or its problem's column and rule.
+type Decoded = Result<Value, (String, String)>;
 
 /// Why a page stopped short of its batch.
 enum Halt {
@@ -273,12 +276,7 @@ async fn open(
 
 /// One row read as the row type: its value, or its problem's column and
 /// rule, never its value.
-fn decode(
-    batches: Batches<'_>,
-    opened: &Opened,
-    format: RowFormat,
-    record: &Record,
-) -> Result<Value, (String, String)> {
+fn decode(batches: Batches<'_>, opened: &Opened, format: RowFormat, record: &Record) -> Decoded {
     let codecs = &batches.json.codecs;
     if format == RowFormat::JsonLines {
         let line = record.cells.first().map_or("", String::as_str);
@@ -406,7 +404,7 @@ pub(super) async fn page(
         return failed(ctx, start, &fault.why()).await;
     }
     // Each row's number, and its value or its problem.
-    let mut items: Vec<(i64, Result<Value, (String, String)>)> = Vec::new();
+    let mut items: Vec<(i64, Decoded)> = Vec::new();
     for (place, record) in read.iter().enumerate() {
         if record.blank {
             continue;

@@ -1279,6 +1279,7 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 optional,
                 default,
                 header,
+                column,
                 replaces,
                 rules: own,
                 ..
@@ -1304,6 +1305,9 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
                 }
                 if header.is_some() {
                     used.insert("field setting header".to_string());
+                }
+                if column.is_some() {
+                    used.insert("field setting column".to_string());
                 }
             }
             Detail::Callable { signature, .. } => {

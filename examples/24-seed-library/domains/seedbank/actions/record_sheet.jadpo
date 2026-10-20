@@ -1,6 +1,6 @@
 use seedbank/entities { DonationSheet, DonationSheetNotFound }
 
-/// Keeps how adding a sheet's packets went: the rows read, and those
+/// Keeps how shelving a sheet's packets went: the rows read, and those
 /// refused, which its problems say why.
 action record_sheet(
     summary: ImportSummary,

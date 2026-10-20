@@ -243,7 +243,7 @@ pub struct BatchPlan {
 pub enum BatchFrom {
     /// The named query `from:` calls, which gives a `Page`, walked from
     /// the cursor each page gives.
-    Query(ReadPlan),
+    Query(Box<ReadPlan>),
     /// The rows of the stored `File` saved first with the run (chunk
     /// 6.4b).
     File(FileRows),
@@ -253,7 +253,7 @@ impl BatchFrom {
     /// The query it walks, if it walks one.
     pub fn query(&self) -> Option<&ReadPlan> {
         match self {
-            BatchFrom::Query(read) => Some(read),
+            BatchFrom::Query(read) => Some(read.as_ref()),
             BatchFrom::File(_) => None,
         }
     }

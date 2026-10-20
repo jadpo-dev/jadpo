@@ -16,7 +16,7 @@ action keep_sheet(sheet_text: SheetText) fails SheetNotKept -> DonationSheet {
     return DonationSheet.create {
         set: {
             sheet: sheet
-            adding: none
+            shelving: none
             rows_read: none
             rows_refused: none
         }

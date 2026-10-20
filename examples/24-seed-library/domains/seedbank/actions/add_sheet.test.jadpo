@@ -4,13 +4,13 @@
 use seedbank/entities { DonationSheet }
 use seedbank/actions { keep_sheet }
 
-test "a sheet is kept, and adding its packets starts once" {
+test "a sheet is kept, and shelving its packets starts once" {
     var donations: DonationSheet = attempt keep_sheet(
         "Variety,Saved in,Donated on\nCrimson Flowered broad bean,2024,2024-09-14\n"
     )
     var started: DonationSheet = attempt add_sheet(donations.id)
     var restarted: DonationSheet = attempt add_sheet(donations.id)
-    assert started.adding != none
-    assert restarted.adding == started.adding
+    assert started.shelving != none
+    assert restarted.shelving == started.shelving
     assert donations.rows_read == none
 }

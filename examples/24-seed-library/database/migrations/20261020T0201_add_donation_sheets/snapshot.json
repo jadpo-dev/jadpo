@@ -6,19 +6,6 @@
       "tables": {
         "donation_sheet": {
           "columns": {
-            "adding": {
-              "allows": {
-                "json": {
-                  "shape": {
-                    "value": "BatchRun"
-                  }
-                }
-              },
-              "field": "adding",
-              "nullable": true,
-              "position": 2,
-              "type": "jsonb"
-            },
             "id": {
               "allows": {},
               "field": "id",
@@ -49,6 +36,19 @@
               },
               "field": "sheet",
               "position": 1,
+              "type": "jsonb"
+            },
+            "shelving": {
+              "allows": {
+                "json": {
+                  "shape": {
+                    "value": "BatchRun"
+                  }
+                }
+              },
+              "field": "shelving",
+              "nullable": true,
+              "position": 2,
               "type": "jsonb"
             }
           },

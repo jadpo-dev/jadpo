@@ -62,5 +62,5 @@ target/release/jadpo fmt --check examples/24-seed-library
 - In `donation_sheet.jadpo`, let a sheet hold `20mb`. `jadpo check` reports `type.file_read_too_large` at `sheet_bytes`: a file read whole is held in memory, so only a field of 10 MB or less is; its rows are read with `csv.read`.
   <!-- try {"file": "domains/seedbank/entities/donation_sheet.jadpo", "replace": "max_size: 2mb", "with": "max_size: 20mb", "check": ["type.file_read_too_large"]} -->
 - In `keep_sheet.jadpo`, take the `storage_full:` mapping away. `jadpo check` reports that `sheets.put` can fail with `storage_full` and nothing maps it: a store may have no room, and the action says what that is.
-  <!-- try {"file": "domains/seedbank/actions/keep_sheet.jadpo", "replace": " {\n        storage_full: SheetNotKept\n    }", "with": "", "check": ["failure.unmapped_rule"]} -->
+  <!-- try {"file": "domains/seedbank/actions/keep_sheet.jadpo", "replace": " {\n        storage_full: SheetNotKept\n    }", "with": "", "check": ["failure.rule_unmapped"]} -->
 - Then read [25-allotment-rents](../25-allotment-rents/README.md), where schedules run work on a timer for many societies at once.

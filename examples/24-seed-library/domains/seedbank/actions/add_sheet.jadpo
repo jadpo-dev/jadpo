@@ -11,19 +11,19 @@ use seedbank/entities { DonationSheet, DonationSheetNotFound }
 use seedbank/types { DonationRow }
 use seedbank/actions { add_donation, record_sheet }
 
-/// Starts adding the packets a kept sheet lists.
+/// Starts shelving the packets a kept sheet lists.
 action add_sheet(sheet_id: DonationSheet.id) fails DonationSheetNotFound -> DonationSheet {
     var donations: DonationSheet = attempt DonationSheet.get(sheet_id)
-    var adding: BatchRun = csv.read(
+    var shelving: BatchRun = csv.read(
         donations.sheet,
         as: DonationRow,
-        each: row -> add_donation(row),
+        each: donation -> add_donation(donation),
         finished: summary -> record_sheet(summary, donations.id),
         key: donations.id
     )
     return DonationSheet.update(donations) {
         set: {
-            adding: adding
+            shelving: shelving
         }
     }
 }

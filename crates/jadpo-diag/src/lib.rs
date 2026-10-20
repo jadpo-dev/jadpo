@@ -1055,7 +1055,7 @@ rules! {
     TYPE_FIELD_UPDATE_FORBIDDEN: "type.field_update_forbidden", area 9, Error, Agent,
         "09-policy.html#type-field-update-forbidden", "Update changes a field that never changes";
     TYPE_FILE_READ_TOO_LARGE: "type.file_read_too_large", area 16, Error, Agent,
-        "16-built-in-services.html#type-file-read-too-large", "`store.read` reads whole a field that can hold more than 10 MB";
+        "16-built-in-services.html#type-file-read-too-large", "A whole read of a file field that can hold more than 10 MB";
     TYPE_FOREIGN_TYPE: "type.foreign_type", area 2, Error, Agent,
         "02-values-and-types.html#type-foreign-type", "Type named as another language names it";
     TYPE_FOREIGN_VALUE: "type.foreign_value", area 2, Error, Agent,

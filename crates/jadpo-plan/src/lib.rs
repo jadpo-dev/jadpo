@@ -695,7 +695,7 @@ impl Plan {
                 None => {
                     let read = queries.get(site.query? as usize)?.read.clone();
                     let store = read.store.clone();
-                    (jadpo_std::batch::BatchFrom::Query(read), store)
+                    (jadpo_std::batch::BatchFrom::Query(Box::new(read)), store)
                 }
             };
             let (_, each) = site.each.clone()?;

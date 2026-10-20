@@ -74,7 +74,7 @@ pub fn size(text: &str) -> Option<u64> {
 /// of: `5 MB`, `512 kB`.
 pub fn shown_size(bytes: u64) -> String {
     for (word, unit) in SIZE_UNITS.iter().rev() {
-        if *unit > 1 && bytes % unit == 0 {
+        if *unit > 1 && bytes.is_multiple_of(*unit) {
             let name = match *word {
                 "kb" => "kB",
                 "mb" => "MB",

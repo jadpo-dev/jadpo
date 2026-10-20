@@ -596,6 +596,9 @@ async fn run_row(stand: &Stand) -> (String, Option<String>, i64, i64) {
     }
 }
 
+/// How a run ended, as its row keeps it: its state and why.
+type Ended = (String, Option<String>);
+
 /// A sheet with every kind of row: quoted cells holding a comma, a line
 /// break and quotes, a cell that isn't its type's, one past its rule, a
 /// blank line, an item whose action fails after it wrote, a code taken
@@ -754,7 +757,7 @@ fn file_level_faults_stop_the_run_and_a_marked_encoding_is_read() {
     let stand = Stand::new(&loaded.url, 5, 2);
     Runtime::new().expect("runtime").block_on(async {
         let failed = |why: &str| ("failed".to_string(), Some(why.to_string()));
-        let cases: Vec<(&str, Vec<u8>, (String, Option<String>))> = vec![
+        let cases: Vec<(&str, Vec<u8>, Ended)> = vec![
             (
                 "missing",
                 b"Item name,count\nApples,3\n".to_vec(),

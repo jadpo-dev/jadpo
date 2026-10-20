@@ -120,6 +120,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             optional,
             default,
             header,
+            column,
             section,
             copied_from,
             replaces,
@@ -130,6 +131,7 @@ fn detail_json(node: &Node, name: &dyn Fn(&Key) -> String, out: &mut Value) {
             out.set_some("optional", *optional);
             out.set_some("default", default.as_ref().map(|d| d.render(name)));
             out.set_some("header", header.as_deref());
+            out.set_some("column", column.as_deref());
             out.set_some("section", section.map(|s| s.word()));
             out.set_some("copiedFrom", copied_from.as_ref().map(|key| key.as_str()));
             out.set_some("replaces", replaces.as_ref().map(|key| key.as_str()));
@@ -291,6 +293,10 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("optional", "An input field the sender may leave out"),
     ("default", "An input field's default, as written"),
     ("header", "The request header an input field is read from"),
+    (
+        "column",
+        "The file column an input field is read from, when not its name",
+    ),
     ("section", "A failure field's block: client or internal"),
     ("copiedFrom", "The field an include or pick line copied"),
     ("replaces", "The copied field a written field replaces"),
