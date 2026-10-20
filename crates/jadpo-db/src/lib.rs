@@ -135,7 +135,7 @@ pub fn is_email_template(path: &str) -> bool {
 }
 
 /// The project: its source files in path order, the paths of every other
-/// file inside it (templates and other assets), its layout, the identity
+/// file inside it (assets), its layout, the identity
 /// registry's lines (area 18): for each thing renamed since it was born,
 /// `kind name-now` and its born name, as `database/identities.jadpo_record`
 /// holds them, and its migrations' records in path order. The registry and the

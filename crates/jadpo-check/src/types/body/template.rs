@@ -354,11 +354,10 @@ impl Body<'_> {
         {
             format!("Write `{name}`'s fields one by one, `{{{{ value.field }}}}`")
         } else {
-            format!(
-                "Format it with `text.format(...)`, which writes a `{shown}` in the email's locale"
-            )
+            "Format it with `text.format(...)` (area 19), which writes it in the email's locale"
+                .to_string()
         };
-        Err((format!("a `{shown}`"), next))
+        Err((format!("this is `{shown}`"), next))
     }
 
     /// The key an enum's wording is called by: `shipping.tone`, or

@@ -2120,8 +2120,10 @@ Failed`), or the runtime's `unavailable`, `misconfigured` or, for an
 unkeyed call that may have acted, `outcome_unknown` (`boundary::
 outcome_unknown`). A subscriber's plan names its `Target`: an action,
 or a capability's operation handed the event whole
-(`Target::Capability`, which chunk 7.3's email will plan), and
-`runner::attempt_delivery` runs either within the same budget.
+(`Target::Capability`), or an email (`Target::Email`, chunk 7.3),
+rendered whole by `email::message` (its templates' callables run by the
+executor) and sent unkeyed, and `runner::attempt_delivery` runs each
+within the same budget.
 `Logged::may_have_acted` (an unkeyed call answered or still out) turns
 what would be a retry into `After::Park`: the delivery record becomes
 `outcome_unknown`, never claimed again. An unkeyed capability send marks

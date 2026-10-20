@@ -1517,6 +1517,7 @@ mod tests {
             declinable,
             [
                 "constant.similar_exists",
+                "email.field_unused",
                 "library.similar_exists",
                 "query.nearest_exact",
                 "translation.field_unused",

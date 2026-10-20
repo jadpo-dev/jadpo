@@ -1086,6 +1086,48 @@ pub fn report(db: &dyn Db, project: Project) -> Report {
             domains,
         });
     }
+    // Each SMTP server, which email is reached for (area 16; chunk 7.3),
+    // by the domains whose emails go through it, the one `email:` names.
+    let sending: Vec<String> = {
+        let mut domains: Vec<String> = crate::emails::analysis(db, project)
+            .emails
+            .iter()
+            .filter_map(|email| email.ownership.domain().map(str::to_string))
+            .collect();
+        domains.sort();
+        domains.dedup();
+        domains
+    };
+    let mailer = crate::emails::settings(db, project).connection.clone();
+    for smtp in &crate::emails::smtp_connections(db, project).list {
+        let (host, address, setting) = match &smtp.host {
+            Some(crate::emails::SmtpHost::Written(host)) => (
+                format!("`{host}:{}`", smtp.port),
+                Some(format!("{host}:{}", smtp.port)),
+                None,
+            ),
+            Some(crate::emails::SmtpHost::Setting(name)) => (
+                format!("the server in `config.{name}`, port {}", smtp.port),
+                None,
+                Some(name.clone()),
+            ),
+            None => continue,
+        };
+        rows.push(Row {
+            connection: smtp.name.clone(),
+            host,
+            address,
+            setting,
+            image: None,
+            when: None,
+            reached_for: "email".to_string(),
+            domains: if mailer.as_deref() == Some(smtp.name.as_str()) {
+                sending.clone()
+            } else {
+                Vec::new()
+            },
+        });
+    }
     rows.sort_by(|a, b| (&a.connection, &a.host).cmp(&(&b.connection, &b.host)));
     let mut markdown = String::from(
         "# Network\n\n\

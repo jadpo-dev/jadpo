@@ -1,0 +1,14 @@
+translations {
+    booking_confirmed: "Eich arhosiad yn Nhŷ Gwyn, {guest_name}"
+    breakfast_line: "Mae brecwast rhwng 8 a 10."
+    bring_boots: "Esgidiau cerdded"
+    bring_torch: "Tortsh ar gyfer y lôn"
+    confirmed_heading: "Croeso, {name}"
+    no_breakfast_line: "Mae'r caffi yn y pentref yn agor am 9."
+    room_kind: {
+        double: "Ystafell ddwbl"
+        family: "Ystafell deulu"
+        twin: "Ystafell â dau wely"
+    }
+    stay_line: "Nosweithiau: {nights}, o {arrives_on}."
+}

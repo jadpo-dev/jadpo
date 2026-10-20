@@ -1,0 +1,26 @@
+// Every email goes through the one connection `email:` names, from the
+// address its `from:` gives. Here that is an SMTP server; a mail
+// provider's package is another, and changing which is `app.jadpo`'s
+// business alone. `display_name:` is the name the shared layout writes.
+application {
+    display_name: "Tŷ Gwyn"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+            credential: {
+                username: config.smtp_username
+                password: config.smtp_password
+            }
+        }
+    }
+    email: {
+        connection: mail
+        from: config.bookings_address
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.cy_gb]
+}

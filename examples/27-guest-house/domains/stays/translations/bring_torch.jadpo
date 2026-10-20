@@ -1,0 +1,2 @@
+/// Something to pack for the dark lanes.
+type BringTorch = Message {}

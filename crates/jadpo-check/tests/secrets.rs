@@ -97,7 +97,11 @@ fn a_secret_is_never_emailed_or_shown_in_a_message() {
                 ("app.jadpo", "application {}\n"),
                 (
                     "domains/accounts/emails/reset_email.jadpo",
-                    "/// Sent when a password is reset.\ntype ResetEmail = EmailMessage {\n    new_password: Password\n}\n",
+                    "/// Sent when a password is reset.\ntype ResetEmail = EmailMessage {\n    decline email.field_unused: \"the secret is the finding here\"\n    new_password: Password\n}\n",
+                ),
+                (
+                    "domains/accounts/emails/reset_email.txt",
+                    "Your password has been reset.\n",
                 ),
             ]
         ),

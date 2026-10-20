@@ -1,0 +1,7 @@
+use stays/types { NightCount }
+
+/// How long a guest stays, and from when.
+type StayLine = Message {
+    nights: NightCount
+    arrives_on: PresentationText
+}

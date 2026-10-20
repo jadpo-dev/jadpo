@@ -1,0 +1,12 @@
+use stays/types { GuestName, NightCount, RoomKind }
+
+/// What a guest asks for when they book.
+type StayRequest = Input {
+    guest_email: Email
+    guest_name: GuestName
+    room: RoomKind
+    arrives_on: CalendarDate
+    nights: NightCount
+    breakfast: Bool
+    language: Locale
+}

@@ -1,0 +1,6 @@
+/// The rooms the guest house lets.
+type RoomKind = Enum {
+    double
+    twin
+    family
+}

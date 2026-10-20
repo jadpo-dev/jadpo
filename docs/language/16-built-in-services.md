@@ -5,6 +5,12 @@ status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - data.file_field_invalid
+  - email.connection_required
+  - email.field_unused
+  - email.settings_invalid
+  - email.template_missing
+  - email.template_not_allowed
+  - email.template_value_invalid
   - type.file_read_too_large
 ---
 
@@ -14,7 +20,7 @@ Which common backend features Jadpo should provide itself, rather than
 leaving each application to install a library or write its own: feature
 flags, rate limits, files, audit trails, tracing, email and search.
 
-> Decided on 2026-10-13. Only the capability seam (chunk 7.0c) and the `files` capability's first part (chunk 6.4b) are built; the [status table](#status) says when each part comes. Examples apply the decisions from areas 1 to 16.
+> Decided on 2026-10-13. Only the capability seam (chunk 7.0c), the `files` capability's first part (chunk 6.4b) and email's templates and sending over SMTP (chunk 7.3) are built; the [status table](#status) says when each part comes. Examples apply the decisions from areas 1 to 16.
 
 **The test for "native".** A feature is built in only when the compiler
 gains something by knowing about it: a mistake becomes a compile error, a
@@ -737,6 +743,11 @@ OpenTelemetry stays the transport; only what is sent changes.
 
 ## Email
 
+> Built in chunk 7.3: emails, their templates and the shared layout,
+> `email:`, sending after commit through the SMTP driver, attachments and
+> parking. A mail package as the connection, partials, `email.sent`, the
+> dev inbox and the health score come in chunk 7.3c.
+
 Applications send a handful of messages: confirm your address, reset your
 password, an invoice. A message is a type, `type X = EmailMessage`, whose fields are
 the values its text uses, in its domain's `emails/` folder beside its HTML
@@ -747,48 +758,143 @@ words come from the domain's translations (area 10): a template calls
 locale, and the compiler checks every call and placeholder against the
 message types and the email's fields.
 
-```jadpo fragment
-// domains/accounts/emails/welcome_email.jadpo
+```jadpo check project=email-welcome file=app.jadpo hidden
+application {
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+            credential: {
+                username: config.smtp_username
+                password: config.smtp_password
+            }
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=email-welcome file=config.jadpo hidden
+config {
+    app_url: Url {
+        default: "https://notes.example"
+    }
+    mail_sender: Email {
+        default: "hello@notes.example"
+    }
+    smtp_host: Hostname
+    smtp_password: Text {
+        secret: true
+    }
+    smtp_username: Text
+}
+```
+
+```jadpo check project=email-welcome file=domains/accounts/types/display_name.jadpo hidden
+type DisplayName = Text {
+    min_length: 1
+    max_length: 80
+}
+```
+
+```jadpo check project=email-welcome file=domains/accounts/entities/user.jadpo hidden migrate=initial
+use accounts/types { DisplayName }
+
+entity User {
+    id: Uuid
+    email: Email
+    display_name: DisplayName
+    locale: Locale
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}
+```
+
+```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.jadpo
+use accounts/types { DisplayName }
+
 /// Sent once a user has signed up.
 type WelcomeEmail = EmailMessage {
     display_name: DisplayName
     sign_in_link: Url
 }
+```
 
-// domains/accounts/translations/welcome_heading.jadpo
+```jadpo check project=email-welcome file=domains/accounts/translations/welcome_heading.jadpo
+use accounts/types { DisplayName }
+
 /// The heading of the welcome email.
 type WelcomeHeading = Message {
     name: DisplayName
 }
+```
 
-// domains/accounts/translations/en_gb.jadpo
+```jadpo check project=email-welcome file=domains/accounts/translations/sign_in.jadpo hidden
+/// The welcome email's link to sign in.
+type SignIn = Message {}
+```
+
+```jadpo check project=email-welcome file=domains/accounts/translations/en_gb.jadpo
 translations {
-    welcome_email: "Welcome, {display_name}"      // the subject line
+    sign_in: "Sign in"
+    welcome_email: "Welcome, {display_name}"  // the subject line
     welcome_heading: "Welcome, {name}"
 }
 ```
 
-```text
-<!-- domains/accounts/emails/welcome_email.html -->
+The `.html` template beside it:
+
+```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.html
 <html dir="{{ locale.direction }}">
 <h1>{{ translations.accounts.welcome_heading(name: display_name) }}</h1>
 <a href="{{ sign_in_link }}">{{ translations.accounts.sign_in() }}</a>
 </html>
 ```
 
+```jadpo check project=email-welcome file=domains/accounts/emails/welcome_email.txt hidden
+{{ translations.accounts.welcome_heading(name: display_name) }}
+
+{{ translations.accounts.sign_in() }}: {{ sign_in_link }}
+```
+
+An email has an `.html` template, a `.txt` one or both, named after its
+type; one with neither is `email.template_missing`, as is a template no
+email type is named after. Inside `{{ }}` a template writes Jadpo's own
+expressions: its email's fields, `to` and `locale` among them; `{{ if
+(...) }} ... {{ else if (...) }} ... {{ else }} ... {{ end }}` on a
+`Bool`; `{{ for item in list }} ... {{ end }}`; translations and
+`text.format`, both written in the email's locale without `locale:`;
+and `{{ locale.direction }}`, the locale's text direction in Jadpo's
+wording, `ltr` or `rtl`, for a `dir=` attribute.
+
 **Templates are strict** (decided 2026-10-16, built with email in chunk
 7.3). These are compile errors: a name that is not a field of the email's
 type; a message that does not exist; a placeholder missing or of the wrong
 type; a partial that does not exist or is called with the wrong fields;
 `if` on something that is not `Bool`; `for` over something that is not a
-list; and any call other than translations and formatting. A field the
-template never uses is a warning.
+list; and any call other than translations and formatting
+(`email.template_not_allowed`, which arithmetic and building values are
+too). A field no template reads and no wording of the subject writes is
+`email.field_unused`, a judgement call a `decline` line above the field
+answers. Partials (`{{ include button(...) }}`) wait for where a partial
+is declared to be decided (chunk 7.3c), and are refused until then.
 
 **Only text and numbers are written out**, in templates as in
 placeholders: `{{ value }}` takes `Text`, `PresentationText`, `Int` or
 `Decimal` (numbers written the locale's way), or an enum whose values have
 wording (area 10). Writing anything else out is a compile error that names
-how to format it: an `Instant` or `Money` with `text.format` (area 19),
+how to format it (`email.template_value_invalid`): an `Instant` or `Money` with `text.format` (area 19),
 a `Bool` as a condition for `if`, a list walked with
 `for`, an object's fields one by one, an enum without wording by adding
 it. Values are escaped; HTML goes in unescaped only as the safe-HTML type,
@@ -800,14 +906,35 @@ Sending is emitting: the mail goes after the action commits, retried like
 any delivery (area 12), so a rolled-back sign-up never sends a welcome. Every
 `EmailMessage` has `to:` and `locale:`.
 
-```jadpo fragment
-emit WelcomeEmail {
-    to: user.email
-    locale: user.locale
-    display_name: user.display_name
-    sign_in_link: config.app_url
+```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.jadpo
+use accounts/entities { User }
+use accounts/types { DisplayName }
+use accounts/emails { WelcomeEmail }
+
+/// Signs someone up, and welcomes them once it is done.
+action sign_up(email: Email, display_name: DisplayName, language: Locale) -> User {
+    var user: User = User.create {
+        set: {
+            email: email
+            display_name: display_name
+            locale: language
+        }
+    }
+    emit WelcomeEmail {
+        to: user.email
+        locale: user.locale
+        display_name: user.display_name
+        sign_in_link: config.app_url
+    }
+    return user
 }
 ```
+
+The email is rendered whole when it is sent: each template run with the
+email's fields and wrapped in the shared layout ("Level 3: branding"
+below), its subject worded in its locale, and each `File` field read
+from its store as an attachment. The connection is handed that message,
+and its delivery record alone says it went.
 
 - **Where it goes** is the `email` capability (area 11, revised
   2026-10-13): `email: { connection: postmark  from: config.mail_sender }` in
@@ -819,8 +946,9 @@ emit WelcomeEmail {
   changing provider changes `app.jadpo` only.
 - **Attachments are part of the capability** (decided 2026-10-16): a
   `File` field on an `EmailMessage` is an attachment, read from its store
-  at send time and checked against the size limit the mail package
-  declares; a `max_size` above it is a compile error. A provider that
+  at send time (built in chunk 7.3) and checked against the size limit the
+  mail package declares; a `max_size` above it is a compile error (chunk
+  7.3c, with mail packages). A provider that
   cannot send attachments stays an ordinary package but cannot be the
   `email:` connection.
 - **Everything provider-specific is the package's own** (design C, decided
@@ -844,7 +972,13 @@ emit WelcomeEmail {
   is parked for an operator, never resent blindly, since a duplicate
   receipt is not harmless; `jadpo deliveries` can resend in bulk.
 - Tests capture mail instead of sending it, and read it as `email.sent`.
-- **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13).
+  Built in chunk 7.3: `jadpo test` catches every email, rendered whole
+  once its action commits, so a template that can't be rendered fails the
+  test; reading them as `email.sent` comes in chunk 7.3c. Until the dev
+  inbox, `jadpo dev` gives the email connection no driver, so an email's
+  delivery there fails as `misconfigured` and nothing leaves the machine.
+- **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13;
+  chunk 7.3c).
   Nothing leaves the machine. A person opens it in the browser from the dev
   console (area 17): each mail rendered as HTML and as text, in its locale,
   with its links working (a magic link opens the frontend's page, which
@@ -856,7 +990,7 @@ emit WelcomeEmail {
   it. Phoenix's dev mailbox and Mailpit offer the browser half; the
   agent commands and the trace link are new.
 - **A mail health score: an early indication, not a guarantee** (Richard,
-  2026-10-13). Every mail in the dev inbox, and `jadpo email show <id>`,
+  2026-10-13; chunk 7.3c). Every mail in the dev inbox, and `jadpo email show <id>`,
   shows what Jadpo's own checks found and how to fix each: no plain-text
   part, image-only content, broken HTML, links that are not absolute HTTPS,
   link shorteners, an all-capitals subject, a missing unsubscribe header on
@@ -877,6 +1011,67 @@ emit WelcomeEmail {
   providers").
 - Two kinds of mail through two connections (transactional and bulk) wait
   for an app that asks.
+
+### The SMTP driver
+
+Decided in chunk 7.3, area 11 leaving the driver's settings to it, each
+the most conservative reading. A connection with `driver: Driver.smtp`
+gives `host:`, its server's name, written out or read from a setting
+built on `Text`; `port:`, 587 (submission, which Cloudflare Workers
+allows) when left out; and `credential: { username: password: }`, each
+read from a setting, the password a secret one. Each problem with them is
+area 11's `connection.key_invalid`, `connection.key_missing` or
+`connection.value_invalid`.
+
+```jadpo check project=email-smtp file=app.jadpo
+application {
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: config.smtp_host
+            port: 587
+            credential: {
+                username: config.smtp_username
+                password: config.smtp_password
+            }
+        }
+    }
+    email: {
+        connection: mail
+        from: config.mail_sender
+    }
+}
+```
+
+```jadpo check project=email-smtp file=config.jadpo hidden
+config {
+    mail_sender: Email
+    smtp_host: Hostname
+    smtp_password: Text {
+        secret: true
+    }
+    smtp_username: Text
+}
+```
+
+- **TLS always**, but to this machine: the driver upgrades with
+  `STARTTLS`, or speaks TLS from the start on port 465, checking the
+  server's certificate and name. A server that offers no TLS is reached
+  only on this machine (`localhost`, `127.0.0.1`, `::1`); anywhere else
+  the send is `misconfigured`, and a credential never goes in the clear.
+- **One message**: CRLF line ends, every part in base64, the text and the
+  HTML as `multipart/alternative` and attachments beside them in
+  `multipart/mixed`, the subject as RFC 2047 encoded words when it isn't
+  plain ASCII, and a `Date:` from the host's clock; the server adds the
+  `Message-ID:`, as RFC 6409 says a submission server does.
+- **What happened** is classified as every driver's is (chunk 7.0c): a
+  server that can't be reached, refuses for now (`4xx`) or drops the
+  connection before the message's end went out surely took nothing, so
+  the delivery is retried; once the end went out, no answer may be a
+  message taken, so the delivery is parked as `outcome_unknown`, since
+  SMTP takes no key; a recipient refused for good (`5xx`) fails as
+  `recipient_rejected`, the message as `message_rejected`; a refused
+  credential or sender is `misconfigured`.
 
 ### Built-in emails
 
@@ -995,8 +1190,18 @@ rules and may call translations, and it receives:
 | `{{ locale.direction }}` | `ltr` or `rtl` (area 10) |
 | `{{ app.display_name }}` | The application's `display_name:` |
 
-```text
-<!-- shared/emails/layout.html -->
+```jadpo check project=email-layout file=app.jadpo hidden
+application {
+    display_name: "Acme"
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=email-layout file=shared/emails/layout.html
 <html dir="{{ locale.direction }}">
 <head><title>{{ subject }}</title></head>
 <body>
@@ -1005,6 +1210,11 @@ rules and may call translations, and it receives:
 </body>
 </html>
 ```
+
+Built in chunk 7.3: the layout wraps each of the app's emails, its
+`.html` in `layout.html` and its `.txt` in `layout.txt`, either kept
+alone; `{{ app.display_name }}` without a `display_name:` is
+`email.settings_invalid`.
 
 **The application's name.** `application { display_name: "Acme" }` in
 `app.jadpo`, plain text, is required once any built-in email is
@@ -1449,11 +1659,358 @@ error: `sheets.read` can't read `PriceSheet.sheet` whole
 check failed: 1 error, 3 files
 ```
 
+### `email.template_missing`
+
+An email's words live beside its type, in an `.html` template, a `.txt`
+one or both, named after it; an email with neither has nothing to send,
+and a template no email is named after is sent by nothing:
+
+```jadpo check project=e-email-template-missing file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-template-missing file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-template-missing file=domains/accounts/emails/welcome_email.jadpo expect=email.template_missing
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: Text
+}
+```
+
+```text output
+error: `WelcomeEmail` has no template
+ --> domains/accounts/emails/welcome_email.jadpo:2:6
+  |
+2 | type WelcomeEmail = EmailMessage {
+  |      ^^^^^^^^^^^^ nothing to send
+  reason: An email's words live beside its type: `welcome_email.html`, its HTML, and `welcome_email.txt`, its plain text, each reading its fields inside `{{ }}`. It needs at least one.
+  next: Create `domains/accounts/emails/welcome_email.html` and `domains/accounts/emails/welcome_email.txt` beside `welcome_email.jadpo` (agent)
+  rule: email.template_missing
+  help: docs/language/16-built-in-services.html#email-template-missing
+
+check failed: 1 error, 3 files
+```
+
+### `email.template_value_invalid`
+
+A template writes out text, a number or an enum whose values have
+wording, so what a reader sees is decided by a type that says how it is
+shown; anything else is formatted first, and the error says how:
+
+```jadpo check project=e-email-template-value file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-template-value file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-template-value file=domains/accounts/emails/welcome_email.jadpo hidden
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: Text
+    joined_at: Instant
+}
+```
+
+```jadpo check project=e-email-template-value file=domains/accounts/emails/welcome_email.html expect=email.template_value_invalid
+<p>Welcome, {{ name }}. You joined on {{ joined_at }}.</p>
+```
+
+```text output
+error: `{{ joined_at }}` can't be written out
+ --> domains/accounts/emails/welcome_email.html:1:42
+  |
+1 | <p>Welcome, {{ name }}. You joined on {{ joined_at }}.</p>
+  |                                          ^^^^^^^^^ this is `Instant`
+  reason: A template writes out text (`Text`, `PresentationText`, or a type built on one), a number (`Int` or `Decimal`), or an enum whose values have wording, and `Html` as it is; `joined_at` is `Instant`.
+  next: Format it with `text.format(...)` (area 19), which writes it in the email's locale (agent)
+  rule: email.template_value_invalid
+  help: docs/language/16-built-in-services.html#email-template-value-invalid
+
+check failed: 1 error, 3 files
+```
+
+### `email.template_not_allowed`
+
+A template reads its email's fields, translates and formats; whatever
+else an email says is worked out where it is emitted, and given to it as
+a field, so its words are reviewed in one place:
+
+```jadpo check project=e-email-template-not-allowed file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-template-not-allowed file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-template-not-allowed file=domains/accounts/emails/welcome_email.jadpo hidden
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: Text
+}
+```
+
+```jadpo check project=e-email-template-not-allowed file=domains/accounts/emails/welcome_email.html expect=email.template_not_allowed
+<h1>WELCOME, {{ text.upper(name) }}</h1>
+```
+
+```text output
+error: A template only reads its fields, translates and formats
+ --> domains/accounts/emails/welcome_email.html:1:17
+  |
+1 | <h1>WELCOME, {{ text.upper(name) }}</h1>
+  |                 ^^^^^^^^^^^^^^^^ a call
+  reason: Templates are strict: they read their email's fields, call translations and `text.format`, compare values in `{{ if }}` and walk lists with `{{ for }}`, so what an email says is decided where it is emitted, and a reviewer reads its words in one place.
+  next: Call only `translations.<domain>.<message>(...)` and `text.format(...)`; work anything else out where the email is emitted, and give it to the email as a field (agent)
+  rule: email.template_not_allowed
+  help: docs/language/16-built-in-services.html#email-template-not-allowed
+
+check failed: 1 error, 3 files
+```
+
+### `email.field_unused`
+
+An email's fields are what its templates and its subject read, so a
+field none of them reads is sent for nothing, or is a value a template
+meant to show. A judgement call: a `decline` line above the field keeps
+one deliberately:
+
+```jadpo check project=e-email-field-unused file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-field-unused file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-field-unused file=domains/accounts/emails/welcome_email.txt hidden
+Hello, {{ name }}.
+```
+
+```jadpo check project=e-email-field-unused file=domains/accounts/emails/welcome_email.jadpo expect=email.field_unused
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: Text
+    referral_code: Text
+}
+```
+
+```text output
+error: `WelcomeEmail.referral_code` is written nowhere
+ --> domains/accounts/emails/welcome_email.jadpo:4:5
+  |
+4 |     referral_code: Text
+  |     ^^^^^^^^^^^^^ no template writes it
+  reason: An email's fields are what its templates and its subject read, so a field none of them reads is sent for nothing, or is a value a template was meant to show; no template of `WelcomeEmail` reads `referral_code`, and no wording of its subject writes `{referral_code}`.
+  next: Read `referral_code` in a template or the subject, or remove it from `WelcomeEmail`, or write `decline email.field_unused: "<why>"` above it if this is deliberate (agent)
+  rule: email.field_unused
+  help: docs/language/16-built-in-services.html#email-field-unused
+
+check failed: 1 error, 3 files
+```
+
+### `email.settings_invalid`
+
+`email: { connection: from: }` names the connection every email goes
+through, one that provides `email`, and the address they are from;
+`display_name:` is the application's name, written out:
+
+```jadpo check project=e-email-settings-invalid file=app.jadpo expect=email.settings_invalid
+application {
+    email: {
+        connection: main
+        from: "hello@notes.example"
+    }
+}
+```
+
+```text output
+error: `connection: main` sends no email
+ --> app.jadpo:3:21
+  |
+3 |         connection: main
+  |                     ^^^^ not an email connection
+  reason: `email: { connection: }` names a connection that provides `email`, one with `driver: Driver.smtp`; `main` is a connection that sends no email, and `app.jadpo` declares none.
+  next: Declare a connection with `driver: Driver.smtp` in `connections:`, and name it here (agent)
+  rule: email.settings_invalid
+  help: docs/language/16-built-in-services.html#email-settings-invalid
+
+check failed: 1 error, 1 file
+```
+
+### `email.connection_required`
+
+An email is sent through the connection `application { email: }` names,
+once the action that emits it commits, so emitting one needs it:
+
+```jadpo check project=e-email-connection-required file=app.jadpo hidden
+application {
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-connection-required file=domains/accounts/types/display_name.jadpo hidden
+type DisplayName = Text {
+    max_length: 80
+}
+```
+
+```jadpo check project=e-email-connection-required file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-connection-required file=domains/accounts/emails/welcome_email.jadpo hidden
+use accounts/types { DisplayName }
+
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: DisplayName
+}
+```
+
+```jadpo check project=e-email-connection-required file=domains/accounts/emails/welcome_email.txt hidden
+Hello, {{ name }}.
+```
+
+```jadpo check project=e-email-connection-required file=domains/accounts/actions/welcome.jadpo expect=email.connection_required
+use accounts/types { DisplayName }
+use accounts/emails { WelcomeEmail }
+
+/// Welcomes someone who has just signed up.
+action welcome(address: Email, name: DisplayName) -> Unit {
+    emit WelcomeEmail {
+        to: address
+        locale: Locale.en_gb
+        name: name
+    }
+}
+```
+
+```text output
+error: `WelcomeEmail` is emitted, but nothing sends email
+ --> domains/accounts/actions/welcome.jadpo:6:5
+  |
+6 |     emit WelcomeEmail {
+  |     ^^^^^^^^^^^^^^^^^^^ no email connection
+  reason: An email is sent once the action that emits it commits, through the connection `application { email: }` names, from the address its `from:` gives; `app.jadpo` names none.
+  next: Declare a connection with `driver: Driver.smtp` in `connections:`, and add `email: { connection: <its name>  from: config.mail_sender }` to `application { }` in `app.jadpo` (agent)
+  rule: email.connection_required
+  help: docs/language/16-built-in-services.html#email-connection-required
+
+check failed: 1 error, 5 files
+```
+
 ## Review
 
 ### Status
 
-Email comes with chunk 7.3, and default rate limits with routes (chunk
+Built in chunk 7.3: email's templates, the shared layout, `email:`,
+sending after commit through the SMTP driver, attachments and parking
+("Chosen in chunk 7.3" below); a mail package as the connection,
+partials, `email.sent`, the dev inbox and the health score come with
+chunk 7.3c. Default rate limits came with routes (chunk
 4.1); flags, the rest of files (multipart slots, and image variants and
 scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
@@ -1478,6 +2035,72 @@ the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
 `max_size:`, `types:` and `store:` as it is written come with the rest
 of the files capability.
+
+### Chosen in chunk 7.3
+
+What "Email" leaves to the build of its first part, each the most
+conservative reading:
+
+- **Rendered when it is sent.** The outbox keeps an email's fields as its
+  payload, its type's contract JSON within area 12's 64 KB, and its
+  delivery renders it as it is sent: its templates, its subject and its
+  attachments. A rendered body never fills the outbox, and a retry
+  renders the same text from the same fields.
+- **A template is a callable.** Each `.html` and `.txt` is read beside its
+  type, as a prompt's text is (area 21), checked by the body checker as a
+  pure callable taking its email's fields, `to` and `locale` first, and
+  lowered to a typed body the executor runs, so its expressions are
+  Jadpo's own, typed once. The layout's takes `content`, `subject` and
+  `locale`.
+- **One template at least.** An email has an `.html`, a `.txt` or both;
+  one with neither, a template named after no email, and a file in
+  `shared/emails/` other than the layout's two are
+  `email.template_missing`.
+- **What a template may do.** Literals, its names and their fields,
+  comparisons, `and`, `or`, `not`, enum values, translations and
+  `text.format`; arithmetic, any other call, building a value, a setting
+  or a constant is `email.template_not_allowed`. Translations and
+  `text.format` take the email's locale when `locale:` is left out.
+  `{{ locale.direction }}` is Jadpo's wording of `TextDirection`
+  (`jadpo.text_direction`, `ltr` or `rtl` unless the root file rewords
+  it), and `{{ app.display_name }}` is `application { display_name: }`,
+  plain text on one line. Partials are refused until chunk 7.3c.
+- **What is written out.** A value that may be `none` is refused; a
+  number is written by `text.format` in the email's locale; an enum by its
+  wording; `Html` as it is in an `.html` template, and refused in a `.txt`
+  one; everything else in HTML escaped, `&`, `<`, `>`, `"` and `'` as
+  character references.
+- **A subject in every locale.** An email's member in its domain's
+  language files is required in every supported locale that isn't in
+  progress, as a message's wording is (`translation.wording_missing`).
+- **A field nothing reads** is `email.field_unused`, declinable; `to`,
+  `locale` and `File` fields, which are attachments, are never reported,
+  and a field the subject's wording writes in any locale is read.
+- **The layout** wraps each body when it exists, the `.html` in
+  `layout.html` and the `.txt` in `layout.txt`, either kept alone;
+  without it, "Jadpo's plain layout" is the template's own text, sent as
+  it is.
+- **`email:`** names a connection with `driver: Driver.smtp` until a mail
+  package can fill `email` (chunk 7.3c), and `from:` an `Email` setting or
+  an address written out. Emitting an email with no `email:` is
+  `email.connection_required`.
+- **Its delivery.** Each email type has a subscriber of its own, `email
+  <domain>.<Type>`, tried as a subscriber is by default (10 attempts
+  within 24 hours), its record alone saying it went. It renders first,
+  so what can't be rendered is settled as a subscriber's fault is and
+  sends nothing, then is marked `sending` and sent with no key (chunk
+  7.0c). The driver is given `from`, `to`, `subject`, `html`, `text` and
+  `attachments`, each attachment's name, media type and bytes, read whole
+  from its store (at most 10 MB, as `store.read` reads).
+- **Development and tests.** `jadpo test` gives the email connection a
+  driver that catches each message and answers that it went, so every
+  email is rendered and nothing leaves the machine; `jadpo dev` gives it
+  none until the dev inbox (chunk 7.3c).
+- **Flagged for Richard.** Where a partial is declared, which `{{ include
+  button(...) }}` needs, is not on the page. Recommendation: `type Button
+  = EmailPartial { label: PresentationText  url: Url }` in `shared/emails/`
+  or a domain's `emails/`, its `.html` and `.txt` beside it as an email's
+  are, called with its fields by name.
 
 ### Chosen in chunk 7.0c
 

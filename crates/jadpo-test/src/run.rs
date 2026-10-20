@@ -161,12 +161,18 @@ fn one<E: Executor>(
         env.database = TestDatabase::Copied {
             stores: databases.stores(),
         };
-        let host = TestHost::new(databases).with_file_stores(
-            executor
-                .file_stores()
-                .iter()
-                .map(|store| store.name.as_str()),
-        );
+        let host = TestHost::new(databases)
+            .with_file_stores(
+                executor
+                    .file_stores()
+                    .iter()
+                    .map(|store| store.name.as_str()),
+            )
+            .with_mail(
+                executor
+                    .events()
+                    .and_then(|events| events.plan.emails.connection.clone()),
+            );
         let (outcome, undelivered) = {
             let mut ctx = Ctx::new(places, &host, env.env);
             ctx.set_settings(executor.settings(callable));

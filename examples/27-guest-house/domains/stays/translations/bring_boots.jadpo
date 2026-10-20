@@ -1,0 +1,2 @@
+/// Something to pack for the hills.
+type BringBoots = Message {}

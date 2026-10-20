@@ -1,0 +1,18 @@
+use stays/types { GuestName, NightCount, RoomKind }
+
+/// A guest's stay.
+entity Booking {
+    id: Uuid
+    guest_email: Email
+    guest_name: GuestName
+    room: RoomKind
+    arrives_on: CalendarDate
+    nights: NightCount
+    breakfast: Bool
+    language: Locale
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public]
+    }
+}

@@ -46,4 +46,4 @@ target/release/jadpo fmt --check examples/26-delivery-desk
   <!-- try {"file": "domains/intake/actions/check_postcode.jadpo", "replace": ") fails Postcodes.InvalidPostcode ->", "with": ") fails InvalidPostcode ->", "check": ["semantic.unknown_name"]} -->
 - In `app.jadpo`, let the connection's `domains:` name `intake` instead of `courier_desk`. `jadpo check` reports `connection.domain_not_listed`: only the domains a connection lists call it, so a new caller is a line a reviewer sees.
   <!-- try {"file": "app.jadpo", "replace": "domains: [courier_desk]", "with": "domains: [intake]", "check": ["connection.domain_not_listed"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Next, [27-guest-house](../27-guest-house/README.md) sends email: templates checked against their email's fields, sent once the action that emits them commits.
