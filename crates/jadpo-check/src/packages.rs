@@ -1260,10 +1260,13 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         return Vec::new();
     };
     let what = match location.place {
-        // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]).
-        Place::Folder(Folder::Provides) if location.stem == "receiving" => return Vec::new(),
-        // `email`'s since chunk 7.3c ([`crate::mail`]).
-        Place::Folder(Folder::Provides) if location.stem == jadpo_std::email::NAMESPACE => {
+        // `receiving`'s is read since chunk 7.7c ([`crate::receiving`]),
+        // `ai`'s since chunk 5.5v3b ([`crate::ai_mapping`]), `email`'s
+        // since chunk 7.3c ([`crate::mail`]).
+        Place::Folder(Folder::Provides)
+            if matches!(location.stem.as_str(), "receiving" | "ai")
+                || location.stem == jadpo_std::email::NAMESPACE =>
+        {
             return Vec::new();
         }
         Place::Folder(Folder::Provides) => "A package's capability mappings",

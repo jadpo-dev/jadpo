@@ -77,6 +77,32 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         if matches!(decl, Decl::TypeDecl(_) | Decl::ResourceDecl(_)) {
             decoders_named(db, project, file, decl.syntax(), &mut found);
         }
+        // A package filling `ai` reads its tables of models from its
+        // libraries (area 21; chunk 5.5v3b).
+        if let Decl::ProvideDecl(provide) = &decl {
+            for (key, member) in tree::members(provide.member_list()) {
+                if tree::name_text(&key).as_deref() != Some("models") {
+                    continue;
+                }
+                for (_, table) in tree::members(member.block()) {
+                    let parts: Vec<String> = table
+                        .value()
+                        .and_then(|value| tree::dotted(&value))
+                        .map(|(first, rest)| {
+                            std::iter::once(first)
+                                .chain(rest)
+                                .filter_map(|part| tree::name_ref_text(&part))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if let [library, constant] = parts.as_slice() {
+                        found
+                            .library_calls
+                            .insert((contested.canonical(library, domain), constant.clone()));
+                    }
+                }
+            }
+        }
     }
     let host_of = |key: &Key| canonical_of(contested, key);
     // The latest migration's computed backfills use what they call (area

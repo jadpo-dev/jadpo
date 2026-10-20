@@ -12,7 +12,9 @@
 //!   operation `jadpo dev` fakes: one of its failures by its code, or a
 //!   condition (`unavailable`, `lost`, `in_use`, `misconfigured`), as a
 //!   test's `fakes:` writes it (area 13), so an agent walks a failure
-//!   path by hand.
+//!   path by hand; and of a prompt asked through a package filling `ai`,
+//!   `ai.<prompt>`, one of `ai.generate`'s five conditions (area 21;
+//!   chunk 5.5v3b).
 
 use std::path::{Path, PathBuf};
 
@@ -356,6 +358,10 @@ fn script(root: &Path, operation: &str, answer: &str) -> Reply {
             );
         }
     };
+    // A prompt asked through a package filling `ai` (chunk 5.5v3b).
+    if let Some(prompt) = operation.strip_prefix("ai.") {
+        return script_prompt(root, &prepared, prompt, answer);
+    }
     let plan = prepared.plan().providers();
     let known: Vec<String> = plan
         .operations
@@ -414,7 +420,95 @@ fn script(root: &Path, operation: &str, answer: &str) -> Reply {
             },
         ));
     }
-    if let Err(error) = dev_calls::script(root, operation, answer) {
+    scripted(root, operation, operation, answer)
+}
+
+/// Scripts `answer`, a condition of `ai.generate`'s, for the next call of
+/// prompt `prompt` through the package's connection that fills `ai` (area
+/// 21; chunk 5.5v3b), as a test's `fakes: { ai.<prompt>: }` names it.
+fn script_prompt(
+    root: &Path,
+    prepared: &jadpo_interp::Prepared,
+    prompt: &str,
+    answer: &str,
+) -> Reply {
+    let written = format!("ai.{prompt}");
+    let Some(ai) = prepared.plan().ai() else {
+        return Reply::failed(arguments(
+            format!("`{written}` names a prompt, and the app asks no model"),
+            "A prompt's next answer is scripted for the model `ai:` names in `app.jadpo`, and the app names none.".to_string(),
+            "Script one of the app's provider operations, `<connection>.<resource>.<operation>`".to_string(),
+        ));
+    };
+    if !matches!(ai.driver, jadpo_std::ai::AiDriver::Package(_)) {
+        return Reply::failed(arguments(
+            format!(
+                "`{written}` is asked of a model on this machine, which `jadpo dev` doesn't fake"
+            ),
+            format!(
+                "`ai:` names `{}`, a server that speaks OpenAI's API through `Driver.openai_compatible`; `jadpo dev` sends it every call, so there is nothing to script. A package's connection that fills `ai` is faked, and its prompts take a scripted answer.",
+                ai.connection
+            ),
+            "Have the model answer as you need it, or name a package's connection in `ai:`"
+                .to_string(),
+        ));
+    }
+    let known: Vec<String> = prepared
+        .plan()
+        .prompts()
+        .entries
+        .iter()
+        .map(|entry| format!("ai.{}", entry.key))
+        .collect();
+    if !known.contains(&written) {
+        let near = jadpo_diag::nearest(&written, known.iter().map(String::as_str));
+        return Reply::failed(arguments(
+            format!("`{written}` isn't one of the app's prompts"),
+            format!(
+                "A prompt's next answer is scripted by its name, as a test's `fakes:` writes it: {}.",
+                if known.is_empty() {
+                    "the app has none".to_string()
+                } else {
+                    crate::run::either(&crate::run::quoted(known.iter()))
+                }
+            ),
+            match near {
+                Some(near) => format!("Use `jadpo calls script {near} {answer}`"),
+                None => "Name one of the prompts listed".to_string(),
+            },
+        ));
+    }
+    let conditions: Vec<&str> = jadpo_std::ai::CONDITIONS
+        .iter()
+        .map(|condition| condition.word())
+        .collect();
+    if !conditions.contains(&answer) {
+        let near = jadpo_diag::nearest(answer, conditions.iter().copied());
+        return Reply::failed(arguments(
+            format!("`{answer}` isn't an answer `{written}` gives"),
+            format!(
+                "A prompt's scripted answer is one of `ai.generate`'s conditions: {}. Anything else is a generated value of the call's type.",
+                crate::run::either(&crate::run::quoted(conditions.iter()))
+            ),
+            match near {
+                Some(near) => format!("Use `jadpo calls script {written} {near}`"),
+                None => "Script one of the answers listed".to_string(),
+            },
+        ));
+    }
+    scripted(
+        root,
+        &written,
+        &format!("{}.{prompt}", ai.connection),
+        answer,
+    )
+}
+
+/// Keeps `answer` for the next call named `call`, which the user wrote as
+/// `written`, and says so.
+fn scripted(root: &Path, written: &str, call: &str, answer: &str) -> Reply {
+    let operation = written;
+    if let Err(error) = dev_calls::script(root, call, answer) {
         return Reply::failed(
             Diagnostic::new(
                 &rule::CLI_CALLS_ARGUMENTS,
@@ -426,7 +520,7 @@ fn script(root: &Path, operation: &str, answer: &str) -> Reply {
     }
     let waiting = dev_calls::scripted(root)
         .iter()
-        .filter(|(scripted, _)| scripted == operation)
+        .filter(|(scripted, _)| scripted == call)
         .count();
     let text = if waiting > 1 {
         format!(

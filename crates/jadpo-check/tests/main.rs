@@ -12,6 +12,7 @@ mod across;
 mod aggregates;
 mod ai;
 mod ai_generate;
+mod ai_providers;
 mod batches;
 mod bodies;
 mod calendar;
