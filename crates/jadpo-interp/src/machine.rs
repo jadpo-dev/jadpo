@@ -529,7 +529,7 @@ impl<'p> Machine<'p> {
     /// it is read back through the operation's real decoding.
     fn script_fake(&mut self, ctx: &mut Ctx<'_>, at: SiteId) -> Result<(), &'static str> {
         use jadpo_graph::body::{FakeAnswer, FakeCondition};
-        use jadpo_runtime::capability::Answer;
+        use jadpo_runtime::fakes::Script;
         let Some(Node::Expr(Expr::Call {
             callee:
                 Callee::Fake {
@@ -543,34 +543,17 @@ impl<'p> Machine<'p> {
             return Err("a scripted answer the plan doesn't have");
         };
         let given = match answer {
-            FakeAnswer::Value => {
-                let value = self.pop();
-                let providers = self.program.providers();
-                match jadpo_runtime::fakes::as_sent(&providers, connection, operation, &value) {
-                    Some(sent) => Answer::Wire(sent),
-                    None => return Err("a scripted value its operation can't write"),
-                }
-            }
-            FakeAnswer::Failed(code) => Answer::Failed(code.clone()),
+            FakeAnswer::Value => Script::Value(self.pop()),
+            FakeAnswer::Failed(code) => Script::Failed(code.clone()),
             FakeAnswer::Condition(FakeCondition::Unavailable | FakeCondition::InUse) => {
-                Answer::Unavailable
+                Script::Unavailable
             }
-            FakeAnswer::Condition(FakeCondition::Lost) => Answer::Unknown,
-            FakeAnswer::Condition(FakeCondition::Misconfigured) => Answer::Misconfigured,
+            FakeAnswer::Condition(FakeCondition::Lost) => Script::Lost,
+            FakeAnswer::Condition(FakeCondition::Misconfigured) => Script::Misconfigured,
         };
         ctx.at(at.0);
-        let Some(from) = ctx.frames().first().copied() else {
-            return Err("a scripted answer outside a test");
-        };
-        let scripted = ctx
-            .host()
-            .capability(connection)
-            .is_some_and(|fake| fake.script(connection, operation, given, from));
-        if scripted {
-            Ok(())
-        } else {
-            Err("a test's `fakes:` on a host with no fake in the connection's place")
-        }
+        let providers = self.program.providers();
+        jadpo_runtime::fakes::script(ctx, &providers, (connection, operation), given)
     }
 
     /// Whether `key` is a failure of the provider operation `operation` of

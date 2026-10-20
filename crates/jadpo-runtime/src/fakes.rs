@@ -31,7 +31,7 @@ use crate::places::Frame;
 /// One operation's script: the answers left, in order, and how many were
 /// scripted and how many calls came.
 #[derive(Debug)]
-struct Script {
+struct Scripts {
     /// `connection.resource.operation`.
     name: String,
     /// Where the test scripted it.
@@ -68,7 +68,7 @@ impl Usage {
 /// default otherwise.
 #[derive(Debug, Default)]
 pub struct ProviderFake {
-    scripts: RefCell<Vec<Script>>,
+    scripts: RefCell<Vec<Scripts>>,
 }
 
 impl ProviderFake {
@@ -135,7 +135,7 @@ impl Capability for ProviderFake {
                 script.answers.push_back(answer);
                 script.scripted += 1;
             }
-            None => scripts.push(Script {
+            None => scripts.push(Scripts {
                 name,
                 from,
                 answers: VecDeque::from([answer]),
@@ -144,6 +144,55 @@ impl Capability for ProviderFake {
             }),
         }
         true
+    }
+}
+
+/// One answer a test's `fakes:` scripts (area 13).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Script {
+    /// A value of the operation's output type.
+    Value(jadpo_value::Value),
+    /// One of its failures, by its code.
+    Failed(String),
+    /// It surely did nothing: `unavailable`, or `in_use`.
+    Unavailable,
+    /// It went and no answer came back: `lost`.
+    Lost,
+    Misconfigured,
+}
+
+/// Gives the fake in connection `connection`'s place the next answer to
+/// `operation` (area 13, `fakes:`; chunk 7.2d), scripted by the test at
+/// the current frame of `ctx`: a value written as the provider sends it,
+/// where the operation's `output_at:` reads it, so it is read back through
+/// the operation's real decoding.
+pub fn script(
+    ctx: &mut crate::Ctx<'_>,
+    providers: &crate::provider::Providers<'_>,
+    (connection, operation): (&str, &str),
+    given: Script,
+) -> Result<(), &'static str> {
+    let answer = match given {
+        Script::Value(value) => match as_sent(providers, connection, operation, &value) {
+            Some(sent) => Answer::Wire(sent),
+            None => return Err("a scripted value its operation can't write"),
+        },
+        Script::Failed(code) => Answer::Failed(code),
+        Script::Unavailable => Answer::Unavailable,
+        Script::Lost => Answer::Unknown,
+        Script::Misconfigured => Answer::Misconfigured,
+    };
+    let Some(from) = ctx.frames().first().copied() else {
+        return Err("a scripted answer outside a test");
+    };
+    let scripted = ctx
+        .host()
+        .capability(connection)
+        .is_some_and(|fake| fake.script(connection, operation, answer, from));
+    if scripted {
+        Ok(())
+    } else {
+        Err("a test's `fakes:` on a host with no fake in the connection's place")
     }
 }
 
@@ -272,7 +321,21 @@ fn generate(
                 .get(validator.0 as usize)
                 .map(|validator| validator.rules().collect())
                 .unwrap_or_default();
-            let candidates = scalar_candidates(*builtin, &rules, *int_as_number, making);
+            // An instant or a date as the type's own codec writes it, at
+            // the invocation's clock.
+            let written = |value: jadpo_value::Value| {
+                serde_json::from_str::<serde_json::Value>(&codecs.write_value(id, &value))
+                    .unwrap_or(serde_json::Value::Null)
+            };
+            let now = making.now;
+            let candidates = match builtin {
+                jadpo_std::Builtin::Instant => vec![written(jadpo_value::Value::Instant(now))],
+                jadpo_std::Builtin::CalendarDate => {
+                    let day = i32::try_from(now.div_euclid(86_400_000)).unwrap_or(0);
+                    vec![written(jadpo_value::Value::Date(day))]
+                }
+                _ => scalar_candidates(*builtin, &rules, *int_as_number, making),
+            };
             first_read(codecs, id, candidates)
         }
         Codec::Object { shape, fields, .. } => {
@@ -390,7 +453,6 @@ fn scalar_candidates(
         .iter()
         .filter_map(|rules| rules.max)
         .min_by(|a, b| a.compare(*b));
-    let now = jadpo_std::format_instant(making.now);
     match builtin {
         B::Bool => vec![J::Bool(false), J::Bool(true)],
         B::Int | B::PageSize | B::PluralCount => {
@@ -428,9 +490,9 @@ fn scalar_candidates(
         B::Email => vec![text("someone@example.com")],
         B::Url => vec![text("https://example.com")],
         B::IpAddress => vec![text("192.0.2.1")],
-        B::Instant => vec![J::String(now)],
-        B::CalendarDate => vec![J::String(now.chars().take(10).collect())],
-        B::ZonedTime => vec![serde_json::json!({ "instant": now, "zone": "Europe/London" })],
+        B::ZonedTime => {
+            vec![serde_json::json!({ "instant": "2000-01-01T00:00:00Z", "zone": "Europe/London" })]
+        }
         B::Duration => vec![text("PT1M"), text("1m"), J::from(60_000)],
         B::Money => vec![
             serde_json::json!({ "amount": "0.00", "currency": "GBP" }),

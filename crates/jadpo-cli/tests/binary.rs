@@ -115,6 +115,7 @@ fn bash_completes_commands_and_values() {
             "sql",
             "routes",
             "ai",
+            "calls",
             "why",
             "api",
             "records",

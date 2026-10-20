@@ -1018,7 +1018,7 @@ pub static COMMANDS: &[Command] = &[
         name: "calls",
         synonyms: &[],
         group: "Look things up",
-        summary: "List the provider calls jadpo dev made",
+        summary: "Show provider calls in dev",
         description: "Lists the provider calls `jadpo dev` made (area 17), oldest first: each \
                       call's id, its operation, where its answer came from (generated, scripted or \
                       sandbox), how it ended, how long it took and its request. Calls are faked \
