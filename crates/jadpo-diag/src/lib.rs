@@ -562,9 +562,9 @@ rules! {
         "21-ai.html#prompt-placeholder-unused", "A prompt's field is written nowhere in its text";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "21-ai.html#prompt-section-missing", "A prompt and its file don't make its two sections, each once and in order";
-    PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 11, Error, Human,
+    PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "11-integrations.html#publish-breaking-change", "Package's surface breaks its last release within one major version";
-    PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 11, Error, Agent,
+    PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
         "11-integrations.html#publish-description-missing", "Package's public declaration has no description";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";

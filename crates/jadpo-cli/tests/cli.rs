@@ -61,6 +61,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
+  package       Show or check a package       show, check
 
 Data
   migrate       Write and apply migrations    new, apply, status
@@ -131,6 +132,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
+  package       Show or check a package       show · check
 
 Data
   migrate       Write and apply migrations    new · apply · status
@@ -305,6 +307,7 @@ fn help_json_is_the_whole_command_reference() {
             "test",
             "dev",
             "fmt",
+            "package",
             "migrate",
             "sql",
             "routes",
@@ -325,7 +328,12 @@ fn help_json_is_the_whole_command_reference() {
             "version"
         ]
     );
-    let completions = &data["commands"][18];
+    let completions = data["commands"]
+        .as_array()
+        .expect("commands")
+        .iter()
+        .find(|command| command["name"] == "completions")
+        .expect("completions");
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -699,6 +707,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "test\tRun tests",
             "dev\tRun the app and reload on every save",
             "fmt\tFormat source files",
+            "package\tShow or check a package",
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",

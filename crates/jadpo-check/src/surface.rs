@@ -461,22 +461,22 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                         kind: failure.kind.clone(),
                         code: failure.code.clone(),
                         message: failure.message.clone(),
-                        fields: fields(&graph, node),
+                        fields: fields(graph, node),
                     }));
                     continue;
                 }
                 let base_text = match base {
                     Base::Object | Base::Input | Base::Output | Base::Enum => {
-                        base.render(&|key| name_of(&graph, key))
+                        base.render(&|key| name_of(graph, key))
                     }
-                    Base::Refines(parent) => parent.render(&|key| name_of(&graph, key)),
+                    Base::Refines(parent) => parent.render(&|key| name_of(graph, key)),
                     // A package's events and messages come with their
                     // chunks (7.6 and 7.1b3); emails and prompts are the
                     // app's own.
                     _ => continue,
                 };
                 let variants = if *base == Base::Enum {
-                    variants(&graph, node)
+                    variants(graph, node)
                 } else {
                     Vec::new()
                 };
@@ -486,7 +486,7 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                     fields: if matches!(base, Base::Refines(_)) {
                         Vec::new()
                     } else {
-                        fields(&graph, node)
+                        fields(graph, node)
                     },
                     variants,
                 }));
@@ -500,7 +500,7 @@ pub fn surface(db: &dyn Db, project: Project, folder: &str) -> Option<Surface> {
                 if !library_public {
                     continue;
                 }
-                let name = |key: &Key| name_of(&graph, key);
+                let name = |key: &Key| name_of(graph, key);
                 let mut fails: Vec<String> =
                     signature.fails.iter().map(|ty| ty.render(&name)).collect();
                 fails.sort();

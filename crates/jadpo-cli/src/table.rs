@@ -687,7 +687,7 @@ pub static COMMANDS: &[Command] = &[
         name: "package",
         synonyms: &["packages"],
         group: "Build and check",
-        summary: "Show a package or run its publishing bar",
+        summary: "Show or check a package",
         description: "`show <name>` prints a package's description, licence, version, kind and public \
                       surface (area 11), installed in packages/ or the app's own in shared/providers/; \
                       `show <name> <declaration>` prints one operation, function, type or failure in \
@@ -705,13 +705,13 @@ pub static COMMANDS: &[Command] = &[
             },
             Argument {
                 name: "name",
-                description: "The package, such as postcodes; for check, its folder",
+                description: "The package, such as holidays; for check, its folder",
                 required: false,
                 values: Values::Path,
             },
             Argument {
                 name: "declaration",
-                description: "One of its declarations, such as uk.parse",
+                description: "One of its declarations, such as uk.dates",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -724,12 +724,12 @@ pub static COMMANDS: &[Command] = &[
         }],
         examples: &[
             Example {
-                description: "See what the postcodes package offers",
-                command: "jadpo package show postcodes",
+                description: "See what the holidays package offers",
+                command: "jadpo package show holidays",
             },
             Example {
                 description: "See one of its functions in full",
-                command: "jadpo package show postcodes uk.parse",
+                command: "jadpo package show holidays uk.dates",
             },
             Example {
                 description: "Run the publishing bar in a package's own repository",

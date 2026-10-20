@@ -264,7 +264,7 @@ fn source_words(surface: &Surface, locked: Option<&Locked>) -> (Option<String>, 
         Some(Source::Registry { version, .. }) => {
             (Some(version.clone()), "the registry".to_string())
         }
-        Some(Source::Link { path }) => (None, format!("linked to {path}")),
+        Some(Source::Link { path }) => (None, format!("a link to {path}")),
         None => (None, "not in jadpo.lock".to_string()),
     }
 }
@@ -552,7 +552,7 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             if let Some(at) = output_at {
                 fields.push(("output at".into(), at.clone()));
             }
-            fields.push(("changes".into(), yes_no(*changes)));
+            fields.push(("changes".into(), answer(*changes)));
             fields.push((
                 "repeats".into(),
                 if *idempotent {
@@ -701,7 +701,7 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
     )
 }
 
-fn yes_no(yes: bool) -> String {
+fn answer(yes: bool) -> String {
     if yes { "yes" } else { "no" }.to_string()
 }
 
