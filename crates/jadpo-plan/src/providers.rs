@@ -59,7 +59,10 @@ pub(crate) fn plan(
                 .and_then(setting)
                 .map_or(Address::Unknown, Address::Setting)
         };
-        let credential = match (reach.credential.as_deref(), connection.credential.as_deref()) {
+        let credential = match (
+            reach.credential.as_deref(),
+            connection.credential.as_deref(),
+        ) {
             (Some(scheme), Some(name)) => {
                 let scheme = match scheme {
                     "bearer" => Some(CredentialScheme::Bearer),

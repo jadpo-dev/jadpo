@@ -320,8 +320,14 @@ mod tests {
         assert_eq!(answer.status, 201);
         assert_eq!(answer.body, b"{\"id\":\"b1\"}");
         let seen = server.join().unwrap();
-        assert!(seen.starts_with("POST /v1/bookings?x=1 HTTP/1.1\r\n"), "{seen}");
-        assert!(seen.contains("Authorization: Bearer test-token\r\n"), "{seen}");
+        assert!(
+            seen.starts_with("POST /v1/bookings?x=1 HTTP/1.1\r\n"),
+            "{seen}"
+        );
+        assert!(
+            seen.contains("Authorization: Bearer test-token\r\n"),
+            "{seen}"
+        );
         assert!(seen.contains("Content-Length: 13\r\n"), "{seen}");
         assert!(seen.ends_with("{\"slot\":\"am\"}"), "{seen}");
 
@@ -340,15 +346,22 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
-        let refused = runtime.block_on(NativeFetch.fetch(&request(format!("http://127.0.0.1:{port}"))));
-        assert!(matches!(refused, Err(FetchError::NotSent(_))), "{refused:?}");
+        let refused =
+            runtime.block_on(NativeFetch.fetch(&request(format!("http://127.0.0.1:{port}"))));
+        assert!(
+            matches!(refused, Err(FetchError::NotSent(_))),
+            "{refused:?}"
+        );
 
         let silent = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = silent.local_addr().unwrap().port();
         let mut slow = request(format!("http://127.0.0.1:{port}"));
         slow.timeout_ms = 200;
         let unanswered = runtime.block_on(NativeFetch.fetch(&slow));
-        assert!(matches!(unanswered, Err(FetchError::NoAnswer(_))), "{unanswered:?}");
+        assert!(
+            matches!(unanswered, Err(FetchError::NoAnswer(_))),
+            "{unanswered:?}"
+        );
         drop(silent);
     }
 }

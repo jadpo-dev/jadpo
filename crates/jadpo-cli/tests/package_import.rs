@@ -478,7 +478,8 @@ public type Booking = Object {
     assert!(
         !findings
             .iter()
-            .any(|finding| finding.contains("The provider names it") || finding.contains("The provider sends `")),
+            .any(|finding| finding.contains("The provider names it")
+                || finding.contains("The provider sends `")),
         "{findings:#?}"
     );
     for expected in [

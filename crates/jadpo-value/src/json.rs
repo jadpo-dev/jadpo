@@ -293,9 +293,7 @@ impl Codecs<'_> {
                     };
                     // A provider package's variant is sent as its
                     // `wire_name:` (area 11, chunk 7.2c).
-                    let Some(variant) = variants
-                        .iter()
-                        .find(|v| v.wire == *tag || v.name == *tag)
+                    let Some(variant) = variants.iter().find(|v| v.wire == *tag || v.name == *tag)
                     else {
                         Self::problem(problems, &path.with("tag"), "variant");
                         return None;

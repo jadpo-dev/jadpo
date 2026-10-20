@@ -458,7 +458,13 @@ fn env() -> Env {
 }
 
 /// Runs action `name` with `args` in `ctx`.
-fn run(runtime: &Runtime, program: &Program, ctx: &mut Ctx<'_>, name: &str, args: Vec<Value>) -> Outcome {
+fn run(
+    runtime: &Runtime,
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    name: &str,
+    args: Vec<Value>,
+) -> Outcome {
     let id = program.plan().find(name).expect("the action");
     runtime.block_on(program.run(ctx, id, args))
 }
@@ -491,7 +497,13 @@ fn a_call_goes_to_the_provider_and_its_answer_is_decoded() {
     let host = host();
     let mut ctx = Ctx::new(program.places(), &host, env());
     ctx.set_call_key("user:ada", "client-key-1");
-    let outcome = run(&runtime, &program, &mut ctx, "book_collection", vec![text("N1 9GU"), text("am")]);
+    let outcome = run(
+        &runtime,
+        &program,
+        &mut ctx,
+        "book_collection",
+        vec![text("N1 9GU"), text("am")],
+    );
     let Outcome::Value(booking) = outcome else {
         panic!("{:?}", program.report(&outcome).map(|r| r.headline()));
     };
@@ -512,7 +524,10 @@ fn a_call_goes_to_the_provider_and_its_answer_is_decoded() {
         request.json(),
         serde_json::json!({"postcode": "N1 9GU", "slotId": "am"})
     );
-    let key = request.header("idempotency-key").expect("a key").to_string();
+    let key = request
+        .header("idempotency-key")
+        .expect("a key")
+        .to_string();
     assert_eq!(key.len(), 36, "{key}");
     assert!(key.starts_with("jd1_"), "{key}");
     // Logged without its values: keyed, answered.
@@ -542,15 +557,32 @@ fn keys_differ_by_caller_and_step_and_repeat_for_the_same_call() {
     for scope in ["user:ada", "user:ada", "user:bob"] {
         let mut ctx = Ctx::new(program.places(), &host, env());
         ctx.set_call_key(scope, "client-key-1");
-        let outcome = run(&runtime, &program, &mut ctx, "book_collection", vec![text("N1"), text("am")]);
+        let outcome = run(
+            &runtime,
+            &program,
+            &mut ctx,
+            "book_collection",
+            vec![text("N1"), text("am")],
+        );
         assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
     }
     let mut ctx = Ctx::new(program.places(), &host, env());
     ctx.set_call_key("user:ada", "client-key-1");
-    let outcome = run(&runtime, &program, &mut ctx, "book_twice", vec![text("N1"), text("am"), text("pm")]);
+    let outcome = run(
+        &runtime,
+        &program,
+        &mut ctx,
+        "book_twice",
+        vec![text("N1"), text("am"), text("pm")],
+    );
     assert!(matches!(outcome, Outcome::Value(_)), "{outcome:?}");
     for request in provider.requests() {
-        keys.push(request.header("idempotency-key").expect("a key").to_string());
+        keys.push(
+            request
+                .header("idempotency-key")
+                .expect("a key")
+                .to_string(),
+        );
     }
     assert_eq!(keys.len(), 5);
     assert_eq!(keys[0], keys[1], "the same caller's same call");
@@ -575,7 +607,10 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
     provider.answer(422, r#"{"error": {"code": "postcode_unserved"}}"#);
     provider.answer(401, r#"{"error": {"code": "unauthorised"}}"#);
     provider.answer(503, "");
-    provider.answer(200, r#"{"ok": true, "data": {"id": "b-1", "collectAt": "soon", "window": "morning"}}"#);
+    provider.answer(
+        200,
+        r#"{"ok": true, "data": {"id": "b-1", "collectAt": "soon", "window": "morning"}}"#,
+    );
     let host = host();
     let mut outcomes = Vec::new();
     for action in [
@@ -588,7 +623,13 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
         "book_collection",
     ] {
         let mut ctx = Ctx::new(program.places(), &host, env());
-        outcomes.push(run(&runtime, &program, &mut ctx, action, vec![text("N1"), text("am")]));
+        outcomes.push(run(
+            &runtime,
+            &program,
+            &mut ctx,
+            action,
+            vec![text("N1"), text("am")],
+        ));
     }
     let failed = |outcome: &Outcome| match outcome {
         Outcome::Failed(failure) => (
@@ -610,7 +651,11 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
     );
     assert_eq!(failed(&outcomes[0]), mapped);
     assert_eq!(failed(&outcomes[1]), mapped);
-    assert!(fault(&outcomes[2]).contains("maps to nothing"), "{}", fault(&outcomes[2]));
+    assert!(
+        fault(&outcomes[2]).contains("maps to nothing"),
+        "{}",
+        fault(&outcomes[2])
+    );
     assert!(
         fault(&outcomes[3]).contains("`postcode_unserved`, which it doesn't declare"),
         "{}",
@@ -619,8 +664,14 @@ fn failures_are_mapped_by_their_codes_at_the_call() {
     assert_eq!(failed(&outcomes[4]), ("misconfigured".to_string(), None));
     assert_eq!(failed(&outcomes[5]), ("unavailable".to_string(), None));
     let undecoded = fault(&outcomes[6]);
-    assert!(undecoded.contains("`couriers.bookings.create`'s answer doesn't decode"), "{undecoded}");
-    assert!(undecoded.contains("collect_at") || undecoded.contains("collectAt"), "{undecoded}");
+    assert!(
+        undecoded.contains("`couriers.bookings.create`'s answer doesn't decode"),
+        "{undecoded}"
+    );
+    assert!(
+        undecoded.contains("collect_at") || undecoded.contains("collectAt"),
+        "{undecoded}"
+    );
     assert!(!undecoded.contains("soon"), "never the value: {undecoded}");
 }
 
@@ -635,13 +686,25 @@ fn a_get_sends_its_input_in_its_path_and_query() {
     provider.answer(404, r#"{"error": {"code": "parcel_unknown"}}"#);
     let host = host();
     let mut ctx = Ctx::new(program.places(), &host, env());
-    let outcome = run(&runtime, &program, &mut ctx, "track_parcel", vec![text("p/1")]);
+    let outcome = run(
+        &runtime,
+        &program,
+        &mut ctx,
+        "track_parcel",
+        vec![text("p/1")],
+    );
     let Outcome::Value(parcel) = outcome else {
         panic!("{outcome:?}");
     };
     assert_eq!(field(&parcel, "status"), &text("out_for_delivery"));
     let mut ctx = Ctx::new(program.places(), &host, env());
-    let missing = run(&runtime, &program, &mut ctx, "track_parcel", vec![text("p/2")]);
+    let missing = run(
+        &runtime,
+        &program,
+        &mut ctx,
+        "track_parcel",
+        vec![text("p/2")],
+    );
     assert!(
         matches!(&missing, Outcome::Failed(failure) if failure.code == "parcel_missing"),
         "{missing:?}"
@@ -662,7 +725,11 @@ fn a_get_sends_its_input_in_its_path_and_query() {
 #[test]
 fn a_connection_at_a_settings_address_sends_basic_credentials() {
     let provider = FakeProvider::start();
-    let program = program(&root("ledger"), "https://sandbox.acme-couriers.example", &provider.url);
+    let program = program(
+        &root("ledger"),
+        "https://sandbox.acme-couriers.example",
+        &provider.url,
+    );
     let runtime = Runtime::new().expect("a runtime");
     provider.answer(201, r#"{"id": "post-9"}"#);
     let host = host();
@@ -685,7 +752,10 @@ fn a_connection_at_a_settings_address_sends_basic_credentials() {
         Some(format!("Basic {}", jadpo_value::encoding::to_base64(b"shop:s3cret")).as_str())
     );
     assert_eq!(sent[0].header("idempotency-key"), None);
-    assert_eq!(sent[0].json(), serde_json::json!({"reference": "INV-1", "pence": 1250}));
+    assert_eq!(
+        sent[0].json(),
+        serde_json::json!({"reference": "INV-1", "pence": 1250})
+    );
     assert_eq!(
         ctx.capabilities().calls()[0].repeat,
         jadpo_runtime::capability::Repeat::Unkeyed
@@ -883,7 +953,11 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
         }
     };
     let values = prepared
-        .config(&variables, jadpo_runtime::config::Mode::Environment, &|_: &mut [u8]| false)
+        .config(
+            &variables,
+            jadpo_runtime::config::Mode::Environment,
+            &|_: &mut [u8]| false,
+        )
         .unwrap_or_else(|problems| panic!("the settings read: {problems:?}"));
     let program = Program::new(prepared).with_config(&values);
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
@@ -899,7 +973,13 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
         r#"{"ok": true, "data": {"id": "b-7", "collectAt": "2026-10-20T09:00:00Z", "window": "morning"}}"#,
     );
     let mut ctx = Ctx::new(program.places(), &host, env());
-    let kept = run(&runtime, &program, &mut ctx, "book_and_keep", vec![text("N1"), text("am")]);
+    let kept = run(
+        &runtime,
+        &program,
+        &mut ctx,
+        "book_and_keep",
+        vec![text("N1"), text("am")],
+    );
     let Outcome::Value(collection) = kept else {
         panic!("{kept:?}");
     };
@@ -921,7 +1001,11 @@ fn a_call_goes_out_before_the_first_write_and_never_inside_the_transaction() {
         ),
         other => panic!("{other:?}"),
     }
-    assert_eq!(provider.requests().len(), 1, "the call after the write never went out");
+    assert_eq!(
+        provider.requests().len(),
+        1,
+        "the call after the write never went out"
+    );
     assert_eq!(ctx.capabilities().calls()[0].ended, Ended::Refused);
     // Only the first action's record was kept.
     let rows = runtime

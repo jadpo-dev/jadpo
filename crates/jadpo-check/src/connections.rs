@@ -252,12 +252,16 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                     match name_text(&key).as_deref() {
                         Some("header") => idempotency.header = text_of(&inner).unwrap_or_default(),
                         Some("max_length") => {
-                            idempotency.max_length = match inner.value().as_ref().map(Const::from_expr) {
-                                Some(Const::Number { value, decimal: false }) => {
-                                    (value.scale == 0).then_some(value.mantissa).and_then(|n| u32::try_from(n).ok())
-                                }
-                                _ => None,
-                            };
+                            idempotency.max_length =
+                                match inner.value().as_ref().map(Const::from_expr) {
+                                    Some(Const::Number {
+                                        value,
+                                        decimal: false,
+                                    }) => (value.scale == 0)
+                                        .then_some(value.mantissa)
+                                        .and_then(|n| u32::try_from(n).ok()),
+                                    _ => None,
+                                };
                         }
                         Some("in_use") => idempotency.in_use = text_of(&inner),
                         Some("reused") => idempotency.reused = text_of(&inner),

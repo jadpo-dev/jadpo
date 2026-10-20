@@ -58,9 +58,7 @@ impl FaultKind {
             FaultKind::DeadlineExceeded => "deadline_exceeded",
             FaultKind::NotBuiltYet(_) => "not_built_yet",
             FaultKind::CallInTransaction(_) => "call_in_transaction",
-            FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => {
-                "internal_fault"
-            }
+            FaultKind::Defect(_) | FaultKind::Store(_) | FaultKind::Provider(_) => "internal_fault",
         }
     }
 }

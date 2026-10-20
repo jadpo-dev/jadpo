@@ -1518,7 +1518,8 @@ impl<'p> Machine<'p> {
                             );
                             continue;
                         };
-                        let Stop::Failed(cause) = std::mem::replace(&mut stop, Stop::Return(Value::Unit))
+                        let Stop::Failed(cause) =
+                            std::mem::replace(&mut stop, Stop::Return(Value::Unit))
                         else {
                             continue;
                         };

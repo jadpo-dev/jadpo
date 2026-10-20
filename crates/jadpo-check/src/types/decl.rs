@@ -700,7 +700,10 @@ impl Decls<'_> {
             });
             let mut sent = text.clone();
             if let Some((key, member)) = &wire {
-                let value = member.value().as_ref().map_or(Const::Other, Const::from_expr);
+                let value = member
+                    .value()
+                    .as_ref()
+                    .map_or(Const::Other, Const::from_expr);
                 let value_span = member
                     .value()
                     .map_or_else(|| self.span(member.syntax()), |v| self.span(v.syntax()));
@@ -710,11 +713,25 @@ impl Decls<'_> {
                     sent = spelling;
                 }
                 if let Some((other, first)) = wires.get(&sent) {
-                    self.out.push(wire_clash(host, &text, other, &sent, value_span, first.clone()));
+                    self.out.push(wire_clash(
+                        host,
+                        &text,
+                        other,
+                        &sent,
+                        value_span,
+                        first.clone(),
+                    ));
                     continue;
                 }
             } else if let Some((other, first)) = wires.get(&sent) {
-                self.out.push(wire_clash(host, &text, other, &sent, span.clone(), first.clone()));
+                self.out.push(wire_clash(
+                    host,
+                    &text,
+                    other,
+                    &sent,
+                    span.clone(),
+                    first.clone(),
+                ));
                 continue;
             }
             wires.insert(sent, (text.clone(), span));

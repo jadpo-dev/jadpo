@@ -819,7 +819,10 @@ impl Plan {
             &mut types,
             &|name| {
                 setting_ids
-                    .get(&config::key(jadpo_check::graph::registry(db, project), name))
+                    .get(&config::key(
+                        jadpo_check::graph::registry(db, project),
+                        name,
+                    ))
                     .copied()
             },
             &mut json_types,

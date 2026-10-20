@@ -95,16 +95,14 @@ mod tests {
     }
 
     fn call() -> Call {
-        Call::new("couriers", "bookings.create", Value::Unit, Repeat::Keyed).with_request(
-            Request {
-                method: HttpMethod::Post,
-                url: "https://api.example/v1/bookings".into(),
-                headers: Vec::new(),
-                body: Some("{}".into()),
-                timeout_ms: 1000,
-                reading: Reading::default(),
-            },
-        )
+        Call::new("couriers", "bookings.create", Value::Unit, Repeat::Keyed).with_request(Request {
+            method: HttpMethod::Post,
+            url: "https://api.example/v1/bookings".into(),
+            headers: Vec::new(),
+            body: Some("{}".into()),
+            timeout_ms: 1000,
+            reading: Reading::default(),
+        })
     }
 
     /// What never left is safe to send again; what left with no answer may

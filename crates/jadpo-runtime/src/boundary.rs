@@ -72,7 +72,6 @@ impl Boundary {
         self.isolation
     }
 
-
     /// Its transaction in `store`, begun at the first store operation at
     /// its isolation level in the store `capabilities` give (area 6). An
     /// action writes one store (area 5), so asking for a second is a

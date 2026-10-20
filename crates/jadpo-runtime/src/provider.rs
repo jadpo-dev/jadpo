@@ -609,8 +609,9 @@ pub fn sendable(address: &str) -> Option<String> {
         return None;
     }
     let host = host.to_ascii_lowercase();
-    let loopback =
-        host == "localhost" || host == "[::1]" || host.starts_with("127.") && host.split('.').count() == 4;
+    let loopback = host == "localhost"
+        || host == "[::1]"
+        || host.starts_with("127.") && host.split('.').count() == 4;
     (secure || loopback).then(|| address.to_string())
 }
 
@@ -619,11 +620,8 @@ fn decode(providers: &Providers<'_>, op: &OperationPlan, name: &str, text: &str)
     let Some(number) = op.output else {
         return Done::Value(Value::Unit);
     };
-    let unreadable = |why: String| {
-        Done::Fault(FaultKind::Provider(format!(
-            "`{name}`'s answer {why}"
-        )))
-    };
+    let unreadable =
+        |why: String| Done::Fault(FaultKind::Provider(format!("`{name}`'s answer {why}")));
     let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
         return unreadable("isn't JSON".to_string());
     };
@@ -670,7 +668,8 @@ fn failed(providers: &Providers<'_>, op: &OperationPlan, name: &str, code: &str)
     });
     match found {
         Some(plan) => {
-            let mut failure = Failure::new(plan.key.as_str(), plan.name.as_str(), plan.code.as_str());
+            let mut failure =
+                Failure::new(plan.key.as_str(), plan.name.as_str(), plan.code.as_str());
             failure.kind = plan.kind.clone();
             failure.status = plan.status;
             failure.message = plan.message.clone();
@@ -788,10 +787,16 @@ mod tests {
         assert_eq!(classify(&sent, &answer(302, "")), Answer::Misconfigured);
         assert_eq!(classify(&sent, &answer(429, "")), Answer::Unavailable);
         assert_eq!(classify(&sent, &answer(502, "")), Answer::Unknown);
-        assert_eq!(classify(&sent, &answer(204, "")), Answer::Wire(Rc::from("null")));
+        assert_eq!(
+            classify(&sent, &answer(204, "")),
+            Answer::Wire(Rc::from("null"))
+        );
         // Its debug output never shows its query, headers or body.
         let shown = format!("{sent:?}");
-        assert!(!shown.contains("secret") && !shown.contains("sk_live"), "{shown}");
+        assert!(
+            !shown.contains("secret") && !shown.contains("sk_live"),
+            "{shown}"
+        );
     }
 
     /// A call goes to HTTPS, or to plain HTTP only on this machine.

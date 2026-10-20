@@ -152,9 +152,9 @@ impl Body<'_> {
                     ),
                 )
                 .at(span, "not part of the package's API")
-                .reason(format!(
+                .reason(
                     "A connection calls a package's public resources; one without `public` is reached only by the package's own actions, subscribers and polls, and may change between versions."
-                ))
+                )
                 .next(format!(
                     "Mark `resource {}` `public` in the package, or call what it offers instead",
                     operation.resource
@@ -255,7 +255,8 @@ impl Body<'_> {
             );
             return failed(self);
         }
-        if let (Some((ty, _)), Some(value)) = (&operation.input, args.first().and_then(ast::Arg::expr))
+        if let (Some((ty, _)), Some(value)) =
+            (&operation.input, args.first().and_then(ast::Arg::expr))
         {
             self.check(&value, ty);
         }
@@ -297,7 +298,10 @@ impl Body<'_> {
             .collect();
         let mut mapped = Vec::new();
         for arm in arms {
-            let failure = arm.value.as_ref().and_then(|value| self.failure_given(value));
+            let failure = arm
+                .value
+                .as_ref()
+                .and_then(|value| self.failure_given(value));
             if arm.key == "invalid" {
                 self.invalid_outside_construction(arm, inner, written);
                 continue;

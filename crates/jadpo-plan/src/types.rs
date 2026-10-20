@@ -97,7 +97,7 @@ impl Types {
     }
 
     /// Whether `key`'s declaration is a provider package's.
-    fn from_provider(&self, key: &Key) -> bool {
+    fn is_providers(&self, key: &Key) -> bool {
         self.node(key)
             .and_then(|node| node.place.as_ref())
             .is_some_and(|place| {
@@ -945,7 +945,7 @@ impl Types {
                 };
                 Some(ShapePlan {
                     ty: ty.to_string(),
-                    open: self.from_provider(key),
+                    open: self.is_providers(key),
                     variant: Some(VariantPlan {
                         name: variant.to_string(),
                         ordinal,
@@ -955,7 +955,7 @@ impl Types {
             }
             Kind::Type | Kind::Entity => Some(ShapePlan {
                 ty: self.name(key).to_string(),
-                open: self.from_provider(key),
+                open: self.is_providers(key),
                 variant: None,
                 fields: self.fields(key, depth),
             }),

@@ -356,7 +356,9 @@ impl Reader<'_> {
                     })
                     .map_or_else(|| name_span.clone(), |value| self.span(value.syntax()));
                 let takes = match &input {
-                    Some((_, written)) => format!("its input, `{written}`, has no field sent as `{placeholder}`"),
+                    Some((_, written)) => {
+                        format!("its input, `{written}`, has no field sent as `{placeholder}`")
+                    }
                     None => "it has no `input:`".to_string(),
                 };
                 out.push(
@@ -555,7 +557,13 @@ impl Reader<'_> {
         None
     }
 
-    fn flag(&self, value: &Const, span: Span, key: &str, out: &mut Vec<Diagnostic>) -> Option<bool> {
+    fn flag(
+        &self,
+        value: &Const,
+        span: Span,
+        key: &str,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<bool> {
         if let Const::Bool(flag) = value {
             return Some(*flag);
         }
@@ -589,7 +597,10 @@ impl Reader<'_> {
             let value_span = inner
                 .value()
                 .map_or_else(|| self.span(inner.syntax()), |v| self.span(v.syntax()));
-            let value = inner.value().as_ref().map_or(Const::Other, Const::from_expr);
+            let value = inner
+                .value()
+                .as_ref()
+                .map_or(Const::Other, Const::from_expr);
             match word.as_str() {
                 "path" => path = self.dotted(&value, value_span, "failed_when: { path:", out),
                 "equals" => match json_literal(&value) {
@@ -710,14 +721,12 @@ fn json_literal(value: &Const) -> Option<String> {
 
 /// Whether `operations` holds problems for the package in `folder`.
 pub fn has_problems(db: &dyn Db, project: Project, folder: &str) -> bool {
-    operation_problems(db, project)
-        .iter()
-        .any(|problem| {
-            problem
-                .primary
-                .as_ref()
-                .is_some_and(|label| label.span.path.starts_with(&format!("{folder}/")))
-        })
+    operation_problems(db, project).iter().any(|problem| {
+        problem
+            .primary
+            .as_ref()
+            .is_some_and(|label| label.span.path.starts_with(&format!("{folder}/")))
+    })
 }
 
 /// The operations of the package in `folder`, by resource then name, for
