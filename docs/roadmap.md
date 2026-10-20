@@ -768,16 +768,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   be retried after one), proved live with a test capability. A batch's
   items still run inside its transaction, so an item's call is refused
   until 7.4. Choices in area 16 and compiler-runtime.md §2.6.
-- [ ] **6.4b Files and reading rows into batches** `opus · xhigh`
+- [x] **6.4b Files and reading rows into batches** `opus · xhigh`
   (areas 12, 16 and 19; split from 6.4b Batch file helpers on
-  2026-10-20): a minimal `files` capability on 7.0c's seam
-  (`Driver.disk` connections, a store's `put` and ranged `read` of a
-  `File`, the local-disk driver for `jadpo dev` and an in-memory fake for
-  tests), `File` fields with `store:`, `max_size:` and `types:`,
-  `store.read`'s whole-read cap, and `csv.read`, `tsv.read` and
-  `json_lines.read` on 6.4's runs, each page's rows read from the file
-  before its transaction opens, with a file row's `RowProblem` column and
-  row number and the file-level faults that stop a run.
+  2026-10-20). Built: `Driver.disk` connections and `File` fields
+  (`store:`, `max_size:` in SI sizes, `types:`; kept as JSON;
+  `data.file_field_invalid`); `store.put` on 7.0c's seam, keyed, its
+  `storage_full` mapped to an `unavailable` failure, and `store.read`,
+  10 MB at most (`type.file_read_too_large`, and held to it as it runs);
+  the disk driver `jadpo dev` keeps every store's files with under
+  `.jadpo/files/`, and the in-memory store a test's are in; `csv.read`,
+  `tsv.read` and `json_lines.read` with `column:`, each batch's rows read
+  from the store before its transaction opens and committed with the
+  run's place (byte, row and line), a row's problems by its row as a
+  spreadsheet numbers it and its column, the faults that stop a file's
+  run, UTF-8 and marked UTF-16; `type.batch_row_invalid`. Live tests in
+  `file_imports.rs`; example 24 keeps and reads donation sheets. Choices
+  in area 12's "How a file's run is kept" and area 16's "Chosen in chunk
+  6.4b": a file's run is kept where its actions write, and a CSV column
+  no field reads stops the run.
 - [ ] **6.4b2 Exports and the rest of the file helpers** `opus · xhigh`,
   after 6.4b: `json.read`'s file form (`items_at:`), the writers
   (`csv.write`, `tsv.write`, `json_lines.write` and `json.write`'s file

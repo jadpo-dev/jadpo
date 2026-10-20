@@ -3,9 +3,12 @@
 A seed library lends packets of saved seed: members borrow a packet,
 grow it, and bring back seed saved from their own plants. Every spring
 the volunteers check every packet on the shelves, withdrawing any too
-old to sow, and keep a count of how the check went. It teaches batches:
-work over more items than one action can hold, which carries on after a
-crash or a deploy, and never does an item twice.
+old to sow, and keep a count of how the check went. Members who donate
+in bulk send a spreadsheet of their packets, which the library keeps and
+adds to the shelves a few rows at a time. It teaches batches: work over
+more items than one action can hold, which carries on after a crash or
+a deploy, and never does an item twice; and files, kept in a store of
+their own and read a row at a time.
 
 One action can't check every packet: it would be one transaction over
 the whole library, and if it failed on the last packet nothing would be
@@ -25,6 +28,10 @@ checked becomes a problem, not a stop.
 6. **Watching and stopping a run.** `batches.status` gives items done, problems so far and the state; `batches.cancel` stops the run after the page in hand. See `domains/seedbank/actions/check_progress.jadpo`, `domains/seedbank/actions/stop_check.jadpo` and [area 12, How a run is kept](../../docs/language/12-jobs-and-events.md#how-a-run-is-kept).
 7. **Background work and grants.** A batch runs as the system, so what its query reads and its actions change let `Access.system` in. See `domains/seedbank/entities/seed_packet.jadpo`.
 8. **An operation in a condition.** `temporal.year(SeedPacket.donated_on) == season`: the database works the year out exactly as code does, and the migration indexes that expression. See `domains/seedbank/queries/donated_in.jadpo` and [area 6, Operations in conditions](../../docs/language/06-reads-and-writes.md#operations-in-conditions).
+9. **A store of files.** A connection with `driver: Driver.disk` provides `files`; a `File` field names it in `store:`, with the most it holds in `max_size:` and the types it takes in `types:`. See `app.jadpo`, `domains/seedbank/entities/donation_sheet.jadpo` and [area 16, Files](../../docs/language/16-built-in-services.md#files).
+10. **Keeping a file.** `sheets.put(bytes, FileType.csv)` keeps the bytes and gives the stored `File`, before the action reads or writes anything, since a call that leaves the process never waits inside a transaction; a store with no room is `storage_full`, which `attempt` maps. See `domains/seedbank/actions/keep_sheet.jadpo`.
+11. **Reading a file's rows.** `csv.read` starts a batch over a stored file's rows, each read as an `Input` by its columns (`column:` names one that isn't the field's name), a batch's rows read from the store before its transaction opens; a row that can't be read is a problem by its row and column, never its value. See `domains/seedbank/actions/add_sheet.jadpo`, `domains/seedbank/types/donation_row.jadpo` and [area 19, Data formats](../../docs/language/19-standard-library.md#data-formats-json-csv-tsv-and-json-lines).
+12. **Reading a file whole.** `sheets.read(sheet)` gives a file's bytes as `FileContents`, for passing on; only a field holding 10 MB or less is read whole. See `domains/seedbank/actions/sheet_bytes.jadpo`.
 
 ## Run it
 
@@ -39,7 +46,7 @@ target/release/jadpo fmt --check examples/24-seed-library
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
-- `test` needs PostgreSQL, and ends with `tested: 6 passed, 6 action tests`.
+- `test` needs PostgreSQL, and ends with `tested: 7 passed, 7 action tests`.
   A run starts after its action commits, on the runtime's runner, which
   a test doesn't have, so the tests see each run as it starts, and test
   each page's action on its own.
@@ -52,4 +59,8 @@ target/release/jadpo fmt --check examples/24-seed-library
   <!-- try {"file": "domains/seedbank/actions/start_check.jadpo", "replace": "from: shelf_packets(PacketPage {})", "with": "from: donated_in(stocktake.season)", "also": [{"replace": "use seedbank/queries { shelf_packets }", "with": "use seedbank/queries { donated_in }"}, {"replace": "use seedbank/types { PacketPage }\n", "with": ""}], "check": ["type.batch_from_invalid"]} -->
 - In `seed_packet.jadpo`, let `Access.public` change a packet instead of `Access.system`. `jadpo check` reports `policy.system_grant_missing` at `check_packet`: a batch runs as the system, and a grant to anyone at all never lets background work in.
   <!-- try {"file": "domains/seedbank/entities/seed_packet.jadpo", "replace": "update: [Access.system]", "with": "update: [Access.public]", "check": ["policy.system_grant_missing"]} -->
+- In `donation_sheet.jadpo`, let a sheet hold `20mb`. `jadpo check` reports `type.file_read_too_large` at `sheet_bytes`: a file read whole is held in memory, so only a field of 10 MB or less is; its rows are read with `csv.read`.
+  <!-- try {"file": "domains/seedbank/entities/donation_sheet.jadpo", "replace": "max_size: 2mb", "with": "max_size: 20mb", "check": ["type.file_read_too_large"]} -->
+- In `keep_sheet.jadpo`, take the `storage_full:` mapping away. `jadpo check` reports that `sheets.put` can fail with `storage_full` and nothing maps it: a store may have no room, and the action says what that is.
+  <!-- try {"file": "domains/seedbank/actions/keep_sheet.jadpo", "replace": " {\n        storage_full: SheetNotKept\n    }", "with": "", "check": ["failure.unmapped_rule"]} -->
 - Then read [25-allotment-rents](../25-allotment-rents/README.md), where schedules run work on a timer for many societies at once.

@@ -1,0 +1,8 @@
+use seedbank/entities { SeedPacket }
+use seedbank/types { DonationRow }
+use seedbank/actions { add_packet }
+
+/// Puts a packet a donations sheet lists on the shelves.
+action add_donation(row: DonationRow) -> SeedPacket {
+    return add_packet(row.variety, row.saved_in, row.donated_on, false)
+}

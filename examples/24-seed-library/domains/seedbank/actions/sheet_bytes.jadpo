@@ -1,0 +1,12 @@
+// `sheets.read` gives a stored file's bytes whole, as `FileContents`, for
+// passing on as they are. It reads the whole file into memory, so it
+// reads only a field whose `max_size:` is 10 MB or less; a file's rows,
+// of any size, are read with `csv.read`.
+
+use app { sheets }
+use seedbank/entities { DonationSheet }
+
+/// A kept sheet's bytes, whole.
+action sheet_bytes(sheet: DonationSheet.sheet) -> FileContents {
+    return sheets.read(sheet)
+}

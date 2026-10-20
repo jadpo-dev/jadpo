@@ -180,7 +180,7 @@ impl Body<'_> {
             )
             .at(span, format!("holds up to {size}"))
             .reason(format!(
-                "`{written}` reads a whole file into memory, for passing its bytes on, so it reads at most {limit}; `{host}.{field}` holds up to {size}. A file's rows of any size are read a page at a time by the format helpers (`csv.read`, `tsv.read`, `json_lines.read`) or walked with `batches.each`."
+                "`{written}` reads a whole file into memory, for passing its bytes on, so it reads at most {limit}; `{host}.{field}` holds up to {size}. A file's rows, of any size, are read a batch at a time by the format helpers (`csv.read`, `tsv.read`, `json_lines.read`)."
             ))
             .next(format!(
                 "Read `{host}.{field}`'s rows with a format helper, such as `csv.read`, or keep its `max_size:` at {limit} or less if `{store}.read` is what it needs"

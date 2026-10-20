@@ -2841,7 +2841,11 @@ packages (Phase 7), and the rest after the first build. `BatchRun`,
 `BatchProgress` with its `BatchState`, `RowProblem` and `ImportSummary`
 came with batches in chunk 6.4 (area 12): only the runtime builds one, a
 program reads their fields, and an entity field keeps a `BatchRun` as its
-JSON; `ExportSummary` comes with the file helpers (chunk 6.4b).
+JSON; `File` and `FileContents` came with the `files` capability's first
+part in chunk 6.4b (area 16): only the runtime builds either, an entity
+field keeps a `File` as its JSON, and a program reads neither's parts yet;
+`ExportSummary` and `CsvFormat` come with the file helpers' writers
+(roadmap 6.4b2).
 
 ### Consistency with the rest of the language
 

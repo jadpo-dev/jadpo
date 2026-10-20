@@ -350,10 +350,12 @@ page per subscriber delivery.
 > `finished:` and `key:`, `batches.status` and `batches.cancel`, each page
 > one transaction committing its items' writes and the run's position,
 > and a run resumed after a crash or a deploy ("How a run is kept",
-> below). The `csv`, `tsv`, `json_lines` and `json` file helpers,
-> `store.read`'s whole-read cap and the warning for a `from:` ordered by
-> a field that can be updated come in roadmap 6.4b, with a minimal
-> `files` capability (area 16).
+> below). Built in chunk 6.4b, with the `files` capability's first part
+> (area 16): `csv.read`, `tsv.read` and `json_lines.read`, `column:` and
+> a file row's problems by its row and column ("How a file's run is
+> kept", below). The writers, `json`'s file forms, `CsvFormat`,
+> `ExportSummary`, the warning for a `from:` ordered by a field that can
+> be updated and `estimated_total` come in roadmap 6.4b2.
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -533,7 +535,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   Until then `batches.status` says `running`.
 - **Status.** `batches.status` reads the counts and the state in the
   calling action's transaction; `estimated_total` is `none` until a
-  query's count is built (roadmap 6.4b). A `BatchRun` no store keeps is a
+  query's count is built (roadmap 6.4b2). A `BatchRun` no store keeps is a
   fault. Both find a run by its `id` alone, so they need the
   application's runs in one store: with none, or more than one, they are
   `toolchain.not_built_yet`.
@@ -562,6 +564,62 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
   deleted). A run still going is never deleted, however old.
 - **Names.** `batches` is a standard namespace, so, as every one, it names
   no variable.
+
+### How a file's run is kept
+
+What a file helper's run (`csv.read`, `tsv.read`, `json_lines.read`)
+does beyond a query's run, chosen in chunk 6.4b, each the most
+conservative reading of "Batches" above and area 19's "Data formats":
+
+- **Where it is kept.** A file has no query whose store keeps its run,
+  so it is kept in the store the starting action writes, counting what
+  `each:`'s and `finished:`'s actions write, which the one-store rule
+  makes one; when none of them writes, in the application's only
+  database. With several databases and nothing written, the call is
+  `toolchain.not_built_yet`.
+- **A batch is rows.** Each transaction holds a batch of the file's rows,
+  a hundred (`jadpo test` reads two, so every import resumes between
+  batches), and the run's position is where the next row begins: its
+  byte, its row and its line, kept with the run. The file is saved with
+  the run as its `File`, so a resumed run reads the same one.
+- **Read before the transaction.** No outside call goes out while a
+  transaction is open (area 16, chunk 7.0c), and an item's action runs
+  inside its batch's, so each batch's rows are read from the store first,
+  through the `files` capability, a window of at most a megabyte at a
+  time until they are whole, from the position the last batch committed.
+  Then the batch's transaction opens, holds the run's row to that same
+  position, runs the rows' items, and commits their writes with the
+  problems and the position after the last row read. A runner reads the
+  file's opening once each time it picks the run up: its encoding and,
+  for CSV and TSV, its header.
+- **Columns.** The header names the columns, each a field of `as:`'s
+  `Input` by its name or its `column:` (a CSV or TSV column's; JSON
+  Lines' fields are the `Input`'s JSON). A column no field reads, one
+  named twice, or a field that may not be left out with no column, stops
+  the run before any row: an `Input` refuses an unknown field. A row
+  with more cells than the header is a problem (`unknown_field`); an
+  empty cell is left out, so `optional:` and `default:` apply, and a
+  required one is `required`.
+- **Rows and problems.** A row is read as a query string's value is,
+  each cell its field's text, a standard type its canonical text; one
+  that can't be read is a problem with its row as a spreadsheet numbers
+  it (the header row 1, a blank line counted but no item) and its
+  column, by the header's name, and the rule; JSON Lines' row is its
+  line, and its column the field's path. A row whose action fails is a
+  problem with no column and the failure's code. Never the value.
+- **Quotes and lines.** RFC 4180's quoting: a quoted cell holds the
+  delimiter, line breaks and `""`; LF, CRLF and a lone CR end a row. A
+  quote inside an unquoted cell, or text after a cell's closing quote, is
+  kept as written, as spreadsheets read it.
+- **What stops it.** At the file's level, before or at the place it is,
+  the rows before it done: a quote that never closes, named by the line
+  it opened on; bytes that aren't text in the file's encoding (a NUL
+  among them), named by their line; a gzip file, which only
+  `max_unpacked_size:` reads (roadmap 6.4b2); and a row longer than 16 MB.
+  The run ends `failed` with why. A store that can't be reached pauses
+  it, as it does a query's.
+- **Encodings.** UTF-8, a byte-order mark removed, and UTF-16 with its
+  mark, little- or big-endian, never guessed; anything else isn't text.
 
 ### Batches, tenants and grants
 
@@ -2933,6 +2991,124 @@ error: `StopSweep.shelf_run` holds a `BatchRun`, which no request carries
 check failed: 1 error, 2 files
 ```
 
+### `type.batch_row_invalid`
+
+A file helper reads each row as the `Input` its `as:` names. A CSV or
+TSV row holds one value a cell, so a row type holding a list, a map, an
+object or a standard type with no one text form is refused, pointing at
+JSON Lines, whose rows hold any JSON value; so is a row type that isn't
+an `Input`, or two fields reading one column:
+
+```jadpo check project=e-batch-row-invalid file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/line_code.jadpo hidden
+/// A line's code on an order.
+type LineCode = Text {
+    min_length: 1
+    max_length: 20
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/code_row.jadpo hidden
+use bakery/types { LineCode }
+
+/// One code a sheet lists.
+type CodeRow = Input {
+    reference: LineCode
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/entities/order_sheet.jadpo hidden
+/// A sheet of orders, kept as it was sent.
+entity OrderSheet {
+    id: Uuid
+    sheet: File {
+        store: sheets
+        max_size: 5mb
+    }
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/take_code.jadpo hidden
+use bakery/types { CodeRow }
+
+/// Takes one code a sheet lists.
+action take_code(row: CodeRow) -> Unit {
+    assert row.reference == row.reference
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/read_codes.jadpo hidden migrate=initial
+use bakery/entities { OrderSheet, OrderSheetNotFound }
+use bakery/types { CodeRow }
+use bakery/actions { take_code }
+
+/// Starts taking the codes a kept sheet lists.
+action read_codes(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
+    var codes: OrderSheet = attempt OrderSheet.get(sheet_id)
+    return csv.read(codes.sheet, as: CodeRow, each: row -> take_code(row))
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/types/order_row.jadpo
+use bakery/types { LineCode }
+
+/// One order a sheet lists, with its lines.
+type OrderRow = Input {
+    reference: LineCode
+    lines: List<LineCode>
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/take_order.jadpo hidden
+use bakery/types { OrderRow }
+
+/// Takes one order a sheet lists.
+action take_order(row: OrderRow) -> Unit {
+    assert row.reference == row.reference
+}
+```
+
+```jadpo check project=e-batch-row-invalid file=domains/bakery/actions/read_orders.jadpo expect=type.batch_row_invalid
+use bakery/entities { OrderSheet, OrderSheetNotFound }
+use bakery/types { OrderRow }
+use bakery/actions { take_order }
+
+/// Starts taking the orders a kept sheet lists.
+action read_orders(sheet_id: OrderSheet.id) fails OrderSheetNotFound -> BatchRun {
+    var orders: OrderSheet = attempt OrderSheet.get(sheet_id)
+    return csv.read(orders.sheet, as: OrderRow, each: row -> take_order(row))
+}
+```
+
+```text output
+error: `csv.read` can't read its rows as `OrderRow`
+ --> domains/bakery/actions/read_orders.jadpo:8:39
+  |
+8 |     return csv.read(orders.sheet, as: OrderRow, each: row -> take_order(row))
+  |                                       ^^^^^^^^ `OrderRow.lines` holds a list
+  reason: A CSV row holds one value a cell, and `OrderRow.lines` holds a list; a JSON Lines row holds lists and objects, each line one JSON value.
+  next: Read the file with `json_lines.read`, or give `lines` a type one cell holds (agent)
+  rule: type.batch_row_invalid
+  help: docs/language/12-jobs-and-events.html#type-batch-row-invalid
+
+check failed: 1 error, 9 files
+```
+
 ## Review
 
 ### Status
@@ -2955,13 +3131,16 @@ server draining as it stops; records a later release still reads; and
 alerts raised by the tick, once across instances, with `jadpo why`'s
 answer decided by the runtime; and the tick deleting handled records once
 their delivery's record is gone, and area 8's ended sessions, tokens and
-expired keys.
+expired keys. Built in chunk 6.4b: the file helpers' reads, `csv.read`,
+`tsv.read` and `json_lines.read`, with `column:`, a file row's problems
+by its row and column, the faults that stop a file's run, and
+`type.batch_row_invalid` ("How a file's run is kept").
 
 Not yet:
 
-- The file helpers (`csv`, `tsv`, `json_lines`, `json`), `store.read`'s
-  whole-read cap, `estimated_total` and the warning for a `from:` ordered
-  by a field that can be updated: roadmap 6.4b.
+- The file helpers' writers, `json`'s file forms, `estimated_total` and
+  the warning for a `from:` ordered by a field that can be updated:
+  roadmap 6.4b2 (the reads came in 6.4b).
 - Delivering events in tests after each commit, in a shuffled order
   (area 13): roadmap 6.11, and a fake failing a subscriber with 7.0c's
   fakes.

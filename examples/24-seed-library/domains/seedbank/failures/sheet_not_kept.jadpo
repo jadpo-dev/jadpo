@@ -1,0 +1,5 @@
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet; try again later."
+}
