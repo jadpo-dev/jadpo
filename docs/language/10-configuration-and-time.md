@@ -2587,15 +2587,6 @@ test "the package words the English and the app the French" {
 
 Without `translations/fr_fr.jadpo`, French has nothing to show:
 
-```jadpo check project=translation-package-missing file=app.jadpo expect=translation.file_missing
-application {}
-
-locales {
-    default: Locale.en_gb
-    supported: [Locale.en_gb, Locale.fr_fr]
-}
-```
-
 ```jadpo check project=translation-package-missing file=packages/postcodes/v2/package.jadpo hidden
 /// UK postcodes: reading them as people write them.
 package Postcodes.v2 {
@@ -2620,6 +2611,15 @@ translations {
 record lock 1
 
 package Postcodes.v2 version 2.0.0 path ../postcodes digest sha256:a6099979ba84a4240ad2c765eb37b5c7a8510345a84c534bcb39fef2e6563aef
+```
+
+```jadpo check project=translation-package-missing file=app.jadpo expect=translation.file_missing
+application {}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.fr_fr]
+}
 ```
 
 ```text output
@@ -5522,7 +5522,7 @@ error: `jadp` isn't a group Jadpo reads
   |
 2 |     jadp: {
   |     ^^^^ no such group
-  reason: The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses, such as `postcodes`, for that package's. Did you mean `jadpo`?
+  reason: The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses for that package's. Did you mean `jadpo`?
   next: Rename the group to `jadpo` (agent)
   rule: translation.group_unknown
   help: docs/language/10-configuration-and-time.html#translation-group-unknown

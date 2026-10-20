@@ -281,7 +281,7 @@ fn analyse(db: &dyn Db, project: Project) -> Analysis {
         reachable: &reachable,
         scope: GROUP,
         features: Some(on),
-        owner: None,
+        package_code: None,
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -365,7 +365,7 @@ fn group_unknown(
     )
     .at(group.key_span.clone(), "no such group")
     .reason(format!(
-        "The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses, such as `postcodes`, for that package's.{}",
+        "The root file words the text the application did not write, grouped by whose it is: `jadpo` for Jadpo's own messages, or the folder name of a library package the application uses for that package's.{}",
         near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
     ));
     match near {

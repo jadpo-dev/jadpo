@@ -94,7 +94,7 @@ pub fn analyse_package<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>)
         reachable: &unreachable,
         scope: &scope_name,
         features: None,
-        owner: None,
+        package_code: None,
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -122,7 +122,7 @@ pub fn analyse_package<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>)
         reachable,
         scope: &scope_name,
         features: None,
-        owner: Some(&home.code),
+        package_code: Some(&home.code),
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
