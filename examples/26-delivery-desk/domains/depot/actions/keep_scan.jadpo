@@ -1,0 +1,12 @@
+use depot/entities { DepotScan }
+use depot/events { ParcelScanned }
+
+/// Keeps a scan from the depot.
+action keep_scan(event: ParcelScanned) -> DepotScan {
+    return DepotScan.create {
+        set: {
+            label: event.label
+            sorting_bay: event.sorting_bay
+        }
+    }
+}

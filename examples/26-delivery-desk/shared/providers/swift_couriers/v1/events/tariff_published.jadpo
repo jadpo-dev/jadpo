@@ -1,0 +1,12 @@
+// A poll's event is made from the answer's fields of the same names.
+// `fetched_at` isn't one of them, so a new fetch time alone is no change.
+
+/// Swift published new prices for a pickup.
+public type TariffPublished = Event {
+    morning_pence: Int {
+        min: 0
+    }
+    afternoon_pence: Int {
+        min: 0
+    }
+}

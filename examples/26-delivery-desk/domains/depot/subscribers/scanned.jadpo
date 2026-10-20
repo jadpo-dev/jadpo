@@ -1,0 +1,11 @@
+// A message reaches this subscriber as any event does: the queue's
+// message was kept once in the outbox, and only then taken off the queue.
+
+use depot/actions { keep_scan }
+use depot/events { ParcelScanned }
+
+/// Keeps each scan the depot sends.
+subscriber scanned {
+    on: ParcelScanned
+    run: keep_scan(event)
+}

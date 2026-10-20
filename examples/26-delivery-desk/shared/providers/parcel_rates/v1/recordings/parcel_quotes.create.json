@@ -1,0 +1,6 @@
+{
+  "amount": 650,
+  "currency": "GBP",
+  "valid_until": "{Instant}",
+  "id": "{Text}"
+}

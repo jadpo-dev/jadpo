@@ -1,0 +1,14 @@
+/// Swift's prices for a pickup, as its price list gives them.
+type Tariff = Object {
+    morning_pence: Int {
+        wire_name: "morningPence"
+        min: 0
+    }
+    afternoon_pence: Int {
+        wire_name: "afternoonPence"
+        min: 0
+    }
+    fetched_at: Instant {
+        wire_name: "fetchedAt"
+    }
+}

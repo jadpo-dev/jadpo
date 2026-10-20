@@ -75,11 +75,19 @@ pub fn fmt(call: &Call) -> Reply {
             None => return project_not_found("fmt"),
         },
     };
+    let project = root.join(jadpo_db::PROJECT_FILE).is_file();
+    // An installed package is read-only, locked by the digest of its files
+    // (area 11, "Installing safely"), so formatting it would only break
+    // the lock: its files are never formatted or checked here.
+    let installed = root.join(jadpo_db::PACKAGES);
+    let files: Vec<PathBuf> = files
+        .into_iter()
+        .filter(|file| !(project && file.starts_with(&installed)))
+        .collect();
     let mut diagnostics = Vec::new();
     let mut sources = BTreeMap::new();
     let mut results = Vec::new();
     let fixed = fixed_imports(&root, &files);
-    let project = root.join(jadpo_db::PROJECT_FILE).is_file();
     for file in files {
         let shown = display(&root, &file);
         let imports = fixed.get(&shown).map(String::as_str);

@@ -1,0 +1,5 @@
+/// The code on a parcel's label.
+type ParcelLabel = Text {
+    min_length: 6
+    max_length: 20
+}

@@ -1,0 +1,9 @@
+// A package's subscriber hears its own webhooks' events, once for each
+// connection that receives them, and its action's calls go through that
+// connection.
+
+/// Turns Swift's bare webhook into the parcels it collected.
+subscriber collection_webhook {
+    on: PickupCollected
+    run: announce_collection(event)
+}

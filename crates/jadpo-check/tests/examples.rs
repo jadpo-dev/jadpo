@@ -131,18 +131,6 @@ const EXEMPT: &[(&str, &str)] = &[
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
     ("place acceptances", "not built: acceptances (area 18)"),
-    (
-        "package folder subscribers",
-        "not built: a package's subscribers (area 11, chunk 7.6b)",
-    ),
-    (
-        "package folder events",
-        "not built: a package's events (area 11, chunk 7.6)",
-    ),
-    (
-        "package folder translations",
-        "not built: a library package's translations (area 11, chunk 7.1b)",
-    ),
 ];
 
 fn root() -> PathBuf {

@@ -1,0 +1,10 @@
+// A poll's operation takes nothing and changes nothing.
+resource tariffs {
+    current: {
+        method: HttpMethod.get
+        path: "/v1/tariff"
+        output: Tariff
+        source: PackageSource.written
+        docs: "https://docs.swift-couriers.example/tariff"
+    }
+}

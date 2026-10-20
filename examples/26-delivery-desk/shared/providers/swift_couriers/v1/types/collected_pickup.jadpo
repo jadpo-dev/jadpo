@@ -1,0 +1,11 @@
+/// A collected pickup, as Swift keeps it.
+type CollectedPickup = Object {
+    id: PickupId
+    driver_name: DriverName {
+        wire_name: "driverName"
+    }
+    parcel_count: Int {
+        wire_name: "parcelCount"
+        min: 1
+    }
+}

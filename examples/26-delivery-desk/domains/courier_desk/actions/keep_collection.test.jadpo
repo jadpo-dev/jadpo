@@ -1,0 +1,20 @@
+// The mail goes through Resend's package, but a test catches it whole
+// whichever connection `email:` names, so `email.sent` reads it here as
+// it would through SMTP.
+
+use courier_desk/entities { PickupCollection }
+use shared/providers/swift_couriers
+
+test "a collection the courier announces is kept, and the desk told" {
+    var kept_row: PickupCollection = keep_collection(
+        SwiftCouriers.ParcelsCollected {
+            pickup_id: "swift-4471"
+            driver_name: "Ade"
+            parcel_count: 3
+            collected_at: "2026-10-21T09:12:00Z"
+        }
+    )
+    assert kept_row.parcel_count == 3
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+}

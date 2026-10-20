@@ -1,0 +1,4 @@
+/// What Resend answers an email it took with: its id for the email.
+public type SendEmailResponse = Object {
+    id: Text
+}

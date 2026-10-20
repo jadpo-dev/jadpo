@@ -1,0 +1,11 @@
+// The app subscribes to a package's public event as to its own, through
+// the package's name.
+
+use courier_desk/actions { keep_collection }
+use shared/providers/swift_couriers
+
+/// Keeps each collection the courier announces.
+subscriber parcels_collected {
+    on: SwiftCouriers.ParcelsCollected
+    run: keep_collection(event)
+}

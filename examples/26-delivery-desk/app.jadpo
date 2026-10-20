@@ -1,13 +1,75 @@
+use depot/events { ParcelScanned }
+
 // The desk's own integration is called through a connection: which
 // package, which domains may call it, the credential its scheme sends
 // from a secret setting, and which of its hosts each deployment calls.
+// `webhooks:` gives the secret Swift signs its webhooks with, which turns
+// on `POST /webhooks/couriers`. `polls:` asks for Swift's price list more
+// often than the package's daily default, and `max_concurrent:` lowers
+// how many calls the desk makes to Swift at once.
 application {
+    apis: {
+        main: {
+            prefix: /
+            idempotency: Idempotency.required
+        }
+    }
     connections: {
         couriers: {
             package: SwiftCouriers.v1
             domains: [courier_desk]
             credential: config.couriers_api_key
             environment: config.couriers_environment
+            max_concurrent: 4
+            polls: {
+                tariff: 6h
+            }
+            webhooks: {
+                secret: config.couriers_webhook_secret
+            }
+        }
+        rates: {
+            package: ParcelRates.v1
+            domains: [courier_desk]
+            credential: config.rates_api_key
+            environment: config.rates_environment
+        }
+        depot_scans: {
+            package: AmazonSqs.v2012_11_05
+            domains: [depot]
+            credential: {
+                key_id: config.aws_key_id
+                secret: config.aws_secret_key
+            }
+            host: config.sqs_endpoint
+            queue_url: config.depot_queue_url
+        }
+        mail: {
+            package: Resend.v1
+            domains: []
+            credential: config.resend_api_key
+            host: config.resend_host
         }
     }
+    email: {
+        connection: mail
+        from: config.desk_address
+    }
+    events: {
+        store: main
+    }
+    steps: {
+        encryption_key: config.steps_key
+    }
+    receiving: {
+        depot_scans: {
+            id_at: "scan_id"
+            events: [ParcelScanned]
+        }
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
 }

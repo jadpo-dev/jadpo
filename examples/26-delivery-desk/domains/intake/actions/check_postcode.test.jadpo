@@ -1,10 +1,10 @@
 use packages/postcodes
 
 test "a typed postcode is read in upper case" {
-    var postcode: Postcodes.UkPostcode = attempt check_postcode("sw1a 1aa")
+    var postcode: Postcodes.v1.UkPostcode = attempt check_postcode("sw1a 1aa")
     assert postcode == "SW1A 1AA"
 }
 
 test "text that isn't a postcode is refused" {
-    assert check_postcode("x") fails Postcodes.InvalidPostcode
+    assert check_postcode("x") fails Postcodes.v1.InvalidPostcode
 }
