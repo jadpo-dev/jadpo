@@ -21,16 +21,22 @@
 //! - **Failing for good.** A delivery that fails for good, a failure not
 //!   worth retrying, its last attempt, or a fault, ends the test as
 //!   `test.subscriber_failed` with that failure and the delivery it
-//!   happened in ([`Undelivered`]). What a route's `settle:` delivers
+//!   happened in ([`Undelivered`]); so does one that stops as `diverged`,
+//!   held for an operator (chunk 7.5d). What a route's `settle:` delivers
 //!   while its request waits is the request's, and its response says how
 //!   it ended.
+//!
+//! - **Crashes.** A delivery `jadpo test` crashed at one of its steps
+//!   ([`crate::crashes`]) is given back, due at once, and delivered again
+//!   as the next draw, each attempt counting its keyed calls from none
+//!   under the delivery's key, as a fresh runner's does.
 //!
 //! A batch run a step starts is left as it was started, as before.
 
 use std::collections::BTreeSet;
 
 use crate::budget::{Budget, Invocation};
-use crate::outbox::{Delivery, FAILED};
+use crate::outbox::{DIVERGED, Delivery, FAILED};
 use crate::runner::Deferred;
 use jadpo_value::Value;
 
@@ -68,6 +74,10 @@ pub struct Undelivered {
     pub attempt: u32,
     /// How many its `retry:` allows.
     pub attempts: u32,
+    /// Whether it stopped as `diverged`, its rerun no longer matching the
+    /// record of its steps, rather than failing (chunk 7.5d): held for an
+    /// operator, it never finishes in the test.
+    pub diverged: bool,
 }
 
 impl Ctx<'_> {
@@ -189,14 +199,24 @@ pub async fn after_step(
             .between_steps_mut()
             .map_or(0, BetweenSteps::draw);
         let delivery = pool.remove((draw % pool.len() as u64) as usize);
+        // Each attempt counts its keyed calls from none under the
+        // delivery's own key, as a runner's fresh context does, so an
+        // attempt after a crash sends the keys the first one sent (chunk
+        // 7.5d); the test's own are given back after.
+        let steps = ctx.steps();
+        ctx.set_steps(0);
+        let call_key = ctx.swap_call_key(None);
         let attempted =
             crate::runner::attempt_delivery(executor, ctx, &budget, delivery.clone(), None).await;
+        ctx.set_steps(steps);
+        ctx.swap_call_key(call_key);
         match attempted {
             None => {
                 unclaimed.insert(delivery.id);
             }
-            Some((mut outcome, state)) if state == FAILED => {
-                let undelivered = undelivered(&events, host, &delivery).await;
+            Some((mut outcome, state)) if state == FAILED || state == DIVERGED => {
+                let mut undelivered = undelivered(&events, host, &delivery).await;
+                undelivered.diverged = state == DIVERGED;
                 if let Some(between) = ctx.background_mut().between_steps_mut() {
                     between.undelivered = Some(undelivered);
                 }
@@ -259,6 +279,7 @@ async fn undelivered(
         ),
         attempt: attempt.unwrap_or(1).max(1),
         attempts: subscriber.map_or(1, |plan| plan.attempts),
+        diverged: false,
     }
 }
 

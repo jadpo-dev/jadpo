@@ -1417,13 +1417,35 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `jadpo runs unfinished` command (`cli.runs_arguments`,
   `runs.unavailable`). Live tests in `step_operators.rs`. Choices in area
   12's "Operators, chosen in chunk 7.5c".
-- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
-  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
-  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
-  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
-  warning (a declinable error) and the deadline sum; the metric and alert
-  on unfinished records; the personal-data report's entry, with the report
-  itself if it isn't built by then.
+- [x] **7.5d Multi-step calls: fakes and crash points** `opus · high`,
+  after 7.5c (split from 7.5c on 2026-10-20, and again into this, 7.5e
+  and 7.5f): fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
+  crash at each step boundary. Built: a provider call carries the key it
+  goes under (`capability::SentKey`), and `fakes::KeptKeys` keeps each
+  key's first answer for the test's fake and `jadpo dev`'s, `lost` keeping
+  what it did; the runtime's `crashes` module counts the steps a test's
+  run reaches under a record and crashes it once at a step's boundary
+  (`FaultKind::Crashed`), a crashed delivery given back and a route's
+  request sent again under its key; `jadpo test` reruns a passing test
+  that reached steps once per boundary per step, reporting the first
+  that fails with its `crash` line (and `--json`'s `crash`), and a
+  difference in the fake's effects as a fault; a diverged delivery between
+  a test's steps ends it as `test.subscriber_failed`; each delivery attempt
+  in a test counts its keyed calls from none under its own key. Live tests
+  in `step_crashes.rs`. Choices in area 12's "Tests, chosen in chunk 7.5d".
+- [ ] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
+  after 7.5d (split from 7.5d on 2026-10-20): the late-failure warning (a
+  declinable error) after the first changing step, reaching through
+  package actions, and the deadline sum: the timeout times the attempts of
+  every step on the longest path against a reaching route's deadline,
+  with the single call's deadline warning (area 11) it sums.
+- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+  high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
+  `jadpo dev`'s request lines and timeline; the metric and the no-setup
+  alert on unfinished records (their number and the oldest's age). Each
+  step's state in `jadpo watch` comes with `jadpo watch` (after the first
+  build, item 6), and the records' entry in the personal-data report with
+  the report itself (area 15, after the first build, item 1).
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own

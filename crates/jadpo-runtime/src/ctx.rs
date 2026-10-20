@@ -233,6 +233,9 @@ pub struct Ctx<'p> {
     /// through, innermost last (area 11, "What package code may do";
     /// chunk 7.6): a package action's own operations go through it.
     through: Vec<String>,
+    /// The steps it reached under a record, and the crash `jadpo test`
+    /// asked for, if any (chunk 7.5d).
+    crashes: crate::crashes::Crashes,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -296,7 +299,16 @@ impl<'p> Ctx<'p> {
             resumable: None,
             record: None,
             through: Vec::new(),
+            crashes: crate::crashes::Crashes::default(),
         }
+    }
+
+    pub(crate) fn crashes(&self) -> &crate::crashes::Crashes {
+        &self.crashes
+    }
+
+    pub(crate) fn crashes_mut(&mut self) -> &mut crate::crashes::Crashes {
+        &mut self.crashes
     }
 
     /// Runs what follows where its key survives a retry, for the runner
@@ -376,6 +388,13 @@ impl<'p> Ctx<'p> {
             scope: scope.into(),
             key: key.into(),
         });
+    }
+
+    /// Puts `key` in place of the scope and key its provider calls' keys
+    /// are derived from, giving back what it had: a test's delivery runs
+    /// under its own and gives the test's back (chunk 7.5d).
+    pub(crate) fn swap_call_key(&mut self, key: Option<CallKey>) -> Option<CallKey> {
+        std::mem::replace(&mut self.call_key, key)
     }
 
     /// The scope and key its provider calls' keys are derived from: the

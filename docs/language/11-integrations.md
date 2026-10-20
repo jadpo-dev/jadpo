@@ -3096,8 +3096,8 @@ errors under area 12's "Errors" (`step.context`, `step.large_output`,
 `step.store_required`, `step.too_many`, `step.unkeyed`) and area 3's
 `effect.call_in_loop`; an operation's `large_output:` is read. The record,
 replay and key windows came with roadmap 7.5b and the operator's items
-with 7.5c; the fakes' `lost` and `in_use`, the tests' crash points and the
-warning come with 7.5d.
+with 7.5c; the fakes' `lost` and `in_use` and the tests' crash points
+with 7.5d; the warning comes with 7.5e.
 
 Built in chunk 7.5b, the record, replay and key windows, as area 12's
 "Several changing calls in one action" says: a provider's `idempotency:`
@@ -3115,6 +3115,14 @@ days, and the package's `new_key_on:` answer sending a step again under
 its next key generation; `jadpo runs unfinished --build` (area 14).
 Choices in area 12's decisions table, "Operators, chosen in chunk
 7.5c".
+
+Built in chunk 7.5d, the tests and tools' fakes and crash points, as
+area 13's "Provider calls and capabilities in tests" says: a fake keeps
+each key's first answer, answers a different request under it with the
+package's `reused:` code, and keeps what `lost` did for the next call
+under its key; `jadpo test` reruns every test that reaches an action with
+several changing calls with a crash at each step boundary. Choices in
+area 12's decisions table, "Tests, chosen in chunk 7.5d".
 
 ## Receiving from outside
 

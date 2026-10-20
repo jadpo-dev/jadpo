@@ -15,8 +15,20 @@
 //!
 //! The fake counts each scripted operation's calls, so the test runner
 //! reports a script that ran out (`test.fake_exhausted`) or has answers
-//! left (`test.fake_unused`). It keeps no state between calls beyond its
-//! script: a flow that creates and then reads one object scripts the read.
+//! left (`test.fake_unused`). Beyond its script it keeps only what its
+//! provider keeps under an idempotency key ([`KeptKeys`]; chunk 7.5d): a
+//! flow that creates and then reads one object scripts the read.
+//!
+//! **Keys.** A keyed call's answer is kept under its key, as the provider
+//! keeps it: the same key with the same request is given the first answer
+//! again, without taking a scripted one, and with a different request its
+//! package's `reused:` answer. A failure is kept as a value is, so a step
+//! sent again after a crash is answered as it was the first time, but for
+//! one whose kind says it did nothing (`unavailable`, `rate_limited`). `lost`
+//! acted and its answer never came: what it did, the generated default, is
+//! kept for the next call under its key. `unavailable`, `in_use` and
+//! `misconfigured` did nothing, and keep nothing; `in_use` is another
+//! runner's request under the key, which is the one that acts.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -65,15 +77,21 @@ impl Usage {
 }
 
 /// A package's fake: scripted answers per operation, the generated
-/// default otherwise.
+/// default otherwise, and what its provider keeps under each key.
 #[derive(Debug, Default)]
 pub struct ProviderFake {
     scripts: RefCell<Vec<Scripts>>,
+    keys: KeptKeys,
 }
 
 impl ProviderFake {
     pub fn new() -> ProviderFake {
         ProviderFake::default()
+    }
+
+    /// What its keyed calls did at the provider ([`KeptKeys::effects`]).
+    pub fn effects(&self) -> Vec<(String, usize)> {
+        self.keys.effects()
     }
 
     /// How each scripted operation was used, in the order first scripted.
@@ -93,7 +111,11 @@ impl ProviderFake {
 
 impl Capability for ProviderFake {
     fn call<'a>(&'a self, call: &'a Call) -> LocalFuture<'a, Answer> {
+        if let Some((answer, _)) = self.keys.given(call) {
+            return Box::pin(async move { answer });
+        }
         let name = call.name();
+        let source = self.source_of(call);
         let answer = {
             let mut scripts = self.scripts.borrow_mut();
             match scripts.iter_mut().find(|script| script.name == name) {
@@ -106,6 +128,7 @@ impl Capability for ProviderFake {
                 None => Answer::Generated,
             }
         };
+        self.keys.keep(call, &answer, source);
         Box::pin(async move { answer })
     }
 
@@ -114,6 +137,9 @@ impl Capability for ProviderFake {
     }
 
     fn source_of(&self, call: &Call) -> Source {
+        if let Some(source) = self.keys.source_of(call) {
+            return source;
+        }
         let name = call.name();
         let scripted = self
             .scripts
@@ -147,6 +173,114 @@ impl Capability for ProviderFake {
     }
 }
 
+// --- keys -------------------------------------------------------------------
+
+/// How many keys a fake keeps, the oldest dropped first: a long `jadpo
+/// dev` session's calls never all stay.
+const KEPT_KEYS: usize = 10_000;
+
+/// One key's first answer, as its provider keeps it.
+#[derive(Clone)]
+struct Kept {
+    connection: String,
+    key: String,
+    /// The request it came with, to tell a different one.
+    input: jadpo_value::Value,
+    answer: Answer,
+    source: Source,
+}
+
+/// What a package's fake keeps under each idempotency key, as its provider
+/// does (area 11, "Tests and tools"; area 13, "Provider calls and
+/// capabilities in tests"; chunk 7.5d): see the module. Shared by the
+/// test's fake and `jadpo dev`'s.
+#[derive(Default)]
+pub struct KeptKeys {
+    kept: RefCell<VecDeque<Kept>>,
+    /// How many times each operation acted under a new key, in the order
+    /// first seen.
+    acted: RefCell<Vec<(String, usize)>>,
+}
+
+impl std::fmt::Debug for KeptKeys {
+    /// Never a key, a request or an answer.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kept = self.kept.borrow().len();
+        f.debug_struct("KeptKeys").field("kept", &kept).finish()
+    }
+}
+
+impl KeptKeys {
+    pub fn new() -> KeptKeys {
+        KeptKeys::default()
+    }
+
+    /// The answer the provider gives `call` under a key it keeps, and
+    /// where that answer came from first: the first answer again for the
+    /// same request, its package's `reused:` answer for another. `None`
+    /// for a call with no key, or a key it hasn't seen.
+    pub fn given(&self, call: &Call) -> Option<(Answer, Source)> {
+        let sent = call.key.as_ref()?;
+        let kept = self.kept.borrow();
+        let first = kept
+            .iter()
+            .find(|kept| kept.connection == call.connection && kept.key == sent.key)?;
+        if first.input == call.input {
+            Some((first.answer.clone(), first.source))
+        } else {
+            Some((
+                Answer::Failed(sent.reused.clone().unwrap_or_default()),
+                first.source,
+            ))
+        }
+    }
+
+    /// Where the answer to `call` comes from when its key is kept.
+    pub fn source_of(&self, call: &Call) -> Option<Source> {
+        self.given(call).map(|(_, source)| source)
+    }
+
+    /// Keeps `answer`, from `source`, under `call`'s key, when it acted: a
+    /// value or a failure as it is, and `lost` as what it did, the
+    /// generated default; nothing for an answer that did nothing, or a
+    /// call with no key.
+    pub fn keep(&self, call: &Call, answer: &Answer, source: Source) {
+        let Some(sent) = &call.key else {
+            return;
+        };
+        let kept = match answer {
+            Answer::Unknown | Answer::TimedOut => Answer::Generated,
+            Answer::Unavailable | Answer::RetryAfter(_) | Answer::Misconfigured => return,
+            Answer::Failed(code) if sent.did_nothing.contains(code) => return,
+            other => other.clone(),
+        };
+        let mut keys = self.kept.borrow_mut();
+        if keys.len() >= KEPT_KEYS {
+            keys.pop_front();
+        }
+        keys.push_back(Kept {
+            connection: call.connection.clone(),
+            key: sent.key.clone(),
+            input: call.input.clone(),
+            answer: kept,
+            source,
+        });
+        let mut acted = self.acted.borrow_mut();
+        let name = call.name();
+        match acted.iter_mut().find(|(operation, _)| *operation == name) {
+            Some((_, times)) => *times += 1,
+            None => acted.push((name, 1)),
+        }
+    }
+
+    /// How many times each operation acted at the provider under a key it
+    /// hadn't seen, in the order first seen: what `jadpo test` compares
+    /// between a run and its crashes.
+    pub fn effects(&self) -> Vec<(String, usize)> {
+        self.acted.borrow().clone()
+    }
+}
+
 /// One answer a test's `fakes:` scripts (area 13).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Script {
@@ -154,7 +288,8 @@ pub enum Script {
     Value(jadpo_value::Value),
     /// One of its failures, by its code.
     Failed(String),
-    /// It surely did nothing: `unavailable`, or `in_use`.
+    /// It surely did nothing: `unavailable`, or `in_use`, another
+    /// runner's request under its key, which is the one that acts.
     Unavailable,
     /// It went and no answer came back: `lost`.
     Lost,
@@ -601,6 +736,102 @@ mod tests {
         assert!(!used[0].exhausted() && !used[0].unused());
         assert_eq!(answer(&fake, "bookings.create"), Answer::Generated);
         assert!(fake.usage()[0].exhausted());
+    }
+
+    fn keyed(operation: &str, key: &str, input: &str) -> Call {
+        let mut call = Call::new(
+            "couriers",
+            operation,
+            Value::text(input),
+            crate::capability::Repeat::Keyed,
+        );
+        call.key = Some(crate::capability::SentKey {
+            key: key.into(),
+            reused: Some("key_reused".into()),
+            did_nothing: vec!["busy".into()],
+        });
+        call
+    }
+
+    fn keyed_answer(fake: &ProviderFake, call: &Call) -> Answer {
+        crate::block_on(fake.call(call)).expect("nothing waits")
+    }
+
+    /// The same key with the same request is given its first answer,
+    /// failures included, without taking a scripted one; a different
+    /// request its package's `reused:` answer.
+    #[test]
+    fn a_fake_keeps_each_keys_first_answer() {
+        let fake = ProviderFake::new();
+        let first = Answer::Wire(std::rc::Rc::from(r#"{"id": "b-17"}"#));
+        assert!(fake.script("couriers", "bookings.create", first.clone(), frame()));
+        assert!(fake.script(
+            "couriers",
+            "bookings.create",
+            Answer::Failed("slot_taken".into()),
+            frame()
+        ));
+        let call = keyed("bookings.create", "k1", "N1 9GU");
+        assert_eq!(keyed_answer(&fake, &call), first);
+        assert_eq!(keyed_answer(&fake, &call), first, "the first answer again");
+        assert_eq!(
+            fake.usage()[0].called,
+            1,
+            "a replay takes no scripted answer"
+        );
+        assert_eq!(
+            keyed_answer(&fake, &keyed("bookings.create", "k1", "E1 6AN")),
+            Answer::Failed("key_reused".into())
+        );
+        let declined = keyed("bookings.create", "k2", "N1 9GU");
+        assert_eq!(
+            keyed_answer(&fake, &declined),
+            Answer::Failed("slot_taken".into())
+        );
+        assert_eq!(
+            keyed_answer(&fake, &declined),
+            Answer::Failed("slot_taken".into()),
+            "a failure is kept as the provider keeps it"
+        );
+        assert_eq!(
+            fake.effects(),
+            vec![("couriers.bookings.create".to_string(), 2)]
+        );
+    }
+
+    /// `lost` acted and its answer never came: the next call under its key
+    /// is given what it did. What did nothing keeps nothing.
+    #[test]
+    fn lost_acts_and_what_did_nothing_keeps_nothing() {
+        let fake = ProviderFake::new();
+        for answer in [
+            Answer::Unknown,
+            Answer::Unavailable,
+            Answer::Failed("busy".into()),
+            Answer::Misconfigured,
+        ] {
+            assert!(fake.script("couriers", "bookings.create", answer, frame()));
+        }
+        let lost = keyed("bookings.create", "k1", "N1 9GU");
+        assert_eq!(keyed_answer(&fake, &lost), Answer::Unknown);
+        assert_eq!(keyed_answer(&fake, &lost), Answer::Generated);
+        let busy = keyed("bookings.create", "k2", "N1 9GU");
+        assert_eq!(keyed_answer(&fake, &busy), Answer::Unavailable);
+        assert_eq!(keyed_answer(&fake, &busy), Answer::Failed("busy".into()));
+        assert_eq!(keyed_answer(&fake, &busy), Answer::Misconfigured);
+        assert_eq!(
+            keyed_answer(&fake, &busy),
+            Answer::Generated,
+            "past its script"
+        );
+        assert_eq!(keyed_answer(&fake, &busy), Answer::Generated, "now kept");
+        assert_eq!(
+            fake.effects(),
+            vec![("couriers.bookings.create".to_string(), 2)]
+        );
+        // A call with no key is answered from the script every time.
+        assert_eq!(answer(&fake, "bookings.create"), Answer::Generated);
+        assert_eq!(fake.effects()[0].1, 2);
     }
 
     #[test]
