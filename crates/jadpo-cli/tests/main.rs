@@ -39,6 +39,7 @@ mod lsp;
 mod manifest;
 mod migrate;
 mod operation_conditions;
+mod packages;
 mod passkeys;
 mod policy;
 mod purge_schedule;

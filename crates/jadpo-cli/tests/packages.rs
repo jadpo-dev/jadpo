@@ -109,7 +109,7 @@ fn show_prints_a_packages_description_and_public_surface() {
   guide: GUIDE.md
 
 Functions
-  uk.parse         (written: WrittenPostcode) fails InvalidPostcode -> UkPostcode
+  uk.parse         (written: WrittenPostcode) fails InvalidPostcode -> UkPost...
 
 Types
   UkPostcode       Text { min_length: 5, max_length: 8 }
@@ -208,12 +208,20 @@ fn show_prints_the_guide_and_gives_json() {
         .collect();
     assert_eq!(
         names,
-        ["uk.parse", "UkPostcode", "WrittenPostcode", "InvalidPostcode"]
+        [
+            "uk.parse",
+            "UkPostcode",
+            "WrittenPostcode",
+            "InvalidPostcode"
+        ]
     );
     let parse = &data["declarations"][0];
     assert_eq!(parse["kind"], "function");
     assert_eq!(parse["file"], "packages/postcodes/v2/libraries/uk.jadpo");
-    assert_eq!(parse["facts"][0], "signature (written: WrittenPostcode) -> UkPostcode");
+    assert_eq!(
+        parse["facts"][0],
+        "signature (written: WrittenPostcode) -> UkPostcode"
+    );
 }
 
 #[test]
@@ -222,7 +230,11 @@ fn show_works_for_the_apps_own_integration() {
     let root = dir.path().join("shop");
     write(&root, "app.jadpo", "application {}\n");
     for (path, text) in package_files() {
-        write(&root, &format!("shared/providers/postcodes/v2/{path}"), text);
+        write(
+            &root,
+            &format!("shared/providers/postcodes/v2/{path}"),
+            text,
+        );
     }
     let done = jadpo(&root, &["package", "show", "postcodes"]);
     assert_eq!(done.code, 0, "{}{}", done.stdout, done.stderr);
@@ -240,6 +252,17 @@ fn show_works_for_the_apps_own_integration() {
         ),
         "{}",
         done.stdout
+    );
+    // `jadpo check` writes the app's own integration's surface to
+    // `build/`, where it is generated rather than committed.
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}", checked.stdout);
+    let surface =
+        std::fs::read_to_string(root.join("build/providers/postcodes/v2/surface.jadpo_record"))
+            .expect("the surface in build/");
+    assert!(
+        surface.contains("\npackage Postcodes.v2\n") && surface.contains("\nfunction uk.parse\n"),
+        "{surface}"
     );
 }
 
@@ -346,13 +369,13 @@ fn check_runs_the_publishing_bar_and_writes_the_surface() {
     assert_eq!(
         first.stdout,
         "Publishing bar
-  compiles   passed           no errors
-  described  passed           every public declaration
-  examples   not checked yet  waits for how a description's example is written
-  tests      passed           1 test
-  version    passed           2.0.0, the first release
-  changelog  not checked yet  waits for how the changelog is written
-  licence    passed           mit, from Jadpo 1.0
+  compiles      passed                        no errors
+  described     passed                        every public declaration
+  examples      not checked yet               waits for how examples are written
+  tests         passed                        1 test
+  version       passed                        2.0.0, the first release
+  changelog     not checked yet               waits for the changelog's form
+  licence       passed                        mit, from Jadpo 1.0
 
 Wrote surface.jadpo_record
 
@@ -390,11 +413,15 @@ package Postcodes.v2
     assert!(
         tagged
             .stdout
-            .contains("  version    passed           2.0.0, released as v2.0.0\n"),
+            .contains("  version       passed                        2.0.0, released as v2.0.0\n"),
         "{}",
         tagged.stdout
     );
-    assert!(!tagged.stdout.contains("next: git tag"), "{}", tagged.stdout);
+    assert!(
+        !tagged.stdout.contains("next: git tag"),
+        "{}",
+        tagged.stdout
+    );
     write(
         &root,
         "types/outward_code.jadpo",
@@ -409,7 +436,7 @@ public type OutwardCode = Text {
     assert!(
         added
             .stdout
-            .contains("  version    passed           2.1.0, 1 added since 2.0.0\n"),
+            .contains("  version       passed                        2.1.0, 1 added since 2.0.0\n"),
         "{}",
         added.stdout
     );
@@ -431,7 +458,16 @@ fn check_refuses_a_breaking_change_within_a_major_version() {
     write(
         &root,
         "libraries/uk.jadpo",
-        &UK.replace("written: WrittenPostcode", "written: Text"),
+        &UK.replace("written: WrittenPostcode", "written: UkPostcode"),
+    );
+    write(
+        &root,
+        "libraries/uk.test.jadpo",
+        "test \"a postcode is read in upper case\" {
+    var postcode: UkPostcode = attempt uk.parse(\"sw1a 1aa\")
+    assert postcode == \"SW1A 1AA\"
+}
+",
     );
     let refused = plain(&root, &["package", "check"]);
     assert_eq!(refused.code, 1, "{}", refused.stdout);
@@ -448,9 +484,9 @@ fn check_refuses_a_breaking_change_within_a_major_version() {
         refused.stdout
     );
     assert!(
-        refused
-            .stdout
-            .contains("  version    failed           2 breaking changes since 2.0.0\n"),
+        refused.stdout.contains(
+            "  version       failed                        2 breaking changes since 2.0.0\n"
+        ),
         "{}",
         refused.stdout
     );
@@ -513,8 +549,8 @@ public type GeoPoint = Object {
     assert!(
         failed.stdout.contains(
             "Publishing bar
-  compiles   failed           1 error
-  described  failed           1 public declaration has no description
+  compiles      failed                        1 error
+  described     failed                        1 has no description
 "
         ),
         "{}",
