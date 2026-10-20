@@ -468,9 +468,7 @@ fn route_prefix(list: Option<ast::MemberList>) -> Option<Vec<String>> {
 /// and the `stores:` and `providers:` it replaces), and the packages they
 /// name.
 #[allow(clippy::type_complexity)]
-fn connections(
-    list: Option<ast::MemberList>,
-) -> (Vec<String>, Vec<String>, Vec<(String, String)>) {
+fn connections(list: Option<ast::MemberList>) -> (Vec<String>, Vec<String>, Vec<(String, String)>) {
     let mut names = Vec::new();
     let mut packages = Vec::new();
     let mut connected = Vec::new();

@@ -677,7 +677,10 @@ action read_new_postcode(
 
 #[test]
 fn two_versions_sit_side_by_side_with_names_carrying_the_version() {
-    assert_eq!(both_installed(&with(&[MOVING, MOVED])), Vec::<String>::new());
+    assert_eq!(
+        both_installed(&with(&[MOVING, MOVED])),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
@@ -690,9 +693,7 @@ fn a_name_without_its_version_is_refused_while_two_are_held() {
         "{found:#?}"
     );
     assert!(
-        found
-            .iter()
-            .all(|p| p.contains("package.version_needed")),
+        found.iter().all(|p| p.contains("package.version_needed")),
         "only the missing versions are reported: {found:#?}"
     );
 }
@@ -763,7 +764,10 @@ fn the_graph_knows_each_version_s_declarations_apart() {
         "type Postcodes.v2.UkPostcode",
         "type Postcodes.v3.UkPostcode",
     ] {
-        assert!(keys.iter().any(|key| key == expected), "{expected}: {keys:#?}");
+        assert!(
+            keys.iter().any(|key| key == expected),
+            "{expected}: {keys:#?}"
+        );
     }
 }
 

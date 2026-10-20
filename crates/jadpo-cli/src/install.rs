@@ -1138,7 +1138,12 @@ fn app_sources(root: &Path) -> Vec<(String, String)> {
 
 /// Whether the lock holds another version of `package` beside it.
 fn held_beside(lines: &[Locked], package: &str) -> bool {
-    let code = |package: &str| package.rsplit_once('.').map_or(package, |(code, _)| code).to_string();
+    let code = |package: &str| {
+        package
+            .rsplit_once('.')
+            .map_or(package, |(code, _)| code)
+            .to_string()
+    };
     lines
         .iter()
         .any(|line| line.package != package && code(&line.package) == code(package))

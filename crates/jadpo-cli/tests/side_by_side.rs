@@ -115,7 +115,11 @@ fn a_second_version_installs_beside_the_first_and_both_run() {
         .collect();
     assert_eq!(lines, ["Postcodes.v2", "Postcodes.v3"]);
     write(&app, "domains/intake/actions/check_postcode.jadpo", OLD);
-    write(&app, "domains/intake/actions/check_postcode.test.jadpo", OLD_TEST);
+    write(
+        &app,
+        "domains/intake/actions/check_postcode.test.jadpo",
+        OLD_TEST,
+    );
     write(&app, "domains/intake/actions/check_new_postcode.jadpo", NEW);
     write(
         &app,
@@ -136,14 +140,16 @@ fn the_package_commands_need_the_version_while_two_are_held() {
     let shown = jadpo(&app, &["package", "show", "postcodes"]);
     assert_eq!(shown.code, 2, "{}", shown.stdout);
     assert!(
-        shown.stderr.starts_with("error: `postcodes` names 2 packages\n"),
+        shown
+            .stderr
+            .starts_with("error: `postcodes` names 2 packages\n"),
         "{}",
         shown.stderr
     );
     assert!(
-        shown
-            .stderr
-            .contains("next: Use `jadpo package show Postcodes.v2` or `jadpo package show Postcodes.v3`"),
+        shown.stderr.contains(
+            "next: Use `jadpo package show Postcodes.v2` or `jadpo package show Postcodes.v3`"
+        ),
         "{}",
         shown.stderr
     );
@@ -174,9 +180,9 @@ fn callers_move_across_then_the_old_version_goes() {
     let refused = jadpo(&app, &["package", "remove", "Postcodes.v2"]);
     assert_eq!(refused.code, 1, "{}{}", refused.stdout, refused.stderr);
     assert!(
-        refused
-            .stderr
-            .contains("`domains/intake/actions/check_postcode.jadpo` writes names through `Postcodes.v2`"),
+        refused.stderr.contains(
+            "`domains/intake/actions/check_postcode.jadpo` writes names through `Postcodes.v2`"
+        ),
         "{}",
         refused.stderr
     );
@@ -210,7 +216,10 @@ fn callers_move_across_then_the_old_version_goes() {
             (
                 edit["start"].as_u64().expect("start") as usize,
                 edit["end"].as_u64().expect("end") as usize,
-                edit["replacement"].as_str().expect("replacement").to_string(),
+                edit["replacement"]
+                    .as_str()
+                    .expect("replacement")
+                    .to_string(),
             )
         })
         .collect();
@@ -468,7 +477,11 @@ fn an_installed_package_s_check_is_kept_by_its_digest() {
     );
     let first = cached(&app, &cache, &["check"]);
     assert_eq!(first.code, 1, "{}", first.stdout);
-    assert!(first.stdout.contains("packages/postcodes/v2/libraries/uk.jadpo"));
+    assert!(
+        first
+            .stdout
+            .contains("packages/postcodes/v2/libraries/uk.jadpo")
+    );
     // The files checked cleanly are kept under the digest; the one with a
     // problem isn't.
     let folder = cache

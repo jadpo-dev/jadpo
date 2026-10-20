@@ -471,8 +471,7 @@ impl Names<'_> {
                     if !self.table.is_package(&text(&first)) {
                         self.type_name(&first, want, out);
                     } else {
-                        let names: Vec<ast::NameRef> =
-                            std::iter::once(first).chain(rest).collect();
+                        let names: Vec<ast::NameRef> = std::iter::once(first).chain(rest).collect();
                         if let Some(Through::Package(via, taken)) = self.through(&names, out)
                             && let Some(member) = names.get(taken)
                         {
@@ -2042,12 +2041,7 @@ struct Via {
 
 /// `package.version_needed`: a name through a package held in two versions
 /// that doesn't say which (chunk 7.1c2).
-fn version_needed(
-    code: &str,
-    versions: &[String],
-    member: Option<&str>,
-    span: Span,
-) -> Diagnostic {
+fn version_needed(code: &str, versions: &[String], member: Option<&str>, span: Span) -> Diagnostic {
     let held: Vec<String> = versions.iter().map(|via| format!("`{via}`")).collect();
     let written: Vec<String> = versions
         .iter()

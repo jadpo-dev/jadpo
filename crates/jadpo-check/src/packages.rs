@@ -761,9 +761,10 @@ fn names(db: &dyn Db, project: Project, package: &Package, out: &mut Vec<Diagnos
     // (`postcodes: { }`, area 10), which two versions would share; how an
     // app words each version apart isn't decided (chunk 7.1c2).
     if home.through != home.code
-        && let Some(file) = package.files.iter().find(|file| {
-            location(db, project, **file).place == Place::Folder(Folder::Translations)
-        })
+        && let Some(file) = package
+            .files
+            .iter()
+            .find(|file| location(db, project, **file).place == Place::Folder(Folder::Translations))
     {
         out.push(
             Diagnostic::new(
