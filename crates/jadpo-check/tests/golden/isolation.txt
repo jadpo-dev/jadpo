@@ -98,3 +98,12 @@
   action sign_in_with_link           read_committed
   action welcome_guest               read_committed
   fixture guest_at                   read_committed
+28-lost-property
+  action ask_the_office              read_committed
+  action draft_reply                 repeatable_read: reads `LossReport` with `get`
+  action hand_in                     read_committed
+  action place_item                  repeatable_read: reads `FoundItem` with `get`
+  action place_unplaced_items        repeatable_read: calls the query `unplaced_items`
+  action report_loss                 read_committed
+  fixture item_on_shelf              read_committed
+  fixture umbrella_report            read_committed
