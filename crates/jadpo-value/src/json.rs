@@ -890,6 +890,59 @@ impl Codecs<'_> {
         }
     }
 
+    /// A file row's cells written from `value`, of the `Output` codec
+    /// `id` is (area 19, "Data formats"; chunk 6.4b2), in its fields'
+    /// order: each field's text as a query string's value holds it
+    /// ([`Codecs::read_text`] reads it back), a standard type in its
+    /// canonical text, `None` for a field that is `none`; with whether the
+    /// field is built on `Text`, which a spreadsheet's escaping is for.
+    /// `None` for a value that isn't an object of its codec.
+    pub fn write_cells(&self, id: CodecId, value: &Value) -> Option<Vec<(Option<String>, bool)>> {
+        let Some(Codec::Object { fields, .. }) = self.codec(id) else {
+            return None;
+        };
+        let Value::Record(record) = value else {
+            return None;
+        };
+        Some(
+            record
+                .fields
+                .iter()
+                .zip(fields)
+                .map(|((_, field), codec)| self.cell(*codec, field))
+                .collect(),
+        )
+    }
+
+    /// One cell: the text of `value`, of codec `id`'s type, and whether
+    /// the type is built on `Text`.
+    fn cell(&self, id: CodecId, value: &Value) -> (Option<String>, bool) {
+        let text_of = |value: &Value| match crate::standard::from(value) {
+            Ok(Value::Text(text)) => Some(text.to_string()),
+            _ => None,
+        };
+        match (self.codec(id), value) {
+            (Some(Codec::Nullable(inner)), value) => self.cell(*inner, value),
+            (Some(Codec::Scalar { builtin, .. }), value) => {
+                let text = builtin.representation() == jadpo_std::Builtin::Text;
+                match value {
+                    Value::None | Value::Unit => (None, text),
+                    Value::Text(held) => (Some(held.to_string()), text),
+                    other => (text_of(other), text),
+                }
+            }
+            (_, Value::None | Value::Unit) => (None, false),
+            (Some(Codec::Enum { variants, .. }), Value::Variant(variant)) => {
+                let found = variants.iter().find(|v| v.name == *variant.name);
+                (
+                    Some(found.map_or(variant.name.to_string(), |v| v.wire.clone())),
+                    false,
+                )
+            }
+            (_, other) => (text_of(other), false),
+        }
+    }
+
     /// `json.write` (area 19, "Data formats"): `value`, of codec `id`'s
     /// type, as compact JSON, as a response's body is written: fields in
     /// declared order, sets and map keys in the canonical order, no white

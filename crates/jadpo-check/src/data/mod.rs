@@ -104,6 +104,18 @@ impl Connections {
         out.sort();
         out
     }
+
+    /// The stores of files, by name (area 16).
+    pub fn files(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .declared
+            .iter()
+            .filter(|(_, kind)| *kind == ConnectionKind::Files)
+            .map(|(name, _)| name.clone())
+            .collect();
+        out.sort();
+        out
+    }
 }
 
 /// The connections declared in `app.jadpo`.

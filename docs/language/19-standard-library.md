@@ -6941,10 +6941,198 @@ stays area 12's.
 
 > Built in chunk 6.4b: `csv.read`, `tsv.read` and `json_lines.read`, on
 > the runs `batches.each` runs (area 12, "How a file's run is kept"),
-> with `column:` and a row's problems by its row and column. The
-> writers, `json.read`'s and `json.write`'s file forms, `CsvFormat`,
-> `ExportSummary`, gzip with `max_unpacked_size:` and legacy encodings
-> come in roadmap 6.4b2.
+> with `column:` and a row's problems by its row and column. Built in
+> chunk 6.4b2: `csv.write`, `tsv.write`, `json_lines.write` and
+> `json.write`'s file form, with `CsvFormat` and `ExportSummary` (area 12,
+> "How an export's run is kept"), as the rules below write their rows.
+> `json.read`'s file form and gzip with `max_unpacked_size:` come in
+> roadmap 6.4b3, legacy encodings when an application needs one.
+
+How a row is written (chosen in chunk 6.4b2, each the most conservative
+reading of the rules above and the research behind them):
+
+- **The header and the cells.** A CSV or TSV file starts with its
+  header, the row type's columns in declared order, each its `column:`
+  or its name, then a line a row. A cell is its field's text as a query
+  string holds it, read back the same way: a standard type its
+  canonical text, an enum its variant's name, `none` an empty cell.
+- **Quoting.** A cell holding the delimiter, a double quote, a carriage
+  return or a line feed is quoted, its quotes doubled (RFC 4180), in TSV
+  too; every line, the last among them, ends with CRLF.
+- **Who reads it.** `CsvFormat.spreadsheet` writes a UTF-8 byte-order
+  mark first, and a cell of a field built on `Text` that starts with
+  `=`, `+`, `-`, `@`, a tab or a carriage return with `'` before it, so
+  a spreadsheet never reads it as a formula; a number's cell, a negative
+  one among them, is never changed. `CsvFormat.standard` writes neither.
+- **JSON.** A JSON Lines file is each row's JSON, as a response's body
+  writes it (by its fields' names; `column:` is a CSV column's), and a
+  line feed after each; `json.write`'s file form one compact list of the
+  rows. An export of no items is its header alone, an empty file, or
+  `[]`.
+- **The file.** UTF-8, named `name:`, its `FileType` `csv`, `tsv`,
+  `json_lines` (`application/jsonl`, added with the writers) or `json`.
+
+A bakery writes its price list for the shop's spreadsheet. `each:` turns
+each loaf into a `PriceLine`, and `finished:` keeps the file it wrote:
+
+```jadpo check project=csv-export file=app.jadpo
+application {
+    connections: {
+        price_lists: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/price-lists"
+        }
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/types/loaf_code.jadpo hidden
+/// A loaf's code on the bakery's lists.
+type LoafCode = Text {
+    min_length: 1
+    max_length: 20
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/types/loaf_price.jadpo hidden
+/// What a loaf costs.
+type LoafPrice = Decimal {
+    scale: 2
+    min: 0.00
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/types/loaf_page.jadpo hidden
+/// Where a walk over the loaves has got to.
+type LoafPage = Input {
+    page_size: PageSize {
+        default: 100
+    }
+    after: PageCursor {
+        optional: true
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/types/price_line.jadpo
+use bakery/types { LoafCode, LoafPrice }
+
+/// One line of the price list a spreadsheet reads.
+type PriceLine = Output {
+    code: LoafCode {
+        column: "Loaf code"
+    }
+    price: LoafPrice {
+        column: "Price"
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/entities/loaf.jadpo hidden
+use bakery/types { LoafCode, LoafPrice }
+
+/// A loaf the bakery sells.
+entity Loaf {
+    id: Uuid
+    code: LoafCode
+    price: LoafPrice
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/entities/price_list.jadpo hidden
+/// A price list written for the shop, and how writing it went.
+entity PriceList {
+    id: Uuid
+    list_file: File? {
+        store: price_lists
+        max_size: 20mb
+        types: [FileType.csv]
+    }
+    list_run: BatchRun?
+    loaves_listed: Int?
+
+    policy: {
+        create: [Access.public]
+        read: [Access.public, Access.system]
+        update: [Access.public, Access.system]
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/queries/loaves_by_id.jadpo hidden
+use bakery/entities { Loaf }
+use bakery/types { LoafPage }
+
+/// Every loaf, a page at a time, in an order no change moves.
+query loaves_by_id(page: LoafPage) -> Page<Loaf> {
+    from: Loaf
+    order: [Loaf.id asc]
+    page: {
+        size: page.page_size
+        after: page.after
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/actions/prices_listed.jadpo hidden
+use bakery/entities { PriceList, PriceListNotFound }
+
+/// Keeps the written price list, and how many loaves it lists.
+action prices_listed(done: ExportSummary, list_id: PriceList.id) fails PriceListNotFound -> Unit {
+    attempt PriceList.update(list_id) {
+        set: {
+            list_file: done.file
+            loaves_listed: done.items
+        }
+    }
+}
+```
+
+```jadpo check project=csv-export file=domains/bakery/actions/list_prices.jadpo migrate=initial
+use app { price_lists }
+use bakery/entities { PriceList, PriceListNotFound }
+use bakery/types { LoafPage, PriceLine }
+use bakery/actions { prices_listed }
+use bakery/queries { loaves_by_id }
+
+/// Starts writing every loaf's price into a spreadsheet, once.
+action list_prices(list_id: PriceList.id) fails PriceListNotFound -> PriceList {
+    var price_list: PriceList = attempt PriceList.get(list_id)
+    var list_run: BatchRun = csv.write(
+        price_lists,
+        name: "prices.csv",
+        format: CsvFormat.spreadsheet,
+        from: loaves_by_id(LoafPage {}),
+        each: loaf -> PriceLine {
+            code: loaf.code
+            price: loaf.price
+        },
+        finished: done -> prices_listed(done, price_list.id),
+        key: price_list.id
+    )
+    return PriceList.update(price_list) {
+        set: {
+            list_run: list_run
+        }
+    }
+}
+```
+
+Three loaves, one whose code a spreadsheet would read as a formula,
+give this file, a line a loaf in the order of their ids, after its
+byte-order mark, each line ending in CRLF:
+
+```text
+Loaf code,Price
+rye,3.50
+spelt,4.20
+'=sour,5.00
+```
 
 A bakery reads its suppliers' price sheets into its loaves. The sheet's
 header names the columns, `column:` naming one that isn't the field's
@@ -7126,7 +7314,8 @@ TSV is CSV's tab-delimited form: every rule under `csv` applies.
 | `json_lines.write(store, name:, from:, each:, finished:, key:)` | `BatchRun`: each item of `from:` turned into an `Output` by `each:` and written as one line; `finished:` receives an `ExportSummary` | As `csv.write` | none |
 
 A JSON Lines row may hold lists and objects, which is why a CSV row that
-needs them is pointed here. Encodings and gzip are as for `csv`.
+needs them is pointed here. Encodings and gzip are as for `csv`, and a
+JSON Lines file takes no `format:`.
 
 ### `json`
 
@@ -7169,7 +7358,9 @@ needs them is pointed here. Encodings and gzip are as for `csv`.
   text.
 - **The two forms can't be confused:** given text it returns the value,
   given a stored `File` with `each:` it returns a run, and using one where
-  the other is expected is a type error.
+  the other is expected is a type error. `json.write` given a store and
+  named arguments is its file form (chunk 6.4b2), given one value its
+  text.
 - **`mismatch` names the first problem** the way area 7's `invalid_input`
   does: the field's path with list positions as numbers
   (`lines.2.quantity`) and a map's entry as `<key>`, whether its key or
@@ -10767,7 +10958,7 @@ check failed: 1 error, 1 file
 | Everything else on this page | Decided 2026-10-17, as recommended; built in chunks 5.5a to 5.5s |
 | `hash.sha256`, the 9 `encoding` operations | Decided 2026-10-17 (question 24); built in 5.5g |
 | `random` | Decided 2026-10-17 (question 19); built in 5.5q, actions only, seeded per test, replayed from a recording; `crypto`'s 8 operations that need no keys held as data built in 5.5q2, with `key:` as a place the compiler owns |
-| The format namespaces | File forms decided with batches (area 12), built on them: the reads in 6.4b, the writers and `json`'s file forms in 6.4b2; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
+| The format namespaces | File forms decided with batches (area 12), built on them: the reads in 6.4b, the writers and `json.write`'s file form in 6.4b2, `json.read`'s in 6.4b3; `json.read` and `json.write` in memory decided here, built in 5.5g with `malformed` and `mismatch`, whose first problem's path and rule the failure's report names; the `DecodeProblem` a failure mapped from `mismatch` receives built in 5.5g2 |
 | SQL forms | Decided; built in 5.6, used by computed backfills in 5.6b, with the operators' and conditionals' forms, and by aggregate queries in 5.6c |
 | Geospatial, AI | Decided as their own areas, [area 20](20-geospatial.md) (5.5u) and [area 21](21-ai.md) (5.5v); the geospatial types' baselines built in 5.5s and the AI types' in 5.5s2; area 20 built through 5.5u8 and 5.11, area 21 in part, as each page's "Status" says |
 

@@ -82,6 +82,31 @@ impl Body {
             .find(|name| name.start <= offset && offset <= name.end)
     }
 
+    /// The locals the inline function at `inline` reads but doesn't
+    /// declare, the parameters and variables of the body around it (a
+    /// file helper's write saves them with its run, chunk 6.4b2): each
+    /// once, with the first site reading it, in the order the sites are
+    /// numbered.
+    pub fn outer_reads(&self, inline: SiteId) -> Vec<(LocalId, SiteId)> {
+        let held = self.site(inline);
+        let inside = |start: u32, end: u32| start >= held.start && end <= held.end;
+        let mut out: Vec<(LocalId, SiteId)> = Vec::new();
+        for (at, site) in self.sites.iter().enumerate() {
+            let Node::Expr(Expr::Local(local)) = &site.node else {
+                continue;
+            };
+            let declared = self.local(*local);
+            if !inside(site.start, site.end)
+                || inside(declared.start, declared.end)
+                || out.iter().any(|(seen, _)| seen == local)
+            {
+                continue;
+            }
+            out.push((*local, SiteId(at as u32)));
+        }
+        out
+    }
+
     /// Every entity write, in source order: its site, the entity and the
     /// operation (area 6).
     pub fn writes(&self) -> impl Iterator<Item = (SiteId, &Key, WriteOp)> + '_ {
@@ -470,7 +495,9 @@ pub enum Callee {
     /// `from:` (the call of its query, whose arguments are saved with the
     /// run), `each:` and `finished:` (inline functions calling an action,
     /// whose values that don't read the item are saved with it) and
-    /// `key:`, in that order.
+    /// `key:`, in that order; a file helper's read and write take their
+    /// own (`jadpo_std::batch::BatchOp::params`), a write's store lowered
+    /// to the connection's name as text (chunk 6.4b2).
     Batch(jadpo_std::batch::BatchOp),
     /// `store.put(bytes, type)` or `store.read(file)` in an action (area
     /// 16, "Files"; chunk 6.4b): an outside call through the `files`

@@ -582,6 +582,7 @@ const BODY: &[&str] = &[
     "call batch status",
     "call batch cancel",
     "call batch read a file's rows",
+    "call batch write rows into a file",
     "call files put",
     "call files read",
     "advance the test clock",
@@ -943,8 +944,9 @@ fn body_features(
                             BatchOp::Status => "call batch status",
                             BatchOp::Cancel => "call batch cancel",
                             // The file helpers share one machinery, so
-                            // one format's read teaches them all.
+                            // one format's read, or write, teaches them all.
                             BatchOp::Read(_) => "call batch read a file's rows",
+                            BatchOp::Write(_) => "call batch write rows into a file",
                         },
                         Callee::Files { op, .. } => match op {
                             jadpo_std::files::FilesOp::Put => "call files put",

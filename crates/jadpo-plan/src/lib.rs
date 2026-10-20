@@ -698,7 +698,25 @@ impl Plan {
                     (jadpo_std::batch::BatchFrom::Query(Box::new(read)), store)
                 }
             };
-            let (_, each) = site.each.clone()?;
+            // `each:` calls an action, or gives a writer's row (chunk
+            // 6.4b2).
+            let (each, to) = match &site.write {
+                Some(write) => (
+                    jadpo_std::batch::BatchEach::Row(write.each.clone()),
+                    Some(jadpo_std::batch::FileWrite {
+                        format: write.format,
+                        store: write.store.clone(),
+                        row: write.row,
+                        columns: row_columns(db, project, &write.row_ty),
+                        name: write.name,
+                        csv_format: write.csv_format,
+                    }),
+                ),
+                None => (
+                    jadpo_std::batch::BatchEach::Action(site.each.clone()?.1),
+                    None,
+                ),
+            };
             let isolation = [&site.each, &site.finished]
                 .into_iter()
                 .flatten()
@@ -719,6 +737,7 @@ impl Plan {
                 captured: site.captured,
                 from_args: site.from_args,
                 each,
+                to,
                 finished: site.finished.map(|(_, call)| call),
                 key: site.key,
                 tenant: jadpo_check::batches::run_tenant(

@@ -8,5 +8,9 @@ application {
             driver: Driver.disk
             path: "/var/lib/seed-library/sheets"
         }
+        shelf_lists: {
+            driver: Driver.disk
+            path: "/var/lib/seed-library/shelf-lists"
+        }
     }
 }

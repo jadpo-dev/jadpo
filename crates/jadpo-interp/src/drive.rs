@@ -296,14 +296,16 @@ async fn batch(
         )));
     };
     let stored = match (op, number, args) {
-        (BatchOp::Each | BatchOp::Read(_), Some(number), _) => match program.plan().batch(number) {
-            Some(plan) => batches::start(ctx, program_batches, plan, args, at).await,
-            None => {
-                return Err(Stop::Fault(
-                    ctx.fault(FaultKind::Defect("a batch with no plan".into()), at),
-                ));
+        (BatchOp::Each | BatchOp::Read(_) | BatchOp::Write(_), Some(number), _) => {
+            match program.plan().batch(number) {
+                Some(plan) => batches::start(ctx, program_batches, plan, args, at).await,
+                None => {
+                    return Err(Stop::Fault(
+                        ctx.fault(FaultKind::Defect("a batch with no plan".into()), at),
+                    ));
+                }
             }
-        },
+        }
         (BatchOp::Status, _, [run]) => batches::status(ctx, program_batches, run, at).await,
         (BatchOp::Cancel, _, [run]) => batches::cancel(ctx, program_batches, run, at).await,
         _ => {
@@ -355,6 +357,27 @@ async fn files(
         Done::Failed(failure) => Err(Stop::Failed(failure)),
         Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
     }
+}
+
+/// A file helper's write's row for `item` (chunk 6.4b2), as
+/// [`jadpo_runtime::Executor::row`] runs it: `row`'s inline function, its
+/// parameter given `item` and each local it reads its saved value.
+pub(crate) fn row(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    row: &jadpo_std::batch::BatchRow,
+    item: Value,
+    saved: &[Value],
+) -> Outcome {
+    let mut locals = vec![(row.item, item)];
+    for (local, at) in &row.locals {
+        locals.push((
+            *local,
+            saved.get(*at as usize).cloned().unwrap_or(Value::None),
+        ));
+    }
+    let mut machine = Machine::new(program);
+    outcome(machine.row(ctx, row.callable, SiteId(row.body), locals))
 }
 
 /// An action's body as the runtime's boundary runs it, once or, after a

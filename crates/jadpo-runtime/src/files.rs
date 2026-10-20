@@ -15,6 +15,10 @@
 //!   page of rows from before its page's transaction opens (chunk 6.4b),
 //!   and [`read_whole`], `store.read(file)`, which reads at most
 //!   [`WHOLE_READ_LIMIT`] bytes into memory.
+//! - [`put_piece`], [`join`] and [`discard`]: an export's pieces, each a
+//!   page's rows put once the page's transaction has closed, joined into
+//!   the one file once every page is written, or dropped when the export
+//!   is cancelled or fails (chunk 6.4b2).
 //! - [`MemoryFiles`]: the in-memory store tests run on (area 13, "Provider
 //!   calls and capabilities in tests"), which can be told to have no room
 //!   and to read a few bytes at a time.
@@ -27,7 +31,9 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use jadpo_std::RuleKey;
-use jadpo_std::files::{FILE, NOT_FOUND, PUT, READ, STORAGE_FULL, WHOLE_READ_LIMIT, key_for};
+use jadpo_std::files::{
+    DISCARD, FILE, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL, WHOLE_READ_LIMIT, key_for, piece_key,
+};
 use jadpo_value::Value;
 
 use crate::capability::{Answer, Call, Capability, Repeat, Source};
@@ -152,6 +158,86 @@ pub async fn put(ctx: &mut Ctx<'_>, connection: &str, bytes: &Value, file_type: 
     }
 }
 
+/// The media type of the `FileType` variant called `name`.
+pub fn media_of(name: &str) -> Option<&'static str> {
+    jadpo_std::FILE_TYPES
+        .iter()
+        .find(|(variant, _)| *variant == name)
+        .map(|(_, media)| *media)
+}
+
+/// Piece `piece` of the file whose new id is `id`, `bytes` of type
+/// `media`, kept in the `files` connection `store` (chunk 6.4b2): a keyed
+/// put, so putting it again keeps the bytes given last.
+pub async fn put_piece(
+    ctx: &mut Ctx<'_>,
+    store: &str,
+    (id, piece): (&[u8; 16], u64),
+    media: &str,
+    bytes: Vec<u8>,
+) -> Result<(), Unanswered> {
+    let input = Value::record(
+        "FilePut",
+        vec![
+            (Rc::from("key"), Value::text(&piece_key(id, piece))),
+            (Rc::from("type"), Value::text(media)),
+            (Rc::from("bytes"), Value::Bytes(Rc::from(bytes))),
+        ],
+    );
+    call(ctx, Call::new(store, PUT, input, Repeat::Keyed))
+        .await
+        .map(|_| ())
+}
+
+/// The file whose new id is `id`, its `pieces` pieces joined into it in
+/// order in `store`, as `media` (chunk 6.4b2): a repeat once it is whole
+/// does nothing.
+pub async fn join(
+    ctx: &mut Ctx<'_>,
+    store: &str,
+    id: &[u8; 16],
+    pieces: u64,
+    media: &str,
+) -> Result<(), Unanswered> {
+    let input = Value::record(
+        "FileJoin",
+        vec![
+            (Rc::from("key"), Value::text(&key_for(id))),
+            (
+                Rc::from("pieces"),
+                Value::Int(i64::try_from(pieces).unwrap_or(i64::MAX)),
+            ),
+            (Rc::from("type"), Value::text(media)),
+        ],
+    );
+    call(ctx, Call::new(store, JOIN, input, Repeat::Keyed))
+        .await
+        .map(|_| ())
+}
+
+/// Drops the first `pieces` pieces of the file whose new id is `id`, and
+/// the file if they were joined: a cancelled export's (chunk 6.4b2).
+pub async fn discard(
+    ctx: &mut Ctx<'_>,
+    store: &str,
+    id: &[u8; 16],
+    pieces: u64,
+) -> Result<(), Unanswered> {
+    let input = Value::record(
+        "FileDiscard",
+        vec![
+            (Rc::from("key"), Value::text(&key_for(id))),
+            (
+                Rc::from("pieces"),
+                Value::Int(i64::try_from(pieces).unwrap_or(i64::MAX)),
+            ),
+        ],
+    );
+    call(ctx, Call::new(store, DISCARD, input, Repeat::Keyed))
+        .await
+        .map(|_| ())
+}
+
 /// At most `length` of `file`'s bytes from `from`, through its store:
 /// fewer only at its end, or when the store reads less at once.
 pub async fn read(
@@ -256,6 +342,16 @@ impl MemoryFiles {
         self.reads.get()
     }
 
+    /// The keys it holds bytes under, in order.
+    pub fn keys(&self) -> Vec<String> {
+        self.files.borrow().keys().cloned().collect()
+    }
+
+    /// Forgets every file it holds.
+    pub fn clear(&self) {
+        self.files.borrow_mut().clear();
+    }
+
     /// `bytes` kept as a file of the `FileType` variant `file_type` in
     /// connection `store`, as a test's fixture file is (area 13): the
     /// `File` an action is given.
@@ -321,6 +417,50 @@ impl MemoryFiles {
                 Answer::Value(Value::Bytes(Rc::from(
                     bytes.get(from..to).unwrap_or_default(),
                 )))
+            }
+            JOIN => {
+                let Some(Value::Int(pieces)) = input.get("pieces") else {
+                    return Answer::Misconfigured;
+                };
+                let Some(id) = jadpo_std::files::key_id(key) else {
+                    return Answer::Failed(NOT_FOUND.into());
+                };
+                let mut files = self.files.borrow_mut();
+                let count = u64::try_from(*pieces).unwrap_or(0);
+                let keys: Vec<String> = (0..count).map(|piece| piece_key(&id, piece)).collect();
+                if keys.iter().all(|piece| files.contains_key(piece)) {
+                    if self.full.get() {
+                        return Answer::Failed(STORAGE_FULL.into());
+                    }
+                    let mut whole = Vec::new();
+                    for piece in &keys {
+                        if let Some(bytes) = files.remove(piece) {
+                            whole.extend(bytes);
+                        }
+                    }
+                    files.insert(key.to_string(), whole);
+                    return Answer::Value(Value::Unit);
+                }
+                // Joined already: the pieces went as the file was kept.
+                if files.contains_key(&**key) && keys.iter().all(|piece| !files.contains_key(piece))
+                {
+                    return Answer::Value(Value::Unit);
+                }
+                Answer::Failed(NOT_FOUND.into())
+            }
+            DISCARD => {
+                let Some(Value::Int(pieces)) = input.get("pieces") else {
+                    return Answer::Misconfigured;
+                };
+                let Some(id) = jadpo_std::files::key_id(key) else {
+                    return Answer::Failed(NOT_FOUND.into());
+                };
+                let mut files = self.files.borrow_mut();
+                for piece in 0..u64::try_from(*pieces).unwrap_or(0) {
+                    files.remove(&piece_key(&id, piece));
+                }
+                files.remove(&**key);
+                Answer::Value(Value::Unit)
             }
             _ => Answer::Misconfigured,
         }

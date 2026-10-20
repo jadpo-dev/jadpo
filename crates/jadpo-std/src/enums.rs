@@ -165,6 +165,20 @@ std_enum! {
 }
 
 std_enum! {
+    /// Who a CSV or TSV file is written for (area 19, "Data formats"; area
+    /// 12, "Batches"; chunk 6.4b2): what `csv.write`'s and `tsv.write`'s
+    /// required `format:` says.
+    CsvFormat: "CsvFormat" {
+        /// A spreadsheet: a UTF-8 byte-order mark first, CRLF line
+        /// endings, and a text cell a spreadsheet would read as a formula
+        /// written with `'` before it.
+        Spreadsheet: "spreadsheet",
+        /// A program: CRLF line endings only.
+        Standard: "standard",
+    }
+}
+
+std_enum! {
     /// Which instant a local time takes when a zone's clocks change around
     /// it (area 10, question 7): an `overlap` happens twice, a `gap` never.
     /// Without `dst:`, or with `reject`, such a time is a failure the
@@ -581,6 +595,7 @@ pub fn enums() -> Vec<(&'static str, Vec<&'static str>)> {
         (TextDirection::NAME, TextDirection::NAMES.to_vec()),
         (TranslationReview::NAME, TranslationReview::NAMES.to_vec()),
         (BatchState::NAME, BatchState::NAMES.to_vec()),
+        (CsvFormat::NAME, CsvFormat::NAMES.to_vec()),
         (Dst::NAME, Dst::NAMES.to_vec()),
         (InvalidDay::NAME, InvalidDay::NAMES.to_vec()),
         (ComponentStyle::NAME, ComponentStyle::NAMES.to_vec()),
@@ -655,6 +670,7 @@ pub fn variant_ordinal(name: &str, variant: &str) -> Option<u32> {
         TextDirection::NAME => position(TextDirection::NAMES),
         TranslationReview::NAME => position(TranslationReview::NAMES),
         BatchState::NAME => position(BatchState::NAMES),
+        CsvFormat::NAME => position(CsvFormat::NAMES),
         Dst::NAME => position(Dst::NAMES),
         InvalidDay::NAME => position(InvalidDay::NAMES),
         ComponentStyle::NAME => position(ComponentStyle::NAMES),

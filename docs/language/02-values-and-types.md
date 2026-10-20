@@ -2844,8 +2844,10 @@ program reads their fields, and an entity field keeps a `BatchRun` as its
 JSON; `File` and `FileContents` came with the `files` capability's first
 part in chunk 6.4b (area 16): only the runtime builds either, an entity
 field keeps a `File` as its JSON, and a program reads neither's parts yet;
-`ExportSummary` and `CsvFormat` come with the file helpers' writers
-(roadmap 6.4b2).
+`ExportSummary` and `CsvFormat` came with the file helpers' writers in
+chunk 6.4b2 (area 19, "Data formats"): only the runtime builds an
+`ExportSummary`, whose `file` an entity's `File` field keeps, and
+`CsvFormat` is a standard enum of `spreadsheet` and `standard`.
 
 ### Consistency with the rest of the language
 

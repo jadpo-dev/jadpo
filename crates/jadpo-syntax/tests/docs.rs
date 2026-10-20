@@ -37,11 +37,6 @@ const EXPECTED_TO_FAIL: &[(&str, &str, &str)] = &[
         "the block also shows a JSON translations file",
     ),
     (
-        "docs/language/12-jobs-and-events.md",
-        "each: row -> save_product(row, account: import.account_id),",
-        "an inline function as a named argument (`each:`), decided 2026-10-16 (area 3), parses with batches (chunk 6.4)",
-    ),
-    (
         "docs/language/16-built-in-services.md",
         "metric checkouts_completed = Counter {",
         "`metric` declarations, decided 2026-10-16 (area 16), parse once telemetry is built; the block also shows a bare statement",

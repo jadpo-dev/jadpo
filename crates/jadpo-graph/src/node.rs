@@ -179,8 +179,9 @@ pub enum Detail {
         /// An input field read from a request header: the header's name as
         /// written (area 7).
         header: Option<String>,
-        /// An input field read from a file's column of another name: the
-        /// column's name as written (area 12, "Batches"; chunk 6.4b).
+        /// An input field read from a file's column of another name, or an
+        /// output field written to one: the column's name as written (area
+        /// 12, "Batches"; chunks 6.4b and 6.4b2).
         column: Option<String>,
         section: Option<Section>,
         /// For a field brought in by `include` or `pick`: where it comes from.
