@@ -944,6 +944,7 @@ one per-invocation context in `jadpo-runtime`:
 | `fail(failure)`, `fault(kind, site)` | Failures and defects with their `.jadpo` place |
 | `assertion_begin`, `record(site, value)`, `assertion_end` | A failed `assert`'s parts, recorded the same way by either executor (chunk 2.10) |
 | `effects::run(ctx, effects, effect, values)` | `clock.now`, `random`, `crypto` with its key, `json.read` and `json.write` with the plan's codec, and `emit` (chunk 7.0b) |
+| `effects::call(ctx, call)` | Every call that leaves the process, through the capability seam (chunk 7.0c, §2.6) |
 
 **Operations with effects** (chunk 7.0b). Everything a body does that
 reads the invocation rather than only its values runs in one runtime
@@ -971,8 +972,11 @@ a report names it and, for `mismatch`, its `DecodeProblem`),
 site. `the_interpreter_runs_effects_only_through_the_runtime` holds the
 interpreter to it: none of its sources may name what runs an effect (the
 clock, random bytes, `crypto::run`, a key ring, the JSON reader, the
-outbox), and each such name must still be the entry point's. The
-capability seam (chunk 7.0c) joins here, an outside call another effect.
+outbox), and each such name must still be the entry point's. Since
+chunk 7.0c an outside call is another effect, run by `effects::call`,
+asynchronous since it waits on the outside (§2.6, "The capability
+seam"); the interpreter may not reach a driver (`.capability(`) of its
+own either.
 
 **The context's parts** (chunk 7.0b). `Ctx`'s fields are private and
 reached through methods. Its background-run state is one struct,
@@ -984,10 +988,11 @@ capabilities another, `Capabilities` (the host, through which its stores,
 passkey ceremonies and random bytes are reached, the identities made from
 them and the recording tape), reached through `Ctx::capabilities` and the
 methods that draw on them (`random_bytes`, `secret_random_bytes`,
-`new_id`, `transaction`); the capability seam (chunk 7.0c) is built on
-it. The action boundary's own state is `boundary::Boundary`, read and
-written field by field only in `boundary.rs`; the runner's batches use its
-methods. The request's own state (its caller, client address, deadline
+`new_id`, `transaction`); since chunk 7.0c it also keeps the log of the
+invocation's outside calls and what a recording keeps of their answers
+(§2.6, "The capability seam"). The action boundary's own state is
+`boundary::Boundary`, read and written field by field only in
+`boundary.rs`; the runner's batches use its methods. The request's own state (its caller, client address, deadline
 and a test's settings), the frames and the assertion being recorded stay
 on `Ctx`. Its public methods are unchanged.
 
@@ -2048,11 +2053,14 @@ doubles the async signatures and lets bugs hide on one target.
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
-**Capability drivers.** One trait per capability: `Database` (begin,
-query, execute, commit, rollback, and one statement on its own),
-`Cache`, `Email`, `Sms`, `Files`, `Publishing` and `ScheduleTick` (ticks
-and an optional lease); rate limits and the wall clock are `Host`
-methods (chunk 4.10). Drivers
+**Capability drivers.** `Database` (begin, query, execute, commit,
+rollback, and one statement on its own) and `ScheduleTick` (ticks and
+an optional lease) are traits of their own; every outside capability's
+driver, `files`', `email`'s, `publishing`'s and a package's alike, is
+one trait, `capability::Capability`, named by its connection, so the
+capability seam logs, records, guards and fakes them all one way
+(chunk 7.0c, below); rate limits and the wall clock are `Host` methods
+(chunk 4.10). Drivers
 classify their own errors into the runtime's fixed set (conflict with the
 constraint name, serialisation failure, unavailable, fault), so executors
 and targets agree; the experiments found exactly this classification
@@ -2063,6 +2071,49 @@ declared protocol, credentials, idempotency header, retries and error
 mapping through `Host::fetch`; packages never generate driver code. Drivers
 list their targets for `jadpo check` (area 11), and test fakes implement
 the same traits.
+
+**The capability seam** (chunk 7.0c, from the Phase 6 architecture
+review; area 16, "Chosen in chunk 7.0c"). Every call that leaves the
+process goes through `jadpo_runtime::effects::call(ctx, call)`, which
+both executors call: a `capability::Call` (its connection, operation,
+input, and `Repeat`: `Safe`, `Keyed` or `Unkeyed`) is refused with
+`FaultKind::CallInTransaction` while the action's transaction is open
+(`Ctx::transaction_open`; area 6's snapshot closed before a call is
+chunk 7.4's); in a replayed run it is answered from the recording
+(`capability::Recording`, the random bytes and each call's answer, which
+`Ctx::record_run`, `recorded_run` and `replay_run` keep and give back),
+a call the recording doesn't have next refused; otherwise it is sent
+through the driver `Host::capability(connection)` gives, `misconfigured`
+when there is none. The invocation's `Capabilities` log each call as it
+goes out and when it is answered (`capability::Logged`: connection,
+operation, `Repeat`, `Source`, when, how long on the monotonic clock,
+`Ended`), never its input or answer; `Ctx::take_calls` takes it, and
+`serve_request` leaves a request's on `Response::calls` for `jadpo
+calls` (its screen and full values in development are chunk 7.2's). A
+driver's `Answer` decides what the call gives: its value, its
+operation's own failure for the site to map (`effects::Unanswered::
+Failed`), or the runtime's `unavailable`, `misconfigured` or, for an
+unkeyed call that may have acted, `outcome_unknown` (`boundary::
+outcome_unknown`). A subscriber's plan names its `Target`: an action,
+or a capability's operation handed the event whole
+(`Target::Capability`, which chunk 7.3's email will plan), and
+`runner::attempt_delivery` runs either within the same budget.
+`Logged::may_have_acted` (an unkeyed call answered or still out) turns
+what would be a retry into `After::Park`: the delivery record becomes
+`outcome_unknown`, never claimed again. An unkeyed capability send marks
+its record `sending` first (`outbox::MARK_SENDING`), so one whose worker
+was lost is parked by the sweep (`outbox::PARK_LOST`) rather than sent
+again; a subscriber's action lost mid-call waits for chunk 7.5's step
+record. Fakes are host wrappers: `capability::Faked` gives a
+`capability::Fake` (scripted answers per operation, a `Hang`, and what
+it was sent) in some connections' place, everything else the wrapped
+host's, through `Host` for `&H`. The runtime's Rust tests share one host,
+`jadpo_test::host::Bench` (one store for every name, a clock the test
+moves, randomness from a counter, timers that pass when told, a budget,
+and the work it is given kept), which replaced twenty hand-written hosts
+in nineteen of `crates/jadpo-cli/tests`' files; the live tests of
+`capability_deliveries.rs` prove the seam with a test capability, the
+`mail` connection's fake.
 
 **What differs on Workers.**
 

@@ -1272,7 +1272,73 @@ multipart slots, and image variants and scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
 monitoring thresholds come after the first build ("Remaining built-in
 services" on the roadmap). The errors this page describes are built with
-the feature they belong to.
+the feature they belong to. Built in chunk 7.0c: the seam every
+capability's calls will go through, with a test capability standing in
+for the first real one, and a delivery that hands its event to a
+capability, parked as `outcome_unknown` when a send without a key may
+have acted ("Chosen in chunk 7.0c" below).
+
+### Chosen in chunk 7.0c
+
+What "Capabilities on this page", "Sends without an idempotency key" and
+area 6's "Outside calls hold no transaction" leave to the build of the
+seam, from the Phase 6 architecture review, each the most conservative
+reading:
+
+- **One way out.** Every call that leaves the process, a capability's or
+  a provider's, goes through one runtime entry point that both executors
+  call. A driver is named by the connection it serves (area 11) and
+  answers in one of five ways: a value; one of its operation's own
+  failures, which the call maps; *surely did nothing*; *may have acted*;
+  or *misconfigured*. A call to a connection no driver fills is
+  `misconfigured` and never sent.
+- **Logged on its invocation, without its values.** Each call is logged
+  as it goes out and again when it is answered: its connection and
+  operation, whether it may be sent again (it changes nothing, it
+  changes something under a key, or it changes something with no key),
+  where its answer came from (the driver, a fake, a replay), when it went
+  out, how long it took, and how it ended. Never its input or its
+  answer, which can hold secrets and personal data; `jadpo calls`'s full
+  values in development (area 17) are chunk 7.2's, with its screen. A
+  response carries its request's log.
+- **Recorded and replayed with the other effects.** A recording keeps
+  each call's answer, in order, beside the random bytes it keeps, and a
+  replay gives the answers back without the calls going out; a replayed
+  call the recording doesn't have next is refused before it goes out.
+- **`outcome_unknown` only where a repeat could act twice.** A call that
+  may have acted raises `outcome_unknown` when it changes something with
+  no key; one under a key, or one that changes nothing, raises
+  `unavailable`, since sending it again acts once.
+- **A delivery can target a capability.** Besides a subscriber's action,
+  a delivery can hand its event whole to an operation of the capability
+  a connection fills, as an `EmailMessage`'s will (chunk 7.3). Its record
+  alone says it was sent: there is no action, so no handled record.
+- **Parked, never sent again blindly.** A delivery is parked as
+  `outcome_unknown` for an operator (area 12, "What an operator sees")
+  when its send may have acted and has no key: its driver said so, its
+  run's time ran out while the send was out, or its worker was lost
+  while it was out. An unkeyed send is marked `sending` on its delivery
+  record before it goes out, so the sweep parks one whose lease passed
+  instead of claiming it again. A subscriber's action that sent such a
+  call and then ended in a way that is otherwise retried (a store that
+  couldn't be reached, its time running out) is parked too, since a
+  retry would send the call again; one that fails for good stays
+  `failed`. A send under a key, or one that surely did nothing, is
+  retried as any delivery is. A subscriber's action whose worker is lost
+  while its call is out is the step record's (area 12, "Several changing
+  calls in one action"; chunk 7.5): until then it is claimed again as
+  any lost delivery is.
+- **No call inside an open transaction.** A call made once the action
+  has read or written, while its transaction is open, is refused before
+  it goes out, with a fault naming the call and saying to make it before
+  the action's first read or write. Closing a read snapshot before the
+  call instead, and the checker proving it, are chunk 7.4's. A batch's
+  items run inside their batch's transaction, so an item's call is
+  refused the same way until then.
+- **Fakes wrap the host.** A fake is a host wrapper giving a scripted
+  driver in some connections' place, everything else the host's own: a
+  test runs on it, and `jadpo dev` will (chunk 7.2). The runtime's Rust
+  tests share one test host, which fakes wrap the same way.
 
 ### Consistency with the rest of the language
 
