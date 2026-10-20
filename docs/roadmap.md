@@ -883,13 +883,24 @@ The design is area 11 as revised on 2026-10-16, with its research in
   app's `tidy` gives `semantic.duplicate_declaration`), though a
   package's names are scoped to it; and `jadpo dev` and `jadpo test
   --watch` watching a linked checkout, not only reading it at start.
-- [ ] **7.1c Connections and the network report** `opus · high`, after
+- [x] **7.1c Connections and the network report** `opus · high`, after
   7.1b2 (split from 7.1c Connections, the network report, lazy loading
   and versions side by side on 2026-10-20): `connections:` entries naming
   a package (`package:`, `domains:`, `credential:`, `environment:`,
   `host:` against `hosts:` and `runs:`, settings), the network report,
   and the dev and test hosts answering a connection only with its
   declared driver. The public registry stays after the first build.
+  Built: `package:` naming a provider package the app holds by name and
+  version with no `use` line; `domains:`, `credential:` from a secret
+  setting, `environment:` from a `ProviderEnvironment` setting (a new
+  built-in enum), `host:` from a `Url` setting only where the package has
+  no fixed hosts, and the package's own `settings:` (plain values) by
+  name, with `connection.package_unknown`, `key_invalid`, `key_missing`
+  and `value_invalid`; `build/report/network.md` and `.json`, a row per
+  host with when, what for and the domains using it; and the dev and test
+  hosts giving the disk driver only for the plan's stores of files, so a
+  package's connection has no driver until 7.2c. Choices in area 11's
+  "Chosen in chunk 7.1c" (area 10 notes the settings).
 - [ ] **7.1c2 Lazy loading and two versions side by side** `opus · high`,
   after 7.1c and 7.1d (both touch how names through a package resolve):
   lazy loading of a package's resources by file name with the check
