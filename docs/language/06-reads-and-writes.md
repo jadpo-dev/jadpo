@@ -1899,12 +1899,13 @@ through:
   of their own and close the same way.
 - **The row version check.** An update, delete or transition of a row
   loaded in a snapshot a call closed first reads that row's version in the
-  new transaction, locked as the write would lock it (`FOR NO KEY
-  UPDATE`), once per transaction. A different version, or no row, is a
-  concurrent change. A write by `id` is held to it too when the action
-  loaded that row before the call, as repeatable read holds any write to a
-  row changed since the snapshot. A row loaded in two snapshots is held to
-  the first version.
+  new transaction, locked as an update locks it (`FOR NO KEY UPDATE`),
+  once per transaction. A different version, or no row, is a concurrent
+  change. A write by `id` is held to it too when the action loaded that
+  row before the call, as repeatable read holds any write to a row changed
+  since the snapshot. A row is held to the version the action first
+  loaded, so one read again after the call, or in a second snapshot, is
+  still checked against it.
 - **A change reruns the action.** A concurrent change throws the attempt
   away and runs the action again, within the existing budget of three
   attempts. Its keyed calls take the same steps again, so each repeats
