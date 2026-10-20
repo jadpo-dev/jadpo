@@ -35,6 +35,10 @@ pub struct Failure {
     /// The failure it was mapped from, kept as an internal cause (area 4,
     /// question 8).
     pub cause: Option<Box<Failure>>,
+    /// For a built-in failure that says when to try again, the seconds to
+    /// wait, which a route's response gives as `Retry-After`: magic links'
+    /// `rate_limited` and `sign_in_codes_disabled` (chunk 7.3b3).
+    pub retry_after: Option<i64>,
 }
 
 impl Failure {
@@ -56,6 +60,7 @@ impl Failure {
             broken: None,
             frames: Vec::new(),
             cause: None,
+            retry_after: None,
         }
     }
 

@@ -927,7 +927,7 @@ impl Body<'_> {
         }
         // A batch run, its progress, its summary and its problems (area 12).
         if let Some(object) = super::batches::batch_fields(&through)
-            .or_else(|| super::identity::first_sign_in_fields(&through))
+            .or_else(|| super::identity::first_sign_in_fields(&self.identity(), &through))
             && let Ty::Opaque(name, _) = &through
         {
             let Some((_, ty)) = object.iter().find(|(name, _)| *name == field) else {
@@ -1347,6 +1347,23 @@ impl Body<'_> {
                     .at(self.span(record), "only the runtime builds it")
                     .reason(reason)
                     .next(next),
+                );
+                self.walk(|walk| walk.member_values(record.member_list()));
+                Ty::Error
+            }
+            // What `magic_links.redeem` gives: the runtime's to build, from
+            // a link or a code it checked (area 8; chunk 7.3b3).
+            ([], None) if name == jadpo_std::http::MAGIC_LINK_REDEEMED => {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_NOT_RECORD,
+                        format!("`{name}` isn't built with `{{ ... }}`"),
+                    )
+                    .at(self.span(record), "only the runtime builds it")
+                    .reason(format!(
+                        "Only the runtime builds a `{name}`, once `magic_links.redeem` or `.redeem_code` has used a link or a code: its `user_id` is the person who proved they hold the address."
+                    ))
+                    .next("Use the value `magic_links.redeem` gives, and remove this one"),
                 );
                 self.walk(|walk| walk.member_values(record.member_list()));
                 Ty::Error
@@ -2042,7 +2059,7 @@ pub(crate) fn members_of(
             .collect();
     }
     if let Some(object) = super::batches::batch_fields(receiver)
-        .or_else(|| super::identity::first_sign_in_fields(receiver))
+        .or_else(|| super::identity::first_sign_in_fields(identity, receiver))
     {
         return object
             .into_iter()

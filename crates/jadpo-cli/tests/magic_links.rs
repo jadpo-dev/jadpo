@@ -90,14 +90,19 @@ enum Variant {
     OwnEmail,
     /// The application's own sending, through a provider (level 5).
     OwnSending,
+    /// The application's own routes, with `generate_routes: false` and
+    /// `same_browser: true` (chunk 7.3b3).
+    OwnRoutes,
 }
 
 fn files(variant: Variant) -> Vec<(&'static str, String)> {
     let same_browser = variant == Variant::SameBrowser;
-    let same = if same_browser {
-        "\n            same_browser: true"
-    } else {
-        ""
+    let same = match variant {
+        Variant::SameBrowser => "\n            same_browser: true",
+        Variant::OwnRoutes => {
+            "\n            same_browser: true\n            generate_routes: false"
+        }
+        _ => "",
     };
     let mut files = vec![
         (
@@ -384,6 +389,151 @@ action send_sign_in_link(request: MagicLinkRequest) -> Unit {
         link: request.sign_in_link
         code: request.code
     })
+}
+"#
+                .to_string(),
+            ),
+        ]);
+    }
+    // The application's own routes over magic links' operations (area 8,
+    // "Writing the routes yourself").
+    if variant == Variant::OwnRoutes {
+        files.extend([
+            (
+                "domains/notes/types/return_path.jadpo",
+                "type ReturnPath = Text {\n    max_length: 2000\n}\n".to_string(),
+            ),
+            (
+                "domains/notes/types/link_asked.jadpo",
+                "use notes/types { ReturnPath }\n\ntype LinkAsked = Input {\n    address: Email\n    locale: Locale\n    return_to: ReturnPath?\n}\n"
+                    .to_string(),
+            ),
+            (
+                "domains/notes/types/link_given.jadpo",
+                "type LinkGiven = Input {\n    token: SignInToken\n}\n".to_string(),
+            ),
+            (
+                "domains/notes/types/code_given.jadpo",
+                "type CodeGiven = Input {\n    address: Email\n    code: SignInCode\n}\n"
+                    .to_string(),
+            ),
+            (
+                "domains/notes/types/signed_in.jadpo",
+                "type SignedIn = Output {\n    return_to: Text\n}\n".to_string(),
+            ),
+            (
+                "domains/notes/types/app_signed_in.jadpo",
+                "type AppSignedIn = Output {\n    token: ApiToken\n}\n".to_string(),
+            ),
+            (
+                "domains/notes/actions/ask_for_link.jadpo",
+                r#"use notes/types { LinkAsked }
+
+/// Sends a link and a code to the address asked for.
+action ask_for_link(input: LinkAsked) -> Unit {
+    magic_links.request(input.address, input.locale, input.return_to)
+}
+"#
+                .to_string(),
+            ),
+            (
+                "domains/notes/actions/confirm_link.jadpo",
+                r#"use notes/types { LinkGiven, SignedIn }
+
+/// Signs this browser in with a link's token.
+action confirm_link(input: LinkGiven) -> SignedIn {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
+    sessions.start(redeemed.user_id)
+    return SignedIn {
+        return_to: redeemed.return_to
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                "domains/notes/actions/confirm_code.jadpo",
+                r#"use notes/types { CodeGiven, SignedIn }
+
+/// Signs this browser in with a code.
+action confirm_code(input: CodeGiven) -> SignedIn {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem_code(input.address, input.code)
+    sessions.start(redeemed.user_id)
+    return SignedIn {
+        return_to: redeemed.return_to
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                "domains/notes/actions/token_for_code.jadpo",
+                r#"use notes/types { AppSignedIn, CodeGiven }
+
+/// Gives the application's own client a token for a code.
+action token_for_code(input: CodeGiven) -> AppSignedIn {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem_code(input.address, input.code)
+    return AppSignedIn {
+        token: sessions.issue_token(redeemed.user_id)
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                "domains/notes/routes/sign_in.jadpo",
+                r#"use notes/actions { ask_for_link, confirm_code, confirm_link, token_for_code }
+use notes/types { AppSignedIn, CodeGiven, LinkAsked, LinkGiven, SignedIn }
+
+routes SignIn {
+    prefix: /sign-in
+
+    /// Asks for a link and a code.
+    POST /ask {
+        authentication: RouteAuthentication.none
+        input: LinkAsked
+        status: SuccessStatus.no_content
+        run: ask_for_link(input)
+    }
+
+    /// Signs in with a link's token.
+    POST /link {
+        authentication: RouteAuthentication.none
+        input: LinkGiven
+        output: SignedIn
+        run: confirm_link(input)
+    }
+
+    /// Signs in with a code.
+    POST /code {
+        authentication: RouteAuthentication.none
+        input: CodeGiven
+        output: SignedIn
+        run: confirm_code(input)
+    }
+
+    /// Trades a code for an API token.
+    POST /token {
+        authentication: RouteAuthentication.none
+        input: CodeGiven
+        output: AppSignedIn
+        run: token_for_code(input)
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                "policy.jadpo",
+                r#"use notes
+
+policy {
+    actions: {
+        notes.ask_for_link: [Access.public]
+        notes.confirm_link: [Access.public]
+        notes.confirm_code: [Access.public]
+        notes.token_for_code: [Access.public]
+    }
 }
 "#
                 .to_string(),
@@ -1208,4 +1358,194 @@ fn the_apps_own_sending_is_given_a_fresh_link_and_code_each_attempt() {
     let confirmed = live.confirm(&mut browser, &format!("{{\"token\":\"{token}\"}}"));
     assert_eq!(confirmed.status, 200, "{}", text(&confirmed));
     assert!(browser.signed_in());
+}
+
+// --- the application's own routes (chunk 7.3b3) ------------------------------
+
+impl Live {
+    /// Asks for a link through the application's own route.
+    fn ask_own(&self, browser: &mut Browser, address: &str, return_to: &str) -> Response {
+        let response = self.send(&browser.public(
+            "POST",
+            "/sign-in/ask",
+            &format!(
+                "{{\"address\":\"{address}\",\"locale\":\"en-GB\",\"return_to\":\"{return_to}\"}}"
+            ),
+        ));
+        browser.keep(&response);
+        response
+    }
+
+    fn post_own(&self, browser: &mut Browser, path: &str, body: &str) -> Response {
+        let response = self.send(&browser.public("POST", path, body));
+        browser.keep(&response);
+        response
+    }
+}
+
+#[test]
+fn the_apps_own_routes_sign_in_with_a_link_once_in_the_browser_that_asked() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("own_link", Variant::OwnRoutes);
+    // No generated routes.
+    let generated = live.send(&Browser::default().public(
+        "POST",
+        "/auth/magic-link",
+        "{\"address\":\"ada@example.com\"}",
+    ));
+    assert_eq!(generated.status, 404, "{}", text(&generated));
+    let mut asker = Browser::default();
+    let asked = live.ask_own(&mut asker, "ada@example.com", "/notes");
+    assert_eq!(asked.status, 204, "{}", text(&asked));
+    let cookie = asked.header("set-cookie").expect("the binding cookie");
+    assert!(
+        cookie.starts_with("notes_session_sign_in=")
+            && cookie.contains("HttpOnly")
+            && cookie.contains("SameSite=Lax")
+            && cookie.contains("Max-Age=900"),
+        "{cookie}"
+    );
+    let mail = live.last_mail("ada@example.com");
+    let (token, six) = (mail.token(), mail.code());
+    // Neither the outbox nor the table holds the link or the code.
+    for row in live.rows("SELECT \"payload\"::text FROM \"jadpo_outbox\"") {
+        let found = format!("{row:?}");
+        assert!(!found.contains(&token) && !found.contains(&six), "{found}");
+    }
+    let link = format!("{{\"token\":\"{token}\"}}");
+    // Another browser is refused, and the link is left as it was.
+    let mut other = Browser::default();
+    let elsewhere = live.post_own(&mut other, "/sign-in/link", &link);
+    refused(&elsewhere, 401, "sign_in_link_other_browser");
+    assert!(!other.signed_in());
+    // The browser that asked signs in, as a new member, and the binding
+    // cookie is cleared.
+    let signed = live.post_own(&mut asker, "/sign-in/link", &link);
+    assert_eq!(signed.status, 200, "{}", text(&signed));
+    assert_eq!(json(&signed)["return_to"], "/notes");
+    assert!(asker.signed_in());
+    assert!(!asker.cookies.contains_key("notes_session_sign_in"));
+    // Once: the link, and the code it ended.
+    let again = live.post_own(&mut Browser::default(), "/sign-in/link", &link);
+    refused(&again, 401, "sign_in_link_expired");
+    let code = live.post_own(
+        &mut Browser::default(),
+        "/sign-in/code",
+        &format!("{{\"address\":\"ada@example.com\",\"code\":\"{six}\"}}"),
+    );
+    refused(&code, 401, "sign_in_code_invalid");
+    // The failure's text never holds the token or the code.
+    assert!(!text(&again).contains(&token) && !text(&code).contains(&six));
+}
+
+#[test]
+fn the_apps_own_routes_keep_the_limits_and_wrong_codes() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("own_limits", Variant::OwnRoutes);
+    let mut browser = Browser::default();
+    // A path off the site is refused, and nothing is sent.
+    let off = live.ask_own(&mut browser, "bo@example.com", "//evil.example/");
+    refused(&off, 422, "sign_in_return_invalid");
+    assert!(live.mails().is_empty());
+    assert_eq!(
+        live.ask_own(&mut browser, "bo@example.com", "/").status,
+        204
+    );
+    // One send per `resend_after:`, alike for an address no one has.
+    for address in ["bo@example.com", "nobody@example.com"] {
+        if address == "nobody@example.com" {
+            assert_eq!(live.ask_own(&mut browser, address, "/").status, 204);
+        }
+        let again = live.ask_own(&mut browser, address, "/");
+        refused(&again, 429, "rate_limited");
+        assert_eq!(again.header("retry-after"), Some("60"), "{address}");
+    }
+    let six = live.last_mail("nobody@example.com").code();
+    let six_bo = live
+        .mails()
+        .into_iter()
+        .find(|mail| mail.to == "bo@example.com")
+        .expect("bo's email")
+        .code();
+    // Wrong codes count even though the action fails: `code_attempts: 3`
+    // ends the code.
+    for _ in 0..3 {
+        let wrong = live.post_own(
+            &mut browser,
+            "/sign-in/code",
+            &format!(
+                "{{\"address\":\"bo@example.com\",\"code\":\"{}\"}}",
+                other_code(&six_bo)
+            ),
+        );
+        refused(&wrong, 401, "sign_in_code_invalid");
+    }
+    let right = live.post_own(
+        &mut browser,
+        "/sign-in/code",
+        &format!("{{\"address\":\"bo@example.com\",\"code\":\"{six_bo}\"}}"),
+    );
+    refused(&right, 401, "sign_in_code_invalid");
+    assert!(!browser.signed_in());
+    // Another address's right code signs in, as a new member.
+    let signed = live.post_own(
+        &mut browser,
+        "/sign-in/code",
+        &format!("{{\"address\":\"nobody@example.com\",\"code\":\"{six}\"}}"),
+    );
+    assert_eq!(signed.status, 200, "{}", text(&signed));
+    assert_eq!(json(&signed)["return_to"], "/");
+    assert!(browser.signed_in());
+}
+
+#[test]
+fn the_apps_own_route_trades_a_code_for_an_api_token() {
+    if !jadpo_test::live() {
+        return;
+    }
+    let live = Live::new("own_token", Variant::OwnRoutes);
+    let mut browser = Browser::default();
+    assert_eq!(
+        live.ask_own(&mut browser, "cy@example.com", "/").status,
+        204
+    );
+    let six = live.last_mail("cy@example.com").code();
+    let redeemed = live.send(&request(
+        "POST",
+        "/sign-in/token",
+        &[],
+        &format!("{{\"address\":\"cy@example.com\",\"code\":\"{six}\"}}"),
+    ));
+    assert_eq!(redeemed.status, 200, "{}", text(&redeemed));
+    let token = json(&redeemed)["token"]
+        .as_str()
+        .expect("a token")
+        .to_string();
+    let bearer = format!("Bearer {token}");
+    let me = live.send(&request(
+        "GET",
+        "/account/me",
+        &[("authorization", bearer.as_str())],
+        "",
+    ));
+    assert_eq!(me.status, 200, "{}", text(&me));
+    assert_eq!(json(&me)["email"], "cy@example.com");
+    // A refused first sign-in signs no one in.
+    assert_eq!(
+        live.ask_own(&mut browser, "closed@notes.example", "/")
+            .status,
+        204
+    );
+    let six = live.last_mail("closed@notes.example").code();
+    let closed = live.post_own(
+        &mut browser,
+        "/sign-in/code",
+        &format!("{{\"address\":\"closed@notes.example\",\"code\":\"{six}\"}}"),
+    );
+    refused(&closed, 403, "sign_in_refused");
+    assert!(!browser.signed_in());
 }

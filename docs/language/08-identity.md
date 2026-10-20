@@ -1247,7 +1247,16 @@ For magic links (chunk 7.3b, except where marked):
   an entity is `type.auth_credential_stored`, and one in an `Output`, a
   failure or an event `type.secret_exposed`.
 - A route the application writes at a generated magic-link path is
-  `route.path_overlap`.
+  `route.path_overlap`; with `generate_routes: false` there are none.
+- In chunk 7.3b3: `generate_routes:` that isn't `true` or `false`, or
+  `false` beside `path:`, is `semantic.auth_setting_invalid`; calling
+  `magic_links.request`, `.redeem` or `.redeem_code` with no
+  `magic_link:`, or with its routes generated, is
+  `semantic.auth_setting_required`; outside an action
+  `type.auth_sessions_context`; as a route's `run:` itself
+  `route.run_invalid`; a `SignInToken` kept in an entity is
+  `type.auth_credential_stored`, and one in an `Output`, a failure, an
+  event, an email, a message or a prompt `type.secret_exposed`.
 
 For passkeys (chunk 5.5z, except where marked):
 
@@ -2592,6 +2601,7 @@ Authentication failures are raised by the runtime, never declared or listed in
 | An address reached `failed_codes_per_day:` | `sign_in_codes_disabled` | `rate_limited` | 429 |
 | `on_first_sign_in` refused, or no user and no `on_first_sign_in:` for a provider or token | `sign_in_refused` | `not_permitted` | 403 |
 | Too many sends to one address | `rate_limited` | `rate_limited` | 429 |
+| `magic_links.request` given a path to go back to that isn't on the app's site (chunk 7.3b3) | `sign_in_return_invalid` | `invalid_value` | 422 |
 | A passkey ceremony's challenge expired, was used, was replaced or came from another browser or session | `passkey_challenge_expired` | `unauthenticated` | 401 |
 | A passkey's answer doesn't check (origin, relying party, presence, verification, signature or counter), or its passkey isn't registered | `passkey_rejected` | `unauthenticated` | 401 |
 | The passkey is registered already | `passkey_already_registered` | `conflict` | 409 |
@@ -3674,17 +3684,19 @@ routes` and the per-locale failure export list them ("Magic links
 (chosen in chunk 7.3b)" below). Since chunk 7.3b2 `email:` fills and
 sends the app's own sign-in email instead, and `send:` hands the link and
 the code to the app's own action, retried as a subscriber ("The app's own
-sign-in email and sending (chosen in chunk 7.3b2)" below).
+sign-in email and sending (chosen in chunk 7.3b2)" below). Since chunk
+7.3b3 `generate_routes: false` switches the routes off and the app's own
+routes call `magic_links.request`, `.redeem` and `.redeem_code`, through
+the same code the generated routes run ("The app's own routes (chosen in
+chunk 7.3b3)" below).
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
 - `external_token`, `sign_in:`'s `providers:` and `oauth_provider:`,
   after the first build, and with them `on_first_sign_in:` for those
   ways in.
-- Writing magic links' routes yourself, `generate_routes: false` over
-  `magic_links.request`, `.redeem` and `.redeem_code` (chunk 7.3b3), and
-  the events `SignedIn`, `SignInRefused` and `SignInCodesDisabled` (chunk
-  7.3b4).
+- The events `SignedIn`, `SignInRefused` and `SignInCodesDisabled`
+  (chunk 7.3b4).
 - A setting loosened past its limit, until acceptances (area 18).
 - Passkeys' recovery through a magic link, the check that `passkey:` has
   `magic_link:` beside it, `test_passkeys` in route tests, and their
@@ -3972,3 +3984,4 @@ builds it.
 | Asking and confirming (chosen in chunk 7.3b) | `POST /auth/magic-link` needs no `Origin`, so the app's own client asks too; its `locale` is a supported locale's name or BCP 47 tag, else `Accept-Language` decides; a `return_to` that isn't a site path is 422 `invalid_input`. An email goes to an address an account has (active or not; confirming then answers `user_disabled`) or, with `on_first_sign_in:`, to any. The confirm needs an `Origin` naming the browser session's origin; the redemption, for the app's own client, needs none. The person is found by the address exactly as the user's field holds it. A link opened in another browser under `same_browser:` is refused and left unused; the binding cookie is `<cookie>_sign_in` and is cleared once signed in. Wrong guesses count against the code and the address's UTC day only where the address has a row; past the day's, even the right code is `sign_in_codes_disabled`, with `Retry-After` until midnight UTC | 2026-10-20 |
 | First sign-in (chosen in chunk 7.3b) | `FirstSignIn` is a built-in object only the runtime makes (`method`, `address`, `address_verified`, `subject`, `name`); `SignInMethod` is a built-in enum of `magic_link`, `passkey` and `external_token`, a provider's value coming with providers. `on_first_sign_in:`'s action runs as the system (`Access.system` grants it), in its own transaction, before the session starts; a failure it declares is `sign_in_refused`, `unavailable` is `authentication_unavailable`, a fault `internal_fault`; the user it names is then read by its `id` and must be active. The reason a refusal had reaches the log and `SignInRefused` with the events (chunk 7.3b4) | 2026-10-20 |
 | The app's own sign-in email and sending (chosen in chunk 7.3b2) | `email:` and `send:` name a type or an action as `on_first_sign_in:` does, `<domain>.<name>`. `SignInCode` is a built-in type made of text (six digits); like an API token it is never kept in an entity (`type.auth_credential_stored`), nor put in an `Output`, a failure or an event (`type.secret_exposed`), nor written as JSON. `MagicLinkEmail` is a built-in object only an email copies from, with `pick:` or `include:` (`type.not_record` elsewhere); the email `email:` names may hold no field of its own and is never emitted (`event.emit_invalid`), so the outbox never holds its link or code. Its delivery is still Jadpo's: the link and the code are made as it is sent, the app's email filled from them and rendered as any of its emails is, in the request's locale. `send:` keeps `display_name:` required; its action is a subscriber's of `jadpo.MagicLinkEmail`, run as the system, reaching no tenant, retried and given up under area 12's defaults, each attempt given a link and a code of its own, so only the latest works; a request used or replaced since runs nothing | 2026-10-20 |
+| The app's own routes (chosen in chunk 7.3b3) | `generate_routes:` is `true` or `false`, and `false` beside `path:` is refused (`semantic.auth_setting_invalid`). The operations need `magic_link:` with `generate_routes: false` (`semantic.auth_setting_required`), so each link is asked for and used one way; only an action calls them (`type.auth_sessions_context`), and a route's `run:` never does (`route.run_invalid`). Their arguments are positional: `request` takes all three, `none` for the path meaning `/`, and a `locale` the app doesn't support falls back to its default. They run the generated routes' own code. `request` keeps the request in the action's transaction and leaves Jadpo's email as the action's own event, so it goes once the action commits, and an action that fails sends nothing and counts no send; the sweep of rows nothing counts runs on its own. `redeem` and `redeem_code` use the link or the code in a transaction of their own, before the action's writes, as the routes do: a wrong code stays counted though the action fails, and a used link or code stays used if the action fails after, so the person asks again; `on_first_sign_in:`'s action runs in its own transaction while the app's waits. An action that has asked for a link can't use one (a fault: it would wait on its own row). `same_browser:`'s cookie is read from the request; the response of the route whose action asked sets it, and the response of one whose action used a link clears it; neither response is kept for an idempotent repeat. `SignInToken` is a built-in type made of text (64 lower-case hexadecimal digits), held only by an `Input` or an `Object`: never kept (`type.auth_credential_stored`), nor put in an `Output`, a failure, an event, an email, a message or a prompt (`type.secret_exposed`), nor written as JSON. `MagicLinkRedeemed` is a built-in object only the runtime makes: `user_id`, the user entity's `id`, and `return_to: Text`, `/` unless the person gave a path. Their failures are the routes' own, raised by the runtime and passing through the action: `rate_limited` and `sign_in_codes_disabled` with `Retry-After`, and `sign_in_return_invalid` (`invalid_value`, 422), worded under the `magic_link_routes` feature of Jadpo's text. The API record and OpenAPI list the app's routes as its own, and no generated ones | 2026-10-20 |

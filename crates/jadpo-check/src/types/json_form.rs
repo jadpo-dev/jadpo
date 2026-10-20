@@ -80,6 +80,11 @@ pub(crate) fn no_json_form(
                 "a sign-in code, which only the email or the sending that carries it ever holds"
                     .to_string(),
             )),
+            Prim::SignInToken => Some((
+                found.to_string(),
+                "a sign-in link's token, which only the request the link's page posts ever holds"
+                    .to_string(),
+            )),
             Prim::PluralCount => Some((
                 found.to_string(),
                 "a message's plural count, used only as a `Message` field".to_string(),

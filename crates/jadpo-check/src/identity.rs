@@ -85,7 +85,7 @@ const BROWSER_SESSION: [&str; 3] = ["cookie", "origin", "signing_key"];
 const PASSKEY: [&str; 2] = ["expires_after", "path"];
 
 /// The settings `magic_link` takes (area 8, "Magic links").
-const MAGIC_LINK: [&str; 11] = [
+const MAGIC_LINK: [&str; 12] = [
     "address",
     "expires_after",
     "code_attempts",
@@ -95,6 +95,7 @@ const MAGIC_LINK: [&str; 11] = [
     "same_browser",
     "link",
     "path",
+    "generate_routes",
     "email",
     "send",
 ];
@@ -166,6 +167,10 @@ pub struct MagicLink {
     pub link: String,
     /// Where the generated routes go: `path:`'s segments.
     pub path: Vec<String>,
+    /// `generate_routes:`: `false` generates no routes, and the
+    /// application writes its own over `magic_links.request`, `.redeem`
+    /// and `.redeem_code` (chunk 7.3b3).
+    pub generate_routes: bool,
     /// `email:`, the application's own sign-in email (area 16, "Built-in
     /// emails", level 4), as written.
     pub email: Option<FirstSignIn>,
@@ -308,6 +313,12 @@ impl Identity {
         self.magic_link
             .as_ref()
             .filter(|_| self.sessions_store().is_some())
+    }
+
+    /// The magic links whose routes the runtime generates: none with
+    /// `generate_routes: false`, where the application writes its own.
+    pub fn magic_link_routes(&self) -> Option<&MagicLink> {
+        self.magic_links().filter(|magic| magic.generate_routes)
     }
 }
 
@@ -1829,12 +1840,17 @@ impl Reader<'_> {
             same_browser: false,
             link: String::new(),
             path: h::MAGIC_LINK_PATH.iter().map(|t| t.to_string()).collect(),
+            generate_routes: true,
             email: None,
             send: None,
             span: span.clone(),
         };
         let mut ok = true;
         let mut address: Option<(Vec<String>, Span)> = None;
+        // Where `path:` and `generate_routes: false` are written, which
+        // say opposite things together.
+        let mut moved: Option<Span> = None;
+        let mut switched_off: Option<Span> = None;
         let mut level: Vec<(String, Span)> = Vec::new();
         for (key, setting) in tree::members(Some(list)) {
             let Some(name) = tree::name_text(&key) else {
@@ -1964,6 +1980,26 @@ impl Reader<'_> {
                         }
                     }
                 }
+                "generate_routes" => match constant {
+                    Some(Const::Bool(on)) => {
+                        read.generate_routes = on;
+                        if !on {
+                            switched_off = Some(key_span.clone());
+                        }
+                    }
+                    _ => {
+                        ok = false;
+                        self.out.problems.push(
+                            Diagnostic::new(
+                                &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                                "`generate_routes:` must be `true` or `false`",
+                            )
+                            .at(value_span, "not `true` or `false`")
+                            .reason("`generate_routes: false` generates none of the magic-link routes, and the application writes its own over `magic_links.request`, `.redeem` and `.redeem_code`; they are generated unless it says otherwise.")
+                            .next("Write `generate_routes: false`, or leave it out"),
+                        );
+                    }
+                },
                 "same_browser" => match constant {
                     Some(Const::Bool(on)) => read.same_browser = on,
                     _ => {
@@ -2002,7 +2038,10 @@ impl Reader<'_> {
                         }
                     } else {
                         match text.as_deref().and_then(fixed_path) {
-                            Some(segments) => read.path = segments,
+                            Some(segments) => {
+                                read.path = segments;
+                                moved = Some(key_span.clone());
+                            }
                             None => {
                                 ok = false;
                                 self.out.problems.push(
@@ -2071,7 +2110,7 @@ impl Reader<'_> {
                     )
                     .at(key_span.clone(), "unknown setting")
                     .reason(format!(
-                        "Magic links take `address:`, `link:`, `expires_after:`, `code_attempts:`, `codes_per_hour:`, `failed_codes_per_day:`, `resend_after:`, `same_browser:`, `path:`, `email:` and `send:`; the language sets the tokens, the codes and how they are kept.{}",
+                        "Magic links take `address:`, `link:`, `expires_after:`, `code_attempts:`, `codes_per_hour:`, `failed_codes_per_day:`, `resend_after:`, `same_browser:`, `path:`, `generate_routes:`, `email:` and `send:`; the language sets the tokens, the codes and how they are kept.{}",
                         near.map_or_else(String::new, |near| format!(" Did you mean `{near}`?"))
                     ));
                     self.out.problems.push(match near {
@@ -2082,6 +2121,20 @@ impl Reader<'_> {
                     });
                 }
             }
+        }
+        // `path:` moves routes `generate_routes: false` switches off.
+        if let (Some(moved), Some(off)) = (moved, switched_off) {
+            ok = false;
+            self.out.problems.push(
+                Diagnostic::new(
+                    &rule::SEMANTIC_AUTH_SETTING_INVALID,
+                    "`magic_link:` has both `path:` and `generate_routes: false`",
+                )
+                .at(moved, "moves the routes")
+                .also(off, "switches them off")
+                .reason("`path:` says where the generated routes go, and `generate_routes: false` generates none, so the application's own routes take their paths from its `routes` blocks.")
+                .next("Remove `path:`, or `generate_routes: false`"),
+            );
         }
         // Levels 4 and 5 of the built-in email (area 16) are exclusive.
         if let [(_, first), (_, second), ..] = level.as_slice() {

@@ -632,6 +632,9 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
         Builtin::SignInCode if !is_sign_in_code(text) => {
             Err("isn't a sign-in code, which is six digits".into())
         }
+        Builtin::SignInToken if !is_sign_in_token(text) => {
+            Err("isn't a sign-in link's token, which is 64 lower-case hexadecimal digits".into())
+        }
         Builtin::Instant => crate::time::check_instant(text),
         Builtin::CalendarDate => crate::time::check_calendar_date(text),
         _ => Ok(()),
@@ -641,6 +644,15 @@ pub fn check_builtin_text(builtin: Builtin, text: &str) -> Result<(), String> {
 /// Whether `text` is a magic link's code (area 8): six ASCII digits.
 pub fn is_sign_in_code(text: &str) -> bool {
     text.len() == 6 && text.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Whether `text` is a magic link's token (area 8): 64 lower-case
+/// hexadecimal digits.
+pub fn is_sign_in_token(text: &str) -> bool {
+    text.len() == 64
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// The version digit of a UUID in its textual form; `None` when it isn't
