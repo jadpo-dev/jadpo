@@ -248,8 +248,9 @@ next call to stripe.payment_intents.create answers card_declined
 - `jadpo dev grants add <connection> --owner <id>` makes a fake OAuth grant
   for an owner (area 11).
 
-> **Built (chunk 7.2d)**, but for `jadpo trace`, `jadpo watch call`, the
-> request timelines and recordings (chunk 7.2d2): `jadpo dev` logs each
+> **Built (chunk 7.2d)**, but for `jadpo trace`, `jadpo watch call` and
+> the request timelines; answering from recordings, logged as
+> `recording`, since chunk 7.2d2: `jadpo dev` logs each
 > provider call as it ends in `build/dev/calls.jsonl`, and `jadpo calls`
 > reads it. The list, plain, after a booking answered with the generated
 > default and one scripted to find its slot taken:

@@ -268,10 +268,14 @@ pub fn check(
 }
 
 /// A package function's name as its package writes it, from its identity
-/// key: `money.parse`.
+/// key: its library and its name, `slots.parse_window`.
 pub fn function_name(key: &str) -> String {
-    let last = key.rsplit('/').next().unwrap_or(key);
-    last.rsplit(' ').next().unwrap_or(last).to_string()
+    let last = key.rsplit(['/', ' ']).next().unwrap_or(key);
+    let parts: Vec<&str> = last.split('.').collect();
+    parts
+        .get(parts.len().saturating_sub(2)..)
+        .unwrap_or_default()
+        .join(".")
 }
 
 /// The package's field decoders run at a recording's reading, each
@@ -620,5 +624,9 @@ mod tests {
     #[test]
     fn a_function_is_named_as_its_package_writes_it() {
         assert_eq!(function_name("money.parse"), "money.parse");
+        assert_eq!(
+            function_name("AcmeCouriers.slots.parse_window"),
+            "slots.parse_window"
+        );
     }
 }

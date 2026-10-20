@@ -1084,11 +1084,28 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `type.not_a_value`, so code and a test's `fakes:` can't write a
   package enum's value; written through the package (and its version
   while two are held) as a type's name already is.
-- [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
+- [x] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
   recordings and `jadpo package record` (against a local HTTP server in
   tests), every decoder run over every recording in `jadpo test` and the
   publishing bar, and `jadpo dev`'s fakes answering from a package's
-  recordings, their placeholders filled.
+  recordings, their placeholders filled. Built: a recording keeps the
+  answer along `output_at:` and the members the output type declares,
+  each plain text or number a placeholder naming its built-in type
+  (`"{Text}"`), what the package's own encodings and decoders read kept
+  as sent (`jadpo_runtime::recorded`); `jadpo test` reads every recording
+  of the app's own integrations through the package's decoders as a test
+  of kind `recording`, a field's `decode:` and `encode:` checked to give
+  back what was recorded (`test.recording_undecodable`,
+  `test.round_trip_failed`), and the publishing bar as its `decoders`
+  row; `jadpo dev`'s fake answers an operation from its recording, its
+  placeholders filled, logged as `recording`; and `jadpo package record
+  <connection> <operation> --input <json>` calls the sandbox once through
+  the package driver, never live and never with a stand-in credential
+  (`recording.refused`), keeps an answer that decodes and refuses one
+  that doesn't or a refusal (`recording.failed`), into the app's own
+  integration or a linked checkout. Live tests in `recordings.rs`
+  against a local server. Choices in area 11's "Chosen in chunk 7.2d2";
+  writing an operation's output type from the answer waits for 7.2e.
 - [ ] **7.2e Mapping imported types to standard types** `opus · high`,
   after 7.2d and 7.1b (area 11, "Mapping imported types to standard
   types", Richard 2026-10-17): shape and name detection decoded at the
