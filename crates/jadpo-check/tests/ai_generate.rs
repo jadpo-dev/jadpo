@@ -605,6 +605,11 @@ fn the_schema_is_the_types_own_with_its_descriptions() {
         ]),
         None
     );
+    // The field's inline rule is the schema's, as OpenAPI's is (chunk 7.7d).
+    assert_eq!(
+        at(&["$defs", "SupportAnswer", "properties", "reply", "maxLength"]),
+        Some(jadpo_graph::json::Value::from(2000u32))
+    );
     // A type built on `Text` asks for plain text.
     let text = graph
         .nodes()
