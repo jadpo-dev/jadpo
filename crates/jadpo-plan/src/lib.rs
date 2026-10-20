@@ -184,6 +184,7 @@ fn events_plan(
     use jadpo_check::events::Tenant;
     use jadpo_std::subscriber::{SubscriberPlan, Target, TenantFrom};
     let written = jadpo_check::types::written_stores(db, project);
+    let called = jadpo_check::types::called_connections(db, project);
     let subscribers = jadpo_check::events::subscribers(db, project)
         .iter()
         .filter_map(|model| {
@@ -209,6 +210,12 @@ fn events_plan(
                     .get(model.run.name())
                     .and_then(|stores| stores.keys().next().cloned())
                     .or_else(|| jadpo_check::events::outbox_store(db, project, model.run.name())),
+                // What its action calls out through, which a circuit
+                // breaker holds it for (chunk 7.2b).
+                connections: called
+                    .get(model.run.name())
+                    .map(|connections| connections.iter().cloned().collect())
+                    .unwrap_or_default(),
                 file: model.path.clone(),
                 line: model.line,
             })

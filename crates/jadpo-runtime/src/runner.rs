@@ -405,8 +405,9 @@ async fn drive(
 /// its subscriber handled it already; runs the subscriber's action as the
 /// system limited to the event's tenant, continuing the event's trace,
 /// its handled record committing with its writes; then records how it
-/// ended. `None` when it wasn't this runner's to deliver, or the program
-/// has no subscribers to deliver it to.
+/// ended. `None` when it wasn't this runner's to deliver, the program
+/// has no subscribers to deliver it to, or a circuit breaker held it
+/// (chunk 7.2b).
 pub async fn deliver(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
@@ -570,6 +571,21 @@ pub(crate) async fn attempt_delivery(
             FAILED,
         ));
     }
+    // Held, its attempt given back, while a provider it calls out to is
+    // unavailable and isn't due a probe (chunk 7.2b).
+    let watch = match crate::breaker::gate(
+        database,
+        &subscriber.calls_through(),
+        delivery.id,
+        attempt,
+        budget,
+        now,
+    )
+    .await
+    {
+        crate::breaker::Gate::Held => return None,
+        crate::breaker::Gate::Run(watch) => watch,
+    };
     // What the run sends outside is logged from here (chunk 7.0c).
     let mark = ctx.capabilities().calls().len();
     // A provider call's key is derived from the delivery's id, which every
@@ -653,6 +669,15 @@ pub(crate) async fn attempt_delivery(
     // it again would repeat: then the delivery is never given back nor
     // retried, but parked for an operator (area 16).
     let acted = ctx.capabilities().may_have_acted(mark);
+    // How its calls went counts towards their connections' breakers.
+    let calls = ctx
+        .capabilities()
+        .calls()
+        .get(mark..)
+        .unwrap_or_default()
+        .to_vec();
+    let ended = host.now_ms().unwrap_or(now);
+    crate::breaker::record(database, &watch, delivery.id, &calls, ended).await;
     let outcome = match ran {
         Ok(outcome) => outcome,
         // What the subscriber's action had begun is dropped, nothing it
@@ -798,6 +823,9 @@ pub(crate) async fn due(
     let database = host
         .database(store)
         .ok_or_else(|| StoreError::Fault(format!("no store called `{store}`")))?;
+    // What a circuit breaker holds and should no longer, and each due
+    // probe, is released first (chunk 7.2b).
+    crate::breaker::wake(database, now).await?;
     // A delivery whose worker was lost while its unkeyed call was out is
     // parked for an operator, never claimed again (chunk 7.0c).
     database

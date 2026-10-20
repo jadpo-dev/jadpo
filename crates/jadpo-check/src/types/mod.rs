@@ -11,6 +11,7 @@
 
 pub(crate) mod across;
 mod body;
+mod connections;
 pub(crate) mod decl;
 mod facts;
 mod formats;
@@ -33,6 +34,7 @@ pub use body::{
     Callable, Checked, FailureSet, FailureSets, Fallible, backfill_callables, body_problems,
     call_problems, callables_of, failure_set, failure_sets, rule_callables, typed_body,
 };
+pub use connections::called_connections;
 pub use decl::type_problems;
 
 /// Whether `name` is `Feature` or `FeatureCollection` (area 20), whose
