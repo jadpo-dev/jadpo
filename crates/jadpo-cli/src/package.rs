@@ -1074,37 +1074,6 @@ pub(crate) fn in_package(compiled: &Compiled, diagnostics: Vec<Diagnostic>) -> V
         .collect()
 }
 
-/// Shows a linked package's problems and sources in its checkout: each
-/// path under `packages/<name>/<version>/` as the same path under the
-/// link's folder (area 11, "Developing and publishing a package").
-pub(crate) fn show_in_checkouts(
-    links: &[(String, String)],
-    diagnostics: &mut [Diagnostic],
-    sources: &mut BTreeMap<String, String>,
-) {
-    let moved = |path: &str| -> Option<String> {
-        links.iter().find_map(|(folder, checkout)| {
-            let rest = path.strip_prefix(&format!("{folder}/"))?;
-            Some(format!("{checkout}/{rest}"))
-        })
-    };
-    for d in diagnostics.iter_mut() {
-        for label in d.primary.iter_mut().chain(d.secondary.iter_mut()) {
-            if let Some(path) = moved(&label.span.path) {
-                label.span.path = path;
-            }
-        }
-    }
-    let paths: Vec<String> = sources.keys().cloned().collect();
-    for path in paths {
-        if let Some(to) = moved(&path)
-            && let Some(text) = sources.remove(&path)
-        {
-            sources.insert(to, text);
-        }
-    }
-}
-
 fn check(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     if call.arguments.len() > 2 {

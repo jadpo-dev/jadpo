@@ -4268,6 +4268,12 @@ changelog, and chunk 7.1c connections to packages and the network report
 > "Chosen in chunk 7.1c" below. Next: lazy loading and two versions side
 > by side (chunk 7.1c2).
 
+> **Built (chunk 7.1d).** A package's names kept to it: its declarations
+> never clash with the app's or another package's, in the checker, the
+> graph and the interpreter; and `jadpo dev` and `jadpo test --watch`
+> watching a linked checkout as they run. The choices are in "Chosen in
+> chunk 7.1d" below.
+
 > **Built (chunk 7.2).** `jadpo package import openapi <file>`: a local
 > OpenAPI 3 document read into the app's own integration in
 > `shared/providers/<name>/<version>/`, exact from another Jadpo
@@ -4483,10 +4489,11 @@ What the pages leave to the build, each the most conservative reading:
   `unlink`. The installed folder stays. Every load reads the checkout's
   files, without hidden ones or its `build/`, in the installed folder's
   place, so `jadpo check`, `test` and `dev` compile the app against it;
-  `jadpo check` and `link` show its problems at the checkout's paths. A
-  checkout with no `package.jadpo` can't be read. `link` itself shows the
-  app's check against it. `jadpo dev` and `jadpo test --watch` read the
-  checkout when they start: an edit there shows at their next start.
+  `jadpo check` and `link` show its problems at the checkout's paths (and,
+  since chunk 7.1d, `test` and `dev` too). A checkout with no
+  `package.jadpo` can't be read. `link` itself shows the app's check
+  against it. `jadpo dev` and `jadpo test --watch` watch the checkout as
+  they run (chunk 7.1d, below).
 - **Where a link is refused.** CI is the `CI` variable set to anything but
   empty, as CI services set it and as `jadpo suggest share` and the
   terminal's animation already read it; there `jadpo check` and `jadpo
@@ -4582,6 +4589,41 @@ What the pages leave to the build, each the most conservative reading:
   with provider calls (chunk 7.2c); a connection's name clashing with a
   domain's or a library's (question 17) is left to the name resolution
   that chunk 7.1d reworks.
+
+### Chosen in chunk 7.1d
+
+What the pages leave to the build, each the most conservative reading:
+
+- **Where a package's name must be unique.** In its package only. Two
+  declarations of one package can't share a name
+  (`semantic.duplicate_declaration`), but none clashes with the app's,
+  of any kind and wherever it is declared (a domain, `shared/`, public or
+  not), nor with another package's: `Postcodes.uk.tidy` beside the app's
+  action `tidy`, or `Postcodes.UkPostcode` beside the app's
+  `UkPostcode` and `ZipCodes.UkPostcode`, are three things. Their file
+  names never fold together either, since each package is its own
+  folder. A package's library may be named as an app's library or
+  domain is, since it is always written through its package.
+- **Which one a name means.** In the app, a bare name is always the
+  app's and `Postcodes.<name>` always the package's, so returning
+  `Postcodes.UkPostcode` where the app's `UkPostcode` is declared is
+  `type.mismatch`. Inside a package, a bare name is the package's own
+  (chunk 7.1). Failures keep their package too: `fails
+  Postcodes.InvalidPostcode` and the app's `fails InvalidPostcode` are
+  told apart in tests and at runtime.
+- **What a watch watches.** The files every load reads: for a linked
+  package, its checkout's sources and data, each at its path in the
+  package's folder (`packages/postcodes/v2/libraries/uk.jadpo`), and not
+  the installed copy, which stays as it was. The watcher reads the lock at
+  every look, so `jadpo package link` or `unlink` while `jadpo dev` or
+  `jadpo test --watch` runs moves the watch, and `test --watch` reads the
+  whole folder again from where it now lives. A save in the checkout gets
+  5.13b's guard for a file emptied mid-save. `jadpo dev` loads the
+  project afresh on each save, so it needs nothing more.
+- **Where its problems show.** At the checkout's paths in `jadpo test`,
+  `test --watch` and `jadpo dev`, as `jadpo check` shows them, since
+  that is where they are fixed; the rule line still names the save at
+  the package's path, as the project reads it.
 
 ### Chosen in chunk 7.2
 

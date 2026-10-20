@@ -16,6 +16,11 @@
 //! empty now is taken as a save under way, not yet saved: the burst waits
 //! for its text, however long the gap, up to [`TRUNCATED_GRACE`], and a
 //! file still empty then is handed over as saved (chunk 5.13b).
+//!
+//! A package `jadpo.lock` links to a live checkout is watched there, each
+//! file at its path in the package's folder, as every check reads it; the
+//! lock is read again at every look, so linking and unlinking move the
+//! watch (chunk 7.1d).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -92,16 +97,18 @@ impl Poller {
 
     fn look(&mut self) -> BTreeMap<String, Stamp> {
         let started = Instant::now();
-        let stamps = jadpo_db::files_under(&self.root, self.project)
+        // A linked package's files are its checkout's, at the package's
+        // paths, as the project reads them (chunk 7.1d).
+        let stamps = jadpo_db::watched_files(&self.root, self.project)
             .into_iter()
             .chain(
                 self.extra
                     .iter()
-                    .filter(|path| self.root.join(path).is_file())
-                    .cloned(),
+                    .map(|path| (path.clone(), self.root.join(path)))
+                    .filter(|(_, file)| file.is_file()),
             )
-            .map(|path| {
-                let stamp = std::fs::metadata(self.root.join(&path)).ok().map(|meta| {
+            .map(|(path, file)| {
+                let stamp = std::fs::metadata(file).ok().map(|meta| {
                     (
                         meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
                         meta.len(),
@@ -281,6 +288,111 @@ mod tests {
             started.elapsed() >= TRUNCATED_GRACE,
             "{:?}",
             started.elapsed()
+        );
+    }
+
+    /// A project whose `Postcodes.v2` is installed and linked to a
+    /// checkout beside it: `<dir>/shop` and `<dir>/postcodes-dev`.
+    fn linked(name: &str) -> (Folder, PathBuf, PathBuf) {
+        let dir = folder(&format!("7.1d-{name}"));
+        let app = dir.0.join("shop");
+        let checkout = dir.0.join("postcodes-dev");
+        let index = "/// UK postcodes.\npackage Postcodes.v2 {\n    licence: Licence.mit\n    jadpo: \"1.0\"\n}\n";
+        let library = "/// Reading postcodes.\npublic library uk {\n}\n";
+        for (folder, path, text) in [
+            (&app, "app.jadpo", "application {}\n"),
+            (&app, "packages/postcodes/v2/package.jadpo", index),
+            (&app, "packages/postcodes/v2/libraries/uk.jadpo", library),
+            (&checkout, "package.jadpo", index),
+            (&checkout, "libraries/uk.jadpo", library),
+            (&checkout, "GUIDE.md", "# Postcodes\n"),
+        ] {
+            let file = folder.join(path);
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("folders");
+            std::fs::write(file, text).expect("write");
+        }
+        let lock = jadpo_db::write_lock(&[jadpo_db::Locked {
+            package: "Postcodes.v2".to_string(),
+            source: jadpo_db::Source::Link {
+                path: "../postcodes-dev".to_string(),
+            },
+        }]);
+        std::fs::write(app.join("jadpo.lock"), lock).expect("the lock");
+        (dir, app, checkout)
+    }
+
+    #[test]
+    fn a_linked_checkout_is_watched_at_the_package_s_paths() {
+        let (_dir, app, checkout) = linked("paths");
+        let mut poller = Poller::new(&app, true);
+        assert_eq!(
+            poller.paths().collect::<Vec<_>>(),
+            [
+                "app.jadpo",
+                "jadpo.lock",
+                "packages/postcodes/v2/GUIDE.md",
+                "packages/postcodes/v2/libraries/uk.jadpo",
+                "packages/postcodes/v2/package.jadpo",
+            ]
+        );
+        // The installed copy stays as it was, and isn't what is read.
+        std::fs::write(
+            app.join("packages/postcodes/v2/libraries/uk.jadpo"),
+            "public library uk {}\n",
+        )
+        .expect("write");
+        assert_eq!(poller.scan(), Vec::<Edit>::new());
+        // A save in the checkout, in place: handed over once its text is
+        // written, at the package's path in the project.
+        let file = checkout.join("libraries/uk.jadpo");
+        let writer = {
+            let file = file.clone();
+            std::thread::spawn(move || {
+                std::fs::write(&file, "").expect("truncate");
+                std::thread::sleep(Duration::from_millis(400));
+                std::fs::write(&file, "/// Reading.\npublic library uk {\n}\n").expect("write");
+            })
+        };
+        let edits = poller.wait(&|| false).expect("a burst");
+        writer.join().expect("the writer");
+        assert_eq!(
+            edits,
+            vec![edit(
+                "packages/postcodes/v2/libraries/uk.jadpo",
+                EditKind::Saved
+            )]
+        );
+        // A file added to the checkout.
+        std::fs::write(checkout.join("types.jadpo"), "").expect("write");
+        std::fs::create_dir_all(checkout.join("types")).expect("folder");
+        std::fs::remove_file(checkout.join("types.jadpo")).expect("remove");
+        std::fs::write(
+            checkout.join("types/code.jadpo"),
+            "public type Code = Text {\n    max_length: 4\n}\n",
+        )
+        .expect("write");
+        assert_eq!(
+            poller.wait(&|| false).expect("a burst"),
+            vec![edit(
+                "packages/postcodes/v2/types/code.jadpo",
+                EditKind::Added
+            )]
+        );
+    }
+
+    #[test]
+    fn unlinking_watches_the_installed_folder_again() {
+        let (_dir, app, _checkout) = linked("unlink");
+        let mut poller = Poller::new(&app, true);
+        std::fs::write(app.join("jadpo.lock"), jadpo_db::write_lock(&[])).expect("the lock");
+        let edits = poller.wait(&|| false).expect("a burst");
+        // The installed copy has no guide, and its library is the same
+        // size as the checkout's, so only the lock and the guide show for
+        // certain.
+        assert!(
+            edits.contains(&edit("jadpo.lock", EditKind::Saved))
+                && edits.contains(&edit("packages/postcodes/v2/GUIDE.md", EditKind::Removed)),
+            "{edits:?}"
         );
     }
 

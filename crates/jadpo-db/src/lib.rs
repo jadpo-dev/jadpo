@@ -24,8 +24,8 @@ pub use identities::{
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
-    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, package_files,
-    shown_root,
+    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, links, load, load_into,
+    package_files, show_in_checkouts, shown_root, watched_files,
 };
 pub use lock::{LOCK, Locked, Source, package_digest, package_folder, parse_lock, write_lock};
 pub use places::{

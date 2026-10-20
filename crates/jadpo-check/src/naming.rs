@@ -204,9 +204,17 @@ impl Here<'_> {
         (!named.contains(&symbol.canonical)).then_some(domain)
     }
 
-    /// Whether two declarations' names have to differ: one of them is
-    /// unique across the project, or both are private to one domain.
+    /// Whether two declarations' names have to differ: both in one
+    /// package, or, outside packages, one of them unique across the
+    /// project or both private to one domain. A package's names are its
+    /// own (area 11, "Chosen in chunk 7.1d"): never the app's or another
+    /// package's.
     fn clash(&self, a: &Symbol, b: &Symbol) -> bool {
+        match (a.ownership.package(), b.ownership.package()) {
+            (Some(a), Some(b)) => return a.code == b.code,
+            (Some(_), None) | (None, Some(_)) => return false,
+            (None, None) => {}
+        }
         if a.scope.is_none() || b.scope.is_none() {
             return true;
         }
