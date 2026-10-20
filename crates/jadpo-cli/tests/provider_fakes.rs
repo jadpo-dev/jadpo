@@ -115,9 +115,7 @@ const HEAD: &str = "use app { couriers }\nuse shipping/failures { SlotGone }\n\n
 fn an_unscripted_call_answers_with_its_generated_default() {
     let root = desk(
         "default",
-        &format!(
-            "use shared/providers/acme_couriers\n\ntest \"a booking is made\" {{\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.id == \"example\"\n    assert list.count(booking.windows) == 0\n    assert booking.note == none\n    assert booking.collect_at == clock.now\n}}\n"
-        ),
+        "use shared/providers/acme_couriers\n\ntest \"a booking is made\" {\n    var booking: AcmeCouriers.Booking = attempt book(\"N1 9GU\")\n    assert booking.id == \"example\"\n    assert list.count(booking.windows) == 0\n    assert booking.note == none\n    assert booking.collect_at == clock.now\n}\n",
     );
     let output = jadpo(&root, &["test", ".", "--seed", "1"]);
     assert_eq!(
