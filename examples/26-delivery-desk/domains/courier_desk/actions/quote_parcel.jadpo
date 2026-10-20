@@ -1,0 +1,22 @@
+// The imported integration is called as a written one is. Its answer's
+// price is already a `Money`, read from the two members Parcel Rates
+// sends.
+
+use app { rates }
+use courier_desk/types { QuoteForm }
+use courier_desk/failures { NoCourierForRoute }
+use shared/providers/parcel_rates
+
+/// The cheapest price to send a parcel.
+action quote_parcel(parcel: QuoteForm) fails NoCourierForRoute -> ParcelRates.QuotedPrice {
+    var quote: ParcelRates.Quote = attempt rates.quotes.create(
+        ParcelRates.QuoteRequest {
+            from_postcode: parcel.from_postcode
+            to_postcode: parcel.to_postcode
+            weight_grams: parcel.weight_grams
+        }
+    ) {
+        no_route: NoCourierForRoute
+    }
+    return quote.amount
+}

@@ -1,8 +1,8 @@
 // The package hands the app what happened as an event; the app's own
 // action writes it, since a package never touches the app's data.
 
-use courier_desk/emails { CollectionReceipt }
 use courier_desk/entities { Collection }
+use courier_desk/emails { CollectionReceipt }
 use shared/providers/swift_couriers
 
 /// Keeps what the courier collected.

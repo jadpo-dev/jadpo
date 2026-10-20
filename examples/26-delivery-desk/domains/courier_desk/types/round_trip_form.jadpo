@@ -1,0 +1,9 @@
+use shared/providers/swift_couriers
+
+/// A parcel collected now and brought back later: two pickups.
+type RoundTripForm = Input {
+    postcode: SwiftCouriers.Postcode
+    slot: SwiftCouriers.Slot
+    return_postcode: SwiftCouriers.Postcode
+    return_slot: SwiftCouriers.Slot
+}

@@ -1,4 +1,4 @@
--- 20261020T2242_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T2245_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "collection" (
@@ -114,9 +114,38 @@ CREATE TABLE "jadpo_received_events" (
     "reply" text,
     CONSTRAINT "jadpo_received_events_pkey" PRIMARY KEY ("source", "event_id")
 );
+CREATE TABLE "jadpo_step_records" (
+    "id" uuid NOT NULL,
+    "scope" text NOT NULL,
+    "key" text NOT NULL,
+    "action" text NOT NULL,
+    "build" text NOT NULL,
+    "shape" text NOT NULL,
+    "started_at" timestamptz(3) NOT NULL,
+    "generation" bigint NOT NULL,
+    "state" text NOT NULL,
+    "problem" jsonb,
+    "taken_at" timestamptz(3) NOT NULL,
+    "alerted_at" timestamptz(3),
+    CONSTRAINT "jadpo_step_records_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_steps" (
+    "record_id" uuid NOT NULL,
+    "position" integer NOT NULL,
+    "operation" text NOT NULL,
+    "fingerprint" jsonb NOT NULL,
+    "key_generation" integer NOT NULL,
+    "dispatched_at" timestamptz(3) NOT NULL,
+    "outcome" text,
+    "answer" bytea,
+    "answered_at" timestamptz(3),
+    CONSTRAINT "jadpo_steps_pkey" PRIMARY KEY ("record_id", "position")
+);
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_subscriber_key" UNIQUE ("outbox_id", "subscriber");
 ALTER TABLE "jadpo_parked_messages" ADD CONSTRAINT "jadpo_parked_messages_queue_digest_key" UNIQUE ("queue", "digest");
+ALTER TABLE "jadpo_step_records" ADD CONSTRAINT "jadpo_step_records_scope_key_key" UNIQUE ("scope", "key");
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_fkey" FOREIGN KEY ("outbox_id") REFERENCES "jadpo_outbox" ("id") ON DELETE CASCADE;
+ALTER TABLE "jadpo_steps" ADD CONSTRAINT "jadpo_steps_record_id_fkey" FOREIGN KEY ("record_id") REFERENCES "jadpo_step_records" ("id") ON DELETE CASCADE;
 CREATE INDEX "jadpo_deliveries_status_next_attempt_at_idx" ON "jadpo_deliveries" ("status", "next_attempt_at");
 CREATE INDEX "jadpo_idempotency_keys_kept_until_idx" ON "jadpo_idempotency_keys" ("kept_until");
 CREATE INDEX "jadpo_operator_actions_item_idx" ON "jadpo_operator_actions" ("item");

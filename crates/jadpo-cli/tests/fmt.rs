@@ -543,3 +543,26 @@ fn check_fails_on_settings_out_of_name_order() {
     );
     assert_eq!(jadpo(&root, &["fmt", "--check"]).code, 0);
 }
+
+#[test]
+fn an_installed_package_is_never_formatted() {
+    // Installed code is locked by the digest of its files, so `fmt` leaves
+    // `packages/` as it was installed, laid out or not (found in chunk
+    // 7.8b, where formatting an installed package broke its lock).
+    let root = project("installed");
+    let messy = "/// A count.\npublic type Count = Int { min: 0 }\n";
+    write(&root, "packages/counts/v1/types/count.jadpo", messy);
+    let checked = jadpo(&root, &["fmt", "--check", "--json"]);
+    let document: serde_json::Value = serde_json::from_str(&checked.stdout).expect("JSON");
+    assert_eq!(
+        document["data"]["files"],
+        serde_json::json!([
+            {"path": "app.jadpo", "status": "unchanged"},
+            {"path": COUNT, "status": "unformatted"}
+        ])
+    );
+    let formatted = jadpo(&root, &["fmt"]);
+    assert_eq!(formatted.code, 0, "{}{}", formatted.stdout, formatted.stderr);
+    assert_eq!(read(&root, "packages/counts/v1/types/count.jadpo"), messy);
+    assert_eq!(read(&root, COUNT), TIDY_COUNT);
+}

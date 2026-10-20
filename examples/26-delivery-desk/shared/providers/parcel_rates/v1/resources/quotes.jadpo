@@ -1,0 +1,11 @@
+public resource quotes {
+    /// Prices a parcel from one postcode to another.
+    create: {
+        method: HttpMethod.post
+        path: "/v1/quotes"
+        input: QuoteRequest
+        output: Quote
+        failures: [NoRoute]
+        source: PackageSource.imported
+    }
+}

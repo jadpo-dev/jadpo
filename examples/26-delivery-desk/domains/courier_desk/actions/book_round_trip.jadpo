@@ -1,0 +1,38 @@
+// Two changing calls in one action are two steps, counted through the
+// actions it calls: here `book_pickup` twice. Each is recorded before it
+// is sent and its answer after, so a retry under the same
+// `Idempotency-Key` replays what was answered and sends only what
+// wasn't, and the courier never books the outbound pickup twice.
+//
+// Once the outbound pickup is booked, ending the action with a failure
+// would leave it booked and the desk told nothing; so a taken return slot
+// is handled with `match`, and the trip is answered without its return.
+
+use courier_desk/types { BookedPickup, BookedRoundTrip, PickupForm, RoundTripForm }
+use courier_desk/failures { PickupSlotGone }
+use courier_desk/actions { book_pickup }
+use shared/providers/swift_couriers
+
+/// Books a parcel's pickup and its return with the courier.
+action book_round_trip(trip: RoundTripForm) fails PickupSlotGone -> BookedRoundTrip {
+    var outbound: BookedPickup = attempt book_pickup(
+        PickupForm {
+            postcode: trip.postcode
+            slot: trip.slot
+        }
+    )
+    var return_id: SwiftCouriers.PickupId? = match book_pickup(
+        PickupForm {
+            postcode: trip.return_postcode
+            slot: trip.return_slot
+        }
+    ) {
+        success(booked) -> booked.id
+        PickupSlotGone -> none
+    }
+    return BookedRoundTrip {
+        outbound_id: outbound.id
+        collect_at: outbound.collect_at
+        return_id: return_id
+    }
+}

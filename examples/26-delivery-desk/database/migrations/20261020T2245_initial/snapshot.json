@@ -585,6 +585,136 @@
             "name": "jadpo_received_events_pkey"
           },
           "system": "received_events"
+        },
+        "jadpo_step_records": {
+          "columns": {
+            "action": {
+              "position": 3,
+              "type": "text"
+            },
+            "alerted_at": {
+              "nullable": true,
+              "position": 11,
+              "type": "timestamptz(3)"
+            },
+            "build": {
+              "position": 4,
+              "type": "text"
+            },
+            "generation": {
+              "position": 7,
+              "type": "bigint"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "key": {
+              "position": 2,
+              "type": "text"
+            },
+            "problem": {
+              "nullable": true,
+              "position": 9,
+              "type": "jsonb"
+            },
+            "scope": {
+              "position": 1,
+              "type": "text"
+            },
+            "shape": {
+              "position": 5,
+              "type": "text"
+            },
+            "started_at": {
+              "position": 6,
+              "type": "timestamptz(3)"
+            },
+            "state": {
+              "position": 8,
+              "type": "text"
+            },
+            "taken_at": {
+              "position": 10,
+              "type": "timestamptz(3)"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_step_records_pkey"
+          },
+          "system": "step_records",
+          "unique": {
+            "jadpo_step_records_scope_key_key": {
+              "columns": [
+                "scope",
+                "key"
+              ],
+              "rule": "system step records"
+            }
+          }
+        },
+        "jadpo_steps": {
+          "columns": {
+            "answer": {
+              "nullable": true,
+              "position": 7,
+              "type": "bytea"
+            },
+            "answered_at": {
+              "nullable": true,
+              "position": 8,
+              "type": "timestamptz(3)"
+            },
+            "dispatched_at": {
+              "position": 5,
+              "type": "timestamptz(3)"
+            },
+            "fingerprint": {
+              "position": 3,
+              "type": "jsonb"
+            },
+            "key_generation": {
+              "position": 4,
+              "type": "integer"
+            },
+            "operation": {
+              "position": 2,
+              "type": "text"
+            },
+            "outcome": {
+              "nullable": true,
+              "position": 6,
+              "type": "text"
+            },
+            "position": {
+              "position": 1,
+              "type": "integer"
+            },
+            "record_id": {
+              "position": 0,
+              "type": "uuid"
+            }
+          },
+          "foreign_keys": {
+            "jadpo_steps_record_id_fkey": {
+              "columns": [
+                "record_id"
+              ],
+              "on_delete": "cascade",
+              "table": "jadpo_step_records"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "record_id",
+              "position"
+            ],
+            "name": "jadpo_steps_pkey"
+          },
+          "system": "steps"
         }
       }
     }

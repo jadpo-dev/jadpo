@@ -1,0 +1,23 @@
+// Imported with `jadpo package import openapi specs/parcel_rates.json
+// --as ParcelRates.v1`, then finished from Parcel Rates' documentation:
+// its sandbox host, where a refusal's code is, and its one failure.
+// `imported:` names the file and its digest, so a reviewer knows where
+// each operation came from; `reviewed:` lists the types gone through
+// against the documentation, which `jadpo check` asks for until every
+// type the desk's calls reach is listed.
+
+/// How Parcel Rates is reached and called.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.parcel-rates.example"
+        sandbox: "https://sandbox.parcel-rates.example"
+    }
+    credential: CredentialScheme.bearer
+    error_code: "code"
+    imported: {
+        file: "specs/parcel_rates.json"
+        digest: "sha256:f791b8040c50b0897cfb5761aec6cb7a1257955e36045c14f523c114c816a155"
+        reviewed: [QuotedPrice, Quote, QuoteRequest]
+    }
+}

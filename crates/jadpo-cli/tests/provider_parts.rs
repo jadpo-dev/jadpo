@@ -437,12 +437,10 @@ fn wire_parts_are_held_to_the_types_parts() {
     );
 }
 
-/// Unscripted in a test, the call answers with its generated default,
-/// written as the provider sends it, each part its own member, and read
-/// back through the same decoding.
-#[test]
-fn a_fakes_default_answer_sends_the_parts() {
-    let root = root("fake");
+/// `jadpo test` on the Tidepay app with `test` beside `charge_of`: what
+/// it prints, and its exit code.
+fn tested(name: &str, test: &str) -> (String, u8) {
+    let root = root(name);
     let _ = std::fs::remove_dir_all(&root);
     let mut all = files("https://sandbox.tidepay.example");
     // A test needs no credential, and runs against the sandbox.
@@ -456,8 +454,7 @@ fn a_fakes_default_answer_sends_the_parts() {
     }
     all.push((
         "domains/billing/actions/charge_of.test.jadpo".to_string(),
-        "use shared/providers/tidepay\n\ntest \"a charge is read from its parts\" {\n    var found: Tidepay.Charge = charge_of(\"ch_1\")\n    assert found.shop == none\n    assert found.amount == found.amount_refunded\n}\n"
-            .to_string(),
+        test.to_string(),
     ));
     for (path, text) in all {
         let path = root.join(path);
@@ -471,10 +468,36 @@ fn a_fakes_default_answer_sends_the_parts() {
     let env = jadpo_term::Environment::empty().with_var("JADPO_PLAIN", "1");
     let output = jadpo_cli::run(&args, &env.with_cwd(&root));
     let stdout = crate::support::without_run_time(&output.stdout);
+    (format!("{stdout}{}", output.stderr), output.code)
+}
+
+/// Unscripted in a test, the call answers with its generated default,
+/// written as the provider sends it, each part its own member, and read
+/// back through the same decoding.
+#[test]
+fn a_fakes_default_answer_sends_the_parts() {
+    let (out, code) = tested(
+        "fake",
+        "use shared/providers/tidepay\n\ntest \"a charge is read from its parts\" {\n    var found: Tidepay.Charge = charge_of(\"ch_1\")\n    assert found.shop == none\n    assert found.amount == found.amount_refunded\n}\n",
+    );
     assert_eq!(
-        (stdout.as_str(), output.code),
-        ("tested: 1 passed, 1 action test\n", 0),
-        "{}",
-        output.stderr
+        (out.as_str(), code),
+        ("tested: 1 passed, 1 action test\n", 0)
+    );
+}
+
+/// A test's scripted answer is written as the provider sends it too, each
+/// part its own member, so the call's decoding reads it back (found in
+/// chunk 7.8b: it was written as the contract writes it, with the amount
+/// whole and no `currency` member).
+#[test]
+fn a_scripted_answer_sends_the_parts() {
+    let (out, code) = tested(
+        "fake-scripted",
+        "use app { payments }\nuse shared/providers/tidepay\n\ntest \"a scripted charge is read from its parts\" {\n    fakes: {\n        payments.charges.get: [\n            Tidepay.Charge {\n                id: \"ch_2\"\n                amount: Tidepay.Amount(money.from_minor(1050, Currency.gbp))\n                amount_refunded: Tidepay.Amount(money.from_minor(0, Currency.gbp))\n                shop: none\n            }\n        ]\n    }\n    var found: Tidepay.Charge = charge_of(\"ch_2\")\n    assert found.amount == Tidepay.Amount(money.from_minor(1050, Currency.gbp))\n    assert found.shop == none\n}\n",
+    );
+    assert_eq!(
+        (out.as_str(), code),
+        ("tested: 1 passed, 1 action test\n", 0)
     );
 }

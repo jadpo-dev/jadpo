@@ -1,0 +1,9 @@
+use shared/providers/swift_couriers
+
+/// Both pickups of a round trip; the return is missing when its slot was
+/// taken, and the desk books it again by hand.
+type BookedRoundTrip = Output {
+    outbound_id: SwiftCouriers.PickupId
+    collect_at: Instant
+    return_id: SwiftCouriers.PickupId?
+}

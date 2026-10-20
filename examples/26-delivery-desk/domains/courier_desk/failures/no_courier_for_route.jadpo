@@ -1,0 +1,4 @@
+type NoCourierForRoute = Failure {
+    kind: FailureKind.not_found
+    message: "No courier takes parcels between those postcodes."
+}

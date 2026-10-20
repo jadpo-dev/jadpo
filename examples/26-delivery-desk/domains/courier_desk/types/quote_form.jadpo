@@ -1,0 +1,13 @@
+/// A parcel to price before booking it.
+type QuoteForm = Input {
+    from_postcode: Text {
+        max_length: 8
+    }
+    to_postcode: Text {
+        max_length: 8
+    }
+    weight_grams: Int {
+        min: 1
+        max: 30000
+    }
+}

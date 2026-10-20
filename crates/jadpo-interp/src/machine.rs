@@ -580,7 +580,13 @@ impl<'p> Machine<'p> {
         };
         ctx.at(at.0);
         let providers = self.program.providers();
-        jadpo_runtime::fakes::script(ctx, &providers, (connection, operation), given)
+        jadpo_runtime::fakes::script(
+            ctx,
+            &providers,
+            (self.program, at.0),
+            (connection, operation),
+            given,
+        )
     }
 
     /// Gives the `ai` fake the next answer to the prompt the `fakes:`

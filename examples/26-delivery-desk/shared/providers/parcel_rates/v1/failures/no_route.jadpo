@@ -1,0 +1,5 @@
+/// No courier Parcel Rates compares covers that route.
+public type NoRoute = Failure {
+    kind: FailureKind.not_found
+    message: "No courier covers that route."
+}
