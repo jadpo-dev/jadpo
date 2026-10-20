@@ -591,6 +591,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "checks a setting's default, read by the contract's own reader",
     ),
     (
+        "crates/jadpo-check/src/connections.rs",
+        "checks a connection's `timeout:`, a duration read by the contract's own reader",
+    ),
+    (
         "crates/jadpo-check/src/constants.rs",
         "works out a constant's value at compile time",
     ),

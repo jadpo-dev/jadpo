@@ -1688,7 +1688,9 @@ public type Booking = Object {
     collect_at: Instant {
         wire_name: "collectAt"
     }
-    window: SlotWindow
+    part_of_day: SlotWindow {
+        wire_name: "partOfDay"
+    }
 }
 ```
 
@@ -1723,8 +1725,8 @@ public resource bookings {
 ```
 
 So `{"ok": true, "data": {"id": "b-1", "collectAt": "2026-10-20T09:00:00Z",
-"window": "after-noon"}}` is read as a `Booking` with `collect_at` and
-`window: SlotWindow.after_noon`, and `{"ok": false, "error": {"code":
+"partOfDay": "after-noon"}}` is read as a `Booking` with `collect_at`
+and `part_of_day: SlotWindow.after_noon`, and `{"ok": false, "error": {"code":
 "slot_taken"}}` as the operation's `SlotTaken`. `wire:`, `decode:` and
 `encode:`, and `wire_output:` come with chunk 7.2c2.
 

@@ -1735,7 +1735,7 @@ impl Decls<'_> {
                 )
                 .at(value_span, format!("{} here", other.describe()))
                 .reason(format!(
-                    "`wire_name:` is the {what}'s spelling on the provider's wire, in quotes: `wire_name: \"collectAt\"`."
+                    "`wire_name:` is the {what}'s spelling on the provider's wire, in quotes, as its documentation writes it."
                 ))
                 .next("Write the provider's spelling in quotes"),
             ),

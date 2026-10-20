@@ -512,7 +512,7 @@ fn request(
     };
     let mut headers = vec![
         ("Accept".to_string(), "application/json".to_string()),
-        ("User-Agent".to_string(), "jadpo".to_string()),
+        ("user-agent".to_string(), "jadpo".to_string()),
     ];
     if body.is_some() {
         headers.push(("Content-Type".to_string(), "application/json".to_string()));

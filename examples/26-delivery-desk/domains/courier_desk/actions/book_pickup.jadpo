@@ -5,7 +5,7 @@
 // action's first read or write, while no transaction is open.
 
 use app { couriers }
-use dispatch/failures { PickupSlotGone }
+use courier_desk/failures { PickupSlotGone }
 use shared/providers/swift_couriers
 
 /// Books a pickup with the courier.

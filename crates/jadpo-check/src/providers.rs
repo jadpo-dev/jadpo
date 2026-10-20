@@ -432,9 +432,9 @@ impl Reader<'_> {
                     "not a path",
                 )
                 .reason(format!(
-                    "`path:` is the operation's path on the provider's host, starting with `/`, each placeholder a name in braces: `\"/v1/parcels/{{id}}\"`; {why}."
+                    "`path:` is the operation's path on the provider's host, starting with `/`, each placeholder a name in braces: `\"/v1/things/{{id}}\"`; {why}."
                 ))
-                .next("Write the path the API documents, such as `path: \"/v1/bookings\"`"),
+                .next("Write the path the API documents, such as `path: \"/v1/things\"`"),
             );
             None
         };
@@ -656,7 +656,7 @@ impl Reader<'_> {
                     "not a list",
                 )
                 .reason("`failures:` lists the package's failures the provider answers this operation with, in square brackets.")
-                .next("Write `failures: [SlotTaken]`"),
+                .next("Write the package's failures in brackets: `failures: [<Failure>]`"),
             );
             return Vec::new();
         };

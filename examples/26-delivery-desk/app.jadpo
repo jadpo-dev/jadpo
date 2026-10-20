@@ -5,7 +5,7 @@ application {
     connections: {
         couriers: {
             package: SwiftCouriers.v1
-            domains: [dispatch]
+            domains: [courier_desk]
             credential: config.couriers_api_key
             environment: config.couriers_environment
             timeout: 5s
