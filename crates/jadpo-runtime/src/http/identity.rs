@@ -920,7 +920,7 @@ pub async fn issued(
     let Some((statement, params)) = policed(ctx, statement, gated, params) else {
         return Stored::Fault(unpoliced(ctx, site));
     };
-    let rows = match ctx.transaction(&store).await {
+    let rows = match ctx.read_transaction(&store).await {
         Ok(transaction) => transaction.query(&statement, &params).await,
         Err(error) => Err(error),
     };

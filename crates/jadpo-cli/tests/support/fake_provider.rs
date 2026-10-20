@@ -36,10 +36,14 @@ impl Request {
     }
 }
 
+/// What a test runs while a request is held, before it is answered.
+type Hold = Arc<dyn Fn(&Request) + Send + Sync>;
+
 #[derive(Default)]
 struct State {
     requests: Vec<Request>,
     answers: VecDeque<(u16, String)>,
+    hold: Option<Hold>,
 }
 
 pub struct FakeProvider {
@@ -88,6 +92,13 @@ impl FakeProvider {
             .expect("state")
             .answers
             .push_back((status, body.to_string()));
+    }
+
+    /// Runs `hold` with each request as it arrives, on the server's
+    /// thread, and answers it only once `hold` returns: what a test does
+    /// while a call is out (chunk 7.4).
+    pub fn hold(&self, hold: impl Fn(&Request) + Send + Sync + 'static) {
+        self.state.lock().expect("state").hold = Some(Arc::new(hold));
     }
 
     /// Every request so far.
@@ -142,19 +153,26 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
     if reader.read_exact(&mut body).is_err() {
         return;
     }
-    let (status, reply) = {
-        let mut state = state.lock().expect("state");
-        state.requests.push(Request {
-            method,
-            path,
-            headers,
-            body: String::from_utf8_lossy(&body).into_owned(),
-        });
-        state
-            .answers
-            .pop_front()
-            .unwrap_or_else(|| (200, "{}".to_string()))
+    let request = Request {
+        method,
+        path,
+        headers,
+        body: String::from_utf8_lossy(&body).into_owned(),
     };
+    let hold = {
+        let mut state = state.lock().expect("state");
+        state.requests.push(request.clone());
+        state.hold.clone()
+    };
+    if let Some(hold) = hold {
+        hold(&request);
+    }
+    let (status, reply) = state
+        .lock()
+        .expect("state")
+        .answers
+        .pop_front()
+        .unwrap_or_else(|| (200, "{}".to_string()));
     let response = format!(
         "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
         reply.len()

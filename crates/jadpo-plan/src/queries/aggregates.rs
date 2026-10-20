@@ -144,6 +144,8 @@ impl Planner<'_> {
                         fields,
                     },
                     includes: Vec::new(),
+                    // A group's rows name no record.
+                    versions: None,
                 },
                 page: None,
                 missing: None,

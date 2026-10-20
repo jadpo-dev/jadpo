@@ -9,14 +9,14 @@
 //! it. A driver's refusal becomes what the runtime raises: `unavailable`,
 //! a rerun of the action after a concurrent change, or a fault.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use jadpo_std::policy::CallerPart;
 use jadpo_std::read::{
     Cardinality, Check, Column, Field, FieldRules, IncludeShape, Operand, ReadPlan, Recheck,
-    Record, Select, Size, Source,
+    Record, RowVersions, Select, Size, Source,
 };
 use jadpo_value::Value;
 
@@ -89,6 +89,7 @@ pub(crate) async fn read(
     site: u32,
 ) -> Result<Found, Interrupt> {
     let now = ctx.now();
+    let loaded = RefCell::new(Vec::new());
     let mut env = Env {
         args,
         json,
@@ -99,6 +100,7 @@ pub(crate) async fn read(
         callers: callers(ctx),
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
+        loaded: Some(&loaded),
     };
     if let Some(page) = &plan.page {
         env.size = match &page.size {
@@ -118,12 +120,17 @@ pub(crate) async fn read(
         }
     }
     let result = {
-        let transaction = match ctx.transaction(&plan.store).await {
+        let transaction = match ctx.read_transaction(&plan.store).await {
             Ok(transaction) => transaction,
             Err(error) => return Err(refused(ctx, error, site)),
         };
         run_read(transaction, plan, &env).await
     };
+    // The rows it loaded, whose versions an outside call reads before it
+    // closes the snapshot they were read in (chunk 7.4).
+    for (versions, ids) in loaded.take() {
+        ctx.loaded(&versions, ids);
+    }
     let (rows, values, hidden) = match result {
         Ok(found) => found,
         Err(Problem::Store(error)) => return Err(refused(ctx, error, site)),
@@ -213,6 +220,7 @@ pub(crate) async fn count(
         callers: callers(ctx),
         unpoliced: ctx.unpoliced(),
         fetch: Cell::new(0),
+        loaded: None,
     };
     let select = &plan.select;
     let mut params = Vec::with_capacity(select.params.len());
@@ -318,6 +326,9 @@ struct Env<'a> {
     /// How many rows a rechecked read's statement asks for this time
     /// ([`Source::Fetch`]).
     fetch: Cell<i64>,
+    /// The ids of the rows each statement naming its rows loaded, with
+    /// how their versions are read (chunk 7.4).
+    loaded: Option<&'a RefCell<Vec<(RowVersions, Vec<SqlValue>)>>>,
 }
 
 enum Problem {
@@ -616,6 +627,7 @@ fn records<'a>(
                     callers: env.callers.clone(),
                     unpoliced: env.unpoliced,
                     fetch: Cell::new(0),
+                    loaded: env.loaded,
                 };
                 let child_rows = run(&mut *transaction, &include.select, &inner).await?;
                 let values =
@@ -626,6 +638,15 @@ fn records<'a>(
                 }
             }
             found.push(matched);
+        }
+        if let (Some(versions), Some(loaded)) = (&select.versions, env.loaded) {
+            let ids = rows
+                .iter()
+                .filter_map(|row| row.get(versions.id as usize))
+                .filter(|id| !matches!(id, SqlValue::Null(_)))
+                .cloned()
+                .collect();
+            loaded.borrow_mut().push((versions.clone(), ids));
         }
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
