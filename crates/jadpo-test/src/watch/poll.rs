@@ -9,6 +9,13 @@
 //! An editor's save is often several writes (a temporary file, a rename, a
 //! formatter's rewrite), so a burst of changes is gathered until the files
 //! have been quiet for a moment, then handed over as one.
+//!
+//! An editor that saves in place truncates the file, then writes it, and
+//! on a loaded machine the two can be far apart. An empty source file
+//! checks cleanly with nothing in it, so a file that had text and is
+//! empty now is taken as a save under way, not yet saved: the burst waits
+//! for its text, however long the gap, up to [`EMPTIED_GRACE`], and a
+//! file still empty then is handed over as saved (chunk 5.13b).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -25,6 +32,9 @@ pub const QUIET: Duration = Duration::from_millis(50);
 const LONGEST_BURST: Duration = Duration::from_millis(1000);
 /// How often to look while a burst is being gathered.
 const BURST_STEP: Duration = Duration::from_millis(10);
+/// How long a burst waits for the text of a file it emptied, before the
+/// empty file is taken as saved.
+pub const EMPTIED_GRACE: Duration = Duration::from_secs(2);
 
 /// What a look saw of one file: when it was last modified and its size,
 /// or nothing when its metadata couldn't be read.
@@ -106,6 +116,12 @@ impl Poller {
 
     /// The files that changed since the last look, in path order.
     pub fn scan(&mut self) -> Vec<Edit> {
+        self.rescan().0
+    }
+
+    /// The files that changed since the last look, in path order, and
+    /// what that look saw.
+    fn rescan(&mut self) -> (Vec<Edit>, BTreeMap<String, Stamp>) {
         let now = self.look();
         let mut edits = Vec::new();
         for (path, stamp) in &now {
@@ -123,8 +139,20 @@ impl Poller {
             }
         }
         edits.sort();
-        self.stamps = now;
-        edits
+        (edits, std::mem::replace(&mut self.stamps, now))
+    }
+
+    /// Whether `burst` holds a file that had text `before` it and is empty
+    /// at the last look: a save in place between its truncate and its
+    /// write.
+    fn emptied(&self, before: &BTreeMap<String, Stamp>, burst: &[Edit]) -> bool {
+        let size = |stamps: &BTreeMap<String, Stamp>, path: &str| {
+            stamps.get(path).copied().flatten().map(|(_, size)| size)
+        };
+        burst.iter().any(|edit| {
+            size(before, &edit.path).is_some_and(|size| size > 0)
+                && size(&self.stamps, &edit.path) == Some(0)
+        })
     }
 
     /// Waits for the next burst of changes and returns it, merged; `None`
@@ -134,21 +162,32 @@ impl Poller {
             if stop() {
                 return None;
             }
-            let first = self.scan();
+            let (first, before) = self.rescan();
             if first.is_empty() {
                 std::thread::sleep(self.interval);
                 continue;
             }
             let mut burst = first;
             let began = Instant::now();
-            let mut calm = Instant::now();
-            while calm.elapsed() < QUIET && began.elapsed() < LONGEST_BURST {
-                std::thread::sleep(BURST_STEP);
-                let more = self.scan();
-                if !more.is_empty() {
-                    burst.extend(more);
-                    calm = Instant::now();
+            loop {
+                let mut calm = Instant::now();
+                while calm.elapsed() < QUIET && began.elapsed() < LONGEST_BURST {
+                    std::thread::sleep(BURST_STEP);
+                    let more = self.scan();
+                    if !more.is_empty() {
+                        burst.extend(more);
+                        calm = Instant::now();
+                    }
                 }
+                // A file emptied by a save in place waits for its text.
+                if !self.emptied(&before, &burst) || began.elapsed() >= EMPTIED_GRACE {
+                    break;
+                }
+                if stop() {
+                    return None;
+                }
+                std::thread::sleep(BURST_STEP);
+                burst.extend(self.scan());
             }
             return Some(merge(burst));
         }
@@ -186,6 +225,63 @@ mod tests {
 
     fn edit(path: &str, kind: EditKind) -> Edit {
         Edit::new(path, kind)
+    }
+
+    /// A folder of loose files of its own, removed after.
+    struct Folder(PathBuf);
+
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn folder(name: &str) -> Folder {
+        let path =
+            std::env::temp_dir().join(format!("jadpo-poll-5.13b-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).expect("a folder");
+        Folder(path)
+    }
+
+    #[test]
+    fn a_save_in_place_is_handed_over_once_its_text_is_written() {
+        let dir = folder("in-place");
+        let file = dir.0.join("routes.jadpo");
+        std::fs::write(&file, "routes {}\n").expect("write");
+        let mut poller = Poller::new(&dir.0, false);
+        assert_eq!(poller.len(), 1);
+        // Truncated, then written far later than the quiet a burst waits.
+        let writer = {
+            let file = file.clone();
+            std::thread::spawn(move || {
+                std::fs::write(&file, "").expect("truncate");
+                std::thread::sleep(Duration::from_millis(400));
+                std::fs::write(&file, "routes { }\n").expect("write");
+            })
+        };
+        let edits = poller.wait(&|| false).expect("a burst");
+        writer.join().expect("the writer");
+        assert_eq!(edits, vec![edit("routes.jadpo", EditKind::Saved)]);
+        let text = std::fs::read_to_string(&file).expect("read");
+        assert_eq!(text, "routes { }\n", "handed over with its text");
+    }
+
+    #[test]
+    fn a_file_left_empty_is_handed_over_as_saved() {
+        let dir = folder("emptied");
+        let file = dir.0.join("routes.jadpo");
+        std::fs::write(&file, "routes {}\n").expect("write");
+        let mut poller = Poller::new(&dir.0, false);
+        let started = Instant::now();
+        std::fs::write(&file, "").expect("empty");
+        let edits = poller.wait(&|| false).expect("a burst");
+        assert_eq!(edits, vec![edit("routes.jadpo", EditKind::Saved)]);
+        assert!(
+            started.elapsed() >= EMPTIED_GRACE,
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

@@ -727,14 +727,14 @@ chunks below, taken before Phase 7, in this order.
   logged with who did it, on the screens of the CLI design language;
   `show`, `retry --not-done` and `abandon` come with multi-step calls
   (7.5), and batch runs and parked queue messages with 6.4b and 7.7.
-- [ ] **5.13b `jadpo dev` and half-written files** `opus · high` (from
-  chunk 5.13): an editor's truncate-then-write leaves an empty routes
-  file that checks cleanly with no routes, and `jadpo dev` reloads it,
-  serving 404s until the next save. Guard the reload: wait until a
-  changed file's content is stable (unchanged across a short settle
-  after the last event), or treat a file emptied mid-session as not yet
-  saved. `crates/jadpo-cli/tests/config.rs` writes `.env.local` without
-  an atomic rename and may flake the same way; write it atomically.
+- [x] **5.13b `jadpo dev` and half-written files** `opus · high`.
+  Built: the watcher behind `jadpo dev` and `jadpo test --watch` takes a
+  file that had text and is empty now as a save in place not yet
+  written, and waits for its text, up to 2 seconds, before handing the
+  burst over; chosen over a longer settle, which only covers shorter
+  gaps and slows every save (area 14, "Watching saves"). A live test
+  truncates the routes file, then writes it 400 ms later, and the old
+  version serves between; `config.rs` saves `.env.local` atomically.
 
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
