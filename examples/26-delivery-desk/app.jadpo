@@ -1,3 +1,5 @@
+use depot/events { ParcelScanned }
+
 // The desk's own integration is called through a connection: which
 // package, which domains may call it, the credential its scheme sends
 // from a secret setting, and which of its hosts each deployment calls.
@@ -20,6 +22,16 @@ application {
                 secret: config.couriers_webhook_secret
             }
         }
+        depot_scans: {
+            package: AmazonSqs.v2012_11_05
+            domains: [depot]
+            credential: {
+                key_id: config.aws_key_id
+                secret: config.aws_secret_key
+            }
+            host: config.sqs_endpoint
+            queue_url: config.depot_queue_url
+        }
         mail: {
             package: Resend.v1
             domains: []
@@ -30,6 +42,12 @@ application {
     email: {
         connection: mail
         from: config.desk_address
+    }
+    receiving: {
+        depot_scans: {
+            id_at: "scan_id"
+            events: [ParcelScanned]
+        }
     }
 }
 

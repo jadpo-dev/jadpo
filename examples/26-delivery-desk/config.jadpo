@@ -25,4 +25,16 @@ config {
     desk_address: Email {
         default: "desk@delivery-desk.example"
     }
+    /// The depot's AWS access key.
+    aws_key_id: Text
+    /// Its secret half.
+    aws_secret_key: Text {
+        secret: true
+    }
+    /// Amazon SQS in the depot's region.
+    sqs_endpoint: Url {
+        default: "https://sqs.eu-west-2.amazonaws.com"
+    }
+    /// The queue the depot's scanners write to.
+    depot_queue_url: Text
 }

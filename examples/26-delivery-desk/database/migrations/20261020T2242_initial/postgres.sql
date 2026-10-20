@@ -1,4 +1,4 @@
--- 20261020T2240_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T2242_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "collection" (
@@ -14,6 +14,12 @@ CREATE TABLE "courier_tariff" (
     "morning_pence" bigint NOT NULL,
     "afternoon_pence" bigint NOT NULL,
     CONSTRAINT "courier_tariff_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "depot_scan" (
+    "id" uuid NOT NULL,
+    "label" text NOT NULL,
+    "bay" bigint NOT NULL,
+    CONSTRAINT "depot_scan_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "jadpo_circuit_breakers" (
     "connection" text NOT NULL,
@@ -80,6 +86,20 @@ CREATE TABLE "jadpo_outbox" (
     "depth" integer,
     CONSTRAINT "jadpo_outbox_pkey" PRIMARY KEY ("id")
 );
+CREATE TABLE "jadpo_parked_messages" (
+    "id" uuid NOT NULL,
+    "queue" text NOT NULL,
+    "digest" text NOT NULL,
+    "body" text NOT NULL,
+    "status" text NOT NULL,
+    "reason" text NOT NULL,
+    "event" text,
+    "message_id" text,
+    "problems" jsonb,
+    "parked_at" timestamptz(3) NOT NULL,
+    "retried_at" timestamptz(3),
+    CONSTRAINT "jadpo_parked_messages_pkey" PRIMARY KEY ("id")
+);
 CREATE TABLE "jadpo_polls" (
     "poll" text NOT NULL,
     "next_at" timestamptz(3) NOT NULL,
@@ -95,9 +115,11 @@ CREATE TABLE "jadpo_received_events" (
     CONSTRAINT "jadpo_received_events_pkey" PRIMARY KEY ("source", "event_id")
 );
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_subscriber_key" UNIQUE ("outbox_id", "subscriber");
+ALTER TABLE "jadpo_parked_messages" ADD CONSTRAINT "jadpo_parked_messages_queue_digest_key" UNIQUE ("queue", "digest");
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_fkey" FOREIGN KEY ("outbox_id") REFERENCES "jadpo_outbox" ("id") ON DELETE CASCADE;
 CREATE INDEX "jadpo_deliveries_status_next_attempt_at_idx" ON "jadpo_deliveries" ("status", "next_attempt_at");
 CREATE INDEX "jadpo_idempotency_keys_kept_until_idx" ON "jadpo_idempotency_keys" ("kept_until");
 CREATE INDEX "jadpo_operator_actions_item_idx" ON "jadpo_operator_actions" ("item");
 CREATE INDEX "jadpo_outbox_emitted_at_idx" ON "jadpo_outbox" ("emitted_at");
+CREATE INDEX "jadpo_parked_messages_status_parked_at_idx" ON "jadpo_parked_messages" ("status", "parked_at");
 CREATE INDEX "jadpo_received_events_received_at_idx" ON "jadpo_received_events" ("received_at");

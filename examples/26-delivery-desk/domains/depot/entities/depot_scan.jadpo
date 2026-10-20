@@ -1,0 +1,16 @@
+use depot/types { ParcelLabel }
+
+/// A parcel the depot scanned, and which bay it went to.
+entity DepotScan {
+    id: Uuid
+    label: ParcelLabel
+    bay: Int {
+        min: 1
+        max: 40
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}

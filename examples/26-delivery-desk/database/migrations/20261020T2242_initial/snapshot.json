@@ -84,6 +84,41 @@
             "name": "courier_tariff_pkey"
           }
         },
+        "depot_scan": {
+          "columns": {
+            "bay": {
+              "allows": {
+                "max": "40",
+                "min": "1"
+              },
+              "field": "bay",
+              "position": 2,
+              "type": "bigint"
+            },
+            "id": {
+              "allows": {},
+              "field": "id",
+              "position": 0,
+              "type": "uuid"
+            },
+            "label": {
+              "allows": {
+                "max_length": 20,
+                "min_length": 6
+              },
+              "field": "label",
+              "position": 1,
+              "type": "text"
+            }
+          },
+          "entity": "DepotScan",
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "depot_scan_pkey"
+          }
+        },
         "jadpo_circuit_breakers": {
           "columns": {
             "alerted_at": {
@@ -407,6 +442,83 @@
             "name": "jadpo_outbox_pkey"
           },
           "system": "outbox"
+        },
+        "jadpo_parked_messages": {
+          "columns": {
+            "body": {
+              "position": 3,
+              "type": "text"
+            },
+            "digest": {
+              "position": 2,
+              "type": "text"
+            },
+            "event": {
+              "nullable": true,
+              "position": 6,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "message_id": {
+              "nullable": true,
+              "position": 7,
+              "type": "text"
+            },
+            "parked_at": {
+              "position": 9,
+              "type": "timestamptz(3)"
+            },
+            "problems": {
+              "nullable": true,
+              "position": 8,
+              "type": "jsonb"
+            },
+            "queue": {
+              "position": 1,
+              "type": "text"
+            },
+            "reason": {
+              "position": 5,
+              "type": "text"
+            },
+            "retried_at": {
+              "nullable": true,
+              "position": 10,
+              "type": "timestamptz(3)"
+            },
+            "status": {
+              "position": 4,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_parked_messages_status_parked_at_idx": {
+              "columns": [
+                "status",
+                "parked_at"
+              ],
+              "reason": "system parked messages"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_parked_messages_pkey"
+          },
+          "system": "parked_messages",
+          "unique": {
+            "jadpo_parked_messages_queue_digest_key": {
+              "columns": [
+                "queue",
+                "digest"
+              ],
+              "rule": "system parked messages"
+            }
+          }
         },
         "jadpo_polls": {
           "columns": {

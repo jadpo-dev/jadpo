@@ -1,0 +1,14 @@
+// The depot's scanners put a message on a queue for every parcel they
+// scan. The app declares the event the queue carries; the queue's
+// package only knows how to fetch.
+
+use depot/types { ParcelLabel }
+
+/// A parcel went past a scanner at the depot.
+type ParcelScanned = Event {
+    label: ParcelLabel
+    bay: Int {
+        min: 1
+        max: 40
+    }
+}
