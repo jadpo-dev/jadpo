@@ -2154,7 +2154,6 @@ application {
     connections: {
         postbox: {
             package: Postbox.v1
-            domains: []
             credential: config.postbox_token
             host: config.postbox_host
         }
@@ -2619,9 +2618,10 @@ What "Email" leaves to the build of mail packages, partials and
   Through SMTP, which declares no limit, `max_size:` is optional.
 - **The connection.** `email:` may name a package connection whose
   package has `provides/email.jadpo`; a connection only `email:` names
-  may list no `domains:`. The delivery calls the operation as any
-  provider call is made, with no key, so a server's error after the
-  message went out parks it as `outcome_unknown`.
+  needs no `domains:`, since no domain's action calls it. The delivery
+  calls the operation as any provider call is made, with no key, so a
+  server's error after the message went out parks it as
+  `outcome_unknown`.
 - **A part the message doesn't have is left out.** An email without an
   `.html` or `.txt`, or an attachment without a media type, sends the
   provider's input without that field rather than `null`, which a

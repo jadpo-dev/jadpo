@@ -260,6 +260,7 @@ pub fn package_connections(db: &dyn Db, project: Project) -> PackageConnections 
     let homes = crate::surface::homes(db, project);
     let table = jadpo_db::symbols(db, project);
     let domains: Vec<String> = table.domains.iter().cloned().collect();
+    let emailed = crate::emails::written_connection(db, project);
     for found in singletons(db, project, "application") {
         for (key, member) in tree::members(found.list.clone()) {
             if name_text(&key).as_deref() != Some("connections") {
@@ -283,6 +284,7 @@ pub fn package_connections(db: &dyn Db, project: Project) -> PackageConnections 
                     connection: &connection,
                     name_span: node_span(&found.path, name.syntax()),
                     domains: &domains,
+                    emailed: emailed.as_deref() == Some(connection.as_str()),
                 };
                 let Some(home) = reader.package(package, &homes, &mut out.problems) else {
                     continue;
@@ -732,6 +734,9 @@ struct Reader<'a> {
     connection: &'a str,
     name_span: Span,
     domains: &'a [String],
+    /// Whether `email:` names this connection, which then needs no
+    /// `domains:` (area 16, "The connection"; chunk 7.8d).
+    emailed: bool,
 }
 
 impl Reader<'_> {
@@ -955,7 +960,7 @@ impl Reader<'_> {
             .reason(reason)
             .next(next)
         };
-        if !given.contains("domains") {
+        if !given.contains("domains") && !self.emailed {
             out.push(missing(
                 "domains",
                 "A connection lists the domains whose actions may call it, so a new caller is a one-line change a reviewer sees; other domains go through those domains' public actions.".to_string(),

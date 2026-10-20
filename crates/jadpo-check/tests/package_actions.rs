@@ -503,3 +503,62 @@ fn a_public_package_action_is_on_the_surface() {
     let text = jadpo_check::surface::text(&db, project, HOME, None).expect("a surface");
     assert!(!text.contains("action start_subscription"), "{text}");
 }
+
+// --- the app matching a package's failures (chunk 7.8d) ---------------------
+
+/// `try_subscribe` in the billing domain, matching `call`'s outcome with
+/// the declined card's arm written through the package's name.
+fn matching(call: &str, arm: &str) -> String {
+    format!(
+        "use app {{ pay }}\nuse shared/providers/acme_pay\n\n/// Starts a subscription, or gives nothing when the card is declined.\naction try_subscribe(plan: AcmePay.Reference) -> AcmePay.PayReply? {{\n    return match {call}(AcmePay.PayRequest {{\n        reference: plan\n    }}) {{\n        success(reply) -> reply\n{arm}    }}\n}}\n"
+    )
+}
+
+const TRY: &str = "domains/billing/actions/try_subscribe.jadpo";
+
+#[test]
+fn the_app_matches_a_provider_calls_failure_through_the_package() {
+    let text = matching(
+        "pay.invoices.create",
+        "        AcmePay.CardDeclined -> none\n",
+    );
+    assert_eq!(
+        problems(
+            &[("start_subscription", START)],
+            "pay.start_subscription",
+            &[SUBSCRIBER, (TRY, &text)]
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_app_matches_a_package_actions_failure_through_the_package() {
+    let text = matching(
+        "pay.start_subscription",
+        "        AcmePay.CardDeclined -> none\n",
+    );
+    assert_eq!(
+        problems(
+            &[("start_subscription", START)],
+            "pay.start_subscription",
+            &[SUBSCRIBER, (TRY, &text)]
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_app_is_told_of_a_package_failure_it_doesnt_match() {
+    let text = matching("pay.invoices.create", "");
+    assert_eq!(
+        problems(
+            &[("start_subscription", START)],
+            "pay.start_subscription",
+            &[SUBSCRIBER, (TRY, &text)]
+        ),
+        [format!(
+            "{TRY} failure.outcome_missing_arm: This `match` doesn't handle `AcmePay.CardDeclined`"
+        )]
+    );
+}

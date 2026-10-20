@@ -127,9 +127,18 @@ impl Body<'_> {
                     let name = text(only);
                     name == "success" || (starts_upper(&name) && self.is_failure(&name))
                 }
-                _ => false,
+                written => self.is_package_failure(&written.iter().map(text).collect::<Vec<_>>()),
             }
         })
+    }
+
+    /// Whether `path` names a package's failure through the package,
+    /// `AcmePay.CardDeclined` or `Postcodes.v3.InvalidPostcode` (area 11).
+    pub(super) fn is_package_failure(&self, path: &[String]) -> bool {
+        path.len() > 1
+            && self.symbols.is_package(&path[0])
+            && path.last().is_some_and(|name| starts_upper(name))
+            && self.is_failure(&path.join("."))
     }
 
     /// The type `some(name)` binds: the value without `none`.
