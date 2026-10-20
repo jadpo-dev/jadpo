@@ -5,10 +5,11 @@ grow it, and bring back seed saved from their own plants. Every spring
 the volunteers check every packet on the shelves, withdrawing any too
 old to sow, and keep a count of how the check went. Members who donate
 in bulk send a spreadsheet of their packets, which the library keeps and
-adds to the shelves a few rows at a time. It teaches batches: work over
-more items than one action can hold, which carries on after a crash or
-a deploy, and never does an item twice; and files, kept in a store of
-their own and read a row at a time.
+adds to the shelves a few rows at a time, and the volunteers print a
+spreadsheet of every packet on the shelves. It teaches batches: work
+over more items than one action can hold, which carries on after a
+crash or a deploy, and never does an item twice; and files, kept in a
+store of their own, read a row at a time and written a page at a time.
 
 One action can't check every packet: it would be one transaction over
 the whole library, and if it failed on the last packet nothing would be
@@ -32,6 +33,7 @@ checked becomes a problem, not a stop.
 10. **Keeping a file.** `sheets.put(bytes, FileType.csv)` keeps the bytes and gives the stored `File`, before the action reads or writes anything, since a call that leaves the process never waits inside a transaction; a store with no room is `storage_full`, which `attempt` maps. See `domains/seedbank/actions/keep_sheet.jadpo`.
 11. **Reading a file's rows.** `csv.read` starts a batch over a stored file's rows, each read as an `Input` by its columns (`column:` names one that isn't the field's name), a batch's rows read from the store before its transaction opens; a row that can't be read is a problem by its row and column, never its value. See `domains/seedbank/actions/add_sheet.jadpo`, `domains/seedbank/types/donation_row.jadpo` and [area 19, Data formats](../../docs/language/19-standard-library.md#data-formats-json-csv-tsv-and-json-lines).
 12. **Reading a file whole.** `sheets.read(sheet)` gives a file's bytes as `FileContents`, for passing on; only a field holding 10 MB or less is read whole. See `domains/seedbank/actions/sheet_bytes.jadpo`.
+13. **Writing a file's rows.** `csv.write` walks a query's pages into a stored file, each item's row an `Output` that `each:` builds, each page read in a transaction of its own and its rows put in the store only once that transaction has closed; `format: CsvFormat.spreadsheet` writes for a spreadsheet, and `finished:` gets an `ExportSummary` holding the file. See `domains/seedbank/actions/list_shelves.jadpo`, `domains/seedbank/types/shelf_line.jadpo` and [area 12, How an export's run is kept](../../docs/language/12-jobs-and-events.md#how-an-exports-run-is-kept).
 
 ## Run it
 
@@ -46,7 +48,7 @@ target/release/jadpo fmt --check examples/24-seed-library
 ```
 
 - `check` ends with `checked: <n> files` and no errors.
-- `test` needs PostgreSQL, and ends with `tested: 7 passed, 7 action tests`.
+- `test` needs PostgreSQL, and ends with `tested: 8 passed, 8 action tests`.
   A run starts after its action commits, on the runtime's runner, which
   a test doesn't have, so the tests see each run as it starts, and test
   each page's action on its own.
@@ -63,4 +65,6 @@ target/release/jadpo fmt --check examples/24-seed-library
   <!-- try {"file": "domains/seedbank/entities/donation_sheet.jadpo", "replace": "max_size: 2mb", "with": "max_size: 20mb", "check": ["type.file_read_too_large"]} -->
 - In `keep_sheet.jadpo`, take the `storage_full:` mapping away. `jadpo check` reports that `sheets.put` can fail with `storage_full` and nothing maps it: a store may have no room, and the action says what that is.
   <!-- try {"file": "domains/seedbank/actions/keep_sheet.jadpo", "replace": " {\n        storage_full: SheetNotKept\n    }", "with": "", "check": ["failure.rule_unmapped"]} -->
+- In `list_shelves.jadpo`, take `format: CsvFormat.spreadsheet` away. `jadpo check` reports `type.argument_count`: a CSV says who reads it, a spreadsheet or a program, since only a spreadsheet's needs a byte-order mark and its formulas escaped.
+  <!-- try {"file": "domains/seedbank/actions/list_shelves.jadpo", "replace": "        format: CsvFormat.spreadsheet,\n", "with": "", "check": ["type.argument_count"]} -->
 - Then read [25-allotment-rents](../25-allotment-rents/README.md), where schedules run work on a timer for many societies at once.

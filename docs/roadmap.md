@@ -797,11 +797,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   in area 12's "How a file's run is kept" and area 16's "Chosen in chunk
   6.4b": a file's run is kept where its actions write, and a CSV column
   no field reads stops the run.
-- [ ] **6.4b2 Exports** `opus · xhigh`, after 6.4b (split from 6.4b2
-  Exports and the rest of the file helpers on 2026-10-20): the writers
-  (`csv.write`, `tsv.write`, `json_lines.write` and `json.write`'s file
-  form) with `ExportSummary` and `CsvFormat`, each export's put after its
-  page commits.
+- [x] **6.4b2 Exports** `opus · xhigh`, after 6.4b (split from 6.4b2
+  Exports and the rest of the file helpers on 2026-10-20). Built:
+  `csv.write`, `tsv.write`, `json_lines.write` and `json.write`'s file
+  form, each a run over a named query's pages, `each:` an inline
+  function giving each item's `Output` row (the action's locals it reads
+  saved with the run), `CsvFormat` required for CSV and TSV
+  (`spreadsheet`: a byte-order mark and formula-like text escaped), and
+  `ExportSummary` holding the written `File`; each page read in a
+  transaction that commits before its rows go out, put as a piece of the
+  file through the seam, then its position committed, so a resumed page
+  puts its piece again under the same key; the pieces joined by the
+  store (`join`), a cancelled export's dropped (`discard`); `column:` on
+  an `Output`'s fields and `FileType.json_lines`. Live tests in
+  `file_exports.rs`; example 24 writes a shelf list. Choices in area 12's
+  "How an export's run is kept", area 16's "Chosen in chunk 6.4b2" and
+  area 19's "How a row is written".
 - [ ] **6.4b3 The rest of the file helpers** `opus · xhigh`, after
   6.4b2: `json.read`'s file form (`items_at:`); gzip read with
   `max_unpacked_size:`; and from 6.4, the warning for a `from:` ordered by

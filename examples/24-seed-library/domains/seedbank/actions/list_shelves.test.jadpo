@@ -1,0 +1,14 @@
+// A run starts after its action commits, on the runtime's runner, which
+// a test's host keeps none of, so the list is not written yet.
+
+use seedbank/entities { ShelfList }
+use seedbank/actions { open_list }
+
+test "a shelf list starts writing once" {
+    var fresh_list: ShelfList = open_list()
+    var started: ShelfList = attempt list_shelves(fresh_list.id)
+    var restarted: ShelfList = attempt list_shelves(fresh_list.id)
+    assert started.list_walk != none
+    assert restarted.list_walk == started.list_walk
+    assert started.printout == none
+}

@@ -2160,6 +2160,25 @@ under its lock, and commits the items' writes, the problems and the next
 place (byte, row and line) together. `Host::rows_per_batch` says how many
 rows a batch holds: 100, two on `jadpo test`'s host.
 
+**An export's run** (chunk 6.4b2; area 12, "How an export's run is
+kept"; area 16, "Chosen in chunk 6.4b2"). A file helper's write is
+`BatchOp::Write(RowFormat)`, its store lowered to the connection's name
+as a text literal, planned as a `BatchPlan` over its query whose `each`
+is `BatchEach::Row` (the inline function's body in the starting action's
+body, its parameter's local and each local of the action it reads, by
+`Body::outer_reads`, with the place of the value the run saved for it)
+and whose `to` is a `FileWrite` (format, store, the row type's
+JSON-table number and columns, and the places of `name:` and
+`format:`). The runner's page for it (`batches::export`) reads the page
+in a transaction that commits having written nothing, works out each
+row through `Executor::row` (the interpreter's `Machine::row`, a frame
+of the starting action holding only those locals), encodes the page
+(`Codecs::write_cells` for CSV and TSV, `Codecs::write` for JSON), puts
+it as a piece through `files::put_piece`, then commits the problems and
+the next place (cursor, pieces, bytes, rows) in a second transaction
+held to the place it read from; once every page is written,
+`files::join` joins the pieces and `finished:` gets the `ExportSummary`.
+
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in

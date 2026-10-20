@@ -248,7 +248,11 @@ action export_products(request: ProductExport) -> BatchRun {
         name: "products.csv",
         format: CsvFormat.spreadsheet,
         from: products_for_export(request.account_id),
-        each: product -> ProductExportRow { sku: product.sku, name: product.name, price: product.price },
+        each: product -> ProductExportRow {
+            sku: product.sku
+            name: product.name
+            price: product.price
+        },
         finished: done -> send_export_ready(done.file, to: request.requested_by),
         key: request.id
     )
@@ -353,9 +357,11 @@ page per subscriber delivery.
 > below). Built in chunk 6.4b, with the `files` capability's first part
 > (area 16): `csv.read`, `tsv.read` and `json_lines.read`, `column:` and
 > a file row's problems by its row and column ("How a file's run is
-> kept", below). The writers, `json`'s file forms, `CsvFormat`,
-> `ExportSummary`, the warning for a `from:` ordered by a field that can
-> be updated and `estimated_total` come in roadmap 6.4b2.
+> kept", below). Built in chunk 6.4b2: the writers, `csv.write`,
+> `tsv.write`, `json_lines.write` and `json.write`'s file form, with
+> `CsvFormat` and `ExportSummary` ("How an export's run is kept",
+> below). `json.read`'s file form, the warning for a `from:` ordered by a
+> field that can be updated and `estimated_total` come in roadmap 6.4b3.
 
 A sweep that marks every item seen, a page at a time, once per sweep,
 keeping how many it went through:
@@ -620,6 +626,51 @@ conservative reading of "Batches" above and area 19's "Data formats":
   it, as it does a query's.
 - **Encodings.** UTF-8, a byte-order mark removed, and UTF-16 with its
   mark, little- or big-endian, never guessed; anything else isn't text.
+
+### How an export's run is kept
+
+What a file helper's write (`csv.write`, `tsv.write`, `json_lines.write`
+and `json.write`'s file form) does beyond a query's run, chosen in chunk
+6.4b2, each the most conservative reading of "Batches" above and area
+19's "Data formats", which says how each row is written:
+
+- **Where it is kept.** As `batches.each`'s: in the store `from:`'s query
+  reads, which `finished:`'s action writes too.
+- **Each page's put after its page commits.** No outside call goes out
+  while a transaction is open (area 16, chunk 7.0c), so a page goes in
+  three steps. Its transaction locks the run's row, reads the page after
+  the position that committed, as the system, and commits, having
+  written nothing. Then, with no transaction open, `each:` works out each
+  item's row, and the page's rows are put in the store as a piece of the
+  file of their own, under a key made from the run's id and the piece's
+  number. Last, a second transaction locks the run's row again, holds it
+  to the position the page was read from, and commits the problems and
+  the position after the page: the next page's cursor, and the pieces
+  kept with their bytes and rows. A run stopped between the put and that
+  commit puts the piece again when it resumes, under the same key, so the
+  file never holds a row twice.
+- **`each:` is pure.** Its body is one expression, the row, worked out
+  from the item and what the run saved; `attempt` only starts a
+  statement, so it can't fail. What stops it is a fault, an overflow
+  among them, which makes the item a problem by its place in the walk,
+  its rule the fault's classification and its row not written.
+- **What it saves.** Each of the action's parameters and variables
+  `each:` reads, once, as a value an entity field holds
+  (`type.batch_capture_not_storable` otherwise), beside `name:` and
+  `format:`; `finished:`'s captures and `key:` as `batches.each`'s.
+- **Finishing.** Once every page is written, the pieces are joined into
+  the file, with no transaction open (the store's `join`, area 16,
+  "Chosen in chunk 6.4b2"); `finished:` then runs in a transaction of its
+  own, given the `ExportSummary`, whose `file` holds the store, the key,
+  `name:`, the size and the type. The file's key is made from the run's
+  id, so a run that joins again finds it whole.
+- **Cancelling.** A cancel ends the run at its next page, as a query's
+  run, and once that end commits the file's pieces, and the file if they
+  were joined, are dropped. A store that can't be reached then leaves
+  them; deleting what nothing points at comes with the rest of the files
+  capability.
+- **A store with no room** pauses the run, as one that can't be reached
+  does: what committed stands, and the tick carries it on.
 
 ### Batches, tenants and grants
 
@@ -2807,7 +2858,9 @@ check failed: 1 error, 2 files
 
 `each:` and `finished:` are one call of an action in the same domain,
 whose arguments are the item, a field inside it, or a value saved with
-the run; one that works something out of the item is refused:
+the run. (A file helper's write's `each:` is one inline function giving
+the item's row instead, chunk 6.4b2, refused when it is anything else.)
+One that works something out of the item is refused:
 
 ```jadpo check project=e-batch-each-invalid file=stock.jadpo hidden
 type ShelfCode = Text {
@@ -3042,11 +3095,13 @@ check failed: 1 error, 2 files
 
 ### `type.batch_row_invalid`
 
-A file helper reads each row as the `Input` its `as:` names. A CSV or
-TSV row holds one value a cell, so a row type holding a list, a map, an
-object or a standard type with no one text form is refused, pointing at
-JSON Lines, whose rows hold any JSON value; so is a row type that isn't
-an `Input`, or two fields reading one column:
+A file helper reads each row as the `Input` its `as:` names, and writes
+each as the `Output` its `each:` gives (chunk 6.4b2). A CSV or TSV row
+holds one value a cell, so a row type holding a list, a map, an object
+or a standard type with no one text form is refused, pointing at JSON
+Lines, whose rows hold any JSON value; so is a row type that isn't an
+`Input` (or, written, an `Output`), or two fields reading or writing one
+column:
 
 ```jadpo check project=e-batch-row-invalid file=app.jadpo hidden
 application {
@@ -3183,13 +3238,18 @@ their delivery's record is gone, and area 8's ended sessions, tokens and
 expired keys. Built in chunk 6.4b: the file helpers' reads, `csv.read`,
 `tsv.read` and `json_lines.read`, with `column:`, a file row's problems
 by its row and column, the faults that stop a file's run, and
-`type.batch_row_invalid` ("How a file's run is kept").
+`type.batch_row_invalid` ("How a file's run is kept"). Built in chunk
+6.4b2: the writers, `csv.write`, `tsv.write`, `json_lines.write` and
+`json.write`'s file form, with `CsvFormat` and `ExportSummary`, each
+page's rows put once its transaction has closed ("How an export's run is
+kept").
 
 Not yet:
 
-- The file helpers' writers, `json`'s file forms, `estimated_total` and
-  the warning for a `from:` ordered by a field that can be updated:
-  roadmap 6.4b2 (the reads came in 6.4b).
+- `json.read`'s file form, gzip with `max_unpacked_size:`,
+  `estimated_total` and the warning for a `from:` ordered by a field
+  that can be updated: roadmap 6.4b3 (the reads came in 6.4b, the
+  writers in 6.4b2).
 - A test's `fakes:` failing a subscriber's provider call: roadmap 7.2,
   with its generated fakes. Delivering events in tests after each step,
   in an order the printed seed shuffles, and retrying or giving up a
