@@ -1,0 +1,13 @@
+// The package's own event gives no `wire_name:`: its action emits it, and
+// as a `public` event it reaches the app's subscribers through the app's
+// outbox.
+
+/// The parcels of a pickup were collected, with who collected them.
+public type ParcelsCollected = Event {
+    pickup_id: PickupId
+    driver_name: DriverName
+    parcel_count: Int {
+        min: 1
+    }
+    collected_at: Instant
+}

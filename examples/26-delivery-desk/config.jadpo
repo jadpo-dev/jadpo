@@ -1,4 +1,10 @@
 config {
+    /// The depot's AWS access key.
+    aws_key_id: Text
+    /// Its secret half.
+    aws_secret_key: Text {
+        secret: true
+    }
     /// The courier's API key: a secret, sent only as the package's scheme
     /// says, and never read by code.
     couriers_api_key: Text {
@@ -9,4 +15,36 @@ config {
     couriers_environment: ProviderEnvironment {
         default: ProviderEnvironment.sandbox
     }
+    /// The secret Swift Couriers signs its webhooks with.
+    couriers_webhook_secret: Text {
+        secret: true
+    }
+    /// The queue the depot's scanners write to.
+    depot_queue_url: Text
+    /// The address the desk's email comes from, and goes to.
+    desk_address: Email {
+        default: "desk@delivery-desk.example"
+    }
+    /// Parcel Rates' API key.
+    rates_api_key: Text {
+        secret: true
+    }
+    /// Parcel Rates' sandbox or its live API.
+    rates_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+    /// Resend's API key, which sends the desk's email.
+    resend_api_key: Text {
+        secret: true
+    }
+    /// Where Resend's API is.
+    resend_host: Url {
+        default: "https://api.resend.com"
+    }
+    /// Amazon SQS in the depot's region.
+    sqs_endpoint: Url {
+        default: "https://sqs.eu-west-2.amazonaws.com"
+    }
+    /// Seals the courier's answers kept while a return booking's steps run.
+    steps_key: SigningKey
 }

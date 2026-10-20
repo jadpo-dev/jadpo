@@ -101,7 +101,11 @@ README saying what it teaches, how to run it and what to try next.
 26. [26-delivery-desk/](26-delivery-desk/README.md): packages: an
     installed library package locked by its digest and used through its
     name, and the app's own integration with a provider's API in the
-    package format, called through a connection.
+    package format, called through a connection; webhooks, a package's
+    subscribers, events and poll, a recipe, recordings, a mail package
+    and a queue filling capabilities, two versions side by side with a
+    package's words, an OpenAPI import mapped to standard types, and
+    several changing calls kept as steps.
 27. [27-guest-house/](27-guest-house/README.md): email and signing in
     by email: an email as a type, its HTML and text templates checked
     against its fields, its subject worded like a message, the shared

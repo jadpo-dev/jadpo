@@ -1,0 +1,6 @@
+/// The messages received, none when the queue had none to give.
+public type ReceiveMessageResult = Object {
+    messages: List<QueueMessage>? {
+        wire_name: "Messages"
+    }
+}

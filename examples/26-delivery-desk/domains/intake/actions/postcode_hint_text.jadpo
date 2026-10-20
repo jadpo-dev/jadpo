@@ -1,0 +1,10 @@
+// While two versions of a package are held, every name through it
+// carries its version. The desk took `v2` for the words it ships, and
+// `check_postcode` still reads with `v1` until it moves across.
+
+use packages/postcodes
+
+/// What the postcode field says beneath it, in the reader's language.
+action postcode_hint_text(reader_locale: Locale) -> PresentationText {
+    return Postcodes.v2.translations.postcode_hint(locale: reader_locale)
+}

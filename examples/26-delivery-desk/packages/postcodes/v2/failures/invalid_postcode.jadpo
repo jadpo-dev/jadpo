@@ -1,0 +1,4 @@
+/// What was typed isn't a UK postcode.
+public type InvalidPostcode = Failure {
+    kind: FailureKind.invalid_value
+}

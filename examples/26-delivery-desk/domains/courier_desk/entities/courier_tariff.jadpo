@@ -1,0 +1,19 @@
+// A recipe is wiring an app copies and then owns: here, keeping each
+// price list Swift publishes. A package owns no data, so the entity is
+// the app's once copied.
+
+/// A price list Swift Couriers published.
+entity CourierTariff {
+    id: Uuid
+    morning_pence: Int {
+        min: 0
+    }
+    afternoon_pence: Int {
+        min: 0
+    }
+
+    policy: {
+        create: [Access.system]
+        read: [Access.system]
+    }
+}

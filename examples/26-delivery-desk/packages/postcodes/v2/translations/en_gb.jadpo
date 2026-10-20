@@ -1,0 +1,4 @@
+translations {
+    invalid_postcode: "That isn't a UK postcode."
+    postcode_hint: "Write it as it is on a letter, such as SW1A 1AA."
+}

@@ -1,0 +1,19 @@
+// The document says only that `amount` is an integer beside a
+// `currency`; the importer read the pair by its shape as one `Money`,
+// decoded at the edge with `wire_parts:`, so the desk only ever sees the
+// standard type. Its review narrowed it to `QuotedPrice`, since the document's
+// currencies are pounds alone.
+
+/// The cheapest price for a parcel.
+public type Quote = Object {
+    amount: QuotedPrice {
+        wire_parts: {
+            amount: "amount"
+            currency: "currency"
+        }
+    }
+    id: Text {
+        max_length: 32
+    }
+    valid_until: Instant
+}

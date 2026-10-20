@@ -1,0 +1,154 @@
+-- 20261020T2257_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+
+-- store: main
+CREATE TABLE "courier_tariff" (
+    "id" uuid NOT NULL,
+    "morning_pence" bigint NOT NULL,
+    "afternoon_pence" bigint NOT NULL,
+    CONSTRAINT "courier_tariff_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "depot_scan" (
+    "id" uuid NOT NULL,
+    "label" text NOT NULL,
+    "sorting_bay" bigint NOT NULL,
+    CONSTRAINT "depot_scan_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_circuit_breakers" (
+    "connection" text NOT NULL,
+    "state" text NOT NULL,
+    "failures" integer NOT NULL,
+    "opened_at" timestamptz(3),
+    "pauses" integer NOT NULL,
+    "probe_at" timestamptz(3),
+    "probe_id" uuid,
+    "probe_until" timestamptz(3),
+    "alerted_at" timestamptz(3),
+    CONSTRAINT "jadpo_circuit_breakers_pkey" PRIMARY KEY ("connection")
+);
+CREATE TABLE "jadpo_deliveries" (
+    "id" uuid NOT NULL,
+    "outbox_id" uuid NOT NULL,
+    "subscriber" text NOT NULL,
+    "status" text NOT NULL,
+    "attempts" integer NOT NULL,
+    "next_attempt_at" timestamptz(3),
+    "last_failure" jsonb,
+    "last_tried_at" timestamptz(3),
+    "retried_at" timestamptz(3),
+    "held_for" text,
+    "held_since" timestamptz(3),
+    "held_ms" bigint,
+    CONSTRAINT "jadpo_deliveries_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_handled_deliveries" (
+    "id" uuid NOT NULL,
+    "handled_at" timestamptz(3) NOT NULL,
+    CONSTRAINT "jadpo_handled_deliveries_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_idempotency_keys" (
+    "scope" text NOT NULL,
+    "key" text NOT NULL,
+    "request_digest" text NOT NULL,
+    "status" smallint,
+    "response" jsonb,
+    "stored_at" timestamptz(3) NOT NULL,
+    "kept_until" timestamptz(3) NOT NULL,
+    CONSTRAINT "jadpo_idempotency_keys_pkey" PRIMARY KEY ("scope", "key")
+);
+CREATE TABLE "jadpo_operator_actions" (
+    "id" uuid NOT NULL,
+    "acted_at" timestamptz(3) NOT NULL,
+    "action" text NOT NULL,
+    "kind" text NOT NULL,
+    "item" uuid NOT NULL,
+    "target" text NOT NULL,
+    "event" text,
+    "was" text NOT NULL,
+    "operator" text NOT NULL,
+    "role" text NOT NULL,
+    CONSTRAINT "jadpo_operator_actions_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_outbox" (
+    "id" uuid NOT NULL,
+    "event" text NOT NULL,
+    "payload" jsonb NOT NULL,
+    "emitted_at" timestamptz(3) NOT NULL,
+    "traceparent" text,
+    "encoding" smallint,
+    "depth" integer,
+    CONSTRAINT "jadpo_outbox_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_parked_messages" (
+    "id" uuid NOT NULL,
+    "queue" text NOT NULL,
+    "digest" text NOT NULL,
+    "body" text NOT NULL,
+    "status" text NOT NULL,
+    "reason" text NOT NULL,
+    "event" text,
+    "message_id" text,
+    "problems" jsonb,
+    "parked_at" timestamptz(3) NOT NULL,
+    "retried_at" timestamptz(3),
+    CONSTRAINT "jadpo_parked_messages_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_polls" (
+    "poll" text NOT NULL,
+    "next_at" timestamptz(3) NOT NULL,
+    "digest" text,
+    "last_change" timestamptz(3),
+    CONSTRAINT "jadpo_polls_pkey" PRIMARY KEY ("poll")
+);
+CREATE TABLE "jadpo_received_events" (
+    "source" text NOT NULL,
+    "event_id" text NOT NULL,
+    "received_at" timestamptz(3) NOT NULL,
+    "reply" text,
+    CONSTRAINT "jadpo_received_events_pkey" PRIMARY KEY ("source", "event_id")
+);
+CREATE TABLE "jadpo_step_records" (
+    "id" uuid NOT NULL,
+    "scope" text NOT NULL,
+    "key" text NOT NULL,
+    "action" text NOT NULL,
+    "build" text NOT NULL,
+    "shape" text NOT NULL,
+    "started_at" timestamptz(3) NOT NULL,
+    "generation" bigint NOT NULL,
+    "state" text NOT NULL,
+    "problem" jsonb,
+    "taken_at" timestamptz(3) NOT NULL,
+    "alerted_at" timestamptz(3),
+    CONSTRAINT "jadpo_step_records_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_steps" (
+    "record_id" uuid NOT NULL,
+    "position" integer NOT NULL,
+    "operation" text NOT NULL,
+    "fingerprint" jsonb NOT NULL,
+    "key_generation" integer NOT NULL,
+    "dispatched_at" timestamptz(3) NOT NULL,
+    "outcome" text,
+    "answer" bytea,
+    "answered_at" timestamptz(3),
+    CONSTRAINT "jadpo_steps_pkey" PRIMARY KEY ("record_id", "position")
+);
+CREATE TABLE "pickup_collection" (
+    "id" uuid NOT NULL,
+    "pickup_id" text NOT NULL,
+    "driver_name" text NOT NULL,
+    "parcel_count" bigint NOT NULL,
+    "collected_at" timestamptz(3) NOT NULL,
+    CONSTRAINT "pickup_collection_pkey" PRIMARY KEY ("id")
+);
+ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_subscriber_key" UNIQUE ("outbox_id", "subscriber");
+ALTER TABLE "jadpo_parked_messages" ADD CONSTRAINT "jadpo_parked_messages_queue_digest_key" UNIQUE ("queue", "digest");
+ALTER TABLE "jadpo_step_records" ADD CONSTRAINT "jadpo_step_records_scope_key_key" UNIQUE ("scope", "key");
+ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_fkey" FOREIGN KEY ("outbox_id") REFERENCES "jadpo_outbox" ("id") ON DELETE CASCADE;
+ALTER TABLE "jadpo_steps" ADD CONSTRAINT "jadpo_steps_record_id_fkey" FOREIGN KEY ("record_id") REFERENCES "jadpo_step_records" ("id") ON DELETE CASCADE;
+CREATE INDEX "jadpo_deliveries_status_next_attempt_at_idx" ON "jadpo_deliveries" ("status", "next_attempt_at");
+CREATE INDEX "jadpo_idempotency_keys_kept_until_idx" ON "jadpo_idempotency_keys" ("kept_until");
+CREATE INDEX "jadpo_operator_actions_item_idx" ON "jadpo_operator_actions" ("item");
+CREATE INDEX "jadpo_outbox_emitted_at_idx" ON "jadpo_outbox" ("emitted_at");
+CREATE INDEX "jadpo_parked_messages_status_parked_at_idx" ON "jadpo_parked_messages" ("status", "parked_at");
+CREATE INDEX "jadpo_received_events_received_at_idx" ON "jadpo_received_events" ("received_at");

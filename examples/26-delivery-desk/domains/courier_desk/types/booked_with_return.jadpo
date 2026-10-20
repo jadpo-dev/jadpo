@@ -1,0 +1,9 @@
+use shared/providers/swift_couriers
+
+/// A parcel's pickup and its return; the return is missing when its slot was
+/// taken, and the desk books it again by hand.
+type BookedWithReturn = Output {
+    outbound_id: SwiftCouriers.PickupId
+    collect_at: Instant
+    return_id: SwiftCouriers.PickupId?
+}

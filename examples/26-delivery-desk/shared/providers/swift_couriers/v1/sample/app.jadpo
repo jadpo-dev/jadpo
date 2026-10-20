@@ -1,0 +1,12 @@
+// The package's `sample/` app: the smallest app its recipes compile in,
+// each copied into its one domain, `deliveries`. Nothing runs it.
+application {
+    connections: {
+        couriers: {
+            package: SwiftCouriers.v1
+            domains: [deliveries]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}

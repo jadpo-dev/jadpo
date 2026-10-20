@@ -1,0 +1,4 @@
+/// A price in pounds, the only currency Parcel Rates quotes in.
+public type QuotedPrice = Money {
+    currency: Currency.gbp
+}

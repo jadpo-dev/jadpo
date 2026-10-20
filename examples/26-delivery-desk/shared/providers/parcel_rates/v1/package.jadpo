@@ -1,0 +1,5 @@
+/// Prices for sending a parcel across the UK, from every courier Parcel Rates compares.
+package ParcelRates.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}

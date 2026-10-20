@@ -1,6 +1,14 @@
 // A package with `resources/` is a provider package: one API at one
 // version. `provider.jadpo` says how that API is reached; the app calls it
 // through a connection in `app.jadpo`.
+//
+// `webhooks:` says how Swift signs what it sends the desk and where each
+// event's id, type and time sit in the body; a connection that gives a
+// webhook secret then receives them. `polls:` turns a feed with no
+// webhook, Swift's price list, into an event: the runtime calls it while
+// the app subscribes to the event, and emits it only when the answer
+// changes. `max_concurrent:` is how many calls Swift takes at once from
+// each app instance.
 
 /// How Swift Couriers' API is reached.
 provider {
@@ -15,4 +23,18 @@ provider {
         window: 24h
     }
     error_code: "error.code"
+    max_concurrent: 8
+    webhooks: {
+        check: SignatureScheme.standard_webhooks
+        event_id: "id"
+        event_type: "type"
+        occurred_at: "timestamp"
+    }
+    polls: {
+        tariff: {
+            call: tariffs.current
+            every: 1d
+            emits: TariffPublished
+        }
+    }
 }

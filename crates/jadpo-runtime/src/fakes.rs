@@ -300,18 +300,34 @@ pub enum Script {
 /// `operation` (area 13, `fakes:`; chunk 7.2d), scripted by the test at
 /// the current frame of `ctx`: a value written as the provider sends it,
 /// where the operation's `output_at:` reads it, so it is read back through
-/// the operation's real decoding.
+/// the operation's real decoding. It is written on the provider's wire,
+/// its fields' encodings, `wire_parts:` and `encode:` included, each
+/// package function run by `functions` at the site numbered `at`, as a
+/// request's input is.
 pub fn script(
     ctx: &mut crate::Ctx<'_>,
     providers: &crate::provider::Providers<'_>,
+    (functions, at): (&dyn crate::provider::Functions, u32),
     (connection, operation): (&str, &str),
     given: Script,
 ) -> Result<(), &'static str> {
     let answer = match given {
-        Script::Value(value) => match as_sent(providers, connection, operation, &value) {
-            Some(sent) => Answer::Wire(sent),
-            None => return Err("a scripted value its operation can't write"),
-        },
+        Script::Value(value) => {
+            let coder = crate::provider::SiteCoder {
+                ctx: std::cell::RefCell::new(&mut *ctx),
+                functions,
+                at,
+                ended: std::cell::RefCell::new(None),
+            };
+            let sent = as_sent(providers, connection, operation, &value, Some(&coder));
+            if coder.ended.into_inner().is_some() {
+                return Err("a scripted value its operation can't write");
+            }
+            match sent {
+                Some(sent) => Answer::Wire(sent),
+                None => return Err("a scripted value its operation can't write"),
+            }
+        }
         Script::Failed(code) => Answer::Failed(code),
         Script::Unavailable => Answer::Unavailable,
         Script::Lost => Answer::Unknown,
@@ -365,17 +381,24 @@ pub fn default_answer(
 /// `value`, of operation `operation`'s output type, as connection
 /// `connection`'s provider would send it: written with the type's codec,
 /// its `wire_name:` spellings included, where the operation's `output_at:`
-/// reads it. `None` when the plan has no such operation, or it gives
-/// nothing.
+/// reads it. With `coder`, on the provider's wire: each field's encoding,
+/// `wire_parts:` and `encode:` as the provider sends it, as the answer's
+/// decoding reads it back. `None` when the plan has no such operation, or
+/// it gives nothing.
 pub fn as_sent(
     providers: &crate::provider::Providers<'_>,
     connection: &str,
     operation: &str,
     value: &jadpo_value::Value,
+    coder: Option<&dyn jadpo_value::json::Coder>,
 ) -> Option<std::rc::Rc<str>> {
     let (_, op) = providers.plan.operation(connection, operation)?;
     let codec = providers.json.codec_of(op.output?)?;
-    let written = providers.json.codecs.write_value(codec, value);
+    let codecs = jadpo_value::json::Codecs {
+        coder,
+        ..providers.json.codecs
+    };
+    let written = codecs.write_value(codec, value);
     let json = serde_json::from_str::<serde_json::Value>(&written).ok()?;
     Some(std::rc::Rc::from(
         enveloped(op.output_at.as_deref(), json).to_string(),

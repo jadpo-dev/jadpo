@@ -5,7 +5,7 @@ use packages/postcodes
 
 /// Reads the postcode a customer typed for their delivery.
 action check_postcode(
-    entered: Postcodes.EnteredPostcode
-) fails Postcodes.InvalidPostcode -> Postcodes.UkPostcode {
-    return attempt Postcodes.uk.tidy(entered)
+    entered: Postcodes.v1.EnteredPostcode
+) fails Postcodes.v1.InvalidPostcode -> Postcodes.v1.UkPostcode {
+    return attempt Postcodes.v1.uk.tidy(entered)
 }

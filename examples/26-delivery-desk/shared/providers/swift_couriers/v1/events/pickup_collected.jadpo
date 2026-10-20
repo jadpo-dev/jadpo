@@ -1,0 +1,12 @@
+// An event with `wire_name:` is one the provider sends: a signed webhook
+// brings it, and nothing in code can emit it. This one isn't `public`, so
+// only the package's own subscriber hears it.
+
+/// The driver collected a pickup: all Swift's webhook says.
+type PickupCollected = Event {
+    wire_name: "pickup.collected"
+    occurred_at: Instant
+    pickup_id: PickupId {
+        wire_name: "pickupId"
+    }
+}
