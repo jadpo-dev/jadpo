@@ -73,6 +73,7 @@ Look things up
 
 Change safely
   api           Rewrite the API records       update
+  package       Import a provider's API       import
   records       List and update the records   update
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
@@ -142,6 +143,7 @@ Look things up
 
 Change safely
   api           Rewrite the API records       update
+  package       Import a provider's API       import
   records       List and update the records   update
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
@@ -309,6 +311,7 @@ fn help_json_is_the_whole_command_reference() {
             "ai",
             "why",
             "api",
+            "package",
             "records",
             "declines",
             "fix",
@@ -322,7 +325,12 @@ fn help_json_is_the_whole_command_reference() {
             "version"
         ]
     );
-    let completions = &data["commands"][17];
+    let completions = data["commands"]
+        .as_array()
+        .expect("commands")
+        .iter()
+        .find(|command| command["name"] == "completions")
+        .expect("completions");
     assert_eq!(completions["synonyms"], serde_json::json!(["completion"]));
     assert_eq!(completions["group"], "Set up");
     assert_eq!(completions["usage"], "jadpo completions <shell>");
@@ -702,6 +710,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "ai\tShow what a prompt sends",
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",
+            "package\tImport a provider's API",
             "records\tList and update the records",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",

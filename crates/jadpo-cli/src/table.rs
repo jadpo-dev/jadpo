@@ -684,7 +684,7 @@ pub static COMMANDS: &[Command] = &[
         name: "package",
         synonyms: &[],
         group: "Change safely",
-        summary: "Import a provider's description",
+        summary: "Import a provider's API",
         description: "`import openapi <file>` reads an OpenAPI 3 document, as JSON, once and offline, \
                       into the app's own integration in shared/providers/<name>/<version>/, in the \
                       package format (area 11): its index, provider.jadpo with the file and its \
@@ -716,7 +716,7 @@ pub static COMMANDS: &[Command] = &[
         flags: &[Flag {
             name: "--as",
             value: Some("name"),
-            description: "The package's name and version, such as AcmeCouriers.v1; else from the document's title and version",
+            description: "The package's name and version",
             values: &[],
         }],
         examples: &[

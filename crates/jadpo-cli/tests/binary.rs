@@ -116,6 +116,7 @@ fn bash_completes_commands_and_values() {
             "ai",
             "why",
             "api",
+            "package",
             "records",
             "declines",
             "fix",

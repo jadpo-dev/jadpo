@@ -605,6 +605,10 @@ POST /desk/tickets/{ticket_id: Uuid}/hand-over
     fails person_not_found
     fails ticket_not_found
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 output AuditView
     ok: Bool
 

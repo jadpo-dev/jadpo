@@ -75,7 +75,9 @@ pub fn merge(existing: &str, imported: &str) -> Option<Merged> {
             }
         }
         if !inserted.is_empty() {
-            edits.push((close, close, format!("\n{inserted}")));
+            let after_newline = existing[..close].ends_with('\n');
+            let lead = if after_newline { "" } else { "\n" };
+            edits.push((close, close, format!("{lead}{inserted}")));
         }
         for member in &old.members {
             if !new.members.iter().any(|found| found.key == member.key) {
