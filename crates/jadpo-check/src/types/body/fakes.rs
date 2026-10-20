@@ -42,7 +42,7 @@ impl Body<'_> {
                     "not a block",
                 )
                 .reason("A test scripts the answers of the provider operations it reaches, each written `<connection>.<resource>.<operation>: [<answer>, ...]`.")
-                .next("Write `fakes: { couriers.pickups.create: [slot_taken] }`"),
+                .next("Write `fakes: { <connection>.<resource>.<operation>: [<answer>] }`"),
             );
             return;
         };
@@ -67,7 +67,7 @@ impl Body<'_> {
                         span,
                         "not `connection.resource.operation`",
                     )
-                    .reason("`fakes:` scripts a provider operation by its connection, resource and operation, as the code calls it: `couriers.pickups.create`.")
+                    .reason("`fakes:` scripts a provider operation by its connection, resource and operation, as the code calls it: `<connection>.<resource>.<operation>`.")
                     .next("Name the operation as the action calls it"),
                 );
                 continue;

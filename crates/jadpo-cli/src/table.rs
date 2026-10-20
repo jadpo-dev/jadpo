@@ -1078,8 +1078,8 @@ pub static COMMANDS: &[Command] = &[
                 command: "jadpo calls show call_31",
             },
             Example {
-                description: "Make the next booking find its slot taken",
-                command: "jadpo calls script couriers.pickups.create slot_taken",
+                description: "Make the next payment's card declined",
+                command: "jadpo calls script stripe.payment_intents.create card_declined",
             },
         ],
         arguments_rule: &rule::CLI_CALLS_ARGUMENTS,

@@ -477,7 +477,14 @@ impl Program {
                 given: args.len(),
             });
         }
-        let host = MemoryHost::new();
+        // Every provider connection answered by its package's fake, as in
+        // a test (chunk 7.2d): nothing leaves the process.
+        let fake: std::rc::Rc<dyn jadpo_runtime::capability::Capability> =
+            std::rc::Rc::new(jadpo_runtime::fakes::ProviderFake::new());
+        let host = self.plan().providers().connections.iter().fold(
+            jadpo_runtime::capability::Faked::new(MemoryHost::new()),
+            |host, connection| host.with(&connection.name, std::rc::Rc::clone(&fake)),
+        );
         let mut ctx = Ctx::new(self.places(), &host, Env::default());
         let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));
         Ok(ran.unwrap_or_else(|_| {

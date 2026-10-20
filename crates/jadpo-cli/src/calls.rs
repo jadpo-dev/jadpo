@@ -69,7 +69,7 @@ pub fn calls(call: &Call) -> Reply {
             _ => Reply::failed(arguments(
                 "`jadpo calls script` takes an operation and its next answer".to_string(),
                 "It scripts the next answer of one provider operation `jadpo dev` fakes: `jadpo calls script <connection>.<resource>.<operation> <answer>`.".to_string(),
-                "Run, for example, `jadpo calls script couriers.pickups.create slot_taken`".to_string(),
+                "Run `jadpo calls script <connection>.<resource>.<operation> <answer>`".to_string(),
             )),
         },
         Some(other) => {
