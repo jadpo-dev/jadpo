@@ -29,6 +29,7 @@ use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
+use crate::support::fake_provider::FakeProvider;
 use crate::support::fake_smtp::{Behaviour, FakeSmtp, base64_text};
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -152,9 +153,28 @@ type WelcomeEmail = EmailMessage {
 "#,
     ),
     (
+        "domains/members/emails/visit_line.jadpo",
+        r#"use members/types { MembershipPlan }
+
+/// The line naming a member's plan and how often they have visited.
+type VisitLine = EmailPartial {
+    plan: MembershipPlan
+    visits: Int
+}
+"#,
+    ),
+    (
+        "domains/members/emails/visit_line.html",
+        "<p>{{ plan }}, visit {{ visits }}</p>",
+    ),
+    (
+        "domains/members/emails/visit_line.txt",
+        "{{ plan }}, visit {{ visits }}",
+    ),
+    (
         "domains/members/emails/welcome_email.html",
         r#"<h1>{{ translations.members.welcome_heading(name: name) }}</h1>
-<p>{{ plan }}, visit {{ visits }}</p>
+{{ include visit_line(plan: plan, visits: visits) }}
 {{ if (visits > 1) }}<p>Back again</p>{{ else }}<p>First visit</p>{{ end }}
 <ul>{{ for perk in perks }}<li>{{ perk }}</li>{{ end }}</ul>
 "#,
@@ -162,6 +182,7 @@ type WelcomeEmail = EmailMessage {
     (
         "domains/members/emails/welcome_email.txt",
         r#"{{ translations.members.welcome_heading(name: name) }}
+{{ include visit_line(plan: plan, visits: visits) }}
 "#,
     ),
     (
@@ -171,7 +192,9 @@ type WelcomeEmail = EmailMessage {
 /// Sends a member their card.
 type CardEmail = EmailMessage {
     name: MemberName
-    card: File
+    card: File {
+        max_size: 5mb
+    }
 }
 "#,
     ),
@@ -250,6 +273,27 @@ action join(address: Email, name: MemberName, plan: MembershipPlan, language: Lo
         perks: ["Free coffee", "Tom & Jerry's <pass>"]
     }
     return member
+}
+"#,
+    ),
+    (
+        "domains/members/actions/join.test.jadpo",
+        r#"use members/entities { Member }
+use members/types { MembershipPlan }
+
+test "joining sends one welcome, its plan's line from a partial" {
+    var member: Member = join("ana@example.test", "Ana", MembershipPlan.premium, Locale.en_gb)
+    assert member.name == "Ana"
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+    assert list.any(sent, item -> item.to == "ana@example.test" and item.from == "hello@acme.test" and item.subject == "Welcome to the club, Ana")
+    assert list.any(sent, item -> item.text == "Acme\n\nHello, Ana\nPremium <gold>, visit 3\n")
+    assert list.all(sent, item -> list.count(item.links) == 0 and list.count(item.attachments) == 0)
+}
+
+test "an action that rolls back sends nothing a test can read" {
+    var before: List<SentEmail> = email.sent
+    assert list.count(before) == 0
 }
 "#,
     ),
@@ -484,13 +528,29 @@ fn an_email_is_rendered_whole_and_sent_over_smtp_after_its_action_commits() {
             panic!("a text and an HTML part: {:?}", parsed.parts);
         };
         assert!(text_head.starts_with("Content-Type: text/plain; charset=utf-8"));
-        assert_eq!(text, "Acme\n\nHello, Ana\n");
+        assert_eq!(text, "Acme\n\nHello, Ana\nPremium <gold>, visit 3\n");
         assert!(html_head.starts_with("Content-Type: text/html; charset=utf-8"));
         assert_eq!(
             html,
             "<html dir=\"ltr\"><head><title>Welcome to the club, Ana</title></head><body><header>Acme</header><h1>Hello, Ana</h1>\n<p>Premium &lt;gold&gt;, visit 3</p>\n<p>Back again</p>\n<ul><li>Free coffee</li><li>Tom &amp; Jerry&#39;s &lt;pass&gt;</li></ul>\n</body></html>\n"
         );
     });
+}
+
+/// A test reads the emails it sent with `email.sent` (chunk 7.3c), each
+/// rendered whole, its partials included, and a test that sends none
+/// reads none.
+#[test]
+fn a_test_reads_the_emails_it_sent() {
+    let root = project("sent-in-tests");
+    let checked = jadpo(&root, &["check"]);
+    assert_eq!(checked.code, 0, "{}{}", checked.stdout, checked.stderr);
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
 }
 
 /// An email in a language written right to left is laid out that way, and
@@ -641,6 +701,10 @@ fn a_send_whose_outcome_is_unknown_is_parked_and_a_refused_one_fails() {
         .await;
         run_deferred(&loaded.program, &down, work).await;
         assert_eq!(
+            deliveries(&harness, "later@example.test").await,
+            vec![("pending".to_string(), Some("unavailable".to_string()))]
+        );
+        assert_eq!(
             deliveries(&harness, "lost@example.test").await,
             vec![(
                 "outcome_unknown".to_string(),
@@ -685,4 +749,307 @@ fn an_action_that_rolls_back_sends_nothing() {
         assert!(deliveries(&harness, "ana@example.test").await.is_empty());
         assert_eq!(server.conversations(), 0);
     });
+}
+
+// --- the swap: the same emails through a mail package (chunk 7.3c) -------
+
+/// The app sending through Resend instead: only `app.jadpo` and
+/// `config.jadpo` change.
+const RESEND_APP: &str = r#"application {
+    display_name: "Acme"
+    connections: {
+        cards: {
+            driver: Driver.disk
+        }
+        resend: {
+            package: Resend.v1
+            domains: []
+            credential: config.resend_key
+            host: config.resend_host
+        }
+    }
+    email: {
+        connection: resend
+        from: config.mail_sender
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb, Locale.ar_eg]
+}
+"#;
+
+const RESEND_CONFIG: &str = r#"config {
+    mail_sender: Email {
+        default: "hello@acme.test"
+    }
+    resend_host: Url {
+        default: "https://api.resend.com"
+    }
+    resend_key: Text {
+        secret: true
+    }
+}
+"#;
+
+/// The Resend package as this repository holds it.
+fn resend_package() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/resend")
+}
+
+/// The project sending through Resend, with the package installed as an
+/// app installs it.
+fn resend_project(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("emails-7.3c-{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (path, text) in FILES {
+        write(&root, path, text);
+    }
+    write(&root, "app.jadpo", RESEND_APP);
+    write(&root, "config.jadpo", RESEND_CONFIG);
+    let package = resend_package();
+    let package = package.to_str().expect("a path");
+    for args in [
+        &["package", "add", package][..],
+        &["migrate", "new", "initial"],
+        &["records", "update"],
+        &["check"],
+    ] {
+        let out = jadpo(&root, args);
+        assert_eq!(out.code, 0, "{args:?}: {}{}", out.stdout, out.stderr);
+    }
+    root
+}
+
+/// The Resend project loaded with Resend at `host`, and a test database.
+fn load_resend(name: &str, host: &str) -> Option<Loaded> {
+    let root = resend_project(name);
+    if !jadpo_test::live() {
+        return None;
+    }
+    let loaded = jadpo_db::load(&root);
+    let steps = jadpo_check::data::migrations::store_steps(
+        jadpo_check::data::migrations::migrations(&loaded.db, loaded.project),
+    );
+    let prepared = jadpo_interp::Prepared::load(&loaded.db, loaded.project)
+        .unwrap_or_else(|problems| panic!("the project checks: {} problems", problems.len()));
+    let host = host.to_string();
+    let variables = move |name: &str| -> Option<String> {
+        match name {
+            "RESEND_HOST" => Some(host.clone()),
+            "RESEND_KEY" => Some("re_test_key".into()),
+            _ => None,
+        }
+    };
+    let values = prepared
+        .config(
+            &variables,
+            jadpo_runtime::config::Mode::Environment,
+            &|_: &mut [u8]| false,
+        )
+        .unwrap_or_else(|problems| panic!("the settings read: {problems:?}"));
+    let program = Program::new(prepared).with_config(&values);
+    let databases = jadpo_test::database::TestDatabases::new(steps, false);
+    let copy = databases.acquire().expect("a test database");
+    let (_, url) = copy.stores.get("main").expect("main").clone();
+    Some(Loaded {
+        _root: root,
+        program,
+        _databases: databases,
+        url,
+    })
+}
+
+/// The package driver for `resend`, over this machine's HTTP, and the
+/// store of cards in memory.
+fn through_resend<'b>(harness: &'b Harness, cards: &Rc<MemoryFiles>) -> Faked<&'b Harness> {
+    let driver: Rc<dyn Capability> = Rc::new(jadpo_drivers::package::JsonHttp::new(
+        jadpo_host_native::fetch::NativeFetch,
+    ));
+    Faked::new(harness)
+        .with("resend", driver)
+        .with("cards", Rc::clone(cards) as Rc<dyn Capability>)
+}
+
+/// The same email, rendered the same way, goes through the mail package
+/// `email:` names: its mapping gives Resend's `POST /emails` the message,
+/// with the account's key as a bearer credential, and the delivery's
+/// record alone says it went.
+#[test]
+fn the_same_email_goes_through_a_mail_package() {
+    let resend = FakeProvider::start();
+    let Some(loaded) = load_resend("sent", &resend.url) else {
+        return;
+    };
+    resend.answer(200, r#"{"id":"49a3999c-0ce1-4ea6-ab68-afcd6dc2e794"}"#);
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let cards = Rc::new(MemoryFiles::new());
+    let host = through_resend(&harness, &cards);
+    Runtime::new().expect("runtime").block_on(async {
+        let (joined, work) = act(
+            &harness,
+            &host,
+            &loaded.program,
+            "join",
+            vec![
+                Value::text("ana@example.test"),
+                Value::text("Ana"),
+                plan("premium"),
+                locale("en_gb"),
+            ],
+        )
+        .await;
+        assert!(matches!(joined, Outcome::Value(_)), "{joined:?}");
+        let ran = run_deferred(&loaded.program, &host, work).await;
+        assert!(matches!(ran.as_slice(), [Outcome::Value(_)]), "{ran:?}");
+        assert_eq!(
+            deliveries(&harness, "ana@example.test").await,
+            vec![("succeeded".to_string(), None)]
+        );
+    });
+    let requests = resend.requests();
+    assert_eq!(requests.len(), 1);
+    let request = &requests[0];
+    assert_eq!(
+        (request.method.as_str(), request.path.as_str()),
+        ("POST", "/emails")
+    );
+    assert_eq!(request.header("authorization"), Some("Bearer re_test_key"));
+    assert_eq!(
+        request.json(),
+        serde_json::json!({
+            "from": "hello@acme.test",
+            "to": "ana@example.test",
+            "subject": "Welcome to the club, Ana",
+            "html": "<html dir=\"ltr\"><head><title>Welcome to the club, Ana</title></head><body><header>Acme</header><h1>Hello, Ana</h1>\n<p>Premium &lt;gold&gt;, visit 3</p>\n<p>Back again</p>\n<ul><li>Free coffee</li><li>Tom &amp; Jerry&#39;s &lt;pass&gt;</li></ul>\n</body></html>\n",
+            "text": "Acme\n\nHello, Ana\nPremium <gold>, visit 3\n",
+            "attachments": [],
+        })
+    );
+}
+
+/// An attachment goes in base64 with its name and media type, and an email
+/// with no `.html` sends none.
+#[test]
+fn an_attachment_goes_through_a_mail_package_in_base64() {
+    let resend = FakeProvider::start();
+    let Some(loaded) = load_resend("attachment", &resend.url) else {
+        return;
+    };
+    resend.answer(200, r#"{"id":"re-2"}"#);
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let cards = Rc::new(MemoryFiles::new());
+    let host = through_resend(&harness, &cards);
+    let card = cards.keep("cards", b"%PDF-1.7 the card", "pdf");
+    Runtime::new().expect("runtime").block_on(async {
+        let (sent, work) = act(
+            &harness,
+            &host,
+            &loaded.program,
+            "send_card",
+            vec![Value::text("ana@example.test"), Value::text("Ana"), card],
+        )
+        .await;
+        assert!(matches!(sent, Outcome::Value(_)), "{sent:?}");
+        run_deferred(&loaded.program, &host, work).await;
+    });
+    let requests = resend.requests();
+    assert_eq!(requests.len(), 1);
+    let body = requests[0].json();
+    assert_eq!(body["subject"], "Your card, Ana");
+    // A part the email doesn't have is left out, never sent as `null`.
+    assert!(body.get("html").is_none(), "{body}");
+    assert_eq!(body["text"], "Acme\n\nAna, your card is attached.\n");
+    let attachment = &body["attachments"][0];
+    assert_eq!(attachment["content"], "JVBERi0xLjcgdGhlIGNhcmQ=");
+    assert_eq!(attachment["content_type"], "application/pdf");
+    assert!(
+        attachment["filename"]
+            .as_str()
+            .is_some_and(|name| !name.is_empty()),
+        "{attachment}"
+    );
+}
+
+/// The package's failures the mapping names are an email's: a message
+/// Resend refuses fails for good as `message_rejected`; a quota or rate
+/// limit (`429`) did nothing, so the send is retried; a server's error may
+/// come after it took the message, so the send is parked.
+#[test]
+fn a_mail_packages_failures_are_an_emails() {
+    let resend = FakeProvider::start();
+    let Some(loaded) = load_resend("outcomes", &resend.url) else {
+        return;
+    };
+    resend.answer(
+        422,
+        r#"{"statusCode":422,"name":"validation_error","message":"Invalid `to` field."}"#,
+    );
+    // A send that surely did nothing is tried again within the call, as
+    // its connection's `retry:` allows (three times), then left to the
+    // delivery's own retries.
+    for _ in 0..3 {
+        resend.answer(
+            429,
+            r#"{"statusCode":429,"name":"daily_quota_exceeded","message":"You have reached your daily email sending quota."}"#,
+        );
+    }
+    resend.answer(
+        500,
+        r#"{"statusCode":500,"name":"application_error","message":"Something went wrong."}"#,
+    );
+    let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
+    let cards = Rc::new(MemoryFiles::new());
+    let host = through_resend(&harness, &cards);
+    Runtime::new().expect("runtime").block_on(async {
+        for address in [
+            "refused@example.test",
+            "later@example.test",
+            "lost@example.test",
+        ] {
+            let (_, work) = act(
+                &harness,
+                &host,
+                &loaded.program,
+                "join",
+                vec![
+                    Value::text(address),
+                    Value::text("Ana"),
+                    plan("basic"),
+                    locale("en_gb"),
+                ],
+            )
+            .await;
+            run_deferred(&loaded.program, &host, work).await;
+        }
+        assert_eq!(
+            deliveries(&harness, "refused@example.test").await,
+            vec![("failed".to_string(), Some("message_rejected".to_string()))]
+        );
+        assert_eq!(
+            deliveries(&harness, "lost@example.test").await,
+            vec![(
+                "outcome_unknown".to_string(),
+                Some("outcome_unknown".to_string())
+            )]
+        );
+    });
+    assert_eq!(resend.requests().len(), 5);
+}
+
+/// A test catches mail sent through a mail package as it does any other:
+/// the capability's fake stands in for every connection that fills it.
+#[test]
+fn a_test_catches_mail_sent_through_a_mail_package() {
+    let root = resend_project("sent-in-tests");
+    if !jadpo_test::live() {
+        return;
+    }
+    let tested = jadpo(&root, &["test", "--seed", "1"]);
+    assert_eq!(tested.code, 0, "{}{}", tested.stdout, tested.stderr);
+    assert!(tested.stdout.contains("2 passed"), "{}", tested.stdout);
 }

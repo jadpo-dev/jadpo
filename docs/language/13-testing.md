@@ -741,8 +741,8 @@ the fake has responses, or fewer, the test fails and says so (question 7).
 > every call a test reaches answers through its package's fake, and a
 > test's `fakes:` scripts an operation's answers in order, each a value of
 > its output type, one of its failures by its code, or a condition.
-> `.requests` and the capabilities' fakes (`email.sent`) are not built
-> yet, but for the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`
+> `.requests` and the capabilities' fakes are not built yet, but for
+> `email.sent` (built in chunk 7.3c, area 16) and the `ai` capability's: its fake, `fakes: { ai.<prompt>: }`
 > and `ai.<prompt>.requests` are built (chunk 5.5v3; area 21, "Tests").
 > The choices are in area 11's "Chosen in chunk 7.2d". Since chunk
 > 7.6 a package's action runs its real code in a test, and `fakes:`
@@ -919,7 +919,8 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
 - **Provider operations** answer with the package fake's valid defaults
   unless the test scripts them, as question 7 decided (built in chunk
   7.2d; a fake's `lost` answers as a call that may have acted, its
-  `in_use` as `unavailable` until several changing calls, chunk 7.5):
+  `in_use` as `unavailable`, and since chunk 7.5d each keeps keys as
+  below):
   `fakes: { stripe.payment_intents.create: [card_declined, ...] }`. A
   scripted answer is the clean output type or one of the operation's
   provider failures, never the wire shape; the package's own tests cover
@@ -933,6 +934,36 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
   step boundary (before the send, after the send, after the answer is
   recorded), on by default, and the test must pass every time; the report
   names the boundary of any run that fails.
+
+  Built in chunk 7.5d. A keyed call's answer is kept under its key: the
+  same key and request get the first answer again without taking a
+  scripted one, a different request gets the package's `reused:` answer,
+  and a failure is kept as the provider keeps it, unless its kind is
+  `unavailable` or `rate_limited`. `lost` acted, so what it did (the
+  generated default) answers the next call under its key; `in_use`,
+  `unavailable` and `misconfigured` did nothing and keep nothing. A test
+  that passes and reached steps under a record runs again once for each
+  boundary of each step it reached, each time on its own copy of the
+  database with a fresh fake; the crash stops the run with nothing it
+  wrote kept, the delivery is given back and runs again at once from its
+  record (the crash not counted as an attempt), and a route's request is
+  sent again under its key. A delivery that stops as `diverged` between a
+  test's steps ends the test as
+  [`test.subscriber_failed`](#test-subscriber-failed), and a crash's
+  failure begins with a `crash` line, also in `--json`:
+
+  ```text
+  FAIL  a chosen plan starts one subscription
+   --> domains/billing/actions/choose.test.jadpo:3
+
+    crash: before step 1 of `subscribe`, `pay.customers.create`, went out; then it ran again
+    delivery: `PlanChosen` to subscriber `start_subscription` stopped as diverged on attempt 1 of 10
+  ```
+
+  A crash that left the fake's effects other than the run without one (a
+  call that acted under a new key) is a fault in Jadpo, `test.fault`.
+  Live tests in `crates/jadpo-cli/tests/step_crashes.rs`; choices in
+  area 12's decisions table, "Tests, chosen in chunk 7.5d".
 - **One fake per capability**, under design C: `email.sent` lists the mail
   the code sent (area 16); there is no `sms.sent`, since SMS is a package
   whose calls are faked like any other. A package that fills a capability
@@ -1593,8 +1624,9 @@ test failed: 1 failed, 1 pure test
 ### `test.subscriber_failed`
 
 A delivery between the test's steps failed for good (chosen in chunk
-6.11): here its subscriber's action refuses with a failure not worth
-retrying. The report names the event, the subscriber and the attempt,
+6.11), or stopped as `diverged`, its rerun no longer matching the record
+of its steps (chunk 7.5d): here its subscriber's action refuses with a
+failure not worth retrying. The report names the event, the subscriber and the attempt,
 then the failure as `test.unexpected_failure` shows one, at the step
 whose events were being delivered:
 
@@ -2771,10 +2803,10 @@ with when it comes.
 | Route tests | Work (run, chunk 4.1): `request { method: path: params: input: }` sends a request through the runtime's HTTP component and gives a `Response` with `status`, `code` and the route's typed `output`; a route test gets its own database like an action test, and a defect behind a 500 ends it as `test.fault`. `as:` signs in a user through a real browser session or API token (chunks 4.3, 4.3b), and a service through a real service key (chunk 4.3b). Since chunk 4.7 every request but a `GET` sends a fresh `Idempotency-Key`, or the one `idempotency_key:` gives ([Idempotency keys](#idempotency-keys)). Since chunk 4.9 an optional field the `input:` leaves out is left out of the body, so a `patch:` keeps it. Since chunk 5.5v6 a streaming route's `Response` has `pieces` in place of `output`, its events read to the last. |
 | Assertion messages | Work (run, chunk 2.2): a failed `assert` reports its file and line, its source with each part's value hung beneath it, expected and actual, a field-by-field diff for records, lists, sets and maps, a stable code and the rerun command with the order seed (see [Errors](#errors)). The trace, fakes, kept database and clock in the decided report come with their phases and are left out until then. A statement over several lines shows its first line; `--json` has all of it. |
 | Checking a failure | Works (run, chunk 2.2): `assert call(…) fails Failure`; when the call returns or fails differently, the report shows the value, or the other failure with its code, kind, fields and where it was raised. A failure under `attempt` ends the test as `test.unexpected_failure`, and a fault as `test.fault`, each with its `.jadpo` frames. |
-| Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"). A fake failing a subscriber's call is retried and given up the same way on 7.0c's fakes; a test writes one with `fakes:` once 7.2 generates them. |
+| Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"), as since chunk 7.5d does one that stops as `diverged`. A fake failing a subscriber's call is retried and given up the same way on 7.0c's fakes; a test writes one with `fakes:` once 7.2 generates them. |
 | Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Work for provider packages (run, chunk 7.2d): every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Not built: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`, chunk 5.5v3), `email.sent` (7.3c; chunk 7.3 catches every email a test sends), and the capability fakes but `ai`'s (chunk 5.5v3), crash points for several changing calls, grants, documents and batches, which come with those features (areas 12 and 16). |
+| Integration fakes | Work for provider packages (run, chunk 7.2d): every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Since chunk 7.5d package fakes keep keys, and a test that reaches an action with several changing calls runs again with a crash at each step boundary ("Provider calls and capabilities in tests"). `email.sent` built in chunk 7.3c (area 16): every email a test sends is caught, rendered whole, a mail package's included, and read as a `List<SentEmail>`. Not built: `.requests` (built for the `ai` fake, `ai.<prompt>.requests`, chunk 5.5v3), and the capability fakes but `ai`'s (chunk 5.5v3), grants, documents and batches, which come with those features (areas 12 and 16). |
 | Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Until then tests run with no caller. |
 | Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |

@@ -8,7 +8,10 @@
 //! the operations a connection's `development: { sandbox: }` names, or
 //! `--sandbox` names for one session, let through to the provider's
 //! sandbox, never live; and every call logged with its values in full in
-//! `build/dev/calls.jsonl`, which `jadpo calls` lists.
+//! `build/dev/calls.jsonl`, which `jadpo calls` lists. A package filling
+//! `ai` is faked the same way (chunk 5.5v3b): each prompt answered with a
+//! generated value of the call's type or the condition `jadpo calls
+//! script` scripted, and the prompts its `sandbox:` names let through.
 //!
 //! The log keeps the last [`KEPT`] calls. Scripted answers wait in
 //! `build/dev/script/`, one file each, in the order they were scripted;
@@ -45,6 +48,11 @@ pub(crate) struct Setup {
     /// The operations whose package keeps a recording, which the fake
     /// answers from (chunk 7.2d2): `couriers.pickups.create`.
     pub recorded: Vec<String>,
+    /// The prompts asked through a package's connection that fills `ai`,
+    /// as their calls are named, `acme.answer_question` (chunk 5.5v3b):
+    /// faked with a generated value of the call's type, or a condition
+    /// `jadpo calls script` scripted.
+    pub prompts: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +77,11 @@ impl Setup {
     /// Whether `call`'s operation keeps a recording to answer from.
     fn recorded(&self, call: &Call) -> bool {
         self.recorded.contains(&call.name())
+    }
+
+    /// Whether `call` asks a model through a package.
+    fn prompt(&self, call: &Call) -> bool {
+        self.prompts.contains(&call.name())
     }
 }
 
@@ -142,7 +155,20 @@ pub(crate) fn setup(
         }
         asked.extend(found);
     }
+    // A package filling `ai` is faked as its other calls are: each prompt
+    // asked through it (area 21, "Tests"; chunk 5.5v3b).
+    let prompts = match prepared.plan().ai() {
+        Some(ai) if matches!(ai.driver, jadpo_std::ai::AiDriver::Package(_)) => prepared
+            .plan()
+            .prompts()
+            .entries
+            .iter()
+            .map(|entry| format!("{}.{}", ai.connection, entry.key))
+            .collect(),
+        _ => Vec::new(),
+    };
     let mut out = Setup {
+        prompts,
         recorded: plan
             .operations
             .iter()
@@ -264,6 +290,9 @@ pub(crate) struct DevProviders {
     setup: Arc<Mutex<Setup>>,
     sandbox: jadpo_host_native::JsonHttp<jadpo_host_native::fetch::NativeFetch>,
     script: PathBuf,
+    /// What the faked provider keeps under each key, as it would (chunk
+    /// 7.5d): a client's retry under its key is given the first answer.
+    keys: jadpo_runtime::fakes::KeptKeys,
 }
 
 impl DevProviders {
@@ -272,6 +301,7 @@ impl DevProviders {
             setup,
             sandbox: jadpo_host_native::JsonHttp::new(jadpo_host_native::fetch::NativeFetch),
             script: root.join(SCRIPT),
+            keys: jadpo_runtime::fakes::KeptKeys::new(),
         }
     }
 
@@ -288,6 +318,13 @@ impl DevProviders {
             Err(poisoned) => poisoned.into_inner().recorded(call),
         }
     }
+
+    fn prompt(&self, call: &Call) -> bool {
+        match self.setup.lock() {
+            Ok(setup) => setup.prompt(call),
+            Err(poisoned) => poisoned.into_inner().prompt(call),
+        }
+    }
 }
 
 impl Capability for DevProviders {
@@ -295,13 +332,26 @@ impl Capability for DevProviders {
         if self.lets_through(call) {
             return self.sandbox.call(call);
         }
+        if let Some((answer, _)) = self.keys.given(call) {
+            return Box::pin(async move { answer });
+        }
+        let source = self.source_of(call);
         // Scripted, else from the operation's recording, else its
         // generated default (chunk 7.2d2).
         let answer = match take(&self.script, &call.name()) {
+            // A prompt's condition, in the `ai` fake's own form (chunk
+            // 5.5v3b).
+            Some(word) if self.prompt(call) => match jadpo_std::RuleKey::from_word(&word) {
+                Some(rule) => {
+                    jadpo_runtime::ai::scripted(jadpo_runtime::ai::Script::Condition(rule))
+                }
+                None => Answer::Generated,
+            },
             Some(word) => scripted_answer(&word),
             None if self.recorded(call) => Answer::Recorded,
             None => Answer::Generated,
         };
+        self.keys.keep(call, &answer, source);
         Box::pin(async move { answer })
     }
 
@@ -312,6 +362,8 @@ impl Capability for DevProviders {
     fn source_of(&self, call: &Call) -> Source {
         if self.lets_through(call) {
             Source::Sandbox
+        } else if let Some(source) = self.keys.source_of(call) {
+            source
         } else if waiting(&self.script, &call.name()) {
             Source::Scripted
         } else if self.recorded(call) {

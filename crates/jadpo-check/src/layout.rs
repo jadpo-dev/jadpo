@@ -217,6 +217,15 @@ fn folder_rules(
     }
     for item in items {
         let is_primary = primary.is_some_and(|p| p.index == item.index);
+        // `shared/emails/` holds the layout and partials; an email is sent
+        // by a domain, from its own `emails/` (area 16).
+        if folder == Folder::Emails
+            && location.ownership == Ownership::Shared
+            && item.kind == ItemKind::Type(jadpo_db::Base::EmailMessage)
+        {
+            out.push(shared_email(path, source, item));
+            continue;
+        }
         if folder == Folder::Translations
             && item.kind == ItemKind::Singleton
             && item.name != "translations"
@@ -236,6 +245,22 @@ fn folder_rules(
         }
     }
     out
+}
+
+/// An email declared in `shared/emails/`, which holds only the layout and
+/// partials.
+fn shared_email(path: &str, source: &ast::SourceFile, item: &Item) -> Diagnostic {
+    let file = to_snake(&item.name);
+    Diagnostic::new(
+        &rule::LAYOUT_WRONG_FOLDER,
+        format!("Email `{}` is in `shared/emails/`", item.name),
+    )
+    .at(name_span(source, path, item.index, None), "belongs in a domain's `emails/`")
+    .reason("`shared/emails/` holds the layout every email is wrapped in and the partials every domain's emails may include; an email is sent by a domain, so its type and templates sit in that domain's `emails/`.")
+    .next(format!(
+        "Move `{}` and its templates to `domains/<domain>/emails/{file}.jadpo`",
+        item.name
+    ))
 }
 
 fn unknown_location(path: &str, stray: &Stray, location: &Location, items: &[Item]) -> Diagnostic {

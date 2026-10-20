@@ -3243,8 +3243,8 @@ errors under area 12's "Errors" (`step.context`, `step.large_output`,
 `step.store_required`, `step.too_many`, `step.unkeyed`) and area 3's
 `effect.call_in_loop`; an operation's `large_output:` is read. The record,
 replay and key windows came with roadmap 7.5b and the operator's items
-with 7.5c; the fakes' `lost` and `in_use`, the tests' crash points and the
-warning come with 7.5d.
+with 7.5c; the fakes' `lost` and `in_use` and the tests' crash points
+with 7.5d; the warning comes with 7.5e.
 
 Built in chunk 7.5b, the record, replay and key windows, as area 12's
 "Several changing calls in one action" says: a provider's `idempotency:`
@@ -3262,6 +3262,14 @@ days, and the package's `new_key_on:` answer sending a step again under
 its next key generation; `jadpo runs unfinished --build` (area 14).
 Choices in area 12's decisions table, "Operators, chosen in chunk
 7.5c".
+
+Built in chunk 7.5d, the tests and tools' fakes and crash points, as
+area 13's "Provider calls and capabilities in tests" says: a fake keeps
+each key's first answer, answers a different request under it with the
+package's `reused:` code, and keeps what `lost` did for the next call
+under its key; `jadpo test` reruns every test that reaches an action with
+several changing calls with a crash at each step boundary. Choices in
+area 12's decisions table, "Tests, chosen in chunk 7.5d".
 
 ## Receiving from outside
 
@@ -3931,6 +3939,18 @@ provide email {
   so `files` stays whole; media services (Cloudinary, Uploadcare) stay
   ordinary packages, since they cannot do the whole `files` job.
 
+> **Built (chunk 7.3c)** for `email`, with its choices under area 16's
+> "Chosen in chunk 7.3c": `provides/email.jadpo` is read and checked
+> against the package's operation and settings
+> (`package.provider_invalid`), its `input:` keys the input's field names
+> as `provide receiving`'s are, the wire names coming from the types
+> rather than written as the example above writes them. `email:` may name
+> the connection, which then needs no `domains:`, and each delivery calls
+> the mapped operation with the rendered message, its failures mapped
+> onto `EmailFailure`'s. `packages/resend` (Resend's `POST /emails`) is
+> the second connection beside SMTP: the swap changes `app.jadpo` and
+> its settings only.
+
 **Erasing a person at a provider** is not a capability mapping. The package
 declares its erasure operation in `provider.jadpo` (`erasure: { call:
 customers.delete  by: CustomerId }`), and the connection names the app
@@ -4263,8 +4283,8 @@ example and real output under "Errors".
 | A non-public type or failure reachable from a public declaration, in a package or a domain | By `jadpo check` | 7.1 |
 | A package's resource and action with the same name; a public action that emits; subscribing to a package's non-public event | By `jadpo check` | 7.1 |
 | A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1c; both `hosts:` and `runs:` 7.1 |
-| A capability's connection whose package does not provide it | By `jadpo check` | 7.3c |
-| A function call or expression in a `provide` mapping | By `jadpo check` | 7.3c |
+| A capability's connection whose package does not provide it | By `jadpo check` | Built for `receiving` in 7.7c and `email` in 7.3c |
+| A function call or expression in a `provide` mapping | By `jadpo check` | Built for `receiving` in 7.7c and `email` in 7.3c |
 | A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
@@ -7399,7 +7419,7 @@ side (below); the rest is still to build.
 | Recordings checked by decoders, `jadpo package record`, `jadpo dev` answering from recordings | 7.2d2 |
 | Mapping imported types to standard types beyond the exact format mappings: shape and name detection, `wire_parts:`, `package.standard_candidate` | 7.2e |
 | The scoped review of an import's types, tracked per type, and unconfirmed operations (built) | 7.2e2 |
-| The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
+| The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package, Resend, as the second, proving the swap (built in 7.3c); provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
 | Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
 | Package subscribers on their own webhooks and the events they emit, recipes compiled against `sample/` at publish | 7.6b |
@@ -7571,7 +7591,8 @@ What the pages leave to the build, each the most conservative reading:
   (`fails Postcodes.InvalidPostcode`), a type built from a value
   (`Postcodes.UkPostcode(text)`) and a public library's function
   (`Postcodes.uk.parse(text)`). A package's actions, subscribers and
-  events (chunk 7.6) and capability mappings (chunk 7.3c) are
+  events (chunk 7.6) and capability mappings (but `receiving`'s, chunk
+  7.7c, and `email`'s, chunk 7.3c) are
   `toolchain.not_built_yet` where they are declared (a library
   package's translations were too, until chunk 7.1b3); a resource's
   operations are read with provider calls (chunk 7.2c). Two versions of one

@@ -993,8 +993,14 @@ async fn run_with_caller(
     let earlier = ctx.deferred().len();
     let mut deadline = deadline;
     let mut attempt = 1;
+    // Its client sends it again under its key after a crash `jadpo test`
+    // made at a step (chunk 7.5d): claimed again.
+    let mut again = false;
+    // Sent again, its keyed calls take the steps they took, so each goes
+    // under the key it went under.
+    let steps = ctx.steps();
     loop {
-        let first = attempt == 1;
+        let first = attempt == 1 || std::mem::take(&mut again);
         let work = async {
             if first && let Some(guard) = &guard {
                 match idempotency::claim(ctx, guard, route.deadline_ms).await {
@@ -1110,6 +1116,21 @@ async fn run_with_caller(
                 return runtime_failure(DEADLINE_EXCEEDED, request_id, None);
             }
         };
+        // A crash `jadpo test` made at a step of the action (chunk 7.5d):
+        // nothing it wrote was kept, its claim lapses as a dead process's
+        // would, and its client sends the request again under its key.
+        if let Outcome::Fault(fault) = &outcome
+            && fault.kind == crate::FaultKind::Crashed
+            && claimed.get()
+            && let Some(guard) = &guard
+        {
+            let _ = ctx.take_held();
+            idempotency::release(ctx, guard).await;
+            claimed.set(false);
+            ctx.set_steps(steps);
+            again = true;
+            continue;
+        }
         let held = ctx.take_held();
         // A session the action started or ended sets its cookies once it
         // commits; such a response isn't kept for a repeat, so a retry signs

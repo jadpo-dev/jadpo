@@ -1,0 +1,7 @@
+/// One file sent with an email: its name, its bytes, sent in base64, and
+/// its media type.
+public type EmailAttachment = Object {
+    filename: Text
+    content: Bytes
+    content_type: Text?
+}

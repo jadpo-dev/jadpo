@@ -2157,6 +2157,11 @@ impl<'p> Machine<'p> {
                 let now = self.run_effect(ctx, Effect::Now, &[], id)?;
                 self.values.push(now);
             }
+            // Every email the test sent (area 16; chunk 7.3c).
+            Expr::SentEmails => {
+                let sent = self.run_effect(ctx, Effect::SentEmails, &[], id)?;
+                self.values.push(sent);
+            }
             Expr::Unchecked => {
                 let written = self.written(id);
                 return Err(self.not_built_yet(ctx, written, id));

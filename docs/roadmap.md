@@ -1192,17 +1192,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   teaches email. Choices in area 16's "Chosen in chunk 7.3", one flagged
   for Richard: where a partial is declared; recommendation `type X =
   EmailPartial { ... }` with its templates beside it.
-- [ ] **7.3c Email: the second connection, the dev inbox and the health
-  score** `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20): a
-  mail package as a second connection proving the swap (`provides/email.jadpo`'s
-  `provide email`, `limits: { attachments: }` checked against a `File`
-  field's `max_size`); partials (`{{ include }}`), once where a partial is
-  declared is decided; `email.sent` in tests, with which area 8's
-  passkey route test recovers through the magic link (chunk 5.5z2); the
-  dev inbox in `jadpo dev`
-  and `jadpo email list`, `show`, `links`, `open` and `clear`; the health
-  score, `jadpo check`'s warnings about templates that would fail it, and
-  `jadpo email check-domain`.
+- [x] **7.3c Email: the second connection, partials and `email.sent`**
+  `opus · high`, after 7.3 (split from 7.3 Email on 2026-10-20; the dev
+  inbox and the health score split to 7.3c2 the same day): a mail package
+  as a second connection proving the swap; partials; `email.sent` in
+  tests. Built: `provides/email.jadpo`'s `provide email` read and checked
+  (`send:` with `call:`, `input:` giving every part of the message and the
+  attachments as `each:`/`as:`, `receipt:`, `failures:` onto
+  `EmailFailure`, and `limits: { attachments: }`), `email:` naming a
+  package's connection, which needs no `domains:`, each email's `File`
+  fields' `max_size:` within the limit (`email.attachment_limit`), and the
+  delivery calling the mapped operation with no key, its failures an
+  email's; `packages/resend`, tested against a local server, the swap
+  changing `app.jadpo` and its settings only; partials, `type X =
+  EmailPartial` in `shared/emails/` or a domain's `emails/`, included as
+  `{{ include name(field: value) }}` with the including template's locale,
+  nested but never cyclic (`email.partial_invalid`); `email.sent` in tests
+  as a `List<SentEmail>` (`email.sent_context` elsewhere), the mail caught
+  whole whichever connection `email:` names. Choices in area 16's "Chosen
+  in chunk 7.3c".
+- [ ] **7.3c2 Email: the dev inbox and the health score** `opus · high`,
+  after 7.3c (split from 7.3c on 2026-10-20): the dev inbox in `jadpo dev`
+  and `jadpo email list`, `show`, `links`, `open` and `clear`, and its
+  page; the health score, `jadpo check`'s warnings about templates that
+  would fail it, and `jadpo email check-domain` (its DNS lookups behind a
+  seam, tested with a fake resolver).
 - [x] **7.3b Magic-link sign-in** `opus · high` (area 8, decided
   2026-10-16; split on 2026-10-20, the rest in 7.3b2): `sign_in:` with
   `magic_link:`, the generated endpoints, link and six-digit code, the
@@ -1417,13 +1431,35 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `jadpo runs unfinished` command (`cli.runs_arguments`,
   `runs.unavailable`). Live tests in `step_operators.rs`. Choices in area
   12's "Operators, chosen in chunk 7.5c".
-- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
-  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
-  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
-  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
-  warning (a declinable error) and the deadline sum; the metric and alert
-  on unfinished records; the personal-data report's entry, with the report
-  itself if it isn't built by then.
+- [x] **7.5d Multi-step calls: fakes and crash points** `opus · high`,
+  after 7.5c (split from 7.5c on 2026-10-20, and again into this, 7.5e
+  and 7.5f): fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
+  crash at each step boundary. Built: a provider call carries the key it
+  goes under (`capability::SentKey`), and `fakes::KeptKeys` keeps each
+  key's first answer for the test's fake and `jadpo dev`'s, `lost` keeping
+  what it did; the runtime's `crashes` module counts the steps a test's
+  run reaches under a record and crashes it once at a step's boundary
+  (`FaultKind::Crashed`), a crashed delivery given back and a route's
+  request sent again under its key; `jadpo test` reruns a passing test
+  that reached steps once per boundary per step, reporting the first
+  that fails with its `crash` line (and `--json`'s `crash`), and a
+  difference in the fake's effects as a fault; a diverged delivery between
+  a test's steps ends it as `test.subscriber_failed`; each delivery attempt
+  in a test counts its keyed calls from none under its own key. Live tests
+  in `step_crashes.rs`. Choices in area 12's "Tests, chosen in chunk 7.5d".
+- [ ] **7.5e Multi-step calls: the late-failure warning** `opus · high`,
+  after 7.5d (split from 7.5d on 2026-10-20): the late-failure warning (a
+  declinable error) after the first changing step, reaching through
+  package actions, and the deadline sum: the timeout times the attempts of
+  every step on the longest path against a reaching route's deadline,
+  with the single call's deadline warning (area 11) it sums.
+- [ ] **7.5f Multi-step calls: development and the metric** `opus ·
+  high`, after 7.5d (split from 7.5d on 2026-10-20): each step's state in
+  `jadpo dev`'s request lines and timeline; the metric and the no-setup
+  alert on unfinished records (their number and the oldest's age). Each
+  step's state in `jadpo watch` comes with `jadpo watch` (after the first
+  build, item 6), and the records' entry in the personal-data report with
+  the report itself (area 15, after the first build, item 1).
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own
@@ -1566,17 +1602,31 @@ The design is area 11 as revised on 2026-10-16, with its research in
   against an OpenAI-compatible server started in the test) and the live
   `ai_steps.rs` (a model's answer replayed from a record). Choices in
   area 21's "Chosen in chunk 5.5v3".
-- [ ] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
-  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20): a
-  package's `provides/ai.jadpo` mapping `generate:` onto its own
-  operation as data (`request.*`, `response.*`, `refused_when:`,
-  `cut_off_when:`, `usage:`, `schema: { mode: at: }`, `models: { context:
-  prices: }`), `AiSchema.json_only` and `.none` sending the schema in the
-  instructions, `too_long` checked before sending from the package's
-  context table, `development: { sandbox: [<prompt>] }`, a package's
-  `ai` faked in `jadpo dev` with generated defaults, and `jadpo calls
-  script` for a prompt. Done when a package fills `ai` in a test against
-  a local server and `jadpo dev` fakes it.
+- [x] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
+  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20).
+  Built: a provider package's `provides/ai.jadpo`, `provide ai {
+  generate: models: }` (`jadpo_check::ai_mapping`), read as data and
+  checked against the package's operation, settings and libraries
+  (`package.provider_invalid`; `stream:` and `embed:`
+  `toolchain.not_built_yet`): `call:` an operation that changes nothing,
+  `input:` from `request.model` (the name after the provider),
+  `request.max_output`, `request.instructions`, `{ each: request.messages
+  as: { } }`, `settings.*` and values, `answer:` and `refused_when:` read
+  from the decoded output, `cut_off_when:` from the answer as sent,
+  `usage:`, `schema: { mode: at: }` with OpenAI's envelope written at
+  `at:`, `models: { context: }` a library constant; `ai: { connection: }`
+  naming a package's connection (`ai.settings_invalid` when it has no
+  mapping); at run time the request made through the package driver,
+  `AiSchema.json_only` and `.none` sending the schema in the
+  instructions, `too_long` from a four-bytes-a-token estimate against the
+  context table before sending; the `ai` fake ahead of the package's in
+  tests; `jadpo dev` faking it with generated values,
+  `development: { sandbox: [<prompt>] }` letting prompts through to the
+  sandbox, and `jadpo calls script ai.<prompt> <condition>`. Tests in
+  `crates/jadpo-check/tests/ai_providers.rs` and
+  `crates/jadpo-cli/tests/ai_providers.rs` (`jadpo test` through the
+  fake; `jadpo dev` faked, scripted, and through a sandbox started in the
+  test). Choices in area 21's "Chosen in chunk 5.5v3b".
 - [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
   5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
   and its check, the fake's seeded embeddings, `jadpo ai record` and

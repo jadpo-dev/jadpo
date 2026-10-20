@@ -1,0 +1,12 @@
+public resource emails {
+    send: {
+        method: HttpMethod.post
+        path: "/emails"
+        input: SendEmailRequest
+        output: SendEmailResponse
+        changes: true
+        failures: [ValidationError, MissingRequiredField, MissingRequiredParameter, InvalidAttachment, InvalidParameter]
+        source: PackageSource.written
+        docs: "https://resend.com/docs/api-reference/emails/send-email"
+    }
+}

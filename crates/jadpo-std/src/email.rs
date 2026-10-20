@@ -17,6 +17,26 @@ use crate::translation::TranslationEntry;
 /// The operation a connection that fills `email` is sent a message with.
 pub const SEND: &str = "send";
 
+/// The generated namespace a test reads the mail it sent through:
+/// `email.sent` (area 16, "Email"; chunk 7.3c).
+pub const NAMESPACE: &str = "email";
+
+/// The built-in type each email `email.sent` lists is.
+pub const SENT_EMAIL: &str = "SentEmail";
+
+/// What a `SentEmail` holds, in order: the address it went to, the one it
+/// is from, its subject, its HTML and its text (each `none` without that
+/// template), every link in it, and each attachment's file name.
+pub const SENT_EMAIL_FIELDS: [&str; 7] = [
+    "to",
+    "from",
+    "subject",
+    "html",
+    "text",
+    "links",
+    "attachments",
+];
+
 /// The fields of the message the runtime sends a driver, in order:
 /// `from`, `to`, `subject`, `html` (`none` without an `.html` template),
 /// `text` (`none` without a `.txt` template) and `attachments`, each a
@@ -35,6 +55,10 @@ pub const ATTACHMENT: &str = "EmailAttachment";
 /// The failure a driver answers with when the server refused the
 /// address it was sent to for good (area 11's `EmailFailure`).
 pub const RECIPIENT_REJECTED: &str = "recipient_rejected";
+
+/// The failure a driver answers with when the message itself was refused
+/// for good (area 11's `EmailFailure`).
+pub const MESSAGE_REJECTED: &str = "message_rejected";
 
 /// The port a connection with `driver: Driver.smtp` reaches its server on
 /// when it gives none: submission, which Cloudflare Workers allows (area
@@ -60,6 +84,49 @@ pub struct EmailsPlan {
     pub locales: Option<LocalePlan>,
     /// Each connection with `driver: Driver.smtp`, in name order.
     pub smtp: Vec<SmtpConnection>,
+    /// How the mail package `connection` names sends a message, when it
+    /// is a package's (`provides/email.jadpo`; chunk 7.3c).
+    pub package: Option<PackageEmail>,
+}
+
+/// A mail package's `provide email` (area 11, "How a package provides
+/// one"; chunk 7.3c): the operation a message is sent through, its input
+/// built from the message as data, where the provider's id for it is, and
+/// how its failures are an email's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageEmail {
+    /// `emails.send`.
+    pub operation: String,
+    /// Each field of its input, by its spelling on the wire.
+    pub input: Vec<(String, MailInput)>,
+    /// Where the provider's id for the message is in its answer, by field
+    /// names.
+    pub receipt: Option<Vec<String>>,
+    /// Each of the operation's failures, by its code, and the email failure
+    /// ([`RECIPIENT_REJECTED`] or [`MESSAGE_REJECTED`]) it is.
+    pub failures: Vec<(String, String)>,
+    /// The total size of attachments the provider accepts, in bytes: a
+    /// message over it is refused before it goes out.
+    pub attachments: u64,
+}
+
+/// What a mail package's mapping gives one field of its operation's input.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MailInput {
+    /// A part of the message: `from`, `to`, `subject`, `html` or `text`.
+    Message(String),
+    /// A part of one attachment: `name`, `content` or `content_type`.
+    Item(String),
+    /// The value of the setting numbered here, from the connection's
+    /// setting of the package.
+    Setting(u32),
+    Text(String),
+    Int(i64),
+    Bool(bool),
+    /// An object's fields, by their wire names.
+    Object(Vec<(String, MailInput)>),
+    /// The attachments, each as an object of these fields.
+    Each(Vec<(String, MailInput)>),
 }
 
 impl EmailsPlan {

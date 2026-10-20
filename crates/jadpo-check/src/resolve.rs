@@ -370,7 +370,7 @@ impl Names<'_> {
                 "lower_snake_case",
                 span,
             ));
-        } else if self.std.reserved(&text) {
+        } else if self.std.reserved(&text) && !self.std.yields_to_locals(&text) {
             out.push(reserved(&text, span));
         } else if let Some(earlier) = earlier {
             out.push(

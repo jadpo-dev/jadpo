@@ -16,6 +16,8 @@
 # `PasskeyRemoved` are the events sign-in publishes, which only the
 # runtime emits (area 8, "Events"), and `TestPasskey` the device
 # `test_passkeys.register` gives a route test.
+# `SentEmail` is one email a test sent, as `email.sent` lists it (area
+# 16, "Email"; chunk 7.3c), its fields in `jadpo-std`'s `email`.
 # `MagicLinkEmail` is what the application's own sign-in email picks its
 # fields from, and `MagicLinkRequest` what its own sending is given (area
 # 16, "Built-in emails"), their fields in `jadpo-std`'s `email`.
@@ -29,7 +31,7 @@ Page Nearest
 File FileContents Principal Response Access AiStream
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
-PasskeyRemoved TestPasskey
+PasskeyRemoved TestPasskey SentEmail
 BatchRun BatchProgress RowProblem ImportSummary ExportSummary
 Driver Engine ProviderEnvironment CredentialScheme PackageSource Protocol
 FieldAccess OnDelete Generated FieldChange
@@ -60,7 +62,9 @@ ai: generate stream embed embed_all
 # prompt the project declares (area 21). `magic_links.request`, `.redeem`
 # and `.redeem_code` are magic links' operations an application's own
 # routes call, and `test_passkeys.register` and `.sign_in` a software
-# authenticator only route tests call (area 8).
+# authenticator only route tests call (area 8). `email.sent` is
+# every email a test sent, rendered whole, read only in tests (area 16,
+# "Email"; chunk 7.3c).
 [generated]
 clock: now advance
 config:
@@ -74,6 +78,7 @@ tsv:
 json_lines:
 oauth:
 prompts: render
+email: sent
 
 # Names too generic for a domain or a library (area 1).
 [generic]

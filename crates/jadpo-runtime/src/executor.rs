@@ -116,6 +116,13 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// What a provider call runs with outside an action's site: an email
+    /// sent through a mail package (area 16; chunk 7.3c). `None` for a
+    /// program with no provider packages.
+    fn package_calls(&self) -> Option<crate::provider::Providers<'_>> {
+        None
+    }
+
     /// The connection `ai:` names (area 21; chunk 5.5v3): what a test's
     /// host gives the `ai` fake for, and a native host its driver for.
     fn ai_connection(&self) -> Option<&str> {

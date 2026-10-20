@@ -1111,7 +1111,8 @@ impl Decls<'_> {
                 );
             }
         }
-        if !area_two && base != FieldsBase::Object && !email {
+        let partial = base == FieldsBase::EmailPartial;
+        if !area_two && base != FieldsBase::Object && !email && !partial {
             return;
         }
         let table = self.table;
@@ -1124,13 +1125,14 @@ impl Decls<'_> {
             None => Found::Unknown,
         });
         for problem in problems {
-            if email
+            if (email || partial)
                 && !matches!(
                     problem.kind,
                     LineKind::UnknownField { .. }
                         | LineKind::NotFields(_)
                         | LineKind::NotAFieldPath
                 )
+                && !(partial && matches!(problem.kind, LineKind::Duplicate(_)))
             {
                 continue;
             }
@@ -1147,7 +1149,7 @@ impl Decls<'_> {
                         .map(|key| self.span(key.syntax())),
                     _ => None,
                 };
-                self.line_problem(&problem, &this, host, first);
+                self.line_problem(&problem, &this, host, first, base);
             }
         }
     }
@@ -1201,6 +1203,7 @@ impl Decls<'_> {
         member: &ast::Member,
         host: &str,
         first: Option<Span>,
+        base: FieldsBase,
     ) {
         let key_span = member
             .member_key()
@@ -1217,6 +1220,22 @@ impl Decls<'_> {
             .map(|entry| tree::written(entry.syntax()))
             .unwrap_or_default();
         let diagnostic = match &problem.kind {
+            // Every partial has `locale:` already (area 16; chunk 7.3c).
+            LineKind::Duplicate(name)
+                if first.is_none()
+                    && base == FieldsBase::EmailPartial
+                    && super::table::PARTIAL_FIELDS
+                        .iter()
+                        .any(|(field, _)| field == name) =>
+            {
+                Diagnostic::new(
+                    &rule::TYPE_DUPLICATE_FIELD,
+                    format!("`{host}` declares `{name}`, which every partial has"),
+                )
+                .at(key_span, "already a field")
+                .reason("Every `EmailPartial` has `locale:`, the locale of the template that includes it, which goes with it, before the fields it declares.")
+                .next(format!("Remove `{name}`; `{{{{ include ... }}}}` gives it"))
+            }
             // Every email has `to:` and `locale:` already (area 16).
             LineKind::Duplicate(name)
                 if first.is_none()

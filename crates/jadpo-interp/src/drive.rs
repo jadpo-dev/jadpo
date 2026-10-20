@@ -489,7 +489,7 @@ async fn generate(
     };
     // The settings its model and address are read from: a test's own
     // value, or the application's.
-    let settings: Vec<(u32, Value)> = ai::settings_read(ai.plan, site)
+    let settings: Vec<(u32, Value)> = ai::settings_read(&ai, site)
         .into_iter()
         .filter_map(|number| {
             let value = ctx
