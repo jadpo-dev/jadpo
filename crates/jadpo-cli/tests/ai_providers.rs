@@ -53,12 +53,13 @@ fn mapping(schema: &str) -> String {
     )
 }
 
-const STRICT: &str = "            mode: AiSchema.strict_subset\n            at: \"format\"\n";
+pub(crate) const STRICT: &str =
+    "            mode: AiSchema.strict_subset\n            at: \"format\"\n";
 
 /// The desk: a provider package filling `ai`, whose sandbox is
 /// `sandbox`, its schema written `schema`; `development` is the
 /// connection's `development:` block, if any.
-fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
+pub(crate) fn desk(name: &str, sandbox: &str, schema: &str, development: &str) -> PathBuf {
     let root = folder(name);
     write(
         &root,

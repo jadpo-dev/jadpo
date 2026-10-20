@@ -362,6 +362,12 @@ pub async fn generate(
     {
         return replayed(ctx, ai, site, &asked, made, kept);
     }
+    // The prompt's values, for a development log alone, where `jadpo ai
+    // record` reads the last call's (chunk 5.5v4b).
+    let values = ctx
+        .host()
+        .call_log()
+        .and_then(|_| crate::prompt_recordings::values_written(ai, site, &prompt));
     let host = ctx.host();
     let began = host.monotonic_ms();
     let mut last_problem: Option<Problem> = None;
@@ -379,7 +385,15 @@ pub async fn generate(
         let mut call = made.clone();
         call.attempt = attempt;
         call.step = step_at;
-        let (answer, source) = match sent(ctx, call, request, began, site.timeout_ms).await {
+        let (answer, source) = match sent(
+            ctx,
+            call,
+            request,
+            (began, site.timeout_ms),
+            values.as_deref(),
+        )
+        .await
+        {
             Ok(sent) => sent,
             Err(done) => return done,
         };
@@ -1185,8 +1199,8 @@ pub(crate) async fn sent(
     ctx: &mut Ctx<'_>,
     made: Call,
     request: Request,
-    began: Option<u64>,
-    timeout_ms: u64,
+    (began, timeout_ms): (Option<u64>, u64),
+    values: Option<&str>,
 ) -> Result<(Answer, Source), Done> {
     let host = ctx.host();
     let mut sends = 1;
@@ -1219,7 +1233,7 @@ pub(crate) async fn sent(
             .last()
             .map_or(Source::Live, |logged| logged.source);
         if shown {
-            log(ctx, &call, &url, &body, &answer);
+            log(ctx, &call, (&url, &body, values), &answer);
         }
         let asked = match &answer {
             Answer::Unavailable | Answer::Unknown => None,
@@ -1249,7 +1263,12 @@ pub(crate) async fn sent(
 /// Keeps one attempt in `jadpo dev`'s call log, its request and answer in
 /// full (area 21, "Prompts and answers in logs": in development, in
 /// full).
-fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
+fn log(
+    ctx: &Ctx<'_>,
+    call: &Call,
+    (url, body, values): (&str, &str, Option<&str>),
+    answer: &Answer,
+) {
     let (Some(log), Some(logged)) = (ctx.host().call_log(), ctx.capabilities().calls().last())
     else {
         return;
@@ -1270,6 +1289,7 @@ fn log(ctx: &Ctx<'_>, call: &Call, url: &str, body: &str, answer: &Answer) {
         body: Some(body),
         answer: sent,
         ended: &logged.ended,
+        values,
     });
 }
 

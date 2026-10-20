@@ -34,6 +34,10 @@ pub struct Seen<'a> {
     /// `None` when none came.
     pub answer: Option<&'a str>,
     pub ended: &'a Ended,
+    /// For a model asked a prompt, the prompt's values as the code gave
+    /// them, each field as its type's JSON (area 21; chunk 5.5v4b): what
+    /// `jadpo ai record` asks the model with again.
+    pub values: Option<&'a str>,
 }
 
 impl std::fmt::Debug for Seen<'_> {

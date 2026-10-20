@@ -808,6 +808,7 @@ pub async fn call(
             body: body.as_deref(),
             answer: sent.as_deref(),
             ended: &logged.ended,
+            values: None,
         });
     }
     done

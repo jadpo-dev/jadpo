@@ -633,16 +633,20 @@ pub static COMMANDS: &[Command] = &[
         name: "ai",
         synonyms: &[],
         group: "Look things up",
-        summary: "Show what a prompt sends",
+        summary: "Show prompts, record answers",
         description: "`show` prints what a prompt sends a model (area 21): its type, its file and its \
                       version, the first 8 hex characters of a SHA-256 over its two files, then the \
                       instructions as the system message, the conversation's turns, and the request \
                       as the user message. Placeholders are shown as the prompt's file writes them, \
-                      each free-text one inside the tagged data block it is sent in.",
+                      each free-text one inside the tagged data block it is sent in. `record` asks the \
+                      configured model the prompt once, with the values of its last `jadpo dev` call \
+                      or a fixture's, and keeps the answer beside it as recordings/<prompt>/<name>.json \
+                      for a test's recorded(\"<name>\"), its plain values placeholders; never through \
+                      a live connection.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show",
+                description: "What to do: show or record",
                 required: true,
                 values: Values::Fixed(crate::ai::ACTIONS),
             },
@@ -653,7 +657,20 @@ pub static COMMANDS: &[Command] = &[
                 values: Values::Fixed(&[]),
             },
         ],
-        flags: &[],
+        flags: &[
+            Flag {
+                name: "--as",
+                value: Some("name"),
+                description: "For record: the recording's name",
+                values: &[],
+            },
+            Flag {
+                name: "--fixture",
+                value: Some("fixture"),
+                description: "For record: a fixture to ask with",
+                values: &[],
+            },
+        ],
         examples: &[
             Example {
                 description: "See what the summarise_ticket prompt sends",
@@ -663,9 +680,15 @@ pub static COMMANDS: &[Command] = &[
                 description: "Print it as data for tools",
                 command: "jadpo ai show summarise_ticket --json",
             },
+            Example {
+                description: "Record the model's answer to the last jadpo dev call",
+                command: "jadpo ai record summarise_ticket --as long_thread",
+            },
         ],
         arguments_rule: &rule::CLI_AI_ARGUMENTS,
         raises: &[
+            &rule::RECORDING_FAILED,
+            &rule::RECORDING_REFUSED,
             &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
