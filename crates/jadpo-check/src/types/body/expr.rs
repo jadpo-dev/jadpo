@@ -1131,7 +1131,13 @@ impl Body<'_> {
             self.failure_value(&Expr::RecordExpr(record.clone()));
             return Ty::Error;
         };
-        let name = text(&first);
+        let mut name = text(&first);
+        let mut rest = rest;
+        // A package's type is written through it (area 11):
+        // `AcmeCouriers.CreateBooking { ... }`.
+        if !rest.is_empty() && self.symbols.is_package(&name) && !self.is_local(&name) {
+            name = format!("{name}.{}", text(&rest.remove(0)));
+        }
         if !starts_upper(&name) {
             self.failure_value(&Expr::RecordExpr(record.clone()));
             return Ty::Error;

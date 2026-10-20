@@ -162,6 +162,7 @@ impl Body<'_> {
             return write.fallible.clone();
         }
         match self.facts.reaches.get(&key) {
+            Some(Reach::Provider { checked: false, .. }) => Fallible::Unknown,
             Some(
                 Reach::Callable { fails, .. }
                 | Reach::Library { fails, .. }
@@ -276,7 +277,33 @@ impl Body<'_> {
             .map(|callee| tree::written(callee.syntax()))
             .unwrap_or_default();
         let span = self.span(call);
+        let provider = matches!(
+            self.facts.reaches.get(&node_key(call.syntax())),
+            Some(Reach::Provider { .. })
+        );
         let problem = match &fallible {
+            // A provider's failures are mapped at the call by their codes
+            // (area 11, "Calling").
+            Fallible::Fails(names) if provider => {
+                let codes: Vec<String> = names
+                    .iter()
+                    .filter_map(|name| self.failures.failure_info(name))
+                    .map(|info| info.code.clone())
+                    .collect();
+                let first = codes.first().cloned().unwrap_or_default();
+                Diagnostic::new(
+                    &rule::FAILURE_ATTEMPT_REQUIRED,
+                    format!("`{written}` can fail, and nothing handles it"),
+                )
+                .at(span, format!(
+                    "can fail with {}",
+                    crate::and_list(&codes.iter().map(|code| format!("`{code}`")).collect::<Vec<_>>())
+                ))
+                .reason("A provider's operation can fail with its package's failures, which the call maps to the app's own by their codes; one left unmapped is a fault when it comes.")
+                .next(format!(
+                    "Write `attempt {written}(...) {{ {first}: SomeFailure }}`, mapping each failure to one of the app's of the same kind, or `match` on the call"
+                ))
+            }
             Fallible::Fails(names) => {
                 let listed: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
                 Diagnostic::new(

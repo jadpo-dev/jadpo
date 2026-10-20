@@ -396,7 +396,13 @@ impl Body<'_> {
                 .any(|found| crate::connections::names_package(&found.list, &head));
             if package {
                 self.args_only(call);
-                return (Ty::Error, CallKind::Effect(written), Reach::Unknown);
+                let reach = Reach::Provider {
+                    connection: head.clone(),
+                    operation: rest.join("."),
+                    fails: Vec::new(),
+                    checked: false,
+                };
+                return (Ty::Error, CallKind::Effect(written), reach);
             }
             // A driver's other operations come with their areas.
             let span = self.span(callee);

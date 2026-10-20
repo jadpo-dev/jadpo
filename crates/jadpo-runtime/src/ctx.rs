@@ -167,6 +167,9 @@ pub struct Ctx<'p> {
     /// delivery's id in a subscriber; one made from the invocation's
     /// randomness otherwise.
     call_key: Option<CallKey>,
+    /// How many keyed provider calls its actions have made: each call's
+    /// step, which its key is derived from (chunk 7.2c).
+    steps: u32,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -222,6 +225,7 @@ impl<'p> Ctx<'p> {
             background: Background::default(),
             capabilities: Capabilities::new(host, env.seed),
             call_key: None,
+            steps: 0,
         }
     }
 
@@ -249,10 +253,24 @@ impl<'p> Ctx<'p> {
         self.call_key.clone()
     }
 
-    /// The running action's next keyed call's step, from 1 (chunk 7.2c);
-    /// `None` outside an action.
+    /// The running action's next keyed call's step, from 1 (chunk 7.2c),
+    /// counted across the invocation, so two actions it runs never send
+    /// one key; `None` outside an action.
     pub fn next_step(&mut self) -> Option<u32> {
-        self.boundary.as_mut().map(Boundary::next_step)
+        self.boundary.as_ref()?;
+        self.steps = self.steps.saturating_add(1);
+        Some(self.steps)
+    }
+
+    /// How many keyed calls it has made.
+    pub(crate) fn steps(&self) -> u32 {
+        self.steps
+    }
+
+    /// Counts its keyed calls from `steps` again: an action run again
+    /// after a concurrent change takes the steps it took before.
+    pub(crate) fn set_steps(&mut self, steps: u32) {
+        self.steps = steps;
     }
 
     /// Its background-run state, for the runner and the boundary.

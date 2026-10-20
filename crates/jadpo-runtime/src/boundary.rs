@@ -58,11 +58,6 @@ pub(crate) struct Boundary {
     /// Whether the body issued an API token or a service key, whose
     /// response is never kept for an idempotent repeat (area 8).
     issued: bool,
-    /// How many keyed provider calls it has made: each call's step, which
-    /// its idempotency key is derived from (area 12, "Keys"; chunk 7.2c).
-    /// It starts again when the action is run again after a concurrent
-    /// change, so the same call sends the same key.
-    steps: u32,
 }
 
 impl Boundary {
@@ -77,11 +72,6 @@ impl Boundary {
         self.isolation
     }
 
-    /// The next keyed call's step, from 1.
-    pub(crate) fn next_step(&mut self) -> u32 {
-        self.steps = self.steps.saturating_add(1);
-        self.steps
-    }
 
     /// Its transaction in `store`, begun at the first store operation at
     /// its isolation level in the store `capabilities` give (area 6). An
@@ -294,7 +284,11 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     let hold = ctx.own_boundary();
     let isolation = body.isolation();
     let mut attempt = 1;
+    // Run again after a concurrent change, its keyed calls take the same
+    // steps, so each sends the same key (area 12, "Keys"; chunk 7.2c).
+    let steps = ctx.steps();
     loop {
+        ctx.set_steps(steps);
         ctx.open_boundary(isolation);
         let mut outcome = gated(ctx, body).await;
         if matches!(outcome, Outcome::Value(_)) {

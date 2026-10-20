@@ -71,6 +71,9 @@ pub(crate) enum Reach {
         connection: String,
         operation: String,
         fails: Vec<String>,
+        /// Whether the operation was found and checked: one reported
+        /// where it is declared can fail with anything.
+        checked: bool,
     },
     /// `clock.advance(duration)` in a test (area 13).
     AdvanceClock,

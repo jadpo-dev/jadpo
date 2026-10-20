@@ -42,6 +42,20 @@ impl Body<'_> {
                 Reach::Unknown,
             )
         };
+        // Reported where it is declared: the call reaches it, unchecked.
+        let reported = |body: &mut Self| {
+            body.args_only(call);
+            (
+                Ty::Error,
+                CallKind::Effect(written.to_string()),
+                Reach::Provider {
+                    connection: connection.name.clone(),
+                    operation: rest.join("."),
+                    fails: Vec::new(),
+                    checked: false,
+                },
+            )
+        };
         let span = self.span(callee);
         if self.context.is_pure() {
             let who = super::capital(self.context.with_a());
@@ -81,7 +95,7 @@ impl Body<'_> {
             // An operation that doesn't read is reported where it is
             // declared.
             if crate::providers::has_problems(self.db, self.project, &connection.folder) {
-                return failed(self);
+                return reported(self);
             }
             let known: Vec<String> = operations
                 .of(&connection.folder)
@@ -256,6 +270,7 @@ impl Body<'_> {
                 connection: connection.name.clone(),
                 operation: operation.full_name(),
                 fails: operation.failures.clone(),
+                checked: true,
             },
         )
     }
@@ -354,7 +369,6 @@ impl Body<'_> {
                         "Name {a} `{kind}` failure here, or make `{failure}`'s kind `FailureKind.{kind}`"
                     )),
                 );
-                continue;
             }
             self.leave_mapped(&failure, span.clone());
             mapped.push((Some(code), failure));
