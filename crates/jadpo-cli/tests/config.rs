@@ -31,10 +31,21 @@ fn folder(name: &str) -> PathBuf {
     dir
 }
 
+/// Saves `text` to `path` in one step, as an editor's atomic save does:
+/// written to a hidden file beside it, which no watch sees, then renamed
+/// over it, so a running `jadpo dev` never reads `.env.local` half-written
+/// (chunk 5.13b).
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
-    fs::create_dir_all(path.parent().expect("parent")).expect("folders");
-    fs::write(path, text).expect("write");
+    let folder = path.parent().expect("parent");
+    fs::create_dir_all(folder).expect("folders");
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a name");
+    let saving = folder.join(format!(".{name}.saving"));
+    fs::write(&saving, text).expect("write");
+    fs::rename(&saving, &path).expect("save");
 }
 
 fn jadpo_with(env: Environment, cwd: &Path, args: &[&str]) -> Output {

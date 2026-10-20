@@ -261,16 +261,21 @@ fn schedules_plan(
                 .clone()
         })
         .flatten();
-    let stores = jadpo_check::data::schema(db, project)
-        .stores
-        .iter()
-        .filter(|(_, store)| store.tables.contains_key("jadpo_idempotency_keys"))
-        .map(|(name, _)| name.clone())
-        .collect();
+    let schema = jadpo_check::data::schema(db, project);
+    let holding = |table: &'static str| {
+        schema
+            .stores
+            .iter()
+            .filter(move |(_, store)| store.tables.contains_key(table))
+            .map(|(name, _)| name.clone())
+    };
+    use jadpo_std::system::{IDEMPOTENCY_KEYS, SERVICE_KEYS, SESSIONS};
     SchedulesPlan {
         schedules,
         store,
-        stores,
+        stores: holding(IDEMPOTENCY_KEYS.table).collect(),
+        sessions: holding(SESSIONS.table).next(),
+        keys: holding(SERVICE_KEYS.table).next(),
     }
 }
 

@@ -60,6 +60,7 @@ mod system_statements;
 mod tenant_reach;
 #[path = "test.rs"]
 mod test_command;
+mod tick_deletes;
 mod translation_exchange;
 mod translation_jadpo;
 mod translation_tooling;
