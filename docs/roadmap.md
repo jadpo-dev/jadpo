@@ -873,10 +873,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   (a package has no default locale, so every language it ships must be
   complete); `jadpo translations export`, `import` and `unused` don't take
   a package's text yet.
-- [ ] **7.1b4 Package text in the translation commands** `opus · high`
+- [x] **7.1b4 Package text in the translation commands** `opus · high`
   (found in chunk 7.1b3): `jadpo translations export`, `import` and
   `unused` taking in a library package's messages and the app's wording
-  of them, as `missing` already does.
+  of them, as `missing` already does. Built: export sends what a
+  supported locale must word of each package, and anything else of it
+  the app words, as `postcodes.<member>` units translated from the app's
+  default wording else the package's, with the app's root wording else
+  the package's own as the target; import writes what comes back into
+  the root file's package group and the root record, never the
+  package's files; `unused` lists, under `Package wording`, root-file
+  members wording package text nothing calls, the package no longer has
+  or keeps private, or no package owns. Choices in area 10, "Chosen in
+  chunk 7.1b4".
 - [x] **7.1d Package names kept to their package** `opus · high` (found
   in chunk 7.1b2): a library function in an installed package clashing
   with an app action of the same name (`Postcodes.uk.tidy` against an

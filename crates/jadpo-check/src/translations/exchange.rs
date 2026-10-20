@@ -1,9 +1,15 @@
 //! What `jadpo translations export` and `import` exchange with translation
 //! services (area 10, "Tooling"): every message, enum, failure and email
-//! subject the project words, and Jadpo's own messages, as units of
-//! wording, one for each plain wording, enum value or plural form; the
-//! wording a locale has for them; and how a unit of wording is written back
-//! into a language file.
+//! subject the project words, its library packages' text and Jadpo's own
+//! messages, as units of wording, one for each plain wording, enum value or
+//! plural form; the wording a locale has for them; and how a unit of
+//! wording is written back into a language file.
+//!
+//! A package's text is exchanged under its folder name, as the root file
+//! groups it (chunk 7.1b4). What a locale has of it is the app's root
+//! wording, else the package's own, which is what the app shows; what comes
+//! back is always written as the app's, in the root file, since the
+//! package's files are the package's.
 //!
 //! This is the reading and the writing of Jadpo's side. XLIFF and JSON,
 //! and the checking of what comes back, belong to the command.
@@ -37,11 +43,15 @@ pub enum Shape {
 }
 
 /// What can be worded: a message, an enum with wording, a failure, an
-/// email's subject, or one of Jadpo's own messages.
+/// email's subject, a library package's text, or one of Jadpo's own
+/// messages.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
-    /// The domain, `shared`, or [`JADPO`].
+    /// The domain, `shared`, a library package's folder name, or [`JADPO`].
     pub scope: String,
+    /// A library package's text, which the app words in the root file
+    /// under the package's folder name.
+    pub package: bool,
     /// The member that words it in a language file.
     pub member: String,
     pub kind: Kind,
@@ -94,10 +104,18 @@ impl Entry {
         })
     }
 
+    /// The group of the root file the app words it in: Jadpo's own and a
+    /// package's text are grouped by whose it is; the app's own is not.
+    pub fn group(&self) -> Option<&str> {
+        (self.scope == JADPO || self.package).then_some(self.scope.as_str())
+    }
+
     /// The name a record gives it.
     pub fn record_member(&self) -> String {
         if self.scope == JADPO {
             super::jadpo::member_name(&self.member)
+        } else if self.package {
+            format!("{}.{}", self.scope, self.member)
         } else {
             self.member.clone()
         }
@@ -105,16 +123,20 @@ impl Entry {
 
     /// The scope its record is kept under.
     pub fn record_scope(&self) -> &str {
-        if self.scope == JADPO {
+        if self.group().is_some() {
             ROOT
         } else {
             &self.scope
         }
     }
 
-    /// The project-relative path of the language file for a locale.
+    /// The project-relative path of the language file the app words it in
+    /// for a locale.
     pub fn language_path(&self, tag: &str) -> String {
-        language_path(&self.scope, tag)
+        match self.group() {
+            Some(_) => super::jadpo::root_path(tag),
+            None => language_path(&self.scope, tag),
+        }
     }
 
     /// What it words, said for a translator.
@@ -159,7 +181,8 @@ pub struct Catalogue {
     /// The supported locales besides the default and the pseudo-locale.
     pub targets: Vec<Target>,
     pub entries: Vec<Entry>,
-    /// A domain named like Jadpo's own group would share its unit ids.
+    /// A domain or package named like Jadpo's own group, or a package
+    /// named like a scope of the app's, would share its unit ids.
     pub clash: Option<String>,
 }
 
@@ -233,6 +256,42 @@ pub fn catalogue(db: &dyn Db, project: Project) -> Option<Catalogue> {
             entries.push(entry(scope, subject, source));
         }
     }
+    // Library packages' text, worded by the application in the default
+    // locale or by the package.
+    let roots = super::jadpo::root_language_files(db, project);
+    let root_default = roots.iter().find(|file| file.locale == Some(plan.default));
+    let mut package_clash = None;
+    for (scope, home) in super::declared::package_scopes(db, project) {
+        if scope == JADPO || all.contains(scope) {
+            package_clash.get_or_insert_with(|| {
+                format!(
+                    "package `{}` is in a folder named `{scope}`, which is a name the application's own units are exchanged under",
+                    home.code
+                )
+            });
+        }
+        let own_default = language_files(db, project, scope)
+            .into_iter()
+            .filter_map(|file| language_file(db, project, file).as_ref())
+            .find(|file| file.locale == Some(plan.default));
+        for subject in super::packages::exchanged(db, project, scope) {
+            let app = root_default
+                .and_then(|file| file.group(scope))
+                .and_then(|group| group.member(&subject.key))
+                .map(|member| plain_text(&member.body))
+                .filter(|source| !source.is_empty());
+            let source = app.or_else(|| {
+                own_default
+                    .and_then(|file| file.member(&subject.key))
+                    .map(|member| plain_text(&member.body))
+                    .filter(|source| !source.is_empty())
+            });
+            let Some(source) = source else { continue };
+            let mut found = entry(scope, &subject, source);
+            found.package = true;
+            entries.push(found);
+        }
+    }
     // Jadpo's own, worded by the application in the default locale or by
     // what Jadpo ships.
     let root_default = super::jadpo::root_language_files(db, project)
@@ -266,10 +325,15 @@ pub fn catalogue(db: &dyn Db, project: Project) -> Option<Catalogue> {
     }
     let clash = all
         .contains(JADPO)
-        .then(|| format!("a domain is named `{JADPO}`, which is the name Jadpo's own messages are exchanged under"));
-    entries.sort_by(|a, b| {
-        (a.scope == JADPO, &a.scope, &a.member).cmp(&(b.scope == JADPO, &b.scope, &b.member))
-    });
+        .then(|| format!("a domain is named `{JADPO}`, which is the name Jadpo's own messages are exchanged under"))
+        .or(package_clash);
+    // The app's own first, then its packages', then Jadpo's.
+    let rank = |entry: &Entry| match (entry.package, entry.scope == JADPO) {
+        (false, false) => 0,
+        (true, _) => 1,
+        (false, true) => 2,
+    };
+    entries.sort_by(|a, b| (rank(a), &a.scope, &a.member).cmp(&(rank(b), &b.scope, &b.member)));
     Some(Catalogue {
         default,
         targets,
@@ -316,6 +380,7 @@ fn entry(scope: &str, subject: &Subject, source: Vec<(Option<String>, String)>) 
     }
     Entry {
         scope: scope.to_string(),
+        package: false,
         member: subject.key.clone(),
         kind: subject.kind,
         description: subject.description.clone(),
@@ -335,18 +400,20 @@ pub struct Existing {
     pub accepted: bool,
 }
 
-/// The language file a scope has for a locale, read.
+/// The language file the app words a scope in for a locale, read: the
+/// root file for Jadpo's own and a library package's text.
 pub fn file_for<'a>(
     db: &'a dyn Db,
     project: Project,
     scope: &str,
     tag: &str,
 ) -> Option<&'a LanguageFile> {
-    let files: Vec<File> = if scope == JADPO {
-        super::jadpo::root_files(db, project)
-    } else {
-        language_files(db, project, scope)
-    };
+    let files: Vec<File> =
+        if scope == JADPO || super::declared::package_of(db, project, scope).is_some() {
+            super::jadpo::root_files(db, project)
+        } else {
+            language_files(db, project, scope)
+        };
     files
         .into_iter()
         .filter_map(|file| language_file(db, project, file).as_ref())
@@ -354,21 +421,37 @@ pub fn file_for<'a>(
 }
 
 pub fn member_of<'a>(file: &'a LanguageFile, entry: &Entry) -> Option<&'a Member> {
-    if entry.scope == JADPO {
-        file.group(GROUP)?.member(&entry.member)
-    } else {
-        file.member(&entry.member)
+    match entry.group() {
+        Some(group) => file.group(group)?.member(&entry.member),
+        None => file.member(&entry.member),
     }
 }
 
-/// The wording a locale has for an entry.
+/// The wording a locale has for an entry: for a library package's text,
+/// the app's in the root file, else the package's own, which no record of
+/// the app's judges.
 pub fn existing(db: &dyn Db, project: Project, entry: &Entry, tag: &str) -> Option<Existing> {
-    let file = file_for(db, project, &entry.scope, tag)?;
-    let member = member_of(file, entry)?;
-    let wording = plain_text(&member.body);
-    if wording.is_empty() {
-        return None;
-    }
+    let app = file_for(db, project, &entry.scope, tag)
+        .and_then(|file| member_of(file, entry))
+        .map(|member| plain_text(&member.body))
+        .filter(|wording| !wording.is_empty());
+    let Some(wording) = app else {
+        if !entry.package {
+            return None;
+        }
+        let wording = language_files(db, project, &entry.scope)
+            .into_iter()
+            .filter_map(|file| language_file(db, project, file).as_ref())
+            .find(|file| file.tag == tag)
+            .and_then(|file| file.member(&entry.member))
+            .map(|member| plain_text(&member.body))
+            .filter(|wording| !wording.is_empty())?;
+        return Some(Existing {
+            wording,
+            stale: false,
+            accepted: false,
+        });
+    };
     let standings =
         sources::standings(db, project, Name::new(db, entry.record_scope().to_string()));
     let record_member = entry.record_member();
@@ -442,72 +525,87 @@ fn render_member(name: &str, wording: &Wording) -> String {
     }
 }
 
+/// One member to write: the root file's group it is in (`jadpo`, a
+/// package's folder name), or `None` for a scope's own file; its name; and
+/// its wording.
+pub type Write = (Option<String>, String, Wording);
+
 /// A language file with some members written: the ones it has replaced
-/// where they are, the others added at the end, and everything else as it
-/// was. `changes` are `(member, wording)`; for the root file the members
-/// are in the `jadpo: { }` group. The result is for `jadpo_fmt` to lay out.
-pub fn write_members(
-    existing: Option<(&LanguageFile, &str)>,
-    root: bool,
-    changes: &[(String, Wording)],
-) -> String {
-    let Some((file, text)) = existing else {
-        let body: Vec<String> = changes
+/// where they are, the others added at the end of their group, a group the
+/// file lacks added at its end, and everything else as it was. The result
+/// is for `jadpo_fmt` to lay out.
+pub fn write_members(existing: Option<(&LanguageFile, &str)>, changes: &[Write]) -> String {
+    // The groups in the order the changes first name them.
+    let mut order: Vec<Option<&str>> = Vec::new();
+    for (group, _, _) in changes {
+        if !order.contains(&group.as_deref()) {
+            order.push(group.as_deref());
+        }
+    }
+    let rendered = |wanted: Option<&str>| -> Vec<String> {
+        changes
             .iter()
-            .map(|(name, wording)| render_member(name, wording))
-            .collect();
-        return if root {
-            format!(
-                "translations {{\n{}: {{\n{}\n}}\n}}\n",
-                GROUP,
-                body.join("\n")
-            )
-        } else {
-            format!("translations {{\n{}\n}}\n", body.join("\n"))
-        };
+            .filter(|(group, _, _)| group.as_deref() == wanted)
+            .map(|(_, name, wording)| render_member(name, wording))
+            .collect()
     };
-    let members: Vec<&Member> = if root {
-        file.group(GROUP)
-            .map(|group| group.members.iter().collect())
-            .unwrap_or_default()
-    } else {
-        file.members.iter().collect()
+    let block =
+        |group: &str, members: &[String]| format!("{group}: {{\n{}\n}}", members.join("\n"));
+    let Some((file, text)) = existing else {
+        // Members of the scope's own first, then each group.
+        let mut body = rendered(None);
+        for group in order.iter().flatten() {
+            body.push(block(group, &rendered(Some(group))));
+        }
+        return format!("translations {{\n{}\n}}\n", body.join("\n"));
     };
     // (start, end, replacement) edits, applied from the back.
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
-    let mut added: Vec<String> = Vec::new();
-    for (name, wording) in changes {
-        match members.iter().find(|member| &member.name == name) {
-            Some(member) => edits.push((
-                member.span.start as usize,
-                member.span.end as usize,
-                render_member(name, wording),
-            )),
-            None => added.push(render_member(name, wording)),
+    let mut at_close: Vec<String> = Vec::new();
+    for group in &order {
+        let present = match group {
+            Some(name) => file.group(name).map(|group| (&group.members, group.close)),
+            None => Some((&file.members, file.close)),
+        };
+        let mut added: Vec<String> = Vec::new();
+        for (_, name, wording) in changes
+            .iter()
+            .filter(|(seen, _, _)| seen.as_deref() == *group)
+        {
+            match present
+                .and_then(|(members, _)| members.iter().find(|member| &member.name == name))
+            {
+                Some(member) => edits.push((
+                    member.span.start as usize,
+                    member.span.end as usize,
+                    render_member(name, wording),
+                )),
+                None => added.push(render_member(name, wording)),
+            }
+        }
+        if added.is_empty() {
+            continue;
+        }
+        match (group, present) {
+            (Some(_), Some((_, Some(close)))) => {
+                edits.push((
+                    close as usize,
+                    close as usize,
+                    format!("{}\n", added.join("\n")),
+                ));
+            }
+            (None, _) => at_close.insert(0, added.join("\n")),
+            (Some(name), _) => at_close.push(block(name, &added)),
         }
     }
-    if !added.is_empty() {
-        let joined = added.join("\n");
-        if root {
-            match file.group(GROUP) {
-                Some(group) => {
-                    if let Some(close) = group.close {
-                        edits.push((close as usize, close as usize, format!("{joined}\n")));
-                    }
-                }
-                None => {
-                    if let Some(close) = file.close {
-                        edits.push((
-                            close as usize,
-                            close as usize,
-                            format!("{GROUP}: {{\n{joined}\n}}\n"),
-                        ));
-                    }
-                }
-            }
-        } else if let Some(close) = file.close {
-            edits.push((close as usize, close as usize, format!("{joined}\n")));
-        }
+    if !at_close.is_empty()
+        && let Some(close) = file.close
+    {
+        edits.push((
+            close as usize,
+            close as usize,
+            format!("{}\n", at_close.join("\n")),
+        ));
     }
     edits.sort_by_key(|edit| std::cmp::Reverse(edit.0));
     let mut out = text.to_string();

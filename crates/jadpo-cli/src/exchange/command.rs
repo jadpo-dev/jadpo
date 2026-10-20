@@ -832,26 +832,27 @@ pub fn import(loaded: &mut Loaded, call: &Call, cwd: &Path) -> Reply {
         let slot = edited.entry(path.clone()).or_insert_with(|| Edited {
             path: path.clone(),
             scope: entry.scope.clone(),
-            root: entry.scope == exchange::JADPO,
             text: String::new(),
             changes: Vec::new(),
         });
         slot.changes.push(at);
     }
     for edited in edited.values_mut() {
-        let members: Vec<(String, Wording)> = edited
+        let members: Vec<exchange::Write> = edited
             .changes
             .iter()
             .map(|&at| {
+                let entry = &catalogue.entries[changes[at].entry];
                 (
-                    catalogue.entries[changes[at].entry].member.clone(),
+                    entry.group().map(str::to_string),
+                    entry.member.clone(),
                     changes[at].wording.clone(),
                 )
             })
             .collect();
         let existing = exchange::file_for(&loaded.db, loaded.project, &edited.scope, target.tag)
             .and_then(|file| texts.get(&file.path).map(|text| (file, text.as_str())));
-        let written = exchange::write_members(existing, edited.root, &members);
+        let written = exchange::write_members(existing, &members);
         edited.text = jadpo_fmt::format_file(&written).unwrap_or(written);
     }
 
@@ -973,10 +974,16 @@ pub fn import(loaded: &mut Loaded, call: &Call, cwd: &Path) -> Reply {
         for &at in &edited.changes {
             let change = &changes[at];
             let entry = &catalogue.entries[change.entry];
+            // The root file holds several owners' groups, so a row there
+            // names the group too, as `jadpo translations missing` does.
+            let member = match entry.group() {
+                Some(group) if entry.package => format!("{group}.{}", entry.member),
+                _ => entry.member.clone(),
+            };
             for (variant, kind, _) in &change.units {
                 let label = match variant {
-                    Some(variant) => format!("{}.{variant}", entry.member),
-                    None => entry.member.clone(),
+                    Some(variant) => format!("{member}.{variant}"),
+                    None => member.clone(),
                 };
                 let word = match kind {
                     Kind::Added => {
@@ -1082,8 +1089,8 @@ fn import_data(
 /// A language file as the import would leave it.
 struct Edited {
     path: String,
+    /// A scope the file words: any of them finds it.
     scope: String,
-    root: bool,
     text: String,
     /// The changes made in it.
     changes: Vec<usize>,
