@@ -1043,13 +1043,13 @@ rules! {
     TYPE_BATCH_CONTEXT: "type.batch_context", area 12, Error, Agent,
         "12-jobs-and-events.html#type-batch-context", "Batch operation called outside an action";
     TYPE_BATCH_EACH_INVALID: "type.batch_each_invalid", area 12, Error, Agent,
-        "12-jobs-and-events.html#type-batch-each-invalid", "A batch's `each:` or `finished:` is not one call of an action in its domain";
+        "12-jobs-and-events.html#type-batch-each-invalid", "A batch's `each:` or `finished:` is not one call of an action in its domain, or a write's `each:` no inline function giving the row";
     TYPE_BATCH_FROM_INVALID: "type.batch_from_invalid", area 12, Error, Agent,
         "12-jobs-and-events.html#type-batch-from-invalid", "A batch's `from:` is not a call of a named query giving a `Page`";
     TYPE_BATCH_INPUT: "type.batch_input", area 12, Error, Agent,
         "12-jobs-and-events.html#type-batch-input", "An `Input` or a route placeholder holds a batch type, which only the runtime builds";
     TYPE_BATCH_ROW_INVALID: "type.batch_row_invalid", area 12, Error, Agent,
-        "12-jobs-and-events.html#type-batch-row-invalid", "A file helper's rows can't be read as the type its `as:` names";
+        "12-jobs-and-events.html#type-batch-row-invalid", "A file helper's rows can't be read as the type its `as:` names, or written as the row its `each:` gives";
     TYPE_CLOCK_CONTEXT: "type.clock_context", area 10, Error, Agent,
         "10-configuration-and-time.html#type-clock-context", "The operation clock is unavailable in this context";
     TYPE_CONSTRAINT_BASE: "type.constraint_base", area 2, Error, Agent,

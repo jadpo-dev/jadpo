@@ -124,6 +124,21 @@ pub const PUT: &str = "put";
 /// reads less at once; a file it doesn't hold is `not_found`.
 pub const READ: &str = "read";
 
+/// The capability's operation that joins a written file's pieces into the
+/// file (area 12, "How an export's run is kept"; chunk 6.4b2): its input
+/// is `{ key, pieces, type }`, the pieces kept under [`piece_key`] of
+/// `key` from 0, and it answers `Unit` once the file is whole under `key`
+/// and its pieces are gone, or `storage_full`; one with a piece missing,
+/// and no file under `key` already, is `not_found`. Joining a file that is
+/// already whole does nothing, so a repeat acts once.
+pub const JOIN: &str = "join";
+
+/// The capability's operation that drops a cancelled export's file
+/// (chunk 6.4b2): its input is `{ key, pieces }`, and it drops the first
+/// `pieces` pieces of the file `key` names and, if they were joined, the
+/// file, answering `Unit`, whatever was already gone.
+pub const DISCARD: &str = "discard";
+
 /// The failure a put answers when its store has no room (area 16, "The
 /// disk driver").
 pub const STORAGE_FULL: &str = "storage_full";
@@ -157,6 +172,34 @@ pub fn key_for(id: &[u8; 16]) -> String {
         part(16, 20),
         part(20, 32)
     )
+}
+
+/// The key of piece `piece` of the file whose new id is `id`, as an
+/// export writes them (chunk 6.4b2): a key [`key_for`] makes, from the
+/// file's id with its last eight bytes turned by the piece's number, so
+/// a driver joining a file finds its pieces from its key alone.
+pub fn piece_key(id: &[u8; 16], piece: u64) -> String {
+    let mut held = *id;
+    let turn = (piece.wrapping_add(1)).to_be_bytes();
+    for (byte, by) in held.iter_mut().skip(8).zip(turn) {
+        *byte ^= by;
+    }
+    // A piece never shares its file's key, nor another piece's.
+    held[6] ^= 0x80;
+    key_for(&held)
+}
+
+/// The id a key [`key_for`] made holds; `None` for any other.
+pub fn key_id(key: &str) -> Option<[u8; 16]> {
+    if !is_key(key) {
+        return None;
+    }
+    let hex: String = key.rsplit('/').next()?.split('-').collect();
+    let mut id = [0u8; 16];
+    for (at, byte) in id.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(at * 2..at * 2 + 2)?, 16).ok()?;
+    }
+    Some(id)
 }
 
 /// Whether `key` is one [`key_for`] makes: a driver refuses any other, so
@@ -226,6 +269,11 @@ mod tests {
         ] {
             assert!(!is_key(wrong), "{wrong}");
         }
+        assert_eq!(key_id(&key), Some(id));
+        assert_eq!(key_id("3f/a2/../x"), None);
+        let pieces: Vec<String> = (0..3).map(|n| piece_key(&id, n)).collect();
+        assert!(pieces.iter().all(|piece| is_key(piece) && *piece != key));
+        assert!(pieces[0] != pieces[1] && pieces[1] != pieces[2]);
         assert_eq!(FilesOp::from_name("put"), Some(FilesOp::Put));
         assert_eq!(FilesOp::from_name("delete"), None);
         assert_eq!(

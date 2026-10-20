@@ -1,0 +1,37 @@
+// `csv.write` writes a query's records into a stored file after this
+// action commits, in the background, a page at a time: each page read in
+// a transaction of its own, its rows worked out by `each:` and put in the
+// store once that transaction has closed, since a call that leaves the
+// process never waits inside one; only then does how far the run got
+// commit. `CsvFormat.spreadsheet` says a spreadsheet reads it, so its
+// text can't be taken for a formula, and `finished:` gets the file once
+// every page is written.
+
+use app { shelf_lists }
+use seedbank/entities { ShelfList, ShelfListNotFound }
+use seedbank/types { PacketPage, ShelfLine }
+use seedbank/actions { record_list }
+use seedbank/queries { shelf_packets }
+
+/// Starts writing the shelves' packets into a spreadsheet, once.
+action list_shelves(list_id: ShelfList.id) fails ShelfListNotFound -> ShelfList {
+    var shelf_list: ShelfList = attempt ShelfList.get(list_id)
+    var list_walk: BatchRun = csv.write(
+        shelf_lists,
+        name: "shelf-list.csv",
+        format: CsvFormat.spreadsheet,
+        from: shelf_packets(PacketPage {}),
+        each: packet -> ShelfLine {
+            variety: packet.variety
+            saved_in: packet.saved_in
+            on_loan: packet.on_loan
+        },
+        finished: summary -> record_list(summary, shelf_list.id),
+        key: shelf_list.id
+    )
+    return ShelfList.update(shelf_list) {
+        set: {
+            list_walk: list_walk
+        }
+    }
+}

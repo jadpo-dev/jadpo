@@ -40,7 +40,9 @@ pub(crate) fn is_feature_type(name: &str) -> bool {
     name == jadpo_std::standard::geo::FEATURE
         || name == jadpo_std::standard::geo::FEATURE_COLLECTION
 }
-pub use facts::{BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve};
+pub use facts::{
+    BodyFacts, Fact, Write, body_facts, fact_of, facts_at, named, resolve, run_places,
+};
 pub use loading::{Decided, Loading, Loads, file_loading, has_isolation, isolation};
 pub use recursion::{Cycles, action_calls, action_cycles, recursion_problems};
 pub use rules::{CONSTRAINTS, Const, FIELD_SETTINGS, Num, Rules};

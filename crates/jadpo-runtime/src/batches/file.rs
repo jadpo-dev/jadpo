@@ -481,6 +481,10 @@ pub(super) async fn page(
             )));
         }
     };
+    let Some(each) = plan.each.action() else {
+        open.rollback().await;
+        return Step::Ended(Ran::Failed("a run with no action to call".into()));
+    };
     // The rows read, each its action's item; the rest are problems.
     let mut problems: Vec<(i64, String, String)> = Vec::new();
     let mut called: Vec<i64> = Vec::new();
@@ -489,7 +493,7 @@ pub(super) async fn page(
         match item {
             Ok(value) => {
                 called.push(*row);
-                calls.push(arguments(&plan.each.args, value, saved.values));
+                calls.push(arguments(&each.args, value, saved.values));
             }
             Err((column, rule)) => problems.push((*row, column.clone(), rule.clone())),
         }
@@ -497,7 +501,7 @@ pub(super) async fn page(
     let mut paused: Option<String> = None;
     open.items(
         executor,
-        plan.each.callable,
+        each.callable,
         calls,
         &mut |at, outcome| match problem(&outcome) {
             Item::Done => ControlFlow::Continue(()),

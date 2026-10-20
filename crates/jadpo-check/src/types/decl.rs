@@ -775,6 +775,7 @@ impl Decls<'_> {
                     }
                     let field = FieldCtx {
                         input: base == FieldsBase::Input,
+                        output: base == FieldsBase::Output,
                         later: base.has_later_settings(),
                         ty: Ty::Field(host.to_string(), vec![name.clone()]),
                         declared: declared.clone(),
@@ -1622,7 +1623,10 @@ impl Decls<'_> {
             Ty::Field(host, _) => host.clone(),
             other => other.to_string(),
         };
-        if !field.input {
+        // The column a file helper reads the field from (area 12,
+        // "Batches"; chunk 6.4b), or writes it to (chunk 6.4b2).
+        let column = key == "column" && (field.input || field.output);
+        if !field.input && !column {
             self.out.push(optional_outside(&host, key_span));
             return;
         }
@@ -1630,14 +1634,12 @@ impl Decls<'_> {
             self.header(value, value_span, field);
             return;
         }
-        // The column a file helper reads the field from (area 12,
-        // "Batches"; chunk 6.4b).
-        if key == "column" {
+        if column {
             if !matches!(value, Const::Str(name) if !name.is_empty()) {
                 self.out.push(
                     Diagnostic::new(&rule::TYPE_SETTING_VALUE, "`column` takes the column's name")
                         .at(value_span, format!("{} here", value.describe()))
-                        .reason("`column:` names the column of a CSV or TSV file a row's field is read from, when it isn't the field's name, as text: `column: \"Email address\"`.")
+                        .reason("`column:` names the column of a CSV or TSV file a row's field is read from or written to, when it isn't the field's name, as text: `column: \"Email address\"`.")
                         .next("Write the column's name in quotes"),
                 );
             }
@@ -1800,6 +1802,9 @@ impl Decls<'_> {
 
 struct FieldCtx {
     input: bool,
+    /// An `Output`'s field, whose `column:` a file helper writes it to
+    /// (chunk 6.4b2).
+    output: bool,
     /// Whether later areas add settings of their own to this field.
     later: bool,
     /// The field type, `Type.field`.

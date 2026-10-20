@@ -70,8 +70,11 @@
   action check_packet                repeatable_read: is handed a record in `packet`
   action check_progress              read_committed
   action keep_sheet                  read_committed
+  action list_shelves                repeatable_read: reads `ShelfList` with `get`
   action open_check                  read_committed
+  action open_list                   read_committed
   action record_check                read_committed
+  action record_list                 read_committed
   action record_sheet                read_committed
   action sheet_bytes                 read_committed
   action start_check                 repeatable_read: is handed a record in `stocktake`

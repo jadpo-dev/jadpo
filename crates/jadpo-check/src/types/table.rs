@@ -265,7 +265,7 @@ pub fn derive(
                         }),
                     column: settings
                         .iter()
-                        .find(|(key, _)| input && key == "column")
+                        .find(|(key, _)| (input || base == FieldsBase::Output) && key == "column")
                         .and_then(|(_, value)| match value {
                             rules::Const::Str(text) if !text.is_empty() => Some(text.clone()),
                             _ => None,

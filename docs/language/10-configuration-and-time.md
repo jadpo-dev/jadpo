@@ -1703,7 +1703,8 @@ header and the same `locales { }`:
 > builtin`. Built in chunk 5.4f: `jadpo translations export` and `import`,
 > the exchange with translation services. Built in chunk 7.1b3: library
 > packages' translations, called through the package, and the root file's
-> package groups. Email templates that read
+> package groups. Built in chunk 7.1b4: packages' text in `jadpo
+> translations export`, `import` and `unused`. Email templates that read
 > translations come with email in chunk 7.3 (area 16).
 
 Text the server writes for people (emails, generated pages, a failure's text
@@ -2434,7 +2435,9 @@ translations {
 > Built in chunk 5.4e: Jadpo's own messages and the root file. Built in
 > chunk 7.1b3: library packages' text, its groups in the root file, its
 > lines in the root record and its place in the publishing bar; the
-> choices are under "Chosen in chunk 7.1b3" below.
+> choices are under "Chosen in chunk 7.1b3" below. Built in chunk 7.1b4:
+> its text in `jadpo translations export`, `import` and `unused`, under
+> "Chosen in chunk 7.1b4".
 
 Text Jadpo writes itself (built-in emails and its failures' wording; it
 generates endpoints only, never pages) is Jadpo's own messages. Jadpo ships
@@ -2712,10 +2715,41 @@ What the pages leave to the build, each the most conservative reading:
   translations.<message>` with its fields, after the functions. A new
   locale or message is the next minor version, a message's changed fields
   or a dropped locale are breaking, and changed wording is a patch.
-- **Not built yet:** `jadpo translations export` and `import` don't
-  exchange a package's text, and `jadpo translations unused` doesn't list
-  a package's messages; the app's root file is still edited by hand for
-  them. `missing`, `update` and `accept` take them in.
+- **The commands.** `missing`, `update` and `accept` take a package's
+  text in; `export`, `import` and `unused` do from chunk 7.1b4, below.
+
+#### Chosen in chunk 7.1b4
+
+- **What is exchanged.** What a supported locale must word of a package
+  (above) and anything else of it the app words in its root file, each
+  unit `postcodes.<member>` with `.<value>` or `.<form>`, in an XLIFF
+  `<file id="postcodes" original="translations">` after the app's own and
+  before Jadpo's. It is translated from the app's default-locale wording
+  of it, else the package's, the wording the record's `from` hashes. A
+  package in a folder named `jadpo` or like a scope of the app's would
+  share unit ids, so export refuses it, as it does a domain named `jadpo`.
+- **What a locale has.** The app's root wording, else the package's own
+  for that locale, which is what the app shows; the package's own is
+  `translated`, never `reviewed` or stale, since no record of the app's
+  judges it. Exporting and importing unchanged writes nothing.
+- **What comes back** is the app's: written into the root file for the
+  locale, in the package's group (created, beside `jadpo: { }`, when the
+  file lacks one), the whole member when one plural form or value
+  changed, its other forms from the package's wording, and a line in the
+  root record. The package's files are never written: a translator who
+  changes the package's wording makes the app reword it. Import's rows
+  name a package's units `postcodes.<member>`, as `missing` does.
+- **`unused`** lists, after the app's own and under `Package wording`,
+  each member of the root files' package groups that shows nothing, with
+  its place and why: a message or enum of the package no code of the
+  app's calls (`no code calls it`), a name the package no longer has
+  (`not in Postcodes`) or keeps private (`private to Postcodes`), and a
+  group no installed library package words text under (`no such
+  package`). These are the members to delete. A package's message the
+  app neither calls nor words is the package's, and is not listed; a
+  failure is shown by being reachable, as the app's are; Jadpo's group
+  is not a package's. `--json` gives them as `packageWording`, each with
+  a `reason` (`uncalled`, `notInPackage`, `private`, `noPackage`).
 
 ### What the compiler checks
 
@@ -2873,7 +2907,9 @@ check` is what fails. `update` and `accept` stop on syntax errors.
   `jadpo translations unused` lists the messages, and the enums with
   wording, that no code calls; a test does not count as a user. Failures
   and emails are used by being reachable and by the email's own machinery,
-  so they are never listed.
+  so they are never listed. It also lists the app's wording of library
+  packages' text that shows nothing (chunk 7.1b4, "Jadpo's and packages'
+  text").
 - `jadpo translations update` writes each folder's `sources.jadpo_record`.
   It can't tell a translation was redone, only that it changed: a
   translation with no line, or reworded since its line, is recorded as
@@ -2981,7 +3017,8 @@ Naming the default locale writes the source file to upload: the same units
 with no translations. A unit is one wording: a plain message, a value of
 the enum that picks a wording, or a plural form of the locale; its id is
 `<domain>.<message>`, with `.<value>` or `.<form>` after it (`shared` for
-`shared/translations/`, `jadpo` for Jadpo's own), which XLIFF splits into
+`shared/translations/`, `jadpo` for Jadpo's own, a library package's folder
+name for its text, chunk 7.1b4), which XLIFF splits into
 `<file id>` and `<unit id>`. A domain named `jadpo` would share ids with
 Jadpo's own messages, so export refuses it, and wording every locale
 shares (`TextDirection`'s) is not exchanged. The wording is written as it

@@ -15,6 +15,12 @@
 //! - **Ranged reads.** A read seeks to its first byte and reads at most
 //!   what it was asked for, so a batch reads a file of any size a window
 //!   at a time.
+//! - **Pieces joined whole.** An export's pieces (chunk 6.4b2) are each a
+//!   file of their own under a key made from the file's; joining copies
+//!   them in order into a temporary file, a window at a time, syncs it,
+//!   renames it into place and syncs its directory, then removes the
+//!   pieces, so the file appears whole or not at all, and joining it again
+//!   once it is does nothing.
 //!
 //! Its I/O is blocking: a window is at most a megabyte, on the developer's
 //! own disk. A deployable's disk driver, at its connection's `path:`, with
@@ -28,7 +34,9 @@ use std::rc::Rc;
 
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability};
-use jadpo_std::files::{NOT_FOUND, PUT, READ, STORAGE_FULL, is_key};
+use jadpo_std::files::{
+    DISCARD, JOIN, NOT_FOUND, PUT, READ, STORAGE_FULL, is_key, key_id, piece_key,
+};
 use jadpo_value::Value;
 
 /// Every store of files under one folder, each connection in a folder of
@@ -122,6 +130,76 @@ impl DiskFiles {
         }
     }
 
+    /// Joins the first `pieces` pieces of the file at `path`, whose id is
+    /// `id`, into it, in order, then removes them.
+    fn join(&self, connection: &str, path: &Path, id: &[u8; 16], pieces: u64) -> Answer {
+        let Some(folder) = path.parent() else {
+            return Answer::Misconfigured;
+        };
+        if self.through_link(path) {
+            return Answer::Failed(NOT_FOUND.into());
+        }
+        let mut parts = Vec::new();
+        for piece in 0..pieces {
+            let Some(part) = self.path(connection, &piece_key(id, piece)) else {
+                return Answer::Misconfigured;
+            };
+            if self.through_link(&part) {
+                return Answer::Failed(NOT_FOUND.into());
+            }
+            parts.push(part);
+        }
+        let missing = parts.iter().any(|part| !part.is_file());
+        if missing {
+            // Joined already: its pieces went once it was whole.
+            if path.is_file() && parts.iter().all(|part| !part.exists()) {
+                return Answer::Value(Value::Unit);
+            }
+            return Answer::Failed(NOT_FOUND.into());
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return Answer::Misconfigured;
+        };
+        let staged = folder.join(format!(".{name}.part"));
+        let kept = (|| {
+            private_folder(folder)?;
+            let mut file = private_file(&staged)?;
+            for part in &parts {
+                let mut from = File::open(part)?;
+                std::io::copy(&mut from, &mut file)?;
+            }
+            file.sync_all()?;
+            drop(file);
+            fs::rename(&staged, path)?;
+            File::open(folder)?.sync_all()
+        })();
+        if let Err(error) = kept {
+            let _ = fs::remove_file(&staged);
+            return written(&error);
+        }
+        for part in &parts {
+            let _ = fs::remove_file(part);
+        }
+        Answer::Value(Value::Unit)
+    }
+
+    /// Removes the first `pieces` pieces of the file at `path`, whose id
+    /// is `id`, and the file itself.
+    fn discard(&self, connection: &str, path: &Path, id: &[u8; 16], pieces: u64) -> Answer {
+        let mut gone = vec![path.to_path_buf()];
+        for piece in 0..pieces {
+            if let Some(part) = self.path(connection, &piece_key(id, piece)) {
+                gone.push(part);
+            }
+        }
+        for part in gone {
+            if !self.through_link(&part) {
+                let _ = fs::remove_file(part);
+            }
+        }
+        Answer::Value(Value::Unit)
+    }
+
     fn answer(&self, call: &Call) -> Answer {
         let Value::Record(input) = &call.input else {
             return Answer::Misconfigured;
@@ -143,6 +221,17 @@ impl DiskFiles {
                     u64::try_from(*from).unwrap_or(0),
                     u64::try_from(*length).unwrap_or(0),
                 ),
+                _ => Answer::Misconfigured,
+            },
+            JOIN | DISCARD => match (input.get("pieces"), key_id(key)) {
+                (Some(Value::Int(pieces)), Some(id)) => {
+                    let pieces = u64::try_from(*pieces).unwrap_or(0);
+                    if call.operation == JOIN {
+                        self.join(&call.connection, &path, &id, pieces)
+                    } else {
+                        self.discard(&call.connection, &path, &id, pieces)
+                    }
+                }
                 _ => Answer::Misconfigured,
             },
             _ => Answer::Misconfigured,
@@ -207,7 +296,7 @@ mod tests {
 
     fn root(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
-            "jadpo-disk-files-6.4b-{name}-{}",
+            "jadpo-disk-files-6.4b2-{name}-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
@@ -280,6 +369,53 @@ mod tests {
         let missing = jadpo_std::files::key_for(&[0x40; 16]);
         assert_eq!(
             answered(&files, &read(&missing, 0, 10)),
+            Answer::Failed(NOT_FOUND.into())
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// An export's pieces join into one file, in order, and go; joining it
+    /// again does nothing, and discarding drops the file.
+    #[test]
+    fn pieces_join_into_one_file_once() {
+        let root = root("join");
+        let files = DiskFiles::under(&root);
+        let id = [0x52; 16];
+        for (piece, bytes) in [&b"code\r\n"[..], b"A1\r\n", b"A2\r\n"].iter().enumerate() {
+            let key = piece_key(&id, piece as u64);
+            assert_eq!(
+                answered(&files, &put(&key, bytes)),
+                Answer::Value(Value::Unit)
+            );
+        }
+        let key = jadpo_std::files::key_for(&id);
+        let joined = |operation: &str| {
+            Call::new(
+                "imports",
+                operation,
+                Value::record(
+                    "FileJoin",
+                    vec![
+                        (Rc::from("key"), Value::text(&key)),
+                        (Rc::from("pieces"), Value::Int(3)),
+                        (Rc::from("type"), Value::text("text/csv")),
+                    ],
+                ),
+                Repeat::Keyed,
+            )
+        };
+        assert_eq!(answered(&files, &joined(JOIN)), Answer::Value(Value::Unit));
+        let path = root.join("imports").join(&key);
+        assert_eq!(fs::read(&path).expect("joined"), b"code\r\nA1\r\nA2\r\n");
+        assert!(!root.join("imports").join(piece_key(&id, 0)).exists());
+        assert_eq!(answered(&files, &joined(JOIN)), Answer::Value(Value::Unit));
+        assert_eq!(
+            answered(&files, &joined(DISCARD)),
+            Answer::Value(Value::Unit)
+        );
+        assert!(!path.exists());
+        assert_eq!(
+            answered(&files, &joined(JOIN)),
             Answer::Failed(NOT_FOUND.into())
         );
         let _ = fs::remove_dir_all(&root);

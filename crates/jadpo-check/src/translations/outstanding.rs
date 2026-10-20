@@ -1,7 +1,8 @@
 //! What is left to do in the translations (area 10, "Tooling"): the
 //! wording a locale lacks, which `jadpo translations missing` lists, and
-//! the messages no code uses, which `jadpo translations unused` lists. The
-//! errors say the same about a locale that is complete; these also cover a
+//! the messages no code uses and the app's wording of library packages'
+//! text nothing shows, which `jadpo translations unused` lists. The errors
+//! say the same about a locale that is complete; these also cover a
 //! locale in progress, which falls back instead of failing.
 
 use std::collections::BTreeSet;
@@ -170,4 +171,98 @@ pub fn unused(db: &dyn Db, project: Project) -> (Vec<Unused>, usize) {
         }
     }
     (out, total)
+}
+
+/// Why the app's wording of a package's text shows nothing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unshown {
+    /// The package has the message or enum, and no code of the app's
+    /// calls it.
+    Uncalled,
+    /// The package has nothing by that name, as after an update that
+    /// dropped it.
+    NotInPackage,
+    /// The package keeps it to itself.
+    Private,
+    /// No installed library package words text under the group's name.
+    NoPackage,
+}
+
+impl Unshown {
+    /// The word `--json` gives it.
+    pub fn word(self) -> &'static str {
+        match self {
+            Unshown::Uncalled => "uncalled",
+            Unshown::NotInPackage => "notInPackage",
+            Unshown::Private => "private",
+            Unshown::NoPackage => "noPackage",
+        }
+    }
+}
+
+/// A member of the root file wording a library package's text that
+/// nothing shows (chunk 7.1b4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnusedWording {
+    /// The group: the package's folder name.
+    pub group: String,
+    /// The package, as code names it (`Postcodes`), when one is installed.
+    pub package: Option<String>,
+    pub member: String,
+    /// The root file it is in, and its name there.
+    pub path: String,
+    pub span: jadpo_diag::Span,
+    pub why: Unshown,
+}
+
+impl UnusedWording {
+    /// The name `jadpo translations missing` and the record give it.
+    pub fn name(&self) -> String {
+        format!("{}.{}", self.group, self.member)
+    }
+}
+
+/// The app's wording, in the root files, of library packages' text that
+/// nothing shows: a message or enum no code calls (tests don't count), or
+/// a name the package no longer has, keeps to itself, or no package words
+/// at all. Jadpo's own group is not a package's, and a failure is shown
+/// by being reachable, so neither is listed. In path order, then member.
+pub fn unused_package_wording(db: &dyn Db, project: Project) -> Vec<UnusedWording> {
+    let used = crate::usage::translation_keys_used(db, project);
+    let mut out = Vec::new();
+    for file in super::jadpo::root_language_files(db, project) {
+        for group in &file.groups {
+            if group.name == jadpo_std::jadpo_text::GROUP {
+                continue;
+            }
+            let home = super::declared::package_of(db, project, &group.name);
+            let subjects = home
+                .as_ref()
+                .map(|_| subjects(db, project, Name::new(db, group.name.clone())));
+            for member in &group.members {
+                let why = match (&home, subjects.and_then(|all| all.get(&member.name))) {
+                    (None, _) => Unshown::NoPackage,
+                    (Some(_), None) => Unshown::NotInPackage,
+                    (Some(_), Some(subject)) if !subject.symbol.public => Unshown::Private,
+                    (Some(_), Some(subject))
+                        if subject.callable()
+                            && !used.contains(&format!("{}.{}", group.name, subject.key)) =>
+                    {
+                        Unshown::Uncalled
+                    }
+                    _ => continue,
+                };
+                out.push(UnusedWording {
+                    group: group.name.clone(),
+                    package: home.as_ref().map(|home| home.code.clone()),
+                    member: member.name.clone(),
+                    path: file.path.clone(),
+                    span: member.key_span.clone(),
+                    why,
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| (&a.path, &a.member).cmp(&(&b.path, &b.member)));
+    out
 }

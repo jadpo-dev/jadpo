@@ -1,0 +1,18 @@
+/// A list of the packets on the shelves, written for the volunteers'
+/// spreadsheet, and how writing it went.
+entity ShelfList {
+    id: Uuid
+    printout: File? {
+        store: shelf_lists
+        max_size: 20mb
+        types: [FileType.csv]
+    }
+    list_walk: BatchRun?
+    packets_listed: Int?
+
+    policy: {
+        create: [Access.system]
+        read: [Access.public, Access.system]
+        update: [Access.system]
+    }
+}

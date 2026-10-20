@@ -1048,5 +1048,6 @@ pub(crate) fn batch_part(part: jadpo_std::batch::Part) -> TypeRef {
         Part::Optional(builtin) => TypeRef::Nullable(Box::new(TypeRef::Builtin(builtin))),
         Part::Enum(name) => TypeRef::Std(name.to_string(), Vec::new()),
         Part::List(name) => TypeRef::List(Box::new(TypeRef::Std(name.to_string(), Vec::new()))),
+        Part::Kept(name) => TypeRef::Std(name.to_string(), Vec::new()),
     }
 }

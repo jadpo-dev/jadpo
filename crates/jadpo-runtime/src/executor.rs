@@ -89,6 +89,28 @@ pub trait Executor {
         callable: u32,
         args: Vec<Value>,
     ) -> LocalFuture<'a, Outcome>;
+
+    /// A file helper's write's row for `item` (area 12, "Batches"; chunk
+    /// 6.4b2): the inline function `row` names, in the body of the action
+    /// that started the run, its parameter given `item` and each local of
+    /// the action it reads given the value at its place in `saved`, the
+    /// run's saved values. Pure, so it never waits; a fault is the item's
+    /// problem. An executor that runs no writes gives a defect.
+    fn row<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        row: &'a jadpo_std::batch::BatchRow,
+        item: Value,
+        saved: &'a [Value],
+    ) -> LocalFuture<'a, Outcome> {
+        let _ = (row, item, saved);
+        Box::pin(async move {
+            Outcome::Fault(ctx.fault(
+                crate::FaultKind::Defect("a row written by an executor that runs no writes".into()),
+                crate::Frame::ENTRY,
+            ))
+        })
+    }
 }
 
 /// Gives the thread back once: pending the first time it is polled, after

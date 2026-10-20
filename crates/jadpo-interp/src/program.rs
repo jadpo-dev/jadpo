@@ -690,4 +690,14 @@ impl Executor for Program {
             drive::outcome(drive::invoke(self, ctx, callable, args, Frame::ENTRY, false).await)
         })
     }
+
+    fn row<'a, 'p: 'a>(
+        &'a self,
+        ctx: &'a mut Ctx<'p>,
+        row: &'a jadpo_std::batch::BatchRow,
+        item: Value,
+        saved: &'a [Value],
+    ) -> LocalFuture<'a, Outcome> {
+        Box::pin(async move { drive::row(self, ctx, row, item, saved) })
+    }
 }

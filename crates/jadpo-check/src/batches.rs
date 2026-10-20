@@ -14,7 +14,7 @@ use jadpo_db::{Db, File, Project};
 use jadpo_diag::{Diagnostic, Span};
 use jadpo_graph::body::{Body, Callee, Expr, Node, SiteId};
 use jadpo_graph::{Key, Kind, TypeRef};
-use jadpo_std::batch::{BatchOp, BatchTenant};
+use jadpo_std::batch::BatchTenant;
 
 use crate::types::{Ty, TypeView, callables_of, typed_body};
 
@@ -106,24 +106,25 @@ pub fn batch_grant_problems(db: &dyn Db, project: Project, file: File) -> Vec<Di
         let body = &checked.body;
         for site in &body.sites {
             let Node::Expr(Expr::Call {
-                callee: Callee::Batch(op @ (BatchOp::Each | BatchOp::Read(_))),
+                callee: Callee::Batch(op),
                 args,
                 ..
             }) = &site.node
             else {
                 continue;
             };
+            if !op.starts() {
+                continue;
+            }
             // A file helper's read (chunk 6.4b) walks no query: its
-            // `each:` and `finished:` follow its file and `as:`.
-            let places: &[usize] = match op {
-                BatchOp::Read(_) => &[2, 3],
-                _ => &[0, 1, 2],
-            };
-            for &place in places {
+            // `each:` and `finished:` follow its file and `as:`; a write's
+            // (chunk 6.4b2) follow its store, `name:` and `format:`.
+            let (from, each, finished) = crate::types::run_places(*op);
+            for place in from.into_iter().chain([each, finished]) {
                 let Some(arg) = args.get(place).copied().flatten() else {
                     continue;
                 };
-                let query = matches!(op, BatchOp::Each) && place == 0;
+                let query = Some(place) == from;
                 let Some((at, name, query)) = run_call(body, arg, query) else {
                     continue;
                 };

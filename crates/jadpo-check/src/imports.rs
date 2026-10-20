@@ -227,10 +227,43 @@ fn name_ref_use(node: &SyntaxNode) -> Option<(String, Role, u32, u32)> {
             if upper { Role::Type } else { Role::Qualifier }
         }
         CALL_EXPR if !upper => Role::Call,
+        // A file helper's write names the store of files it writes to,
+        // a connection, as its first argument (chunk 6.4b2).
+        ARG if !upper && writes_to(&parent) => Role::Qualifier,
         _ if upper => Role::Type,
         _ => return None,
     };
     Some((name, role, start, end))
+}
+
+/// Whether `arg` is the store a file helper's write is given first:
+/// `csv.write(store, ...)`, and `tsv`'s, `json_lines`'s and `json`'s.
+fn writes_to(arg: &SyntaxNode) -> bool {
+    let Some(list) = arg.parent().filter(|list| list.kind() == ARG_LIST) else {
+        return false;
+    };
+    let first = list.children().find(|child| child.kind() == ARG);
+    if first.as_ref() != Some(arg) || arg.children().any(|child| child.kind() == NAME) {
+        return false;
+    }
+    let Some(call) = list.parent().filter(|call| call.kind() == CALL_EXPR) else {
+        return false;
+    };
+    let Some(callee) = call
+        .first_child()
+        .filter(|callee| callee.kind() == FIELD_EXPR)
+    else {
+        return false;
+    };
+    let written: String = callee
+        .text()
+        .to_string()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    jadpo_std::batch::RowFormat::ALL
+        .iter()
+        .any(|format| written == format!("{}.write", format.namespace()))
 }
 
 /// A dotted member key, `Todo.priority: ...`: its first name.

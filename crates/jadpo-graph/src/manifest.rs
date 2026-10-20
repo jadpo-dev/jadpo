@@ -295,7 +295,7 @@ const NODE_FIELDS: &[(&str, &str)] = &[
     ("header", "The request header an input field is read from"),
     (
         "column",
-        "The file column an input field is read from, when not its name",
+        "The file column an input field is read from, or an output field written to, when not its name",
     ),
     ("section", "A failure field's block: client or internal"),
     ("copiedFrom", "The field an include or pick line copied"),

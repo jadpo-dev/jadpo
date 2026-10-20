@@ -331,7 +331,8 @@ the bytes came from. The app's code joins them:
 > `store:`, `max_size:` and `types:`, `store.put` and `store.read`, the
 > disk driver `jadpo dev` keeps every store's files with, and the
 > in-memory store a test's are in; the choices are under "Chosen in
-> chunk 6.4b" below. Uploads, downloads, deleting and erasing come with
+> chunk 6.4b" below. Built in chunk 6.4b2: a written file's pieces
+> joined, or dropped, by the store ("Chosen in chunk 6.4b2"). Uploads, downloads, deleting and erasing come with
 > the rest of the files capability ("Remaining built-in services" on the
 > roadmap).
 
@@ -1468,6 +1469,8 @@ connections, `File` fields, `store.put`, `store.read` with its
 whole-read cap and its two errors, the disk driver `jadpo dev` keeps
 files with and the in-memory store a test's are in, which the file
 helpers' reads walk (area 19, "Data formats"; "Chosen in chunk 6.4b"
+below). Built in chunk 6.4b2: the pieces the file helpers' writes put,
+joined into one file or dropped by the store ("Chosen in chunk 6.4b2"
 below). Upload slots, downloads, deleting and erasing a file's bytes,
 the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
@@ -1585,6 +1588,29 @@ capability's first part, each the most conservative reading:
   "Provider calls and capabilities in tests"), and a file helper's run
   reads two rows a batch. `fixture_file`, and telling the store to fail
   from a test's source, come with area 13's fakes.
+
+### Chosen in chunk 6.4b2
+
+What the file helpers' writes (area 12, "How an export's run is kept";
+area 19, "Data formats") leave to the `files` capability, each the most
+conservative reading:
+
+- **An export's pieces.** Each page's rows are an ordinary keyed `put`,
+  under a key made from the file's own (`jadpo_std::files::piece_key`, a
+  key of the runtime's shape, so a driver refuses no piece and finds
+  each from the file's key alone). Two more operations go through the
+  seam, each a keyed call: `join(key, pieces, type)` joins the pieces,
+  in order, into the file under `key`, a repeat once it is whole doing
+  nothing, and `discard(key, pieces)` drops a cancelled export's pieces,
+  and its file if they were joined. A store with no room answers
+  `storage_full`, and a join missing a piece `not_found`.
+- **The disk driver joins whole.** It copies the pieces in order into a
+  temporary file readable by the application's user only, a window at a
+  time, syncs it, renames it into place and syncs its folder, then
+  removes the pieces, so the file appears whole or not at all; the
+  in-memory store a test's files are in does the same in memory.
+- **`FileType.json_lines`,** `application/jsonl` as jsonlines.org names
+  it, a written JSON Lines file's type, after `json`.
 
 ### Consistency with the rest of the language
 

@@ -151,11 +151,11 @@ fn rewritten(changes: &[(&str, Wording)]) -> String {
         .expect("english");
     let texts = jadpo_db::source_texts(&db, project);
     let text = &texts["domains/shop/translations/en_gb.jadpo"];
-    let changes: Vec<(String, Wording)> = changes
+    let changes: Vec<exchange::Write> = changes
         .iter()
-        .map(|(name, wording)| (name.to_string(), wording.clone()))
+        .map(|(name, wording)| (None, name.to_string(), wording.clone()))
         .collect();
-    write_members(Some((file, text)), false, &changes)
+    write_members(Some((file, text)), &changes)
 }
 
 #[test]
@@ -185,11 +185,14 @@ fn a_new_member_goes_before_the_closing_brace() {
 fn a_new_file_and_the_root_files_group() {
     let wording = Wording::Text("Hej.".to_string());
     assert_eq!(
-        write_members(None, false, &[("hello".to_string(), wording.clone())]),
+        write_members(None, &[(None, "hello".to_string(), wording.clone())]),
         "translations {\nhello: \"Hej.\"\n}\n"
     );
     assert_eq!(
-        write_members(None, true, &[("hello".to_string(), wording)]),
+        write_members(
+            None,
+            &[(Some("jadpo".to_string()), "hello".to_string(), wording)]
+        ),
         "translations {\njadpo: {\nhello: \"Hej.\"\n}\n}\n"
     );
 }
@@ -204,13 +207,14 @@ fn the_root_file_gains_members_and_groups_in_place() {
     let file = exchange::file_for(&db, project, exchange::JADPO, "pl_pl").expect("root file");
     let out = write_members(
         Some((file, root)),
-        true,
         &[
             (
+                Some("jadpo".to_string()),
                 "invalid_input".to_string(),
                 Wording::Text("Źle.".to_string()),
             ),
             (
+                Some("jadpo".to_string()),
                 "rate_limited".to_string(),
                 Wording::Text("Wolniej.".to_string()),
             ),
@@ -228,8 +232,8 @@ fn the_root_file_gains_members_and_groups_in_place() {
     let file = exchange::file_for(&db, project, exchange::JADPO, "pl_pl").expect("root file");
     let out = write_members(
         Some((file, other)),
-        true,
         &[(
+            Some("jadpo".to_string()),
             "rate_limited".to_string(),
             Wording::Text("Wolniej.".to_string()),
         )],

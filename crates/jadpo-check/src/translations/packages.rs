@@ -369,6 +369,37 @@ fn placeholders(subject: &Subject) -> String {
     }
 }
 
+/// A package's text the app exchanges with translation services (chunk
+/// 7.1b4): what a supported locale must word of it, and anything else of
+/// it the app words in its root file, so the app's wording round-trips.
+pub fn exchanged(db: &dyn Db, project: Project, scope: &str) -> Vec<Subject> {
+    let all = subjects(db, project, Name::new(db, scope.to_string()));
+    let shown = visible(all);
+    let files: Vec<&LanguageFile> = language_files(db, project, scope)
+        .into_iter()
+        .filter_map(|file| language_file(db, project, file).as_ref())
+        .collect();
+    let roots = super::jadpo::root_language_files(db, project);
+    let reachable = super::failures::reachable_names(db, project);
+    let needed: Vec<String> = required(&shown, &files, &roots, scope, reachable)
+        .into_iter()
+        .map(|subject| subject.key.clone())
+        .collect();
+    shown
+        .list
+        .iter()
+        .filter(|subject| !subject.broken && subject.kind != Kind::Email)
+        .filter(|subject| {
+            needed.contains(&subject.key)
+                || roots.iter().any(|file| {
+                    file.group(scope)
+                        .is_some_and(|group| group.member(&subject.key).is_some())
+                })
+        })
+        .cloned()
+        .collect()
+}
+
 /// The scopes of the library packages that carry translations.
 pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
     super::declared::package_scopes(db, project)

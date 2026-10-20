@@ -1,0 +1,11 @@
+use seedbank/entities { ShelfList, ShelfListNotFound }
+
+/// Keeps the written shelf list, and how many packets it lists.
+action record_list(summary: ExportSummary, list_id: ShelfList.id) fails ShelfListNotFound -> Unit {
+    attempt ShelfList.update(list_id) {
+        set: {
+            printout: summary.file
+            packets_listed: summary.items
+        }
+    }
+}
