@@ -582,6 +582,72 @@ impl Program {
         Some(jadpo_runtime::ai::generate(ctx, &ai, site, value, &settings).await)
     }
 
+    /// Streams prompt `prompt` with `value`, as the first `ai.stream` call
+    /// of it in the program does, outside any running app and counted
+    /// against no limit: what `jadpo package conform` reads a stream from
+    /// (chunk 5.5v7b). `None` when no call streams the prompt.
+    pub async fn stream_model(
+        &self,
+        ctx: &mut Ctx<'_>,
+        prompt: &str,
+        value: Value,
+    ) -> Option<jadpo_runtime::ai::Done> {
+        let site = self.plan().callables().iter().find_map(|callable| {
+            callable.sites.iter().find_map(|site| match &site.decoded {
+                jadpo_plan::Decoded::Stream(stream) if stream.prompt == prompt => {
+                    Some(stream.as_ref())
+                }
+                _ => None,
+            })
+        })?;
+        let ai = self.ai()?;
+        let unlimited = jadpo_std::ai::AiPlan {
+            limits: None,
+            ..ai.plan.clone()
+        };
+        let ai = jadpo_runtime::ai::Ai {
+            plan: &unlimited,
+            ..ai
+        };
+        let settings: Vec<(u32, Value)> = jadpo_runtime::stream::settings_read(&ai, site)
+            .into_iter()
+            .filter_map(|number| Some((number, self.setting(number)?)))
+            .collect();
+        Some(jadpo_runtime::stream::stream(ctx, &ai, site, value, &settings).await)
+    }
+
+    /// Embeds `text` as the program's first `ai.embed` call does, outside
+    /// any running app and counted against no limit: what `jadpo package
+    /// conform` checks an embedding's length with (chunk 5.5v7b). `None`
+    /// when no call embeds one text.
+    pub async fn embed_text(
+        &self,
+        ctx: &mut Ctx<'_>,
+        text: &str,
+    ) -> Option<jadpo_runtime::ai::Done> {
+        let site = self.plan().callables().iter().find_map(|callable| {
+            callable.sites.iter().find_map(|site| match &site.decoded {
+                jadpo_plan::Decoded::Embed(embed) if !embed.all => Some(embed.as_ref()),
+                _ => None,
+            })
+        })?;
+        let ai = self.ai()?;
+        let unlimited = jadpo_std::ai::AiPlan {
+            limits: None,
+            ..ai.plan.clone()
+        };
+        let ai = jadpo_runtime::ai::Ai {
+            plan: &unlimited,
+            ..ai
+        };
+        let settings: Vec<(u32, Value)> = jadpo_runtime::embed::settings_read(&ai, site)
+            .into_iter()
+            .filter_map(|number| Some((number, self.setting(number)?)))
+            .collect();
+        let given = Value::Text(text.into());
+        Some(jadpo_runtime::embed::embed(ctx, &ai, site, given, &settings).await)
+    }
+
     /// What the runtime's HTTP component answers this program's routes
     /// with (area 7): the route table and its codecs, with this thread's
     /// validators and shapes.

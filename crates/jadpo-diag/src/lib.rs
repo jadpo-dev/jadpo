@@ -248,6 +248,10 @@ rules! {
         "14-tooling.html#command-errors", "Configuration value is invalid";
     CONFIGURATION_VALUE_MISSING: "configuration.value_missing", area 14, Error, Human,
         "14-tooling.html#command-errors", "Required configuration is missing";
+    CONFORM_FAILED: "conform.failed", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's answers don't conform to its capability";
+    CONFORM_REFUSED: "conform.refused", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Conformance suite can't run against the provider's API";
     CONNECTION_DOMAIN_NOT_LISTED: "connection.domain_not_listed", area 11, Error, Human,
         "11-integrations.html#connection-domain-not-listed", "Action calls a connection its domain isn't listed on";
     CONNECTION_KEY_INVALID: "connection.key_invalid", area 11, Error, Agent,
