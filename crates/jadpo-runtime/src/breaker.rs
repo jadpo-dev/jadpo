@@ -16,6 +16,8 @@
 //!   provider unavailable (it surely did nothing, or no answer came) is a
 //!   failure in the run; one the provider answered, refusals included,
 //!   ends the run. Calls made outside deliveries, a route's, don't count.
+//!   The connection's own `retry:` resends are calls of the same attempt:
+//!   it counts once, by how the last of them ended.
 //! - **Which deliveries.** A subscriber's, when its action calls the
 //!   connection, itself or through an action it calls (the plan's
 //!   [`SubscriberPlan::calls_through`]), or when the capability it hands

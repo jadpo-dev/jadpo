@@ -261,6 +261,9 @@ fn jadpo(cwd: &Path, at: i64, args: &[&str]) -> Output {
 /// When the test starts: 2026-10-19T09:00:00Z.
 const T0: i64 = 1_792_400_400_000;
 const SECOND: i64 = 1_000;
+/// How many times a refused call is sent in one delivery attempt: the
+/// connection's default `retry:`, 3 attempts (area 11, question 8).
+const TRIES: usize = 3;
 
 struct Loaded {
     root: PathBuf,
@@ -400,7 +403,9 @@ async fn breaker(
 /// held, never sent; a tick raises one alert; a probe after the pause
 /// that fails holds them for a longer pause, and one that succeeds
 /// releases them all, each delivered with no attempt spent on being held
-/// and its `within:` not counting the time it was held.
+/// and its `within:` not counting the time it was held. The connection's
+/// own `retry:` (3 attempts by default) sends each refused call three
+/// times; a delivery attempt counts once, however many it sent.
 #[test]
 fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds() {
     let provider = FakeProvider::start();
@@ -411,7 +416,8 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
     let host = faked(&harness);
     let program = &loaded.program;
     let runtime = Runtime::new().expect("runtime");
-    for _ in 0..6 {
+    // Six refused delivery attempts, each the call and its two retries.
+    for _ in 0..6 * TRIES {
         provider.answer(503, "");
     }
     for _ in 0..8 {
@@ -424,7 +430,7 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
             let work = ship(&harness, &host, program, &format!("p-{n}")).await;
             run_deferred(program, &host, work).await;
         }
-        assert_eq!(provider.requests().len(), 5, "only five sent");
+        assert_eq!(provider.requests().len(), 5 * TRIES, "only five sent");
         let rows = deliveries(&harness).await;
         assert_eq!(in_state(&rows, "pending"), 5, "{rows:?}");
         assert_eq!(in_state(&rows, "held"), 2, "{rows:?}");
@@ -443,7 +449,7 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         harness.set_now(T0 + 30 * SECOND);
         let ticked = tick(program, &host, T0 + 30 * SECOND).await;
         assert!(ticked.problems.is_empty(), "{:?}", ticked.problems);
-        assert_eq!(provider.requests().len(), 5, "none sent while open");
+        assert_eq!(provider.requests().len(), 5 * TRIES, "none sent while open");
         let rows = deliveries(&harness).await;
         assert_eq!(in_state(&rows, "held"), 7, "{rows:?}");
         let alerts: Vec<_> = ticked
@@ -528,7 +534,7 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         // rest stay held for twice as long.
         harness.set_now(T0 + 61 * SECOND);
         tick(program, &host, T0 + 61 * SECOND).await;
-        assert_eq!(provider.requests().len(), 6, "one probe sent");
+        assert_eq!(provider.requests().len(), 6 * TRIES, "one probe sent");
         assert_eq!(
             breaker(&harness).await,
             Some(("open".to_string(), 6, Some(T0 + 181 * SECOND)))
@@ -537,7 +543,11 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         // held too.
         harness.set_now(T0 + 130 * SECOND);
         tick(program, &host, T0 + 130 * SECOND).await;
-        assert_eq!(provider.requests().len(), 6, "none sent before the pause ends");
+        assert_eq!(
+            provider.requests().len(),
+            6 * TRIES,
+            "none sent before the pause ends"
+        );
         assert_eq!(in_state(&deliveries(&harness).await, "held"), 7);
 
         // Long after `within:`'s five minutes from shipping, a probe
@@ -545,7 +555,7 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         // since the time they were held doesn't count.
         harness.set_now(T0 + 661 * SECOND);
         tick(program, &host, T0 + 661 * SECOND).await;
-        assert_eq!(provider.requests().len(), 7, "a second probe");
+        assert_eq!(provider.requests().len(), 6 * TRIES + 1, "a second probe");
         assert_eq!(breaker(&harness).await, Some(("closed".to_string(), 0, None)));
         let rows = deliveries(&harness).await;
         assert_eq!(in_state(&rows, "succeeded"), 1, "{rows:?}");
@@ -555,9 +565,10 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
         let rows = deliveries(&harness).await;
         assert_eq!(in_state(&rows, "succeeded"), 7, "{rows:?}");
         // Every attempt counted went out: none was spent on being held.
+        // Six were refused, each sent three times, and seven answered.
         let attempts: i32 = rows.iter().map(|(_, _, attempts)| attempts).sum();
-        assert_eq!(attempts as usize, provider.requests().len(), "{rows:?}");
-        assert_eq!(provider.requests().len(), 13);
+        assert_eq!(attempts, 13, "{rows:?}");
+        assert_eq!(provider.requests().len(), 6 * TRIES + 7);
         // Closed, so a later outage raises the alert again.
         assert_eq!(
             harness
@@ -569,7 +580,8 @@ fn deliveries_to_a_provider_that_keeps_failing_are_held_until_a_probe_succeeds()
 }
 
 /// A call the provider answers between failures ends the run: fewer than
-/// five in a row hold nothing.
+/// five in a row hold nothing. A delivery whose call a connection retry
+/// got through counts as answered.
 #[test]
 fn an_answer_between_failures_holds_nothing() {
     let provider = FakeProvider::start();
@@ -579,11 +591,13 @@ fn an_answer_between_failures_holds_nothing() {
     let harness = Harness::postgres(&loaded.url).at(T0).random_from(0);
     let host = faked(&harness);
     let program = &loaded.program;
-    for _ in 0..4 {
+    for _ in 0..4 * TRIES {
         provider.answer(503, "");
     }
+    // Refused once, then answered on the connection's retry.
+    provider.answer(503, "");
     provider.answer(200, FOUND);
-    for _ in 0..4 {
+    for _ in 0..4 * TRIES {
         provider.answer(503, "");
     }
     Runtime::new().expect("runtime").block_on(async {
@@ -591,7 +605,7 @@ fn an_answer_between_failures_holds_nothing() {
             let work = ship(&harness, &host, program, &format!("q-{n}")).await;
             run_deferred(program, &host, work).await;
         }
-        assert_eq!(provider.requests().len(), 9, "every one sent");
+        assert_eq!(provider.requests().len(), 8 * TRIES + 2, "every one sent");
         let rows = deliveries(&harness).await;
         assert_eq!(in_state(&rows, "held"), 0, "{rows:?}");
         assert_eq!(in_state(&rows, "succeeded"), 1, "{rows:?}");

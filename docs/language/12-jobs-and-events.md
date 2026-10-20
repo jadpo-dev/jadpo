@@ -1967,7 +1967,11 @@ Chosen in chunk 7.2b, where the pages left it open:
   call ended: unavailable when the call surely did nothing or no answer
   came back (a `5xx`, `408`, `429`, a timeout, a call that never left);
   answered, ending the run, when the provider answered at all, a refusal
-  or a rejected credential included. Only calls to the connection's own
+  or a rejected credential included. A delivery attempt counts once
+  however many times the connection's own `retry:` sent its call (area
+  11, question 8): by how the last of them ended, so one a retry got
+  through ends the run, and five attempts of three refused sends each
+  open the breaker, not fifteen sends. Only calls to the connection's own
   driver count, never a fake's or a recording's answer, and only calls a
   delivery makes: a route's calls are its caller's to retry.
 - **Which deliveries.** A subscriber's, when its action calls out through
