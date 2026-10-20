@@ -173,10 +173,81 @@ pub const LOCK: Kind = Kind {
     older: &[],
 };
 
+/// A package's public surface, `surface.jadpo_record` beside its
+/// `package.jadpo` (areas 11 and 18, chunk 7.1b): a view of what the
+/// package offers an app, each entry pointing at its file. `jadpo package
+/// check` writes it in the package's own repository; installed, it is held
+/// by the package's digest in the lock.
+pub const SURFACE: Kind = Kind {
+    word: "surface",
+    format: 1,
+    shape: Shape::View,
+    update: "`jadpo package check`",
+    command: "jadpo package check",
+    headings: &[
+        "package",
+        "provider",
+        "provides",
+        "operation",
+        "action",
+        "poll",
+        "event",
+        "function",
+        "message",
+        "type",
+        "failure",
+        "recipe",
+    ],
+    facts: &[
+        "file",
+        "kind",
+        "version",
+        "licence",
+        "jadpo",
+        "guide",
+        "locale",
+        "protocol",
+        "host",
+        "runs",
+        "credential",
+        "idempotency",
+        "webhooks",
+        "request",
+        "input",
+        "output",
+        "output_at",
+        "wire_output",
+        "decode",
+        "changes",
+        "idempotent",
+        "scope",
+        "fails",
+        "source",
+        "confirmed",
+        "signature",
+        "variant",
+        "code",
+        "message",
+        "calls",
+        "operation",
+        "every",
+        "emits",
+        "webhook",
+    ],
+    older: &[],
+};
+
+/// The file a package's surface is kept in, beside its index.
+pub const SURFACE_FILE: &str = "surface.jadpo_record";
+
+/// What a surface's header says it is generated from.
+pub const SURFACE_FROM: &str = "this package's code";
+
 /// Every kind this Jadpo writes.
 pub const KINDS: &[&Kind] = &[
     &API,
     &EVENTS,
+    &SURFACE,
     &IDENTITIES,
     &TRANSLATIONS,
     &IGNORED_SUGGESTIONS,
@@ -214,6 +285,13 @@ pub fn kind_of(path: &str) -> Option<(&'static Kind, String)> {
             "the patterns this project taught `jadpo suggest`".into(),
         )),
         ["jadpo.lock"] => Some((&LOCK, "the installed packages".into())),
+        [.., file]
+            if *file == SURFACE_FILE
+                && crate::places::package_at(path)
+                    .is_some_and(|(_, rest)| rest.as_slice() == [SURFACE_FILE]) =>
+        {
+            Some((&SURFACE, SURFACE_FROM.into()))
+        }
         _ => None,
     }
 }
