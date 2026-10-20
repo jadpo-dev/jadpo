@@ -1334,6 +1334,26 @@ impl Body<'_> {
                 self.walk(|walk| walk.member_values(record.member_list()));
                 Ty::Error
             }
+            // A stored file, or its bytes: the runtime's to build, from
+            // what a store keeps (area 16, chunk 6.4b), so a program never
+            // names bytes it didn't put.
+            ([], None)
+                if name == jadpo_std::files::FILE || name == jadpo_std::files::FILE_CONTENTS =>
+            {
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_NOT_RECORD,
+                        format!("`{name}` isn't built with `{{ ... }}`"),
+                    )
+                    .at(self.span(record), "only the runtime builds it")
+                    .reason(format!(
+                        "Only the runtime builds a `{name}`, from what a store keeps: `store.put` gives the `File` it kept, and `store.read` a file's bytes, so a value never points at bytes a program didn't put."
+                    ))
+                    .next("Use the value a store gives, and remove this one"),
+                );
+                self.walk(|walk| walk.member_values(record.member_list()));
+                Ty::Error
+            }
             _ => {
                 self.failure_value(&Expr::RecordExpr(record.clone()));
                 Ty::Error
