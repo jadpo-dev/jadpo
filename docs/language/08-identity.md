@@ -385,9 +385,9 @@ authentication {
 
 > Decided on 2026-10-16 (Richard), revising question 11. `sign_in:` is
 > read from chunk 5.5z, with `passkey:` built there; `magic_link:` and
-> `on_first_sign_in:` are built in chunk 7.3b, except the app's own email
-> and sending (`email:`, `send:`), writing the routes yourself and the
-> events, which come in chunk 7.3b2; `providers:` is
+> `on_first_sign_in:` are built in chunk 7.3b, and the app's own email and
+> sending (`email:`, `send:`) in chunk 7.3b2; writing the routes yourself
+> comes in chunk 7.3b3 and the events in chunk 7.3b4; `providers:` is
 > `toolchain.not_built_yet` until after the first build.
 
 Signing in has two layers. The first checks the person; the second gives
@@ -449,7 +449,7 @@ only, never pages (decided 2026-10-16): the frontend owns every page.
 | `same_browser:` | `false` | |
 | `link:` | required: the frontend path the email's link opens, such as `"/sign-in/confirm"` | |
 | `path:` | `"/auth/magic-link"`, where the generated routes go | |
-| `routes:` | `true`; `false` generates none | |
+| `generate_routes:` | `true`; `false` generates none | |
 | `email:` | Jadpo's built-in email | (area 16, "Built-in emails", level 4) |
 | `send:` | none | (area 16, "Built-in emails", level 5) |
 
@@ -1218,8 +1218,8 @@ For magic links (chunk 7.3b, except where marked):
   renames it `sign_in:`.
 - `magic_link:` without `browser_session:`, or without its `origin:`, is
   `semantic.auth_setting_required`; without the app's `email:` connection
-  it is `email.connection_required` (with `send:`, chunk 7.3b2, it won't
-  be); without `application { display_name: }`, which Jadpo's email names
+  it is `email.connection_required`, unless it names `send:` (chunk
+  7.3b2); without `application { display_name: }`, which Jadpo's email names
   the application by, `semantic.auth_setting_required`; without `link:`,
   `semantic.auth_setting_required`.
 - `address:` naming anything but a field of the principal's user entity,
@@ -1237,7 +1237,15 @@ For magic links (chunk 7.3b, except where marked):
   `FirstSignIn` and returning the user entity's `id` is
   `semantic.auth_setting_invalid`.
 - `email:` and `send:` together are `semantic.auth_setting_invalid`
-  (area 16); either alone is `toolchain.not_built_yet` until chunk 7.3b2.
+  (area 16). In chunk 7.3b2: `email:` naming anything but an
+  `EmailMessage` of the app's is `semantic.auth_setting_invalid`, and so
+  is one with a field besides `to:` and `locale:` that isn't picked from
+  `MagicLinkEmail`; `send:` naming anything but an action taking one
+  `MagicLinkRequest` and returning `Unit`, the same; `emit` of the email
+  `email:` names is `event.emit_invalid`; copying from `MagicLinkEmail`
+  into anything but an email is `type.not_record`; a `SignInCode` kept in
+  an entity is `type.auth_credential_stored`, and one in an `Output`, a
+  failure or an event `type.secret_exposed`.
 - A route the application writes at a generated magic-link path is
   `route.path_overlap`.
 
@@ -3663,19 +3671,20 @@ connection with its link and code made as it is sent, signs the person in
 with a browser session or an API token, and runs `on_first_sign_in:`'s
 action for an address no user has; the API record, OpenAPI, `jadpo
 routes` and the per-locale failure export list them ("Magic links
-(chosen in chunk 7.3b)" below).
+(chosen in chunk 7.3b)" below). Since chunk 7.3b2 `email:` fills and
+sends the app's own sign-in email instead, and `send:` hands the link and
+the code to the app's own action, retried as a subscriber ("The app's own
+sign-in email and sending (chosen in chunk 7.3b2)" below).
 
 Not yet, each `toolchain.not_built_yet` where it is written:
 
 - `external_token`, `sign_in:`'s `providers:` and `oauth_provider:`,
   after the first build, and with them `on_first_sign_in:` for those
   ways in.
-- Magic links' `email:` and `send:` (area 16, levels 4 and 5), writing
-  the routes yourself over `magic_links.request`, `.redeem` and
-  `.redeem_code`, and the events `SignedIn`, `SignInRefused` and
-  `SignInCodesDisabled` (chunk 7.3b2). `generate_routes: false` can't be written
-  yet at all: `routes` is a reserved word, which no member key may be
-  (question for Richard below).
+- Writing magic links' routes yourself, `generate_routes: false` over
+  `magic_links.request`, `.redeem` and `.redeem_code` (chunk 7.3b3), and
+  the events `SignedIn`, `SignInRefused` and `SignInCodesDisabled` (chunk
+  7.3b4).
 - A setting loosened past its limit, until acceptances (area 18).
 - Passkeys' recovery through a magic link, the check that `passkey:` has
   `magic_link:` beside it, `test_passkeys` in route tests, and their
@@ -3893,7 +3902,7 @@ builds it.
     and needs no grammar exception; the alternative, letting reserved
     words be member keys, loosens a rule every block relies on for its
     error messages. *Decided 2026-10-20 (for Richard, as recommended):*
-    `generate_routes: false`; chunk 7.3b2 builds it.
+    `generate_routes: false`; chunk 7.3b3 builds it.
 
 ### Decisions
 
@@ -3958,7 +3967,8 @@ builds it.
 | Checking an answer and the counter (chosen in chunk 5.5z) | Any failure `webauthn-rs` reports, an unreadable answer, an unknown or removed passkey or a user handle that doesn't match is `passkey_rejected` (401), never saying which. The counter is `webauthn-rs`'s strict WebAuthn check: when the stored or the answered count is above zero, one not above the stored count is refused and nothing is written; a passkey that keeps no counter sends `0` and passes. Backup eligibility may not change on a discoverable sign-in. On success the passkey's counter, backup flags and `last_used_at` are written only if its counter is still the one read (`passkey_rejected` otherwise), in the transaction that keeps the new session, which `user_disabled` (403) stops when the user's `active:` doesn't hold | 2026-10-18 |
 | Keeping and showing passkeys (chosen in chunk 5.5z) | `jadpo_passkeys` holds `id`, `principal_id`, `credential_id` (`bytea`, unique), `user_handle`, `credential` (the `WebAuthnCredential` JSON: bytes in Base64, the count as text, `last_used_at` left out until used) and `registered_at`. A passkey registered already is `passkey_already_registered` (409), a 21st `passkey_limit_reached` (409). `name` is required, one line (area 19's `Line`, 1 to 200 characters; else 422 `invalid_input`). Listing, renaming and removing reach only the signed-in person's passkeys, oldest first, any other `id` `passkey_not_found` (404); `PasskeyView` is `id`, `name`, `registered_at` and `last_used_at` (or `null`). The routes go in the first API that accepts browser sessions, its record (`generated: passkey`), OpenAPI (`x-jadpo-generated: true`) and `jadpo routes` (`generated passkey …`), and their failures' wording is Jadpo's own, on with `passkey:` (area 16). Until 5.5z2 the device lists a passkey under the principal's subject | 2026-10-18 |
 | Encodings of signed parts and passkeys (chosen in chunk 5.9) | A signed part's payload records the encoding it was written in as `enc` (area 19, "Changing a standard type's encoding"); a part with none, signed before encodings were recorded, is read as chunk 5.1b wrote it, and one of an encoding this release doesn't know opens nothing, so the request reads the record and is renewed, as with an expired part. A passkey is kept as `WebAuthnCredential`'s contract JSON, written and read by the codec the plan numbers in its JSON table, which holds it to the type's rules, with the encoding in `jadpo_passkeys.encoding`; one with none is read as it was kept (its count a number or, as chunk 5.5z kept it, its digits) and written in this release's encoding the next time it signs in. A passkey of an encoding this release doesn't know is `passkey_rejected` and isn't listed | 2026-10-19 |
-| Magic links (chosen in chunk 7.3b) | `magic_link:` takes `address:`, `link:` (required: a path on the app's site, one `/`, no query, fragment or `\`), `expires_after:` (`1m` to `1h`), `code_attempts:` (1 to 10), `codes_per_hour:` (from 1), `failed_codes_per_day:` (1 to 50), `resend_after:` (above zero), `same_browser:` and `path:`; past a limit is `toolchain.not_built_yet` until acceptances. It needs the browser session with its `origin:`, the `email:` connection and `display_name:`. Its routes go in the first API that accepts browser sessions, beside the passkeys'; the redemption only with `api_token:`. `email:`, `send:` and writing the routes yourself come in chunk 7.3b2 | 2026-10-20 |
+| Magic links (chosen in chunk 7.3b) | `magic_link:` takes `address:`, `link:` (required: a path on the app's site, one `/`, no query, fragment or `\`), `expires_after:` (`1m` to `1h`), `code_attempts:` (1 to 10), `codes_per_hour:` (from 1), `failed_codes_per_day:` (1 to 50), `resend_after:` (above zero), `same_browser:` and `path:`; past a limit is `toolchain.not_built_yet` until acceptances. It needs the browser session with its `origin:`, the `email:` connection and `display_name:`. Its routes go in the first API that accepts browser sessions, beside the passkeys'; the redemption only with `api_token:`. `email:` and `send:` come in chunk 7.3b2 (below), writing the routes yourself in chunk 7.3b3 | 2026-10-20 |
 | What is kept (chosen in chunk 7.3b) | `jadpo_sign_in_requests` holds one row per address, keyed by the BLAKE3 digest of the address in lower case, so the send and wrong-code limits count every way of writing it as one, with the digest of the address as written beside it; a code is confirmed only with that exact address. The link's 32 bytes and the six digits (each drawn evenly) are made as the email is sent, not when it is asked for, and kept only as verifiers: the token's BLAKE3 digest, the code's keyed by its request; the address is sealed under the token (a BLAKE3 key stream), so a confirmed link can name it. The outbox keeps only the address, the locale and the request's id, so neither it nor the table ever holds a link or a code; a delivery whose request was used, replaced or has expired sends nothing. Rows are swept once nothing in them counts | 2026-10-20 |
 | Asking and confirming (chosen in chunk 7.3b) | `POST /auth/magic-link` needs no `Origin`, so the app's own client asks too; its `locale` is a supported locale's name or BCP 47 tag, else `Accept-Language` decides; a `return_to` that isn't a site path is 422 `invalid_input`. An email goes to an address an account has (active or not; confirming then answers `user_disabled`) or, with `on_first_sign_in:`, to any. The confirm needs an `Origin` naming the browser session's origin; the redemption, for the app's own client, needs none. The person is found by the address exactly as the user's field holds it. A link opened in another browser under `same_browser:` is refused and left unused; the binding cookie is `<cookie>_sign_in` and is cleared once signed in. Wrong guesses count against the code and the address's UTC day only where the address has a row; past the day's, even the right code is `sign_in_codes_disabled`, with `Retry-After` until midnight UTC | 2026-10-20 |
-| First sign-in (chosen in chunk 7.3b) | `FirstSignIn` is a built-in object only the runtime makes (`method`, `address`, `address_verified`, `subject`, `name`); `SignInMethod` is a built-in enum of `magic_link`, `passkey` and `external_token`, a provider's value coming with providers. `on_first_sign_in:`'s action runs as the system (`Access.system` grants it), in its own transaction, before the session starts; a failure it declares is `sign_in_refused`, `unavailable` is `authentication_unavailable`, a fault `internal_fault`; the user it names is then read by its `id` and must be active. The reason a refusal had reaches the log and `SignInRefused` with the events (chunk 7.3b2) | 2026-10-20 |
+| First sign-in (chosen in chunk 7.3b) | `FirstSignIn` is a built-in object only the runtime makes (`method`, `address`, `address_verified`, `subject`, `name`); `SignInMethod` is a built-in enum of `magic_link`, `passkey` and `external_token`, a provider's value coming with providers. `on_first_sign_in:`'s action runs as the system (`Access.system` grants it), in its own transaction, before the session starts; a failure it declares is `sign_in_refused`, `unavailable` is `authentication_unavailable`, a fault `internal_fault`; the user it names is then read by its `id` and must be active. The reason a refusal had reaches the log and `SignInRefused` with the events (chunk 7.3b4) | 2026-10-20 |
+| The app's own sign-in email and sending (chosen in chunk 7.3b2) | `email:` and `send:` name a type or an action as `on_first_sign_in:` does, `<domain>.<name>`. `SignInCode` is a built-in type made of text (six digits); like an API token it is never kept in an entity (`type.auth_credential_stored`), nor put in an `Output`, a failure or an event (`type.secret_exposed`), nor written as JSON. `MagicLinkEmail` is a built-in object only an email copies from, with `pick:` or `include:` (`type.not_record` elsewhere); the email `email:` names may hold no field of its own and is never emitted (`event.emit_invalid`), so the outbox never holds its link or code. Its delivery is still Jadpo's: the link and the code are made as it is sent, the app's email filled from them and rendered as any of its emails is, in the request's locale. `send:` keeps `display_name:` required; its action is a subscriber's of `jadpo.MagicLinkEmail`, run as the system, reaching no tenant, retried and given up under area 12's defaults, each attempt given a link and a code of its own, so only the latest works; a request used or replaced since runs nothing | 2026-10-20 |

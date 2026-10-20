@@ -14,7 +14,10 @@
 //! templates: its link and code made as it is sent
 //! ([`crate::http::magic_links::mint`]), its lines in Jadpo's wording or
 //! the application's (`jadpo: { }`), its body wrapped in the application's
-//! layout when it has one, or in a plain document of Jadpo's.
+//! layout when it has one, or in a plain document of Jadpo's. With
+//! `magic_link: { email: }` (chunk 7.3b2) the application's own email is
+//! filled from the link and the code instead and rendered as any of its
+//! emails is.
 
 use std::rc::Rc;
 
@@ -39,6 +42,18 @@ pub async fn message(
     if let Some(BuiltinEmail::MagicLink(plan)) = &email.builtin {
         return magic_link(executor, ctx, emails, plan, value).await;
     }
+    rendered(executor, ctx, emails, email, value).await
+}
+
+/// The message an email of the application's is sent as, rendered from
+/// its templates, its subject and its attachments.
+async fn rendered(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    emails: &EmailsPlan,
+    email: &EmailPlan,
+    value: &Value,
+) -> Result<Value, Outcome> {
     let Value::Record(record) = value else {
         return Err(defect(ctx, "an email that isn't a record"));
     };
@@ -191,6 +206,30 @@ async fn magic_link(
         Ok(words) => words,
         Err(fault) => return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
     };
+    // The application's own email (level 4): its fields picked from
+    // `MagicLinkEmail`, filled now, and rendered as any of its emails is.
+    if let Some(key) = &plan.own {
+        let Some(own) = emails.email(key) else {
+            return Err(defect(ctx, "a sign-in email this build doesn't have"));
+        };
+        let filled: Vec<(Rc<str>, Value)> = own
+            .fields
+            .iter()
+            .map(|name| {
+                let value = match name.as_str() {
+                    "to" | "address" => Value::text(&minted.address),
+                    "locale" => locale.clone(),
+                    "sign_in_link" => Value::text(&minted.link),
+                    "code" => Value::text(&minted.code),
+                    "expires_in" => Value::text(&expires_in),
+                    _ => Value::None,
+                };
+                (Rc::from(name.as_str()), value)
+            })
+            .collect();
+        let value = Value::record(&own.name, filled);
+        return rendered(executor, ctx, emails, own, &value).await;
+    }
     // Each line in the email's locale, given its fields and the
     // application's name.
     let mut line = |key: &str, given: &[(&str, &str)]| -> Result<String, Outcome> {

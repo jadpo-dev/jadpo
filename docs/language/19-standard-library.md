@@ -7341,7 +7341,8 @@ JSON Lines file takes no `format:`.
   and `Output` types made of them, in lists, sets and maps, nested to any
   depth. A failure, an event, an email, a message, an entity, `Unit`, a
   secret (`ApiToken`, `ServiceKey`, `PostgresUrl`, `RedisUrl`,
-  `SigningKey`), a `PluralCount` and the built-in types later areas
+  `SigningKey`), a magic link's `SignInCode` (area 8), a `PluralCount`
+  and the built-in types later areas
   define (`Page`, `File`, `IssuedToken`, `DecodeProblem`) are
   `type.mismatch` either way, naming the type inside that has no JSON
   form: an entity reaches a client only through an `Output` that picks

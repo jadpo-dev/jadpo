@@ -86,7 +86,16 @@ pub(crate) fn plan(
     }
     // Jadpo's own magic-link email (area 16, "Built-in emails"; chunk
     // 7.3b), written by the runtime in Jadpo's wording.
-    if let Some(builtin) = magic_link_email(db, project, &translations, setting) {
+    if let Some(mut builtin) = magic_link_email(db, project, &translations, setting) {
+        // The application's own email (level 4) and sending (level 5).
+        if let Some(BuiltinEmail::MagicLink(magic)) = &mut builtin.0.builtin {
+            magic.own = jadpo_check::identity::own_magic_link_email(db, project)
+                .0
+                .as_ref()
+                .and_then(|name| jadpo_check::graph::declaration_key(&lookup, name))
+                .map(|key| key.as_str().to_string());
+            magic.send = sign_in_send(db, project).and_then(|key| by_key.get(&key).copied());
+        }
         emails.push(builtin);
     }
     emails.sort_by(|a, b| a.0.key.cmp(&b.0.key));
@@ -122,37 +131,81 @@ pub(crate) fn plan(
         locales: jadpo_check::locales::locales(db, project).plan.clone(),
         smtp,
     };
-    let Some(connection) = plan.connection.clone() else {
-        return (plan, Vec::new());
-    };
     // Each email's delivery: tried and given up as a subscriber's is by
-    // default (area 12), sent with no key, and recorded by its delivery
-    // alone.
+    // default (area 12), sent with no key through the `email:`
+    // connection, and recorded by its delivery alone; and Jadpo's own
+    // sign-in email, when the application sends it itself (area 16,
+    // "Built-in emails", level 5), handed to its action as a subscriber's
+    // action is, with or without the connection.
     let defaults = jadpo_check::events::DEFAULT_RETRY;
+    let send = sign_in_send(db, project);
+    let written = jadpo_check::types::written_stores(db, project);
+    let called = jadpo_check::types::called_connections(db, project);
     let subscribers = plan
         .emails
         .iter()
         .zip(files)
-        .map(|(email, file)| SubscriberPlan {
-            key: format!("email {}", email.name),
-            name: format!("send {}", email.name),
-            event: email.key.clone(),
-            target: Target::Email {
-                connection: connection.clone(),
-            },
-            attempts: defaults.attempts,
-            within_ms: defaults.within_ms,
-            // It runs no action, so reaches no tenant's records.
-            tenant: TenantFrom::Nowhere,
-            store: None,
-            // No action: what it calls out through is its connection
-            // (`SubscriberPlan::calls_through`; chunk 7.2b).
-            connections: Vec::new(),
-            file,
-            line: 1,
+        .filter_map(|(email, file)| {
+            let sends_itself = match &email.builtin {
+                Some(BuiltinEmail::MagicLink(magic)) => magic.send.zip(send.clone()),
+                None => None,
+            };
+            let (target, store, connections) = match (sends_itself, &plan.connection) {
+                (Some((callable, key)), _) => (
+                    Target::Action {
+                        callable,
+                        args: vec![Vec::new()],
+                    },
+                    // The store its action writes, where its handled
+                    // record is kept, as a subscriber's is.
+                    written
+                        .get(key.name())
+                        .and_then(|stores| stores.keys().next().cloned()),
+                    called
+                        .get(key.name())
+                        .map(|connections| connections.iter().cloned().collect())
+                        .unwrap_or_default(),
+                ),
+                // No action: what it calls out through is its connection
+                // (`SubscriberPlan::calls_through`; chunk 7.2b).
+                (None, Some(connection)) => (
+                    Target::Email {
+                        connection: connection.clone(),
+                    },
+                    None,
+                    Vec::new(),
+                ),
+                (None, None) => return None,
+            };
+            Some(SubscriberPlan {
+                key: format!("email {}", email.name),
+                name: format!("send {}", email.name),
+                event: email.key.clone(),
+                target,
+                attempts: defaults.attempts,
+                within_ms: defaults.within_ms,
+                // It reaches no tenant's records: Jadpo's email runs no
+                // action, and the application's sending is given only the
+                // request.
+                tenant: TenantFrom::Nowhere,
+                store,
+                connections,
+                file,
+                line: 1,
+            })
         })
         .collect();
     (plan, subscribers)
+}
+
+/// The action `magic_link: { send: }` names, by its key, when it takes a
+/// `MagicLinkRequest` and returns `Unit`.
+fn sign_in_send(db: &dyn Db, project: Project) -> Option<Key> {
+    let name = jadpo_check::identity::sign_in_send_action(db, project)
+        .0
+        .as_ref()?;
+    let lookup = jadpo_check::lookups::Lookup::new(db, project);
+    jadpo_check::graph::declaration_key(&lookup, name)
 }
 
 /// Jadpo's own magic-link email, with the file `sign_in:` is written in,
@@ -227,6 +280,8 @@ fn magic_link_email(
                 app_name,
                 messages,
                 locales,
+                own: None,
+                send: None,
             })),
         },
         file,
