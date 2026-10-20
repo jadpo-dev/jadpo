@@ -343,6 +343,11 @@ fn summary(declaration: &Declaration) -> String {
             params,
             result,
             fails,
+        }
+        | What::Action {
+            params,
+            result,
+            fails,
         } => {
             let params: Vec<String> = params.iter().map(|(n, t)| format!("{n}: {t}")).collect();
             let mut out = format!("({})", params.join(", "));
@@ -648,6 +653,11 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
             ));
         }
         What::Function {
+            params,
+            result,
+            fails,
+        }
+        | What::Action {
             params,
             result,
             fails,

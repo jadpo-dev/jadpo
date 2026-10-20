@@ -316,3 +316,82 @@ fn a_package_action_over_eight_steps_is_refused_where_it_is_declared() {
         ]
     );
 }
+
+// --- what a package's action emits ----------------------------------------
+
+/// A package event, `CardAttached`.
+const ATTACHED: (&str, &str) = (
+    "shared/providers/acme_pay/v1/events/card_attached.jadpo",
+    "/// A card was attached.\npublic type CardAttached = Event {\n    wire_name: \"card.attached\"\n    card: Reference\n}\n",
+);
+
+/// `start_subscription`, emitting `CardAttached` with what it attached;
+/// `public` when `public`.
+fn emitting(public: bool) -> String {
+    format!(
+        "/// Creates the customer, then announces it.\n{}action start_subscription(input: PayRequest) fails CardDeclined -> PayReply {{\n    var customer: PayReply = attempt customers.create(input)\n    emit CardAttached {{\n        card: customer.id\n    }}\n    return customer\n}}\n",
+        if public { "public " } else { "" }
+    )
+}
+
+#[test]
+fn a_public_package_action_never_emits() {
+    assert_eq!(
+        problems(
+            &[("start_subscription", &emitting(true))],
+            "pay.start_subscription",
+            &[SUBSCRIBER, ATTACHED]
+        ),
+        [
+            "shared/providers/acme_pay/v1/actions/start_subscription.jadpo package.action_invalid: `start_subscription` is public and emits `CardAttached`"
+        ]
+    );
+}
+
+#[test]
+fn a_package_action_that_emits_waits_for_package_subscribers() {
+    let open = "/// Opens the customer.\npublic action open(input: PayRequest) fails CardDeclined -> PayReply {\n    return attempt customers.create(input)\n}\n";
+    assert_eq!(
+        problems(
+            &[("start_subscription", &emitting(false)), ("open", open)],
+            "pay.open",
+            &[SUBSCRIBER, ATTACHED]
+        ),
+        [
+            "shared/providers/acme_pay/v1/actions/start_subscription.jadpo toolchain.not_built_yet: A package's action that emits isn't built yet"
+        ]
+    );
+}
+
+// --- the surface ------------------------------------------------------------
+
+#[test]
+fn a_public_package_action_is_on_the_surface() {
+    let files = files(&[("start_subscription", START)], "pay.start_subscription", &[]);
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let text = jadpo_check::surface::text(&db, project, HOME, None).expect("a surface");
+    let entry = text
+        .split("\n\n")
+        .find(|entry| entry.starts_with("action "))
+        .expect("an action's entry");
+    assert_eq!(
+        entry,
+        "action start_subscription\n    /// Creates the customer, then attaches the card.\n    file actions/start_subscription.jadpo\n    signature (input: PayRequest) -> PayReply\n    fails CardDeclined"
+    );
+    // One without `public` isn't.
+    let private = START.replace("public action", "action");
+    let files = self::files(&[("start_subscription", &private)], "pay.start_subscription", &[]);
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let db = jadpo_db::Database::default();
+    let project = support::project(&db, Layout::Project, &files);
+    let text = jadpo_check::surface::text(&db, project, HOME, None).expect("a surface");
+    assert!(!text.contains("action start_subscription"), "{text}");
+}
