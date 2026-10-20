@@ -1238,7 +1238,10 @@ of scope.
   the store the principal's user entity lives in (a `jadpo_sessions` system
   table, area 5), so an action that fails starts none; the route's response
   sets its cookies once the action commits. `sessions.end` deletes the
-  session the request came with, and the response clears the cookies.
+  session the request came with, and the response clears the cookies. A
+  session or token past its end, which a lookup ignores, and a service
+  key past its expiry are deleted on the runtime's tick, in the store
+  each is kept in (area 12, "The tick").
 - Only an action calls them (`type.auth_sessions_context`); a test reaches
   them through the route, or calls the action, which keeps the session
   without a response to set it on.
@@ -3485,9 +3488,6 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   routes and `on_behalf_of:` (decided 2026-10-16, area 11); no roadmap chunk
   yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers,
   after the first build.
-- Deleting ended sessions, tokens and expired keys from the runtime's
-  minute tick (area 12, "The tick"; roadmap 6.10): a lookup ignores one
-  past its end.
 
 **Listing tokens and keys from a `GET`** (decided 2026-10-16, built in
 chunk 4.4c). `sessions.tokens(user_id)` and `Service.keys(service_id)` are
@@ -3549,7 +3549,7 @@ builds it.
 | `toolchain.target_auth_not_implemented`, raised only by `jadpo build`; moving the "protected routes but no authentication" check into `jadpo check` | 14 | Built in chunk 4.3: `semantic.auth_not_set_up` |
 | A `lifecycle { }` block on an entity written `id: Uuid identity` is silently ignored | 5 | Raised |
 | Sessions in the principal's user store, rather than a `sessions: { store: }` setting (chosen in chunk 4.3, below) | 5 | Recorded on area 5's system tables |
-| Deleting ended sessions from the minute tick | 12 | Roadmap 6.10 |
+| Deleting ended sessions from the minute tick | 12 | Built in chunk 6.10: area 12, "The tick" |
 
 ### Open questions
 

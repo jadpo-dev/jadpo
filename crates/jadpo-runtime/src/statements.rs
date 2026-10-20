@@ -136,11 +136,20 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::schedules::CLAIM_REQUESTED.to_string(),
         ),
         ("schedules::ENDED", crate::schedules::ENDED.to_string()),
+        (
+            "schedules::ENDED_SERVICE_KEYS",
+            crate::schedules::ENDED_SERVICE_KEYS.to_string(),
+        ),
+        (
+            "schedules::ENDED_SESSIONS",
+            crate::schedules::ENDED_SESSIONS.to_string(),
+        ),
         ("schedules::ENSURE", crate::schedules::ENSURE.to_string()),
         (
             "schedules::EXPIRED_KEYS",
             crate::schedules::EXPIRED_KEYS.to_string(),
         ),
+        ("schedules::HANDLED", crate::schedules::HANDLED.to_string()),
         (
             "schedules::OLD_RUNS",
             crate::schedules::OLD_RUNS.to_string(),

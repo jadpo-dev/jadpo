@@ -1966,14 +1966,19 @@ domain taking nothing) and where their state is kept
 `schedule.store_required`); the plan holds the schedule table
 (`jadpo_std::schedule::SchedulesPlan`, `Plan::schedules`, which
 `Executor::schedules` gives the runtime) with the stores holding the
-runtime's own tables. `jadpo_runtime::schedules::tick(executor, host,
+runtime's own tables, and the stores sessions and service keys are kept
+in. `jadpo_runtime::schedules::tick(executor, host,
 now)` is the one entry point every host calls: it makes and touches each
 schedule's state row (`jadpo_schedules`), takes the lease of each one due
 in one conditional statement, runs them side by side as the system with
 no tenant under the tick's clock and a new trace, records each run and
 skipped tick (`jadpo_schedule_runs`) and delivers what they emitted; then
 in each store it calls `runner::sweep` and deletes expired idempotency
-keys and events every subscriber has had, and runs `schedules::HOOKS`,
+keys; events every subscriber has had, with their delivery records and,
+in the same statement, the handled records kept beside them, then the
+rest of those handled records in each other store by the deliveries'
+ids (chunk 6.10); and ended sessions, tokens and service keys where
+they are kept; then it runs `schedules::HOOKS`,
 which picks up batch runs whose lease lapsed (`batches::resume`). The
 whole tick runs within the budget its host gives a tick (chunk 6.7),
 each step starting only while it isn't spent, its runs' actions through
