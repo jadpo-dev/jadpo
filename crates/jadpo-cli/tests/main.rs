@@ -16,6 +16,7 @@ mod batches;
 mod binary;
 mod capability_deliveries;
 mod check;
+mod circuit_breaker;
 mod cli;
 mod client_address;
 mod config;

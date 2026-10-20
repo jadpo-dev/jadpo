@@ -31,6 +31,21 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::batches::UNKEPT_CANCELS.to_string(),
         ),
         ("batches::WAITING", crate::batches::WAITING.to_string()),
+        ("breaker::FAILED", crate::breaker::FAILED.to_string()),
+        ("breaker::HOLD", crate::breaker::HOLD.to_string()),
+        (
+            "breaker::PROBE_UNUSED",
+            crate::breaker::PROBE_UNUSED.to_string(),
+        ),
+        ("breaker::RAISE", crate::breaker::RAISE.to_string()),
+        ("breaker::READ", crate::breaker::READ.to_string()),
+        ("breaker::TAKE_PROBE", crate::breaker::TAKE_PROBE.to_string()),
+        (
+            "breaker::UNAVAILABLE",
+            crate::breaker::UNAVAILABLE.to_string(),
+        ),
+        ("breaker::succeeded_sql", crate::breaker::succeeded_sql()),
+        ("breaker::wake_sql", crate::breaker::wake_sql()),
         (
             "deliveries::ACT_DELIVERY",
             crate::deliveries::ACT_DELIVERY.to_string(),

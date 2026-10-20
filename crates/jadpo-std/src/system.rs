@@ -125,6 +125,15 @@ pub const DELIVERIES: SystemTable = SystemTable {
         // (`jadpo deliveries`; chunk 6.12): its `within:` counts from
         // then rather than from its event. `NULL` for one never retried.
         column("retried_at", "timestamptz(3)", true),
+        // While it is `held` by its connection's circuit breaker (area
+        // 12, question 18; chunk 7.2b): the connection, and since when.
+        // `NULL` otherwise.
+        column("held_for", "text", true),
+        column("held_since", "timestamptz(3)", true),
+        // How long it has been held before, in milliseconds, which its
+        // `within:` doesn't count: held deliveries keep their budget.
+        // `NULL` for one never held.
+        column("held_ms", "bigint", true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -139,6 +148,34 @@ pub const DELIVERIES: SystemTable = SystemTable {
         columns: &["status", "next_attempt_at"],
         reason: "system deliveries",
     }],
+};
+
+/// Each connection's circuit breaker (area 12, question 18; chunk 7.2b),
+/// beside the deliveries it holds: `closed`, counting `failures`, the
+/// deliveries in a row whose call through the connection found its
+/// provider unavailable; `open` once that run is long enough, holding the
+/// deliveries that call it, since `opened_at`, until `probe_at`, after
+/// `pauses` pauses; `probing` while one delivery, `probe_id`, is tried,
+/// its claim lasting until `probe_until`. `alerted_at` is when a tick
+/// raised its alert, so of several instances one raises it, once per
+/// outage (chunk 6.9's alerts, recorded on state).
+pub const CIRCUIT_BREAKERS: SystemTable = SystemTable {
+    table: "jadpo_circuit_breakers",
+    columns: &[
+        column("connection", "text", false),
+        column("state", "text", false),
+        column("failures", "integer", false),
+        column("opened_at", "timestamptz(3)", true),
+        column("pauses", "integer", false),
+        column("probe_at", "timestamptz(3)", true),
+        column("probe_id", "uuid", true),
+        column("probe_until", "timestamptz(3)", true),
+        column("alerted_at", "timestamptz(3)", true),
+    ],
+    primary_key: &["connection"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[],
 };
 
 /// A subscriber's handled record (area 12, "Outbox placement, settled";
@@ -488,14 +525,16 @@ pub const OPERATOR_ACTIONS: SystemTable = SystemTable {
 
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
-/// deliveries, handled records and idempotency keys; and the log of what
-/// operators did to those deliveries (chunk 6.12).
-pub const IN_EVERY_STORE: [&SystemTable; 5] = [
+/// deliveries, handled records and idempotency keys; the log of what
+/// operators did to those deliveries (chunk 6.12); and the circuit
+/// breakers that hold them (chunk 7.2b).
+pub const IN_EVERY_STORE: [&SystemTable; 6] = [
     &OUTBOX,
     &DELIVERIES,
     &HANDLED_DELIVERIES,
     &IDEMPOTENCY_KEYS,
     &OPERATOR_ACTIONS,
+    &CIRCUIT_BREAKERS,
 ];
 
 /// Schedules' state and runs, in `schedules: { store: }` (chunk 6.2), and
@@ -506,9 +545,10 @@ pub const SCHEDULE_TABLES: [&SystemTable; 3] = [&SCHEDULES, &SCHEDULE_RUNS, &OPE
 pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATCH_CANCELS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 14] = [
+pub const ALL: [&SystemTable; 15] = [
     &OUTBOX,
     &DELIVERIES,
+    &CIRCUIT_BREAKERS,
     &HANDLED_DELIVERIES,
     &IDEMPOTENCY_KEYS,
     &OPERATOR_ACTIONS,

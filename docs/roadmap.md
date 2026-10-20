@@ -1049,12 +1049,25 @@ The design is area 11 as revised on 2026-10-16, with its research in
   scoped to the types the app's operations reach and tracked per type in
   `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
   it in the import's summary.
-- [ ] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
+- [x] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
   question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
   than attempted, one probe delivery is tried after a pause, and success
   releases the rest; held deliveries keep their retry budget, are shown
-  in `jadpo deliveries` and alerted.
+  in `jadpo deliveries` and alerted. Built: `jadpo_circuit_breakers` in
+  every store that keeps deliveries, and `held_for`, `held_since` and
+  `held_ms` on `jadpo_deliveries`; five delivery attempts in a row whose
+  call through a connection found its provider unavailable open its
+  breaker, and the deliveries whose action calls it (the plan's
+  `connections`, from the checker's `called_connections`) are held at
+  their claim, the attempt given back; a probe after a minute, doubling
+  after each failed one up to ten minutes, the sweep waking the delivery
+  held longest; an answer closes it and releases them all; the time held
+  not counted towards `within:`; the tick raising
+  `connection_unavailable` once per outage; `held` in `jadpo deliveries`
+  with an alert line per connection. Live tests in
+  `circuit_breaker.rs` against a local server answering `503`. Choices
+  in area 12's "When a provider keeps failing".
 - [ ] **7.3 Email:** `opus · high` the capability under design C (whole:
   Jadpo-rendered, attachments), the SMTP driver and a mail package as a
   second connection proving the swap, `emails/` templates and the shared

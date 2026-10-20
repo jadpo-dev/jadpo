@@ -326,7 +326,8 @@ pub struct Ticked {
     pub problems: Vec<(String, StoreError)>,
     /// The alerts this tick raised: those that have started to hold since
     /// the last tick, which no other instance's tick raised first (chunk
-    /// 6.9). A host reports each, once.
+    /// 6.9), and each circuit breaker's that opened (chunk 7.2b). A host
+    /// reports each, once.
     pub raised: Vec<watch::Alert>,
 }
 
@@ -412,6 +413,11 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
                 ticked.problems.push((store.clone(), error));
                 continue;
             }
+        }
+        // A circuit breaker that opened raises its alert once (chunk 7.2b).
+        match crate::breaker::raise(host, store, now).await {
+            Ok(raised) => ticked.raised.extend(raised),
+            Err(error) => ticked.problems.push((store.clone(), error)),
         }
         match delete(host, store, EXPIRED_KEYS, now).await {
             Ok(count) => ticked.deleted.keys += count,

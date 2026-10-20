@@ -224,10 +224,12 @@ pub struct Metrics {
     pub most_delay_ms: Option<i64>,
 }
 
-/// An alert (area 12, "Watching schedules": "Alerts with no setup").
+/// An alert (area 12, "Watching schedules": "Alerts with no setup"; and
+/// the outbox's circuit breaker, chunk 7.2b).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alert {
-    /// The schedule's name; none for ticks, which every schedule shares.
+    /// The schedule's name; none for ticks, which every schedule shares,
+    /// and for a connection's.
     pub schedule: Option<String>,
     pub kind: AlertKind,
 }
@@ -256,6 +258,15 @@ pub enum AlertKind {
         ever: bool,
         every_ms: i64,
     },
+    /// Deliveries found `connection`'s provider unavailable time after
+    /// time, so its circuit breaker has held the deliveries that call it
+    /// since `since`: `held` of them when it was raised (area 12, question
+    /// 18; chunk 7.2b).
+    ConnectionUnavailable {
+        connection: String,
+        since: i64,
+        held: u64,
+    },
 }
 
 impl Alert {
@@ -267,12 +278,18 @@ impl Alert {
             AlertKind::LongRun { .. } => "long_run",
             AlertKind::FailedInARow { .. } => "failed_in_a_row",
             AlertKind::NoSuccess { .. } => "no_success",
+            AlertKind::ConnectionUnavailable { .. } => "connection_unavailable",
         }
     }
 
-    /// What identifies it while it holds: its id and schedule.
+    /// What identifies it while it holds: its id and schedule, or its
+    /// connection.
     pub fn identity(&self) -> String {
-        format!("{} {}", self.id(), self.schedule.as_deref().unwrap_or(""))
+        let of = match &self.kind {
+            AlertKind::ConnectionUnavailable { connection, .. } => connection.as_str(),
+            _ => self.schedule.as_deref().unwrap_or(""),
+        };
+        format!("{} {of}", self.id())
     }
 
     /// Its log event (area 14, question 13: alerts are log events the
@@ -281,6 +298,19 @@ impl Alert {
     pub fn event(&self) -> serde_json::Value {
         let at = |millis: i64| serde_json::Value::from(jadpo_std::format_instant(millis));
         let mut object = serde_json::Map::new();
+        if let AlertKind::ConnectionUnavailable {
+            connection,
+            since,
+            held,
+        } = &self.kind
+        {
+            object.insert("event".into(), "delivery.alert".into());
+            object.insert("alert".into(), self.id().into());
+            object.insert("connection".into(), connection.as_str().into());
+            object.insert("since".into(), at(*since));
+            object.insert("held".into(), (*held).into());
+            return serde_json::Value::Object(object);
+        }
         object.insert("event".into(), "schedule.alert".into());
         object.insert("alert".into(), self.id().into());
         object.insert(
@@ -320,6 +350,7 @@ impl Alert {
                 object.insert("succeededBefore".into(), (*ever).into());
                 object.insert("everyMs".into(), (*every_ms).into());
             }
+            AlertKind::ConnectionUnavailable { .. } => {}
         }
         serde_json::Value::Object(object)
     }
