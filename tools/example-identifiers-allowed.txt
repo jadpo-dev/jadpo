@@ -480,3 +480,10 @@ budget
 recipes
 new_key
 stripe
+
+# A package's surface (`surface.jadpo_record`), its guide (`GUIDE.md`)
+# and its recipes, words the language defines (area 11, "The surface";
+# chunk 7.1b)
+surface
+guide
+recipe

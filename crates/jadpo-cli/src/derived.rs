@@ -11,7 +11,10 @@
 //! rules (16). Since chunk 4.1 each API's OpenAPI document is written to
 //! `build/openapi/<api>.json` once its routes read cleanly (area 7), and
 //! since chunk 4.4 the permissions report to `build/report/permissions.md`
-//! and `.json` once policy reads cleanly (area 9).
+//! and `.json` once policy reads cleanly (area 9). Since chunk 7.1b each
+//! of the app's own integrations' surfaces to
+//! `build/providers/<name>/<version>/surface.jadpo_record` (area 11, "The
+//! surface"): an installed package carries its own, committed.
 
 use std::path::Path;
 
@@ -37,6 +40,28 @@ pub fn openapi(
     files
 }
 
+/// The surface of each of the app's own integrations in
+/// `shared/providers/`, by the path it is written to in `build/`.
+pub fn surfaces(db: &dyn jadpo_db::Db, project: jadpo_db::Project) -> Vec<(String, String)> {
+    jadpo_check::surface::homes(db, project)
+        .values()
+        .filter(|home| !home.installed)
+        .filter_map(|home| {
+            let text = jadpo_check::surface::text(db, project, &home.folder, None)?;
+            Some((
+                format!(
+                    "build/{}/{}/{}/{}",
+                    jadpo_db::PROVIDERS,
+                    home.name,
+                    home.version,
+                    jadpo_db::record::SURFACE_FILE
+                ),
+                text,
+            ))
+        })
+        .collect()
+}
+
 /// Writes every derived file; the paths written, relative to the root.
 pub fn write(
     root: &Path,
@@ -44,6 +69,7 @@ pub fn write(
     errors: usize,
     openapi: &[(String, jadpo_graph::json::Value)],
     permissions: Option<&jadpo_check::policy::report::Report>,
+    surfaces: &[(String, String)],
 ) -> Result<Vec<String>, Box<Diagnostic>> {
     let stamp = Stamp {
         compiler: VERSION.to_string(),
@@ -85,6 +111,8 @@ pub fn write(
             report.json.to_document(),
         ));
     }
+    // The app's own integrations' surfaces (area 11).
+    files.extend(surfaces.iter().cloned());
     let mut written = Vec::new();
     for (path, text) in files {
         put(root, &path, &text)?;
