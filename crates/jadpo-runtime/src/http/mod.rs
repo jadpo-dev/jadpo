@@ -990,7 +990,19 @@ async fn run_with_caller(
                 Run::Action(callable) => {
                     // Its commit waits until the deadline can't interrupt it.
                     ctx.hold();
-                    executor.run(ctx, *callable, args.clone()).await
+                    // Under a key it claimed, its key survives a retry: an
+                    // action with several changing calls keeps a record of
+                    // its steps, held by this claim (area 12, "One runner
+                    // per record"; chunk 7.5b).
+                    ctx.set_resumable(
+                        guard
+                            .as_ref()
+                            .filter(|_| claimed.get())
+                            .map(|guard| guard.at),
+                    );
+                    let ran = executor.run(ctx, *callable, args.clone()).await;
+                    ctx.set_resumable(None);
+                    ran
                 }
                 Run::Listing { keys } => {
                     let holder = args.first().cloned().unwrap_or(Value::None);

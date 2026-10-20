@@ -327,6 +327,13 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             "schedules::watch::history_sql",
             crate::schedules::watch::history_sql(),
         ),
+        ("steps::ANSWER", crate::steps::ANSWER.to_string()),
+        ("steps::CREATE", crate::steps::CREATE.to_string()),
+        ("steps::DELETE", crate::steps::DELETE.to_string()),
+        ("steps::DIVERGE", crate::steps::DIVERGE.to_string()),
+        ("steps::OPEN", crate::steps::OPEN.to_string()),
+        ("steps::SEND", crate::steps::SEND.to_string()),
+        ("steps::STEPS", crate::steps::STEPS.to_string()),
         (
             "webhooks::OLD_RECEIVED",
             crate::webhooks::OLD_RECEIVED.to_string(),

@@ -1324,7 +1324,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   12. Choices in area 3's "Outside calls in loops, checked" and area 12's
   "Several changing calls, checked"; area 11's 256 KB answer cap corrected
   to area 12's 1 MB.
-- [ ] **7.5b Multi-step calls: the record** `opus · xhigh`, after 7.5
+- [x] **7.5b Multi-step calls: the record** `opus · xhigh`, after 7.5
   (split from 7.5 on 2026-10-20): each step recorded before it is sent
   and its answer after, in the runtime's own short transactions in the
   store 7.5 names, extending `effects::exchange` and the provider call
@@ -1336,11 +1336,30 @@ The design is area 11 as revised on 2026-10-16, with its research in
   for and `reused` diverged; a delivery's lease generation checked by
   every record write; the record deleted in the commit, with the build id
   and the step shape it started under; answers encrypted with `application {
-  steps: { encryption_key: } }` (area 12, decided 2026-10-20).
+  steps: { encryption_key: } }` (area 12, decided 2026-10-20). Built:
+  `jadpo_step_records` and `jadpo_steps` in the store such an action
+  writes; the plan's `RecordPlan` (store, step-shape digest), steps key
+  and build digest; `steps_settings` with `step.encryption_key_required`
+  and `step.settings_invalid`; the provider plan reads `window:`,
+  `replays_failures:`, `new_key_on:` and `changes:`. The runtime's
+  `steps` module opens the record at an outermost boundary whose runner
+  set its generation (a delivery's attempt, a route's claim under a
+  required `Idempotency-Key`), fixes the clock, and checks each step
+  (operation, an HMAC of each request field) before replaying its sealed
+  answer or sending it, `exchange` writing the step first; a `put`'s
+  object keyed from its step; `FaultKind::Diverged` and the delivery
+  state `diverged`; the record deleted in `seal`. Live tests in
+  `step_records.rs`: replay with the first run's time, a changed request
+  diverging and finishing once put back, the window, a replayed `5xx`,
+  `in_use` and `reused`, an older generation writing nothing, an answer
+  past 1 MB, area 6's rerun, a route's client retry, and a recorded step
+  never reached. Choices in area 12's "The record, chosen in chunk 7.5b".
 - [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
   high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
-  as an operator item (`jadpo deliveries show`, `retry --not-done`,
-  `abandon`, a route's key lapsing), kept 30 days; `jadpo runs unfinished
+  as an operator item (`jadpo deliveries show`, `retry --not-done` under
+  the next key generation, `abandon`, a route's key lapsing), kept 30
+  days, with 7.5b's `diverged` deliveries listed and retried, and the
+  provider's `new_key_on:` sending under the next key generation; `jadpo runs unfinished
   --build`; fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
   crash at each step boundary; each step's state in `jadpo dev` and
   `jadpo watch`; the late-failure warning (a declinable error) and the

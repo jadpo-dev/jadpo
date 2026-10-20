@@ -533,6 +533,20 @@ impl<'p> ActionBody<'p> for Action<'_> {
             .and_then(|callable| callable.outbox.as_deref())
     }
 
+    /// What its plan keeps of its steps when it makes several changing
+    /// calls, and the key their answers are sealed with (chunk 7.5b).
+    fn record(&self) -> Option<jadpo_runtime::steps::Spec<'_>> {
+        let plan = self.program.plan();
+        let callable = plan.callable(self.callee)?;
+        Some(jadpo_runtime::steps::Spec {
+            plan: callable.record.as_ref()?,
+            action: callable.key.as_str(),
+            build: plan.build_id(),
+            keys: self.program.effect_keys(),
+            setting: plan.steps_key(),
+        })
+    }
+
     fn run<'c>(&'c mut self, ctx: &'c mut Ctx<'p>) -> LocalFuture<'c, Outcome> {
         Box::pin(async move {
             outcome(body(self.program, ctx, self.callee, self.args.clone(), self.at).await)

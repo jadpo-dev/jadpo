@@ -78,6 +78,9 @@ pub(crate) fn plan(
             max_length: given.max_length,
             in_use: given.in_use.clone(),
             reused: given.reused.clone(),
+            window_ms: given.window_ms,
+            new_key_on: given.new_key_on.clone(),
+            replays_failures: given.replays_failures,
         });
         let keyed = idempotency
             .as_ref()
@@ -217,6 +220,7 @@ fn operation_plan(
             .as_ref()
             .map(|when| (when.path.clone(), when.equals.clone())),
         repeat,
+        changes: operation.changes,
         // Each failure's plan is numbered, so the runtime raises it as
         // the call's failure.
         failures: operation

@@ -326,6 +326,15 @@ pub trait ActionBody<'p> {
     fn outbox(&self) -> Option<&str> {
         None
     }
+
+    /// For an action whose longest way makes several changing calls, run
+    /// where its key survives a retry: where the record of its steps is
+    /// kept, its step shape, and the key its answers are sealed with, as
+    /// its plan says (area 12; chunk 7.5b). Only a boundary of its own
+    /// keeps one, and only for a runner that set [`Ctx::set_resumable`].
+    fn record(&self) -> Option<crate::steps::Spec<'_>> {
+        None
+    }
 }
 
 /// Runs `body` once, its gate checked first, so a caller the gate refuses
@@ -402,6 +411,35 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
             gated(ctx, body).await
         };
     }
+    // The record of its steps, kept where its key survives a retry
+    // (chunk 7.5b): opened before its first run, closed after its last.
+    match crate::steps::open(ctx, body.record()).await {
+        Ok(_) => {}
+        Err(unanswered) => {
+            return match unanswered {
+                crate::effects::Unanswered::Fault(kind) => {
+                    Outcome::Fault(ctx.fault(kind, crate::Frame::ENTRY))
+                }
+                crate::effects::Unanswered::Failure(failure) => {
+                    Outcome::Failed(Box::new(Failure {
+                        frames: ctx.frames(),
+                        ..*failure
+                    }))
+                }
+                crate::effects::Unanswered::Failed(_) => Outcome::Failed(Box::new(Failure {
+                    frames: ctx.frames(),
+                    ..unavailable()
+                })),
+            };
+        }
+    }
+    let outcome = own(ctx, body).await;
+    crate::steps::close(ctx);
+    outcome
+}
+
+/// [`action`] in a boundary of its own.
+async fn own<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Outcome {
     let hold = ctx.own_boundary();
     let isolation = body.isolation();
     let mut attempt = 1;
@@ -410,8 +448,16 @@ pub async fn action<'p>(ctx: &mut Ctx<'p>, body: &mut dyn ActionBody<'p>) -> Out
     let steps = ctx.steps();
     loop {
         ctx.set_steps(steps);
+        crate::steps::rewind(ctx);
         ctx.open_boundary(isolation);
         let mut outcome = gated(ctx, body).await;
+        // A run that ends before replaying every recorded step no longer
+        // runs as the record's did (chunk 7.5b).
+        if matches!(outcome, Outcome::Value(_))
+            && let Err(kind) = crate::steps::finished(ctx).await
+        {
+            outcome = Outcome::Fault(ctx.fault(kind, crate::Frame::ENTRY));
+        }
         if matches!(outcome, Outcome::Value(_)) {
             outcome = sealed(ctx, body.outbox(), outcome).await;
         }
@@ -574,7 +620,8 @@ pub(crate) async fn seal(ctx: &mut Ctx<'_>, outbox: Option<&str>) -> Result<(), 
             )
             .await?;
     }
-    Ok(())
+    // The record of its steps goes in the same commit (chunk 7.5b).
+    crate::steps::seal(ctx).await
 }
 
 /// Commits what a held boundary left open, first running `then`, one
