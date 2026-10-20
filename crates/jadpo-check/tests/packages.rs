@@ -612,3 +612,272 @@ fn two_versions_of_a_package_wait_for_a_later_chunk() {
         "{found:#?}"
     );
 }
+
+/// The app's own declarations of every kind, named as the package's are,
+/// all unique across the project: a type, a failure, an event, an action
+/// and a library.
+fn namesakes() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "shared/types/uk_postcode.jadpo",
+            "type UkPostcode = Text {\n    max_length: 10\n}\n",
+        ),
+        (
+            "shared/failures/invalid_postcode.jadpo",
+            "type InvalidPostcode = Failure {\n    kind: FailureKind.invalid_value\n}\n",
+        ),
+        (
+            "domains/addresses/events/written_postcode.jadpo",
+            "use shared/types { UkPostcode }
+
+/// A customer wrote a postcode.
+type WrittenPostcode = Event {
+    postcode: UkPostcode
+}
+",
+        ),
+        (
+            "domains/addresses/actions/parse.jadpo",
+            "use shared/types { UkPostcode }
+use shared/failures { InvalidPostcode }
+use shared/libraries { uk }
+
+/// Reads a postcode in lower case.
+action parse(postcode: UkPostcode) fails InvalidPostcode -> UkPostcode {
+    return attempt uk.lower(postcode)
+}
+",
+        ),
+        (
+            "shared/libraries/uk.jadpo",
+            "use shared/types { UkPostcode }
+use shared/failures { InvalidPostcode }
+
+/// The app's own postcode helpers.
+library uk {
+    /// The postcode in lower case.
+    function lower(postcode: UkPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.lower(postcode)) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+",
+        ),
+    ]
+}
+
+/// The problems of `files`, but for a missing record or migration, which
+/// no test here writes.
+fn installed_apart_from_records(files: &[(&str, &str)]) -> Vec<String> {
+    installed(files)
+        .into_iter()
+        .filter(|problem| !problem.contains(".out_of_date:"))
+        .collect()
+}
+
+#[test]
+fn a_package_s_names_never_clash_with_the_app_s() {
+    // `Postcodes.uk.parse` beside the app's `parse`, and each of the
+    // package's types beside the app's of the same name (chunk 7.1d).
+    let mut extra = vec![SAVE];
+    extra.extend(namesakes());
+    assert_eq!(
+        installed_apart_from_records(&with(&extra)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_query_may_share_a_package_function_s_name() {
+    let address = (
+        "domains/addresses/entities/address.jadpo",
+        "/// A delivery address.
+entity Address {
+    id: Uuid
+    postcode: Text {
+        max_length: 10
+    }
+}
+",
+    );
+    let parse = (
+        "domains/addresses/queries/parse.jadpo",
+        "use addresses/entities { Address }
+
+/// The addresses at a postcode.
+query parse(postcode: Address.postcode) -> List<Address> {
+    from: Address
+    where: Address.postcode == postcode
+    order: [Address.id asc]
+    limit: 50
+}
+",
+    );
+    assert_eq!(
+        installed_apart_from_records(&with(&[SAVE, address, parse])),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_bare_name_in_the_app_is_the_app_s() {
+    // The app's `UkPostcode` isn't the package's, so the package's can't
+    // be returned as it.
+    let mixed = (
+        "domains/addresses/actions/keep.jadpo",
+        "use packages/postcodes
+use shared/types { UkPostcode }
+
+/// Reads a postcode into the app's own type.
+action keep(written: Postcodes.WrittenPostcode) fails Postcodes.InvalidPostcode -> UkPostcode {
+    return attempt Postcodes.uk.parse(written)
+}
+",
+    );
+    let mut extra = vec![mixed];
+    extra.extend(namesakes());
+    let found = installed_apart_from_records(&with(&extra));
+    assert!(
+        found
+            .iter()
+            .any(|p| p.starts_with("domains/addresses/actions/keep.jadpo type.mismatch: `Postcodes.UkPostcode` can't be used where `UkPostcode` is required")),
+        "{found:#?}"
+    );
+    // And the app's own call reads its own action.
+    let own = (
+        "domains/addresses/actions/keep.jadpo",
+        "use addresses/actions { parse }
+use shared/types { UkPostcode }
+use shared/failures { InvalidPostcode }
+
+/// Keeps a postcode through the app's own action.
+action keep(postcode: UkPostcode) fails InvalidPostcode -> UkPostcode {
+    return attempt parse(postcode)
+}
+",
+    );
+    let mut extra = vec![SAVE, own];
+    extra.extend(namesakes());
+    assert_eq!(
+        installed_apart_from_records(&with(&extra)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_package_s_library_may_be_named_like_a_domain() {
+    let library = (
+        "packages/postcodes/v2/libraries/addresses.jadpo",
+        "/// Reading addresses.
+public library addresses {
+    /// The postcode as it is.
+    function postcode(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt uk.parse(written)
+    }
+}
+",
+    );
+    assert_eq!(installed(&with(&[SAVE, library])), Vec::<String>::new());
+}
+
+#[test]
+fn a_name_declared_twice_in_one_package_still_clashes() {
+    let again = (
+        "packages/postcodes/v2/types/postcode_again.jadpo",
+        "/// A UK postcode again.\npublic type UkPostcode = Text {\n    max_length: 9\n}\n",
+    );
+    let found = installed(&with(&[again]));
+    assert!(
+        found
+            .iter()
+            .any(|p| p.contains("semantic.duplicate_declaration: `UkPostcode` is declared twice")),
+        "{found:#?}"
+    );
+}
+
+#[test]
+fn two_packages_may_declare_the_same_names() {
+    // `ZipCodes` declares every name `Postcodes` does.
+    let zip = |path: &'static str| -> (&'static str, String) {
+        let (from, text) = library()
+            .into_iter()
+            .find(|(from, _)| from.ends_with(path))
+            .expect("a package file");
+        let _ = from;
+        let text = text.replace("Postcodes.v2", "ZipCodes.v1");
+        (path, text)
+    };
+    let zipped: Vec<(String, String)> = [
+        "package.jadpo",
+        "types/uk_postcode.jadpo",
+        "failures/invalid_postcode.jadpo",
+        "types/written_postcode.jadpo",
+        "libraries/uk.jadpo",
+    ]
+    .into_iter()
+    .map(|path| {
+        let (path, text) = zip(path);
+        (format!("packages/zip_codes/v1/{path}"), text)
+    })
+    .collect();
+    let both = (
+        "domains/addresses/actions/read_zip.jadpo",
+        "use packages/zip_codes
+
+/// Reads a postcode with the other package.
+action read_zip(
+    written: ZipCodes.WrittenPostcode
+) fails ZipCodes.InvalidPostcode -> ZipCodes.UkPostcode {
+    return attempt ZipCodes.uk.parse(written)
+}
+",
+    );
+    let mut files: Vec<(&str, &str)> = with(&[SAVE, both]);
+    files.extend(zipped.iter().map(|(p, t)| (p.as_str(), t.as_str())));
+    let held = |prefix: &str| -> Vec<(String, Vec<u8>)> {
+        files
+            .iter()
+            .filter_map(|(path, text)| {
+                Some((
+                    path.strip_prefix(prefix)?.to_string(),
+                    text.as_bytes().to_vec(),
+                ))
+            })
+            .chain(
+                (prefix == "packages/postcodes/v2/")
+                    .then(|| ("GUIDE.md".to_string(), GUIDE.1.as_bytes().to_vec())),
+            )
+            .collect()
+    };
+    let digest = |prefix: &str| {
+        let held = held(prefix);
+        let refs: Vec<(&str, &[u8])> = held
+            .iter()
+            .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+            .collect();
+        package_digest(&refs)
+    };
+    let lock = write_lock(&[
+        Locked {
+            package: "Postcodes.v2".to_string(),
+            source: Source::Path {
+                version: "2.1.0".to_string(),
+                path: "../postcodes".to_string(),
+                digest: digest("packages/postcodes/v2/"),
+            },
+        },
+        Locked {
+            package: "ZipCodes.v1".to_string(),
+            source: Source::Path {
+                version: "1.0.0".to_string(),
+                path: "../zip_codes".to_string(),
+                digest: digest("packages/zip_codes/v1/"),
+            },
+        },
+    ]);
+    assert_eq!(
+        problems(&files, &[GUIDE, ("jadpo.lock", &lock)]),
+        Vec::<String>::new()
+    );
+}
