@@ -28,13 +28,13 @@ use jadpo_term::Environment;
 use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
-fn write(root: &Path, path: &str, text: &str) {
+pub(crate) fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().expect("parent")).expect("folders");
     fs::write(path, text).expect("write");
 }
 
-fn jadpo(cwd: &Path, args: &[&str]) -> Output {
+pub(crate) fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     let mut env = Environment::empty().with_var("SOURCE_DATE_EPOCH", "1792504800");
     if let Ok(url) = std::env::var("JADPO_TEST_DATABASE_URL") {
@@ -43,7 +43,7 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
     run(&args, &env.with_cwd(cwd))
 }
 
-const FILES: &[(&str, &str)] = &[
+pub(crate) const FILES: &[(&str, &str)] = &[
     (
         "app.jadpo",
         r#"use home/entities { Person }
@@ -546,8 +546,8 @@ fn signed_in(person: &Value) -> Value {
 }
 
 /// When the test starts: 2026-10-19T09:00:00Z.
-const T0: i64 = 1_792_400_400_000;
-const MINUTE: i64 = 60_000;
+pub(crate) const T0: i64 = 1_792_400_400_000;
+pub(crate) const MINUTE: i64 = 60_000;
 
 #[test]
 fn a_schedule_runs_on_the_tick_under_a_lease_and_the_tick_sweeps() {
@@ -779,7 +779,7 @@ async fn futures_join<A: std::future::Future, B: std::future::Future>(
 
 /// A check of the bell each hour, which fails with `bell_missing` (of kind
 /// `unavailable`) until a bell is hung.
-const BELL_CHECK: (&str, &str) = (
+pub(crate) const BELL_CHECK: (&str, &str) = (
     "domains/home/schedules/bell_check.jadpo",
     r#"use home/actions { ring }
 
@@ -1577,7 +1577,7 @@ fn deployed_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
 }
 
 /// Waits, up to a minute, until `sql`'s count is `want`.
-fn until_count(runtime: &Runtime, host: &Harness, sql: &str, want: i64) {
+pub(crate) fn until_count(runtime: &Runtime, host: &Harness, sql: &str, want: i64) {
     let started = std::time::Instant::now();
     while runtime.block_on(host.count(sql)) != want {
         assert!(

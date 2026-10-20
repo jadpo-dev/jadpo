@@ -121,6 +121,10 @@ pub const DELIVERIES: SystemTable = SystemTable {
         column("last_failure", "jsonb", true),
         // `NULL` until it is first tried (chunk 6.1b).
         column("last_tried_at", "timestamptz(3)", true),
+        // When an operator last retried it, or resolved it as not done
+        // (`jadpo deliveries`; chunk 6.12): its `within:` counts from
+        // then rather than from its event. `NULL` for one never retried.
+        column("retried_at", "timestamptz(3)", true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {
@@ -441,24 +445,66 @@ pub const BATCH_CANCELS: SystemTable = SystemTable {
     indexes: &[],
 };
 
+/// What an operator did to a delivery or a schedule's run with `jadpo
+/// deliveries` (area 12, "What an operator sees"; area 14, question 13;
+/// chunk 6.12), in the store the item is in, written by the statement
+/// that acts on it: when, what (`retry`, `dismiss`, `cancel`,
+/// `resolve_done`, `resolve_not_done`), the item and its state then,
+/// and who did it: the name the operator's machine gives, and the
+/// database role PostgreSQL authenticated, which the statement reads
+/// itself. Kept, never deleted by the tick.
+pub const OPERATOR_ACTIONS: SystemTable = SystemTable {
+    table: "jadpo_operator_actions",
+    columns: &[
+        column("id", "uuid", false),
+        column("acted_at", "timestamptz(3)", false),
+        column("action", "text", false),
+        // `delivery` or `schedule_run`.
+        column("kind", "text", false),
+        column("item", "uuid", false),
+        // The subscriber's or the schedule's identity key, and a
+        // delivery's event type's.
+        column("target", "text", false),
+        column("event", "text", true),
+        column("was", "text", false),
+        column("operator", "text", false),
+        column("role", "text", false),
+    ],
+    primary_key: &["id"],
+    unique: &[],
+    foreign_keys: &[],
+    indexes: &[SystemIndex {
+        columns: &["item"],
+        reason: "system operator actions",
+    }],
+};
+
 /// What must commit with an action's own writes, in every store that
 /// holds an entity, since any of them can be written: the outbox, its
-/// deliveries, handled records and idempotency keys.
-pub const IN_EVERY_STORE: [&SystemTable; 4] =
-    [&OUTBOX, &DELIVERIES, &HANDLED_DELIVERIES, &IDEMPOTENCY_KEYS];
+/// deliveries, handled records and idempotency keys; and the log of what
+/// operators did to those deliveries (chunk 6.12).
+pub const IN_EVERY_STORE: [&SystemTable; 5] = [
+    &OUTBOX,
+    &DELIVERIES,
+    &HANDLED_DELIVERIES,
+    &IDEMPOTENCY_KEYS,
+    &OPERATOR_ACTIONS,
+];
 
-/// Schedules' state and runs, in `schedules: { store: }` (chunk 6.2).
-pub const SCHEDULE_TABLES: [&SystemTable; 2] = [&SCHEDULES, &SCHEDULE_RUNS];
+/// Schedules' state and runs, in `schedules: { store: }` (chunk 6.2), and
+/// the log of what operators did to those runs (chunk 6.12).
+pub const SCHEDULE_TABLES: [&SystemTable; 3] = [&SCHEDULES, &SCHEDULE_RUNS, &OPERATOR_ACTIONS];
 
 /// What a store some batch walks keeps (chunk 6.4).
 pub const BATCH_TABLES: [&SystemTable; 3] = [&BATCH_RUNS, &BATCH_PROBLEMS, &BATCH_CANCELS];
 
 /// Every system table.
-pub const ALL: [&SystemTable; 13] = [
+pub const ALL: [&SystemTable; 14] = [
     &OUTBOX,
     &DELIVERIES,
     &HANDLED_DELIVERIES,
     &IDEMPOTENCY_KEYS,
+    &OPERATOR_ACTIONS,
     &SCHEDULES,
     &SCHEDULE_RUNS,
     &SESSIONS,

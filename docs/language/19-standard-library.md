@@ -788,11 +788,9 @@ error: `GeoPoint` is the standard `Point` under another name
 3 | public type GeoPoint = Object {
   |             ^^^^^^^^ a latitude and a longitude
   reason: `GeoPoint` has only a latitude (`lat`) and a longitude (`lng`), which is the standard `Point`. Packages that each declare their own disagree on order and on names, and an app has to convert between them.
-  next: Use `Point` in the package's public types, converting at the edge with `geo.from_lat_lng` or `geo.from_lng_lat` where the provider sends a pair (agent), or decline with a reason (`decline type.standard_exists: "..."`) if it means something else
+  next: Use `Point` in the package's public types, converting at the edge with `geo.from_lat_lng` or `geo.from_lng_lat` where the provider sends a pair, or write `decline type.standard_exists: "<why>"` above it if this is deliberate (agent)
   rule: type.standard_exists
-  help: docs/language/19-standard-library.html#packages-use-the-standard-types
-
-check failed: 1 error, 1 file
+  help: docs/language/19-standard-library.html#type-standard-exists
 ```
 
 The error stops `check` and the build until one of two things is done:
@@ -822,8 +820,12 @@ required reason handles them, and review sees each one.
 > (chunk 5.5a2, under "A release that adds a standard type"); the data
 > migration and the acceptances for a type already stored or on the wire
 > come with area 18's records, and until then such a swap stops (below).
-> Packages' public types come with the publishing bar (chunk 7.1). Its
-> example is under "Errors". `Colour`'s signature came with it in chunk
+> Packages' public types came with the publishing bar in chunk 7.1b: the
+> error above is `jadpo package check`'s in a package's own repository,
+> and `jadpo check`'s for an installed package or the app's own
+> integration, on its `public` types only; a type a package keeps to
+> itself is the shape it decodes from (area 11, "Chosen in chunk 7.1b").
+> The app's example is under "Errors". `Colour`'s signature came with it in chunk
 > 5.5p, its alpha the first field a shape lets an `Object` leave out.
 > `Point`'s came with it in chunk 5.5s, on app code, where its error reads
 > as under "Errors"; the wording above is a package's, which comes with

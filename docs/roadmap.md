@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-19. This page is the only list of outstanding work: the
+**Updated:** 2026-10-20. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -725,12 +725,15 @@ chunks below, taken before Phase 7, in this order.
   `Faked`) retried and given up the same way, a test's `fakes:` coming
   with 7.2's generated fakes; examples 23 and 25 reading what their
   subscribers did.
-- [ ] **6.12 `jadpo deliveries`** `opus · high` (area 14, question 13;
-  area 12, "What an operator sees"): list, retry, dismiss, cancel and
-  resolve deliveries and schedule runs against an environment, each
-  logged with who did it, on the screens of the CLI design language;
-  `show`, `retry --not-done` and `abandon` come with multi-step calls
-  (7.5), and batch runs and parked queue messages with 6.4b and 7.7.
+- [x] **6.12 `jadpo deliveries`** `opus · high`. Built: `jadpo
+  deliveries` listing what failed or is in doubt (`--state` for the
+  rest), and `retry`, `dismiss`, `cancel` and `resolve --done|--not-done`
+  on a delivery or a schedule's latest run, each from its state only and
+  logged in `jadpo_operator_actions` with the operator's name and
+  database role; a retried delivery's fresh budget (`retried_at`), and a
+  schedule's run retried through the app's tick. `show`, `retry
+  --not-done` and `abandon` come with multi-step calls (7.5), and batch
+  runs and parked queue messages with 6.4b and 7.7.
 - [x] **5.13b `jadpo dev` and half-written files** `opus · high`.
   Built: the watcher behind `jadpo dev` and `jadpo test --watch` takes a
   file that had text and is empty now as a save in place not yet
@@ -740,6 +743,10 @@ chunks below, taken before Phase 7, in this order.
   truncates the routes file, then writes it 400 ms later, and the old
   version serves between; `config.rs` saves `.env.local` atomically.
 
+- [ ] **6.13 Keeping what an operator settled** `opus · high` (found in
+  chunk 6.12): deliveries an operator dismissed or cancelled, and their
+  events and log rows, deleted by the tick after a window (30 days, as
+  run records), so they stop piling up; recorded in area 12.
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in
@@ -794,15 +801,34 @@ The design is area 11 as revised on 2026-10-16, with its research in
   package to its line and digest in `jadpo.lock`; the `package.*` errors
   and example 26. Choices in area 11's "Chosen in chunk 7.1", with one
   flagged for Richard (a package's code doesn't see the app's `shared/`).
-- [ ] **7.1b Package surface and commands** `opus · high`, after 7.1:
-  `surface.jadpo_record` and `jadpo package show`, `jadpo package check`
-  with `type.standard_exists` on packages' public types in the publishing
-  bar (area 19, question 1), `jadpo package add` from a path and a git
-  repository with verification at install, `update` and `remove`, `link`
-  and `unlink` with the linked checkout compiled and refused where
-  production and CI build, and library packages' translations.
+- [x] **7.1b Package surface, `show` and `check`** `opus · high`, after
+  7.1 (split from 7.1b Package surface and commands on 2026-10-20).
+  Built: `surface.jadpo_record` (`record surface 1`) written from a
+  package's code, every entry pointing at its file; `jadpo package show`
+  of a package, one declaration in full or its guide, installed or the
+  app's own, and each own integration's surface in `build/providers/`;
+  `jadpo package check` in a package's own repository, checked as the
+  app's own integration, with the publishing bar, the version worked out
+  from the surface at the last tag, `publish.description_missing`,
+  `publish.breaking_change`, and `type.standard_exists` on a package's
+  public types only, in a package's words. Choices in area 11's "Chosen in
+  chunk 7.1b"; two questions for Richard (area 11, questions 27 and 28:
+  how an example in a description is written, and the changelog's form),
+  whose bar items say "not checked yet" meanwhile.
+- [ ] **7.1b2 Installing packages** `opus · high`, after 7.1b: `jadpo
+  package add` from a path and a git repository with verification at
+  install, `update` and `remove`, `link` and `unlink` with the linked
+  checkout compiled and refused where production and CI build.
+  Also the bar's two items decided 2026-10-20 (area 11 questions 27 and
+  28): examples in descriptions run as tests, and the changelog written
+  from the surface with the author's why.
+- [ ] **7.1b3 Library packages' translations** `opus · high`, after
+  7.1b: a library package's `translations/` (area 10, "Jadpo's and
+  packages' text"), `Postcodes.translations.<message>(...)`, the root
+  file's wording grouped by package, and its messages in the surface and
+  the publishing bar.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
-  7.1b: `connections:` entries naming a package (`package:`, `domains:`,
+  7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
   settings), the network report, lazy loading of a package's
   resources by file name with the check cached per digest, and two

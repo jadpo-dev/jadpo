@@ -61,6 +61,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
+  package       Show, check, import packages       show, check, import
 
 Data
   migrate       Write and apply migrations    new, apply, status
@@ -73,7 +74,6 @@ Look things up
 
 Change safely
   api           Rewrite the API records       update
-  package       Import a provider's API       import
   records       List and update the records   update
   declines      List or clear declines        list, clear
   fix           Fix a standard type's finding
@@ -82,6 +82,7 @@ Change safely
 
 Production
   schedules     Watch and control schedules   run, pause, resume, history
+  deliveries    Retry, dismiss or cancel deliveries
 
 Set up
   config        Check and set local settings  check, move, set
@@ -131,6 +132,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
+  package       Show, check, import packages       show · check · import
 
 Data
   migrate       Write and apply migrations    new · apply · status
@@ -143,7 +145,6 @@ Look things up
 
 Change safely
   api           Rewrite the API records       update
-  package       Import a provider's API       import
   records       List and update the records   update
   declines      List or clear declines        list · clear
   fix           Fix a standard type's finding
@@ -152,6 +153,7 @@ Change safely
 
 Production
   schedules     Watch and control schedules   run · pause · resume · history
+  deliveries    Retry, dismiss or cancel deliveries
 
 Set up
   config        Check and set local settings  check · move · set
@@ -305,19 +307,20 @@ fn help_json_is_the_whole_command_reference() {
             "test",
             "dev",
             "fmt",
+            "package",
             "migrate",
             "sql",
             "routes",
             "ai",
             "why",
             "api",
-            "package",
             "records",
             "declines",
             "fix",
             "suggest",
             "translations",
             "schedules",
+            "deliveries",
             "config",
             "completions",
             "lsp",
@@ -704,19 +707,20 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "test\tRun tests",
             "dev\tRun the app and reload on every save",
             "fmt\tFormat source files",
+            "package\tShow, check, import packages",
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
             "ai\tShow what a prompt sends",
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",
-            "package\tImport a provider's API",
             "records\tList and update the records",
             "declines\tList or clear declines",
             "fix\tFix a standard type's finding",
             "suggest\tHint where a standard type or operation fits",
             "translations\tKeep translations up to date",
             "schedules\tWatch and control schedules",
+            "deliveries\tRetry, dismiss or cancel deliveries",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion",
             "lsp\tRun the language server for editors",

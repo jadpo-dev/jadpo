@@ -84,6 +84,9 @@ pub enum Values {
     Query,
     /// The name of one of the project's schedules.
     Schedule,
+    /// A delivery's or schedule run's id, which nothing completes: they
+    /// are in a database, not the project (chunk 6.12).
+    Id,
 }
 
 #[derive(Debug)]
@@ -682,61 +685,81 @@ pub static COMMANDS: &[Command] = &[
     },
     Command {
         name: "package",
-        synonyms: &[],
-        group: "Change safely",
-        summary: "Import a provider's API",
-        description: "`import openapi <file>` reads an OpenAPI 3 document, as JSON, once and offline, \
-                      into the app's own integration in shared/providers/<name>/<version>/, in the \
-                      package format (area 11): its index, provider.jadpo with the file and its \
-                      digest under `imported:`, a resource per tag with its operations, and the \
-                      types and failures they reach. Another Jadpo application's document is read \
-                      exactly, from its x-jadpo fields; any other's fields map to Jadpo's types by \
-                      their formats, and what it leaves out is listed to check. Importing again \
-                      merges: what the description adds is added, and corrections are kept.",
+        synonyms: &["packages"],
+        group: "Build and check",
+        summary: "Show, check, import packages",
+        description: "`show <name>` prints a package's description, licence, version, kind and public \
+                      surface (area 11), installed in packages/ or the app's own in shared/providers/; \
+                      `show <name> <declaration>` prints one operation, function, type or failure in \
+                      full with its file, and `--guide` prints the package's GUIDE.md. `check`, run in \
+                      a package's own repository, checks it as the app's own integration, runs the \
+                      publishing bar (no errors, a description on every public declaration, its tests, \
+                      a version its changes since the last tag allow) and writes surface.jadpo_record. \
+                      `import openapi <file>` reads an OpenAPI 3 document, as JSON, once and offline, \
+                      into the app's own integration in shared/providers/<name>/<version>/: another \
+                      Jadpo application's exactly, from its x-jadpo fields, any other's by its formats, \
+                      with what it leaves out listed to check; importing again merges, keeping \
+                      corrections. `add`, `update`, `remove`, `link` and `unlink` come with installing \
+                      packages.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: import",
+                description: "What to do: show, check or import",
                 required: true,
-                values: Values::Fixed(crate::package_import::ACTIONS),
+                values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
-                name: "format",
-                description: "The description's format: openapi",
-                required: false,
-                values: Values::Fixed(crate::package_import::FORMATS),
-            },
-            Argument {
-                name: "file",
-                description: "The description to read",
+                name: "name",
+                description: "The package, such as holidays; for check, its folder; for import, openapi",
                 required: false,
                 values: Values::Path,
             },
+            Argument {
+                name: "declaration",
+                description: "One of its declarations, such as uk.dates; for import, the file",
+                required: false,
+                values: Values::Fixed(&[]),
+            },
         ],
-        flags: &[Flag {
-            name: "--as",
-            value: Some("name"),
-            description: "The package's name and version",
-            values: &[],
-        }],
+        flags: &[
+            Flag {
+                name: "--guide",
+                value: None,
+                description: "Print the package's GUIDE.md",
+                values: &[],
+            },
+            Flag {
+                name: "--as",
+                value: Some("name"),
+                description: "For import: its name, such as Tidepool.v1",
+                values: &[],
+            },
+        ],
         examples: &[
+            Example {
+                description: "See what the holidays package offers",
+                command: "jadpo package show holidays",
+            },
+            Example {
+                description: "See one of its functions in full",
+                command: "jadpo package show holidays uk.dates",
+            },
+            Example {
+                description: "Run the publishing bar in a package's own repository",
+                command: "jadpo package check",
+            },
             Example {
                 description: "Import another Jadpo application's API",
                 command: "jadpo package import openapi ../orders/build/openapi/main.json",
-            },
-            Example {
-                description: "Import a provider's document under a name of your own",
-                command: "jadpo package import openapi tidepool.json --as Tidepool.v1",
-            },
-            Example {
-                description: "List what the import leaves to check, as data for tools",
-                command: "jadpo package import openapi tidepool.json --json",
             },
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
         raises: &[
             &rule::CLI_PACKAGE_NOT_OPENAPI,
             &rule::CLI_PACKAGE_UNREADABLE,
+            &rule::PUBLISH_BREAKING_CHANGE,
+            &rule::PUBLISH_DESCRIPTION_MISSING,
+            &rule::TEST_FAILED,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
@@ -856,6 +879,106 @@ pub static COMMANDS: &[Command] = &[
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::schedules,
+    },
+    Command {
+        name: "deliveries",
+        synonyms: &["delivery"],
+        group: "Production",
+        summary: "Retry, dismiss or cancel deliveries",
+        description: "Lists the deliveries of events to subscribers, and the schedules' runs, that need \
+                      an operator (area 12): those that failed, and those whose outcome is unknown, \
+                      newest first, 20 a page; --state lists those pending, running, dismissed or \
+                      cancelled instead. `retry` sends a failed delivery again on the app's next \
+                      tick, with a fresh retry budget, or asks the app's tick to run a schedule whose \
+                      latest run failed and waits for it. `dismiss` sets a failed one aside, `cancel` \
+                      stops a pending one, and `resolve` settles one whose outcome is unknown, once \
+                      the provider shows whether it happened: --not-done retries it. Each action is \
+                      logged in the database with who did it, and runs none of the app's code. An id \
+                      is the last 8 hex digits the list shows, or more. The databases are the ones \
+                      the stores' connections' settings give, or a running jadpo dev's, or the one \
+                      --url names (with --store when there are several). Times are in UTC.",
+        arguments: &[
+            Argument {
+                name: "action",
+                description: "What to do: list, retry, dismiss, cancel or resolve",
+                required: false,
+                values: Values::Fixed(crate::deliveries::ACTIONS),
+            },
+            Argument {
+                name: "id",
+                description: "The delivery's or schedule run's id, as the list shows it",
+                required: false,
+                values: Values::Id,
+            },
+        ],
+        flags: &[
+            Flag {
+                name: "--state",
+                value: Some("state"),
+                description: "List those in this state instead",
+                values: crate::deliveries::STATES,
+            },
+            Flag {
+                name: "--page",
+                value: Some("n"),
+                description: "Which page of the list, from 1, newest first",
+                values: &[],
+            },
+            Flag {
+                name: "--done",
+                value: None,
+                description: "Resolve as done: the outside call happened",
+                values: &[],
+            },
+            Flag {
+                name: "--not-done",
+                value: None,
+                description: "Resolve it as not done, which retries it",
+                values: &[],
+            },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "The database the deliveries are in",
+                values: &[],
+            },
+            Flag {
+                name: "--store",
+                value: Some("name"),
+                description: "The store --url's database is",
+                values: &[],
+            },
+        ],
+        examples: &[
+            Example {
+                description: "See what failed or is in doubt",
+                command: "jadpo deliveries",
+            },
+            Example {
+                description: "Deliver a failed delivery again, once the cause is fixed",
+                command: "jadpo deliveries retry 4fa2c09e",
+            },
+            Example {
+                description: "Settle one whose outside call happened",
+                command: "jadpo deliveries resolve 9b0d44a1 --done",
+            },
+            Example {
+                description: "See what is waiting to run",
+                command: "jadpo deliveries --state pending",
+            },
+        ],
+        arguments_rule: &rule::CLI_DELIVERIES_ARGUMENTS,
+        raises: &[
+            &rule::DELIVERIES_NOT_FOUND,
+            &rule::DELIVERIES_UNAVAILABLE,
+            &rule::DELIVERIES_WRONG_STATE,
+            &rule::SCHEDULES_LEASE_HELD,
+            &rule::SCHEDULES_NO_TICK,
+            &rule::SCHEDULES_RUN_FAILED,
+            &rule::SCHEDULES_UNAVAILABLE,
+            &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+        ],
+        run: commands::deliveries,
     },
     Command {
         name: "why",

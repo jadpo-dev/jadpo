@@ -25,37 +25,11 @@ use jadpo_term::{Block, ChangeMark, Fact, Json, Outcome, Screen};
 use crate::fmt::project_not_found;
 use crate::run::{Call, Reply};
 
-/// What `jadpo package` does.
-pub const ACTIONS: &[crate::table::Value] = &[crate::table::Value {
-    name: "import",
-    description: "Read a published description into the app's own integration",
-}];
-
-/// The formats `jadpo package import` takes.
-pub const FORMATS: &[crate::table::Value] = &[crate::table::Value {
-    name: "openapi",
-    description: "An OpenAPI 3.0 or 3.1 document, as JSON",
-}];
-
 /// The formats area 11 decides that aren't built yet.
 const PLANNED: [&str; 4] = ["smithy", "postman", "har", "dts"];
 
 /// The width findings are wrapped to, inside the screen's gutter.
 const WIDTH: usize = 76;
-
-pub fn package(call: &Call) -> Reply {
-    match call.arguments.first().map(String::as_str) {
-        Some("import") => import(call),
-        Some(other) => Reply::failed(arguments(
-            format!("`{other}` isn't something `jadpo package` does"),
-            "`jadpo package import openapi <file>` reads an OpenAPI document into the app's own integration.",
-        )),
-        None => Reply::failed(arguments(
-            "`jadpo package` needs to know what to do".to_string(),
-            "`jadpo package import openapi <file>` reads an OpenAPI document into the app's own integration.",
-        )),
-    }
-}
 
 fn arguments(message: String, reason: &str) -> Diagnostic {
     Diagnostic::new(&rule::CLI_PACKAGE_ARGUMENTS, message)
@@ -63,7 +37,8 @@ fn arguments(message: String, reason: &str) -> Diagnostic {
         .next("Run `jadpo package import openapi <file>`")
 }
 
-fn import(call: &Call) -> Reply {
+/// `jadpo package import <format> <file>`, which `jadpo package` hands on.
+pub(crate) fn import(call: &Call) -> Reply {
     let cwd = call.cwd.clone().unwrap_or_else(|| PathBuf::from("."));
     let (Some(format), Some(file)) = (call.arguments.get(1), call.arguments.get(2)) else {
         return Reply::failed(arguments(

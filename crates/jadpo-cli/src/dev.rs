@@ -742,7 +742,15 @@ pub(crate) fn prepare(
     );
     let permissions = jadpo_check::policy::policy_clean(db, project)
         .then(|| jadpo_check::policy::report::report(db, project));
-    let _ = crate::derived::write(root, graph, errors, &openapi, permissions.as_ref());
+    let surfaces = crate::derived::surfaces(db, project);
+    let _ = crate::derived::write(
+        root,
+        graph,
+        errors,
+        &openapi,
+        permissions.as_ref(),
+        &surfaces,
+    );
     let blocking: Vec<Diagnostic> = diagnostics
         .into_iter()
         .filter(jadpo_check::blocks_running)

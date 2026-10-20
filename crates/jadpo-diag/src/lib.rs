@@ -122,6 +122,8 @@ rules! {
         "14-tooling.html#command-errors", "Configuration entry requires an interactive terminal";
     CLI_DECLINES_ARGUMENTS: "cli.declines_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Declines command has invalid arguments";
+    CLI_DELIVERIES_ARGUMENTS: "cli.deliveries_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Deliveries command has invalid arguments";
     CLI_DEV_ARGUMENTS: "cli.dev_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Dev command has invalid arguments";
     CLI_DEV_PORT_INVALID: "cli.dev_port_invalid", area 14, Error, Agent,
@@ -344,6 +346,12 @@ rules! {
         "01-project-layout-and-modules.html#decline-not-declinable", "Decline names a rule that can't be declined";
     DECLINE_UNUSED: "decline.unused", area 1, Error, Agent,
         "01-project-layout-and-modules.html#decline-unused", "Decline's rule no longer fires on its declaration";
+    DELIVERIES_NOT_FOUND: "deliveries.not_found", area 14, Error, Human,
+        "14-tooling.html#command-errors", "No delivery or schedule run has the id given";
+    DELIVERIES_UNAVAILABLE: "deliveries.unavailable", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Deliveries' database couldn't be read";
+    DELIVERIES_WRONG_STATE: "deliveries.wrong_state", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Delivery or schedule run isn't in a state the action applies to";
     EFFECT_FUNCTION_CALLS_ACTION: "effect.function_calls_action", area 3, Error, Agent,
         "03-logic.html#effect-function-calls-action", "Function calls an action or query";
     EFFECT_FUNCTION_PERSISTENCE: "effect.function_persistence", area 3, Error, Agent,
@@ -560,6 +568,10 @@ rules! {
         "21-ai.html#prompt-placeholder-unused", "A prompt's field is written nowhere in its text";
     PROMPT_SECTION_MISSING: "prompt.section_missing", area 21, Error, Agent,
         "21-ai.html#prompt-section-missing", "A prompt and its file don't make its two sections, each once and in order";
+    PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Package's surface breaks its last release within one major version";
+    PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's public declaration has no description";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,
