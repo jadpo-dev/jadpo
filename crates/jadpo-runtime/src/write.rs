@@ -55,7 +55,7 @@ pub(crate) async fn write(
     // version it was loaded at; one changed since is a concurrent change,
     // which runs the action again (area 6, "Outside calls hold no
     // transaction"; chunk 7.4).
-    if let Some(row) = &plan.row {
+    if let Some(row) = plan.row.as_ref().filter(|_| ctx.loaded_before_call()) {
         let id = source_value(ctx, &row.id, inputs, site, now)?;
         let id = match to_sql(&id, SqlType::Uuid) {
             Ok(id) => id,

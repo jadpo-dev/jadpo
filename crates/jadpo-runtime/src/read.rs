@@ -328,8 +328,12 @@ struct Env<'a> {
     fetch: Cell<i64>,
     /// The ids of the rows each statement naming its rows loaded, with
     /// how their versions are read (chunk 7.4).
-    loaded: Option<&'a RefCell<Vec<(RowVersions, Vec<SqlValue>)>>>,
+    loaded: Option<&'a RefCell<Vec<Loaded>>>,
 }
+
+/// The ids of rows one statement loaded, with how their versions are read
+/// (chunk 7.4).
+type Loaded = (RowVersions, Vec<SqlValue>);
 
 enum Problem {
     Store(StoreError),
