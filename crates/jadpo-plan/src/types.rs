@@ -274,6 +274,11 @@ impl Types {
         if key.kind() != Some(Kind::Type) || self.node(key).is_some() {
             return None;
         }
+        // `FirstSignIn` or a sign-in event a test builds (chunk 7.3b4),
+        // checked as each field's type where it is built.
+        if let Some(fields) = jadpo_std::http::test_built_fields(key.name()) {
+            return Some(self.generic_shape(key.name(), fields));
+        }
         let entry = jadpo_std::standard_type(key.name())?;
         match entry.holds {
             jadpo_std::standard::Holds::Object(fields) => {

@@ -518,6 +518,49 @@ pub struct MagicLinkPlan {
 /// what `on_first_sign_in:`'s action is given.
 pub const FIRST_SIGN_IN: &str = "FirstSignIn";
 
+/// The built-in events every sign-in publishes (area 8, "Events"; chunk
+/// 7.3b4), which only the runtime emits: a session or API token started
+/// (`SignedIn`), a link, code or first sign-in refused (`SignInRefused`),
+/// and an address past `failed_codes_per_day:` (`SignInCodesDisabled`).
+/// None carries an address, a link, a code or a token.
+pub const SIGNED_IN: &str = "SignedIn";
+pub const SIGN_IN_REFUSED: &str = "SignInRefused";
+pub const SIGN_IN_CODES_DISABLED: &str = "SignInCodesDisabled";
+pub const SIGN_IN_EVENTS: [&str; 3] = [SIGNED_IN, SIGN_IN_REFUSED, SIGN_IN_CODES_DISABLED];
+
+/// The identity key the outbox keeps the built-in sign-in event `name`
+/// under, and its subscribers listen for: `jadpo.SignedIn`.
+pub fn sign_in_event_key(name: &str) -> Option<&'static str> {
+    match name {
+        SIGNED_IN => Some("jadpo.SignedIn"),
+        SIGN_IN_REFUSED => Some("jadpo.SignInRefused"),
+        SIGN_IN_CODES_DISABLED => Some("jadpo.SignInCodesDisabled"),
+        _ => None,
+    }
+}
+
+/// The fields, in order, of the built-in objects a test, fixture or seed
+/// may build to call an action directly (chunk 7.3b4): `FirstSignIn`,
+/// which `on_first_sign_in:`'s action is given, and the sign-in events,
+/// which a subscriber's action is given. Only the runtime makes them
+/// anywhere else.
+pub fn test_built_fields(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        FIRST_SIGN_IN => Some(&["method", "address", "address_verified", "subject", "name"]),
+        SIGNED_IN => Some(&["user_id", "method", "first_time"]),
+        SIGN_IN_REFUSED => Some(&["method", "reason", "user_id"]),
+        SIGN_IN_CODES_DISABLED => Some(&["user_id", "until"]),
+        _ => None,
+    }
+}
+
+/// The built-in sign-in event whose identity key is `key`.
+pub fn sign_in_event_named(key: &str) -> Option<&'static str> {
+    SIGN_IN_EVENTS
+        .into_iter()
+        .find(|name| sign_in_event_key(name) == Some(key))
+}
+
 /// The namespace of magic links' generated operations (area 8, "Writing
 /// the routes yourself").
 pub const MAGIC_LINKS: &str = "magic_links";
