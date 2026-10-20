@@ -3248,26 +3248,10 @@ mod tests {
                 );
             }
             // Area 15's categories.
-            let categories = [
-                "identifying",
-                "contact",
-                "financial",
-                "online",
-                "demographic",
-                "government_id",
-                "location",
-                "health",
-                "biometric",
-                "genetic",
-                "beliefs",
-                "ethnicity",
-                "sex_life",
-                "criminal",
-            ];
             assert!(
-                entry
-                    .personal()
-                    .is_none_or(|category| categories.contains(&category)),
+                entry.personal().is_none_or(|category| crate::ai::CATEGORIES
+                    .iter()
+                    .any(|(name, _)| *name == category)),
                 "{}",
                 entry.name
             );

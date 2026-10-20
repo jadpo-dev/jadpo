@@ -44,8 +44,44 @@ pub const CONDITIONS: [crate::RuleKey; 5] = [
 ];
 
 /// The keys `ai:` takes besides `limits:`: `embedding_dimensions:` since
-/// chunk 5.5v4.
-pub const KEYS: [&str; 3] = ["connection", "models", "embedding_dimensions"];
+/// chunk 5.5v4, `personal_data:` since chunk 5.5v5b.
+pub const KEYS: [&str; 4] = [
+    "connection",
+    "models",
+    "embedding_dimensions",
+    PERSONAL_DATA,
+];
+
+/// `personal_data: { allowed: }`, the personal-data categories the
+/// application's prompts and embedded texts may send its model (area 21,
+/// "Personal data sent to a model"; chunk 5.5v5b).
+pub const PERSONAL_DATA: &str = "personal_data";
+
+/// The one key `personal_data:` takes.
+pub const ALLOWED: &str = "allowed";
+
+/// Area 15's personal-data categories, as `PersonalData.<name>` names
+/// them, each with whether it is sensitive (GDPR's special categories and
+/// CCPA/CPRA's extra ones), in the page's order.
+pub const CATEGORIES: [(&str, bool); 14] = [
+    ("identifying", false),
+    ("contact", false),
+    ("financial", false),
+    ("online", false),
+    ("demographic", false),
+    ("government_id", true),
+    ("location", true),
+    ("health", true),
+    ("biometric", true),
+    ("genetic", true),
+    ("beliefs", true),
+    ("ethnicity", true),
+    ("sex_life", true),
+    ("criminal", true),
+];
+
+/// The enum area 15's categories are values of.
+pub const PERSONAL_DATA_ENUM: &str = "PersonalData";
 
 /// The keys of [`KEYS`] every `ai:` gives.
 pub const REQUIRED_KEYS: [&str; 2] = ["connection", "models"];
@@ -56,13 +92,10 @@ pub const LIMITS: &str = "limits";
 
 /// The keys area 21 gives `ai:` that later work builds, each with the
 /// work that does.
-pub const LATER_KEYS: [(&str, &str); 2] = [
-    ("personal_data", "roadmap chunk 5.5v5b"),
-    (
-        "keep_content",
-        "area 15's encrypted fields, after the first build",
-    ),
-];
+pub const LATER_KEYS: [(&str, &str); 1] = [(
+    "keep_content",
+    "area 15's encrypted fields, after the first build",
+)];
 
 /// How far a provider's structured-output mode goes (area 21, "How a
 /// provider fills it", `schema: { mode: }`).

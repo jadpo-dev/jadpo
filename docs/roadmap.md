@@ -1715,14 +1715,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   test`; a caller's day and a sandboxed prompt's reported usage in `jadpo
   dev`, and `jadpo ai usage`). A setting overriding a price moved to
   5.5v7. Choices in area 21's "Chosen in chunk 5.5v5".
-- [ ] **5.5v5b Personal data to models** `opus · high` (area 21, "Personal
-  data sent to a model"), after 5.5v5 (split from 5.5v5 on 2026-10-20):
-  `personal_data: { allowed: }` with the flow check from placeholders back
-  to marked fields (`personal:` read on fields for it, and the standard
-  types' own categories), `to_models: false`. Done when a marked field
-  reaching a prompt unlisted fails to compile. The prompts' entry in the
-  personal-data report comes with the report itself (area 15, after the
-  first build, item 1).
+- [x] **5.5v5b Personal data to models** `opus · high` (area 21, "Personal
+  data sent to a model"), after 5.5v5 (split from 5.5v5 on 2026-10-20).
+  Built: `ai: { personal_data: { allowed: } }`, left out allowing none
+  (`jadpo_check::ai_personal`); `personal:` and `to_models:` read on an
+  entity's and an event's fields (`type.setting_value` when they don't);
+  the standard types' own categories; and the flow check, the policy
+  walk run again in its own mode (`policy::flow::models`): each field of
+  a `Prompt` built and each text `ai.embed` sends followed back through
+  variables, calls, text and lists built from it, a query's `Output` and
+  an event's payload, a parameter checked where it is passed, a marked
+  field read from a value it can't follow counting as that field, what
+  decided a value not sent with it; `semantic.ai_personal_data_not_allowed`
+  and `semantic.ai_field_refused`, naming the field and its category.
+  Tests in `crates/jadpo-check/tests/ai_personal.rs`. The prompts' entry
+  in the personal-data report comes with the report itself (area 15,
+  after the first build, item 1). Choices in area 21's "Chosen in chunk
+  5.5v5b".
 - [x] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
   an `AiStream`, the final and error events, the stream fake. The check

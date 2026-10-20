@@ -12,6 +12,7 @@
 pub mod ai;
 pub mod ai_limits;
 pub mod ai_mapping;
+pub mod ai_personal;
 pub mod batches;
 mod case;
 pub mod client_address;
@@ -217,6 +218,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             );
             out.extend(
                 policy::flow::subscriber_store_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                policy::flow::model_problems(db, project, file)
                     .iter()
                     .cloned(),
             );
