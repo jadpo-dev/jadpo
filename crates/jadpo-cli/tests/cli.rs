@@ -61,7 +61,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
-  package       Show, check, import packages       show, check, import
+  package       Show, check, import packages  show, check, import
 
 Data
   migrate       Write and apply migrations    new, apply, status
@@ -132,7 +132,7 @@ Build and check
   test          Run tests
   dev           Run the app and reload on every save
   fmt           Format source files
-  package       Show, check, import packages       show · check · import
+  package       Show, check, import packages  show · check · import
 
 Data
   migrate       Write and apply migrations    new · apply · status

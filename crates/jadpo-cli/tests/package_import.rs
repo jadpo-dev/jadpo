@@ -597,7 +597,7 @@ fn what_the_importer_cant_read_is_refused() {
             &["package", "import", "raml", "s3.json"],
             "cli.package_arguments",
         ),
-        (&["package", "publish"], "cli.package_arguments"),
+        (&["package", "unpack"], "cli.package_arguments"),
     ];
     for (args, rule) in cases {
         let mut with_json = args.to_vec();
