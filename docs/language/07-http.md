@@ -217,9 +217,12 @@ new work, commits nothing and answers 504 `deadline_exceeded`. That holds
 for work that never waits too, such as a long calculation: the runtime
 checks the deadline as the work runs, and a body that finishes past it
 commits nothing. The deadline
-covers integration calls, which have their own shorter timeouts (area 11);
-longer work answers `status: SuccessStatus.accepted` and continues in a
-subscriber, or the route waits for it with `settle:`.
+covers integration calls, which have their own shorter timeouts (area 11):
+each call's `timeout:` times its attempts, summed along the longest way
+through the route's action, must fit within it (area 11's
+`route.calls_past_deadline`, built in chunk 7.5e). Longer work answers
+`status: SuccessStatus.accepted` and continues in a subscriber, or the
+route waits for it with `settle:`.
 
 ```jadpo fragment
 POST /import {
