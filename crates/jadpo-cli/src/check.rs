@@ -86,7 +86,11 @@ pub fn check(call: &Call) -> Reply {
     if layout == Layout::Project && loaded.unreadable.is_empty() {
         let errors = diagnostics.len();
         let graph = jadpo_check::graph::graph(db, loaded.project);
-        let openapi = derived::openapi(db, loaded.project, &title(&loaded.root));
+        let openapi = derived::openapi(
+            db,
+            loaded.project,
+            &jadpo_check::routes::openapi::title(db, loaded.project),
+        );
         let permissions = jadpo_check::policy::policy_clean(db, loaded.project)
             .then(|| jadpo_check::policy::report::report(db, loaded.project));
         let surfaces = derived::surfaces(db, loaded.project);
@@ -120,15 +124,6 @@ pub fn check(call: &Call) -> Reply {
         loaded.unreadable.len(),
         (layout, written),
         elapsed,
-    )
-}
-
-/// The application's name, which titles its OpenAPI documents: its
-/// folder's name until `app.jadpo` gives one.
-pub(crate) fn title(root: &std::path::Path) -> String {
-    root.file_name().map_or_else(
-        || "Jadpo application".to_string(),
-        |name| name.to_string_lossy().into_owned(),
     )
 }
 

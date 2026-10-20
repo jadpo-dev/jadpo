@@ -155,7 +155,13 @@ pub fn load_into(target: &Path, db: Database) -> Loaded {
             BTreeMap::new()
         }
     };
-    let project = Project::new(&db, files, other_files, layout, identities, records);
+    let name = root
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let project = Project::builder(files, other_files, layout, identities, records)
+        .name(name)
+        .new(&db);
     Loaded {
         db,
         project,

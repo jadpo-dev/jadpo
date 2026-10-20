@@ -655,6 +655,8 @@ async fn run_route(
                 First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
             }
         }
+        // Each API's own OpenAPI document (area 7, "OpenAPI"), as it is.
+        (None, Run::OpenApi(document)) => openapi(request, request_id, document),
         (None, _) => {
             run_with_caller(
                 app, executor, ctx, request, request_id, route, segments, deadline, within, caller,
@@ -703,6 +705,32 @@ fn exchange(request: &Request, request_id: &str, (token, expires): (String, i64)
             ("cache-control".to_string(), "no-store".to_string()),
         ],
         body: body.into_bytes(),
+        ..Response::default()
+    }
+}
+
+/// `GET <prefix>/openapi.json`'s answer (area 7, "OpenAPI"): the API's
+/// document. Like any route that takes no input, it refuses a query string
+/// or a body.
+fn openapi(request: &Request, request_id: &str, document: &str) -> Response {
+    if request
+        .query
+        .as_deref()
+        .is_some_and(|query| !query.is_empty())
+        || !request.body.iter().all(u8::is_ascii_whitespace)
+    {
+        return invalid_input(
+            request_id,
+            &[Problem {
+                field: String::new(),
+                rule: "unknown_field".to_string(),
+            }],
+        );
+    }
+    Response {
+        status: 200,
+        headers: vec![("content-type".to_string(), "application/json".to_string())],
+        body: document.as_bytes().to_vec(),
         ..Response::default()
     }
 }
@@ -940,7 +968,7 @@ async fn run_with_caller(
                     }
                 }
                 // Answered once signed in, without running anything.
-                Run::Exchange | Run::Passkey(_) => Outcome::Fault(ctx.fault(
+                Run::Exchange | Run::Passkey(_) | Run::OpenApi(_) => Outcome::Fault(ctx.fault(
                     crate::FaultKind::Defect("an exchange with no key to trade".into()),
                     Frame::ENTRY,
                 )),

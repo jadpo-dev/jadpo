@@ -2107,7 +2107,7 @@ goes out and when it is answered (`capability::Logged`: connection,
 operation, `Repeat`, `Source`, when, how long on the monotonic clock,
 `Ended`), never its input or answer; `Ctx::take_calls` takes it, and
 `serve_request` leaves a request's on `Response::calls` for `jadpo
-calls` (its screen and full values in development are chunk 7.2's). A
+calls` (its screen and full values in development are chunk 7.2d's). A
 driver's `Answer` decides what the call gives: its value, its
 operation's own failure for the site to map (`effects::Unanswered::
 Failed`), or the runtime's `unavailable`, `misconfigured` or, for an

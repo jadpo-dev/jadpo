@@ -102,6 +102,8 @@ rules! {
         "07-http.html#api-prefix-overlap", "Two APIs share a prefix";
     API_PREFIX_REQUIRED: "api.prefix_required", area 7, Error, Agent,
         "07-http.html#api-prefix-required", "Declared API has no prefix";
+    API_SERVE_OPENAPI_INVALID: "api.serve_openapi_invalid", area 7, Error, Agent,
+        "07-http.html#api-serve-openapi-invalid", "API serve_openapi is not true or false";
     API_SETTING_UNKNOWN: "api.setting_unknown", area 7, Error, Agent,
         "07-http.html#api-setting-unknown", "API setting is not one an API takes";
     CLI_AI_ARGUMENTS: "cli.ai_arguments", area 14, Error, Agent,
@@ -140,6 +142,10 @@ rules! {
         "14-tooling.html#command-errors", "Migrate command has invalid arguments";
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package command has invalid arguments";
+    CLI_PACKAGE_NOT_OPENAPI: "cli.package_not_openapi", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Description to import is not an OpenAPI 3 document";
+    CLI_PACKAGE_UNREADABLE: "cli.package_unreadable", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Description to import could not be read as JSON";
     CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Terminal presentation option is invalid";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,

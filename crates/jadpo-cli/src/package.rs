@@ -3,8 +3,10 @@
 //! description, licence, version, kind and public surface, or one
 //! declaration in full, or its guide; `check` runs the publishing bar in a
 //! package's own repository, its examples as tests, and writes its
-//! `surface.jadpo_record` and its changelog's new section. Installing
-//! (`add`, `update`, `remove`, `link`, `unlink`) is in [`crate::install`].
+//! `surface.jadpo_record` and its changelog's new section. `import` reads
+//! a provider's description into the app's own integration
+//! ([`crate::package_import`], chunk 7.2). Installing (`add`, `update`,
+//! `remove`, `link`, `unlink`) is in [`crate::install`].
 //!
 //! `show` answers what the package is first, its facts on the grid, then a
 //! list per section and a footer counting them, and the one command that
@@ -69,6 +71,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Run the publishing bar and write surface.jadpo_record",
     },
     Value {
+        name: "import",
+        description: "Read a provider's OpenAPI document into the app",
+    },
+    Value {
         name: "add",
         description: "Install a package from a folder or a git repository's tag",
     },
@@ -94,7 +100,6 @@ pub const ACTIONS: &[Value] = &[
 /// work that brings each.
 const LATER: &[(&str, &str)] = &[
     ("new", "package repositories"),
-    ("import", "the OpenAPI importer"),
     ("record", "recordings"),
     ("conform", "capabilities"),
     ("publish", "the hosted registry"),
@@ -124,6 +129,7 @@ pub fn package(call: &Call) -> Reply {
         Some("remove") => crate::install::remove(call),
         Some("link") => crate::install::link(call),
         Some("unlink") => crate::install::unlink(call),
+        Some("import") => crate::package_import::import(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()

@@ -62,6 +62,10 @@ POST /devices
 DELETE /devices/{phone_token_id: Uuid}
     status 204
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 GET /outlets
     authentication none
     output List<OutletView>

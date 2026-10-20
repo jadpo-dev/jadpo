@@ -17,7 +17,22 @@
 //! says `security: []`, and every other answers 401, 403 and 503 for the
 //! ways signing in fails. With a revocation delay and service keys, an API
 //! that accepts them lists the runtime's `POST /auth/exchange`, marked
-//! `x-jadpo-generated` (area 7, question 12).
+//! `x-jadpo-generated` (area 7, question 12), and each API that serves its
+//! document lists `GET <prefix>/openapi.json` the same way
+//! ([`super::served`], chunk 7.2).
+//!
+//! The `x-jadpo` fields carry what plain OpenAPI lacks (area 7, chunk
+//! 7.2), so area 11's importer makes an exact package from the document:
+//! `x-jadpo-changes` on every operation (a route that runs an action
+//! changes something), `x-jadpo-idempotency` on every operation that
+//! reads an `Idempotency-Key` (the header, whether the API requires it,
+//! what a key keeps, for how long, and the codes a key's repeat answers
+//! with), `x-jadpo-failure` on each failure the application declares (its
+//! `code` and `kind`) and `x-jadpo-constraints` on every field,
+//! placeholder and output: its type and rules as the API record writes
+//! them. Each
+//! route's operation is tagged with its group, and the group's `///`
+//! description is the tag's.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -213,7 +228,8 @@ pub fn document(
     let mut refs: BTreeSet<Key> = BTreeSet::new();
     let mut failure_schemas: BTreeMap<String, Value> = BTreeMap::new();
     let mut paths: BTreeMap<String, Value> = BTreeMap::new();
-    for (_, route) in &routes {
+    let mut tags: BTreeMap<String, Option<String>> = BTreeMap::new();
+    for (group, route) in &routes {
         let facts = facts(db, project, &lookup, route);
         let mut operation = operation(
             &wire,
@@ -228,8 +244,19 @@ pub fn document(
         if !route.authentication.needs_caller() {
             operation.set("security", Vec::<Value>::new());
         }
+        operation.set("tags", vec![Value::from(group.name.as_str())]);
+        tags.entry(group.name.clone())
+            .or_insert_with(|| group.doc.clone());
         let entry = paths.entry(route.path()).or_insert_with(Value::object);
         entry.set(&route.method.word().to_ascii_lowercase(), operation);
+    }
+    // Its own document (area 7, "OpenAPI").
+    if let Some(served) = super::served::served_by(db, project, api) {
+        let entry = paths.entry(served.path()).or_insert_with(Value::object);
+        entry.set(
+            "get",
+            served_operation(&served, &methods, &mut failure_schemas),
+        );
     }
     let exchange =
         identity.exchanges() && methods.contains(&jadpo_std::AuthenticationMethod::ServiceKey);
@@ -352,7 +379,132 @@ pub fn document(
     out.set_some("security", security);
     out.set("paths", Value::Object(paths));
     out.set("components", components);
+    let tags: Vec<Value> = tags
+        .into_iter()
+        .map(|(name, doc)| {
+            let mut tag = Value::object();
+            tag.set("name", name.as_str());
+            tag.set_some("description", doc.as_deref());
+            tag
+        })
+        .collect();
+    out.set_some("tags", tags);
     Some(out)
+}
+
+/// The runtime's `GET <prefix>/openapi.json` (area 7, "OpenAPI"): this
+/// document, under the API's own default authentication.
+fn served_operation(
+    served: &super::served::Served,
+    methods: &[jadpo_std::AuthenticationMethod],
+    failure_schemas: &mut BTreeMap<String, Value>,
+) -> Value {
+    use jadpo_std::AuthenticationMethod as M;
+    let mut out = Value::object();
+    out.set(
+        "operationId",
+        format!(
+            "get_{}",
+            served
+                .segments
+                .iter()
+                .map(|segment| segment.replace(['-', '.'], "_"))
+                .collect::<Vec<_>>()
+                .join("_")
+        ),
+    );
+    out.set(
+        "description",
+        "This document: the API's routes, what each takes and answers with, and how clients sign in.",
+    );
+    out.set("x-jadpo-generated", true);
+    out.set("x-jadpo-changes", false);
+    let mut responses = Value::object();
+    let mut document = Value::object();
+    document.set("type", "object");
+    document.set("description", "An OpenAPI 3.1 document.");
+    responses.set("200", response("This document.", Some(document)));
+    if served.authentication.needs_caller() {
+        let users = methods
+            .iter()
+            .any(|method| matches!(method, M::BrowserSession | M::ApiToken));
+        let services = methods.contains(&M::ServiceKey);
+        let mut by_status: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
+        for (status, name, code, description, when) in SIGN_IN {
+            let answers = match when {
+                When::Always => true,
+                When::Users => users,
+                When::Services => services,
+                When::CookieWrite | When::OtherKind => false,
+            };
+            if !answers {
+                continue;
+            }
+            failure_schemas.insert(name.to_string(), envelope(code, description, None));
+            by_status.entry(status).or_default().push((code, name));
+        }
+        for (status, mut failures) in by_status {
+            failures.sort();
+            let mut schemas: Vec<Value> =
+                failures.iter().map(|(_, name)| reference(name)).collect();
+            let codes: Vec<String> = failures
+                .iter()
+                .map(|(code, _)| format!("`{code}`"))
+                .collect();
+            let schema = if schemas.len() == 1 {
+                schemas.remove(0)
+            } else {
+                let mut any = Value::object();
+                any.set("oneOf", schemas);
+                any
+            };
+            responses.set(
+                status,
+                response(
+                    &format!("Fails with {}.", crate::and_list(&codes)),
+                    Some(schema),
+                ),
+            );
+        }
+    } else {
+        out.set("security", Vec::<Value>::new());
+    }
+    responses.set("400", shared_response("InvalidRequest"));
+    responses.set("413", shared_response("RequestTooLarge"));
+    responses.set("422", shared_response("InvalidInput"));
+    responses.set("429", shared_response("RateLimited"));
+    responses.set("500", shared_response("InternalFault"));
+    responses.set("504", shared_response("DeadlineExceeded"));
+    out.set("responses", responses);
+    out
+}
+
+/// `x-jadpo-idempotency` (area 7, chunk 7.2): how an operation that reads
+/// an `Idempotency-Key` treats one, so a client, and area 11's importer,
+/// knows whether repeating it under the same key is safe.
+fn idempotency_extension(required: bool, keys: Keys) -> Value {
+    let mut out = Value::object();
+    out.set("header", "Idempotency-Key");
+    out.set("required", required);
+    out.set(
+        "keeps",
+        match keys {
+            Keys::Kept => "response",
+            Keys::Claimed => "request",
+            Keys::Nothing => "nothing",
+        },
+    );
+    out.set(
+        "window",
+        jadpo_std::Dur {
+            millis: i128::from(jadpo_std::http::IDEMPOTENCY_KEEP_MS),
+        }
+        .to_string(),
+    );
+    out.set("max_length", jadpo_std::http::IDEMPOTENCY_KEY_MAX);
+    out.set("in_use", "conflict");
+    out.set("reused", "idempotency_key_reused");
+    out
 }
 
 /// The runtime's `POST /auth/exchange` (area 8, "Ways to sign in"): a
@@ -370,6 +522,8 @@ fn exchange_operation(
         "Trades the service key the request signs in with for a token that signs the service in without a read until it expires, within the application's revocation delay; once it has, exchange the key again.",
     );
     out.set("x-jadpo-generated", true);
+    // It keeps nothing: the key's read signed its token.
+    out.set("x-jadpo-changes", false);
     let mut requirement = Value::object();
     requirement.set(M::ServiceKey.name(), Vec::<Value>::new());
     out.set("security", vec![requirement]);
@@ -468,6 +622,10 @@ fn passkey_operation(
         },
     );
     out.set("x-jadpo-generated", true);
+    out.set(
+        "x-jadpo-changes",
+        step.method() != jadpo_std::HttpMethod::Get,
+    );
     if !step.authentication().needs_caller() {
         out.set("security", Vec::<Value>::new());
     }
@@ -911,7 +1069,7 @@ fn operation(
         parameter.set("name", name);
         parameter.set("in", "path");
         parameter.set("required", true);
-        parameter.set("schema", wire.schema(&type_ref(lookup, ty), refs));
+        parameter.set("schema", constrained(wire, &type_ref(lookup, ty), refs));
         parameters.push(parameter);
     }
     let input_key = route
@@ -940,7 +1098,7 @@ fn operation(
             parameter.set("name", header.clone().unwrap_or_else(|| name.to_string()));
             parameter.set("in", place);
             parameter.set_some("required", !optional && default.is_none());
-            parameter.set("schema", wire.schema(ty, refs));
+            parameter.set("schema", constrained(wire, ty, refs));
             parameters.push(parameter);
         }
         if !route.method.reads_query() {
@@ -979,7 +1137,12 @@ fn operation(
         schema.set("maxLength", jadpo_std::http::IDEMPOTENCY_KEY_MAX);
         parameter.set("schema", schema);
         parameters.push(parameter);
+        out.set(
+            "x-jadpo-idempotency",
+            idempotency_extension(key_required, facts.keys),
+        );
     }
+    out.set("x-jadpo-changes", writes);
     out.set_some("parameters", parameters);
 
     let mut responses = Value::object();
@@ -989,7 +1152,7 @@ fn operation(
         // either way, and 202 when the work hadn't settled in time (area
         // 7, "Waiting for follow-on work").
         (Some(output), Some(settle)) => {
-            let schema = wire.schema(&type_ref(lookup, output), refs);
+            let schema = constrained(wire, &type_ref(lookup, output), refs);
             responses.set(
                 &success,
                 response(
@@ -1014,7 +1177,7 @@ fn operation(
             &success,
             response(
                 "Success.",
-                Some(wire.schema(&type_ref(lookup, output), refs)),
+                Some(constrained(wire, &type_ref(lookup, output), refs)),
             ),
         ),
         (None, _) => responses.set(&success, response("Success, with no content.", None)),
@@ -1057,14 +1220,16 @@ fn operation(
             details.set("required", required);
             details
         });
-        failure_schemas.insert(
-            name.clone(),
-            envelope(
-                &detail.code,
-                detail.message.as_deref().unwrap_or(&detail.code),
-                details,
-            ),
+        let mut schema = envelope(
+            &detail.code,
+            detail.message.as_deref().unwrap_or(&detail.code),
+            details,
         );
+        let mut marked = Value::object();
+        marked.set("code", detail.code.as_str());
+        marked.set_some("kind", detail.kind.as_deref());
+        schema.set("x-jadpo-failure", marked);
+        failure_schemas.insert(name.clone(), schema);
         by_status
             .entry(status.to_string())
             .or_default()
@@ -1172,6 +1337,16 @@ fn operation(
     out
 }
 
+/// A field's or placeholder's schema with `x-jadpo-constraints`: its type
+/// and rules as the API record writes them (`Text { min_length: 1,
+/// max_length: 200 }`, `List<TodoView>`, `Money?`), which say exactly
+/// what JSON Schema can only approximate (area 7, chunk 7.2).
+fn constrained(wire: &Wire<'_>, ty: &jadpo_graph::TypeRef, refs: &mut BTreeSet<Key>) -> Value {
+    let mut schema = wire.schema(ty, refs);
+    schema.set("x-jadpo-constraints", wire.render(ty, refs));
+    schema
+}
+
 /// An object's or enum's schema.
 fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
     let Some(node) = wire.node(key) else {
@@ -1245,7 +1420,7 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
                             if let Detail::Field { ty, .. } = &field.detail {
                                 let field_name =
                                     field.name.rsplit('.').next().unwrap_or(&field.name);
-                                properties.set(field_name, wire.schema(ty, refs));
+                                properties.set(field_name, constrained(wire, ty, refs));
                                 required.push(Value::from(field_name));
                             }
                         }
@@ -1286,7 +1461,7 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
                     continue;
                 }
                 let field_name = field.name.rsplit('.').next().unwrap_or(&field.name);
-                let mut schema = wire.schema(ty, refs);
+                let mut schema = constrained(wire, ty, refs);
                 if let Some(default) = default {
                     schema.set(
                         "description",
@@ -1304,6 +1479,17 @@ fn type_schema(wire: &Wire<'_>, key: &Key, refs: &mut BTreeSet<Key>) -> Value {
         }
     }
     out
+}
+
+/// What titles the documents: the application's name, its folder's until
+/// `app.jadpo` gives one (area 7, "OpenAPI").
+pub fn title(db: &dyn Db, project: Project) -> String {
+    let name = project.name(db);
+    if name.is_empty() {
+        "Jadpo application".to_string()
+    } else {
+        name.clone()
+    }
 }
 
 /// Every API's document, by API name, each at the version its record
