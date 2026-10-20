@@ -7,6 +7,10 @@ WHERE "id" = $1
 -- $1: argument 0 as Uuid
 -- columns: uuid, text
 -- record BoardWithCards: id = column 0, name = column 1, cards = include 0
+-- row versions of board, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "board"
+--   WHERE "id" = ANY($1)
 
 -- include 0: list, matching column 0
   SELECT "key"."id", "row"."id", "row"."stage", "row"."published_at"
@@ -25,3 +29,7 @@ WHERE "id" = $1
   -- $2: clock.now as Timestamp
   -- columns: uuid, uuid, enum Stage, instant
   -- record CardView: id = column 1, stage = column 2
+  -- row versions of card, by the id in column 1:
+  --   SELECT "id", "xmin"::text
+  --   FROM "card"
+  --   WHERE "id" = ANY($1)

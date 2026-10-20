@@ -2102,7 +2102,7 @@ impl<'p> Machine<'p> {
                 self.arguments(args, id);
             }
             // A store's put or read: an outside call, before the action's
-            // first read or write (area 16, chunk 6.4b).
+            // first write (area 16, chunk 6.4b; area 6, chunk 7.4).
             Callee::Files { op, .. } => {
                 self.tasks.push(Task::Invoke {
                     target: Target::Files(*op),
@@ -2113,7 +2113,7 @@ impl<'p> Machine<'p> {
                 self.arguments(args, id);
             }
             // A provider's operation: an outside call, before the action's
-            // first read or write (area 11, chunk 7.2c).
+            // first write (area 11, chunk 7.2c; area 6, chunk 7.4).
             Callee::Provider { .. } => {
                 self.tasks.push(Task::Invoke {
                     target: Target::Provider,

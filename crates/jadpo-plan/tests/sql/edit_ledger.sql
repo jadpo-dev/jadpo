@@ -23,3 +23,8 @@ RETURNING "id", "owner_id", "title", "balance", "import_reference"
 --   $2: Caller(User) as Uuid
 --   $3: Caller(Signed) as Bool
 -- no row: the entity's not-found failure
+-- loaded before a call: ledger row input 0 held to its version first
+--   SELECT "xmin"::text
+--   FROM "ledger"
+--   WHERE "id" = $1
+--   FOR NO KEY UPDATE

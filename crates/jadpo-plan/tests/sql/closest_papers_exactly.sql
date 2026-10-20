@@ -7,3 +7,7 @@ LIMIT 10
 -- $1: argument 0 as Vector
 -- columns: uuid, vector, vector, distance
 -- record Nearest: item = (Paper: id = column 0, meaning = column 1, full_meaning = column 2), distance = column 3
+-- row versions of paper, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "paper"
+--   WHERE "id" = ANY($1)

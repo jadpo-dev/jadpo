@@ -337,9 +337,9 @@ impl Report {
             ),
             FaultKind::CallInTransaction(call) => (
                 format!(
-                    "`{call}` would have left the process while this action's transaction was open, after its first read or write; no transaction is held while an outside call is out, so it wasn't sent."
+                    "`{call}` would have left the process while this action's transaction was open, after its first write; no transaction is held while an outside call is out, so it wasn't sent."
                 ),
-                "Make the call before the action's first read or write".to_string(),
+                "Make the call before the action's first write".to_string(),
                 "agent",
             ),
         };

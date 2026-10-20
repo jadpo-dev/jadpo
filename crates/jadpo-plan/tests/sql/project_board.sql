@@ -8,6 +8,10 @@ WHERE "id" = $1
 -- columns: uuid, text, uuid, bool
 -- the caller may read a row: column 3
 -- record ProjectBoardView: id = column 0, name = column 1, owner = include 0, todos = include 1
+-- row versions of project, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "project"
+--   WHERE "id" = ANY($1)
 
 -- include 0: one, matching column 2
   SELECT "id", "name"
@@ -19,6 +23,10 @@ WHERE "id" = $1
   -- $3: caller Signed as Bool
   -- columns: uuid, text
   -- record UserCard: id = column 0, name = column 1, profile = include 0
+  -- row versions of user, by the id in column 0:
+  --   SELECT "id", "xmin"::text
+  --   FROM "user"
+  --   WHERE "id" = ANY($1)
 
   -- include 0: optional, matching column 0
     SELECT "user_id", "bio"
@@ -48,6 +56,10 @@ WHERE "id" = $1
   -- $3: caller User as Uuid
   -- columns: uuid, uuid, text, uuid, instant
   -- record TodoWithOwner: id = column 1, title = column 2, owner = include 0
+  -- row versions of todo, by the id in column 1:
+  --   SELECT "id", "xmin"::text
+  --   FROM "todo"
+  --   WHERE "id" = ANY($1)
 
   -- include 0: one, matching column 3
     SELECT "id", "name"
@@ -59,3 +71,7 @@ WHERE "id" = $1
     -- $3: caller Signed as Bool
     -- columns: uuid, text
     -- record UserView: id = column 0, name = column 1
+    -- row versions of user, by the id in column 0:
+    --   SELECT "id", "xmin"::text
+    --   FROM "user"
+    --   WHERE "id" = ANY($1)

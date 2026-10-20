@@ -13,5 +13,9 @@ LIMIT $7
 -- $7: rows to fetch as Int8
 -- columns: uuid, text, geography("point")
 -- record BakeryCard: id = column 0, name = column 1, spot = column 2
+-- row versions of bakery, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "bakery"
+--   WHERE "id" = ANY($1)
 -- recheck: geo.within(column 2, argument 0)
 -- recheck keeps: 200

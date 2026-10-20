@@ -691,8 +691,8 @@ mod tests {
         assert_eq!(fake.sent().len(), 1);
     }
 
-    /// An action that makes a call before its first read or write: then
-    /// one after it, by which time its transaction is open.
+    /// An action that makes a call before its first write: then one after
+    /// it, by which time its transaction is open.
     struct Calls {
         before: Option<Result<Value, Unanswered>>,
         after: Option<Result<Value, Unanswered>>,
@@ -717,7 +717,7 @@ mod tests {
 
     /// No call goes out while the action's transaction is open (area 6,
     /// "Outside calls hold no transaction"): one made after the action's
-    /// first read or write is refused with a fault naming it, and never
+    /// first write is refused with a fault naming it, and never
     /// reaches the driver; one made before goes out.
     #[test]
     fn a_call_inside_an_open_transaction_is_refused_before_it_goes_out() {

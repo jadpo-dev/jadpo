@@ -91,8 +91,7 @@ pub fn shown_size(bytes: u64) -> String {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum FilesOp {
     /// `store.put(bytes, type)`: keeps the bytes under a key the runtime
-    /// makes, before the action's first read or write, and gives the
-    /// `File`.
+    /// makes, before the action's first write, and gives the `File`.
     Put,
     /// `store.read(file)`: the file's bytes, whole, as `FileContents`.
     Read,
