@@ -11,6 +11,7 @@ use std::cell::Cell;
 use crate::support;
 
 use jadpo_interp::{Executor, FaultKind, Outcome, Program, Value};
+use jadpo_runtime::capability::Recording;
 use jadpo_runtime::{Clock, Ctx, Env, Host, MemoryHost};
 use support::{fault, int, list, main, text, value};
 
@@ -111,11 +112,14 @@ fn run_on(
     let id = program.plan().find(name).expect("callable");
     let mut ctx = Ctx::new(program.places(), host, env);
     match replay {
-        Some(bytes) => ctx.replay_random(bytes),
-        None => ctx.record_random(),
+        Some(random) => ctx.replay_run(Recording {
+            random,
+            calls: Vec::new(),
+        }),
+        None => ctx.record_run(),
     }
     let outcome = jadpo_runtime::block_on(program.run(&mut ctx, id, Vec::new())).expect("ran");
-    let kept = ctx.recorded_random().map(<[u8]>::to_vec);
+    let kept = ctx.recorded_run().map(|recording| recording.random.clone());
     (outcome, kept)
 }
 

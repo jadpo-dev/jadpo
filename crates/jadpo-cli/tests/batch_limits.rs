@@ -13,17 +13,17 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, deliver};
-use jadpo_runtime::{Clock, Ctx, Database, Env, Executor, Host, Outcome, Row, SqlValue};
+use jadpo_runtime::{Executor, Outcome, SqlValue};
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -178,78 +178,22 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// The store, a clock the test moves, and random bytes from a counter.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    clock: Cell<i64>,
-    drawn: Cell<u64>,
-}
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(self.clock.get())
-    }
-}
-
 /// When the test starts: 2026-10-19T09:00:00Z.
 const T0: i64 = 1_792_400_400_000;
 
 /// A day, in milliseconds.
 const DAY: i64 = 24 * 60 * 60 * 1000;
 
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::fixed(self.clock.get()),
-        };
-        Ctx::new(program.places(), self, env)
+/// Runs `action` with `args` as no one signed in, giving the work it
+/// left for after its response.
+async fn call(host: &Harness, program: &Program, action: &str, args: Vec<Value>) -> Vec<Deferred> {
+    let id = program.plan().find(action).expect("the action");
+    let mut ctx = host.ctx(program.places());
+    match program.run(&mut ctx, id, args).await {
+        Outcome::Value(_) => {}
+        other => panic!("`{action}` runs: {other:?}"),
     }
-
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    async fn count(&self, sql: &str) -> i64 {
-        match self.rows(sql).await.first().and_then(|row| row.first()) {
-            Some(SqlValue::Int8(n)) => *n,
-            Some(SqlValue::Int4(n)) => i64::from(*n),
-            other => panic!("not a count: {other:?}"),
-        }
-    }
-
-    /// Runs `action` with `args` as no one signed in, giving the work it
-    /// left for after its response.
-    async fn call(&self, program: &Program, action: &str, args: Vec<Value>) -> Vec<Deferred> {
-        let id = program.plan().find(action).expect("the action");
-        let mut ctx = self.ctx(program);
-        match program.run(&mut ctx, id, args).await {
-            Outcome::Value(_) => {}
-            other => panic!("`{action}` runs: {other:?}"),
-        }
-        ctx.take_deferred()
-    }
+    ctx.take_deferred()
 }
 
 struct Loaded {
@@ -282,13 +226,8 @@ fn load(name: &str) -> Option<Loaded> {
     })
 }
 
-fn host(url: &str) -> Store {
-    Store {
-        db: postgres(url).expect("store"),
-        seeds: Cell::new(0),
-        clock: Cell::new(T0),
-        drawn: Cell::new(0),
-    }
+fn host(url: &str) -> Harness {
+    Harness::postgres(url).at(T0).random_from(0)
 }
 
 /// Runs `work` and what it sets off, one piece at a time, as deferred work
@@ -296,7 +235,7 @@ fn host(url: &str) -> Store {
 /// when it stopped.
 async fn drive(
     program: &Program,
-    host: &Store,
+    host: &Harness,
     work: Vec<Deferred>,
     limit: usize,
 ) -> (usize, usize) {
@@ -314,7 +253,7 @@ async fn drive(
             }
             Deferred::Deliveries(deliveries) => {
                 for delivery in deliveries {
-                    let mut ctx = host.ctx(program);
+                    let mut ctx = host.ctx(program.places());
                     deliver(program, &mut ctx, delivery).await;
                     queue.extend(ctx.take_deferred());
                 }
@@ -325,9 +264,9 @@ async fn drive(
 }
 
 /// Starts the loop on a shelf of one item and runs it until it stops.
-async fn loop_until_it_stops(program: &Program, host: &Store) {
-    host.call(program, "add_item", vec![Value::text("a")]).await;
-    let work = host.call(program, "touch_all", vec![]).await;
+async fn loop_until_it_stops(program: &Program, host: &Harness) {
+    call(host, program, "add_item", vec![Value::text("a")]).await;
+    let work = call(host, program, "touch_all", vec![]).await;
     let (ran, left) = drive(program, host, work, 200).await;
     assert_eq!(left, 0, "the loop stopped, after {ran} pieces");
 }

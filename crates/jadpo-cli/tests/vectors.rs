@@ -27,9 +27,10 @@ use std::path::{Path, PathBuf};
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Executor, Host, MigrateError, Migration, Outcome, SqlValue,
+    Clock, Ctx, Database, Env, Executor, MigrateError, Migration, Outcome, SqlValue,
 };
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 use crate::support;
@@ -456,19 +457,6 @@ fn a_nearest_query_s_migration_builds_its_hnsw_index() {
     );
 }
 
-/// A host whose one store is a PostgreSQL database.
-struct Store(jadpo_host_native::Postgres);
-
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.0)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 #[test]
 fn a_filtered_nearest_query_returns_the_five_code_works_out_through_its_index() {
     if !jadpo_test::live() || pgvector_too_old() {
@@ -541,7 +529,7 @@ fn a_filtered_nearest_query_returns_the_five_code_works_out_through_its_index() 
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
     let id = program.plan().find("answer_from").expect("the action");
-    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let host = Harness::postgres(&url);
     let found = runtime.block_on(async {
         let env = Env {
             seed: Some(1),
@@ -818,7 +806,7 @@ fn answered(root: &Path, url: &str, question: &[f32]) -> Vec<(String, String)> {
     let loaded = jadpo_db::load(root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
     let id = program.plan().find("answer_from").expect("the action");
-    let host = Store(jadpo_host_native::postgres(url).expect("store"));
+    let host = Harness::postgres(url);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let found = runtime.block_on(async {
         let env = Env {
@@ -1116,7 +1104,7 @@ fn a_distance_that_is_no_number_meets_no_condition() {
     let shown = |n: u8| jadpo_runtime::uuid_text(&id(n));
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let host = Harness::postgres(&url);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let call = |action: &str, args: Vec<Value>| {
         let id = program.plan().find(action).expect("the action");
@@ -1237,7 +1225,7 @@ fn a_filtered_nearest_query_fills_its_limit_past_twenty_thousand_records() {
     );
     let loaded = jadpo_db::load(&root);
     let program = Program::load(&loaded.db, loaded.project).expect("the project checks");
-    let host = Store(jadpo_host_native::postgres(&url).expect("store"));
+    let host = Harness::postgres(&url);
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let id = program.plan().find("find_nearest_far").expect("the action");
     let found = runtime.block_on(async {

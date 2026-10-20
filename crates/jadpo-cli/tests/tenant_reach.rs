@@ -14,18 +14,18 @@
 //! The server is the one `JADPO_TEST_DATABASE_URL` names or one started
 //! from the machine's PostgreSQL tools; `JADPO_SKIP_POSTGRES=1` skips them.
 
-use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use jadpo_cli::{Output, run};
-use jadpo_host_native::{Postgres, Runtime, postgres};
+use jadpo_host_native::Runtime;
 use jadpo_interp::Program;
 use jadpo_runtime::runner::{Deferred, run_deferred};
-use jadpo_runtime::{Caller, Clock, Ctx, Database, Env, Executor, Host, Outcome, Row, SqlValue};
+use jadpo_runtime::{Caller, Executor, Outcome, SqlValue};
 use jadpo_std::http::PrincipalKind;
 use jadpo_term::Environment;
+use jadpo_test::host::Harness;
 use jadpo_value::Value;
 
 fn write(root: &Path, path: &str, text: &str) {
@@ -401,95 +401,41 @@ fn project(name: &str) -> PathBuf {
     root
 }
 
-/// A store, a fixed clock and random bytes from a counter.
-struct Store {
-    db: Postgres,
-    seeds: Cell<u64>,
-    drawn: Cell<u64>,
+/// Each household's name and how many tallies it holds, by name.
+async fn tallies(host: &Harness) -> Vec<(String, i64)> {
+    host.rows("SELECT \"h\".\"name\", count(\"t\".\"id\") FROM \"household\" AS \"h\" LEFT JOIN \"tally\" AS \"t\" ON \"t\".\"household_id\" = \"h\".\"id\" GROUP BY \"h\".\"name\" ORDER BY \"h\".\"name\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(name), SqlValue::Int8(n)] => (name.clone(), *n),
+            other => panic!("not a tally: {other:?}"),
+        })
+        .collect()
 }
 
-impl Host for Store {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(&self.db)
-    }
-
-    fn random(&self, bytes: &mut [u8]) -> bool {
-        for chunk in bytes.chunks_mut(8) {
-            self.drawn.set(self.drawn.get() + 1);
-            let mut z = self.drawn.get().wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
-        true
-    }
-
-    fn now_ms(&self) -> Option<i64> {
-        Some(T0)
-    }
-}
-
-impl Store {
-    fn ctx<'p>(&'p self, program: &'p Program) -> Ctx<'p> {
-        self.seeds.set(self.seeds.get() + 1);
-        let env = Env {
-            seed: Some(self.seeds.get()),
-            clock: Clock::fixed(T0),
-        };
-        Ctx::new(program.places(), self, env)
-    }
-
-    async fn rows(&self, sql: &str) -> Vec<Row> {
-        self.db
-            .query_once(sql, &[])
-            .await
-            .expect("the store answers")
-    }
-
-    async fn count(&self, sql: &str) -> i64 {
-        match self.rows(sql).await.first().and_then(|row| row.first()) {
-            Some(SqlValue::Int8(n)) => *n,
-            other => panic!("not a count: {other:?}"),
-        }
-    }
-
-    /// Each household's name and how many tallies it holds, by name.
-    async fn tallies(&self) -> Vec<(String, i64)> {
-        self.rows("SELECT \"h\".\"name\", count(\"t\".\"id\") FROM \"household\" AS \"h\" LEFT JOIN \"tally\" AS \"t\" ON \"t\".\"household_id\" = \"h\".\"id\" GROUP BY \"h\".\"name\" ORDER BY \"h\".\"name\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(name), SqlValue::Int8(n)] => (name.clone(), *n),
-                other => panic!("not a tally: {other:?}"),
-            })
-            .collect()
-    }
-
-    /// Each chore's title and ticks, by title.
-    async fn ticks(&self) -> Vec<(String, i64)> {
-        self.rows("SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"")
-            .await
-            .into_iter()
-            .map(|row| match row.as_slice() {
-                [SqlValue::Text(title), SqlValue::Int8(n)] => (title.clone(), *n),
-                other => panic!("a chore's row: {other:?}"),
-            })
-            .collect()
-    }
+/// Each chore's title and ticks, by title.
+async fn ticks(host: &Harness) -> Vec<(String, i64)> {
+    host.rows("SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"")
+        .await
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [SqlValue::Text(title), SqlValue::Int8(n)] => (title.clone(), *n),
+            other => panic!("a chore's row: {other:?}"),
+        })
+        .collect()
 }
 
 /// Runs `action` with `args` as `caller`, signed in, or as no one, and
 /// gives back its outcome and the work it left for after its response.
 async fn call(
     program: &Program,
-    host: &Store,
+    host: &Harness,
     action: &str,
     args: Vec<Value>,
     caller: Option<&Value>,
 ) -> (Outcome, Vec<Deferred>) {
     let id = program.plan().find(action).expect("the action");
-    let mut ctx = host.ctx(program);
+    let mut ctx = host.ctx(program.places());
     ctx.set_caller(caller.map(|person| Caller {
         value: person.clone(),
         key: "user".to_string(),
@@ -550,11 +496,7 @@ fn a_caller_reaches_no_other_tenant_through_an_event_or_a_batch() {
     let databases = jadpo_test::database::TestDatabases::new(steps, false);
     let copy = databases.acquire().expect("a test database");
     let (_, url) = copy.stores.get("main").expect("main").clone();
-    let host = Store {
-        db: postgres(&url).expect("store"),
-        seeds: Cell::new(0),
-        drawn: Cell::new(0),
-    };
+    let host = Harness::postgres(&url).at(T0).random_from(0);
     let program = &program;
     let host = &host;
     let runtime = Runtime::new().expect("runtime");
@@ -639,7 +581,7 @@ fn a_caller_reaches_no_other_tenant_through_an_event_or_a_batch() {
         let ran = run_deferred(program, host, work).await;
         assert!(matches!(&ran[..], [Outcome::Value(_)]), "{ran:?}");
         assert_eq!(
-            host.tallies().await,
+            tallies(host).await,
             [("Ash".to_string(), 0), ("Birch".to_string(), 1)]
         );
 
@@ -686,7 +628,7 @@ fn a_caller_reaches_no_other_tenant_through_an_event_or_a_batch() {
             2
         );
         assert_eq!(
-            host.ticks().await,
+            ticks(host).await,
             [
                 ("ash-dishes".to_string(), 1),
                 ("ash-floor".to_string(), 1),
