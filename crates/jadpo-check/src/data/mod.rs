@@ -2585,6 +2585,10 @@ pub const SERVICE_KEYS: &str = jadpo_std::system::SERVICE_KEYS.table;
 pub const PASSKEYS: &str = jadpo_std::system::PASSKEYS.table;
 pub const PASSKEY_CHALLENGES: &str = jadpo_std::system::PASSKEY_CHALLENGES.table;
 
+/// The magic links' table, beside the sessions they start, when
+/// `magic_link:` is declared (area 8, "Magic links").
+pub const SIGN_IN_REQUESTS: &str = jadpo_std::system::SIGN_IN_REQUESTS.table;
+
 /// The physical schema the source asks for: every entity's table in its
 /// store, and the system tables. Fields that can't be stored and entities
 /// in a wrong store are left out; their errors stop the build anyway.
@@ -2666,6 +2670,17 @@ pub fn schema(db: &dyn Db, project: Project) -> Arc<Schema> {
         found.tables.insert(
             PASSKEY_CHALLENGES.to_string(),
             columns::system_table(&system::PASSKEY_CHALLENGES),
+        );
+    }
+    if let Some(store) = crate::identity::identity(db, project).sessions_store()
+        && crate::identity::identity(db, project)
+            .magic_links()
+            .is_some()
+        && let Some(found) = schema.stores.get_mut(store)
+    {
+        found.tables.insert(
+            SIGN_IN_REQUESTS.to_string(),
+            columns::system_table(&system::SIGN_IN_REQUESTS),
         );
     }
     if let Some(store) = crate::identity::identity(db, project).keys_store()

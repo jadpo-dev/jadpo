@@ -1252,7 +1252,10 @@ one statement. Passkeys (`jadpo_passkeys`: each one's user, its
 credential ID, the user handle its device keeps and the
 `WebAuthnCredential` it is; and `jadpo_passkey_challenges`: each ceremony
 under way, by its challenge's verifier, with what it is bound to and when
-it expires; area 8, chunk 5.5z) go beside the sessions they start.
+it expires; area 8, chunk 5.5z) and magic links
+(`jadpo_sign_in_requests`: one row per address, by its digest, with the
+latest link's and code's verifiers and the counts the limits read; area
+8, chunk 7.3b) go beside the sessions they start.
 Schedule state, each schedule's lease included, goes in the store
 `schedules: { store: }` names in `app.jadpo`, or the only store when there
 is one (area 12): `jadpo_schedules` (each schedule's next due time, lease

@@ -26,6 +26,10 @@ quote
 display_name
 recipient
 attachment
+# CSS properties in Jadpo's own sign-in email's inline styles
+# (`font-weight`, `white-space`; area 16, chunk 7.3b)
+weight
+white
 # the records' names (chunk 5.5m2)
 tracking
 

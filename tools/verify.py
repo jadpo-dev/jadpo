@@ -146,10 +146,11 @@ POSTGRES = [
      [('jadpo-cli', 'standard_storage'), ('jadpo-cli', 'sql_literals'),
       ('jadpo-cli', 'json_columns')], []),
     # Passkeys registered and signed in with through the generated routes,
-    # and each refusal (area 8, chunk 5.5z); configuration through the
+    # and each refusal (area 8, chunk 5.5z); magic links asked for,
+    # confirmed and limited (chunk 7.3b); configuration through the
     # commands, a database opened from a setting among them (area 10).
-    ('live PostgreSQL: passkeys and configuration',
-     [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'config')], []),
+    ('live PostgreSQL: passkeys, magic links and configuration',
+     [('jadpo-cli', 'passkeys'), ('jadpo-cli', 'magic_links'), ('jadpo-cli', 'config')], []),
     # Queries, `get` and `create` run through `jadpo test`, and
     # aggregate queries against what code works out (area 6).
     ('live PostgreSQL: queries', [('jadpo-cli', 'queries'), ('jadpo-cli', 'aggregates')], []),

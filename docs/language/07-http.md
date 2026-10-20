@@ -460,7 +460,7 @@ only, never pages: the app's frontend owns every page (decided
 OpenAPI like any route, marked generated (question 12).
 
 - A generated route takes a `path:` setting where its feature is
-  configured (`magic_link: { path: "/login" }`), or `routes: false`,
+  configured (`magic_link: { path: "/login" }`), or `generate_routes: false`,
   after which the app writes its own routes over the feature's generated
   operations (`magic_links.request`, `magic_links.redeem`,
   `sessions.start`), which keep every protection.
@@ -2892,7 +2892,7 @@ is written.
 | Waiting for follow-on work | `settle: { answer: <query>(result...) within: <duration> }`: after commit the runtime delivers the action's events and their follow-ons at once and waits until each has succeeded, failed for good or been parked, then answers with the query and the route's status; past `within:` the same query answers 202; `output:` is the query's result; a repeat with the same `Idempotency-Key` reruns the query (Richard, from an outside review) | 2026-10-15 |
 | Route authentication (chosen in chunk 4.3) | A route's `authentication:` takes `RouteAuthentication.none` or `.fresh`; anything else is `route.authentication_invalid`, which offers both without an edit, since one opens the route. An API's `authentication:` is a list of `AuthenticationMethod`s `authentication.jadpo` declares, each once, else `api.authentication_invalid`; an API that names none accepts every declared method. Area 8's Decisions hold the rest | 2026-10-16 |
 | Failure wording for clients | Every failure a route can produce is worded in every supported locale in the app's language files; `jadpo build` writes `<api>.failures.<locale>.json` beside each OpenAPI document; dates and numbers stay values for the client to format; `message` stays English (Richard, area 10) | 2026-10-16 |
-| Generated routes | Endpoints only, never pages; `path:` where the feature is configured or `routes: false` over generated operations that keep every protection; webhook routes change path but cannot be switched off; response shapes fixed (Richard) | 2026-10-16 |
+| Generated routes | Endpoints only, never pages; `path:` where the feature is configured or `generate_routes: false` over generated operations that keep every protection; webhook routes change path but cannot be switched off; response shapes fixed (Richard) | 2026-10-16 |
 | Rate-limited response | `429`, code `rate_limited`, `Retry-After` and the IETF `RateLimit` and `RateLimit-Policy` headers, wording from translations (Richard) | 2026-10-16 |
 | Serving OpenAPI | Every API serves its OpenAPI document at `<prefix>/openapi.json` under its own default authentication, `serve_openapi: false` to turn it off; the route is listed, marked generated, in its own OpenAPI document, its API record and `jadpo routes` (Richard, area 11) | 2026-10-16 |
 | `x-jadpo` fields | Jadpo's OpenAPI documents carry `x-jadpo-changes`, `x-jadpo-idempotency`, `x-jadpo-failure` (`code`, `kind`), `x-jadpo-constraints` and `x-jadpo-events`; other tools ignore them; area 11's importer reads them to make an exact package (Richard, area 11) | 2026-10-16 |

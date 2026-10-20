@@ -45,6 +45,7 @@ mod guarantees;
 mod health;
 pub mod idempotency;
 pub mod identity;
+pub(crate) mod magic_links;
 pub(crate) mod passkeys;
 pub mod signed;
 
@@ -672,6 +673,15 @@ async fn run_route(
                 First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
             }
         }
+        // The runtime answers the magic-link routes itself (area 8, "Magic
+        // links"), with no idempotency key: a link or a code is used once.
+        (None, Run::MagicLink(step)) => {
+            let answered = magic_links::answer(app, executor, ctx, request, request_id, *step);
+            match race(answered, &mut deadline).await {
+                First::Left(response) => response,
+                First::Right(()) => runtime_failure(DEADLINE_EXCEEDED, request_id, None),
+            }
+        }
         // Each API's own OpenAPI document (area 7, "OpenAPI"), as it is.
         (None, Run::OpenApi(document)) => openapi(request, request_id, document),
         (None, _) => {
@@ -992,10 +1002,12 @@ async fn run_with_caller(
                     }
                 }
                 // Answered once signed in, without running anything.
-                Run::Exchange | Run::Passkey(_) | Run::OpenApi(_) => Outcome::Fault(ctx.fault(
-                    crate::FaultKind::Defect("an exchange with no key to trade".into()),
-                    Frame::ENTRY,
-                )),
+                Run::Exchange | Run::Passkey(_) | Run::MagicLink(_) | Run::OpenApi(_) => {
+                    Outcome::Fault(ctx.fault(
+                        crate::FaultKind::Defect("an exchange with no key to trade".into()),
+                        Frame::ENTRY,
+                    ))
+                }
                 Run::Query(plan) => {
                     match crate::store(
                         ctx,

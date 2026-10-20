@@ -885,6 +885,18 @@ impl Plan {
             &queries,
         );
         routes.identity = identity;
+        // The action `on_first_sign_in:` names, by its callable's number
+        // (area 8, "A person the app has not seen").
+        if let Some(magic) = routes
+            .identity
+            .as_mut()
+            .and_then(|identity| identity.magic_links.as_mut())
+            && let Some(name) = &jadpo_check::identity::first_sign_in_action(db, project).0
+        {
+            let lookup = jadpo_check::lookups::Lookup::new(db, project);
+            magic.first_sign_in = jadpo_check::graph::declaration_key(&lookup, name)
+                .and_then(|key| by_key.get(&key).copied());
+        }
         let events = events_plan(db, project, &by_key, &|name: &str| {
             setting_ids
                 .get(&config::key(

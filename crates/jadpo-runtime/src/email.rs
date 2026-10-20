@@ -9,11 +9,18 @@
 //! language files, written in its locale; the address it is from; and
 //! each `File` field read from its store as an attachment. The driver is
 //! sent a record of [`jadpo_std::email::MESSAGE_FIELDS`].
+//!
+//! Jadpo's own magic-link email (chunk 7.3b) is written here instead of by
+//! templates: its link and code made as it is sent
+//! ([`crate::http::magic_links::mint`]), its lines in Jadpo's wording or
+//! the application's (`jadpo: { }`), its body wrapped in the application's
+//! layout when it has one, or in a plain document of Jadpo's.
 
 use std::rc::Rc;
 
 use jadpo_std::email::{
-    ATTACHMENT, ATTACHMENT_FIELDS, EmailPlan, EmailsPlan, MESSAGE, MESSAGE_FIELDS, Sender,
+    ATTACHMENT, ATTACHMENT_FIELDS, BuiltinEmail, EmailPlan, EmailsPlan, MESSAGE, MESSAGE_FIELDS,
+    MagicLinkEmailPlan, Sender, escape_html,
 };
 use jadpo_value::Value;
 
@@ -29,6 +36,9 @@ pub async fn message(
     email: &EmailPlan,
     value: &Value,
 ) -> Result<Value, Outcome> {
+    if let Some(BuiltinEmail::MagicLink(plan)) = &email.builtin {
+        return magic_link(executor, ctx, emails, plan, value).await;
+    }
     let Value::Record(record) = value else {
         return Err(defect(ctx, "an email that isn't a record"));
     };
@@ -51,16 +61,7 @@ pub async fn message(
         }
         _ => return Err(defect(ctx, "an email with no subject")),
     };
-    let from = match &emails.from {
-        Some(Sender::Address(address)) => Value::text(address),
-        Some(Sender::Setting(at)) => {
-            match ctx.setting(*at).cloned().or_else(|| executor.setting(*at)) {
-                Some(value) => value,
-                None => return Err(defect(ctx, "an email whose `from:` setting has no value")),
-            }
-        }
-        None => return Err(defect(ctx, "an email with no `from:`")),
-    };
+    let from = sender(executor, ctx, emails)?;
     let html = render(
         executor,
         ctx,
@@ -137,6 +138,184 @@ pub async fn message(
             .map(|(name, value)| (Rc::from(*name), value))
             .collect(),
     ))
+}
+
+/// Who every email is from: `email: { from: }`.
+fn sender(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    emails: &EmailsPlan,
+) -> Result<Value, Outcome> {
+    match &emails.from {
+        Some(Sender::Address(address)) => Ok(Value::text(address)),
+        Some(Sender::Setting(at)) => {
+            match ctx.setting(*at).cloned().or_else(|| executor.setting(*at)) {
+                Some(value) => Ok(value),
+                None => Err(defect(ctx, "an email whose `from:` setting has no value")),
+            }
+        }
+        None => Err(defect(ctx, "an email with no `from:`")),
+    }
+}
+
+/// Jadpo's own magic-link email (area 16, "Built-in emails", levels 1 to
+/// 3), as it is sent: its link and code made now, its lines worded in its
+/// locale, its HTML and text wrapped in the application's layout or a
+/// plain document of Jadpo's. A request used or replaced since sends
+/// nothing: the delivery succeeds with no message.
+async fn magic_link(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    emails: &EmailsPlan,
+    plan: &MagicLinkEmailPlan,
+    value: &Value,
+) -> Result<Value, Outcome> {
+    let minted = match crate::http::magic_links::mint(executor, ctx, plan, value).await {
+        Ok(Some(minted)) => minted,
+        Ok(None) => return Err(Outcome::Value(Value::Unit)),
+        Err("unavailable") => return Err(Outcome::Failed(Box::new(crate::unavailable()))),
+        Err(what) => return Err(defect(ctx, what)),
+    };
+    let locale = match value {
+        Value::Record(record) => record.get("locale").cloned().unwrap_or(Value::None),
+        _ => Value::None,
+    };
+    let Value::Variant(chosen) = &locale else {
+        return Err(defect(ctx, "a magic-link email with no locale"));
+    };
+    let ordinal = chosen.ordinal;
+    let tag = jadpo_std::LOCALES
+        .get(ordinal as usize)
+        .map_or("en-GB", |(_, tag)| *tag);
+    let expires_in = match jadpo_value::present::duration_words(plan.expires_after_ms, tag) {
+        Ok(words) => words,
+        Err(fault) => return Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
+    };
+    // Each line in the email's locale, given its fields and the
+    // application's name.
+    let mut line = |key: &str, given: &[(&str, &str)]| -> Result<String, Outcome> {
+        let Some(entry) = plan.message(key) else {
+            return Err(defect(
+                ctx,
+                "a magic-link email missing one of Jadpo's messages",
+            ));
+        };
+        let args: Vec<Value> = entry
+            .params
+            .iter()
+            .map(|param| {
+                if param.name == jadpo_std::jadpo_text::APP_NAME {
+                    return Value::text(&plan.app_name);
+                }
+                given
+                    .iter()
+                    .find(|(name, _)| *name == param.name)
+                    .map_or(Value::None, |(_, text)| Value::text(text))
+            })
+            .collect();
+        match jadpo_value::present::translate(entry, &locale, &args, &plan.locales) {
+            Ok(Value::Text(text)) => Ok(text.to_string()),
+            Ok(_) => Err(defect(ctx, "a magic-link line that isn't text")),
+            Err(fault) => Err(Outcome::Fault(ctx.fault(fault.into(), Frame::ENTRY))),
+        }
+    };
+    let subject = line("magic_link_email", &[])?;
+    let heading = line("magic_link_heading", &[])?;
+    let intro = line("magic_link_intro", &[("address", &minted.address)])?;
+    let button = line("magic_link_button", &[])?;
+    let code_line = line("magic_link_code_line", &[("code", &minted.code)])?;
+    let expiry = line("magic_link_expiry_line", &[("expires_in", &expires_in)])?;
+    let ignore = line("magic_link_ignore_line", &[])?;
+    let rtl = matches!(
+        jadpo_value::locale::direction(ordinal),
+        Value::Variant(direction) if &*direction.name == jadpo_std::TextDirection::RightToLeft.name()
+    );
+    let direction = if rtl { "rtl" } else { "ltr" };
+    // The code stands out in its line, set for reading aloud and copying.
+    let code_html = escape_html(&code_line).replacen(
+        &minted.code,
+        &format!(
+            "<strong style=\"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:20px;letter-spacing:0.12em;font-variant-numeric:tabular-nums;white-space:nowrap;\">{}</strong>",
+            minted.code
+        ),
+        1,
+    );
+    let html = format!(
+        "<div dir=\"{direction}\" style=\"max-width:480px;font-size:16px;line-height:1.5;\">\
+<h1 style=\"margin:0 0 16px;font-size:24px;line-height:1.25;font-weight:600;\">{heading}</h1>\
+<p style=\"margin:0 0 24px;\">{intro}</p>\
+<p style=\"margin:0 0 24px;\"><a href=\"{link}\" style=\"display:inline-block;padding:12px 24px;border-radius:6px;background-color:#1f2937;color:#ffffff;font-weight:600;text-decoration:none;\">{button}</a></p>\
+<p style=\"margin:0 0 24px;\">{code_html}</p>\
+<p style=\"margin:0 0 8px;font-size:14px;\">{expiry}</p>\
+<p style=\"margin:0;font-size:14px;\">{ignore}</p>\
+</div>",
+        heading = escape_html(&heading),
+        intro = escape_html(&intro),
+        link = escape_html(&minted.link),
+        button = escape_html(&button),
+        expiry = escape_html(&expiry),
+        ignore = escape_html(&ignore),
+    );
+    let text = format!(
+        "{heading}\n\n{intro}\n\n{button}: {link}\n\n{code_line}\n\n{expiry}\n\n{ignore}\n",
+        link = minted.link,
+    );
+    let subject_value = Value::text(&subject);
+    let (html, text) = match (emails.layout_html, emails.layout_text) {
+        (None, None) => (
+            Value::text(&format!(
+                "<!DOCTYPE html>\n<html lang=\"{tag}\" dir=\"{direction}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title></head><body style=\"margin:0;padding:24px;\">{html}</body></html>\n",
+                title = escape_html(&subject),
+            )),
+            Value::text(&text),
+        ),
+        (layout_html, layout_text) => (
+            wrap(executor, ctx, layout_html, html, &subject_value, &locale).await?,
+            wrap(executor, ctx, layout_text, text, &subject_value, &locale).await?,
+        ),
+    };
+    let from = sender(executor, ctx, emails)?;
+    Ok(Value::record(
+        MESSAGE,
+        MESSAGE_FIELDS
+            .iter()
+            .zip([
+                from,
+                Value::text(&minted.address),
+                subject_value,
+                html,
+                text,
+                Value::List(Vec::new().into()),
+            ])
+            .map(|(name, value)| (Rc::from(*name), value))
+            .collect(),
+    ))
+}
+
+/// `body` wrapped in the layout's callable, when it has one.
+async fn wrap(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    layout: Option<u32>,
+    body: String,
+    subject: &Value,
+    locale: &Value,
+) -> Result<Value, Outcome> {
+    let Some(layout) = layout else {
+        return Ok(Value::text(&body));
+    };
+    match executor
+        .run(
+            ctx,
+            layout,
+            vec![Value::text(&body), subject.clone(), locale.clone()],
+        )
+        .await
+    {
+        Outcome::Value(text @ Value::Text(_)) => Ok(text),
+        Outcome::Value(_) => Err(defect(ctx, "a layout that gave no text")),
+        other => Err(other),
+    }
 }
 
 /// One template's text, wrapped in its layout: `none` without the

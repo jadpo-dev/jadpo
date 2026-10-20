@@ -37,8 +37,8 @@ pub enum Feature {
     BrowserSession,
     /// The application declares its locales: the wording of `TextDirection`.
     Locales,
-    /// Magic-link sign-in (area 8): its email and its failures. Not built
-    /// yet, so no application has it on.
+    /// Magic-link sign-in (area 8): its email and its failures, on once
+    /// `sign_in: { magic_link: }` is declared (chunk 7.3b).
     MagicLink,
     /// Passkeys (area 8, "Passkeys"): their failures.
     Passkey,

@@ -46,6 +46,7 @@ mod json_migrations;
 mod lifecycle;
 mod locales;
 mod lsp;
+mod magic_links;
 mod manifest;
 mod migrate;
 mod operation_conditions;
