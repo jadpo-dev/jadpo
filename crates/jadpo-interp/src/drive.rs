@@ -145,19 +145,12 @@ async fn schedule(
     result.map(|_| Value::Unit)
 }
 
-/// `clock.advance(by)` in a test (area 13, "Controlling time"): the
-/// test's clock moves on by `by`, never back (`clock_backward`).
+/// `clock.advance(by)` in a test (area 13, "Controlling time"), which
+/// the runtime moves the test's clock for.
 fn advance(ctx: &mut Ctx<'_>, args: &[Value], at: u32) -> Result<Value, Stop> {
-    let [Value::Duration(by)] = args else {
-        return Err(Stop::Fault(ctx.fault(
-            FaultKind::Defect("a clock moved by something that isn't a duration".into()),
-            at,
-        )));
-    };
-    if !ctx.advance_clock(*by) {
-        return Err(Stop::Fault(ctx.fault(FaultKind::ClockBackward, at)));
-    }
-    Ok(Value::Unit)
+    jadpo_runtime::test_steps::advance_clock(ctx, args, at)
+        .map(|()| Value::Unit)
+        .map_err(Stop::Fault)
 }
 
 /// A read or a write (area 6), which the runtime runs from its plan,

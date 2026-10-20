@@ -32,7 +32,9 @@ use std::collections::BTreeSet;
 use crate::budget::{Budget, Invocation};
 use crate::outbox::{Delivery, FAILED};
 use crate::runner::Deferred;
-use crate::{Ctx, Executor, FaultKind, Outcome, SqlValue};
+use jadpo_value::Value;
+
+use crate::{Ctx, Executor, Fault, FaultKind, Outcome, SqlValue};
 
 /// A test's delivery between its steps: the state of the order its
 /// deliveries are drawn in, and the delivery that failed for good, once
@@ -87,6 +89,23 @@ impl Ctx<'_> {
             .between_steps()
             .and_then(|between| between.undelivered.as_ref())
     }
+}
+
+/// `clock.advance(by)` in a test (area 13, "Controlling time"): its one
+/// argument, a duration, moves the test's clock on, never back
+/// (`clock_backward`), at site `at`. A step, after which what has come
+/// due is delivered ([`after_step`]).
+pub fn advance_clock(ctx: &mut Ctx<'_>, args: &[Value], at: u32) -> Result<(), Box<Fault>> {
+    let [Value::Duration(by)] = args else {
+        return Err(ctx.fault(
+            FaultKind::Defect("a clock moved by something that isn't a duration".into()),
+            at,
+        ));
+    };
+    if !ctx.advance_clock(*by) {
+        return Err(ctx.fault(FaultKind::ClockBackward, at));
+    }
+    Ok(())
 }
 
 /// The name `key`, an identity key, is written with: `RepairBooked` for

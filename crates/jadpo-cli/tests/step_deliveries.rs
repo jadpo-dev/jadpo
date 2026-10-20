@@ -55,7 +55,7 @@ fn jadpo(cwd: &Path, args: &[&str]) -> Output {
 
 /// The bakery, migrated and its records written.
 fn project(name: &str) -> PathBuf {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("test-events-6.11-{name}"));
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("step-deliveries-6.11-{name}"));
     let _ = fs::remove_dir_all(&root);
     for (path, text) in FILES {
         write(&root, path, text);
@@ -195,7 +195,7 @@ struct Board {
 }
 
 fn board() -> Option<Board> {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("test-events-6.11-board");
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("step-deliveries-6.11-board");
     let _ = fs::remove_dir_all(&root);
     for (path, text) in BOARD {
         write(&root, path, text);
