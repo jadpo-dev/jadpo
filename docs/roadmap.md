@@ -864,6 +864,10 @@ The design is area 11 as revised on 2026-10-16, with its research in
   (a package has no default locale, so every language it ships must be
   complete); `jadpo translations export`, `import` and `unused` don't take
   a package's text yet.
+- [ ] **7.1b4 Package text in the translation commands** `opus · high`
+  (found in chunk 7.1b3): `jadpo translations export`, `import` and
+  `unused` taking in a library package's messages and the app's wording
+  of them, as `missing` already does.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
