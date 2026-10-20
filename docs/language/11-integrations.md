@@ -18,6 +18,7 @@ rules:
   - connection.*
   - test.recording_undecodable
   - test.round_trip_failed
+  - route.calls_past_deadline
 ---
 
 # External services
@@ -2470,7 +2471,12 @@ are steps of the action that calls it (area 12, "Several changing calls
 in one action"); the record of those steps comes with roadmap 7.5b. Its
 subscribers and the events they emit came with chunk 7.6b (below), and polls
 and `max_concurrent:` with chunk 7.6c ("Polls"). The choices are in
-"Chosen in chunk 7.6".
+"Chosen in chunk 7.6". The card can be declined after the customer was
+created, so the package's surface lists `after_effect DeclinedCard` for
+`start_subscription`, and the app's call of it is warned as a point that
+can end `subscribe` for good once something took effect (area 12's
+`step.late_failure`, chunk 7.5e); here the empty customer left behind is
+harmless, so the warning is declined with that reason.
 
 ```jadpo check project=p76-actions file=app.jadpo hidden
 application {
@@ -2641,6 +2647,7 @@ use billing/failures { PaymentRefused }
 use shared/providers/acme_pay
 
 /// Starts a subscription: two steps, run by a subscriber.
+decline step.late_failure: "A declined card leaves an empty customer at Acme Pay, which costs nothing"
 action subscribe(tier: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {
     return attempt pay.start_subscription(
         AcmePay.PayRequest {
@@ -3244,7 +3251,7 @@ errors under area 12's "Errors" (`step.context`, `step.large_output`,
 `effect.call_in_loop`; an operation's `large_output:` is read. The record,
 replay and key windows came with roadmap 7.5b and the operator's items
 with 7.5c; the fakes' `lost` and `in_use` and the tests' crash points
-with 7.5d; the warning comes with 7.5e.
+with 7.5d; the warning and the deadline sum with 7.5e.
 
 Built in chunk 7.5b, the record, replay and key windows, as area 12's
 "Several changing calls in one action" says: a provider's `idempotency:`
@@ -3270,6 +3277,21 @@ package's `reused:` code, and keeps what `lost` did for the next call
 under its key; `jadpo test` reruns every test that reaches an action with
 several changing calls with a crash at each step boundary. Choices in
 area 12's decisions table, "Tests, chosen in chunk 7.5d".
+
+Built in chunk 7.5e, the warning and the deadline sum, with the errors
+under area 12's [`step.late_failure`](12-jobs-and-events.md#step-late-failure)
+and [`route.calls_past_deadline`](#route-calls-past-deadline) below: after
+an action's first changing call, each point that can end it for good (an
+`attempt` passing on a failure that isn't `unavailable` or
+`rate_limited`, `reject`, `propagate`) is one finding for the action,
+declinable, unless handled with `match`; a package's action lists on its
+surface which failures can follow its own changing call (`after_effect`),
+and the app's call of it is the point. Each route's action sums the
+`timeout:` times the attempts of every outside call on its longest way, a
+provider's operation and an `ai` call alike, against the route's
+`deadline:`, which is how question 8's single call is checked too.
+Choices in area 12's decisions table, "The late-failure warning and the
+deadline sum, chosen in chunk 7.5e".
 
 ## Receiving from outside
 
@@ -6502,6 +6524,204 @@ error: `support` calls `couriers`, whose `domains:` doesn't list it
 
 check failed: 1 error, 9 files
 ```
+
+## Time limit errors
+
+### `route.calls_past_deadline`
+
+> Built in chunk 7.5e, with its choices in area 12's decisions table,
+> "The late-failure warning and the deadline sum, chosen in chunk 7.5e".
+
+Each outside call can wait its `timeout:` on each of its attempts: a
+provider's operation its connection's `timeout:` (10 seconds by default)
+times its `retry: { attempts: }` (3), an `ai` call its own `timeout:`
+times its `attempts:` (area 21). A route's deadline covers every such
+call on the longest way through its action, those of the actions and
+package actions it calls included, so the sum must fit within it. Here
+the courier's lookup can wait 5 seconds three times, past the route's 10:
+
+```jadpo check project=e-calls-past-deadline file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+        }
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=policy.jadpo hidden
+use shipping
+
+policy {
+    actions: {
+        shipping.parcel_status: [Access.public]
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/types/parcel_question.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Which parcel a customer asks after.
+type ParcelQuestion = Input {
+    parcel: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/types/parcel_answer.jadpo hidden
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+type ParcelAnswer = Output {
+    status: AcmeCouriers.ParcelRef
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=api/main.jadpo_record hidden
+// Generated by Jadpo from the routes of API main; update it with `jadpo api update`, never by hand.
+record api 1
+
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
+POST /parcels/status
+    authentication none
+    input ParcelQuestion (body)
+    output ParcelAnswer
+    status 200
+
+output ParcelAnswer
+    status: Text { max_length: 40 }
+
+input ParcelQuestion
+    parcel: Text { max_length: 40 }
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/actions/parcel_status.jadpo
+use app { couriers }
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, in the courier's words.
+action parcel_status(enquiry: ParcelQuestion) -> ParcelAnswer {
+    var parcel_found: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: enquiry.parcel
+        }
+    )
+    return ParcelAnswer {
+        status: parcel_found.status
+    }
+}
+```
+
+```jadpo check project=e-calls-past-deadline file=domains/shipping/routes/parcels.jadpo expect=route.calls_past_deadline
+use shipping/types { ParcelAnswer, ParcelQuestion }
+use shipping/actions { parcel_status }
+
+/// Where customers ask after their parcels.
+routes Parcels {
+    prefix: /parcels
+
+    /// Where a parcel is.
+    POST /status {
+        authentication: RouteAuthentication.none
+        input: ParcelQuestion
+        output: ParcelAnswer
+        status: SuccessStatus.ok
+        run: parcel_status(input)
+    }
+}
+```
+
+```text output
+error: `POST /parcels/status` runs `parcel_status`, whose outside calls can take 15s, longer than its 10s deadline
+ --> domains/shipping/routes/parcels.jadpo:9:5
+  |
+9 |     POST /status {
+  |     ^^^^^^^^^^^^ deadline 10s
+  reason: Each outside call can wait its `timeout:` on each of its attempts, and a route's deadline covers every call on the longest way through `parcel_status`, those of the actions it calls included; at the deadline the route stops, so a call still waiting, or still to be tried again, never finishes.
+  next: Give the route `deadline: 15s`, lower the `timeout:` or the attempts of the calls (a connection's `timeout:` and `retry: { attempts: }`, an `ai` call's `timeout:` and `attempts:`), or answer `202` and make the calls in a subscriber (agent)
+  rule: route.calls_past_deadline
+  help: docs/language/11-integrations.html#route-calls-past-deadline
+
+check failed: 1 error, 13 files
+```
+
+A route that needs longer than 60 seconds can't be given it: it answers
+`202` and makes its calls in a subscriber, which the route waits for with
+`settle:` (area 7).
 
 ## Errors
 

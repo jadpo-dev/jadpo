@@ -222,6 +222,7 @@ pub const SURFACE: Kind = Kind {
         "idempotent",
         "scope",
         "fails",
+        "after_effect",
         "source",
         "confirmed",
         "signature",
