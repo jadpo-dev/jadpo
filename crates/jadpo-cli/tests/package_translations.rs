@@ -308,6 +308,12 @@ fn check_holds_every_language_a_package_ships_to_completeness() {
     for (path, text) in package_files() {
         write(&root, path, text);
     }
+    // The changelog says why, so the bar's other rows decide the outcome.
+    write(
+        &root,
+        "CHANGELOG.md",
+        "# Changelog\n\n## 2.0.0\n\n- first release\n\nUK postcodes, read as people type them.\n",
+    );
     let passed = plain(&root, &["package", "check"]);
     assert_eq!(passed.code, 0, "{}{}", passed.stdout, passed.stderr);
     assert!(

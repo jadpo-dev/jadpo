@@ -22,6 +22,7 @@ fn loaded(layout: Layout, files: &[(&str, &str)]) -> Loaded {
         project,
         root: PathBuf::from("/nowhere"),
         unreadable: Vec::new(),
+        links: Vec::new(),
     }
 }
 

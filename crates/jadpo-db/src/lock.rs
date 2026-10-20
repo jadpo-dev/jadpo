@@ -81,10 +81,24 @@ impl Locked {
         }
     }
 
+    /// Its folder in a project: `packages/acme_pricing/v2` for
+    /// `AcmePricing.v2`.
+    pub fn folder(&self) -> String {
+        package_folder(&self.package)
+    }
+
     /// What it sorts by: the name, then the major version as numbers.
     fn order(&self) -> (String, Vec<u64>) {
         let (name, major) = split_package(&self.package).unwrap_or((&self.package, Vec::new()));
         (name.to_string(), major)
+    }
+}
+
+/// The folder `packages/<name>/<version>` that holds `Name.vN`.
+pub fn package_folder(package: &str) -> String {
+    match package.rsplit_once('.') {
+        Some((name, version)) => format!("{}/{}/{version}", crate::PACKAGES, crate::to_snake(name)),
+        None => format!("{}/{package}", crate::PACKAGES),
     }
 }
 

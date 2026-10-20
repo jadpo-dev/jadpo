@@ -487,3 +487,10 @@ stripe
 surface
 guide
 recipe
+
+# A package linked to a live checkout, and unlinked again, words the
+# language defines (area 11, "Developing and publishing a package";
+# chunk 7.1b2)
+checkout
+linked
+unlinked
