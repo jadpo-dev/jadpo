@@ -490,10 +490,16 @@ rules! {
         "11-integrations.html#package-digest-mismatch", "Installed package's files differ from its digest in the lock";
     PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
         "11-integrations.html#package-emails-folder", "Package holds email templates";
+    PACKAGE_FETCH_FAILED: "package.fetch_failed", area 11, Error, Human,
+        "11-integrations.html#package-fetch-failed", "Package's git repository or tag couldn't be read";
+    PACKAGE_IN_USE: "package.in_use", area 11, Error, Agent,
+        "11-integrations.html#package-in-use", "Package to remove is still used by the app";
     PACKAGE_INDEX_INVALID: "package.index_invalid", area 11, Error, Agent,
         "11-integrations.html#package-index-invalid", "Package's index is missing, or holds what an index can't";
     PACKAGE_LICENCE_NOT_ALLOWED: "package.licence_not_allowed", area 11, Error, Human,
         "11-integrations.html#package-licence-not-allowed", "Proprietary package isn't installed from git";
+    PACKAGE_LINK_REFUSED: "package.link_refused", area 11, Error, Agent,
+        "11-integrations.html#package-link-refused", "Linked package in a CI or production build";
     PACKAGE_NAME_MISMATCH: "package.name_mismatch", area 11, Error, Agent,
         "11-integrations.html#package-name-mismatch", "Package's index names another package than its folder";
     PACKAGE_NAME_TAKEN: "package.name_taken", area 11, Error, Human,
@@ -512,6 +518,8 @@ rules! {
         "11-integrations.html#package-provider-translations", "Provider package carries translations";
     PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
         "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
+    PACKAGE_SURFACE_MISMATCH: "package.surface_mismatch", area 11, Error, Human,
+        "11-integrations.html#package-surface-mismatch", "Package's committed surface doesn't match its code";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
@@ -564,8 +572,14 @@ rules! {
         "21-ai.html#prompt-section-missing", "A prompt and its file don't make its two sections, each once and in order";
     PUBLISH_BREAKING_CHANGE: "publish.breaking_change", area 14, Error, Human,
         "14-tooling.html#command-errors", "Package's surface breaks its last release within one major version";
+    PUBLISH_CHANGELOG_MISSING: "publish.changelog_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's changelog doesn't say why its new version is released";
     PUBLISH_DESCRIPTION_MISSING: "publish.description_missing", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package's public declaration has no description";
+    PUBLISH_EXAMPLE_FAILED: "publish.example_failed", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Example in a package's description doesn't compile or doesn't hold";
+    PUBLISH_EXAMPLE_MISSING: "publish.example_missing", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Package's function has no example, or a failure it raises is shown by none";
     QUERY_AGGREGATE_ARGUMENT: "query.aggregate_argument", area 6, Error, Agent,
         "06-reads-and-writes.html#query-aggregate-argument", "Aggregate is given the wrong arguments";
     QUERY_AGGREGATE_FIELD: "query.aggregate_field", area 6, Error, Agent,

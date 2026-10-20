@@ -687,25 +687,31 @@ pub static COMMANDS: &[Command] = &[
         name: "package",
         synonyms: &["packages"],
         group: "Build and check",
-        summary: "Show or check a package",
+        summary: "Show, check and install packages",
         description: "`show <name>` prints a package's description, licence, version, kind and public \
                       surface (area 11), installed in packages/ or the app's own in shared/providers/; \
                       `show <name> <declaration>` prints one operation, function, type or failure in \
                       full with its file, and `--guide` prints the package's GUIDE.md. `check`, run in \
                       a package's own repository, checks it as the app's own integration, runs the \
-                      publishing bar (no errors, a description on every public declaration, its tests, \
-                      a version its changes since the last tag allow) and writes surface.jadpo_record. \
-                      `add`, `update`, `remove`, `link` and `unlink` come with installing packages.",
+                      publishing bar (no errors, a description on every public declaration, the \
+                      examples in its descriptions run as tests, its tests, a version its changes since \
+                      the last tag allow, a changelog that says why) and writes surface.jadpo_record and \
+                      CHANGELOG.md's new section. `add` installs a package from its folder or from a git \
+                      repository at a release tag (`<repository>@v<version>`) into packages/ and \
+                      jadpo.lock, once its surface matches its code; `update` moves one to its newest \
+                      release, listing what changed; `remove` takes out one the app no longer uses; \
+                      `link` compiles the app against a package's live checkout, which CI refuses, and \
+                      `unlink` goes back to the installed version.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show or check",
+                description: "What to do: show, check, add, update, remove, link or unlink",
                 required: true,
                 values: Values::Fixed(crate::package::ACTIONS),
             },
             Argument {
                 name: "name",
-                description: "The package, such as holidays; for check, its folder",
+                description: "The package, such as holidays; for check and link, its folder; for add, its folder or <repository>@v<version>",
                 required: false,
                 values: Values::Path,
             },
@@ -735,15 +741,32 @@ pub static COMMANDS: &[Command] = &[
                 description: "Run the publishing bar in a package's own repository",
                 command: "jadpo package check",
             },
+            Example {
+                description: "Install a package from its git repository at a release",
+                command: "jadpo package add github.com/acme/holidays@v2.1.0",
+            },
+            Example {
+                description: "Try the app against a package's checkout before it is released",
+                command: "jadpo package link ../holidays",
+            },
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,
         raises: &[
+            &rule::PACKAGE_FETCH_FAILED,
+            &rule::PACKAGE_IN_USE,
+            &rule::PACKAGE_NAME_TAKEN,
+            &rule::PACKAGE_SURFACE_MISMATCH,
             &rule::PUBLISH_BREAKING_CHANGE,
+            &rule::PUBLISH_CHANGELOG_MISSING,
             &rule::PUBLISH_DESCRIPTION_MISSING,
+            &rule::PUBLISH_EXAMPLE_FAILED,
+            &rule::PUBLISH_EXAMPLE_MISSING,
+            &rule::RECORD_EDITED,
             &rule::TEST_FAILED,
             &rule::TOOLCHAIN_ARTIFACT_WRITE_FAILED,
             &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
+            &rule::TOOLCHAIN_SOURCE_READ_FAILED,
         ],
         run: commands::package,
     },

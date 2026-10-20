@@ -54,6 +54,13 @@ pub struct Call {
     pub environment: Environment,
 }
 
+/// Whether the command runs in CI: the `CI` variable set to anything but
+/// empty, as CI services set it (area 14). A package linked to a live
+/// checkout is refused there (area 11).
+pub(crate) fn in_ci(environment: &Environment) -> bool {
+    environment.var("CI").is_some_and(|value| !value.is_empty())
+}
+
 impl Call {
     pub fn flag(&self, name: &str) -> bool {
         self.flags.contains(&name)

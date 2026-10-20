@@ -14,7 +14,7 @@ use jadpo_term::Environment;
 
 use super::http::{jadpo, tempdir, write};
 
-const INDEX: &str = "/// UK postcodes: reading and normalising them.
+pub(super) const INDEX: &str = "/// UK postcodes: reading and normalising them.
 package Postcodes.v2 {
     licence: Licence.mit
     jadpo: \"1.0\"
@@ -40,7 +40,7 @@ public type InvalidPostcode = Failure {
 }
 ";
 
-const UK: &str = "/// Reading UK postcodes.
+pub(super) const UK: &str = "/// Reading UK postcodes.
 public library uk {
     /// Reads a UK postcode as it is written.
     ///
@@ -53,10 +53,28 @@ public library uk {
 }
 ";
 
+/// `uk` with an example in `parse`'s description.
+pub(super) const UK_EXAMPLE: &str = "/// Reading UK postcodes.
+public library uk {
+    /// Reads a UK postcode as it is written.
+    ///
+    /// ```jadpo
+    /// var postcode: UkPostcode = attempt uk.parse(\"sw1a 1aa\")
+    /// assert postcode == \"SW1A 1AA\"
+    /// assert uk.parse(\"x\") fails InvalidPostcode
+    /// ```
+    function parse(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(written)) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+";
+
 const GUIDE: &str = "# Postcodes\n\nParse what people type, then store the `UkPostcode`.\n";
 
 /// The package's files, relative to its folder.
-fn package_files() -> Vec<(&'static str, &'static str)> {
+pub(super) fn package_files() -> Vec<(&'static str, &'static str)> {
     vec![
         ("package.jadpo", INDEX),
         ("types/uk_postcode.jadpo", POSTCODE),
@@ -299,12 +317,12 @@ fn show_names_what_it_cant_find() {
         "{}",
         none.stderr
     );
-    let later = jadpo(&root, &["package", "add", "../postcodes"]);
+    let later = jadpo(&root, &["package", "new", "Postcodes"]);
     assert_eq!(later.code, 1);
     assert!(
         later
             .stderr
-            .starts_with("error: `jadpo package add` isn't built yet\n"),
+            .starts_with("error: `jadpo package new` isn't built yet\n"),
         "{}",
         later.stderr
     );
@@ -312,7 +330,7 @@ fn show_names_what_it_cant_find() {
 
 // --- jadpo package check ---------------------------------------------------
 
-fn git(folder: &Path, args: &[&str]) {
+pub(super) fn git(folder: &Path, args: &[&str]) {
     let status = Command::new("git")
         .args([
             "-c",
@@ -336,12 +354,13 @@ fn git(folder: &Path, args: &[&str]) {
 }
 
 /// A package's own repository: the package at its root.
-fn repository(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
+pub(super) fn repository(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
     let dir = tempdir::Dir::new(name);
     let root = dir.path().join("postcodes");
     for (path, text) in package_files() {
         write(&root, path, text);
     }
+    write(&root, "libraries/uk.jadpo", UK_EXAMPLE);
     write(
         &root,
         "libraries/uk.test.jadpo",
@@ -356,7 +375,7 @@ fn repository(name: &str) -> (tempdir::Dir, std::path::PathBuf) {
     (dir, root)
 }
 
-fn plain(cwd: &Path, args: &[&str]) -> Output {
+pub(super) fn plain(cwd: &Path, args: &[&str]) -> Output {
     let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
     run(&args, &Environment::empty().with_cwd(cwd))
 }
@@ -365,23 +384,31 @@ fn plain(cwd: &Path, args: &[&str]) -> Output {
 fn check_runs_the_publishing_bar_and_writes_the_surface() {
     let (_dir, root) = repository("package-check");
     let first = plain(&root, &["package", "check"]);
-    assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+    assert_eq!(first.code, 1, "{}{}", first.stdout, first.stderr);
     assert_eq!(
         first.stdout,
-        "Publishing bar
+        "error: CHANGELOG.md doesn't say why 2.0.0 is released
+ --> CHANGELOG.md:3:1
+  |
+3 | ## 2.0.0
+  | ^^^^^^^^ no why beneath the list
+  reason: `jadpo package check` writes what changed from the surface; the author writes why, beneath it. A release reviewers can't tell the purpose of is one they can't judge.
+  next: Write why 2.0.0 is released under `## 2.0.0` in CHANGELOG.md, after the list (agent)
+  rule: publish.changelog_missing
+  help: docs/language/14-tooling.html#command-errors
+
+Publishing bar
   compiles      passed                        no errors
   described     passed                        every public declaration
-  examples      not checked yet               waits for how examples are written
+  examples      passed                        1 example, every failure shown
   tests         passed                        1 test
   version       passed                        2.0.0, the first release
-  changelog     not checked yet               waits for the changelog's form
+  changelog     failed                        2.0.0 doesn't say why
   licence       passed                        mit, from Jadpo 1.0
 
-Wrote surface.jadpo_record
+Wrote surface.jadpo_record and CHANGELOG.md
 
-package check passed: Postcodes.v2 2.0.0, 5 passed, 2 not checked yet
-
-next: git tag v2.0.0  tags the release once surface.jadpo_record is committed
+package check failed: 1 failed, 6 passed
 "
     );
     let surface = std::fs::read_to_string(root.join("surface.jadpo_record")).expect("surface");
@@ -399,10 +426,32 @@ package Postcodes.v2
         ),
         "{surface}"
     );
-    // Run again, nothing changes and nothing is written.
-    let again = plain(&root, &["package", "check"]);
-    assert_eq!(again.code, 0);
-    assert!(!again.stdout.contains("Wrote"), "{}", again.stdout);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    assert_eq!(log, "# Changelog\n\n## 2.0.0\n\n- first release\n");
+    // The author says why; the list Jadpo wrote stays above it.
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes as people type them.\n"),
+    );
+    let second = plain(&root, &["package", "check"]);
+    assert_eq!(second.code, 0, "{}", second.stdout);
+    assert_eq!(
+        second.stdout,
+        "Publishing bar
+  compiles      passed                        no errors
+  described     passed                        every public declaration
+  examples      passed                        1 example, every failure shown
+  tests         passed                        1 test
+  version       passed                        2.0.0, the first release
+  changelog     passed                        2.0.0 says why
+  licence       passed                        mit, from Jadpo 1.0
+
+package check passed: Postcodes.v2 2.0.0, 7 passed
+
+next: git tag v2.0.0  tags the release once surface.jadpo_record is committed
+"
+    );
 
     // Released as v2.0.0; a new public type is a minor release.
     git(&root, &["add", "-A"]);
@@ -414,6 +463,13 @@ package Postcodes.v2
         tagged
             .stdout
             .contains("  version       passed                        2.0.0, released as v2.0.0\n"),
+        "{}",
+        tagged.stdout
+    );
+    assert!(
+        tagged
+            .stdout
+            .contains("  changelog     passed                        2.0.0 says why\n"),
         "{}",
         tagged.stdout
     );
@@ -432,7 +488,7 @@ public type OutwardCode = Text {
 ",
     );
     let added = plain(&root, &["package", "check"]);
-    assert_eq!(added.code, 0, "{}", added.stdout);
+    assert_eq!(added.code, 1, "{}", added.stdout);
     assert!(
         added
             .stdout
@@ -445,20 +501,147 @@ public type OutwardCode = Text {
             .expect("surface")
             .contains("    version 2.1.0\n")
     );
+    // A section for 2.1.0 above 2.0.0's, which is kept as it was.
+    assert_eq!(
+        std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog"),
+        "# Changelog
+
+## 2.1.0
+
+- added type `OutwardCode`
+
+## 2.0.0
+
+- first release
+
+Reads UK postcodes as people type them.
+"
+    );
+    // Another change before the tag rewrites the list and keeps the why.
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &log.replace(
+            "- added type `OutwardCode`\n",
+            "- added type `OutwardCode`\n\nReads the outward code.\n",
+        ),
+    );
+    write(
+        &root,
+        "types/inward_code.jadpo",
+        "/// The second half of a postcode, such as \"1AA\".
+public type InwardCode = Text {
+    max_length: 3
+}
+",
+    );
+    let more = plain(&root, &["package", "check"]);
+    assert_eq!(more.code, 0, "{}", more.stdout);
+    assert!(
+        std::fs::read_to_string(root.join("CHANGELOG.md"))
+            .expect("changelog")
+            .starts_with(
+                "# Changelog
+
+## 2.1.0
+
+- added type `InwardCode`
+- added type `OutwardCode`
+
+Reads the outward code.
+
+## 2.0.0
+"
+            )
+    );
 }
 
 #[test]
-fn check_refuses_a_breaking_change_within_a_major_version() {
-    let (_dir, root) = repository("package-check-breaking");
-    assert_eq!(plain(&root, &["package", "check"]).code, 0);
-    git(&root, &["add", "-A"]);
-    git(&root, &["commit", "-q", "-m", "first release"]);
-    git(&root, &["tag", "v2.0.0"]);
-    std::fs::remove_file(root.join("types/written_postcode.jadpo")).expect("remove");
+fn check_runs_each_example_and_needs_one_for_every_function() {
+    let (_dir, root) = repository("package-check-examples");
+    write(&root, "libraries/uk.jadpo", UK);
+    let missing = plain(&root, &["package", "check"]);
+    assert_eq!(missing.code, 1, "{}", missing.stdout);
+    assert!(
+        missing.stdout.starts_with(
+            "error: Function `uk.parse` has no example
+ --> libraries/uk.jadpo:6:14
+  |
+6 |     function parse(written: WrittenPostcode) fails InvalidPostcode -> UkPostcode {
+  |              ^^^^^ no example in its description
+"
+        ),
+        "{}",
+        missing.stdout
+    );
+    assert!(missing.stdout.contains("rule: publish.example_missing\n"));
+    assert!(
+        missing
+            .stdout
+            .contains("  examples      failed                        1 function has no example\n"),
+        "{}",
+        missing.stdout
+    );
+
+    // An example that doesn't hold fails the bar at its line.
     write(
         &root,
         "libraries/uk.jadpo",
-        &UK.replace("written: WrittenPostcode", "written: UkPostcode"),
+        &UK_EXAMPLE.replace(
+            "assert postcode == \"SW1A 1AA\"",
+            "assert postcode == \"SW1A1AA\"",
+        ),
+    );
+    let failed = plain(&root, &["package", "check"]);
+    assert_eq!(failed.code, 1, "{}", failed.stdout);
+    assert!(
+        failed.stdout.starts_with(
+            "error: Example of `uk.parse` failed
+ --> libraries/uk.jadpo:7:9
+  |
+7 |     /// assert postcode == \"SW1A1AA\"
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this doesn't hold
+"
+        ),
+        "{}",
+        failed.stdout
+    );
+    assert!(failed.stdout.contains("rule: publish.example_failed\n"));
+    assert!(
+        failed
+            .stdout
+            .contains("  examples      failed                        1 of 1 example failed\n"),
+        "{}",
+        failed.stdout
+    );
+
+    // One that doesn't compile is shown at its line too.
+    write(
+        &root,
+        "libraries/uk.jadpo",
+        &UK_EXAMPLE.replace(
+            "assert postcode == \"SW1A 1AA\"",
+            "assert postcode == missing_name",
+        ),
+    );
+    let broken = plain(&root, &["package", "check"]);
+    assert_eq!(broken.code, 1, "{}", broken.stdout);
+    assert!(
+        broken.stdout.starts_with(
+            "error: Example of `uk.parse` doesn't compile
+ --> libraries/uk.jadpo:7:9
+"
+        ),
+        "{}",
+        broken.stdout
+    );
+
+    // A failure no example or test shows is missing an example.
+    write(
+        &root,
+        "libraries/uk.jadpo",
+        &UK_EXAMPLE.replace("    /// assert uk.parse(\"x\") fails InvalidPostcode\n", ""),
     );
     write(
         &root,
@@ -468,6 +651,54 @@ fn check_refuses_a_breaking_change_within_a_major_version() {
     assert postcode == \"SW1A 1AA\"
 }
 ",
+    );
+    let unshown = plain(&root, &["package", "check"]);
+    assert_eq!(unshown.code, 1, "{}", unshown.stdout);
+    assert!(
+        unshown.stdout.starts_with(
+            "error: `uk.parse` can fail with `InvalidPostcode`, which no example or test shows
+"
+        ),
+        "{}",
+        unshown.stdout
+    );
+    assert!(
+        unshown
+            .stdout
+            .contains("  examples      failed                        1 failure not shown\n"),
+        "{}",
+        unshown.stdout
+    );
+}
+
+#[test]
+fn check_refuses_a_breaking_change_within_a_major_version() {
+    let (_dir, root) = repository("package-check-breaking");
+    plain(&root, &["package", "check"]);
+    let log = std::fs::read_to_string(root.join("CHANGELOG.md")).expect("changelog");
+    write(
+        &root,
+        "CHANGELOG.md",
+        &format!("{log}\nReads UK postcodes.\n"),
+    );
+    assert_eq!(plain(&root, &["package", "check"]).code, 0);
+    git(&root, &["add", "-A"]);
+    git(&root, &["commit", "-q", "-m", "first release"]);
+    git(&root, &["tag", "v2.0.0"]);
+    std::fs::remove_file(root.join("types/written_postcode.jadpo")).expect("remove");
+    write(
+        &root,
+        "types/entered_postcode.jadpo",
+        "/// A postcode as someone typed it.
+public type EnteredPostcode = Text {
+    max_length: 20
+}
+",
+    );
+    write(
+        &root,
+        "libraries/uk.jadpo",
+        &UK_EXAMPLE.replace("written: WrittenPostcode", "written: EnteredPostcode"),
     );
     let refused = plain(&root, &["package", "check"]);
     assert_eq!(refused.code, 1, "{}", refused.stdout);
