@@ -173,6 +173,20 @@ fn an_app_s_tests_read_a_package_s_messages_in_its_wording_then_the_package_s() 
     let test = jadpo(&root, &["test"]);
     assert_eq!(test.code, 0, "{}{}", test.stdout, test.stderr);
     assert!(test.stdout.contains("3 passed"), "{}", test.stdout);
+    // French is in progress: what it falls back on is listed under the
+    // root file.
+    let missing = jadpo(&root, &["translations", "missing", "fr_fr"]);
+    assert_eq!(missing.code, 0, "{}{}", missing.stdout, missing.stderr);
+    assert!(
+        missing.stdout.starts_with(
+            "translations/fr_fr.jadpo  no file yet
+  postcodes.postcode_hint    missing     falls back to en_gb
+  postcodes.postcodes_found  missing     falls back to en_gb
+"
+        ),
+        "{}",
+        missing.stdout
+    );
 }
 
 #[test]

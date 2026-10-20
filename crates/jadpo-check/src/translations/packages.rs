@@ -344,14 +344,14 @@ fn file_missing(
     )
     .at(at, format!("no `{path}`"))
     .reason(format!(
-        "Package `{}` words its text only in the languages it ships, and `Locale.{tag}` isn't one of them for {}. The application supports it, so it words what the package doesn't in its root file, grouped under the package's name. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.",
+        "Package `{}` ships no `Locale.{tag}` wording of {}, and the application supports `Locale.{tag}`, so the application words it in its root file, under the package's folder name. A locale that isn't finished yet is listed in `in_progress:`, and falls back to the default until it is.",
         home.code,
         crate::and_list(&names)
     ))
     .next(format!(
-        "Add `{path}` with `translations {{ {}: {{ }} }}` wording {}",
-        home.name,
-        crate::and_list(&names)
+        "Add `{path}` wording {} under `{}: {{ }}`",
+        crate::and_list(&names),
+        home.name
     ))
 }
 
@@ -457,4 +457,63 @@ pub fn publishing(db: &dyn Db, project: Project, folder: &str) -> (Vec<String>, 
     locales.sort();
     locales.dedup();
     (locales, out)
+}
+
+/// Each library package's text a supported locale besides the default
+/// lacks, in the root file and the package's own: what `jadpo translations
+/// missing` lists under the root file, as `<package>.<member>`.
+pub fn gaps(db: &dyn Db, project: Project) -> Vec<super::outstanding::Gap> {
+    let declared = locales(db, project);
+    let Some(plan) = &declared.plan else {
+        return Vec::new();
+    };
+    let roots = super::jadpo::root_language_files(db, project);
+    let reachable = super::failures::reachable_names(db, project);
+    let mut out = Vec::new();
+    for scope in scopes(db, project) {
+        let all = subjects(db, project, Name::new(db, scope.clone()));
+        let shown = visible(all);
+        let files: Vec<&LanguageFile> = language_files(db, project, &scope)
+            .into_iter()
+            .filter_map(|file| language_file(db, project, file).as_ref())
+            .collect();
+        let worded = |subject: &Subject, locale: u32| {
+            roots.iter().any(|file| {
+                file.locale == Some(locale)
+                    && file
+                        .group(&scope)
+                        .is_some_and(|group| group.member(&subject.key).is_some())
+            }) || files
+                .iter()
+                .any(|file| file.locale == Some(locale) && file.member(&subject.key).is_some())
+        };
+        for subject in required(&shown, &files, &roots, &scope, reachable) {
+            for &locale in &plan.supported {
+                if locale == plan.default || LocalePlan::is_pseudo(locale) {
+                    continue;
+                }
+                if worded(subject, locale) {
+                    continue;
+                }
+                let tag = variant_name(locale);
+                out.push(super::outstanding::Gap {
+                    scope: super::sources::ROOT.to_string(),
+                    locale,
+                    tag: tag.to_string(),
+                    member: format!("{scope}.{}", subject.key),
+                    kind: subject.kind,
+                    path: super::jadpo::root_path(tag),
+                    file_exists: roots.iter().any(|file| file.locale == Some(locale)),
+                    in_progress: plan.in_progress.contains(&locale),
+                    worded_in: plan
+                        .supported
+                        .iter()
+                        .copied()
+                        .filter(|&other| worded(subject, other))
+                        .collect(),
+                });
+            }
+        }
+    }
+    out
 }
