@@ -4619,7 +4619,7 @@ error: `provider` has no key `host:`
   |
 3 |     host: "https://api.acme-couriers.example"
   |     ^^^^ not a provider key
-  reason: `provider { }` has one fixed set of keys: `protocol:`, `hosts:`, `runs:`, `credential:`, `oauth:`, `idempotency:`, `error_code:`, `webhooks:`, `polls:`, `erasure:`, `max_concurrent:`, `settings:`, `imported:`, `description:` and `aws:`. Did you mean `hosts:`?
+  reason: `provider { }` has one fixed set of keys: `protocol:`, `hosts:`, `runs:`, `credential:`, `oauth:`, `idempotency:`, `error_code:`, `webhooks:`, `polls:`, `erasure:`, `max_concurrent:`, `settings:`, `imported:`, `description:`, `aws:`, `credential_header:` and `headers:`. Did you mean `hosts:`?
   next: Use `hosts:` instead of `host:` (agent)
   rule: package.provider_invalid
   help: docs/language/11-integrations.html#package-provider-invalid
