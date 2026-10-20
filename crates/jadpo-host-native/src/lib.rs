@@ -24,6 +24,7 @@
 //!   OpenSSL or plain HTTP to this machine.
 //! - [`smtp`]: SMTP for the email capability (chunk 7.3), upgraded with
 //!   `STARTTLS` through OpenSSL, or in the clear to this machine.
+//! - [`dns`]: `TXT` lookups for `jadpo email check-domain` (chunk 7.3c2).
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
 //!
@@ -49,6 +50,7 @@
     )
 )]
 
+pub mod dns;
 pub mod fetch;
 pub mod files;
 pub mod http;
@@ -178,6 +180,9 @@ pub struct NativeHost {
     /// for the connections that are a model's: JSON over HTTP, as the
     /// package driver sends it.
     models: Option<(JsonHttp<fetch::NativeFetch>, FileStores)>,
+    /// `jadpo dev`'s inbox (chunk 7.3c2), for the connection `email:`
+    /// names: it catches every mail in place of sending it.
+    mail: Option<(Providers, FileStores)>,
     /// `jadpo dev`'s call log, which keeps each provider call with its
     /// values (chunk 7.2d).
     call_log: Option<CallLog>,
@@ -328,6 +333,19 @@ impl NativeHost {
         self
     }
 
+    /// Gives `catcher` for the connection `connection` says is the one
+    /// `email:` names (chunk 7.3c2): `jadpo dev`'s inbox, which catches
+    /// every mail, a mail package's included, so nothing leaves the
+    /// machine. It comes before every other driver.
+    pub fn with_mail(
+        mut self,
+        catcher: Rc<dyn jadpo_runtime::capability::Capability>,
+        connection: impl Fn(&str) -> bool + 'static,
+    ) -> NativeHost {
+        self.mail = Some((Providers(catcher), FileStores(Rc::new(connection))));
+        self
+    }
+
     /// Keeps each provider call with its values in `log` (chunk 7.2d).
     pub fn with_call_log(mut self, log: Rc<dyn jadpo_runtime::call_log::CallLog>) -> NativeHost {
         self.call_log = Some(CallLog(log));
@@ -387,6 +405,11 @@ impl Host for NativeHost {
     /// host carries yet, so any other connection, a package's included,
     /// has none until its driver is built (chunk 7.2c).
     fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
+        if let Some((catcher, mail)) = &self.mail
+            && (mail.0)(connection)
+        {
+            return Some(catcher.0.as_ref());
+        }
         if let Some((files, stores)) = &self.files
             && (stores.0)(connection)
         {

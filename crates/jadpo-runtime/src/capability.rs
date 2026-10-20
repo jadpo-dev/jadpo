@@ -61,6 +61,21 @@ pub struct Call {
     /// call's repair asks again (area 21; chunk 5.5v3), which a fake's
     /// `.requests` doesn't list as a call of its own.
     pub attempt: u32,
+    /// What an email's message was sent as, for a host that keeps the
+    /// mail it catches (the dev inbox, chunk 7.3c2); `None` for every
+    /// other call.
+    pub mail: Option<Box<MailSent>>,
+}
+
+/// An email's message as a host that catches mail sees it (chunk
+/// 7.3c2): the email it was rendered from and the trace of the work that
+/// emitted it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MailSent {
+    /// The email's identity, `accounts.WelcomeEmail`.
+    pub email: String,
+    /// Its trace's id, 32 hex digits, when the work had one.
+    pub trace: Option<String>,
 }
 
 /// The idempotency key a provider call goes under, and its package's code
@@ -100,6 +115,7 @@ impl Call {
             step: None,
             key: None,
             attempt: 1,
+            mail: None,
         }
     }
 

@@ -382,6 +382,23 @@ impl Dev {
         self.out.text()
     }
 
+    /// A `GET` of `path` on the inbox's page (chunk 7.3c2), whose address
+    /// the listening line gives.
+    pub(super) fn inbox(&self, path: &str) -> Reply {
+        let text = self.out.text();
+        let line = text
+            .lines()
+            .find(|line| line.contains("\"listening\""))
+            .expect("listening");
+        let document: serde_json::Value = serde_json::from_str(line).expect("json");
+        let port: u16 = document["data"]["inbox"]
+            .as_str()
+            .and_then(|url| url.rsplit(':').next())
+            .and_then(|port| port.parse().ok())
+            .expect("the inbox's port");
+        send(port, "GET", path, &[], "")
+    }
+
     pub(super) fn send(
         &self,
         method: &str,
@@ -424,6 +441,10 @@ impl Reply {
 
     /// Its body as text: a stream's events, as sent.
     pub(super) fn text(&self) -> &str {
+        &self.body
+    }
+
+    pub(super) fn body(&self) -> &str {
         &self.body
     }
 }

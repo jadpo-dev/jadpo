@@ -438,6 +438,11 @@ const SIGN_IN_HTML: (&str, &str) = (
     "<p><a href=\"{{ sign_in_link }}\">Open Notes</a></p>\n<p>Or type {{ code }}. Both work for {{ expires_in }}.</p>\n",
 );
 
+const SIGN_IN_TEXT: (&str, &str) = (
+    "domains/accounts/emails/sign_in_email.txt",
+    "Open Notes: {{ sign_in_link }}\n\nOr type {{ code }}. Both work for {{ expires_in }}.\n",
+);
+
 const SIGN_IN_WORDS: (&str, &str) = (
     "domains/accounts/translations/en_gb.jadpo",
     "translations {\n    sign_in_email: \"Your Notes sign-in link\"\n}\n",
@@ -448,7 +453,7 @@ fn the_apps_own_email_picks_from_magic_link_email() {
     let found = project(
         SENDS,
         "email: accounts.SignInEmail",
-        &[SIGN_IN_EMAIL, SIGN_IN_HTML, SIGN_IN_WORDS],
+        &[SIGN_IN_EMAIL, SIGN_IN_HTML, SIGN_IN_TEXT, SIGN_IN_WORDS],
     );
     assert_eq!(found, Vec::<String>::new());
 }

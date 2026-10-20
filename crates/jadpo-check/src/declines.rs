@@ -238,9 +238,10 @@ pub(crate) fn answer(
                 };
                 let range = target.text_range();
                 let target = (u32::from(range.start()), u32::from(range.end()));
-                let found = all.iter().enumerate().find(|(i, decline)| {
-                    !used[*i]
-                        && decline.path == label.span.path
+                // A decline covers its rule on its declaration, every
+                // finding there (area 1), so a second one there is unused.
+                let found = all.iter().enumerate().find(|(_, decline)| {
+                    decline.path == label.span.path
                         && decline.target == target
                         && decline.rule == diagnostic.rule.id
                 });
