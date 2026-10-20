@@ -3,8 +3,9 @@
 //! description, licence, version, kind and public surface, or one
 //! declaration in full, or its guide; `check` runs the publishing bar in a
 //! package's own repository and writes its `surface.jadpo_record`.
-//! Installing (`add`, `update`, `remove`, `link`, `unlink`) comes with
-//! chunk 7.1b2.
+//! `import` reads a provider's description into the app's own integration
+//! ([`crate::package_import`], chunk 7.2). Installing (`add`, `update`,
+//! `remove`, `link`, `unlink`) comes with chunk 7.1b2.
 //!
 //! `show` answers what the package is first, its facts on the grid, then a
 //! list per section and a footer counting them, and the one command that
@@ -68,6 +69,10 @@ pub const ACTIONS: &[Value] = &[
         name: "check",
         description: "Run the publishing bar and write surface.jadpo_record",
     },
+    Value {
+        name: "import",
+        description: "Read a provider's OpenAPI document into the app",
+    },
 ];
 
 /// What the language decides `jadpo package` does, not built yet, and the
@@ -79,7 +84,6 @@ const LATER: &[(&str, &str)] = &[
     ("link", "installing packages"),
     ("unlink", "installing packages"),
     ("new", "package repositories"),
-    ("import", "the OpenAPI importer"),
     ("record", "recordings"),
     ("conform", "capabilities"),
     ("publish", "the hosted registry"),
@@ -104,6 +108,7 @@ pub fn package(call: &Call) -> Reply {
         )),
         Some("show") => show(call),
         Some("check") => check(call),
+        Some("import") => crate::package_import::import(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()
@@ -323,14 +328,19 @@ fn summary(declaration: &Declaration) -> String {
             }
         }
         What::Failure { kind, code, .. } => kind.clone().unwrap_or_else(|| code.clone()),
+        What::Message { fields } => {
+            let fields: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+            format!("({})", fields.join(", "))
+        }
         What::Recipe => declaration.file.clone(),
     }
 }
 
 /// The sections a package's surface lists, in the record's order.
-const SECTIONS: [(&str, &str, &str); 5] = [
+const SECTIONS: [(&str, &str, &str); 6] = [
     ("operation", "Operations", "operation"),
     ("function", "Functions", "function"),
+    ("message", "Messages", "message"),
     ("type", "Types", "type"),
     ("failure", "Failures", "failure"),
     ("recipe", "Recipes", "recipe"),
@@ -356,6 +366,9 @@ fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Re
     }
     if let Some(jadpo) = &surface.jadpo {
         fields.push(("jadpo".into(), jadpo.clone()));
+    }
+    if !surface.locales.is_empty() {
+        fields.push(("locales".into(), surface.locales.join(", ")));
     }
     fields.push(("folder".into(), surface.folder.clone()));
     if surface.guide {
@@ -423,6 +436,10 @@ fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Re
                 ),
                 ("folder", Json::from(surface.folder.as_str())),
                 ("guide", surface.guide.into()),
+                (
+                    "locales",
+                    Json::array(surface.locales.iter().map(String::as_str)),
+                ),
                 (
                     "description",
                     surface
@@ -660,6 +677,21 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
                         .map(|(n, t)| Row::new(n.as_str(), t.as_str()))
                         .collect(),
                 ));
+            }
+        }
+        What::Message { fields: own } => {
+            let own: Vec<String> = own.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+            fields.push((
+                "takes".into(),
+                if own.is_empty() {
+                    "locale".to_string()
+                } else {
+                    format!("{}, locale", own.join(", "))
+                },
+            ));
+            fields.push(("returns".into(), "PresentationText".into()));
+            if !surface.locales.is_empty() {
+                fields.push(("worded in".into(), surface.locales.join(", ")));
             }
         }
         What::Recipe => {}
@@ -993,6 +1025,17 @@ fn check(call: &Call) -> Reply {
         )
     });
     diagnostics.extend(described);
+    // A library package's translations: every language it ships is whole
+    // (area 10, "Jadpo's and packages' text").
+    let (worded, unworded) = jadpo_check::translations::packages::publishing(db, project, &mount);
+    if !worded.is_empty() || !unworded.is_empty() {
+        items.push(if unworded.is_empty() {
+            Item::passed("wording", format!("every message in {}", worded.join(", ")))
+        } else {
+            Item::failed("wording", format!("{} missing", unworded.len()))
+        });
+        diagnostics.extend(unworded);
+    }
     items.push(Item::later(
         "examples",
         "waits for how examples are written",

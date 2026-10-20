@@ -1143,6 +1143,11 @@ GET /bakeries
     output FeatureCollection<Point, BakeryPin>
     status 200
 
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
 object BakeryPin
     id: Uuid
     name: Text { max_length: 80 }

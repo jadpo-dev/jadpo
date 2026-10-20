@@ -303,6 +303,10 @@ POST /auth/exchange
     output ExchangedToken
     status 200
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 GET /robots/me
     caller service
     output RobotView

@@ -743,10 +743,17 @@ chunks below, taken before Phase 7, in this order.
   truncates the routes file, then writes it 400 ms later, and the old
   version serves between; `config.rs` saves `.env.local` atomically.
 
-- [ ] **6.13 Keeping what an operator settled** `opus · high` (found in
-  chunk 6.12): deliveries an operator dismissed or cancelled, and their
-  events and log rows, deleted by the tick after a window (30 days, as
-  run records), so they stop piling up; recorded in area 12.
+- [x] **6.13 Keeping what an operator settled** `opus · high` (found in
+  chunk 6.12). Built: the tick deletes a delivery dismissed or cancelled
+  30 days after the operator's last action on it (the log's time, so the
+  deliveries' table is unchanged), with its handled records wherever
+  they are, before it deletes events, so its event goes on the same tick
+  once every delivery of it left succeeded; and an operator's log rows
+  30 days old once their delivery or run is gone. A delivery that could
+  run is never deleted. 1,000 rows at a time, ten times a tick, per
+  store; statements in `jadpo_runtime::statements`; live tests in
+  `tick_deletes.rs` and `deliveries.rs`. Choices in area 12, "The tick"
+  and "What an operator sees".
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in
@@ -853,11 +860,28 @@ The design is area 11 as revised on 2026-10-16, with its research in
   Also the bar's two items decided 2026-10-20 (area 11 questions 27 and
   28): examples in descriptions run as tests, and the changelog written
   from the surface with the author's why.
-- [ ] **7.1b3 Library packages' translations** `opus · high`, after
+- [x] **7.1b3 Library packages' translations** `opus · high`, after
   7.1b: a library package's `translations/` (area 10, "Jadpo's and
   packages' text"), `Postcodes.translations.<message>(...)`, the root
   file's wording grouped by package, and its messages in the surface and
-  the publishing bar.
+  the publishing bar. Built: a library package's `translations/` checked
+  as a domain's, each file against the locale it is named for;
+  `Postcodes.translations.<message>(...)` through the checker, the graph
+  and the interpreter; the root file's package groups checked against the
+  package's public messages, enums and failures, each supported locale
+  worded there or by the package, the app's wording first; their lines in
+  the root `sources.jadpo_record`, stale when the package rewords its
+  text; a package failure a route answers with worded for clients; `jadpo
+  translations missing`; messages and locales in the surface and `jadpo
+  package show`; and the bar's `wording` row and message descriptions.
+  Choices in area 10's "Chosen in chunk 7.1b3", one flagged for Richard
+  (a package has no default locale, so every language it ships must be
+  complete); `jadpo translations export`, `import` and `unused` don't take
+  a package's text yet.
+- [ ] **7.1b4 Package text in the translation commands** `opus · high`
+  (found in chunk 7.1b3): `jadpo translations export`, `import` and
+  `unused` taking in a library package's messages and the app's wording
+  of them, as `missing` already does.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
@@ -865,23 +889,54 @@ The design is area 11 as revised on 2026-10-16, with its research in
   resources by file name with the check cached per digest, and two
   versions of one package side by side, names carrying the version. The
   public registry stays after the first build.
-- [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
-  fields in every API's OpenAPI document and each API serving it at
+- [x] **7.2 Served OpenAPI and the importer** `opus · high` (split from
+  7.2 Importing, decoding and faking on 2026-10-20): `x-jadpo` fields in
+  every API's OpenAPI document, and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:
-  false` to turn off, listed in its own OpenAPI and record); the OpenAPI
-  importer reading them, hand-written packages, `wire:`,
-  `decode:`, `wire_output:`, `output_at:` and `failed_when:`, recordings
-  and `jadpo package record`, generated fakes, provider calls faked by
-  default in `jadpo dev` with `development: { sandbox: }` and the call log
-  (`jadpo calls`), and derived provider idempotency keys (app,
-  environment, caller, step), which also close a collision between users; and mapping imported types
-  to standard types (area 11, "Mapping imported types to standard types",
-  Richard 2026-10-17): exact format mappings, shape and name detection
-  decoded at the edge, declinable findings with `(agent)` steps, one review
-  instruction scoped to the types the app's operations reach and tracked per
-  type in `jadpo check` and `jadpo approval`, and the import's summary.
+  false` to turn off, listed in its own OpenAPI and record and in `jadpo
+  routes`); `jadpo package import openapi <file>` reading a local
+  document into the app's own integration in
+  `shared/providers/<name>/<version>/` (index, `provider.jadpo` with
+  `imported:`, resources, types and failures), exact where it finds
+  `x-jadpo` fields, with area 11's exact format mappings (its first
+  layer), merging into an earlier import rather than overwriting it, and
+  its summary. Built: `GET <prefix>/openapi.json` answered by the runtime
+  with the document `jadpo check` writes (the plan holds it; the
+  project's name, which titles it, is now an input of the project),
+  needing a caller by any method its API accepts unless the API accepts
+  none; `x-jadpo-changes`, `-idempotency`, `-failure` and `-constraints`
+  (a field's type as the record writes it) and a tag per route group,
+  with `x-jadpo-events` waiting for publishing events outward (area 7,
+  "OpenAPI"); and `jadpo package import openapi`, with its choices in
+  area 11's "Chosen in chunk 7.2", one flagged for Richard: a provider
+  field's or variant's wire spelling (`collectAt`) has no Jadpo form, so
+  the importer lists each; recommendation `wire_name:`.
+- [ ] **7.2c Wire, decoding and provider calls** `opus · high`, after 7.2
+  and 7.1c: a provider operation called through its connection over
+  7.0c's seam by the package driver (JSON over HTTP), tested against a
+  local HTTP server started in the test; hand-written packages' `wire:`,
+  `decode:` and `encode:`, `wire_output:`, `output_at:` and
+  `failed_when:`; and derived provider idempotency keys (app,
+  environment, caller, step), which also close a collision between
+  users.
+  Also `wire_name:` on a provider's fields and enum variants (area 11,
+  decided 2026-10-20), written by the importer where the spelling
+  differs.
+- [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
+  7.2c: a generated fake per package and `fakes:` for provider
+  operations in tests; recordings and `jadpo package record`, every
+  decoder run over every recording; provider calls faked by default in
+  `jadpo dev`, with `development: { sandbox: }`; and the call log screen,
+  `jadpo calls` and `jadpo calls script`, on 7.0c's data.
+- [ ] **7.2e Mapping imported types to standard types** `opus · high`,
+  after 7.2d and 7.1b (area 11, "Mapping imported types to standard
+  types", Richard 2026-10-17): shape and name detection decoded at the
+  edge, declinable findings with `(agent)` steps, one review instruction
+  scoped to the types the app's operations reach and tracked per type in
+  `jadpo check` and `jadpo approval`, unconfirmed operations, and all of
+  it in the import's summary.
 - [ ] **7.2b The outbox's circuit breaker** `opus · high` (area 12,
-  question 18), after 7.2: per connection, after a run of `unavailable`
+  question 18), after 7.2c: per connection, after a run of `unavailable`
   failures from one provider, deliveries that call it are held rather
   than attempted, one probe delivery is tried after a pause, and success
   releases the rest; held deliveries keep their retry budget, are shown

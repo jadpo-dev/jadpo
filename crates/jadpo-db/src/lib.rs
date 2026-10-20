@@ -132,6 +132,12 @@ pub struct Project {
     pub identities: BTreeMap<String, String>,
     #[returns(ref)]
     pub records: Vec<Record>,
+    /// The application's name: its folder's, until `app.jadpo` gives one;
+    /// empty where nothing named it, as in a test's project. It titles
+    /// each API's OpenAPI document (area 7).
+    #[default]
+    #[returns(ref)]
+    pub name: String,
 }
 
 /// The database every compiler query runs against.

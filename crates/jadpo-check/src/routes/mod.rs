@@ -21,6 +21,7 @@
 pub mod apis;
 pub mod openapi;
 pub mod record;
+pub mod served;
 pub mod wire;
 
 use std::collections::BTreeSet;
@@ -487,7 +488,32 @@ pub fn table_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         .iter()
         .map(|text| Segment::Fixed(text.to_string()))
         .collect();
+    // Each API's OpenAPI document (area 7, "OpenAPI").
+    let documents = served::served(db, project);
     for (i, (group, route, span)) in routes.iter().enumerate() {
+        let document = documents.iter().find(|served| {
+            let segments: Vec<Segment> = served
+                .segments
+                .iter()
+                .map(|text| Segment::Fixed(text.clone()))
+                .collect();
+            route.method == jadpo_std::HttpMethod::Get && overlaps(&route.segments, &segments)
+        });
+        if let Some(served) = document {
+            out.push(
+                Diagnostic::new(
+                    &rule::ROUTE_PATH_OVERLAP,
+                    format!("`{}` is where API `{}` serves its OpenAPI document", route.label(), served.api),
+                )
+                .at(span.clone(), "answered by the runtime")
+                .reason(format!(
+                    "Each API serves its OpenAPI document at `{}` unless its entry in `apis:` says `serve_openapi: false`, so this route would never run.",
+                    served.path()
+                ))
+                .next(format!("Give `{}` in `{group}` another path", route.label())),
+            );
+            continue;
+        }
         // The runtime answers the generated exchange (area 8, "Ways to
         // sign in").
         if exchanges

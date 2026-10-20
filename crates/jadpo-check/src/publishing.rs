@@ -42,6 +42,7 @@ pub fn undescribed(db: &dyn Db, project: Project, folder: &str) -> Vec<Diagnosti
             };
             let what = match &item.kind {
                 ItemKind::Type(base) if *base == jadpo_db::Base::Failure => "Public failure",
+                ItemKind::Type(jadpo_db::Base::Message) => "Public message",
                 ItemKind::Type(_) => "Public type",
                 ItemKind::Library => "Public library",
                 _ => continue,
@@ -161,7 +162,13 @@ pub fn version(
                         .cloned()
                 };
                 let package = entry.heading.starts_with("package ");
-                if package && licence(&old_facts) == licence(&new_facts) {
+                // A locale a library package no longer words leaves an app
+                // that shows it with nothing to show (area 10).
+                let kept_locales = old_facts
+                    .iter()
+                    .filter(|fact| fact.starts_with("locale "))
+                    .all(|fact| new_facts.contains(fact));
+                if package && kept_locales && licence(&old_facts) == licence(&new_facts) {
                     additions.push(("changed".to_string(), entry.heading.clone()));
                 } else {
                     breaking.push(("changed".to_string(), entry.heading.clone()));

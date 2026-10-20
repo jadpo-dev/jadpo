@@ -59,6 +59,8 @@ pub fn gaps(db: &dyn Db, project: Project) -> Vec<Gap> {
             worded_in: gap.worded_in,
         });
     }
+    // Library packages' text, worded in the root folder or by the package.
+    out.extend(super::packages::gaps(db, project));
     let mut all: BTreeSet<String> = scopes(db, project).into_iter().collect();
     all.extend(failure_scopes(db, project));
     let reachable = reachable_names(db, project);

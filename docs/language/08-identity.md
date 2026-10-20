@@ -283,6 +283,10 @@ POST /auth/exchange
     output ExchangedToken
     status 200
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 GET /partners/me
     caller service
     output PartnerView
@@ -900,6 +904,10 @@ DELETE /auth/passkey/{passkey_id: Uuid}
     generated passkey
     caller user
     status 204
+
+GET /openapi.json
+    generated openapi
+    status 200
 
 output PasskeyView
     id: Uuid
@@ -1568,6 +1576,10 @@ POST /notes
     output NoteView
     status 201
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 output NoteView
     text: Text { min_length: 1, max_length: 500 }
 
@@ -2092,6 +2104,10 @@ POST /notes
     input WriteNote (body)
     output NoteView
     status 201
+
+GET /openapi.json
+    generated openapi
+    status 200
 
 POST /partners
     caller user

@@ -495,9 +495,12 @@ description into the app's own integration once, offline, in
 | `har` | A browser or proxy capture of real traffic | Operations and real responses; values stripped, shapes kept |
 | `dts` | The provider's official TypeScript SDK (`.d.ts` files) | Exact types and SDK method names; no HTTP method or path, so the agent adds those from the docs |
 
-An agent then fills what the source leaves out: which calls change
-something, idempotency, error names, and decoding (OpenAPI often says only
-`integer` for Unix seconds). A person reviews that diff. Corrections to a
+Built in chunk 7.2 for `openapi`, from a local file (`jadpo package import
+openapi ../orders/build/openapi/main.json`, `--as Orders.v1` to name it);
+"Chosen in chunk 7.2" below says how it reads one. An agent then fills
+what the source leaves out: which calls change something, idempotency,
+error names, and decoding (OpenAPI often says only `integer` for Unix
+seconds). A person reviews that diff. Corrections to a
 wrong specification live in the package and survive the next import,
 because the importer merges rather than overwrites, as an
 [OpenAPI Overlay](https://spec.openapis.org/overlay/v1.0.0) does.
@@ -511,7 +514,9 @@ operation and grow.
 
 ### Mapping imported types to standard types
 
-> Decided 2026-10-17 (Richard). Built with the importer (chunk 7.2).
+> Decided 2026-10-17 (Richard). The exact format mappings (its first
+> layer) are built with the importer (chunk 7.2); the rest comes with
+> chunk 7.2e.
 
 An imported description says little about what a field *is*: OpenAPI's
 `integer` may be pence, Unix seconds or a count. Area 19 decides that a
@@ -767,6 +772,10 @@ what is published. Descriptions alone are not the bar, because the compiler
 cannot judge whether one says anything; examples are, because they must
 run. A library package also ships complete wording in its own default
 locale, with a `///` description on every public message (area 10).
+Built in chunk 7.1b3: a `wording` row, shown when the package carries
+translations, holds every language it ships to completeness, and item 2
+asks the description of every public message (area 10, "Chosen in chunk
+7.1b3").
 
 > **Built (chunk 7.1b).** `jadpo package check`, run in a package's own
 > repository, checks the package placed as the app's own integration in a
@@ -1884,7 +1893,7 @@ example and real output under "Errors".
 | A connection's `host:` for a package with fixed `hosts:`; a package with both `hosts:` and `runs:` | By `jadpo check` | 7.1 |
 | A capability's connection whose package does not provide it | By `jadpo check` | 7.3 |
 | A function call or expression in a `provide` mapping | By `jadpo check` | 7.3 |
-| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2 |
+| A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
 | Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | Not yet on the roadmap |
@@ -3474,7 +3483,10 @@ publishing bar (below); the rest is still to build.
 | Part | Chunk |
 |---|---|
 | The package format (both kinds, `package.jadpo`, `provider.jadpo`, folders laid out as `shared/`, `public` and the reachability rule), `packages/<name>/<version>/` committed and checked against `jadpo.lock`, the app's own integrations in `shared/providers/`, reserved names, `connections:`, lazy loading, the surface and `jadpo package show`, the publishing bar, the network report | 7.1 |
-| The OpenAPI importer (writing into `shared/providers/`, reading `x-jadpo` fields), hand-written packages, decoding with the built-in encodings, recordings checked by decoders, generated fakes, `jadpo package record` | 7.2 |
+| The OpenAPI importer (writing into `shared/providers/`, reading `x-jadpo` fields) | 7.2 |
+| Hand-written packages' wire and decoding, provider calls through the connection, derived idempotency keys | 7.2c |
+| Generated fakes, recordings checked by decoders, `jadpo package record`, provider calls faked in `jadpo dev`, `jadpo calls` | 7.2d |
+| Mapping imported types to standard types beyond the exact format mappings, and its review | 7.2e |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3 |
 | No transaction open during a call | 7.4 |
 | Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes, queues); OAuth grants; git-sourced packages, links and publisher trust; the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
@@ -3504,6 +3516,17 @@ publishing bar (below); the rest is still to build.
 > in "Chosen in chunk 7.1b" below, with two questions for Richard (27 and
 > 28).
 
+> **Built (chunk 7.2).** `jadpo package import openapi <file>`: a local
+> OpenAPI 3 document read into the app's own integration in
+> `shared/providers/<name>/<version>/`, exact from another Jadpo
+> application's `x-jadpo` fields (area 7), with area 11's exact format
+> mappings for any other provider's, merged into an earlier import rather
+> than overwriting it, and a summary of what is left to check. Choices in
+> "Chosen in chunk 7.2" below, with one flagged for Richard (wire names).
+> Next: wire and decoding with provider calls (chunk 7.2c), fakes,
+> recordings and the call log (7.2d), and the rest of the mapping to
+> standard types (7.2e).
+
 ### Chosen in chunk 7.1
 
 What the pages leave to the build, each the most conservative reading:
@@ -3531,9 +3554,9 @@ What the pages leave to the build, each the most conservative reading:
   (`Postcodes.UkPostcode(text)`) and a public library's function
   (`Postcodes.uk.parse(text)`). A package's actions, subscribers and
   events (chunk 7.6) and capability mappings (chunk 7.3) are
-  `toolchain.not_built_yet` where they are declared, as are a library
-  package's translations (chunk 7.1b); a resource's
-  operations are read with provider calls (chunk 7.2). Two versions of one
+  `toolchain.not_built_yet` where they are declared (a library
+  package's translations were too, until chunk 7.1b3); a resource's
+  operations are read with provider calls (chunk 7.2c). Two versions of one
   package side by side, names carrying the version, are
   `toolchain.not_built_yet` too.
 - **Its failures.** A package's failure is known through its package in
@@ -3583,7 +3606,10 @@ What the pages leave to the build, each the most conservative reading:
   function of a `public library`; each `public` type (`type Name =
   Base`), then each `public` failure; each folder in `recipes/`. A
   package's events, actions, polls and capability mappings join with their
-  chunks (7.6, 7.3), its messages with 7.1b3. A library itself has no
+  chunks (7.6, 7.3); its public messages, `message
+  translations.<message>` with their fields, after the functions, and a
+  `locale` line in the package's entry for each language it words, since
+  chunk 7.1b3 (area 10). A library itself has no
   entry: its functions do. Declarations without `public`, and test files,
   are left out.
 - **The package's entry.** `kind` is `provider` when the package has
@@ -3651,6 +3677,93 @@ What the pages leave to the build, each the most conservative reading:
 - **Not built yet.** `jadpo package add`, `update`, `remove`, `link`
   and `unlink` say `toolchain.not_built_yet` until chunk 7.1b2; `new`,
   `import`, `record`, `conform`, `publish` and `recipe` until theirs.
+
+### Chosen in chunk 7.2
+
+The importer, `jadpo package import openapi <file>`, each choice the most
+conservative reading:
+
+- **Where it writes.** Always the app's own integration,
+  `shared/providers/<name>/<version>/`; installing another Jadpo app's
+  package into `packages/` is `jadpo package add` (chunk 7.1b2). The name
+  and version are `--as AcmeCouriers.v1`, or the document's title in
+  `UpperCamelCase` and its version's major number (`1.4.0` is `v1`), or
+  its date (`2024-06-20` is `v2024_06_20`), else `v1`, as for a Jadpo
+  application, whose document's version is a hash of its record.
+- **What it reads.** OpenAPI 3.0 and 3.1 as JSON, from a local file; YAML
+  and Swagger 2.0 are refused with what to do (`cli.package_unreadable` and `cli.package_not_openapi`,
+  area 14), and Smithy, Postman, HAR and `.d.ts` are
+  `toolchain.not_built_yet`. Nothing is fetched.
+- **The files.** `package.jadpo` with `Licence.proprietary` (an own
+  integration may use it) and `jadpo: "1.0"`; `provider.jadpo` with
+  `protocol: Protocol.json_http`, `imported: { file: digest: }` (the path
+  from the project's root and `sha256:` of the file's bytes), `hosts: {
+  live: }` from the first absolute server, and `credential:
+  CredentialScheme.bearer` or `.basic` from the security schemes; a
+  resource per tag, in `resources/`, every resource `public`; the types
+  and failures the operations reach, each `public` in its own file, and
+  nothing else of the description. Every operation is `source:
+  PackageSource.imported`.
+- **Operations.** By path, then `get`, `put`, `post`, `delete` and
+  `patch`. A resource is the operation's first tag in `lower_snake_case`,
+  else its path's first fixed segment that isn't a version. On the
+  resource's shortest fixed path an operation is `list` or `create`; with
+  one placeholder after it `get`, `update` (`replace` for a `PUT` beside a
+  `PATCH`) or `delete`; any other is its `operationId` in
+  `lower_snake_case`, or a Jadpo application's method and fixed segments
+  (`post_archive`). Its input is its body's type when it has no
+  placeholders or query parameters, else `<Resource><Operation>Input`
+  holding them and the body's fields; header and cookie parameters and a
+  body that isn't JSON are left out and listed. Its output is its lowest
+  `2xx` answer's JSON body.
+- **What it can't know from another provider** is written the safe way
+  and listed: `changes: true` for every method but `GET`, no
+  `idempotent:`, no failures, no `idempotency:` or `error_code:`, and no
+  sandbox host.
+- **Types.** Area 11's exact mappings (`date-time` `Instant`, `date`
+  `CalendarDate`, `email` `Email`, `uri` `Url`, `uuid` `Uuid`, `ipv4` and
+  `ipv6` `IpAddress`, `byte` `Bytes`, `duration` `Duration`, and an
+  enumeration of ISO 4217 codes `Currency` or of ISO 3166-1 codes
+  `Country`), `integer` `Int`, `number`
+  `Decimal`, `boolean` `Bool`, an array `List` (`Set` with
+  `uniqueItems`), an object of one kind of value `Map<Text, V>`, and their
+  rules (`minLength`, `maxLength`, `pattern`, `minimum`, `maximum`,
+  `minItems`, `maxItems`). A field not `required`, or `nullable`, is `?`.
+  An object or enumeration inside another is a type of its own,
+  `<Parent><Field>`; a constrained item of a list is a refined type,
+  `<Parent><Field>Element`. A schema named as a built-in type is
+  `<Name>Type`, and listed. `oneOf` and `anyOf` of several shapes, and an
+  object of any fields, are left out and listed. Shape and name
+  detection come with chunk 7.2e.
+- **A Jadpo application's document** (one whose operations carry
+  `x-jadpo-changes`) is read exactly: each field's type from
+  `x-jadpo-constraints`, `changes:` from `x-jadpo-changes`, `idempotent:
+  true` where a key keeps the response, the provider's `idempotency:` from
+  `x-jadpo-idempotency`, `error_code: "error.code"`, its failures from
+  `x-jadpo-failure` (named from the code, with its kind and message), no
+  host (the connection gives `host:`), and no finding. Its runtime's own
+  routes (`x-jadpo-generated`: the exchange, passkeys, the served
+  document) are left out. An API that signs callers in only with a
+  browser session gets no credential, and a finding.
+- **Importing again merges** one declaration and one member at a time:
+  what the description adds is added, what both have is kept as the file
+  has it, so corrections survive, and what only the file has is kept and
+  listed; only `imported:` is always the description's. A file that
+  doesn't read is left alone and listed.
+- **The summary** says what was written where and counts what the package
+  holds, lists a merge's changes, and groups what is left to check by
+  what to do, each `(agent)`, with `--json` for agents.
+- **Field and variant names on the wire.** A field or variant is the
+  provider's name in `lower_snake_case`; where that differs (`collectAt`,
+  `after-noon`), or a reserved word was avoided (`type` is `type_value`),
+  the importer lists it, since a package can't yet say a field's name on
+  the wire. *Flagged for Richard:* nothing on these pages lets a provider
+  package name a field's or variant's wire spelling, and most non-Stripe
+  APIs are camelCase. Recommendation: a field setting `wire_name:
+  "collectAt"` and a variant's `wire_name:`, written by the importer only
+  where the spelling differs, read by the runtime in chunk 7.2c; a
+  provider-wide setting would hide exceptions. Until it is decided, the
+  importer lists each one and the package checks.
 
 ### Consistency with the rest of the language
 
@@ -4182,3 +4295,4 @@ packages and extension points, as each note says; 26 was decided then.
 | Mapping imported types (Richard) | An import maps fields to standard types in six layers: exact format mappings; shape and name detection with `type.standard_exists`'s matcher, the provider's shape decoded at the edge; declinable findings with `(agent)` steps on flagged fields; one broad review instruction scoped to the types the app's operations reach, tracked per type as reviewed or not in `jadpo check` and `jadpo approval`; confirmation by recorded responses; `type.standard_exists` as the safety net. Built in 7.2 | 2026-10-17 |
 | An example in a description (question 27) | A fenced code block in a public declaration's description, written as a test body and run as a test of the package by `jadpo package check` (Richard, as recommended, 2026-10-19 standing instruction; built with 7.1b2) | 2026-10-20 |
 | A package's changelog (question 28) | `jadpo package check` writes a section per version holding the list of changes it works out from the surface, and the author adds why beneath it (Richard, as recommended, 2026-10-19 standing instruction; built with 7.1b2) | 2026-10-20 |
+| A provider field's spelling on the wire (after chunk 7.2) | A field or enum variant in a provider package may say its spelling on the wire with `wire_name:`, written only where it differs from the Jadpo name (`collectAt`, `after-noon`); the importer writes it, and the runtime reads and writes that spelling (Richard, as recommended under the 2026-10-19 standing instruction; built in 7.2c) | 2026-10-20 |

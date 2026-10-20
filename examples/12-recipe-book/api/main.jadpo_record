@@ -52,6 +52,10 @@ POST /ingredients
     status 201
     fails ingredient_listed
 
+GET /openapi.json
+    generated openapi
+    status 200
+
 PATCH /recipes/{recipe_id: Uuid}
     input RenameRecipe (body)
     output RecipeCard

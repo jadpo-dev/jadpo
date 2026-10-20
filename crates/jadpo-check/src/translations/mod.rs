@@ -22,6 +22,7 @@ pub mod failures;
 pub mod jadpo;
 mod language;
 pub mod outstanding;
+pub mod packages;
 pub mod sources;
 
 use jadpo_db::{Db, Project, Symbol};
@@ -31,7 +32,10 @@ use jadpo_std::translation::{ParamKind, TranslationPlan};
 use crate::lookups::Name;
 use crate::types::Prim;
 
-pub use declared::{Kind, Mode, ParamSpec, SHARED, Subject, Subjects, scope_of, scopes, subjects};
+pub use declared::{
+    Kind, Mode, ParamSpec, SHARED, Subject, Subjects, bare_name, package_of, package_scopes,
+    scope_of, scopes, subjects,
+};
 
 /// The namespace a message is called through: `translations.<scope>.<key>`.
 pub const TRANSLATIONS: &str = "translations";
@@ -61,6 +65,16 @@ pub fn translation_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     for scope in &scopes {
         out.extend(
             subjects(db, project, Name::new(db, scope.clone()))
+                .problems
+                .iter()
+                .cloned(),
+        );
+    }
+    // A library package's translations are checked whether or not the
+    // application declares locales: the package words its own languages.
+    for scope in packages::scopes(db, project) {
+        out.extend(
+            packages::analyse_package(db, project, Name::new(db, scope))
                 .problems
                 .iter()
                 .cloned(),
@@ -242,6 +256,46 @@ pub fn entry_facts(db: &dyn Db, project: Project) -> Vec<EntryFacts> {
             });
         }
     }
+    // A library package's messages, worded by the package and by the
+    // app's root file: a change to either reaches what calls them.
+    let roots = jadpo::root_language_files(db, project);
+    for scope in packages::scopes(db, project) {
+        let subjects = subjects(db, project, Name::new(db, scope.clone()));
+        let files: Vec<&LanguageFile> = declared::language_files(db, project, &scope)
+            .into_iter()
+            .filter_map(|file| language_file(db, project, file).as_ref())
+            .collect();
+        for subject in &subjects.list {
+            if !subject.callable() || !subject.symbol.public {
+                continue;
+            }
+            let mut text = Vec::new();
+            for file in &files {
+                if let Some(member) = file.member(&subject.key) {
+                    text.push(format!("{}:{}", file.tag, language::flatten(&member.body)));
+                }
+            }
+            for file in &roots {
+                if let Some(member) = file
+                    .group(&scope)
+                    .and_then(|group| group.member(&subject.key))
+                {
+                    text.push(format!(
+                        "root {}:{}",
+                        file.tag,
+                        language::flatten(&member.body)
+                    ));
+                }
+            }
+            out.push(EntryFacts {
+                key: format!("{scope}.{}", subject.key),
+                scope: scope.clone(),
+                name: subject.key.clone(),
+                place: Some((subject.symbol.path.clone(), subject.name_span.clone())),
+                text,
+            });
+        }
+    }
     out
 }
 
@@ -253,6 +307,14 @@ pub fn plan(db: &dyn Db, project: Project) -> TranslationPlan {
     for scope in scopes(db, project) {
         entries.extend(
             analyse(db, project, Name::new(db, scope))
+                .entries
+                .iter()
+                .cloned(),
+        );
+    }
+    for scope in packages::scopes(db, project) {
+        entries.extend(
+            packages::analyse_package(db, project, Name::new(db, scope))
                 .entries
                 .iter()
                 .cloned(),

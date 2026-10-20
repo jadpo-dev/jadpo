@@ -112,6 +112,10 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
             {
                 generated.extend(passkey_entries(&passkey.path));
             }
+            // Its own OpenAPI document (area 7, "OpenAPI").
+            if let Some(served) = super::served::served_by(db, project, &api) {
+                generated.push(openapi_entry(&served));
+            }
             let mut head = Entry::new(format!("api {api}"));
             let mut names: Vec<&str> = methods.iter().map(|method| method.name()).collect();
             names.sort_unstable();
@@ -177,6 +181,22 @@ fn exchange_entry() -> Generated {
                 .with("expires_at: Instant")
                 .with("token: ServiceToken"),
         )],
+    }
+}
+
+/// The generated `GET <prefix>/openapi.json` (area 7, "OpenAPI"), as the
+/// record lists it: the runtime's, answering with the API's document.
+fn openapi_entry(served: &super::served::Served) -> Generated {
+    let path = served.path();
+    let mut entry = Entry::new(format!("GET {path}")).with("generated openapi");
+    if !served.authentication.needs_caller() {
+        entry.push("authentication none");
+    }
+    entry.push("status 200");
+    Generated {
+        at: (path, order_of(jadpo_std::HttpMethod::Get)),
+        entry,
+        sections: Vec::new(),
     }
 }
 

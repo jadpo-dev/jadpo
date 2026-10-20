@@ -133,25 +133,90 @@ impl Subjects {
     }
 }
 
-/// The scope an owner's translations are in: the domain's name, or
-/// `shared`.
+/// The scope an owner's translations are in: the domain's name, `shared`,
+/// or a library package's folder name (`postcodes`), which no domain can
+/// share (`package.name_taken`) and which names its group in the root file.
 pub fn scope_of(ownership: &Ownership) -> Option<String> {
     match ownership {
         Ownership::Domain(domain) => Some(domain.clone()),
         Ownership::Shared => Some(SHARED.to_string()),
+        Ownership::Package(home) => Some(home.name.clone()),
         _ => None,
     }
+}
+
+/// A symbol's name as its own scope writes it: a package's declarations
+/// are known through the package (`Postcodes.PostcodeHint`), and are
+/// `PostcodeHint` inside it.
+pub fn bare_name(symbol: &Symbol) -> &str {
+    match &symbol.ownership {
+        Ownership::Package(home) => symbol
+            .name
+            .strip_prefix(home.code.as_str())
+            .and_then(|rest| rest.strip_prefix('.'))
+            .unwrap_or(&symbol.name),
+        _ => &symbol.name,
+    }
+}
+
+/// A symbol's name as the checker's failure table and the app know it: a
+/// package's declarations are written through the package,
+/// `Postcodes.InvalidPostcode`.
+pub fn known_name(symbol: &Symbol) -> String {
+    match &symbol.ownership {
+        Ownership::Package(home) => format!("{}.{}", home.code, bare_name(symbol)),
+        _ => symbol.name.clone(),
+    }
+}
+
+/// The library packages that carry translations (area 10, "Jadpo's and
+/// packages' text"), each as its scope and where it is, in scope order: a
+/// message in its `translations/` or a language file there. A provider
+/// package's are `package.provider_translations`, and words nothing.
+#[salsa::tracked(returns(ref))]
+pub fn package_scopes(db: &dyn Db, project: Project) -> Vec<(String, jadpo_db::PackageHome)> {
+    let mut found: std::collections::BTreeMap<String, jadpo_db::PackageHome> =
+        std::collections::BTreeMap::new();
+    for &file in project.files(db) {
+        let location = jadpo_db::location(db, project, file);
+        if let Ownership::Package(home) = &location.ownership
+            && matches!(location.place, Place::Folder(Folder::Translations))
+            && !location.test
+        {
+            found
+                .entry(home.name.clone())
+                .or_insert_with(|| home.clone());
+        }
+    }
+    found.retain(|_, home| {
+        let provider = format!("{}/{}", home.folder, jadpo_db::PROVIDER_FILE);
+        file_at(db, project, Name::new(db, provider)).is_none()
+    });
+    found.into_iter().collect()
+}
+
+/// The library package whose translations are in `scope`, if one is.
+pub fn package_of(db: &dyn Db, project: Project, scope: &str) -> Option<jadpo_db::PackageHome> {
+    package_scopes(db, project)
+        .iter()
+        .find(|(name, _)| name == scope)
+        .map(|(_, home)| home.clone())
 }
 
 /// The scope of `shared/translations/`.
 pub const SHARED: &str = "shared";
 
-/// Every scope that declares a message or holds a language file, in name
-/// order: an enum or an email is worded only where a language file says so.
+/// Every scope of the application's own that declares a message or holds
+/// a language file, in name order: an enum or an email is worded only where
+/// a language file says so.
 pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
     let mut found: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // A library package's translations are checked by their own rules,
+    // against the package's locales and the app's root file
+    // ([`package_scopes`]).
     for symbol in all_symbols(symbols(db, project)) {
         if subject_kind(symbol) == Some(Kind::Message)
+            && symbol.ownership.package().is_none()
             && let Some(scope) = scope_of(&symbol.ownership)
         {
             found.insert(scope);
@@ -161,6 +226,7 @@ pub fn scopes(db: &dyn Db, project: Project) -> Vec<String> {
         let location = jadpo_db::location(db, project, file);
         if matches!(location.place, Place::Folder(Folder::Translations))
             && !location.test
+            && location.ownership.package().is_none()
             && let Some(scope) = scope_of(&location.ownership)
         {
             found.insert(scope);
@@ -234,7 +300,7 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
             }
             continue;
         }
-        let key = to_snake(&symbol.name);
+        let key = to_snake(bare_name(symbol));
         // A name another subject of the scope already took is the checker's
         // naming rules' to report; the first is kept.
         if out.list.iter().any(|seen| seen.key == key) {
@@ -276,6 +342,7 @@ pub fn subjects<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Sub
             }
         };
         if let Some(mut subject) = subject {
+            subject.type_name = known_name(symbol);
             subject.description = crate::graph::text::doc(decl.syntax());
             out.list.push(subject);
         }
@@ -294,8 +361,8 @@ fn failure_subject(
     seen: &[Subject],
     problems: &mut Vec<Diagnostic>,
 ) -> Option<Subject> {
-    let info =
-        crate::lookups::failure_info(db, project, Name::new(db, symbol.name.clone())).as_ref()?;
+    let known = known_name(symbol);
+    let info = crate::lookups::failure_info(db, project, Name::new(db, known.clone())).as_ref()?;
     // The first failure to use a code keeps it: area 4 reports a code two
     // failures share.
     if seen.iter().any(|other| other.key == info.code) {
@@ -331,8 +398,7 @@ fn failure_subject(
             |name| node_span(&symbol.path, name.syntax()),
         );
         let canonical = lookup.canonical_name(&symbol.name);
-        let client =
-            crate::failures::client_fields(db, project, Name::new(db, symbol.name.clone()));
+        let client = crate::failures::client_fields(db, project, Name::new(db, known.clone()));
         let fields: Vec<FieldDef> = match lookup.def(&canonical) {
             Some(Def::Fields { fields, .. }) => fields
                 .iter()
@@ -370,7 +436,7 @@ fn failure_subject(
     }
     Some(Subject {
         key: info.code.clone(),
-        type_name: symbol.name.clone(),
+        type_name: known,
         kind: Kind::Failure,
         symbol: symbol.clone(),
         name_span,

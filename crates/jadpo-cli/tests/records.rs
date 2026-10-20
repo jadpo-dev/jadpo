@@ -47,6 +47,11 @@ POST /memos
     output MemoView
     status 200
 
+GET /openapi.json
+    generated openapi
+    authentication none
+    status 200
+
 input AddMemo
     text: Text { max_length: 200 }
 

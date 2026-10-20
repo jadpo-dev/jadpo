@@ -175,6 +175,10 @@ pub enum Run {
     /// One of the routes `passkey:` generates (area 8, "Passkeys"), which
     /// the runtime answers itself.
     Passkey(PasskeyStep),
+    /// `GET <prefix>/openapi.json` (area 7, "OpenAPI"): the API's own
+    /// OpenAPI document, its text as `jadpo check` writes it, which the
+    /// runtime answers with as it is.
+    OpenApi(String),
 }
 
 /// The routes `sign_in: { passkey: }` generates (area 8, "Passkeys"),
@@ -540,6 +544,10 @@ pub const SERVICE_TOKEN_PREFIX: &str = "jadpo_service_token_";
 
 /// The path of the generated exchange (area 8, "Ways to sign in").
 pub const EXCHANGE_PATH: [&str; 2] = ["auth", "exchange"];
+
+/// The last segment of the path each API serves its OpenAPI document at,
+/// after its prefix (area 7, "OpenAPI"): `/v1/openapi.json`.
+pub const OPENAPI_PATH: &str = "openapi.json";
 
 /// What `POST /auth/exchange` answers with: the token and when it
 /// expires.

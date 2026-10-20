@@ -216,6 +216,12 @@ impl Body<'_> {
         // `Postcodes.uk.parse(...)` calls its library `Postcodes.uk`, and
         // `Postcodes.UkPostcode(...)` builds its type.
         if !rest.is_empty() && self.symbols.is_package(&head) && !self.is_local(&head) {
+            // A library package's message (area 10, "Jadpo's and packages'
+            // text"): `Postcodes.translations.<message>(...)`.
+            if rest[0] == crate::translations::TRANSLATIONS {
+                let package = head.clone();
+                return self.package_translation_call(call, callee, &package, &rest[1..], &written);
+            }
             head = format!("{head}.{}", rest.remove(0));
             if rest.is_empty() {
                 if starts_upper(package_member(&head)) {
