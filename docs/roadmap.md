@@ -1029,13 +1029,28 @@ The design is area 11 as revised on 2026-10-16, with its research in
   after it refused (`call_in_transaction`, until 7.4); example 26 books a
   pickup. Choices in area 11's "Chosen in chunk 7.2c"; `jadpo dev` and
   `jadpo test` give a package connection no driver until 7.2d.
-- [ ] **7.2c2 Wire encodings and decoders** `opus · high`, after 7.2c:
+- [x] **7.2c2 Wire encodings and decoders** `opus · high`, after 7.2c:
   hand-written packages' `wire:` (the built-in encodings), `decode:` and
   `encode:` on fields, and `wire_output:` with `decode:` on operations,
   each package function run by the executor at the call's site; decoding
   lazily, only the fields code reads (7.2c decodes every declared field
   as the answer arrives); `timed_out:` mapped on an idempotent operation;
-  and `retry:` with its backoff.
+  and `retry:` with its backoff. Built: ten built-in encodings
+  (`Wire.unix_seconds` to `Wire.minor_units`, `Wire.number` flagged for
+  Richard) applied on the provider's wire only, the contract's JSON
+  everywhere else, through a codec of the field's own; a field's
+  `decode:` and `encode:` and an operation's `wire_output:` with
+  `decode:`, checked against the package's functions
+  (`package.wire_invalid`, `package.operation_invalid`) and run by the
+  interpreter at the call's site (`provider::Functions`); only the
+  top-level fields an action reads decoded, worked out per call site in
+  the plan; numbers kept as written both ways; a connection's `retry:`
+  (`attempts:`, `within:`) sending again what is safe to, with full
+  jitter and `Retry-After`; and `timed_out:` mapped on an operation safe
+  to send again, the driver telling a timeout apart. Live tests in
+  `provider_wire.rs`; the surface and `jadpo package show` give an
+  operation's answer as sent. Choices in area 11's "Chosen in chunk
+  7.2c2".
 - [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
   7.2c2: a generated fake per package and `fakes:` for provider
   operations in tests; recordings and `jadpo package record`, every

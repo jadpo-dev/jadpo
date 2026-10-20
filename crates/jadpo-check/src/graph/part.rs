@@ -1009,9 +1009,7 @@ impl Part<'_> {
         path: &[String],
         def: &crate::types::FieldDef,
     ) -> Option<jadpo_graph::FieldCoding> {
-        if self.ownership.package().is_none() {
-            return None;
-        }
+        self.ownership.package()?;
         match def.coding.as_ref()? {
             crate::types::WrittenCoding::Encoding(name) => {
                 jadpo_std::provider::WireEncoding::from_name(name)

@@ -1152,6 +1152,27 @@ mod tests {
         );
     }
 
+    /// A retry waits twice as long each time, drawn up to that ceiling,
+    /// or as long as the provider's `Retry-After` asks, and never past
+    /// the end of its `within:` (chunk 7.2c2).
+    #[test]
+    fn a_retry_waits_longer_each_time_and_never_past_its_window() {
+        assert_eq!(retry_wait(1, None, 30_000, None), Some(200));
+        assert_eq!(retry_wait(2, None, 30_000, None), Some(400));
+        assert_eq!(retry_wait(3, None, 30_000, None), Some(800));
+        let drawn = retry_wait(3, None, 30_000, Some([0xff; 8])).expect("a wait");
+        assert!(drawn <= 800, "{drawn}");
+        assert_eq!(retry_wait(1, Some(5_000), 30_000, None), Some(5_000));
+        assert_eq!(retry_wait(1, Some(40_000), 30_000, None), None);
+        assert_eq!(retry_wait(5, None, 1_000, None), None);
+        let mut refused = answer(429, "");
+        refused.headers = vec![("Retry-After".into(), "2".into())];
+        assert_eq!(
+            classify(&request(Reading::default()), &refused),
+            Answer::RetryAfter(2_000)
+        );
+    }
+
     /// A call goes to HTTPS, or to plain HTTP only on this machine.
     #[test]
     fn a_call_goes_to_https_or_to_this_machine() {

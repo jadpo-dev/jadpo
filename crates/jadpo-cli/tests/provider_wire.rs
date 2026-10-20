@@ -848,3 +848,225 @@ fn a_timeout_is_mapped_at_the_call() {
         "{unmapped:?}"
     );
 }
+
+// --- what the checker refuses ---------------------------------------------------
+
+/// The project with `changed` files written over it, checked: each
+/// problem's rule and headline.
+fn problems(name: &str, changed: &[(&str, &str)]) -> Vec<(String, String)> {
+    let root = root(name);
+    let _ = std::fs::remove_dir_all(&root);
+    let mut all = files("https://sandbox.acme-couriers.example");
+    for (path, text) in changed {
+        let path = (*path).to_string();
+        all.retain(|(held, _)| *held != path);
+        all.push((path, (*text).to_string()));
+    }
+    for (path, text) in all {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("folders");
+        std::fs::write(path, text).expect("write");
+    }
+    let loaded = jadpo_db::load(&root);
+    match Prepared::load(&loaded.db, loaded.project) {
+        Ok(_) => Vec::new(),
+        Err(problems) => problems
+            .iter()
+            .map(|problem| (problem.rule.id.to_string(), problem.message.clone()))
+            .collect(),
+    }
+}
+
+/// One problem with `rule`, whose headline holds `says`, and none besides
+/// a function left unused by the mistake.
+fn refused(name: &str, changed: &[(&str, &str)], rule: &str, says: &str) {
+    let found = problems(name, changed);
+    let matching = found
+        .iter()
+        .filter(|(id, message)| id == rule && message.contains(says))
+        .count();
+    let others = found
+        .iter()
+        .filter(|(id, _)| id != rule && id != "layout.unused_declaration")
+        .count();
+    assert!(
+        matching == 1 && others == 0,
+        "{name}: expected one `{rule}` saying {says:?}, got {found:#?}"
+    );
+}
+
+/// A package type nothing builds, where each case writes its field.
+const DEPOT: &str = "shared/providers/acme_couriers/v1/types/shelf.jadpo";
+
+/// `wire:`, `decode:` and `encode:` say how a provider package's field is
+/// sent, and only that: one way, in an encoding that holds the field's
+/// type, or with the package's own functions of the right shape.
+#[test]
+fn a_fields_wire_is_held_to_what_it_can_say() {
+    refused(
+        "wire-unknown",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text\n    opened: Instant {\n        wire: Wire.unix_secs\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`Wire.unix_secs` isn't one of the built-in encodings",
+    );
+    refused(
+        "wire-misfit",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text {\n        wire: Wire.day_month_year\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`Wire.day_month_year` sends a `CalendarDate`, and `name` is a `Text`",
+    );
+    refused(
+        "wire-currency",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text\n    fee: Money {\n        wire: Wire.minor_units\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`Wire.minor_units` needs `fee`'s one currency",
+    );
+    refused(
+        "wire-both",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text\n    slot: SlotWindow {\n        wire: Wire.text\n        decode: slots.parse_window\n        encode: slots.format_window\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`slot` gives both `wire:` and `decode:`",
+    );
+    refused(
+        "wire-half",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text\n    slot: SlotWindow {\n        decode: slots.parse_window\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`slot` gives `decode:` without `encode:`",
+    );
+    refused(
+        "wire-no-function",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text\n    slot: SlotWindow {\n        decode: slots.read_window\n        encode: slots.format_window\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`slots.read_window` isn't one of the package's functions",
+    );
+    refused(
+        "wire-wrong-shape",
+        &[(
+            DEPOT,
+            "/// Where the courier shelves a parcel.\npublic type Shelf = Object {\n    name: Text\n    slot: Pieces {\n        decode: slots.parse_window\n        encode: slots.format_window\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`slots.parse_window` can't decode `slot`",
+    );
+    refused(
+        "wire-app",
+        &[(
+            "domains/shipping/types/shelf.jadpo",
+            "/// Where the shop keeps a parcel.\ntype Shelf = Object {\n    at: Instant {\n        wire: Wire.unix_seconds\n    }\n}\n",
+        )],
+        "package.wire_invalid",
+        "`wire` is for a provider package's fields",
+    );
+}
+
+/// An operation decodes its whole answer with `wire_output:` and
+/// `decode:` together, a function from the one to its `output:`.
+#[test]
+fn a_whole_answer_decoder_is_held_to_its_types() {
+    let tracking = |body: &str| {
+        format!(
+            "public resource tracking {{\n    get: {{\n        method: HttpMethod.get\n        path: \"/v1/parcels/{{id}}/tracking\"\n        input: ParcelLookup\n{body}        changes: false\n        source: PackageSource.written\n    }}\n}}\n"
+        )
+    };
+    let path = "shared/providers/acme_couriers/v1/resources/tracking.jadpo";
+    let half =
+        tracking("        wire_output: TrackingTable\n        output: List<TrackingEvent>\n");
+    refused(
+        "whole-half",
+        &[(path, &half)],
+        "package.operation_invalid",
+        "`tracking.get` gives `wire_output:` without `decode:`",
+    );
+    let wrong = tracking(
+        "        wire_output: TrackingTable\n        output: List<TrackingEvent>\n        decode: slots.parse_window\n",
+    );
+    refused(
+        "whole-wrong",
+        &[(path, &wrong)],
+        "package.operation_invalid",
+        "`slots.parse_window` can't decode `tracking.get`'s answer",
+    );
+}
+
+/// `timed_out:` is mapped only on an operation safe to send again, to an
+/// `unavailable` failure; `retry:` holds 1 to 10 attempts within up to
+/// five minutes.
+#[test]
+fn timed_out_and_retry_are_held_to_what_is_safe() {
+    refused(
+        "timed-out-unkeyed",
+        &[(
+            "domains/shipping/actions/note_parcel.jadpo",
+            r#"use app { couriers }
+use shipping/failures { CourierUnavailable }
+use shared/providers/acme_couriers
+
+/// Leaves a note on a parcel.
+action note_parcel(id: AcmeCouriers.ParcelRef) fails CourierUnavailable -> AcmeCouriers.Receipt {
+    return attempt couriers.parcels.note(AcmeCouriers.ParcelLookup {
+        id: id
+    }) {
+        timed_out: CourierUnavailable
+    }
+}
+"#,
+        )],
+        "failure.unknown_mapping",
+        "`couriers.parcels.note(...)` can't map `timed_out:`",
+    );
+    refused(
+        "timed-out-kind",
+        &[(
+            "domains/shipping/failures/courier_unavailable.jadpo",
+            "type CourierUnavailable = Failure {\n    kind: FailureKind.conflict\n    message: \"The courier isn't answering.\"\n}\n",
+        )],
+        "failure.mapping_kind",
+        "`timed_out:` needs an `unavailable` failure",
+    );
+    refused(
+        "retry-attempts",
+        &[(
+            "app.jadpo",
+            r#"application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            retry: {
+                attempts: 50
+            }
+        }
+        quick: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+"#,
+        )],
+        "connection.value_invalid",
+        "`couriers`'s `retry: { attempts: }` must be from 1 to 10",
+    );
+}
