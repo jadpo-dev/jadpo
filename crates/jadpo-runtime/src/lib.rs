@@ -129,7 +129,7 @@ pub use fault::{Fault, FaultKind};
 pub use host::{
     Database, Event, Host, LocalFuture, MemoryHost, NoStore, Outbound, PasskeyAnswer, PasskeyError,
     PasskeyParts, Passkeys, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, Row, SAVEPOINT, SqlType,
-    SqlValue, StoreError, TestDevices, Transaction,
+    SqlValue, StoreError, TestAuthenticators, Transaction,
 };
 pub use jadpo_std::Isolation;
 pub use jadpo_std::geography;

@@ -91,8 +91,8 @@ impl<'p> Capabilities<'p> {
 
     /// The host's software authenticator, which only a test's has (area
     /// 8, `test_passkeys`).
-    pub fn test_devices(&self) -> Option<&'p dyn crate::TestDevices> {
-        self.host.test_devices()
+    pub fn test_authenticators(&self) -> Option<&'p dyn crate::TestAuthenticators> {
+        self.host.test_authenticators()
     }
 
     /// Bytes for a new trace or span id at `now`, `chain` events deep: the

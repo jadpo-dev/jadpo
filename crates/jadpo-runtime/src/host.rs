@@ -270,7 +270,7 @@ pub trait Passkeys {
 /// options and the answer posted back, so `test_passkeys` drives the
 /// generated routes for real. Only a test's host has one: a `TestPasskey`
 /// exists nowhere else.
-pub trait TestDevices {
+pub trait TestAuthenticators {
     /// A new device in a browser at `origin`, making a passkey from the
     /// registration `options` (`navigator.credentials.create`): the
     /// device's number and its answer, as WebAuthn's `toJSON()` writes it.
@@ -329,7 +329,7 @@ pub trait Host {
 
     /// The software authenticator `test_passkeys` drives the passkey
     /// routes with (chunk 5.5z2): only a test's host has one.
-    fn test_devices(&self) -> Option<&dyn TestDevices> {
+    fn test_authenticators(&self) -> Option<&dyn TestAuthenticators> {
         None
     }
 
@@ -488,8 +488,8 @@ impl<H: Host + ?Sized> Host for &H {
         (**self).passkeys()
     }
 
-    fn test_devices(&self) -> Option<&dyn TestDevices> {
-        (**self).test_devices()
+    fn test_authenticators(&self) -> Option<&dyn TestAuthenticators> {
+        (**self).test_authenticators()
     }
 
     fn database(&self, store: &str) -> Option<&dyn Database> {

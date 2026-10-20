@@ -2,7 +2,7 @@
 //! software authenticator driving the generated passkey routes for real,
 //! which only a route test calls. Each request goes through the HTTP
 //! component as a browser's would, from the application's own origin; the
-//! device is the test host's ([`crate::TestDevices`]), so a `TestPasskey`
+//! device is the test host's ([`crate::TestAuthenticators`]), so a `TestPasskey`
 //! exists nowhere but a test.
 //!
 //! - **`register(user, name)`** signs in as `as:` signs in, asks for the
@@ -45,7 +45,7 @@ pub async fn register(
     ) else {
         return defect(ctx, "`test_passkeys.register` with no passkey routes", at);
     };
-    let Some(devices) = ctx.host().test_devices() else {
+    let Some(authenticators) = ctx.host().test_authenticators() else {
         return defect(
             ctx,
             "`test_passkeys.register` outside a test: only a test has a software authenticator",
@@ -65,7 +65,7 @@ pub async fn register(
     if asked.status != 200 {
         return refused(ctx, &options, &asked, at);
     }
-    let (device, credential) = match devices.create(&origin, &body_text(&asked)) {
+    let (device, credential) = match authenticators.create(&origin, &body_text(&asked)) {
         Ok(made) => made,
         Err(why) => {
             return defect(
@@ -123,7 +123,7 @@ pub async fn sign_in(
     ) else {
         return defect(ctx, "`test_passkeys.sign_in` with no passkey routes", at);
     };
-    let Some(devices) = ctx.host().test_devices() else {
+    let Some(authenticators) = ctx.host().test_authenticators() else {
         return defect(
             ctx,
             "`test_passkeys.sign_in` outside a test: only a test has a software authenticator",
@@ -139,7 +139,7 @@ pub async fn sign_in(
     if asked.status != 200 {
         return refused(ctx, &options, &asked, at);
     }
-    let answer = match devices.get(device, &body_text(&asked)) {
+    let answer = match authenticators.get(device, &body_text(&asked)) {
         Ok(answer) => answer,
         Err(why) => {
             return defect(

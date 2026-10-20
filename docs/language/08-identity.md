@@ -1032,19 +1032,19 @@ type EmailTaken = Failure {
 }
 ```
 
-```jadpo check project=passkeys file=domains/journal/types/joining.jadpo hidden
-type Joining = Input {
+```jadpo check project=passkeys file=domains/journal/types/enrolment.jadpo hidden
+type Enrolment = Input {
     email: Email
 }
 ```
 
-```jadpo check project=passkeys file=domains/journal/actions/join.jadpo hidden
+```jadpo check project=passkeys file=domains/journal/actions/enrol_member.jadpo hidden
 use journal/entities { Member }
-use journal/types { Joining }
+use journal/types { Enrolment }
 use journal/failures { EmailTaken }
 
 /// Adds a member with an address.
-action join(input: Joining) fails EmailTaken -> Member {
+action enrol_member(input: Enrolment) fails EmailTaken -> Member {
     return attempt Member.create {
         set: {
             email: input.email
@@ -1061,20 +1061,20 @@ use journal
 
 policy {
     actions: {
-        journal.join: [Access.public]
+        journal.enrol_member: [Access.public]
     }
 }
 ```
 
 ```jadpo check project=passkeys file=domains/journal/fixtures/member_called.jadpo hidden
 use journal/entities { Member }
-use journal/types { Joining }
-use journal/actions { join }
+use journal/types { Enrolment }
+use journal/actions { enrol_member }
 
 /// A member with `address`, signed up with no passkey.
 public fixture member_called(address: Email) -> Principal.user {
-    var member: Member = attempt join(
-        Joining {
+    var member: Member = attempt enrol_member(
+        Enrolment {
             email: address
         }
     )
