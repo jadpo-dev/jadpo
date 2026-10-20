@@ -2560,8 +2560,9 @@ changing calls in one action").
 - **The record.** Before a step is sent the runtime records its position,
   operation, a fingerprint of its request (over the typed value, not the
   bytes) and the time sent; when the answer comes, success or failure, it
-  records the answer as the provider sent it, encrypted, at most 256 KB (a
-  larger one is a fault naming the step). Provider reads after the first
+  records the answer as the provider sent it, encrypted, at most 1 MB (a
+  larger one is a fault naming the step; corrected from 256 KB in chunk
+  7.5 to area 12's "Settled for the build"). Provider reads after the first
   changing step are recorded the same way. Database reads are not, and
   reads before the first changing step are not.
 - **Replay.** A rerun replays answered steps in order without sending them,
@@ -2618,7 +2619,7 @@ changing calls in one action").
   outbox; an action that writes no store needs `events: { store: }`, or it
   is a compile error.
 - **Personal data.** Requests are kept only as fingerprints. Answers are
-  encrypted with a runtime key; nothing links them to a person, so the
+  encrypted with `application { steps: { encryption_key: } }` (area 12); nothing links them to a person, so the
   personal-data report lists "provider answers for unfinished actions, at
   most 30 days", as it does for logs. A metric and a no-setup alert watch
   the number of unfinished records and the age of the oldest.
@@ -2663,6 +2664,14 @@ Check in Stripe whether customer cus_P4x… has a subscription.
 Calls without idempotency keys (GitHub, Twilio Messages, Postmark) stay
 one per action. A receipt sent after a charge belongs in a subscriber of
 the action's event, not as an unkeyed last step.
+
+Built in chunk 7.5, what `jadpo check` keeps of these rules, with the
+errors under area 12's "Errors" (`step.context`, `step.large_output`,
+`step.store_required`, `step.too_many`, `step.unkeyed`) and area 3's
+`effect.call_in_loop`; an operation's `large_output:` is read. The record,
+replay and key windows come with roadmap 7.5b, and the operator's items,
+the fakes' `lost` and `in_use`, the tests' crash points and the warning
+with 7.5c.
 
 ## Receiving from outside
 
@@ -3361,7 +3370,7 @@ example and real output under "Errors".
 | A decoder that fails on a recorded response; a field's decode and encode that do not round-trip | By `jadpo test` and the publishing bar | 7.2d2 |
 | A connection that receives personal data, with no `erasure:` and no acceptance | By `jadpo check` | Personal data (after the first build) |
 | An operation whose scope the grant does not request; a call to a grant connection without `on_behalf_of:` | By `jadpo check` | Not yet on the roadmap |
-| Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | Not yet on the roadmap |
+| Several changing calls reachable from a schedule or a route whose API does not require `Idempotency-Key`; an outside call inside `for` there; more than 8 steps; a changing call with no key beside another changing call | By `jadpo check` | 7.5: area 12's `step.` errors and area 3's `effect.call_in_loop` |
 | A service image not yet accepted; an `asks:` host not granted by `outbound:` | By `jadpo check` (named, with the line that grants it) | Not yet on the roadmap |
 | A third-party package from git with no acceptance | By `jadpo check` | Not yet on the roadmap |
 
@@ -6900,8 +6909,9 @@ Provider calls, each choice the most conservative reading:
   is one of the package's object types, and without it the call takes
   nothing; without `output:` it gives nothing and its answer isn't read.
   `changes:` defaults to `true` for every method but `GET`, as the
-  importer writes it, and `idempotent:` to `false`. `source:`, `docs:`,
-  `scope:` and `large_output:` are read by the chunks that use them;
+  importer writes it, and `idempotent:` to `false`. `source:`, `docs:`
+  and `scope:` are read by the chunks that use them (`large_output:`, a
+  flag, since chunk 7.5);
   `wire_output:` and `decode:` are `toolchain.not_built_yet` until chunk
   7.2c2. Anything else, a malformed path, a placeholder no input field is
   sent as, or a failure that isn't the package's, is

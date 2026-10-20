@@ -836,8 +836,10 @@ compile error, in any action, as a query inside one already is (area 6).
 A loop of calls is `batches.each` (area 12), the one way; a provider that
 takes a list is called once with the list. Keeping calls out of
 loops means the steps of an action that makes several changing calls lie
-along a path whose length the compiler knows. The error is built with
-provider calls (chunk 7.1).
+along a path whose length the compiler knows. Built in chunk 7.5 as
+[`effect.call_in_loop`](#effect-call-in-loop), at the call: any outside
+call, one that only reads included, made in a loop's body or by an action
+called there, in an action or a fixture.
 
 ## Passing functions
 
@@ -1132,6 +1134,70 @@ error: A constant with this value exists: `pricing.vat_rate`
   help: docs/language/03-logic.html#constant-similar-exists
 
 check failed: 1 error, 1 file
+```
+
+### `effect.call_in_loop`
+
+An action's outside calls lie along a way through it whose length is known
+before it runs, so a loop of them is `batches.each`:
+
+```jadpo check project=e-call-in-loop file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-call-in-loop file=domains/bakery/types/sheet_text.jadpo hidden
+/// A price sheet as a supplier sends it.
+type SheetText = Text {
+    min_length: 1
+    max_length: 100000
+}
+```
+
+```jadpo check project=e-call-in-loop file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-call-in-loop file=domains/bakery/actions/keep_sheets.jadpo expect=effect.call_in_loop
+use app { sheets }
+use bakery/types { SheetText }
+use bakery/failures { SheetNotKept }
+
+/// Keeps each price sheet a supplier sent, one call for each.
+action keep_sheets(sheet_texts: List<SheetText>) fails SheetNotKept -> List<File> {
+    var mut kept: List<File> = []
+    for sheet_text in sheet_texts {
+        var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+            storage_full: SheetNotKept
+        }
+        kept = list.append(kept, sheet)
+    }
+    return kept
+}
+```
+
+```text output
+error: `sheets.put` is called once for every item of the loop
+ --> domains/bakery/actions/keep_sheets.jadpo:9:35
+  |
+9 |         var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+  |                                   ^^^^^^^^^^ inside `for`
+  reason: An action's outside calls lie along a way through it whose length is known before it runs, so a retry can replay them in order; a loop makes one for each item. A provider that takes a list is called once with the list.
+  next: Make the calls one item at a time with `batches.each` (agent)
+  rule: effect.call_in_loop
+  help: docs/language/03-logic.html#effect-call-in-loop
+
+check failed: 1 error, 4 files
 ```
 
 ### `effect.function_calls_action`
@@ -3734,8 +3800,8 @@ check failed: 1 error, 1 file
 ### Status
 
 The new compiler builds this area: roadmap chunk 1.5, with the failure side
-of `attempt` and `match` in chunk 1.6 and the runtime recursion limit in
-chunk 2.1. Every example and error above is checked against it on each gate
+of `attempt` and `match` in chunk 1.6, the runtime recursion limit in
+chunk 2.1 and no outside calls inside `for` in chunk 7.5. Every example and error above is checked against it on each gate
 run, [Constants](#constants) included (chunk 5.3e).
 
 ### Consistency with the rest of the language
@@ -3942,4 +4008,5 @@ Decided by Richard on 2026-10-12. Built in the new compiler on 2026-10-13 (roadm
 | Constants | `constant name: Type = value`, only at the top of a file or in a library (in a body it is always `var`); a named type, as in signatures; a value worked out while compiling from literals, enum values, other constants, constructions and operators, never a call, `config` or `clock`, checked against the type's rules; no mutable form; unused is an error; placed and shared as helper functions are, read as `pricing.vat_rate` from a library, a private one unique within its domain; what "constants" means in queries, updates by `id` and backfills (setting defaults dropped: revised 2026-10-16 (Richard), a `default:` never names a constant); two of one type with one value warn `constant.similar_exists` (a declinable error since 2026-10-17, area 1's question 11); `config` when a deployment could ever need another value, otherwise a constant; dated values are a dated list constant behind a library function. Rejected: a top-level `var`, functions with no arguments, values attached to their type, a root `constants { }` block (Richard). Built in chunk 5.3e | 2026-10-16 |
 | A constant or a setting | A value is a constant (fixed, read `security.max_login_attempts`) or a setting (per deployment, read `config.max_login_attempts`), never both, so it has one source and one way to read it; a setting's `default:` is a literal and never a constant, so code reading the constant can't silently ignore the environment variable (the `DEFAULT_PORT` bug). `jadpo config move <constant>` and the editor's "Make this a setting" turn one into a setting, rewriting every read; the tiers are `constant`, `config`, `flags { }` (area 16). Details and the rejected alternatives in area 10. Decided; the refusal of a constant as `default:` built in chunk 5.3e, the move in chunk 5.3f (Richard) | 2026-10-16 |
 | Outside calls in loops | None inside `for`, in any action: a loop of calls is `batches.each`, the one way (Richard, area 12) | 2026-10-16 |
+| Outside calls in loops, checked (chosen in chunk 7.5) | `effect.call_in_loop` at the call, not declinable: any outside call (a provider's operation, a store's `put` or `read`), one that only reads included, made in a `for` body directly or by an action or fixture called there, in actions and fixtures; tests and functions make none (decided for Richard, the conservative reading) | 2026-10-20 |
 | Inline functions in batch helpers | `each:` and `finished:` of the batch helpers take `x -> ...`; with no destination the body is one call to an action in the same domain; captured values are saved with the run and must be storable (Richard, area 12) | 2026-10-16 |
