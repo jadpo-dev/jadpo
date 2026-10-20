@@ -97,7 +97,7 @@ rules! {
     AI_CONNECTION_REQUIRED: "ai.connection_required", area 21, Error, Agent,
         "21-ai.html#ai-connection-required", "Action asks a model but the application names no `ai:` connection";
     AI_SETTINGS_INVALID: "ai.settings_invalid", area 21, Error, Agent,
-        "21-ai.html#ai-settings-invalid", "`ai:` in `app.jadpo` holds something it doesn't take, or leaves out what it needs";
+        "21-ai.html#ai-settings-invalid", "Application's `ai:` holds something it doesn't take, or leaves out what it needs";
     API_AUTHENTICATION_INVALID: "api.authentication_invalid", area 7, Error, Agent,
         "07-http.html#api-authentication-invalid", "API authentication is not a list of declared sign-in methods";
     API_IDEMPOTENCY_INVALID: "api.idempotency_invalid", area 7, Error, Agent,
@@ -783,7 +783,7 @@ rules! {
     SEMANTIC_AI_MODEL_LITERAL: "semantic.ai_model_literal", area 21, Error, Agent,
         "21-ai.html#semantic-ai-model-literal", "A `ModelId` is written out anywhere but a setting's `default:`";
     SEMANTIC_AI_OUTPUT_TYPE: "semantic.ai_output_type", area 21, Error, Agent,
-        "21-ai.html#semantic-ai-output-type", "`ai.generate`'s `as:` is a type no model's answer can be";
+        "21-ai.html#semantic-ai-output-type", "Type a model is asked to answer as is one no model's answer can be";
     SEMANTIC_AUTH_METHOD_DUPLICATE: "semantic.auth_method_duplicate", area 8, Error, Agent,
         "08-identity.html#semantic-auth-method-duplicate", "Sign-in method is declared twice";
     SEMANTIC_AUTH_METHOD_UNKNOWN: "semantic.auth_method_unknown", area 8, Error, Agent,

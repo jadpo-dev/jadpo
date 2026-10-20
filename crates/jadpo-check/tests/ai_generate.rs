@@ -396,6 +396,47 @@ fn every_failure_is_mapped_to_an_unavailable_failure() {
     );
 }
 
+/// A test reaching a call reads its model's setting and its address,
+/// so each needs a value in tests.
+#[test]
+fn a_test_reaching_a_call_needs_its_settings() {
+    let db = Database::default();
+    let answer = action("", ALL_ARMS);
+    let test = "use support/failures { AssistantUnavailable }\nuse support/types { CustomerQuestion }\n\ntest \"answers\" {\n    fakes: {\n        ai.answer_question: [refused]\n    }\n    assert answer_customer(CustomerQuestion(\"Rye?\")) fails AssistantUnavailable\n}\n";
+    let mut all: Vec<(&str, &str)> = vec![
+        ("app.jadpo", APP),
+        (
+            "config.jadpo",
+            "config {\n    model_url: Url\n    drafting_model: ModelId {\n        default: \"local/llama3.2\"\n    }\n    reply_limit: Int {\n        default: 3\n    }\n}\n",
+        ),
+    ];
+    all.extend_from_slice(&TYPES);
+    all.push((ACTION_PATH, answer.as_str()));
+    all.push(("domains/support/actions/answer_customer.test.jadpo", test));
+    let project = support::project_with_records(&db, Layout::Project, &all, &[PROMPT]);
+    let found: Vec<String> = jadpo_check::check(&db, project)
+        .iter()
+        .map(|d| format!("{}: {}", d.rule.id, d.message))
+        .collect();
+    assert_eq!(
+        found,
+        ["configuration.test_value_missing: `config.model_url` has no value in tests"]
+    );
+}
+
+/// A call nothing handles says which conditions to map.
+#[test]
+fn a_model_asked_with_no_attempt_is_reported() {
+    let found = problems(&[(
+        "domains/support/actions/draft.jadpo",
+        "use support/prompts { AnswerQuestion }\nuse support/types { CustomerQuestion, SupportAnswer }\n\n/// Drafts.\naction draft(question: CustomerQuestion) -> SupportAnswer {\n    return ai.generate(AnswerQuestion { question: question }, as: SupportAnswer)\n}\n",
+    )]);
+    assert_eq!(
+        of("failure.attempt_required", found),
+        ["domains/support/actions/draft.jadpo failure.attempt_required: `ai.generate(...)` can fail at runtime, and nothing handles it"]
+    );
+}
+
 /// Only an action asks a model, never in a loop, and before its first
 /// write.
 #[test]
@@ -419,6 +460,23 @@ fn only_an_action_asks_a_model_before_it_writes() {
             .iter()
             .any(|problem| problem.contains("effect.call_in_loop")),
         "{looped:#?}"
+    );
+    let written = problems(&[
+        (
+            "domains/support/entities/note.jadpo",
+            "/// A note the desk keeps.\nentity Note {\n    id: Uuid\n    body: Text\n}\n",
+        ),
+        (
+            "domains/support/actions/note_then_ask.jadpo",
+            &format!(
+                "use support/entities {{ Note }}\nuse support/failures {{ AssistantUnavailable }}\nuse support/prompts {{ AnswerQuestion }}\nuse support/types {{ CustomerQuestion, SupportAnswer }}\n\n/// Notes the question, then asks.\naction note_then_ask(question: CustomerQuestion) fails AssistantUnavailable -> SupportAnswer {{\n    var kept: Note = Note.create {{\n        set: {{\n            body: \"asked\"\n        }}\n    }}\n    assert kept.body == \"asked\"\n    return attempt ai.generate(AnswerQuestion {{ question: question }}, as: SupportAnswer) {{\n{ALL_ARMS}    }}\n}}\n"
+            ),
+        ),
+    ]);
+    assert_eq!(
+        of("data.write_before_call", written).len(),
+        1,
+        "a write before the model is asked"
     );
 }
 

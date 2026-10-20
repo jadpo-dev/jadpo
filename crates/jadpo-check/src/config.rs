@@ -1343,45 +1343,57 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 }
                 let path = current.file(db).path(db).clone();
                 for site in &checked.body.sites {
-                    // `ai.generate` reads its model's setting (area 21;
-                    // chunk 5.5v3).
-                    let asked;
-                    let name = match &site.node {
-                        Node::Expr(Expr::Config { field }) => field.name(),
+                    // `ai.generate` reads its model's setting and its
+                    // connection's address (area 21; chunk 5.5v3).
+                    let names: Vec<String> = match &site.node {
+                        Node::Expr(Expr::Config { field }) => vec![field.name().to_string()],
                         Node::Expr(Expr::Call {
                             callee: jadpo_graph::body::Callee::Generate { model, .. },
                             ..
                         }) => {
-                            let found = crate::ai::settings(db, project)
+                            let settings = crate::ai::settings(db, project);
+                            let mut read: Vec<String> = settings
                                 .models
                                 .iter()
-                                .find(|(name, _)| name == model)
-                                .map(|(_, setting)| setting.clone());
-                            let Some(found) = found else {
-                                continue;
-                            };
-                            asked = found;
-                            asked.as_str()
+                                .filter(|(name, _)| name == model)
+                                .map(|(_, setting)| setting.clone())
+                                .collect();
+                            read.extend(
+                                crate::ai::model_connections(db, project)
+                                    .list
+                                    .iter()
+                                    .filter(|found| settings.connection.as_ref() == Some(&found.name))
+                                    .filter_map(|found| match &found.url {
+                                        Some(crate::ai::ModelUrl::Setting(name)) => {
+                                            Some(name.clone())
+                                        }
+                                        _ => None,
+                                    }),
+                            );
+                            read
                         }
                         _ => continue,
                     };
-                    if !wanting.contains(name)
-                        || given.contains(name)
-                        || !reported.insert((path.clone(), site.start))
-                    {
-                        continue;
+                    for name in &names {
+                        let name = name.as_str();
+                        if !wanting.contains(name)
+                            || given.contains(name)
+                            || !reported.insert((path.clone(), site.start))
+                        {
+                            continue;
+                        }
+                        out.push(
+                            Diagnostic::new(
+                                &rule::CONFIGURATION_TEST_VALUE_MISSING,
+                                format!("`config.{name}` has no value in tests"),
+                            )
+                            .at(Span::new(&path, site.start, site.end), "no `test:` or `default:`")
+                            .reason(format!(
+                                "The test \"{sentence}\" reaches this read. A test reads each setting's `test:` value, or its `default:`, and `{name}` has neither; only a secret is made up for a run, and `{name}` isn't one."
+                            ))
+                            .next(format!("Give `{name}` a `test:` value, or a `default:`, in `config.jadpo`")),
+                        );
                     }
-                    out.push(
-                        Diagnostic::new(
-                            &rule::CONFIGURATION_TEST_VALUE_MISSING,
-                            format!("`config.{name}` has no value in tests"),
-                        )
-                        .at(Span::new(&path, site.start, site.end), "no `test:` or `default:`")
-                        .reason(format!(
-                            "The test \"{sentence}\" reaches this read. A test reads each setting's `test:` value, or its `default:`, and `{name}` has neither; only a secret is made up for a run, and `{name}` isn't one."
-                        ))
-                        .next(format!("Give `{name}` a `test:` value, or a `default:`, in `config.jadpo`")),
-                    );
                 }
                 for fact in &body_facts(db, project, current).facts {
                     if let Fact::Action(key) | Fact::Fixture(key) | Fact::Function(key) = fact

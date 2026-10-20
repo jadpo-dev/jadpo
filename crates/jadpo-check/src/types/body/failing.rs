@@ -336,6 +336,29 @@ impl Body<'_> {
                     settle_by(breakable)
                 ))
             }
+            // A model asked (area 21; chunk 5.5v3): how it answers is only
+            // known when it does.
+            Fallible::Construction(breakable)
+                if matches!(
+                    self.facts.reaches.get(&node_key(call.syntax())),
+                    Some(Reach::Generate { .. })
+                ) =>
+            {
+                let arms: Vec<String> = breakable
+                    .iter()
+                    .map(|key| format!("{key}: SomeFailure"))
+                    .collect();
+                Diagnostic::new(
+                    &rule::FAILURE_ATTEMPT_REQUIRED,
+                    format!("`{written}(...)` can fail at runtime, and nothing handles it"),
+                )
+                .at(span, "asks a model")
+                .reason("A model may refuse, answer in a shape that doesn't decode, take too long, be cut off or be sent too long a prompt, which only shows when the program runs, so the call can fail.")
+                .next(format!(
+                    "Write `attempt {written}(...) {{ {} }}`, each naming an `unavailable` failure",
+                    arms.join("  ")
+                ))
+            }
             Fallible::Construction(breakable) => {
                 let rules = self.written_rules(call, breakable);
                 let first = breakable.first().cloned().unwrap_or_default();

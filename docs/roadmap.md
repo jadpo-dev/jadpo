@@ -1463,18 +1463,35 @@ The design is area 11 as revised on 2026-10-16, with its research in
   by the batch's answer, a parked one acknowledged; its seam and its
   consumer configuration for the Wrangler file built and unit-tested
   here, deploying it Phase 8's.
-- [ ] **5.5v3 The `ai` capability: `generate`, its fake and the local
+- [x] **5.5v3 The `ai` capability: `generate`, its fake and the local
   driver** `opus · xhigh` (area 21, "The `ai` capability" and "Typed
-  output"), after 5.5v2 and 7.3 (split on 2026-10-20: a package filling
-  `ai` is 5.5v3b): `ai:` in `application { }` with models as `ModelId`
-  settings, `ai.generate(prompt, as: T)` with the schema from `T`, the
-  provider's structured mode or the schema in the instructions,
+  output"; split on 2026-10-20: a package filling `ai` is 5.5v3b).
+  Built: `ai:` in `application { }` naming a `Driver.openai_compatible`
+  connection (`url:`, plain HTTP only to this machine) and its models,
+  each a `ModelId` setting, read from its text (`ai.settings_invalid`,
+  `ai.connection_required`), and a `ModelId` written in code refused
+  (`semantic.ai_model_literal`); `ai.generate(prompt, as: T)` with
+  `model:`, `max_output:`, `timeout:` and `attempts:` written out, `as:`
+  refusing a reference, a file, bytes and display text
+  (`semantic.ai_output_type`) and secrets, each of its five failures
+  mapped to an `unavailable` failure and `malformed`'s carrying the last
+  `DecodeProblem`; at run time (`jadpo_runtime::ai`) the prompt
+  rendered and sent as OpenAI's Chat Completions request through the
+  package driver's HTTP, `T`'s OpenAPI schema in the strict structured
+  mode (a `T` that isn't an object wrapped as `value`; the schema in the
+  instructions built for 5.5v3b's packages), the answer decoded by
   `json.read`'s decoding, one repair with the decode problem, the five
-  failures, answers reused on a rerun, the fake in `jadpo test`
-  (`fakes: { ai.<prompt>: }`, `raw(...)`, `.requests`), and
-  `Driver.openai_compatible` in `jadpo dev`. Done when a test drives
-  every failure and a repaired answer through the fake, and a local
-  model answers through the driver in `jadpo dev`.
+  failures read from the answer, and answers reused on area 6's rerun by
+  step and request and kept as steps of a 7.5b record; the `ai` fake in
+  every test (`fakes: { ai.<prompt>: }` with values, `raw(...)` and the
+  five failures, one answered attempt each, `ai.<prompt>.requests`,
+  generated values, `test.fake_exhausted` and `test.fake_unused`);
+  `jadpo dev` asking a model on this machine, each attempt in `jadpo
+  calls`; and the network report's row. Tests in `ai_generate.rs` (every
+  failure and a repair through the fake in `jadpo test`; `jadpo dev`
+  against an OpenAI-compatible server started in the test) and the live
+  `ai_steps.rs` (a model's answer replayed from a record). Choices in
+  area 21's "Chosen in chunk 5.5v3".
 - [ ] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
   provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20): a
   package's `provides/ai.jadpo` mapping `generate:` onto its own
@@ -1494,7 +1511,7 @@ The design is area 11 as revised on 2026-10-16, with its research in
   21 runs end to end in a test: embed, nearest query, typed answer from a
   recording.
 - [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
-  21, "Safety and privacy"), after 5.5v3: the per-call, per-request,
+  21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
   per-day and per-caller limits counted in the main store, the cost
   estimate from the package's prices, `jadpo ai usage`, `personal_data: {
   allowed: }` with the flow check from placeholders back to marked
@@ -1503,7 +1520,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   a marked field reaching a prompt unlisted fails to compile.
 - [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, and the stream fake. Done
+  an `AiStream`, the final and error events, the stream fake, and the
+  check that a route's deadline leaves room for the `timeout:` of each
+  `ai` call it reaches (left from 5.5v3). Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),

@@ -2112,6 +2112,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
+| AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3) | same, through Workers' `fetch` |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
@@ -2380,6 +2381,33 @@ before decoding. `jadpo package record` calls the sandbox through
 `Program::call_provider` on a `NativeHost` with the package driver, its
 keyed call given a step outside an action (`Ctx::allow_standalone_calls`),
 and keeps the answer the call log hands it.
+
+**Asking a model** (chunk 5.5v3; area 21, "Chosen in chunk 5.5v3"). The
+checker reads `application { ai: }` and each `Driver.openai_compatible`
+connection (`jadpo_check::ai`), and checks `ai.generate` in a body
+(`types::body::generate`) as an outside call whose five conditions are
+construction-style `RuleKey`s an `attempt` maps (`refused`, `malformed`,
+`timed_out`, `over_budget`, `too_long`), lowered to `Callee::Generate`
+with its options; the plan decodes its site to a
+`jadpo_std::ai::GenerateSite` (the prompt's entry and fields, the answer
+type's JSON-table number, and the type's schema from
+`jadpo_check::ai::schema`, OpenAPI's `Wire` with `$defs`) and carries the
+connection and models as `Plan::ai`. `jadpo_runtime::ai::generate`, which
+both executors call, renders the prompt as `prompts.render` does, builds
+OpenAI's Chat Completions request with the schema cut for a strict mode
+(`ai::strict`) or added to the instructions (`ai::with_schema`), sends
+each attempt through `effects::exchange` as a `Call` whose `attempt`
+counts its repairs, reads the completion, decodes the content through the
+answer's codec (`Codecs::read_member` for a wrapped one), and gives
+`Done::Broke` for a condition, which the interpreter raises as a
+construction's broken rule. A call takes `Ctx::next_step`, and its answer
+is kept with a digest of its request (`Ctx::keep_reused`) for area 6's
+rerun, or, after an action's first changing call, it is a step of the
+record (`steps::step` with `changes: false`). The native host gives
+`JsonHttp` for the model connection (`NativeHost::with_models`), which
+`jadpo dev` sets; `ai::AiFake` is in its place in every test, scripted by
+`Callee::AiFake` and read by `Callee::AiRequests` through
+`Capability::requests`.
 
 **Webhooks as events** (chunk 7.7; area 11, "Chosen in chunk 7.7"). The
 checker reads a provider's `webhooks:` into `connections::WebhookReach`

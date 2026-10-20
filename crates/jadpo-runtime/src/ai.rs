@@ -109,6 +109,42 @@ pub fn settings_read(plan: &AiPlan, site: &GenerateSite) -> Vec<u32> {
 pub(crate) enum Kept {
     Answer(Rc<str>),
     Condition(RuleKey),
+    /// `malformed`, with the last answer's problem, never its text.
+    Malformed(Problem),
+}
+
+impl Kept {
+    /// How a record keeps a condition: its word, and for `malformed` its
+    /// problem's path and rule after it, each after a space.
+    fn word(&self) -> Option<String> {
+        match self {
+            Kept::Answer(_) => None,
+            Kept::Condition(rule) => Some(rule.word().to_string()),
+            Kept::Malformed(problem) => Some(format!(
+                "{} {} {}",
+                RuleKey::Malformed.word(),
+                problem.field,
+                problem.rule
+            )),
+        }
+    }
+
+    /// A condition as [`Kept::word`] writes it.
+    fn from_word(word: &str) -> Option<Kept> {
+        let mut parts = word.splitn(3, ' ');
+        let rule = RuleKey::from_word(parts.next()?)?;
+        match (rule, parts.next(), parts.next()) {
+            (RuleKey::Malformed, field, rule) => Some(Kept::Malformed(Problem {
+                field: field.unwrap_or_default().to_string(),
+                rule: rule
+                    .filter(|rule| !rule.is_empty())
+                    .unwrap_or(RuleKey::Malformed.word())
+                    .to_string(),
+            })),
+            (rule, None, None) => Some(Kept::Condition(rule)),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Debug for Kept {
@@ -117,6 +153,7 @@ impl std::fmt::Debug for Kept {
         match self {
             Kept::Answer(_) => f.write_str("Answer(..)"),
             Kept::Condition(rule) => f.debug_tuple("Condition").field(rule).finish(),
+            Kept::Malformed(problem) => f.debug_tuple("Malformed").field(problem).finish(),
         }
     }
 }
@@ -233,8 +270,8 @@ pub async fn generate(
         Ok(crate::steps::Stepped::Replay(answered)) => {
             let kept = match answered {
                 crate::steps::Answered::Wire(text) => Kept::Answer(text),
-                crate::steps::Answered::Failed(word) => match RuleKey::from_word(&word) {
-                    Some(rule) => Kept::Condition(rule),
+                crate::steps::Answered::Failed(word) => match Kept::from_word(&word) {
+                    Some(kept) => kept,
                     None => return defect("a recorded answer of no condition"),
                 },
                 crate::steps::Answered::Done => return defect("a recorded answer with nothing"),
@@ -334,7 +371,7 @@ pub async fn generate(
             rule: RuleKey::Malformed.word().to_string(),
         });
         (
-            Kept::Condition(RuleKey::Malformed),
+            Kept::Malformed(problem.clone()),
             Done::Broke {
                 rule: RuleKey::Malformed,
                 problem: Some(crate::effects::decode_problem(&problem)),
@@ -344,7 +381,7 @@ pub async fn generate(
     if let Some(at) = step_at {
         let answered = match &kept {
             Kept::Answer(text) => crate::steps::Answered::Wire(text.clone()),
-            Kept::Condition(rule) => crate::steps::Answered::Failed(rule.word().to_string()),
+            condition => crate::steps::Answered::Failed(condition.word().unwrap_or_default()),
         };
         match crate::steps::answered(ctx, at, answered).await {
             Ok(()) => {}
@@ -381,6 +418,7 @@ fn replayed(
     let answer = match &kept {
         Kept::Answer(text) => Answer::Wire(text.clone()),
         Kept::Condition(rule) => Answer::Failed(rule.word().to_string()),
+        Kept::Malformed(_) => Answer::Failed(RuleKey::Malformed.word().to_string()),
     };
     let capabilities = ctx.capabilities_mut();
     let place = capabilities.sent(&made, Source::Replayed, now);
@@ -395,6 +433,10 @@ fn replayed(
             },
         },
         Kept::Condition(rule) => broke(rule),
+        Kept::Malformed(problem) => Done::Broke {
+            rule: RuleKey::Malformed,
+            problem: Some(crate::effects::decode_problem(&problem)),
+        },
     }
 }
 
@@ -1372,6 +1414,29 @@ mod tests {
             "Answer the question.\n\n# Answer format\n\nAnswer with one JSON document alone, matching this JSON Schema:\n\n{\"type\":\"string\"}"
         );
         assert_eq!(out[1].1, "<question>\nhi\n</question>");
+    }
+
+    /// A condition a record keeps reads back as it was, `malformed` with
+    /// its problem's path and rule.
+    #[test]
+    fn a_kept_condition_reads_back_as_it_was_written() {
+        for kept in [
+            Kept::Condition(RuleKey::Refused),
+            Kept::Condition(RuleKey::TooLong),
+            Kept::Malformed(Problem {
+                field: "cited.2".into(),
+                rule: "max_length".into(),
+            }),
+            Kept::Malformed(Problem {
+                field: String::new(),
+                rule: "malformed".into(),
+            }),
+        ] {
+            let word = kept.word().expect("a condition");
+            assert_eq!(Kept::from_word(&word), Some(kept), "{word}");
+        }
+        assert_eq!(Kept::from_word("refused extra"), None);
+        assert_eq!(Kept::Answer(Rc::from("{}")).word(), None);
     }
 
     /// A repair names the problem's path and rule, never a value.
