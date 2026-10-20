@@ -1036,12 +1036,34 @@ The design is area 11 as revised on 2026-10-16, with its research in
   lazily, only the fields code reads (7.2c decodes every declared field
   as the answer arrives); `timed_out:` mapped on an idempotent operation;
   and `retry:` with its backoff.
-- [ ] **7.2d Fakes and the call log** `opus · high`, after 7.2c (split
+- [x] **7.2d Fakes and the call log** `opus · high`, after 7.2c (split
   from 7.2d Fakes, recordings and the call log on 2026-10-20): a
   generated fake per package and `fakes:` for provider operations in
   tests; provider calls faked by default in `jadpo dev`, with
   `development: { sandbox: }`; and the call log screen, `jadpo calls`,
-  `jadpo calls show` and `jadpo calls script`, on 7.0c's data.
+  `jadpo calls show` and `jadpo calls script`, on 7.0c's data. Built:
+  a package's fake (`jadpo_runtime::fakes::ProviderFake`) in every
+  provider connection's place in tests, answering the operation's
+  generated default, a value of its output type keeping its rules,
+  written as the provider sends it and read back through the real
+  decoding; a test's `fakes:` scripting each operation's answers in
+  order (a value, a failure's code, or `unavailable`, `lost`, `in_use`,
+  `misconfigured`), checked against the package
+  (`semantic.fake_invalid`), a script run past `test.fake_exhausted`
+  and one with answers left `test.fake_unused`; `jadpo dev` faking every
+  provider call with no credential needed (a missing provider setting
+  gets a stand-in, and the connection stays faked with an alert naming
+  the variable), letting `development: { sandbox: }`'s operations or
+  resources through to the sandbox once its credential is set, never
+  live (`cli.dev_start_failed`), `--fake` and `--sandbox` for a session;
+  each request's line listing its calls; and the call log in
+  `build/dev/calls.jsonl`, with `jadpo calls`, `calls show` and `calls
+  script` (`cli.calls_arguments`). Example 26 books a pickup through
+  `POST /pickups`, faked in its tests and in `jadpo dev`. Choices in
+  area 11's "Chosen in chunk 7.2d". Not built: `.requests`, `jadpo
+  trace`, timelines; enum variants written through a package's name in
+  an expression (`AcmeCouriers.Window.morning`) are refused as
+  `type.not_a_value`, so a scripted value can't give an enum field yet.
 - [ ] **7.2d2 Recordings** `opus · high`, after 7.2d and 7.2c2:
   recordings and `jadpo package record` (against a local HTTP server in
   tests), every decoder run over every recording in `jadpo test` and the

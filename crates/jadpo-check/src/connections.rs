@@ -917,7 +917,6 @@ impl Reader<'_> {
         member: &ast::Member,
         out: &mut Vec<Diagnostic>,
     ) -> Vec<(String, (String, u32, u32))> {
-        let span = node_span(self.path, member.syntax());
         let Some(list) = member.block() else {
             out.push(
                 self.invalid(
@@ -1003,7 +1002,6 @@ impl Reader<'_> {
                 }
             }
         }
-        let _ = span;
         read
     }
 
