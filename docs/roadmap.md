@@ -864,6 +864,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `failed_when:`; and derived provider idempotency keys (app,
   environment, caller, step), which also close a collision between
   users.
+  Also `wire_name:` on a provider's fields and enum variants (area 11,
+  decided 2026-10-20), written by the importer where the spelling
+  differs.
 - [ ] **7.2d Fakes, recordings and the call log** `opus · high`, after
   7.2c: a generated fake per package and `fakes:` for provider
   operations in tests; recordings and `jadpo package record`, every
