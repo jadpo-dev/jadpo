@@ -2530,7 +2530,7 @@ error: Public type `OutwardCode` has no description
   reason: Every public type, failure, library and library function of a published package has a `///` description: it is what `jadpo package show` and the registry's page say of it, and what an agent reads before it opens the file.
   next: Add a `///` line above `public type OutwardCode` saying what it is for (agent)
   rule: publish.description_missing
-  help: docs/language/11-integrations.html#publish-description-missing
+  help: docs/language/14-tooling.html#command-errors
 
 Publishing bar
   compiles      passed                        no errors
@@ -2558,7 +2558,7 @@ error: `Postcodes.v2` changed in ways that break the apps that use it
   reason: Since 2.0.0, `function uk.tidy` changed and `type EnteredPostcode` was removed, which an app using 2.0.0 may rely on. A breaking change is a new major version: a new package beside this one.
   next: Put back what changed, or publish the change as `Postcodes.v3` in a folder of its own (human)
   rule: publish.breaking_change
-  help: docs/language/11-integrations.html#publish-breaking-change
+  help: docs/language/14-tooling.html#command-errors
 
 Publishing bar
   compiles      passed                        no errors

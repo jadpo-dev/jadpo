@@ -477,7 +477,7 @@ fn check_refuses_a_breaking_change_within_a_major_version() {
   reason: Since 2.0.0, `function uk.parse` changed and `type WrittenPostcode` was removed, which an app using 2.0.0 may rely on. A breaking change is a new major version: a new package beside this one.
   next: Put back what changed, or publish the change as `Postcodes.v3` in a folder of its own (human)
   rule: publish.breaking_change
-  help: docs/language/11-integrations.html#publish-breaking-change
+  help: docs/language/14-tooling.html#command-errors
 "
         ),
         "{}",

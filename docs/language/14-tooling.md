@@ -868,6 +868,7 @@ each command is built.
 | `cli.incident_read_failed` | `incident` | Runtime event file could not be read |
 | `cli.incident_revision_mismatch` | `incident` | Runtime event and local source revisions differ |
 | `cli.lsp_arguments` | `lsp` | Language-server command has invalid arguments |
+| `cli.package_arguments` | `package` | Package command has invalid arguments |
 | `cli.presentation_arguments` | any command | Terminal presentation option is invalid |
 | `cli.project_required` | any command | Command requires a project path |
 | `cli.routes_arguments` | `routes` | Routes command has invalid arguments |
@@ -972,6 +973,8 @@ each command is built.
 | `migration.sql_sqlite_renamed_table_unsupported` | `schema` | SQLite rebuild cannot target a logically renamed table |
 | `migration.sql_strategy_unsupported` | `schema` | Reviewed migration strategy has no SQL implementation |
 | `migration.sql_type_unsupported` | `schema` | Field type has no migration SQL mapping |
+| `publish.breaking_change` | `package check` | Package's surface breaks its last release within one major version (area 11, "Publishing errors") |
+| `publish.description_missing` | `package check` | Package's public declaration has no description (area 11, "Publishing errors") |
 | `runtime.outcome_unknown` | the running app | Generated runtime could not confirm whether an effect committed |
 | `runtime.startup_failed` | the running app | Generated runtime failed during startup |
 | `runtime.unhandled_fault` | the running app | Generated runtime contained an unexpected fault |
