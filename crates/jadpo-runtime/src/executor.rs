@@ -109,6 +109,12 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// The connection `ai:` names (area 21; chunk 5.5v3): what a test's
+    /// host gives the `ai` fake for, and a native host its driver for.
+    fn ai_connection(&self) -> Option<&str> {
+        None
+    }
+
     /// Reads the recording at `file` of one of the app's own integrations
     /// as its operation's output, through the package's own decoders run
     /// at `ctx` (area 11, "Provenance and confirmation"; chunk 7.2d2):

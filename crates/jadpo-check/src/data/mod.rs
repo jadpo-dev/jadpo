@@ -67,6 +67,9 @@ pub enum ConnectionKind {
     /// An SMTP server, `Driver.smtp`, which sends email (area 16; chunk
     /// 7.3).
     Smtp,
+    /// A server that speaks OpenAI's API, `Driver.openai_compatible`,
+    /// which answers `ai` calls (area 21; chunk 5.5v3).
+    Model,
     /// A provider package (area 11).
     Package,
     /// Neither a built-in driver nor a package: area 11 reports it.
@@ -222,6 +225,7 @@ pub(crate) fn connection_kind(list: Option<ast::MemberList>) -> ConnectionKind {
                         Some(Driver::Redis) => ConnectionKind::Redis,
                         Some(Driver::Disk) => ConnectionKind::Files,
                         Some(Driver::Smtp) => ConnectionKind::Smtp,
+                        Some(Driver::OpenaiCompatible) => ConnectionKind::Model,
                         None => ConnectionKind::Other,
                     },
                     _ => ConnectionKind::Other,

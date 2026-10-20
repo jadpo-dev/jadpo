@@ -12,7 +12,7 @@
 //! codes or a condition.
 
 use jadpo_diag::{Diagnostic, nearest, rule};
-use jadpo_graph::body::{FakeAnswer, FakeCondition};
+use jadpo_graph::body::{AiFakeAnswer, FakeAnswer, FakeCondition};
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
 use super::super::ty::{Prim, Ty};
@@ -60,6 +60,23 @@ impl Body<'_> {
                 .collect();
             let written = names.join(".");
             let span = self.span(&key);
+            // A model's answers to a prompt (area 21, "Tests"; chunk
+            // 5.5v3).
+            if let [head, prompt] = names.as_slice()
+                && head == jadpo_std::standard::ai::AI
+            {
+                if seen.contains(&written) {
+                    self.out.push(
+                        invalid(format!("`{written}` is scripted twice"), span, "scripted again")
+                            .reason("A test lists each prompt's answers once, in the order the model is asked.")
+                            .next(format!("Put every answer of `{written}` in one list")),
+                    );
+                    continue;
+                }
+                seen.push(written.clone());
+                self.ai_fakes(&entry, prompt, &written, span);
+                continue;
+            }
             let [connection, resource, name] = names.as_slice() else {
                 self.out.push(
                     invalid(
@@ -299,4 +316,219 @@ impl Body<'_> {
 
 fn invalid(headline: String, span: jadpo_diag::Span, label: &str) -> Diagnostic {
     Diagnostic::new(&rule::SEMANTIC_FAKE_INVALID, headline).at(span, label.to_string())
+}
+
+impl Body<'_> {
+    /// Resolves the names a test's `fakes:` uses: a model's scripted
+    /// answers' `raw(...)` and `recorded(...)` are the script's own words,
+    /// so only what they are given is read.
+    pub(super) fn walk_fakes(&mut self, member: &ast::Member) {
+        for item in member
+            .block()
+            .iter()
+            .flat_map(ast::MemberList::member_items)
+        {
+            let ast::MemberItem::Member(entry) = item else {
+                continue;
+            };
+            let model = entry.member_key().is_some_and(|key| {
+                key.names()
+                    .next()
+                    .and_then(|name| crate::tree::name_text(&name))
+                    .as_deref()
+                    == Some(jadpo_std::standard::ai::AI)
+            });
+            let (true, Some(Expr::ListExpr(answers))) = (model, entry.value()) else {
+                self.walk(|walk| walk.member(&entry));
+                continue;
+            };
+            for answer in answers.exprs() {
+                let own = match &answer {
+                    Expr::CallExpr(call) => matches!(
+                        call.expr(),
+                        Some(Expr::NameRef(name)) if matches!(super::text(&name).as_str(), "raw" | "recorded")
+                    ),
+                    _ => false,
+                };
+                if let (true, Expr::CallExpr(call)) = (own, &answer) {
+                    for arg in Self::arguments(call) {
+                        if let Some(value) = arg.expr() {
+                            self.walk(|walk| walk.expr(&value));
+                        }
+                    }
+                } else {
+                    self.walk(|walk| walk.expr(&answer));
+                }
+            }
+        }
+    }
+
+    /// `fakes: { ai.<prompt>: [answers] }` (area 21, "Tests"; chunk
+    /// 5.5v3): each answer one attempt of an `ai.generate` call of the
+    /// prompt takes, in order: a value of the type the call's `as:` names,
+    /// checked as one; `raw("...")`, text the model answers with, run
+    /// through the real decoding and repair; or one of the call's five
+    /// failures, `malformed` an answer that doesn't decode.
+    fn ai_fakes(
+        &mut self,
+        entry: &ast::Member,
+        prompt: &str,
+        written: &str,
+        span: jadpo_diag::Span,
+    ) {
+        if self.prompt_type(prompt).is_none() {
+            let known: Vec<String> = crate::prompts::analysis(self.db, self.project)
+                .prompts
+                .iter()
+                .map(|found| found.key.clone())
+                .collect();
+            let near = nearest(prompt, known.iter().map(String::as_str));
+            let mut problem = invalid(format!("`{prompt}` isn't a prompt"), span, "no such prompt")
+                .reason("`fakes: { ai.<prompt>: [...] }` scripts a model's answers to a prompt, named as its type's name in lower_snake_case, `answer_question` for `AnswerQuestion`.");
+            problem = match near {
+                Some(near) => problem.next(format!("Use `ai.{near}` instead of `{written}`")),
+                None => problem.next(format!("Remove `{written}:`")),
+            };
+            self.out.push(problem);
+            return;
+        }
+        let Some(Expr::ListExpr(answers)) = entry.value() else {
+            let at = entry
+                .value()
+                .map_or_else(|| span.clone(), |value| self.span(&value));
+            self.out.push(
+                invalid(format!("`{written}`'s answers aren't a list"), at, "not a list")
+                    .reason("A model's answers are a list, taken in order, one by each answer the code asks for.")
+                    .next(format!("Write `{written}: [<answer>]`")),
+            );
+            return;
+        };
+        let items: Vec<Expr> = answers.exprs().collect();
+        if items.is_empty() {
+            self.out.push(
+                invalid(format!("`{written}` is scripted with no answers"), self.span(&answers), "no answers")
+                    .reason("A prompt the test doesn't script is answered with a generated value of its call's type, so an empty list says nothing.")
+                    .next(format!("Remove `{written}:`, or list the answers its calls take")),
+            );
+            return;
+        }
+        let words: Vec<&str> = super::generate::CONDITIONS
+            .iter()
+            .map(|condition| condition.word())
+            .collect();
+        let types = crate::ai::answer_types(self.db, self.project)
+            .get(prompt)
+            .cloned()
+            .unwrap_or_default();
+        for answer in items {
+            let key = node_key(answer.syntax());
+            if let Expr::NameRef(named) = &answer {
+                let word = super::text(named);
+                if words.contains(&word.as_str()) {
+                    self.facts
+                        .ai_fakes
+                        .insert(key, (prompt.to_string(), AiFakeAnswer::Failed(word)));
+                    continue;
+                }
+                let near = nearest(&word, words.iter().copied());
+                let mut problem = invalid(
+                    format!("`{word}` isn't an answer `{written}` gives"),
+                    self.span(&answer),
+                    "not a failure",
+                )
+                .reason(format!(
+                    "A model's scripted answer is a value of the type its call asks for, `raw(\"...\")` with text it answers, or one of `ai.generate`'s failures: {}.",
+                    crate::and_list(&words.iter().map(|word| format!("`{word}`")).collect::<Vec<_>>())
+                ));
+                problem = match near {
+                    Some(near) => problem
+                        .next(format!("Use `{near}` instead of `{word}`"))
+                        .edit(self.span(&answer), near),
+                    None => problem.next(format!("Remove `{word}`")),
+                };
+                self.out.push(problem);
+                continue;
+            }
+            if let Expr::CallExpr(call) = &answer
+                && let Some(Expr::NameRef(callee)) = call.expr()
+            {
+                let called = super::text(&callee);
+                if called == "recorded" {
+                    let at = self.span(&answer);
+                    self.out.push(
+                        jadpo_diag::Diagnostic::new(
+                            &rule::TOOLCHAIN_NOT_BUILT_YET,
+                            "`recorded(...)` isn't built yet".to_string(),
+                        )
+                        .at(at, "decided, not built")
+                        .reason("A recorded answer, kept in the prompt's `recordings/` by `jadpo ai record`, comes with roadmap chunk 5.5v4.")
+                        .next("Script the answer as a value, or with `raw(\"...\")`, for now"),
+                    );
+                    continue;
+                }
+                if called == "raw" {
+                    let args = Self::arguments(call);
+                    match args.as_slice() {
+                        [arg] if arg.name().is_none() => {
+                            if let Some(text) = arg.expr() {
+                                self.check(&text, &Ty::Prim(Prim::Text));
+                            }
+                            self.facts
+                                .ai_fakes
+                                .insert(key, (prompt.to_string(), AiFakeAnswer::Raw));
+                        }
+                        _ => {
+                            let at = self.arg_list_span(call);
+                            self.out.push(
+                                invalid("`raw` takes the text the model answers with".to_string(), at, "not one text")
+                                    .reason("`raw(\"...\")` scripts the text a model answers with, which runs through the call's real decoding and repair, so a test can script an answer that doesn't decode.")
+                                    .next("Write `raw(\"{\\\"reply\\\": 1}\")`, with the text the model answers"),
+                            );
+                        }
+                    }
+                    continue;
+                }
+            }
+            // A value of the type the prompt's calls ask for.
+            match types.as_slice() {
+                [ty] => {
+                    let ty = ty.clone();
+                    self.check(&answer, &ty);
+                    self.facts
+                        .ai_fakes
+                        .insert(key, (prompt.to_string(), AiFakeAnswer::Value));
+                }
+                [] => {
+                    self.infer(&answer);
+                    self.out.push(
+                        invalid(
+                            format!("No call asks `{prompt}` for a value"),
+                            self.span(&answer),
+                            "a value",
+                        )
+                        .reason(format!(
+                            "A scripted value is checked against the type an `ai.generate` call of `{prompt}` decodes its answer into, and no action makes one."
+                        ))
+                        .next("Script one of `ai.generate`'s failures, or `raw(\"...\")`"),
+                    );
+                }
+                several => {
+                    self.infer(&answer);
+                    let listed: Vec<String> = several.iter().map(|ty| format!("`{ty}`")).collect();
+                    self.out.push(
+                        invalid(
+                            format!("`{prompt}` is asked for {}, so a value can't be scripted", crate::and_list(&listed)),
+                            self.span(&answer),
+                            "which type",
+                        )
+                        .reason(format!(
+                            "Calls of `{prompt}` decode its answer as {}, so a scripted value would fit some of them and not others.",
+                            crate::and_list(&listed)
+                        ))
+                        .next("Script the answer as `raw(\"...\")`, which each call decodes as its own type"),
+                    );
+                }
+            }
+        }
+    }
 }

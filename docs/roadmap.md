@@ -1463,17 +1463,29 @@ The design is area 11 as revised on 2026-10-16, with its research in
   by the batch's answer, a parked one acknowledged; its seam and its
   consumer configuration for the Wrangler file built and unit-tested
   here, deploying it Phase 8's.
-- [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
-  xhigh` (area 21, "The `ai` capability" and "Typed output"), after
-  5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`
-  settings, `provides/ai.jadpo`, `ai.generate(prompt, as: T)` with the
-  schema from `T`, the provider's structured mode or the schema in the
-  instructions, `json.read`'s decoding, one repair with the decode
-  problem, the five failures, answers reused on a rerun, the fake in
-  `jadpo test` and `jadpo dev` (`fakes: { ai.<prompt>: }`, `raw(...)`,
-  `.requests`), and `Driver.openai_compatible`. Done when a test drives
+- [ ] **5.5v3 The `ai` capability: `generate`, its fake and the local
+  driver** `opus · xhigh` (area 21, "The `ai` capability" and "Typed
+  output"), after 5.5v2 and 7.3 (split on 2026-10-20: a package filling
+  `ai` is 5.5v3b): `ai:` in `application { }` with models as `ModelId`
+  settings, `ai.generate(prompt, as: T)` with the schema from `T`, the
+  provider's structured mode or the schema in the instructions,
+  `json.read`'s decoding, one repair with the decode problem, the five
+  failures, answers reused on a rerun, the fake in `jadpo test`
+  (`fakes: { ai.<prompt>: }`, `raw(...)`, `.requests`), and
+  `Driver.openai_compatible` in `jadpo dev`. Done when a test drives
   every failure and a repaired answer through the fake, and a local
   model answers through the driver in `jadpo dev`.
+- [ ] **5.5v3b Providers filling `ai`** `opus · high` (area 21, "How a
+  provider fills it"), after 5.5v3 (split from 5.5v3 on 2026-10-20): a
+  package's `provides/ai.jadpo` mapping `generate:` onto its own
+  operation as data (`request.*`, `response.*`, `refused_when:`,
+  `cut_off_when:`, `usage:`, `schema: { mode: at: }`, `models: { context:
+  prices: }`), `AiSchema.json_only` and `.none` sending the schema in the
+  instructions, `too_long` checked before sending from the package's
+  context table, `development: { sandbox: [<prompt>] }`, a package's
+  `ai` faked in `jadpo dev` with generated defaults, and `jadpo calls
+  script` for a prompt. Done when a package fills `ai` in a test against
+  a local server and `jadpo dev` fakes it.
 - [ ] **5.5v4 Embeddings and recordings** `opus · high` (area 21), after
   5.5v1 and 5.5v3: `ai.embed` and `ai.embed_all`, `embedding_dimensions:`
   and its check, the fake's seeded embeddings, `jadpo ai record` and
@@ -1495,9 +1507,9 @@ The design is area 11 as revised on 2026-10-16, with its research in
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
-  after 5.5v4 and 5.5v6: two provider packages filling `ai`, each with its
-  context and price tables, recordings and `jadpo package conform <package>
-  ai`. **Needs Richard** for the API keys the live conformance run uses.
+  after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
+  with its context and price tables, recordings and `jadpo package conform
+  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

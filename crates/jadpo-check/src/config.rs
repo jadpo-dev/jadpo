@@ -313,7 +313,7 @@ impl Reader<'_> {
                     )
                     .at(type_span.clone(), "not read from one variable")
                     .reason(format!(
-                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate` and enums. {why}"
+                        "A setting is read from one environment variable, so its type must be decodable from one piece of text: text-based types, `Int`, `Decimal`, `Bool`, `Uuid`, `Email`, `Url`, `IpAddress`, `Duration`, `Instant`, `CalendarDate`, `ModelId` and enums. {why}"
                     ))
                     .next(format!("Split `{name}` into settings of those types")),
                 );
@@ -772,6 +772,13 @@ impl Reader<'_> {
         match &structure {
             Ty::List(_) | Ty::Set(_) | Ty::Map(..) => {
                 Err("A list is one value in many variables or one variable holding a format; split it into settings.".to_string())
+            }
+            // A model, read from its text, `openai/gpt-4.1-mini`: what
+            // `ai: { models: }` names (area 21; chunk 5.5v3).
+            Ty::Opaque(name, args)
+                if args.is_empty() && name == jadpo_std::standard::records::MODEL_ID =>
+            {
+                Ok(Reads::Text)
             }
             Ty::Named(name) => match self.lookup.def(name) {
                 Some(Def::Enum { variants }) if variants.iter().all(|v| v.fields.is_none()) => {
@@ -1336,10 +1343,28 @@ fn test_values(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
                 }
                 let path = current.file(db).path(db).clone();
                 for site in &checked.body.sites {
-                    let Node::Expr(Expr::Config { field }) = &site.node else {
-                        continue;
+                    // `ai.generate` reads its model's setting (area 21;
+                    // chunk 5.5v3).
+                    let asked;
+                    let name = match &site.node {
+                        Node::Expr(Expr::Config { field }) => field.name(),
+                        Node::Expr(Expr::Call {
+                            callee: jadpo_graph::body::Callee::Generate { model, .. },
+                            ..
+                        }) => {
+                            let found = crate::ai::settings(db, project)
+                                .models
+                                .iter()
+                                .find(|(name, _)| name == model)
+                                .map(|(_, setting)| setting.clone());
+                            let Some(found) = found else {
+                                continue;
+                            };
+                            asked = found;
+                            asked.as_str()
+                        }
+                        _ => continue,
                     };
-                    let name = field.name();
                     if !wanting.contains(name)
                         || given.contains(name)
                         || !reported.insert((path.clone(), site.start))

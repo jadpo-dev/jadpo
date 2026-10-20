@@ -98,6 +98,10 @@ async fn body(
                         let site = machine.provider_site(at).cloned().unwrap_or_default();
                         provider(program, ctx, called, &site, args, at.0).await
                     }
+                    Target::Generate => {
+                        let site = machine.generate_site(at).cloned();
+                        generate(program, ctx, site.as_ref(), args, at.0).await
+                    }
                     Target::Schedule(action) => {
                         let caught = machine.catching();
                         schedule(program, ctx, action, at.0, caught).await
@@ -202,6 +206,7 @@ fn store<'a, 'p: 'a>(
             | Target::Batch(..)
             | Target::Files(..)
             | Target::Provider
+            | Target::Generate
             | Target::Schedule(_)
             | Target::AdvanceClock => None,
         };
@@ -216,6 +221,7 @@ fn store<'a, 'p: 'a>(
                 | Target::Batch(..)
                 | Target::Files(..)
                 | Target::Provider
+                | Target::Generate
                 | Target::Schedule(_)
                 | Target::AdvanceClock => "a call run as a read",
             };
@@ -442,6 +448,50 @@ async fn provider(
     .await
     {
         Done::Value(value) => Ok(value),
+        Done::Failed(failure) => Err(Stop::Failed(failure)),
+        Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
+    }
+}
+
+/// `ai.generate(prompt, as: T)` at site `at` (area 21, chunk 5.5v3): the
+/// runtime renders the prompt, asks the model through the connection
+/// `ai:` names and decodes its answer; a condition it ends in is the
+/// call's, for its `attempt` to map.
+async fn generate(
+    program: &Program,
+    ctx: &mut Ctx<'_>,
+    site: Option<&jadpo_std::ai::GenerateSite>,
+    args: Vec<Value>,
+    at: u32,
+) -> Result<Value, Stop> {
+    use jadpo_runtime::ai::{self, Done};
+    let (Some(site), Some(ai)) = (site, program.ai()) else {
+        return Err(Stop::Fault(ctx.fault(
+            FaultKind::Defect("a model asked in a program that names none".into()),
+            at,
+        )));
+    };
+    // The settings its model and address are read from: a test's own
+    // value, or the application's.
+    let settings: Vec<(u32, Value)> = ai::settings_read(ai.plan, site)
+        .into_iter()
+        .filter_map(|number| {
+            let value = ctx
+                .setting(number)
+                .cloned()
+                .or_else(|| program.setting(number))?;
+            Some((number, value))
+        })
+        .collect();
+    let prompt = args.into_iter().next().unwrap_or(Value::Unit);
+    match ai::generate(ctx, &ai, site, prompt, &settings).await {
+        Done::Value(value) => Ok(value),
+        Done::Broke { rule, problem } => Err(Stop::Invalid {
+            rule,
+            written: rule.word().to_string(),
+            problem,
+            name: None,
+        }),
         Done::Failed(failure) => Err(Stop::Failed(failure)),
         Done::Fault(kind) => Err(Stop::Fault(ctx.fault(kind, at))),
     }

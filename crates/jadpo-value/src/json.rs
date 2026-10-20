@@ -1064,6 +1064,36 @@ impl Codecs<'_> {
         }
     }
 
+    /// [`Codecs::read_value`] of the member `member` of the document
+    /// `text`: what an `ai.generate` answer wrapped in an object for a
+    /// structured mode holds (area 21; chunk 5.5v3). A problem's path is
+    /// the member's own, without `member`; a document that isn't an object
+    /// with `member` is `mismatch` at its root.
+    pub fn read_member(&self, id: CodecId, text: &str, member: &str) -> Result<Value, Unread> {
+        let (json, numbers) = parse(text.as_bytes()).ok_or(Unread::Malformed)?;
+        let Some(inner) = json.get(member) else {
+            return Err(Unread::Mismatch(Problem {
+                field: String::new(),
+                rule: "type".to_string(),
+            }));
+        };
+        let path = Path {
+            shown: Vec::new(),
+            at: vec![member.to_string()],
+            numbers: Some(Rc::new(numbers)),
+        };
+        let mut problems = Vec::new();
+        let value = self.read(id, inner, &path, &mut problems);
+        match (value, problems.into_iter().next()) {
+            (Some(value), None) => Ok(value),
+            (_, Some(problem)) => Err(Unread::Mismatch(problem)),
+            (None, None) => Err(Unread::Mismatch(Problem {
+                field: String::new(),
+                rule: "type".to_string(),
+            })),
+        }
+    }
+
     /// The fields of the object codec `id` is, an `Input`'s, in order,
     /// each by its name with whether a value may leave it out: what a file
     /// row's columns are held to (area 19, "Data formats"; chunk 6.4b).

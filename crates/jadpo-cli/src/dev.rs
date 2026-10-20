@@ -657,6 +657,19 @@ pub fn serve_to(
                 },
             )
             .with_call_log(Rc::new(crate::dev_calls::DevLog(Arc::clone(&make_log))));
+        // The model `ai:` names, through the built-in driver, a server on
+        // this machine with no key at all (area 21; chunk 5.5v3).
+        let models = Arc::clone(&make_shared);
+        host = host.with_models(move |connection| {
+            let current = match models.current.lock() {
+                Ok(current) => Arc::clone(&current.0),
+                Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
+            };
+            current
+                .plan()
+                .ai()
+                .is_some_and(|ai| ai.connection == connection)
+        });
         for (store, url) in &make_shared.urls {
             if let Ok(database) = postgres(url) {
                 host = host.with_store(store.clone(), database);

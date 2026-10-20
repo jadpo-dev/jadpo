@@ -30,6 +30,7 @@ mod failing;
 mod fakes;
 mod features;
 mod files;
+mod generate;
 mod identity;
 mod json;
 mod known;
@@ -119,6 +120,10 @@ pub struct Checked {
     pub deferred: Vec<(String, Diagnostic)>,
     /// Its body lets out a failure its `fails` list doesn't name.
     pub undeclared: bool,
+    /// Each `ai.generate` call it makes, with its prompt's name and the
+    /// type its answer is decoded into (area 21; chunk 5.5v3): what a
+    /// test's `fakes: { ai.<prompt>: }` scripts a value of.
+    pub generates: Vec<(String, Ty)>,
     /// For a function, action or library function: its name
     /// (`library.function` for a library's) and the failures that can
     /// leave it.
@@ -320,6 +325,7 @@ pub fn typed_body<'db>(db: &'db dyn Db, project: Project, callable: Callable<'db
         problems,
         deferred,
         undeclared: checker.undeclared,
+        generates: std::mem::take(&mut checker.generates),
         set: checker.set,
         key,
         body: std::sync::Arc::new(body),
@@ -576,6 +582,8 @@ struct Body<'a> {
     deferred: Vec<(usize, String)>,
     /// See [`Checked::undeclared`].
     undeclared: bool,
+    /// See [`Checked::generates`].
+    generates: Vec<(String, Ty)>,
     /// What resolving the body's names finds (area 1), kept apart from
     /// `out`, whose length tells the checks what is already reported, so
     /// a name error never changes what the type checks decide.
@@ -644,6 +652,7 @@ impl<'a> Body<'a> {
             out: Vec::new(),
             deferred: Vec::new(),
             undeclared: false,
+            generates: Vec::new(),
             resolved: Vec::new(),
             loops: 0,
             pending_block: None,
@@ -1286,14 +1295,16 @@ impl Body<'_> {
                 // A member is a later area's setting (an entity write's
                 // block, a test's settings): its names are resolved.
                 BlockItem::Member(member) => {
-                    self.walk(|walk| walk.member(&member));
                     // A test's `fakes:` (area 13; chunk 7.2d).
-                    if self.test
+                    let fakes = self.test
                         && member
                             .member_key()
-                            .is_some_and(|key| tree::written(key.syntax()) == "fakes")
-                    {
+                            .is_some_and(|key| tree::written(key.syntax()) == "fakes");
+                    if fakes {
+                        self.walk_fakes(&member);
                         self.fakes(&member);
+                    } else {
+                        self.walk(|walk| walk.member(&member));
                     }
                     continue;
                 }

@@ -122,6 +122,10 @@ pub enum Decoded {
     /// output its code reads, the only ones decoded, and whether its
     /// `attempt` maps `timed_out:`.
     Provider(jadpo_std::provider::CallSite),
+    /// `ai.generate` (area 21, chunk 5.5v3): the prompt it renders, the
+    /// type its answer is decoded into and that type's schema, and its
+    /// options.
+    Generate(Box<jadpo_std::ai::GenerateSite>),
     /// Something a later area builds, as written up to its arguments or
     /// block: `query open_todos`, `Todo.update`.
     Written(String),
@@ -305,6 +309,10 @@ pub(crate) struct Decoder<'a> {
     /// Each prompt's place in the plan's prompts, by its name, and the type
     /// of each field its text writes (area 21).
     pub prompt: &'a dyn Fn(&str) -> Option<PromptFields>,
+    /// The JSON Schema a model is asked to answer a type in, and whether
+    /// the type's JSON is an object (area 21, "Typed output"; chunk
+    /// 5.5v3); `None` for one built on `Text`.
+    pub schema: &'a dyn Fn(&TypeRef) -> Option<(String, bool)>,
     /// The callable whose body this is, and the program's `batches.each`
     /// calls so far, which its own are added to (area 12).
     pub starter: &'a Key,
@@ -778,6 +786,55 @@ impl Decoder<'_> {
                     },
                     None => Decoded::Nothing,
                 },
+                Callee::Generate {
+                    prompt,
+                    model,
+                    max_output,
+                    timeout_ms,
+                    attempts,
+                } => match (self.prompt)(prompt) {
+                    Some((entry, fields)) => {
+                        let fields = fields
+                            .into_iter()
+                            .map(|ty| match self.json_type(ty) {
+                                Decoded::Json(number) => number,
+                                _ => 0,
+                            })
+                            .collect();
+                        let answer = match self.json_type(site.ty.clone()) {
+                            Decoded::Json(number) => number,
+                            _ => 0,
+                        };
+                        let schema = (self.schema)(&site.ty);
+                        Decoded::Generate(Box::new(jadpo_std::ai::GenerateSite {
+                            prompt: prompt.clone(),
+                            entry,
+                            fields,
+                            answer,
+                            object: schema.as_ref().is_some_and(|(_, object)| *object),
+                            schema: schema.map(|(schema, _)| schema),
+                            model: model.clone(),
+                            max_output: *max_output,
+                            timeout_ms: *timeout_ms,
+                            attempts: *attempts,
+                        }))
+                    }
+                    None => Decoded::Nothing,
+                },
+                // A model's scripted answer, a value of its call's type,
+                // written as the model would send it (chunk 5.5v3).
+                Callee::AiFake {
+                    answer: jadpo_graph::body::AiFakeAnswer::Value,
+                    ..
+                } => {
+                    let written = args
+                        .first()
+                        .copied()
+                        .flatten()
+                        .and_then(|arg| body.sites.get(arg.0 as usize))
+                        .map_or(TypeRef::None, |arg| arg.ty.clone());
+                    self.json_type(written)
+                }
                 Callee::Query(key) => Decoded::Query((self.query)(key)),
                 Callee::Entity { entity, operation } if operation == "get" => {
                     Decoded::Get((self.entity)(entity))
@@ -797,6 +854,8 @@ impl Decoder<'_> {
                 | Callee::Batch(_)
                 | Callee::Files { .. }
                 | Callee::Fake { .. }
+                | Callee::AiFake { .. }
+                | Callee::AiRequests { .. }
                 | Callee::AdvanceClock
                 | Callee::Translation(_)
                 | Callee::Escape
