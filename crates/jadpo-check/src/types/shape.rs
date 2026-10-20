@@ -114,6 +114,14 @@ pub struct VariantShape {
 /// wire_name: "after-noon" }`.
 pub const WIRE_NAME: &str = "wire_name";
 
+/// The settings a provider package's field says how it is sent with (area
+/// 11, "Decoding"; chunk 7.2c2): one of the built-in encodings,
+/// `wire: Wire.unix_seconds`, or the package's own pair of functions,
+/// `decode: slots.parse_window` and `encode: slots.format_window`.
+pub const WIRE: &str = "wire";
+pub const DECODE: &str = "decode";
+pub const ENCODE: &str = "encode";
+
 /// Whether `member` of a variant's block is its `wire_name:`, a setting
 /// rather than a field: the key `wire_name` with a value that isn't a
 /// type.

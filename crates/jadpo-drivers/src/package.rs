@@ -5,8 +5,9 @@
 //! through the [`Fetch`] its host gives (tokio and OpenSSL natively,
 //! Workers' `fetch` there) and classifies what came back into the seam's
 //! fixed set ([`jadpo_runtime::provider::classify`]): never sent, so
-//! `unavailable`; sent with no answer, which may have acted; or the
-//! provider's answer.
+//! `unavailable`; sent with no answer, which may have acted, and told
+//! apart when its timeout passed (chunk 7.2c2); or the provider's
+//! answer.
 
 use jadpo_runtime::LocalFuture;
 use jadpo_runtime::capability::{Answer, Call, Capability};
@@ -18,8 +19,11 @@ pub enum FetchError {
     /// It never left: the host wasn't found, nothing listened, or the
     /// connection was refused. Safe to send again.
     NotSent(String),
-    /// It left and no whole answer came back in time: it may have acted.
+    /// It left and no whole answer came back: it may have acted.
     NoAnswer(String),
+    /// It left and no answer came back within its timeout: it may have
+    /// acted (chunk 7.2c2).
+    TimedOut,
     /// The host can't send it at all: an address it can't reach this way,
     /// such as HTTPS where it has no TLS.
     Refused(String),
@@ -57,6 +61,7 @@ impl<F: Fetch> Capability for JsonHttp<F> {
                 Ok(response) => classify(request, &response),
                 Err(FetchError::NotSent(_)) => Answer::Unavailable,
                 Err(FetchError::NoAnswer(_)) => Answer::Unknown,
+                Err(FetchError::TimedOut) => Answer::TimedOut,
                 Err(FetchError::Refused(_)) => Answer::Misconfigured,
             }
         })

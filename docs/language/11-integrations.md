@@ -1590,6 +1590,150 @@ public type SlotTaken = Failure {
   fault, and an item of a batch whose `each:` action calls is a batch of
   its own (area 12, "How a run is kept").
 
+Built in chunk 7.2c2 and checked by this checkout's `jadpo`: a
+connection's `retry:`, and `timed_out:` mapped at the call of an
+operation safe to send again. Here the courier is tried up to four times
+within 20 seconds, and a lookup it doesn't answer within five seconds
+is the shop's own `CourierUnavailable`:
+
+```jadpo check project=p72c2-retry file=app.jadpo
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+            timeout: 5s
+            retry: {
+                attempts: 4
+                within: 20s
+            }
+        }
+    }
+}
+```
+
+```jadpo check project=p72c2-retry file=domains/shipping/actions/parcel_status.jadpo
+use app { couriers }
+use shipping/failures { CourierUnavailable }
+use shared/providers/acme_couriers
+
+/// Where a parcel is, or the shop's own failure when the courier doesn't
+/// answer in time.
+action parcel_status(
+    parcel: AcmeCouriers.ParcelRef
+) fails CourierUnavailable -> AcmeCouriers.Status {
+    var tracked_parcel: AcmeCouriers.Parcel = attempt couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: parcel
+        }
+    ) {
+        timed_out: CourierUnavailable
+    }
+    return tracked_parcel.status
+}
+```
+
+```jadpo check project=p72c2-retry file=domains/shipping/failures/courier_unavailable.jadpo hidden
+/// The courier isn't answering.
+type CourierUnavailable = Failure {
+    kind: FailureKind.unavailable
+    message: "The courier isn't answering just now."
+}
+```
+
+```jadpo check project=p72c2-retry file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/status.jadpo hidden
+/// Where a parcel is, in the courier's words.
+public type Status = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-retry file=shared/providers/acme_couriers/v1/types/parcel.jadpo hidden
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: Status
+}
+```
+
+- **What is sent again.** A call that never left, or that the provider
+  said did nothing (`408`, `429`, its key still in use), whatever it
+  changes; and one that may have acted (a server's error, no answer in
+  time) only when it changes nothing or takes its package's key, sent
+  again unchanged under the same key. A change with no key that may have
+  acted is never sent again: it is `outcome_unknown`.
+- **How long it waits between.** 200 milliseconds before the second
+  attempt, doubled before each after it, each wait drawn evenly from zero
+  to that (full jitter); a provider's `Retry-After` in seconds instead,
+  where it gives one. A wait that would end after `within:` ends the
+  retrying, and the last answer stands. Each attempt is logged as a call
+  of its own.
+- **`timed_out:`** maps the runtime's `timed_out` (area 4) on a call of
+  an operation that changes nothing or is `idempotent: true`, to one of
+  the app's `unavailable` failures, with `timed_out` as its cause, once
+  every attempt has gone unanswered in time. Unmapped, a call that timed
+  out is `unavailable` where it was safe to send again, and
+  `outcome_unknown` where it wasn't; mapping it on an operation that
+  changes something with no key is `failure.unknown_mapping`.
+
 ## Decoding
 
 Decided 2026-10-16 (Richard). Two kinds of conversion, split by one test:
@@ -1735,8 +1879,301 @@ public resource bookings {
 So `{"ok": true, "data": {"id": "b-1", "collectAt": "2026-10-20T09:00:00Z",
 "partOfDay": "after-noon"}}` is read as a `Booking` with `collect_at`
 and `part_of_day: SlotWindow.after_noon`, and `{"ok": false, "error": {"code":
-"slot_taken"}}` as the operation's `SlotTaken`. `wire:`, `decode:` and
-`encode:`, and `wire_output:` come with chunk 7.2c2.
+"slot_taken"}}` as the operation's `SlotTaken`.
+
+Built in chunk 7.2c2 and checked by this checkout's `jadpo`: `wire:`,
+`decode:` and `encode:` on a provider package's fields, and
+`wire_output:` with `decode:` on an operation. The built-in encodings are
+these ten:
+
+| `wire:` | On a field of | The provider sends |
+|---|---|---|
+| `Wire.unix_seconds` | `Instant` | A whole number of seconds since 1970: `1792400400` |
+| `Wire.unix_milliseconds` | `Instant` | A whole number of milliseconds since 1970 |
+| `Wire.iso_8601` | `Instant` | ISO 8601 text with any offset from UTC, `"2026-10-19T10:00:00+01:00"`; written in UTC |
+| `Wire.day_month_year` | `CalendarDate` | `"19/10/2026"` |
+| `Wire.text` | `Int`, `Decimal` | The number as text: `"3"`, `"2.50"` |
+| `Wire.number` | `Int`, `Decimal` | A JSON number, every place written kept: `2.50` |
+| `Wire.comma_separated` | A list of text, numbers or an enum's plain variants | One text, joined by commas: `"fragile,heavy"` |
+| `Wire.base64` | `Text` | The Base64 of its UTF-8 |
+| `Wire.json_text` | Anything | Its JSON, inside a string |
+| `Wire.minor_units` | `Money` whose type fixes its `currency:` | A whole number of the currency's minor units: `1250` |
+
+A field's own pair of functions is for anything else: `decode:` takes the
+value as the provider sends it and gives the field's type, failing when
+it can't, and `encode:` takes the field's type back without failing.
+Both are in the package's own `libraries/`, so they may be internal:
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel.jadpo
+/// A parcel and where it is.
+public type Parcel = Object {
+    id: ParcelRef
+    status: Status
+    collect_at: CollectionTime {
+        wire: Wire.unix_seconds
+        wire_name: "collectAt"
+    }
+    weight: Weight {
+        wire: Wire.number
+    }
+    price: ParcelPrice {
+        wire: Wire.minor_units
+    }
+    slot: SlotWindow {
+        decode: courier_windows.parse_window
+        encode: courier_windows.format_window
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/courier_windows.jadpo
+/// The courier's collection windows, which it writes as "AM" and "PM".
+library courier_windows {
+    /// The window the courier's code names.
+    function parse_window(code: WindowCode) fails WindowUnknown -> SlotWindow {
+        if (code == "AM") {
+            return SlotWindow.morning
+        }
+        if (code == "PM") {
+            return SlotWindow.afternoon
+        }
+        reject WindowUnknown
+    }
+
+    /// The courier's code for a window.
+    function format_window(pickup_window: SlotWindow) -> WindowCode {
+        if (pickup_window == SlotWindow.morning) {
+            return "AM"
+        }
+        return "PM"
+    }
+}
+```
+
+An operation's `wire_output:` is the whole answer as sent, read from
+inside `output_at:`, and its `decode:` turns it into `output:`:
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/resources/tracking.jadpo
+public resource tracking {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}/tracking"
+        input: ParcelLookup
+        wire_output: TrackingTable
+        output: List<TrackingEvent>
+        decode: tracking_sheets.to_events
+        output_at: "data"
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/libraries/tracking_sheets.jadpo
+/// The courier's tracking history, as a list of where a parcel was seen.
+library tracking_sheets {
+    /// Each sighting as an event.
+    function to_events(history_sheet: TrackingTable) -> List<TrackingEvent> {
+        return list.map(
+            history_sheet.sightings,
+            sighting -> TrackingEvent {
+                hub: sighting.hub
+            }
+        )
+    }
+}
+```
+
+An action reading one field of an answer decodes that field alone, so
+`{"id": "p-1", "status": "held", "collectAt": "soon", "slot": "NOON"}` is
+read for its `status` though its time and its window would never decode:
+
+```jadpo check project=p72c2-wire file=domains/shipping/actions/parcel_status.jadpo
+use app { couriers }
+use shared/providers/acme_couriers
+
+/// Where a parcel is.
+action parcel_status(parcel: AcmeCouriers.ParcelRef) -> AcmeCouriers.Status {
+    var tracked_parcel: AcmeCouriers.Parcel = couriers.parcels.get(
+        AcmeCouriers.ParcelLookup {
+            id: parcel
+        }
+    )
+    return tracked_parcel.status
+}
+```
+
+```jadpo check project=p72c2-wire file=domains/shipping/actions/parcel_history.jadpo hidden
+use app { couriers }
+use shared/providers/acme_couriers
+
+/// Where a parcel has been.
+action parcel_history(parcel: AcmeCouriers.ParcelRef) -> List<AcmeCouriers.TrackingEvent> {
+    return couriers.tracking.get(
+        AcmeCouriers.ParcelLookup {
+            id: parcel
+        }
+    )
+}
+```
+
+```jadpo check project=p72c2-wire file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            credential: config.couriers_api_key
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=config.jadpo hidden
+config {
+    couriers_api_key: Text {
+        secret: true
+    }
+    couriers_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    credential: CredentialScheme.bearer
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/resources/parcels.jadpo hidden
+public resource parcels {
+    get: {
+        method: HttpMethod.get
+        path: "/v1/parcels/{id}"
+        input: ParcelLookup
+        output: Parcel
+        changes: false
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel_lookup.jadpo hidden
+/// Which parcel to look up.
+public type ParcelLookup = Object {
+    id: ParcelRef
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel_ref.jadpo hidden
+/// The courier's reference for a parcel.
+public type ParcelRef = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/status.jadpo hidden
+/// Where a parcel is, in the courier's words.
+public type Status = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/collection_time.jadpo hidden
+/// When a parcel is collected.
+public type CollectionTime = Instant {}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/weight.jadpo hidden
+/// A parcel's weight in kilograms.
+public type Weight = Decimal {
+    scale: 2
+    min: 0.0
+    max: 1000.0
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/parcel_price.jadpo hidden
+/// What sending a parcel costs, in pounds.
+public type ParcelPrice = Money {
+    currency: Currency.gbp
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/slot_window.jadpo hidden
+/// When in the day a collection comes.
+public type SlotWindow = Enum {
+    morning
+    afternoon
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/window_code.jadpo hidden
+/// A collection window as the courier writes it.
+public type WindowCode = Text {
+    max_length: 2
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/tracking_table.jadpo hidden
+/// The courier's tracking history as it sends it.
+public type TrackingTable = Object {
+    sightings: List<Scan>
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/scan.jadpo hidden
+/// One sighting as the courier sends it.
+public type Scan = Object {
+    hub: Text {
+        wire_name: "where"
+    }
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/types/tracking_event.jadpo hidden
+/// Where a parcel was seen.
+public type TrackingEvent = Object {
+    hub: Text
+}
+```
+
+```jadpo check project=p72c2-wire file=shared/providers/acme_couriers/v1/failures/window_unknown.jadpo hidden
+/// A collection window this package doesn't know.
+type WindowUnknown = Failure {
+    kind: FailureKind.invalid_value
+    message: "The courier named a collection window this package doesn't know."
+}
+```
+
+- **Where they apply.** On the provider's wire: an operation's input,
+  its answer and, with chunk 7.6, its webhooks. Everywhere else, a
+  `json.write`, a route's answer or an event's payload, the field is
+  written as the contract writes its type, so the app's clients never see
+  a provider's encoding.
+- **Run at the call's site.** A field's `decode:` and `encode:`, and an
+  operation's `decode:`, run on the executor where the call is made, as
+  any function the action calls would; one that fails, or gives no value,
+  is a fault naming the operation and the field, never the value.
+- **Only the fields read.** The answer to a call held in a variable that
+  code only reads fields of (`tracked_parcel.status`) is decoded for those fields
+  alone; returning it, passing it on, or anything else uses it whole.
+  Fields further in are decoded with the field that holds them. An
+  answer decoded whole by an operation's `decode:` is read whole.
 
 ## What package code may do
 
@@ -3376,6 +3813,64 @@ error: `parcels.get`'s path names `{parcelId}`, which its input doesn't give
   help: docs/language/11-integrations.html#package-operation-invalid
 
 check failed: 1 error, 6 files
+```
+
+### `package.wire_invalid`
+
+> Built in chunk 7.2c2: a provider package's field says how it is sent
+> with `wire:`, one of the built-in encodings, or with its package's own
+> `decode:` and `encode:` functions, given together. Either is refused
+> outside a provider package, both on one field, an encoding that doesn't
+> hold the field's type or `Wire.minor_units` without the field's one
+> currency, and a function that isn't the package's or doesn't take and
+> give the right types.
+
+An encoding holds the types its provider sends that way:
+
+```jadpo check project=e72c2-wire file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' tracking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' tracking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72c2-wire file=shared/providers/acme_couriers/v1/types/parcel.jadpo expect=package.wire_invalid
+/// A parcel and where it is.
+public type Parcel = Object {
+    status: Text
+    collected_on: Text {
+        wire: Wire.unix_seconds
+    }
+}
+```
+
+```text output
+error: `Wire.unix_seconds` sends an `Instant`, and `collected_on` is a `Text`
+ --> shared/providers/acme_couriers/v1/types/parcel.jadpo:5:15
+  |
+5 |         wire: Wire.unix_seconds
+  |               ^^^^^^^^^^^^^^^^^ a `Text` field
+  reason: `Wire.unix_seconds` is how a provider sends an `Instant`; a field of another type is sent as the contract writes it, in another encoding, or by the package's own `decode:` and `encode:` functions.
+  next: Name the encoding the provider sends a `Text` in, or remove `wire:` (agent)
+  rule: package.wire_invalid
+  help: docs/language/11-integrations.html#package-wire-invalid
+
+check failed: 1 error, 4 files
 ```
 
 ### `package.wire_name_invalid`
@@ -5034,6 +5529,17 @@ side (below); the rest is still to build.
 > Next: `wire:`, `decode:` and `encode:`, `wire_output:` and `retry:`
 > (chunk 7.2c2).
 
+> **Built (chunk 7.2c2).** Wire encodings and decoders, under "Decoding":
+> the ten built-in encodings a provider package's field names with
+> `wire:`, its own `decode:` and `encode:` functions, and an operation's
+> `wire_output:` decoded whole by its `decode:`, each package function run
+> by the executor at the call's site; an answer decoded only for the
+> fields its action reads; and, under "Calling", a connection's `retry:`
+> with its backoff, and `timed_out:` mapped at the call of an operation
+> safe to send again. The error is `package.wire_invalid` under "Package
+> errors"; the choices are in "Chosen in chunk 7.2c2" below, with one
+> flagged for Richard (`Wire.number`).
+
 ### Chosen in chunk 7.1
 
 What the pages leave to the build, each the most conservative reading:
@@ -5627,6 +6133,98 @@ Provider calls, each choice the most conservative reading:
   `AcmeCouriers.CreateBooking { ... }`, as its other types are written;
   before this chunk such a value was checked as nothing.
 
+### Chosen in chunk 7.2c2
+
+Wire encodings, decoders and retries, each choice the most conservative
+reading:
+
+- **The built-in encodings** are ten, by these names: `unix_seconds` and
+  `unix_milliseconds` (an `Instant` as a whole number), `iso_8601` (the
+  page's "ISO dates": an `Instant` with any offset from UTC, which the
+  contract refuses, since it writes only `Z`), `day_month_year` (a
+  `CalendarDate`, the encoding areas 12 and 19 name for file rows, here
+  built for providers), `text` (an `Int` or a `Decimal` as text),
+  `comma_separated` (a list of single values), `base64` (`Text` as the
+  Base64 of its UTF-8), `json_text` (any value's JSON in a string) and
+  `minor_units` (`Money` in the one currency its type's `currency:`
+  fixes, which `Wire.minor_units` needs). *Flagged for Richard:*
+  `number`, an `Int` or a `Decimal` as a JSON number, is beyond the
+  page's list: the contract writes a `Decimal` as text and reads no
+  number for one, so without it a provider sending `2.50` could not be
+  read at all, not even by a package's own decoder. Its digits are kept as
+  written, both ways.
+- **Where they apply.** On the provider's wire only: a call's input and
+  its answer (webhooks with chunk 7.6). `json.write`, a route's answer
+  and an event's payload write the field as the contract writes its
+  type, so an app's clients never see a provider's encoding, where a
+  field's `wire_name:` (chunk 7.2c) is its spelling everywhere. In the
+  plan a field that says how it is sent has a codec of its own, holding
+  its type's contract codec and how the provider sends it.
+- **What each refuses.** `wire:` holds `Wire.<name>` naming one of the
+  ten, on a field of a type that encoding holds; outside a provider
+  package, beside `decode:` or `encode:`, or naming anything else, it is
+  `package.wire_invalid`. A value the provider sends that its encoding
+  can't read is a fault naming the operation, the field and the rule
+  (`type`, `format`, `max` for an instant past the years an `Instant`
+  holds), and a list item holding a comma, which `comma_separated` would
+  split, is the fault `comma_separated` when the call is sent.
+- **A field's own functions.** `decode:` and `encode:` come together,
+  each `library.function` in the package's own `libraries/`, internal or
+  public. `decode:` takes one value, the field as the provider sends it,
+  and gives the field's type; it may fail, which is a fault. `encode:`
+  takes the field's type and gives what `decode:` takes, and may not
+  fail. Either named but not the package's, or of another shape, is
+  `package.wire_invalid`; they count as the functions' use. That the
+  pair round-trips, and that they read every recording, is chunk 7.2d's.
+- **An operation's whole decoder.** `wire_output:` and `decode:` come
+  together, with `output:` (`package.operation_invalid` otherwise):
+  `decode:` takes the `wire_output:` type and gives the `output:` type.
+  The answer is read from `output_at:` as `wire_output:`, its own
+  fields' encodings applied, and given whole to `decode:`.
+- **Run at the call's site.** The runtime asks the executor to run each
+  package function where the call is made (`provider::Functions`); a
+  field decoder that fails is the problem `decode` on that field, and an
+  operation's decoder that fails names how it ended (its failure's code
+  or its fault's classification), never a value.
+- **Only the fields read.** Worked out per call site from its action's
+  body: when the call's value, or its `attempt`'s, is a variable's and
+  every use of that variable is a field read, only those top-level fields
+  are decoded and checked; the others hold `none`, which no code can
+  read. Fields inside a read field are decoded with it. Rules across the
+  type's fields are checked only when every field is read. An operation
+  decoded whole is read whole.
+- **Numbers as written.** An answer is parsed with Jadpo's own reader
+  (chunk 5.8c), so a number keeps the digits the provider wrote and an
+  answer naming a member twice isn't JSON; a request's body and query
+  are written with each number's digits as the input's codec wrote them.
+- **`retry:`** takes `attempts:`, 1 to 10, and `within:`, a duration up
+  to 5 minutes, each defaulting to 3 and 30 seconds;
+  `connection.value_invalid` otherwise. A call is sent again when it
+  never left or the provider said it did nothing (`408`, `429`, its
+  `in_use:` code), whatever it changes, and when it may have acted (a
+  server's error, no whole answer, no answer in time) only if it changes
+  nothing or takes its key, under the same key. Waits are 200
+  milliseconds doubled before each further attempt, drawn evenly from
+  zero (full jitter, from the host's randomness), or a `408` or `429`'s
+  `Retry-After` in seconds; a wait past `within:` stops the retrying. A
+  host with no timer, as a test's, sends again at once and measures
+  nothing. Each attempt goes through the capability seam and is logged,
+  recorded and replayed as a call of its own.
+- **`timed_out:`** The driver tells an answer that didn't come within
+  `timeout:` apart from other missing answers (`Answer::TimedOut`). Where
+  the call's `attempt` maps `timed_out:` and the operation is safe to
+  send again, the last attempt's timeout is the runtime's `timed_out`
+  failure (kind `timed_out`, 504), mapped to the app's failure with it
+  as the cause; anywhere else it is `unavailable` or `outcome_unknown`
+  as before. `timed_out:` on an operation that changes something without
+  a key is `failure.unknown_mapping`, to a failure that isn't
+  `unavailable` `failure.mapping_kind`; an operation listing no failures
+  may still be attempted for `timed_out:` alone.
+- **What reviewers see.** The package's surface writes an operation's
+  `wire_output X decode Y`, so the answer as sent shows beside its
+  output, and `jadpo package show` gives it as "sent as"; the manifest
+  gives a field's `wire`.
+
 ### Consistency with the rest of the language
 
 The package design changes decisions made in other areas:
@@ -6160,3 +6758,4 @@ packages and extension points, as each note says; 26 was decided then.
 | A package's changelog (question 28) | `jadpo package check` writes a section per version holding the list of changes it works out from the surface, and the author adds why beneath it (Richard, as recommended, 2026-10-19 standing instruction; built with 7.1b2) | 2026-10-20 |
 | A provider field's spelling on the wire (after chunk 7.2) | A field or enum variant in a provider package may say its spelling on the wire with `wire_name:`, written only where it differs from the Jadpo name (`collectAt`, `after-noon`); the importer writes it, and the runtime reads and writes that spelling (Richard, as recommended under the 2026-10-19 standing instruction; built in 7.2c) | 2026-10-20 |
 | Wording two versions of a package (after chunk 7.1c2) | While the app holds two versions of a library package that carries translations, the app words each under a key that carries the version (`postcodes_v3: { }`), as its names do; with one version held, the key stays the folder name (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
+| `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |

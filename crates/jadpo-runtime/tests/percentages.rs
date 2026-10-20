@@ -107,6 +107,7 @@ fn a_percentage_is_sent_as_its_text_and_stored_as_its_fraction() {
         codecs: &codecs,
         validators: &validators,
         shapes: &[],
+        coder: None,
     };
     assert_eq!(
         table.write_value(CodecId(0), &percent("0.125")),

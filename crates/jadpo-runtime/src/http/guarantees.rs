@@ -519,6 +519,7 @@ fn send_as(
             codecs: &CODECS,
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
@@ -633,6 +634,7 @@ fn a_worker_reuses_its_readiness_check_for_a_second() {
             codecs: &CODECS,
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
@@ -699,6 +701,7 @@ fn a_host_without_a_clock_is_refused_rather_than_run_at_1970() {
             codecs: &CODECS,
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
@@ -804,6 +807,7 @@ fn a_repeat_while_the_first_runs_is_a_conflict() {
         codecs: &CODECS,
         validators: &[],
         shapes: &[],
+        coder: None,
     };
     let digest =
         super::idempotency::digest(&codecs, &table.routes[0], &[Some(Value::text("a"))], None);
@@ -1117,6 +1121,7 @@ fn what_a_request_emits_is_left_for_after_its_response() {
             codecs: &CODECS,
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,
@@ -1188,6 +1193,7 @@ fn no_request_is_ever_the_system() {
             codecs: &CODECS,
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         failures: &[],
         json: crate::JsonCodecs::NONE,

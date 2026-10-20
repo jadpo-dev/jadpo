@@ -772,6 +772,7 @@ impl JsonCodecs<'static> {
             codecs: &[],
             validators: &[],
             shapes: &[],
+            coder: None,
         },
         types: &[],
     };
@@ -1599,6 +1600,7 @@ mod tests {
                 codecs: &[],
                 validators: &validators,
                 shapes: &[],
+                coder: None,
             },
             types: &[],
         };

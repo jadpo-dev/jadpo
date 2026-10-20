@@ -24,6 +24,20 @@ impl Numbers {
     pub fn get(&self, at: &[String]) -> Option<&str> {
         self.0.get(at).map(String::as_str)
     }
+
+    /// The numbers inside the value at `prefix`, by where they stand from
+    /// it: a provider's answer inside its envelope (chunk 7.2c2).
+    pub fn within(&self, prefix: &[String]) -> Numbers {
+        Numbers(
+            self.0
+                .iter()
+                .filter_map(|(at, text)| {
+                    let rest = at.strip_prefix(prefix)?;
+                    Some((rest.to_vec(), text.clone()))
+                })
+                .collect(),
+        )
+    }
 }
 
 /// The document `bytes` hold, with its numbers' texts; `None` when they

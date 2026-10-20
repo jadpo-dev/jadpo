@@ -1489,6 +1489,7 @@ mod tests {
                 codecs: &codecs,
                 validators: &validators,
                 shapes: &[],
+                coder: None,
             },
             types: &types,
         };
