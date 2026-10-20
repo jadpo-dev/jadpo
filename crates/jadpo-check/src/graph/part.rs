@@ -1020,14 +1020,16 @@ impl Part<'_> {
             crate::types::WrittenCoding::Parts(written) => {
                 use crate::types::TypeView;
                 let declared = def.declared.strip_nullable();
-                let standard = if self.lookup.base_prim(declared) == Some(jadpo_std::Builtin::Money)
+                let standard = match self
+                    .lookup
+                    .base_prim(declared)
+                    .and_then(jadpo_std::standard::of_builtin)
                 {
-                    "Money".to_string()
-                } else {
-                    match self.lookup.structure(declared) {
+                    Some(entry) => entry.name.to_string(),
+                    None => match self.lookup.structure(declared) {
                         crate::types::Ty::Opaque(name, args) if args.is_empty() => name,
                         _ => return None,
-                    }
+                    },
                 };
                 let wanted = jadpo_std::provider::wire_parts(&standard)?;
                 let parts = wanted

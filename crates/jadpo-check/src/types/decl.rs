@@ -736,7 +736,7 @@ impl Decls<'_> {
                     )
                     .at(span, "a whole number named like an amount")
                     .reason(format!(
-                        "`{own}` is a whole number named like an amount beside a currency, `{currency}`, which providers usually send as minor units, pence or cents. A package's public types use the standard types, so an app reads `Money` rather than a number and a code to put together."
+                        "`{own}` is a whole number named like an amount beside a currency, `{currency}`, which providers usually send as minor units, pence or cents. A package's public types use the standard types, so an app reads `Money` rather than a number and a code it has to combine."
                     ))
                     .next(format!(
                         "Check the provider's documentation, then make it `{own}: Money {{ wire_parts: {{ amount: \"{wire}\" currency: \"{currency}\" }} }}`{removing}"
@@ -1568,8 +1568,12 @@ impl Decls<'_> {
     /// The standard type `ty` is built on, by its name: `Money`, `Point`.
     fn standard_of(&self, ty: &Ty) -> Option<String> {
         let ty = ty.strip_nullable();
-        if self.table.base_prim(ty) == Some(Prim::Money) {
-            return Some("Money".to_string());
+        if let Some(entry) = self
+            .table
+            .base_prim(ty)
+            .and_then(jadpo_std::standard::of_builtin)
+        {
+            return Some(entry.name.to_string());
         }
         match self.table.structure(ty) {
             Ty::Opaque(name, args) if args.is_empty() => Some(name),

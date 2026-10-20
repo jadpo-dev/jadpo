@@ -1518,6 +1518,7 @@ mod tests {
             [
                 "constant.similar_exists",
                 "library.similar_exists",
+                "package.standard_candidate",
                 "query.nearest_exact",
                 "translation.field_unused",
                 "type.batch_order_updatable",

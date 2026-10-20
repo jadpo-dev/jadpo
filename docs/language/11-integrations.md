@@ -2183,7 +2183,7 @@ public type Charge = Object {
             currency: "currency"
         }
     }
-    shop: Point? {
+    merchant: Point? {
         wire_parts: {
             latitude: "lat"
             longitude: "lng"
@@ -2211,12 +2211,12 @@ use shared/providers/tidepay
 
 /// How much of a charge has been refunded.
 action refunded_so_far(charge: Tidepay.ChargeId) -> Tidepay.Amount {
-    var found: Tidepay.Charge = payments.charges.get(
+    var paid_charge: Tidepay.Charge = payments.charges.get(
         Tidepay.ChargeLookup {
             id: charge
         }
     )
-    return found.amount_refunded
+    return paid_charge.amount_refunded
 }
 ```
 
@@ -2283,7 +2283,7 @@ public type Amount = Money {}
 
 So `{"id": "ch_1", "amount": 1050, "amount_refunded": 250, "currency":
 "gbp", "lat": 51.5, "lng": -0.125}` is read as a `Charge` of £10.50 with
-£2.50 refunded at a shop at 51.5° N, 0.125° W, and a `Charge` is sent back
+£2.50 refunded at a merchant at 51.5° N, 0.125° W, and a `Charge` is sent back
 as those six members, the currency once; two amounts in different
 currencies can't be sent, since they share one member, and the call stops
 as one that doesn't encode. A `Point` is read from its `latitude` and
