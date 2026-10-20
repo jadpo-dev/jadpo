@@ -837,6 +837,12 @@ fn an_export_resumes_from_its_last_committed_page_with_no_row_written_twice() {
         let start = starts(&work).remove(0);
         let (ran, _) = jadpo_runtime::batches::run(program, &stand.host(), &start).await;
         assert!(matches!(ran, Ran::Paused(_)), "{ran:?}");
+        // The query's count, taken as its first page was read (chunk
+        // 6.4b3).
+        let counted = stand
+            .rows("SELECT \"estimated_total\" FROM \"jadpo_batch_runs\"")
+            .await;
+        assert_eq!(counted, [vec![SqlValue::Int8(10)]]);
         stand
             .harness
             .set_now(T0 + jadpo_runtime::lease::LONGEST_MS + 1_000);

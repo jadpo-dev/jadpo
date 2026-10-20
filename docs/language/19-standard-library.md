@@ -7720,7 +7720,7 @@ entity Packet {
 /// A partner library's catalogue, kept as it arrived.
 entity PartnerCatalogue {
     id: Uuid
-    catalogue: File {
+    catalogue_file: File {
         store: catalogues
         max_size: 20mb
         types: [FileType.json]
@@ -7740,11 +7740,11 @@ use seeds/entities { Packet }
 use seeds/types { PacketEntry }
 
 /// Adds the packet one catalogue entry lists.
-action add_packet(entry: PacketEntry) -> Unit {
+action add_packet(listed_packet: PacketEntry) -> Unit {
     var packet: Packet = Packet.create {
         set: {
-            code: entry.code
-            sowing_months: list.count(entry.sow_in)
+            code: listed_packet.code
+            sowing_months: list.count(listed_packet.sow_in)
         }
     }
     assert packet.sowing_months >= 0
@@ -7763,10 +7763,10 @@ action read_catalogue(
 ) fails PartnerCatalogueNotFound -> PartnerCatalogue {
     var partner: PartnerCatalogue = attempt PartnerCatalogue.get(catalogue_id)
     var catalogue_run: BatchRun = json.read(
-        partner.catalogue,
+        partner.catalogue_file,
         items_at: "catalogue.packets",
         as: PacketEntry,
-        each: entry -> add_packet(entry),
+        each: listed_packet -> add_packet(listed_packet),
         key: partner.id,
         max_unpacked_size: 200mb
     )

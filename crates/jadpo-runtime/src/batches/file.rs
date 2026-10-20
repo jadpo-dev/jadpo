@@ -120,16 +120,16 @@ pub(crate) enum Source {
     Gzip(Box<Unpacking>),
 }
 
-/// A gzip file being unpacked as a run reads it: its packed bytes read
+/// A gzip file being unpacked as a run reads it: its compressed bytes read
 /// from the store a window at a time and unpacked into the text a page
 /// asks for, never past `limit`.
 pub(crate) struct Unpacking {
     file: Stored,
     limit: u64,
     unpacker: Unpacker,
-    /// The packed bytes read and not yet used, and where the store is read
+    /// The compressed bytes read and not yet used, and where the store is read
     /// from next.
-    packed: Vec<u8>,
+    compressed: Vec<u8>,
     read_to: u64,
     /// The unpacked text held, its first byte at `held_at`.
     held: Vec<u8>,
@@ -144,7 +144,7 @@ impl Unpacking {
             file,
             limit,
             unpacker: Unpacker::new(),
-            packed: Vec::new(),
+            compressed: Vec::new(),
             read_to: 0,
             held: Vec::new(),
             held_at: 0,
@@ -157,9 +157,9 @@ impl Unpacking {
         self.held_at + self.held.len() as u64
     }
 
-    /// How many packed bytes it has used.
+    /// How many compressed bytes it has used.
     fn used(&self) -> u64 {
-        self.read_to.saturating_sub(self.packed.len() as u64)
+        self.read_to.saturating_sub(self.compressed.len() as u64)
     }
 
     fn too_large(&self) -> Halt {
@@ -208,26 +208,27 @@ impl Unpacking {
         }
     }
 
-    /// Unpacks some more, reading packed bytes from the store as it needs.
+    /// Unpacks some more, reading compressed bytes from the store as it needs.
     async fn more(&mut self, ctx: &mut Ctx<'_>) -> Result<(), Halt> {
         loop {
             let ends = self.read_to >= self.file.size;
             let before = self.held.len();
             let unpacked = self
                 .unpacker
-                .unpack(&self.packed, ends, &mut self.held, UNPACKED_CHUNK)
+                .unpack(&self.compressed, ends, &mut self.held, UNPACKED_CHUNK)
                 .map_err(|fault| {
                     Halt::Fail(match fault {
                         GzipFault::Damaged => "its gzip file is damaged".to_string(),
                         GzipFault::Cut => "its gzip file ends before its data does".to_string(),
                     })
                 })?;
-            self.packed.drain(..unpacked.used.min(self.packed.len()));
+            self.compressed
+                .drain(..unpacked.used.min(self.compressed.len()));
             if unpacked.done {
                 self.done = true;
                 return Ok(());
             }
-            if self.held.len() > before || unpacked.used > 0 && !self.packed.is_empty() {
+            if self.held.len() > before || unpacked.used > 0 && !self.compressed.is_empty() {
                 return Ok(());
             }
             if ends {
@@ -245,7 +246,7 @@ impl Unpacking {
                 return Err(Halt::Fail("its file is shorter than its size".into()));
             }
             self.read_to += more.len() as u64;
-            self.packed.extend_from_slice(&more);
+            self.compressed.extend_from_slice(&more);
         }
     }
 }
@@ -302,8 +303,8 @@ fn estimated(source: &Source, done: i64, at: u64) -> Option<i64> {
         return None;
     }
     let done_wide = u128::try_from(done).ok()?;
-    let scaled = (done_wide * u128::from(size) + u128::from(at) / 2) / u128::from(at);
-    Some(i64::try_from(scaled).unwrap_or(i64::MAX).max(done))
+    let projected = (done_wide * u128::from(size) + u128::from(at) / 2) / u128::from(at);
+    Some(i64::try_from(projected).unwrap_or(i64::MAX).max(done))
 }
 
 /// A row read as the row type, or its problem's column and rule.
@@ -922,7 +923,7 @@ pub(super) async fn page(
     }
     // The total it estimates from how far into its file its items end.
     let done = done + items.len() as i64;
-    let estimate = if read_all {
+    let likely_total = if read_all {
         Some(done)
     } else {
         estimated(&opened.source, done, next.at)
@@ -938,7 +939,7 @@ pub(super) async fn page(
                 SqlValue::Int8(had + problems.len() as i64),
                 at(lease_until),
                 at(now),
-                total(estimate),
+                total(likely_total),
             ],
         )
         .await;

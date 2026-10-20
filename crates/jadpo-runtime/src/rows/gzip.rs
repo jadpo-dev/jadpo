@@ -1,7 +1,7 @@
 //! A gzip file unpacked as a file helper reads it (area 16, "Files"; area
 //! 12, "Rows and formats"; chunk 6.4b3): only when the helper is given
 //! `max_unpacked_size:`, which the caller holds the unpacked bytes to, and
-//! pure, fed the packed bytes a window at a time and giving the unpacked
+//! pure, fed the compressed bytes a window at a time and giving the unpacked
 //! ones as far as it is asked.
 //!
 //! A gzip file is one member or more, one after another (RFC 1952,
@@ -43,7 +43,7 @@ enum Part {
     Between,
 }
 
-/// One gzip file's unpacking, fed its packed bytes in order.
+/// One gzip file's unpacking, fed its compressed bytes in order.
 pub struct Unpacker {
     part: Part,
     /// The header or trailer gathered so far.
@@ -72,7 +72,7 @@ impl Default for Unpacker {
 /// How one call of [`Unpacker::unpack`] went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Unpacked {
-    /// How many of the packed bytes it was given it used: the rest are
+    /// How many of the compressed bytes it was given it used: the rest are
     /// given again with what follows them.
     pub used: usize,
     /// Every member is unpacked and the file has ended.
@@ -90,14 +90,14 @@ impl Unpacker {
         }
     }
 
-    /// Unpacks what it can of `packed`, the file's bytes from where the
+    /// Unpacks what it can of `compressed`, the file's bytes from where the
     /// last call stopped using them, adding at most `room` bytes to `out`.
-    /// `ends` says `packed` runs to the file's end. It stops once `out`
-    /// has had `room` bytes, once `packed` is used up, or once the file is
+    /// `ends` says `compressed` runs to the file's end. It stops once `out`
+    /// has had `room` bytes, once `compressed` is used up, or once the file is
     /// done.
     pub fn unpack(
         &mut self,
-        packed: &[u8],
+        compressed: &[u8],
         ends: bool,
         out: &mut Vec<u8>,
         room: usize,
@@ -105,7 +105,7 @@ impl Unpacker {
         let mut used = 0usize;
         let mut written = 0usize;
         loop {
-            let rest = packed.get(used..).unwrap_or_default();
+            let rest = compressed.get(used..).unwrap_or_default();
             match self.part {
                 Part::Between => {
                     if rest.is_empty() {

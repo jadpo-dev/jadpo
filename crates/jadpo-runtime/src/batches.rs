@@ -381,19 +381,19 @@ pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: 
                 SqlValue::Int8(done),
                 SqlValue::Int8(problems),
                 SqlValue::Text(state),
-                estimate,
+                likely_total,
             ],
         ) => {
             let Some(state) = BatchState::from_name(state) else {
                 return fault(ctx, "a batch run in a state the runtime doesn't keep", site);
             };
             // Once finished, the total is known: the items it did.
-            let estimate = match (state, estimate) {
+            let likely_total = match (state, likely_total) {
                 (BatchState::Finished, _) => Some(*done),
                 (_, SqlValue::Int8(total)) => Some(*total),
                 _ => None,
             };
-            Stored::Value(progress(*done, *problems, state, estimate))
+            Stored::Value(progress(*done, *problems, state, likely_total))
         }
         Some(_) => fault(ctx, "a batch run's row the runtime didn't write", site),
         None => fault(ctx, "no batch run is kept with this `BatchRun`'s id", site),
@@ -402,7 +402,7 @@ pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: 
 
 /// A `BatchProgress`, with the total its run estimates, if it has one
 /// yet.
-fn progress(done: i64, problems: i64, state: BatchState, estimate: Option<i64>) -> Value {
+fn progress(done: i64, problems: i64, state: BatchState, likely_total: Option<i64>) -> Value {
     let ordinal = jadpo_std::variant_ordinal(BatchState::NAME, state.name()).unwrap_or(0);
     Value::record(
         jadpo_std::batch::BATCH_PROGRESS,
@@ -410,7 +410,7 @@ fn progress(done: i64, problems: i64, state: BatchState, estimate: Option<i64>) 
             (Rc::from("items_done"), Value::Int(done)),
             (
                 Rc::from("estimated_total"),
-                estimate.map_or(Value::None, Value::Int),
+                likely_total.map_or(Value::None, Value::Int),
             ),
             (Rc::from("problems"), Value::Int(problems)),
             (
@@ -842,9 +842,9 @@ async fn batch(
     };
     // The query's count, as its first page reads it, the total the run
     // estimates (chunk 6.4b3).
-    let estimate = if held.position.is_none() {
+    let likely_total = if held.position.is_none() {
         match counted(&mut open, batches, plan, values).await {
-            Ok(estimate) => estimate,
+            Ok(likely_total) => likely_total,
             Err(unread) => {
                 open.rollback().await;
                 return match unread {
@@ -938,7 +938,7 @@ async fn batch(
                 SqlValue::Int8(had),
                 at(lease_until),
                 at(now),
-                total(estimate),
+                total(likely_total),
             ],
         )
         .await;
@@ -956,8 +956,8 @@ async fn batch(
 
 /// A total a run estimates, as [`ADVANCE`] keeps it: `NULL` keeps the
 /// one it had.
-fn total(estimate: Option<i64>) -> SqlValue {
-    estimate.map_or(SqlValue::Null(SqlType::Int8), SqlValue::Int8)
+fn total(likely_total: Option<i64>) -> SqlValue {
+    likely_total.map_or(SqlValue::Null(SqlType::Int8), SqlValue::Int8)
 }
 
 /// How many items `from:`'s query holds, counted in `open`'s transaction
@@ -973,7 +973,7 @@ async fn counted(
     };
     let args: Vec<Value> = values.get(..plan.from_args).unwrap_or_default().to_vec();
     match crate::read::count(open.ctx(), query, batches.json, &args).await {
-        Ok(estimate) => Ok(estimate),
+        Ok(likely_total) => Ok(likely_total),
         Err(_) if open.changed() => Err(Unread::Changed),
         Err(StoreError::ConcurrentChange) => Err(Unread::Changed),
         Err(StoreError::Unavailable) => Err(Unread::Paused("its store couldn't be reached".into())),

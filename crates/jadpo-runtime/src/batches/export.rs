@@ -301,9 +301,9 @@ pub(super) async fn page(
     }
     // The query's count, as its first page reads it, the total the run
     // estimates (chunk 6.4b3).
-    let estimate = if held.position.is_none() {
+    let likely_total = if held.position.is_none() {
         match counted(&mut open, batches, plan, saved.values).await {
-            Ok(estimate) => estimate,
+            Ok(likely_total) => likely_total,
             Err(unread) => {
                 open.rollback().await;
                 return match unread {
@@ -459,7 +459,7 @@ pub(super) async fn page(
                 SqlValue::Int8(held.problems + problems.len() as i64),
                 at(lease_until),
                 at(now),
-                total(estimate),
+                total(likely_total),
             ],
         )
         .await;
