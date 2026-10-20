@@ -162,6 +162,59 @@ pub fn package_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out
 }
 
+/// Each package `jadpo.lock` links to a live checkout, refused where CI
+/// and production build (area 11, "Developing and publishing a package"):
+/// a link compiles the app against a folder on one machine, so it must
+/// never ship. `jadpo check` and `jadpo test` add these when the `CI`
+/// variable is set, and `jadpo build` will always.
+pub fn links_refused(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
+    let Some(record) = project
+        .records(db)
+        .iter()
+        .find(|record| record.path == jadpo_db::LOCK)
+    else {
+        return Vec::new();
+    };
+    let Ok(text) = record.text.as_ref() else {
+        return Vec::new();
+    };
+    let Ok(lines) = parse_lock(text) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in lines {
+        let Source::Link { path } = &line.source else {
+            continue;
+        };
+        let written = line.line();
+        let mut offset = 0usize;
+        let mut span = file_span(&record.path);
+        for text_line in text.split_inclusive('\n') {
+            if text_line.trim_end() == written {
+                let end = offset + text_line.trim_end().len();
+                span = Span::new(&record.path, offset as u32, end as u32);
+                break;
+            }
+            offset += text_line.len();
+        }
+        let name = folder_of(&line.package);
+        let name = name.rsplit('/').nth(1).unwrap_or(&line.package).to_string();
+        out.push(
+            Diagnostic::new(
+                &rule::INSTALL_LINK_REFUSED,
+                format!("`{}` is linked to `{path}`", line.package),
+            )
+            .at(span, "a live checkout")
+            .reason("A link compiles the app against a checkout on one machine, so CI (the `CI` variable is set) and production builds refuse it, and a link never ships.")
+            .next(format!(
+                "Run `jadpo package unlink {name}`, then commit `{}`",
+                jadpo_db::LOCK
+            )),
+        );
+    }
+    out
+}
+
 /// The lock's lines, when the project has one that reads; one that
 /// doesn't is the records' to report.
 fn lock(db: &dyn Db, project: Project) -> Option<(String, Vec<Locked>)> {

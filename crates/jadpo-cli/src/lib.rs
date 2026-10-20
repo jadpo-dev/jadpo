@@ -18,6 +18,7 @@ mod fix;
 mod fmt;
 mod help;
 mod hq;
+mod install;
 mod local;
 mod migrate;
 mod package;

@@ -24,9 +24,10 @@ pub use identities::{
 pub use items::{Base, Item, ItemKind, ItemTree, Param, Signature, item_tree};
 pub use items::{items_of, primary};
 pub use load::{
-    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, shown_root,
+    Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, package_files,
+    shown_root,
 };
-pub use lock::{LOCK, Locked, Source, package_digest, parse_lock, write_lock};
+pub use lock::{LOCK, Locked, Source, package_digest, package_folder, parse_lock, write_lock};
 pub use places::{
     Folder, Location, Ownership, PACKAGE_INDEX, PACKAGES, PROVIDER_FILE, PROVIDERS, PackageHome,
     Place, RootFile, Stray, is_package_data, is_version_label, locate, name_words, package_at,

@@ -839,13 +839,22 @@ The design is area 11 as revised on 2026-10-16, with its research in
   chunk 7.1b"; two questions for Richard (area 11, questions 27 and 28:
   how an example in a description is written, and the changelog's form),
   whose bar items say "not checked yet" meanwhile.
-- [ ] **7.1b2 Installing packages** `opus · high`, after 7.1b: `jadpo
-  package add` from a path and a git repository with verification at
-  install, `update` and `remove`, `link` and `unlink` with the linked
-  checkout compiled and refused where production and CI build.
-  Also the bar's two items decided 2026-10-20 (area 11 questions 27 and
-  28): examples in descriptions run as tests, and the changelog written
-  from the surface with the author's why.
+- [x] **7.1b2 Installing packages** `opus · high`, after 7.1b. Built:
+  `jadpo package add` from a folder or a git repository's release tag,
+  compiled as the app's own integration and its surface checked against
+  its committed `surface.jadpo_record` before it is copied and locked
+  (`install.surface_mismatch`, `install.fetch_failed`); `update` to a
+  folder's or a repository's newest release with area 18's review of what
+  changed; `remove`, refused while the app uses the package
+  (`install.in_use`); `link`, every check reading the checkout in the
+  installed folder's place, and `unlink`, restoring the line kept in
+  `.jadpo/links`; with `CI` set, `jadpo check` and `jadpo test` refuse a
+  link (`install.link_refused`). The bar's examples, ```` ```jadpo ````
+  blocks in descriptions run as tests (`publish.example_missing`,
+  `publish.example_failed`), and changelog, a `CHANGELOG.md` section per
+  version written from the surface with the author's why
+  (`publish.changelog_missing`). Choices in area 11's "Chosen in chunk
+  7.1b2"; publisher trust waits for `jadpo approval`.
 - [x] **7.1b3 Library packages' translations** `opus · high`, after
   7.1b: a library package's `translations/` (area 10, "Jadpo's and
   packages' text"), `Postcodes.translations.<message>(...)`, the root
@@ -877,6 +886,12 @@ The design is area 11 as revised on 2026-10-16, with its research in
   members wording package text nothing calls, the package no longer has
   or keeps private, or no package owns. Choices in area 10, "Chosen in
   chunk 7.1b4".
+- [ ] **7.1d Package names kept to their package** `opus · high` (found
+  in chunk 7.1b2): a library function in an installed package clashing
+  with an app action of the same name (`Postcodes.uk.tidy` against an
+  app's `tidy` gives `semantic.duplicate_declaration`), though a
+  package's names are scoped to it; and `jadpo dev` and `jadpo test
+  --watch` watching a linked checkout, not only reading it at start.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,

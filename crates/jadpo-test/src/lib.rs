@@ -128,6 +128,9 @@ pub struct Options {
     pub seed: Option<u64>,
     /// Keep a failed test's database for inspection (area 13).
     pub keep_failed: bool,
+    /// Running in CI (the `CI` variable is set), where a package linked to
+    /// a live checkout is refused (area 11).
+    pub ci: bool,
 }
 
 /// How a request to run tests ended.
@@ -240,6 +243,17 @@ pub fn run(options: Options) -> Ran {
 /// Loads, checks, selects and runs, on the interpreter's thread.
 fn execute(target: select::Target, options: Options, started: Instant) -> Ran {
     let loaded = jadpo_db::load(&target.folder);
+    if options.ci {
+        let refused = jadpo_check::packages::links_refused(&loaded.db, loaded.project);
+        if !refused.is_empty() {
+            return Ran::Refused {
+                diagnostics: refused,
+                sources: sources(&loaded),
+                files: loaded.project.files(&loaded.db).len(),
+                root: jadpo_db::shown_root(&options.cwd, &loaded.root),
+            };
+        }
+    }
     let checked = match prepare(&loaded, &options.cwd) {
         Ok(checked) => checked,
         Err(ran) => return ran,
