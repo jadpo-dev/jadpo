@@ -1735,8 +1735,10 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `deadline:` and `timeout:` lines 7.5e added for the old ones removed;
   `ai.stream`'s `timeout:` counted once in the sum (`Calls::time`); and a
   package's failure has one name inside its own code, so a `match` on its
-  own operation's outcome takes the bare `CardDeclined`. Built:
-  `ai.embed` keeps 15s, and the sum doesn't count embedding calls.
+  own operation's outcome takes the bare `CardDeclined`. Also under the
+  decision: `ai.embed` and `ai.embed_all` counted once in the sum, their
+  default `timeout:` 5s, so a search route embedding its query fits the
+  10s default.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.
