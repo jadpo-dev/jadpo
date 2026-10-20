@@ -484,6 +484,32 @@ rules! {
         "01-project-layout-and-modules.html#naming-generic-name", "Domain or library has a generic name";
     NAMING_ROUND_TRIP: "naming.round_trip", area 1, Error, Agent,
         "01-project-layout-and-modules.html#naming-round-trip", "Name does not survive conversion to its file name";
+    PACKAGE_DIGEST_MISMATCH: "package.digest_mismatch", area 11, Error, Human,
+        "11-integrations.html#package-digest-mismatch", "Installed package's files differ from its digest in the lock";
+    PACKAGE_EMAILS_FOLDER: "package.emails_folder", area 11, Error, Agent,
+        "11-integrations.html#package-emails-folder", "Package holds email templates";
+    PACKAGE_INDEX_INVALID: "package.index_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-index-invalid", "Package's index is missing, or holds what an index can't";
+    PACKAGE_LICENCE_NOT_ALLOWED: "package.licence_not_allowed", area 11, Error, Human,
+        "11-integrations.html#package-licence-not-allowed", "Proprietary package isn't installed from git";
+    PACKAGE_NAME_MISMATCH: "package.name_mismatch", area 11, Error, Agent,
+        "11-integrations.html#package-name-mismatch", "Package's index names another package than its folder";
+    PACKAGE_NAME_TAKEN: "package.name_taken", area 11, Error, Human,
+        "11-integrations.html#package-name-taken", "Package's name is already one of the app's";
+    PACKAGE_NOT_INSTALLED: "package.not_installed", area 11, Error, Human,
+        "11-integrations.html#package-not-installed", "Lock names a package that isn't installed";
+    PACKAGE_NOT_LOCKED: "package.not_locked", area 11, Error, Human,
+        "11-integrations.html#package-not-locked", "Installed package has no line in the lock";
+    PACKAGE_NOT_PUBLIC: "package.not_public", area 11, Error, Agent,
+        "11-integrations.html#package-not-public", "Code uses a package's declaration that isn't public";
+    PACKAGE_PROVIDER_INVALID: "package.provider_invalid", area 11, Error, Agent,
+        "11-integrations.html#package-provider-invalid", "Provider file holds what it can't, or lacks `protocol:`";
+    PACKAGE_PROVIDER_MISSING: "package.provider_missing", area 11, Error, Agent,
+        "11-integrations.html#package-provider-missing", "Package has resources but no `provider.jadpo`";
+    PACKAGE_PROVIDER_TRANSLATIONS: "package.provider_translations", area 11, Error, Agent,
+        "11-integrations.html#package-provider-translations", "Provider package carries translations";
+    PACKAGE_RESERVED_NAME: "package.reserved_name", area 11, Error, Agent,
+        "11-integrations.html#package-reserved-name", "App's own integration takes a provider's reserved name";
     POLICY_BINDING_INVALID: "policy.binding_invalid", area 9, Error, Agent,
         "09-policy.html#policy-binding-invalid", "Policy names something that can't say who";
     POLICY_DECLARATION_DUPLICATE: "policy.declaration_duplicate", area 9, Error, Agent,
@@ -1180,6 +1206,8 @@ rules! {
         "01-project-layout-and-modules.html#visibility-private-cross-domain", "Another domain uses a private declaration";
     VISIBILITY_PUBLIC_NOT_ALLOWED: "visibility.public_not_allowed", area 1, Error, Agent,
         "01-project-layout-and-modules.html#visibility-public-not-allowed", "Declaration can't be public";
+    VISIBILITY_PUBLIC_REACHES_PRIVATE: "visibility.public_reaches_private", area 1, Error, Agent,
+        "01-project-layout-and-modules.html#visibility-public-reaches-private", "Public declaration's signature names one that isn't public";
     VISIBILITY_PUBLIC_UNUSED: "visibility.public_unused", area 1, Error, Agent,
         "01-project-layout-and-modules.html#visibility-public-unused", "Public declaration no other domain uses";
 }

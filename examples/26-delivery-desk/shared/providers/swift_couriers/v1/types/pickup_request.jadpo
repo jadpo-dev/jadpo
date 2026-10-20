@@ -1,0 +1,5 @@
+/// What booking a pickup takes.
+public type PickupRequest = Object {
+    postcode: Text
+    slot: Text
+}

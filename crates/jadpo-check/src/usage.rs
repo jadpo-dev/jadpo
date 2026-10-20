@@ -47,7 +47,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
     // another domain's of the same spelling have users of their own (area
     // 1, "Files and names").
     let contested = jadpo_db::contested(db, project);
-    let domain = location(db, project, file).ownership.domain();
+    let domain = location(db, project, file).ownership.scope();
     for decl in source.decls() {
         if matches!(
             decl,
@@ -92,7 +92,7 @@ pub fn mentions(db: &dyn Db, project: Project, file: File) -> Mentions {
         for (_, callee) in body.calls() {
             match callee {
                 Callee::LibraryFunction(key) => {
-                    if let Some((library, function)) = key.name().split_once('.') {
+                    if let Some((library, function)) = key.name().rsplit_once('.') {
                         found
                             .library_calls
                             .insert((library.to_string(), function.to_string()));
@@ -228,10 +228,17 @@ fn canonical_of(contested: &jadpo_db::Contested, key: &Key) -> String {
     let parts: Vec<&str> = name.split('.').collect();
     match key.kind() {
         Some(Kind::Type | Kind::Entity | Kind::Field | Kind::Variant) => {
-            let at = parts
+            // The type's own name: a package's or a domain's comes after
+            // it (`Postcodes.UkPostcode`, `billing.Address`), a field or a
+            // variant after the type.
+            let first = parts
                 .iter()
                 .position(|part| starts_upper(part))
                 .unwrap_or(0);
+            let at = match parts.get(first + 1) {
+                Some(next) if first == 0 && starts_upper(next) => 1,
+                _ => first,
+            };
             let domain = (at == 1).then(|| parts[0]);
             contested.canonical(parts[at], domain)
         }
@@ -355,7 +362,7 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     let lookup = Lookup::for_file(db, project, file);
     let contested = jadpo_db::contested(db, project);
     let named = |name: &str| {
-        let canonical = contested.canonical(name, location.ownership.domain());
+        let canonical = contested.canonical(name, location.ownership.scope());
         name_users(db, project, Name::new(db, canonical))
     };
     let ours = |user: &&User| user.ownership == location.ownership;
@@ -375,6 +382,12 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
     };
     for item in &item_tree(db, file).items {
         if declared_twice(item) {
+            continue;
+        }
+        // A package's public declarations are its interface to the apps
+        // that install it (area 11): nothing in the package has to use
+        // them.
+        if item.public && location.ownership.package().is_some() {
             continue;
         }
         match (&location.ownership, folder, &item.kind) {
@@ -494,11 +507,12 @@ pub fn usage_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnost
             }
             (ownership, Folder::Libraries, ItemKind::Library) => {
                 let mut callers: BTreeSet<&User> = BTreeSet::new();
+                let library = contested.canonical(&item.name, location.ownership.scope());
                 for function in &item.functions {
                     let found = function_users(
                         db,
                         project,
-                        Name::new(db, format!("{}.{}", item.name, function.name)),
+                        Name::new(db, format!("{library}.{}", function.name)),
                     );
                     if found.is_empty() {
                         out.push(unused(path, &source, function, Some(item.index)));
@@ -562,7 +576,7 @@ fn unused_beside_primary(
     let mut pending = vec![primary.index];
     for item in &supporting {
         let canonical =
-            jadpo_db::contested(db, project).canonical(&item.name, location.ownership.domain());
+            jadpo_db::contested(db, project).canonical(&item.name, location.ownership.scope());
         let elsewhere = name_users(db, project, Name::new(db, canonical))
             .iter()
             .any(|user| user.path != *path);

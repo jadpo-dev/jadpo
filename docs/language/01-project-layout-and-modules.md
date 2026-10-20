@@ -571,7 +571,7 @@ application {}
 ```
 
 ```jadpo check project=e-fixture-from-action file=domains/planning/types/todo_count.jadpo hidden
-type TodoCount = Int {
+public type TodoCount = Int {
     min: 0
 }
 ```
@@ -776,7 +776,7 @@ its interface to other projects, so they are exempt (area 11):
 application {}
 ```
 
-```jadpo check project=e-public-unused file=domains/planning/types/todo_count.jadpo hidden
+```jadpo check project=e-public-unused file=shared/types/todo_count.jadpo hidden
 type TodoCount = Int {
     min: 0
 }
@@ -789,7 +789,7 @@ test "two todos are open" {
 ```
 
 ```jadpo check project=e-public-unused file=domains/planning/actions/count_todos.jadpo expect=visibility.public_unused
-use planning/types { TodoCount }
+use shared/types { TodoCount }
 
 public action count_todos() -> TodoCount {
     return 2
@@ -806,6 +806,52 @@ error: `count_todos` is `public`, but nothing outside `planning` uses it
   next: Remove `public` (agent)
   rule: visibility.public_unused
   help: docs/language/01-project-layout-and-modules.html#visibility-public-unused
+
+check failed: 1 error, 4 files
+```
+
+### `visibility.public_reaches_private`
+
+Everything a public declaration's signature names is public too (2026-10-16,
+from area 11's package surface; built in chunk 7.1), since whoever uses it
+has to build or handle it: a public action's parameters, result and failures,
+a public type's fields, a public library's functions' signatures. A type in
+`shared/` or the standard library is everyone's already:
+
+```jadpo check project=p71-reaches file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=p71-reaches file=domains/billing/types/amount.jadpo hidden
+type Amount = Int {
+    min: 0
+}
+```
+
+```jadpo check project=p71-reaches file=domains/shop/actions/settle_bill.jadpo hidden
+use billing
+
+action settle_bill() -> Unit {
+    billing.charge(5)
+}
+```
+
+```jadpo check project=p71-reaches file=domains/billing/actions/charge.jadpo expect=visibility.public_reaches_private
+use billing/types { Amount }
+
+public action charge(amount: Amount) -> Unit {}
+```
+
+```text output
+error: `charge` is public, but `Amount` isn't
+ --> domains/billing/actions/charge.jadpo:3:30
+  |
+3 | public action charge(amount: Amount) -> Unit {}
+  |                              ^^^^^^ a type only domain `billing` sees
+  reason: Whoever uses a public action has to build or handle what its signature names, so everything it names is public too; `Amount` is a type in `domains/billing/types/amount.jadpo` that only domain `billing` sees.
+  next: Mark `Amount` `public`, or keep it out of `charge`'s signature (agent)
+  rule: visibility.public_reaches_private
+  help: docs/language/01-project-layout-and-modules.html#visibility-public-reaches-private
 
 check failed: 1 error, 4 files
 ```
@@ -1811,7 +1857,7 @@ rule's real output under [Errors](#errors).
 | A file holds only what its primary declaration uses | Built (chunk 3.9): `layout.unused_declaration` for a supporting declaration the primary declaration doesn't use, directly or through one another. Chunk 3.9 also had `jadpo fmt` move the primary declaration to the top; chunk 5.5h3 replaced that with the next row. |
 | Definition before use | Built (chunk 5.5h3): `jadpo fmt` writes each file's declarations before the first one that uses them, the primary declaration last, ties by kind (constants, types, failures, helpers) and then by the order the primary first reaches them, declarations that use each other in written order, and `jadpo fmt --check` fails on a file out of it. Test, root and loose files, which have no primary declaration, keep their order. |
 | Referenced assets | Decided, not built: `layout.asset_unreferenced` waits for the reference forms of areas 11 and 16. |
-| Packages | Decided, not built: the root `packages/` and `jadpo.lock`, `shared/providers/`, and packages checked as `shared/` is come with chunk 7.1; until then `packages/` is `layout.unknown_location`. |
+| Packages | Built (chunk 7.1): the root `packages/` and `jadpo.lock`, `shared/providers/`, packages checked as `shared/` is, `use packages/<name>`, and the reachable-from-public rule (`visibility.public_reaches_private`) in domains and packages; area 11's "Chosen in chunk 7.1" records the choices. |
 | `.jadpo_record` files and the reachability rule | Decided 2026-10-16, not built: today's compiler writes `api/main.api`; the rename, the header line and the hand-edit check, and the rule that everything reachable from a public declaration is public, have no chunk on the roadmap yet. |
 
 ### Consistency with the rest of the language

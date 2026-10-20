@@ -146,8 +146,10 @@ SeedDecl =
 PackageDecl =
   'package' Path MemberList
 
+// `public resource bookings { ... }`: a provider package's operations
+// (area 11); `public` makes it part of the package's API.
 ResourceDecl =
-  'resource' Name MemberList
+  Visibility? 'resource' Name MemberList
 
 ProvideDecl =
   'provide' Name MemberList
@@ -155,7 +157,8 @@ ProvideDecl =
 // Declarations that exist once per project carry no name (area 1):
 // `application`, `config`, `principal`, `authentication`, `policy`,
 // `flags`, `migration`, `acceptance`, `locales` and `suggestions` (area
-// 14); so does a language file's `translations` (area 10).
+// 14); so does a language file's `translations` (area 10), and a provider
+// package's `provider` (area 11).
 SingletonDecl =
   keyword:'ident' MemberList
 

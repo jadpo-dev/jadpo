@@ -66,4 +66,4 @@ cd examples/25-allotment-rents && ../../target/release/jadpo dev
   <!-- try {"file": "domains/plots/queries/overdue_plots.jadpo", "replace": "    where: Plot.reminded_on == none\n", "with": "", "test": ["test.assertion_failed"], "failed": 1} -->
 - In `plot.jadpo`, let only the secretary read who holds a plot, with `read: [OfficerRole.secretary, Access.system]` in a `policy:` of `plot_holder`'s own. `jadpo check` reports `policy.output_field_unproved` at the batch: which plots `invoice_plot` refuses shows who holds one, and the treasurer reads the invoices it writes and the round's count of refused plots.
   <!-- try {"file": "domains/plots/entities/plot.jadpo", "replace": "    plot_holder: HolderName?\n", "with": "    plot_holder: HolderName? {\n        policy: {\n            read: [OfficerRole.secretary, Access.system]\n        }\n    }\n", "check": ["policy.output_field_unproved"]} -->
-- That is the last example so far. The [language pages](../../docs/language/README.md) hold the full specification.
+- Next, [26-delivery-desk](../26-delivery-desk/README.md) installs a package and writes its own integration with a courier's API.

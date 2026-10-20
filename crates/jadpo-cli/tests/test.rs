@@ -1203,6 +1203,8 @@ fn a_public_fixture_runs_from_another_domains_test_and_a_scenario() {
         "public-fixture",
         "use stock/fixtures { stocked }\n\ntest \"tallies a stocked count\" {\n    assert tally(stocked()) == 5\n}\n",
     );
+    // What the public fixture gives is public too (area 1, chunk 7.1).
+    write(&root, COUNT, "public type Count = Int {\n    min: 0\n}\n");
     write(
         &root,
         "domains/stock/fixtures/stocked.jadpo",

@@ -1,0 +1,12 @@
+// Everything a public library's functions name is public too, since
+// whoever calls them has to build or handle it.
+
+/// Reading UK postcodes.
+public library uk {
+    /// Reads a postcode in upper case, as the post office writes it.
+    function tidy(entered: EnteredPostcode) fails InvalidPostcode -> UkPostcode {
+        return attempt UkPostcode(text.upper(entered)) {
+            invalid: InvalidPostcode
+        }
+    }
+}

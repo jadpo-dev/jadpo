@@ -26,9 +26,11 @@ pub use items::{items_of, primary};
 pub use load::{
     Loaded, PROJECT_FILE, Unreadable, files_under, find_root, load, load_into, shown_root,
 };
-pub use lock::{LOCK, Locked, Source, parse_lock, write_lock};
+pub use lock::{LOCK, Locked, Source, package_digest, parse_lock, write_lock};
 pub use places::{
-    Folder, Location, Ownership, Place, RootFile, Stray, locate, name_words, to_snake,
+    Folder, Location, Ownership, PACKAGE_INDEX, PACKAGES, PROVIDER_FILE, PROVIDERS, PackageHome,
+    Place, RootFile, Stray, is_package_data, is_version_label, locate, name_words, package_at,
+    to_snake, to_upper_camel,
 };
 pub use table::{Contested, Symbol, Symbols, contested, domain_scope, identity_name, symbols};
 pub use texts::source_texts;
@@ -61,8 +63,9 @@ pub struct File {
 /// 18): a migration's `snapshot.json` and `postgres.sql`, every
 /// `.jadpo_record` ([`record::kind_of`]) and `jadpo.lock`, a record still
 /// under its name from before chunk 7.0 (`api/<api>.api`,
-/// `database/identities.json`), and a prompt's text, `<name>.prompt`
-/// (area 21), read whole.
+/// `database/identities.json`), a prompt's text, `<name>.prompt`
+/// (area 21), and a package's files that aren't its source
+/// ([`is_package_data`]), read whole for its digest.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Record {
     /// Project-relative, with `/`.
@@ -77,6 +80,9 @@ pub struct Record {
 /// 21).
 pub fn is_record(path: &str) -> bool {
     if record::kind_of(path).is_some() || record::renamed(path).is_some() {
+        return true;
+    }
+    if places::is_package_data(path) {
         return true;
     }
     if is_prompt_text(path) {

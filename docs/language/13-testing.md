@@ -801,7 +801,7 @@ application {}
 
 ```jadpo check project=public-fixture file=domains/planning/types/todo_count.jadpo hidden
 /// How many todos are open.
-type TodoCount = Int {
+public type TodoCount = Int {
     min: 0
 }
 ```
