@@ -8,7 +8,6 @@ application {
             domains: [courier_desk]
             credential: config.couriers_api_key
             environment: config.couriers_environment
-            timeout: 5s
         }
     }
 }

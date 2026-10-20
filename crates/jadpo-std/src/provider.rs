@@ -10,8 +10,9 @@ use crate::HttpMethod;
 use crate::subscriber::Repeat;
 
 /// What a call waits for its answer when its connection gives no
-/// `timeout:` (area 11, question 8).
-pub const DEFAULT_TIMEOUT_MS: u64 = 10_000;
+/// `timeout:` (area 11, question 8): 3 seconds, so its 3 attempts fit a
+/// route's 10-second default deadline (Richard, 2026-10-20).
+pub const DEFAULT_TIMEOUT_MS: u64 = 3_000;
 
 /// How often a call is tried, and for how long, when its connection gives
 /// no `retry:` (area 11, question 8).

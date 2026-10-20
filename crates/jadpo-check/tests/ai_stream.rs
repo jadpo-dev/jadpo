@@ -207,7 +207,7 @@ fn a_streamed_prompts_script_is_checked() {
     };
     let with = |answers: &str| {
         problems(&[
-            (ACTION_PATH, &action("", ALL_ARMS)),
+            (ACTION_PATH, &action(", timeout: 8s", ALL_ARMS)),
             (ROUTE_PATH, &route("")),
             (TEST_PATH, &test(answers)),
         ])
@@ -238,7 +238,7 @@ fn a_streamed_prompts_script_is_checked() {
 fn a_streaming_routes_response_has_pieces() {
     let test = "use support/types { Asked }\n\ntest \"reads\" {\n    var response: Response = request {\n        method: HttpMethod.post\n        path: \"/answers\"\n        input: Asked {\n            question: \"Sesame?\"\n        }\n    }\n    assert response.output == none\n}\n";
     let found = problems(&[
-        (ACTION_PATH, &action("", ALL_ARMS)),
+        (ACTION_PATH, &action(", timeout: 8s", ALL_ARMS)),
         (ROUTE_PATH, &route("")),
         (TEST_PATH, test),
     ]);
@@ -248,4 +248,29 @@ fn a_streaming_routes_response_has_pieces() {
             "{TEST_PATH} type.unknown_field: `Response` has no field `output`"
         )]
     );
+}
+
+/// A stream's `timeout:` counts once in its route's deadline sum, since it
+/// asks once (area 7, "Time"; area 11's `route.calls_past_deadline`;
+/// chunk 7.7e): 25s by default, past the route's default 10s, so a route
+/// that streams by default gives itself `deadline:`.
+#[test]
+fn a_streams_timeout_counts_once_against_its_routes_deadline() {
+    let found = |options: &str, items: &str| {
+        of(
+            "route.calls_past_deadline",
+            problems(&[
+                (ACTION_PATH, &action(options, ALL_ARMS)),
+                (ROUTE_PATH, &route(items)),
+            ]),
+        )
+    };
+    assert_eq!(
+        found("", ""),
+        [format!(
+            "{ROUTE_PATH} route.calls_past_deadline: `POST /answers` runs `stream_answer`, whose outside calls can take 25s, longer than its 10s deadline"
+        )]
+    );
+    assert_eq!(found("", "        deadline: 25s\n"), NONE);
+    assert_eq!(found(", timeout: 10s", ""), NONE);
 }

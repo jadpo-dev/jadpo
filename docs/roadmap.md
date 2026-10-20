@@ -1747,13 +1747,19 @@ The design is area 11 as revised on 2026-10-16, with its research in
   type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
   the token test compares instants as instants, and the open-transaction
   count of the call tests leaves out the server's autovacuum workers.
-- [ ] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
-  7.5e): `ai.stream`'s `timeout:` counted once in the route-deadline sum
-  (`Calls::time` in `jadpo-check`'s `steps.rs`), now that 5.5v6 has
-  landed; and in a package's own action, a `match` on its own
-  operation's outcome reporting both `failure.outcome_missing_arm` for
-  `AcmePay.CardDeclined` and `failure.outcome_unknown_arm` for the bare
-  `CardDeclined` — one name for a package's failure inside its own code.
+- [x] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
+  7.5e): new default timeouts (Richard, 2026-10-20, option A), since at
+  the old ones the route-deadline sum refused almost every route that
+  calls out: a provider connection's `timeout:` 3s (3 attempts, 9s, inside
+  a route's 10s default deadline) and `ai.generate`'s 25s (2 attempts,
+  50s, so a route that asks a model writes `deadline:` up to 60s), the
+  `deadline:` and `timeout:` lines 7.5e added for the old ones removed;
+  `ai.stream`'s `timeout:` counted once in the sum (`Calls::time`); and a
+  package's failure has one name inside its own code, so a `match` on its
+  own operation's outcome takes the bare `CardDeclined`. Also under the
+  decision: `ai.embed` and `ai.embed_all` counted once in the sum, their
+  default `timeout:` 5s, so a search route embedding its query fits the
+  10s default.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

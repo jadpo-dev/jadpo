@@ -513,7 +513,8 @@ data: {"error":{"code":"unavailable","message":"A dependency is temporarily unav
   from when the request was matched; past it, `error`. That each
   `timeout:` an action reaches leaves room inside its route's deadline is
   checked with the deadlines of the route's other outside calls (chunk
-  7.5e).
+  7.5e), a stream's counted once, since it asks once (chunk 7.7e): at its
+  default, 25 seconds, a streaming route gives itself `deadline:`.
 - **A client that goes away** stops the stream: the runtime stops reading
   the model's answer and closes its connection to the provider at once,
   so nothing more is spent. What the action committed stays committed.

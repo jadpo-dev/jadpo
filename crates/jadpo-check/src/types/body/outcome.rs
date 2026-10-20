@@ -81,7 +81,10 @@ impl Body<'_> {
             None => (Ty::Error, Fallible::Unknown),
         };
         let (known, checked) = match &fallible {
-            Fallible::Fails(names) => (names.clone(), true),
+            Fallible::Fails(names) => (
+                names.iter().map(|name| self.named_here(name)).collect(),
+                true,
+            ),
             Fallible::Never => {
                 if let Some(Expr::CallExpr(call)) = &subject
                     && let Some(callee) = self.callee_name(call)
@@ -191,8 +194,9 @@ impl Body<'_> {
                     }
                     self.arm = Arm::Success;
                 }
-                Pattern::Failure(failure, name, brackets) => {
-                    let mut armed = Some(failure.clone());
+                Pattern::Failure(written_failure, name, brackets) => {
+                    let failure = self.named_here(&self.symbols.canonical(&written_failure));
+                    let mut armed = Some(written_failure.clone());
                     if let Some(first) = handled.get(&failure) {
                         self.out.push(
                             Diagnostic::new(
@@ -231,7 +235,7 @@ impl Body<'_> {
                         handled.insert(failure.clone(), span.clone());
                     }
                     if let (Some(name), Some(brackets)) = (name, brackets) {
-                        let ty = Ty::Named(failure.clone());
+                        let ty = Ty::Named(written_failure.clone());
                         self.declare(
                             Some(name),
                             ty,
@@ -391,6 +395,17 @@ impl Body<'_> {
                     }
                 }
             }
+        }
+    }
+
+    /// `failure`, as the tables know it, named as this code writes it: a
+    /// package's own code names its failures bare (`CardDeclined`), the
+    /// app through the package (`AcmePay.CardDeclined`), so a failure has
+    /// one name inside the code that matches on it.
+    fn named_here(&self, failure: &str) -> String {
+        match failure.rsplit_once('.') {
+            Some((_, bare)) if self.symbols.canonical(bare) == failure => bare.to_string(),
+            _ => failure.to_string(),
         }
     }
 
