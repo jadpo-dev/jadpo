@@ -861,6 +861,9 @@ fn how_to_reset(url: &str) -> Result<Option<String>, String> {
 pub struct TestHost<'d> {
     databases: &'d TestDatabases,
     held: std::cell::OnceCell<Held>,
+    /// The in-memory store every `files` connection is in a test (area
+    /// 13, "Provider calls and capabilities in tests"; chunk 6.4b).
+    files: jadpo_runtime::files::MemoryFiles,
 }
 
 enum Held {
@@ -894,6 +897,7 @@ impl<'d> TestHost<'d> {
         TestHost {
             databases,
             held: std::cell::OnceCell::new(),
+            files: jadpo_runtime::files::MemoryFiles::new(),
         }
     }
 
@@ -956,5 +960,18 @@ impl jadpo_runtime::Host for TestHost<'_> {
     /// None: a test runs under its seed, so it reproduces.
     fn random(&self, _bytes: &mut [u8]) -> bool {
         false
+    }
+
+    /// Every connection's files in memory: `files` is the only outside
+    /// capability a program reaches yet (chunk 6.4b), and nothing in a
+    /// test leaves the process.
+    fn capability(&self, _connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
+        Some(&self.files)
+    }
+
+    /// Two rows a batch, so every file a test reads resumes between
+    /// batches (area 13, "Provider calls and capabilities in tests").
+    fn rows_per_batch(&self) -> u32 {
+        2
     }
 }

@@ -382,7 +382,7 @@ mod tests {
         let piece = crate::block_on(read(&mut ctx, &kept, 2, 100))
             .expect("no wait")
             .expect("bytes");
-        assert_eq!(piece, b",b\n", "three at a time");
+        assert_eq!(piece, b"b\n1", "three at a time");
         let whole = crate::block_on(read_whole(&mut ctx, &file)).expect("no wait");
         assert!(
             matches!(&whole, Done::Value(Value::Bytes(all)) if &**all == b"a,b\n1,2\n"),

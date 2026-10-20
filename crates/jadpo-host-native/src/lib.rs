@@ -18,6 +18,8 @@
 //!   background work giving back what it holds (chunk 6.7).
 //! - [`http`]: the listener and its worker threads, each a current-thread
 //!   runtime answering with its own handler (chunk 4.1).
+//! - [`files`]: the disk driver, which keeps `jadpo dev`'s stores of files
+//!   under `.jadpo/files/` (chunk 6.4b).
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
 //!
@@ -25,7 +27,8 @@
 //! (chunk 3.1), serving HTTP (chunk 4.1), running a response's
 //! follow-on work in the background (chunk 6.1a), the timer that ticks
 //! the runtime's schedules and sweeps (chunk 6.2), and draining on a stop
-//! (chunk 6.7). Local disk and inbox come with their areas.
+//! (chunk 6.7), and files on the local disk (chunk 6.4b). The inbox
+//! comes with email.
 
 // A panic aborts a Workers instance, so runtime code reports faults as
 // values (docs/compiler-runtime.md §2.6); the native host holds itself to
@@ -42,6 +45,7 @@
     )
 )]
 
+pub mod files;
 pub mod http;
 pub mod passkeys;
 mod signals;
@@ -157,6 +161,8 @@ pub fn postgres(url: &str) -> Result<Postgres, StoreError> {
 #[derive(Debug, Default)]
 pub struct NativeHost {
     stores: BTreeMap<String, Postgres>,
+    /// Every store of files, on the local disk (chunk 6.4b).
+    files: Option<files::DiskFiles>,
     limits: RateLimits,
     deferred: Deferred,
     background: Rc<Background>,
@@ -235,6 +241,13 @@ impl NativeHost {
         self
     }
 
+    /// Keeps every store of files on the local disk, as `files` says
+    /// (chunk 6.4b).
+    pub fn with_files(mut self, files: files::DiskFiles) -> NativeHost {
+        self.files = Some(files);
+        self
+    }
+
     /// The work it was given to run after the response being answered,
     /// for whoever sends that response to run once it has been handed
     /// back: the HTTP worker, as a task on its thread. Each is counted as
@@ -283,6 +296,14 @@ impl NativeHost {
 static PASSKEYS: passkeys::WebauthnPasskeys = passkeys::WebauthnPasskeys;
 
 impl Host for NativeHost {
+    /// The disk driver, for every connection's files (chunk 6.4b): the
+    /// only outside capability a program reaches yet.
+    fn capability(&self, _connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
+        self.files
+            .as_ref()
+            .map(|files| files as &dyn jadpo_runtime::capability::Capability)
+    }
+
     /// `webauthn-rs` (area 8, "Passkeys").
     fn passkeys(&self) -> Option<&dyn jadpo_runtime::Passkeys> {
         Some(&PASSKEYS)
