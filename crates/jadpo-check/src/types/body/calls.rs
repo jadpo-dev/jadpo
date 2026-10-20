@@ -510,6 +510,10 @@ impl Body<'_> {
             if head == jadpo_std::standard::ai::AI && member == "generate" {
                 return self.generate_call(call, callee, &written);
             }
+            // A model's answer streamed to a route (area 21, chunk 5.5v6).
+            if head == jadpo_std::standard::ai::AI && member == "stream" {
+                return self.stream_call(call, callee, &written);
+            }
             // A model asked for embeddings (chunk 5.5v4).
             if head == jadpo_std::standard::ai::AI
                 && matches!(member.as_str(), "embed" | "embed_all")

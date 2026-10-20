@@ -47,8 +47,8 @@
 //! - **`route.calls_past_deadline`** (chunk 7.5e): a route whose action's
 //!   outside calls, each its `timeout:` times its attempts, add up on the
 //!   longest way through it to more than the route's `deadline:`; a
-//!   provider's operation and an `ai` call alike (area 11, "Retries"; area
-//!   21).
+//!   provider's operation and an `ai` call alike, `ai.stream`'s counted
+//!   once (area 11, "Retries"; area 21; chunk 7.7e).
 //!
 //! The runtime's record of such an action is planned here too
 //! ([`record_plans`]): the store it is kept in and a digest of its step
@@ -184,6 +184,8 @@ impl Calls {
                 attempts,
                 ..
             } => (timeout_ms.saturating_mul(u64::from(*attempts)), 0),
+            // A stream asks once, held to its `timeout:` (chunk 7.7e).
+            Callee::Stream { timeout_ms, .. } => (*timeout_ms, 0),
             _ => (0, 0),
         }
     }
@@ -218,7 +220,9 @@ impl Calls {
                 FilesOp::Read => (Call::Reads, false),
             }),
             // A model asked changes nothing (area 21; chunk 5.5v3).
-            Callee::Generate { .. } | Callee::Embed { .. } => Some((Call::Reads, false)),
+            Callee::Generate { .. } | Callee::Stream { .. } | Callee::Embed { .. } => {
+                Some((Call::Reads, false))
+            }
             _ => None,
         }
     }

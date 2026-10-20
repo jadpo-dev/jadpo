@@ -117,6 +117,7 @@ pub mod slots;
 pub mod statements;
 pub mod steps;
 mod store;
+pub mod stream;
 pub mod test_steps;
 pub mod unfinished;
 pub mod webhooks;

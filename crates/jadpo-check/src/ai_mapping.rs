@@ -19,8 +19,9 @@
 //!   `context:`, each model's context window, which `too_long` is checked
 //!   against before sending, and `prices:`, read by chunk 5.5v5's cost
 //!   estimate.
-//! - **`stream:`** and **`embed:`** come with chunks 5.5v6 and 5.5v7:
-//!   chunk 5.5v4 built `ai.embed` through the built-in driver alone.
+//! - **`stream:`** and **`embed:`** come with chunk 5.5v7: chunks 5.5v6
+//!   and 5.5v4 built `ai.stream` and `ai.embed` through the built-in
+//!   driver alone.
 
 use std::collections::BTreeMap;
 
@@ -47,7 +48,7 @@ const GENERATE_KEYS: [&str; 7] = [
 ];
 
 /// The operations later chunks map, with the chunk that does.
-const LATER: [(&str, &str); 2] = [("stream", "5.5v6"), ("embed", "5.5v7")];
+const LATER: [(&str, &str); 2] = [("stream", "5.5v7"), ("embed", "5.5v7")];
 
 /// A value a mapping gives a member of the operation's input.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

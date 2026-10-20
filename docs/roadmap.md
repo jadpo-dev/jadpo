@@ -1679,19 +1679,41 @@ The design is area 11 as revised on 2026-10-16, with its research in
   fields, `to_models: false`, and the prompts in the personal-data report.
   Done when a test exhausts each limit and is refused `over_budget`, and
   a marked field reaching a prompt unlisted fails to compile.
-- [ ] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
+- [x] **5.5v6 Streaming to a route** `opus · high` (areas 7 and 21), after
   5.5v3: server-sent events designed on area 7's page, a route returning
-  an `AiStream`, the final and error events, the stream fake, and the
-  check that a route's deadline leaves room for the `timeout:` of each
-  `ai` call it reaches (left from 5.5v3). Done
+  an `AiStream`, the final and error events, the stream fake. The check
+  that a route's deadline leaves room for the `timeout:` of each `ai` call
+  it reaches (left from 5.5v3) moved to chunk 7.5e, which builds one
+  deadline sum over every outside call a route reaches; an `ai.stream`
+  call counts its `timeout:` once. Done
   when a route test reads a scripted stream piece by piece and a failure
   after the first piece arrives as an error event.
+  Built: `ai.stream(prompt)` with `model:`, `max_output:` and `timeout:`,
+  only in an action, giving an `AiStream`, its four conditions before the
+  first piece mapped as `generate`'s; OpenAI's streamed chat completion
+  read piece by piece (`jadpo_runtime::stream`), the open answer kept on
+  the invocation and given back on a rerun; a route with `output:
+  AiStream` answering `text/event-stream` once its action commits:
+  `piece` events, then `done`, or `error` (`unavailable`) for anything
+  after the first piece, ended by the call's `timeout:` or the route's
+  deadline; no `id:` or `retry:`; only `.ok` and no `settle:`
+  (`route.stream_invalid`); never kept for a repeat; OpenAPI's
+  `text/event-stream` with `x-jadpo-stream` and the record's `output
+  AiStream (server-sent events)`; a route test's `response.pieces`; the
+  fake's text cut into pieces of three words and `partial("...",
+  <condition>)`; natively, each event sent as it is read and the
+  provider's connection closed when the client goes away. Tests in
+  `ai_stream.rs` (the checker's, and the CLI's: the route tests, and
+  `jadpo dev` streaming from a server started in the test). Choices in
+  area 7's "Streaming a model's answer" and area 21's "Chosen in chunk
+  5.5v6".
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
   after 5.5v3b, 5.5v4b and 5.5v6: a package's `provide ai { embed: }`
   (`toolchain.not_built_yet` since 5.5v3b; 5.5v4 built `ai.embed` through
   the built-in driver alone), and two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
-  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+  <package> ai`, and a package's `provide ai { stream: }` mapping (5.5v6
+  streams through the built-in driver only). **Needs Richard** for the API keys the live conformance run uses.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
@@ -1704,13 +1726,17 @@ The design is area 11 as revised on 2026-10-16, with its research in
   type's, in OpenAPI, the API record and `ai.generate`'s schema alike;
   the token test compares instants as instants, and the open-transaction
   count of the call tests leaves out the server's autovacuum workers.
-- [ ] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
-  7.5e): `ai.stream`'s `timeout:` counted once in the route-deadline sum
-  (`Calls::time` in `jadpo-check`'s `steps.rs`), now that 5.5v6 has
-  landed; and in a package's own action, a `match` on its own
-  operation's outcome reporting both `failure.outcome_missing_arm` for
-  `AcmePay.CardDeclined` and `failure.outcome_unknown_arm` for the bare
-  `CardDeclined` — one name for a package's failure inside its own code.
+- [x] **7.7e Follow-ups from 7.5e** `opus · high` (found in chunk
+  7.5e): new default timeouts (Richard, 2026-10-20, option A), since at
+  the old ones the route-deadline sum refused almost every route that
+  calls out: a provider connection's `timeout:` 3s (3 attempts, 9s, inside
+  a route's 10s default deadline) and `ai.generate`'s 25s (2 attempts,
+  50s, so a route that asks a model writes `deadline:` up to 60s), the
+  `deadline:` and `timeout:` lines 7.5e added for the old ones removed;
+  `ai.stream`'s `timeout:` counted once in the sum (`Calls::time`); and a
+  package's failure has one name inside its own code, so a `match` on its
+  own operation's outcome takes the bare `CardDeclined`. Built:
+  `ai.embed` keeps 15s, and the sum doesn't count embedding calls.
 - [ ] **7.8 Teaching examples for Phase 7** `opus · high`: packages,
   capabilities, email, sign-in, multi-step calls and receiving, passing
   `--require-examples`.

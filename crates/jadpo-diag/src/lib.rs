@@ -774,6 +774,8 @@ rules! {
         "07-http.html#route-settle-invalid", "Route `settle:` is not an answer query and a wait inside its deadline";
     ROUTE_STATUS_INVALID: "route.status_invalid", area 7, Error, Agent,
         "07-http.html#route-status-invalid", "Route status is not a `SuccessStatus`";
+    ROUTE_STREAM_INVALID: "route.stream_invalid", area 7, Error, Agent,
+        "07-http.html#route-stream-invalid", "Streaming route answers with another status or waits with `settle:`";
     RUNS_UNAVAILABLE: "runs.unavailable", area 14, Error, Human,
         "14-tooling.html#command-errors", "Unfinished runs' database couldn't be read";
     SCHEDULE_EVERY_INVALID: "schedule.every_invalid", area 12, Error, Agent,

@@ -43,7 +43,7 @@ use crate::tree::{self, node_span};
 use crate::types::{Def, FieldsBase, Prim, Ty, TypeRef, TypeView};
 
 /// Why a route sends only an `Output` (`route.output_not_output`).
-const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, or a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), so only fields declared for clients are ever sent.";
+const OUTPUT_ONLY: &str = "A route returns only an `Output` type (area 2), a `List` or `Page` of one as a query gives them, a `FeatureCollection<G, P>` whose properties `P` hold only what an `Output` may (area 20), or an `AiStream`, a model's answer sent as it is written, so only fields declared for clients are ever sent.";
 
 /// What a route entry may hold, in the order `jadpo fmt` writes them
 /// (area 14, "Formatting").
@@ -66,6 +66,16 @@ const LATER_ITEMS: [(&str, &str); 1] = [(
     "rate_limit",
     "A route's own `rate_limit:` comes with the rest of area 16's rate limits; every route already has the default limits",
 )];
+
+/// Why a streaming route answers 200 and waits for nothing
+/// (`route.stream_invalid`).
+const STREAM_REASON: &str = "A route whose action returns an `AiStream` sends the model's answer as server-sent events as it is written, answering 200 once its first piece has come; it has no other success to report, and nothing to wait for with `settle:`.";
+
+/// Whether a route sending `ty` streams a model's answer: an `AiStream`
+/// (area 7, "Streaming a model's answer"; chunk 5.5v6).
+pub fn streams(ty: &Ty) -> bool {
+    matches!(ty, Ty::Opaque(name, args) if name == jadpo_std::ai::AI_STREAM && args.is_empty())
+}
 
 /// What `settle:` holds (`route.settle_invalid`).
 const SETTLE_REASON: &str = "`settle:` holds `answer:`, a named query given `result` (what the action returns) or fields read through it, and `within:`, how long the route waits for the work its action set off, a duration shorter than the route's `deadline:`.";
@@ -1518,6 +1528,41 @@ impl Reader<'_> {
                 }
             }
         }
+        // A model's answer sent as it comes (area 7, "Streaming a model's
+        // answer"; chunk 5.5v6): `200` once its first piece has come, and
+        // nothing to wait for.
+        if streams(&sig.result) {
+            let member = items.get("status").or(items.get("settle"));
+            if let Some(member) = member.filter(|_| status != SuccessStatus::Ok || settle.is_some())
+            {
+                let key = member
+                    .member_key()
+                    .map_or_else(|| self.span(member), |key| self.span(&key));
+                let (message, at, next) = if settle.is_some() {
+                    (
+                        format!("`{label}` streams a model's answer and waits with `settle:`"),
+                        "waits for its work",
+                        "Remove `settle:`; a stream answers as its pieces come",
+                    )
+                } else {
+                    (
+                        format!(
+                            "`{label}` streams a model's answer with `SuccessStatus.{}`",
+                            status.name()
+                        ),
+                        "not `SuccessStatus.ok`",
+                        "Remove `status:`; a stream answers 200",
+                    )
+                };
+                self.out.push(
+                    Diagnostic::new(&rule::ROUTE_STREAM_INVALID, message)
+                        .at(key, at.to_string())
+                        .reason(STREAM_REASON)
+                        .next(next.to_string()),
+                );
+                return None;
+            }
+        }
         let output = match status {
             SuccessStatus::NoContent => None,
             _ => Some(sig.result.clone()),
@@ -2002,6 +2047,8 @@ impl Reader<'_> {
         };
         match element {
             Ty::Named(name) if self.lookup.base(name) == Some(FieldsBase::Output) => Some(ty),
+            // A model's answer, streamed (chunk 5.5v6).
+            stream if streams(stream) && element == &ty => Some(ty),
             // The values `sessions.tokens` and `Service.keys` list (area 8).
             issued if is_issued(issued) => Some(ty),
             other => {

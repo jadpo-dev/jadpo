@@ -1238,7 +1238,9 @@ fn facts(db: &dyn Db, project: Project, lookup: &Lookup<'_>, route: &RouteModel)
         .is_some_and(|stores| !stores.is_empty());
     let keys = if !writes {
         Keys::Nothing
-    } else if crate::types::unkept_responses(db, project).contains(name) {
+    } else if route.output.as_ref().is_some_and(super::streams)
+        || crate::types::unkept_responses(db, project).contains(name)
+    {
         Keys::Claimed
     } else {
         Keys::Kept
@@ -1262,6 +1264,51 @@ fn response(description: &str, schema: Option<Value>) -> Value {
         content.set("application/json", json);
         out.set("content", content);
     }
+    out
+}
+
+/// A streaming route's `200` (area 7, "Streaming a model's answer"):
+/// `text/event-stream`, described with its three events, and each event's
+/// data's schema in `x-jadpo-stream`, which plain OpenAPI 3.1 has no field
+/// for.
+fn stream_response() -> Value {
+    use jadpo_std::ai::events;
+    let mut text = Value::object();
+    text.set("type", "string");
+    let mut piece = Value::object();
+    piece.set("type", "object");
+    let mut properties = Value::object();
+    let mut member = Value::object();
+    member.set("type", "string");
+    properties.set("text", member);
+    piece.set("properties", properties);
+    piece.set("required", vec![Value::from("text")]);
+    piece.set("additionalProperties", false);
+    let mut done = Value::object();
+    done.set("type", "object");
+    done.set("additionalProperties", false);
+    let mut error = Value::object();
+    error.set(
+        "anyOf",
+        vec![reference("Unavailable"), reference("InternalFault")],
+    );
+    let mut each = Value::object();
+    each.set(events::PIECE, piece);
+    each.set(events::DONE, done);
+    each.set(events::ERROR, error);
+    let mut stream = Value::object();
+    stream.set("events", each);
+    let mut media = Value::object();
+    media.set("schema", text);
+    media.set("x-jadpo-stream", stream);
+    let mut content = Value::object();
+    content.set(events::CONTENT_TYPE, media);
+    let mut out = Value::object();
+    out.set(
+        "description",
+        "The model's answer as server-sent events, sent as it is written: `piece` events, each `{\"text\": ...}` with the next part of the answer, then `done` (`{}`) once it is whole, or `error`, the failure envelope, if it stopped before. Events carry no `id:`, and a stream can't be resumed.",
+    );
+    out.set("content", content);
     out
 }
 
@@ -1418,6 +1465,9 @@ fn operation(
                 // body (area 7, "Waiting for follow-on work").
                 Keys::Kept if route.settle.is_some() => "Makes a retry safe: for 24 hours a repeat with the same key and request doesn't run the action again, but answers with `answer:` run again, showing how far the work has got, and the first response's status.",
                 Keys::Kept => "Makes a retry safe: a repeat with the same key and request gets the first response for 24 hours instead of running again.",
+                // A stream is never kept (area 7, "Streaming a model's
+                // answer").
+                Keys::Claimed if route.output.as_ref().is_some_and(super::streams) => "Keeps a retry from running alongside the first request until its action has committed; a stream isn't kept, so a retry once it has started runs again.",
                 Keys::Claimed => "Keeps a retry from running alongside the first request; the response isn't kept, since it starts or ends a session or carries a new credential, so a retry once the first has finished runs again.",
                 Keys::Nothing => "Accepted, but nothing is kept: the route writes no store, so running it again changes nothing.",
             },
@@ -1464,6 +1514,11 @@ fn operation(
                     Some(schema),
                 ),
             );
+        }
+        // A model's answer, as server-sent events (area 7, "Streaming a
+        // model's answer"; chunk 5.5v6).
+        (Some(output), None) if super::streams(output) => {
+            responses.set(&success, stream_response());
         }
         (Some(output), None) => responses.set(
             &success,

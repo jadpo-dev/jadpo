@@ -2133,7 +2133,7 @@ doubles the async signatures and lets bugs hide on one target.
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
-| AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4) | same, through Workers' `fetch` |
+| AI | `ai.generate`: the prompt rendered, the schema, decoding and repair; the built-in `Driver.openai_compatible` and the `ai` fake (chunk 5.5v3); `ai.embed` and `ai.embed_all`, the fake's embeddings and prompts' recordings (chunk 5.5v4); `ai.stream` read piece by piece and sent as server-sent events (chunk 5.5v6) | same, through Workers' `fetch` |
 | Receiving | Queues fetched on the tick through a package, each message kept once as its event (chunk 7.7c) | Cloudflare Queues' consumer hands each batch to `receiving::consume`, which answers each message (chunk 7.7c2) |
 | Flags, privacy | Evaluation; export and erasure flows | same |
 | Development | Request timeline, local inbox and disk, published-event log | none |
@@ -2430,6 +2430,29 @@ record (`steps::step` with `changes: false`). The native host gives
 `jadpo dev` sets; `ai::AiFake` is in its place in every test, scripted by
 `Callee::AiFake` and read by `Callee::AiRequests` through
 `Capability::requests`.
+
+**Streaming a model's answer** (chunk 5.5v6; area 7, "Streaming a model's
+answer"; area 21, "Chosen in chunk 5.5v6"). `ai.stream` is checked in
+`types::body::stream` (four conditions, `AiStream` an opaque built-in),
+lowered to `Callee::Stream` and decoded to a `jadpo_std::ai::StreamSite`;
+a route whose output is an `AiStream` (`routes::streams`) is planned with
+`RoutePlan::stream` and no output codec. `jadpo_runtime::stream::stream`
+sends the request through its own seam (`Capability::stream`, which gives
+`Streamed::Whole` or `Streamed::Coming`, a body read a `Chunk` at a time),
+reads OpenAI's `chat.completion.chunk` events until the first piece, and
+keeps the open answer on the invocation (`Ctx::keep_stream`), the
+`AiStream` value naming its number; a rerun is given it back by step and
+digest. Once the action commits, the HTTP component takes it into
+`Response::stream`, an `EventStream` of `ServerEvent`s held to the call's
+`timeout:` and the route's deadline on the host's monotonic clock, which
+`Serving` attaches its host to. The native host sends it as a chunked body
+fed by a task on the worker's thread, which stops when hyper drops the body
+for a client that went away; `NativeFetch::open` reads the provider's
+answer on a thread of its own and shuts its socket when the body is
+dropped. `JsonHttp::stream` hands over a success's body as it comes;
+`Fetch::open` defaults to the whole body. A route test reads every event
+(`http::route_test`), giving `pieces` and `code`. The `ai` fake answers a
+stream from its script in the driver's own form (`stream::faked`).
 
 **Embeddings and recordings** (chunk 5.5v4; area 21, "Chosen in chunk
 5.5v4"). The checker reads `embedding_dimensions:` into

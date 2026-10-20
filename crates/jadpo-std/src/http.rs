@@ -1084,6 +1084,10 @@ pub struct RoutePlan {
     /// With `settle:`, what it waits for and answers with; its `output` is
     /// then the answer query's result's codec.
     pub settle: Option<SettlePlan>,
+    /// Whether it sends a model's answer as it comes, as server-sent
+    /// events: its action returns an `AiStream` (area 7, "Streaming a
+    /// model's answer"; chunk 5.5v6). Its `output` is then `None`.
+    pub stream: bool,
     /// The store an action keeps this route's `Idempotency-Key`s in: the
     /// one it writes, so a key commits with the writes it answers for.
     /// `None` for a `GET`, and for an action that writes no store, which

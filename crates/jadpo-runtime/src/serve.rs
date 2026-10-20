@@ -120,6 +120,11 @@ impl Serving {
             )
             .await
         };
+        // A model's answer the route streams is read on this host, whose
+        // clock holds it to its time (chunk 5.5v6).
+        if let Some(stream) = &response.stream {
+            stream.attach(Rc::clone(&self.host));
+        }
         runner::after_response(
             Rc::clone(&program) as Rc<dyn Executor>,
             Rc::clone(&self.host),

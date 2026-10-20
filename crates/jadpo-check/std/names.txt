@@ -24,10 +24,11 @@
 # The batch types are what `batches` gives and `finished:` receives (area
 # 12), their fields in `jadpo-std`'s `batch`; `BatchState` is an enum
 # there, and `CsvFormat`, who a written CSV is for, another. `File` is a stored file and `FileContents` what `store.read`
-# gives (area 16), in `jadpo-std`'s `files`.
+# gives (area 16), in `jadpo-std`'s `files`. `AiStream` is the text
+# `ai.stream` asks a model for, which only a streaming route sends (area 7).
 [types]
 Page Nearest
-File FileContents Principal Response Access
+File FileContents Principal Response Access AiStream
 IssuedToken IssuedKey DecodeProblem FirstSignIn MagicLinkEmail MagicLinkRequest
 MagicLinkRedeemed SignedIn SignInRefused SignInCodesDisabled PasskeyAdded
 PasskeyRemoved TestPasskey SentEmail
@@ -42,7 +43,8 @@ ApiChange PersonalData Erasure SearchLanguage RateLimitKey
 # question 6): it has no operations, and stays reserved so that a call
 # through it is `semantic.standard_operation_moved`. `ai`'s capability
 # operations are outside calls, checked as such (area 21): `generate`
-# since chunk 5.5v3; `stream`, `embed` and `embed_all` wait for theirs.
+# since chunk 5.5v3, `stream` since 5.5v6; `embed` and `embed_all` wait
+# for theirs.
 [namespaces]
 collection:
 ai: generate stream embed embed_all
