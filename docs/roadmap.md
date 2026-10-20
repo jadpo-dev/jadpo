@@ -860,6 +860,12 @@ The design is area 11 as revised on 2026-10-16, with its research in
   packages' text"), `Postcodes.translations.<message>(...)`, the root
   file's wording grouped by package, and its messages in the surface and
   the publishing bar.
+- [ ] **7.1d Package names kept to their package** `opus · high` (found
+  in chunk 7.1b2): a library function in an installed package clashing
+  with an app action of the same name (`Postcodes.uk.tidy` against an
+  app's `tidy` gives `semantic.duplicate_declaration`), though a
+  package's names are scoped to it; and `jadpo dev` and `jadpo test
+  --watch` watching a linked checkout, not only reading it at start.
 - [ ] **7.1c Connections and the network report** `opus · high`, after
   7.1b2: `connections:` entries naming a package (`package:`, `domains:`,
   `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
