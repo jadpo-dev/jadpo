@@ -1198,16 +1198,15 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/magic_links.rs` with the email connection
   faked; area 8 gains a whole magic-link application. Choices in area 8's
   "Magic links (chosen in chunk 7.3b)" rows and area 16's "Chosen in
-  chunk 7.3b"; one flagged for Richard, area 8's question 15: `routes`
-  is a reserved word, so `routes: false` can't be written;
-  recommendation `generate_routes: false`.
+  chunk 7.3b"; area 8's question 15 (`routes` is a reserved word)
+  decided as `generate_routes: false`.
 - [ ] **7.3b2 Magic links: the app's own email, its own routes, and the
   sign-in events** `opus · high`, after 7.3b (split from 7.3b on
-  2026-10-20), and once Richard has answered area 8's question 15:
+  2026-10-20):
   `magic_link: { email: }` (level 4, `MagicLinkEmail` with `pick:`,
   `SignInCode`) and `send:` (level 5, an action taking
   `MagicLinkRequest`, retried as a subscriber), `email.connection_required`
-  waived with `send:`; the setting that switches the generated routes off
+  waived with `send:`; `generate_routes: false`
   and `magic_links.request`, `.redeem` and `.redeem_code` for the app's
   own routes, keeping every protection; the events `SignedIn`,
   `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, the
