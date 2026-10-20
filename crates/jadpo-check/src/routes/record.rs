@@ -111,7 +111,7 @@ pub fn record_texts(db: &dyn Db, project: Project) -> BTreeMap<String, String> {
             {
                 generated.extend(passkey_entries(&passkey.path));
             }
-            if let Some(magic) = identity.magic_links()
+            if let Some(magic) = identity.magic_link_routes()
                 && passkey_api.as_deref() == Some(api.as_str())
             {
                 generated.extend(magic_link_entries(

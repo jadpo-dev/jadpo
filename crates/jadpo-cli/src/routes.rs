@@ -78,7 +78,7 @@ pub fn routes(call: &Call) -> Reply {
         }
     }
     // The magic-link routes, in the same API (area 8, "Magic links").
-    if let Some(magic) = jadpo_check::identity::identity(db, project).magic_links()
+    if let Some(magic) = jadpo_check::identity::identity(db, project).magic_link_routes()
         && let Some(api) = jadpo_check::routes::served::sign_in_api(db, project)
     {
         let api_tokens = jadpo_check::identity::identity(db, project)

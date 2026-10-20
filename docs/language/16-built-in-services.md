@@ -1157,6 +1157,7 @@ messages:
 | `sign_in_code_invalid` | | "That code isn't right. Check it, or ask for a new one." |
 | `sign_in_codes_disabled` | | "Too many wrong codes today. Use the link in your email instead." |
 | `sign_in_refused` | | "We couldn't sign you in." |
+| `sign_in_return_invalid` (only with `generate_routes: false`, area 8) | | "We can't send you back there after signing in. Start again from this site." |
 
 `expires_in` is `expires_after:` as Jadpo formats it in the email's
 language ("15 minutes"). The failures' wording also goes into the

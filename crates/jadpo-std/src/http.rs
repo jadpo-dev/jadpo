@@ -518,6 +518,15 @@ pub struct MagicLinkPlan {
 /// what `on_first_sign_in:`'s action is given.
 pub const FIRST_SIGN_IN: &str = "FirstSignIn";
 
+/// The namespace of magic links' generated operations (area 8, "Writing
+/// the routes yourself").
+pub const MAGIC_LINKS: &str = "magic_links";
+
+/// The built-in `MagicLinkRedeemed`: what `magic_links.redeem` and
+/// `.redeem_code` give, the user's `id` (`user_id`) and the path the
+/// person asked to go back to (`return_to`, `/` unless they gave one).
+pub const MAGIC_LINK_REDEEMED: &str = "MagicLinkRedeemed";
+
 /// What one argument of the call is made from.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ArgRoot {
@@ -607,10 +616,19 @@ pub enum SessionOp {
     Keys,
     /// `Service.revoke_key(key_id)`.
     RevokeKey,
+    /// `magic_links.request(address, locale, return_to)` (area 8, "Writing
+    /// the routes yourself"; chunk 7.3b3): asks for a link and a code, as
+    /// `POST /auth/magic-link` does.
+    MagicLinkRequest,
+    /// `magic_links.redeem(token)`: uses a link's token, giving a
+    /// `MagicLinkRedeemed`.
+    MagicLinkRedeem,
+    /// `magic_links.redeem_code(address, code)`: the same for a code.
+    MagicLinkRedeemCode,
 }
 
 impl SessionOp {
-    pub const ALL: [SessionOp; 8] = [
+    pub const ALL: [SessionOp; 11] = [
         SessionOp::Start,
         SessionOp::End,
         SessionOp::IssueToken,
@@ -619,6 +637,9 @@ impl SessionOp {
         SessionOp::IssueKey,
         SessionOp::Keys,
         SessionOp::RevokeKey,
+        SessionOp::MagicLinkRequest,
+        SessionOp::MagicLinkRedeem,
+        SessionOp::MagicLinkRedeemCode,
     ];
 
     pub fn name(self) -> &'static str {
@@ -631,6 +652,21 @@ impl SessionOp {
             SessionOp::IssueKey => "issue_key",
             SessionOp::Keys => "keys",
             SessionOp::RevokeKey => "revoke_key",
+            SessionOp::MagicLinkRequest => "request",
+            SessionOp::MagicLinkRedeem => "redeem",
+            SessionOp::MagicLinkRedeemCode => "redeem_code",
+        }
+    }
+
+    /// The namespace it is called through: `sessions`, `magic_links`, or
+    /// none for the service entity's.
+    pub fn namespace(self) -> Option<&'static str> {
+        if self.on_service() {
+            None
+        } else if self.magic_link() {
+            Some(MAGIC_LINKS)
+        } else {
+            Some("sessions")
         }
     }
 
@@ -638,7 +674,25 @@ impl SessionOp {
     pub fn from_name(name: &str) -> Option<SessionOp> {
         SessionOp::ALL
             .into_iter()
-            .find(|op| !op.on_service() && op.name() == name)
+            .find(|op| op.namespace() == Some("sessions") && op.name() == name)
+    }
+
+    /// The operation `magic_links.<name>` names.
+    pub fn magic_link_op(name: &str) -> Option<SessionOp> {
+        SessionOp::ALL
+            .into_iter()
+            .find(|op| op.magic_link() && op.name() == name)
+    }
+
+    /// Whether it is one of magic links' generated operations, which the
+    /// application's own routes call with `generate_routes: false`.
+    pub fn magic_link(self) -> bool {
+        matches!(
+            self,
+            SessionOp::MagicLinkRequest
+                | SessionOp::MagicLinkRedeem
+                | SessionOp::MagicLinkRedeemCode
+        )
     }
 
     /// The operation `<Service>.<name>` names on the service entity.
@@ -665,7 +719,13 @@ impl SessionOp {
     /// The sign-in method it needs declared.
     pub fn method(self) -> crate::AuthenticationMethod {
         match self {
-            SessionOp::Start | SessionOp::End => crate::AuthenticationMethod::BrowserSession,
+            // Magic links' operations need `magic_link:`, which signs a
+            // browser session in, rather than a method of their own.
+            SessionOp::Start
+            | SessionOp::End
+            | SessionOp::MagicLinkRequest
+            | SessionOp::MagicLinkRedeem
+            | SessionOp::MagicLinkRedeemCode => crate::AuthenticationMethod::BrowserSession,
             SessionOp::IssueToken | SessionOp::Tokens | SessionOp::RevokeToken => {
                 crate::AuthenticationMethod::ApiToken
             }

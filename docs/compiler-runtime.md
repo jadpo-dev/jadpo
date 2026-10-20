@@ -1651,6 +1651,22 @@ the minted link and code and renders it as any email; the runner gives a
 `send` action the `MagicLinkRequest` `magic_links::request_value` makes
 for each attempt (`runner::run_job` runs it as a subscriber's action).
 
+Built in chunk 7.3b3: the app's own magic-link routes. `MagicLink::
+generate_routes` is read, and `Identity::magic_link_routes` is what the
+generated routes, the API record, OpenAPI and `jadpo routes` list.
+`magic_links.request`, `.redeem` and `.redeem_code` are `SessionOp`s
+(`magic_link_op`), checked by `magic_link_call`; `SignInToken` is a
+`Builtin` and `MagicLinkRedeemed` a built-in object. The interpreter's
+`session` hands them to `http::magic_links::{request, redeem,
+redeem_code}`, which run the generated routes' own `Site` steps: `ask`
+in the action's transaction with the email as the action's event, and
+`by_token`, `by_code` and `person` in transactions of their own, with
+`on_first_sign_in:`'s action run outside the waiting boundary
+(`Ctx::take_boundary`). A `Refused` becomes the route's response or the
+operation's failure (`Failure::retry_after` gives `Retry-After`); the
+binding cookie travels as `Ctx::sign_in_cookie` in and `Binding` out
+(`Held::binding`).
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving

@@ -1237,11 +1237,23 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `crates/jadpo-cli/tests/magic_links.rs`, the provider faked. Choices in
   area 8's "The app's own sign-in email and sending (chosen in chunk
   7.3b2)" and area 16's "Chosen in chunk 7.3b2".
-- [ ] **7.3b3 Magic links: the app's own routes** `opus · high`, after
+- [x] **7.3b3 Magic links: the app's own routes** `opus · high`, after
   7.3b2 (split from 7.3b2 on 2026-10-20): `generate_routes: false` and
   `magic_links.request`, `.redeem` and `.redeem_code` for the app's own
   routes, keeping every protection (`SignInToken`, `MagicLinkRedeemed`,
   `same_browser:`'s cookie on the response of the route whose action asks).
+  Built: `generate_routes:` read (never beside `path:`), switching the
+  generated routes off everywhere they are listed; the three operations
+  checked in actions only, needing `generate_routes: false`, and run by
+  the generated routes' own code, asking in the action's transaction with
+  the email sent once it commits, and using a link or a code in a
+  transaction of its own so wrong codes stay counted; `SignInToken` never
+  kept, answered, put in a failure, an event or an email, or written as
+  JSON; `MagicLinkRedeemed` made only by the runtime; the binding cookie
+  set and cleared on the app's route's response; `Retry-After` on the
+  operations' limits; `sign_in_return_invalid`. Live tests in
+  `crates/jadpo-cli/tests/magic_links.rs`. Choices in area 8's "The app's
+  own routes (chosen in chunk 7.3b3)".
 - [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
   on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
   `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;

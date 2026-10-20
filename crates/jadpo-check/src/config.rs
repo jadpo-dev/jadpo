@@ -805,6 +805,7 @@ impl Reader<'_> {
             | Prim::ApiToken
             | Prim::ServiceKey
             | Prim::SignInCode
+            | Prim::SignInToken
             | Prim::PresentationText => {
                 return Err(format!(
                     "`{}` is made by the runtime, not read from a deployment.",

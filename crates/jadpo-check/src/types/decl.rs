@@ -958,17 +958,11 @@ impl Decls<'_> {
                         continue;
                     }
                     // A sign-in code is sent only in its email or by the
-                    // application's own sending (area 8).
-                    if (self.failure
-                        || matches!(
-                            base,
-                            FieldsBase::Output | FieldsBase::Event | FieldsBase::Failure
-                        ))
-                        && super::secrets::holds_sign_in_code(
-                            self.table,
-                            &declared,
-                            &mut Vec::new(),
-                        )
+                    // application's own sending, and a link's token comes
+                    // only from a request (area 8).
+                    if let Some(held) =
+                        super::secrets::held_sign_in(self.table, &declared, &mut Vec::new())
+                        && super::secrets::sign_in_refused(base, self.failure, held)
                     {
                         let span = self.span(value.syntax());
                         self.out.push(super::secrets::sign_in_code_field(
@@ -976,6 +970,7 @@ impl Decls<'_> {
                             self.failure,
                             host,
                             name,
+                            held,
                             span,
                         ));
                         continue;

@@ -385,7 +385,7 @@ pub(crate) fn table(
     }
     // The magic-link routes the runtime answers (area 8, "Magic links"),
     // in the same API; the redemption only with API tokens.
-    if let Some(magic) = identity.magic_links()
+    if let Some(magic) = identity.magic_link_routes()
         && let Some(api) = passkey_api
     {
         let api_tokens = identity.built(jadpo_std::AuthenticationMethod::ApiToken);

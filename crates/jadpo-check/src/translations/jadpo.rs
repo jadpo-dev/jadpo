@@ -94,11 +94,13 @@ pub fn features(db: &dyn Db, project: Project) -> BTreeSet<Feature> {
     if crate::identity::identity(db, project).passkeys().is_some() {
         out.insert(Feature::Passkey);
     }
-    if crate::identity::identity(db, project)
-        .magic_links()
-        .is_some()
-    {
+    if let Some(magic) = crate::identity::identity(db, project).magic_links() {
         out.insert(Feature::MagicLink);
+        // The application's own routes meet `magic_links.request`'s
+        // refusal of a return path (chunk 7.3b3).
+        if !magic.generate_routes {
+            out.insert(Feature::MagicLinkRoutes);
+        }
     }
     out
 }
