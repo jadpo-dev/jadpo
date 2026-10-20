@@ -3,6 +3,7 @@
 //! result in the CLI design language through `jadpo-term`.
 
 mod ai;
+mod ai_record;
 mod api;
 mod calls;
 mod check;

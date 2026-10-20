@@ -200,10 +200,11 @@ pub async fn embed(
             ..Reading::default()
         },
     };
-    let (answer, _) = match crate::ai::sent(ctx, call, request, began, site.timeout_ms).await {
-        Ok(sent) => sent,
-        Err(done) => return done,
-    };
+    let (answer, _) =
+        match crate::ai::sent(ctx, call, request, (began, site.timeout_ms), None).await {
+            Ok(sent) => sent,
+            Err(done) => return done,
+        };
     // A fake's own: the vectors made from each text and the seed.
     let answer = match answer {
         Answer::Generated => {

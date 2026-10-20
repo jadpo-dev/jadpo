@@ -211,6 +211,14 @@ pub struct StaleRecording {
     pub now: String,
 }
 
+impl StaleRecording {
+    /// The command that records it again, from the prompt now (chunk
+    /// 5.5v4b): `jadpo ai record answer_question --as not_covered`.
+    pub fn next(&self) -> String {
+        format!("jadpo ai record {} --as {}", self.prompt, self.name)
+    }
+}
+
 impl Run {
     pub fn total(&self) -> usize {
         self.total.values().sum()

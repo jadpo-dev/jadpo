@@ -553,6 +553,25 @@ impl Program {
         .await
     }
 
+    /// Asks the model prompt `prompt` (`answer_question`) with `value`, a
+    /// value of its type, as the first `ai.generate` call of it in the
+    /// program does (chunk 5.5v4b): what `jadpo ai record` keeps the answer
+    /// of, on `ctx`'s host. `None` when no call asks the prompt.
+    pub async fn ask_model(
+        &self,
+        ctx: &mut Ctx<'_>,
+        prompt: &str,
+        value: Value,
+    ) -> Option<jadpo_runtime::ai::Done> {
+        let site = self.generate_site_of(prompt)?;
+        let ai = self.ai()?;
+        let settings: Vec<(u32, Value)> = jadpo_runtime::ai::settings_read(&ai, site)
+            .into_iter()
+            .filter_map(|number| Some((number, self.setting(number)?)))
+            .collect();
+        Some(jadpo_runtime::ai::generate(ctx, &ai, site, value, &settings).await)
+    }
+
     /// What the runtime's HTTP component answers this program's routes
     /// with (area 7): the route table and its codecs, with this thread's
     /// validators and shapes.
@@ -599,9 +618,10 @@ impl Program {
         })
     }
 
-    /// An `ai.generate` call of prompt `prompt`, as its site decodes it:
-    /// how a scripted value of its type is sent (chunk 5.5v3).
-    pub(crate) fn generate_site_of(&self, prompt: &str) -> Option<&jadpo_std::ai::GenerateSite> {
+    /// The first `ai.generate` call of prompt `prompt`, as its site
+    /// decodes it: how a scripted value of its type is sent (chunk 5.5v3),
+    /// and what `jadpo ai record` asks as (chunk 5.5v4b).
+    pub fn generate_site_of(&self, prompt: &str) -> Option<&jadpo_std::ai::GenerateSite> {
         self.plan().callables().iter().find_map(|callable| {
             callable.sites.iter().find_map(|site| match &site.decoded {
                 jadpo_plan::Decoded::Generate(generate) if generate.prompt == prompt => {

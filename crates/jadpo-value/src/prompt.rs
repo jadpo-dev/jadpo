@@ -12,8 +12,9 @@ use jadpo_std::standard::ai::{CHAT_MESSAGE, CHAT_ROLE, CHAT_ROLES};
 
 use crate::Value;
 
-/// A message of the role called `role`, saying `content`.
-fn message(role: &str, content: Value) -> Value {
+/// A message of the role called `role`, saying `content`: a
+/// `ChatMessage`.
+pub fn chat_message(role: &str, content: Value) -> Value {
     let ordinal = CHAT_ROLES
         .iter()
         .position(|(name, _)| *name == role)
@@ -69,13 +70,13 @@ pub fn render(
     };
     let instructions = fill(&entry.instructions, &entry.fields, &mut value_of)?;
     let request = fill(&entry.request, &entry.fields, &mut value_of)?;
-    let mut messages = vec![message("system", Value::text(&instructions))];
+    let mut messages = vec![chat_message("system", Value::text(&instructions))];
     if let Some(conversation) = &entry.conversation {
         match record.get(conversation)? {
             Value::List(turns) => messages.extend(turns.iter().cloned()),
             _ => return None,
         }
     }
-    messages.push(message("user", Value::text(&request)));
+    messages.push(chat_message("user", Value::text(&request)));
     Some(Value::list(messages))
 }

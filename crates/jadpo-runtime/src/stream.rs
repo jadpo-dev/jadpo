@@ -747,7 +747,7 @@ async fn opened(
                 Streamed::Whole(answer) => answer.clone(),
                 Streamed::Coming(_) => Answer::Unknown,
             };
-            crate::ai::log(ctx, &call, url, body, &answer);
+            crate::ai::log(ctx, &call, (url, body, None), &answer);
         }
         let asked = match &streamed {
             Streamed::Whole(Answer::Unavailable | Answer::Unknown) => None,

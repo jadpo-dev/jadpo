@@ -23,26 +23,29 @@ use crate::suggest::nearest;
 use crate::table::Value;
 
 /// What `jadpo ai` does.
-pub const ACTIONS: &[Value] = &[Value {
-    name: "show",
-    description: "Show what a prompt sends, its placeholders in place",
-}];
+pub const ACTIONS: &[Value] = &[
+    Value {
+        name: "show",
+        description: "Show what a prompt sends, its placeholders in place",
+    },
+    Value {
+        name: "record",
+        description: "Keep the model's answer to a prompt for tests",
+    },
+];
 
 pub fn ai(call: &Call) -> Reply {
     let names: Vec<&str> = ACTIONS.iter().map(|action| action.name).collect();
     match call.arguments.first().map(String::as_str) {
         Some("show") => {}
-        Some(later @ ("record" | "usage")) => {
+        Some("record") => return crate::ai_record::record(call),
+        Some("usage") => {
             return Reply::failed(
                 Diagnostic::new(
                     &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`jadpo ai {later}` isn't built yet"),
+                    "`jadpo ai usage` isn't built yet",
                 )
-                .reason(if later == "record" {
-                    "`record` keeps a model's answer to a prompt for tests (area 21); it is decided, and roadmap chunk 5.5v4b builds it. Until then a recording is written by hand beside its prompt, in `recordings/<prompt>/<name>.json`."
-                } else {
-                    "`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and roadmap chunk 5.5v5 builds it."
-                })
+                .reason("`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and roadmap chunk 5.5v5 builds it.")
                 .next("Run `jadpo ai show <prompt>` to see what a prompt sends"),
             );
         }
@@ -67,7 +70,7 @@ pub fn ai(call: &Call) -> Reply {
                     &rule::CLI_AI_ARGUMENTS,
                     "`jadpo ai` needs to know what to do",
                 )
-                .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request.")
+                .reason("`show` shows what a prompt sends: its instructions, the conversation's turns and its request. `record` keeps the model's answer to it for tests.")
                 .next("Run `jadpo ai show <prompt>` with one of the project's prompts"),
             );
         }

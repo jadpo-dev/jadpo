@@ -532,7 +532,7 @@ pub(crate) struct DevLog(pub(crate) Arc<Mutex<LogFile>>);
 impl CallLog for DevLog {
     fn seen(&self, seen: &Seen<'_>) {
         let (ended, code) = ended_words(seen.ended);
-        let line = serde_json::json!({
+        let mut line = serde_json::json!({
             "at": jadpo_std::format_instant(seen.at),
             "connection": seen.connection,
             "operation": seen.operation,
@@ -546,6 +546,9 @@ impl CallLog for DevLog {
             "ended": ended,
             "code": code,
         });
+        if let (Some(values), Some(members)) = (seen.values, line.as_object_mut()) {
+            members.insert("values".to_string(), serde_json::Value::from(values));
+        }
         match self.0.lock() {
             Ok(mut file) => file.keep(line),
             Err(poisoned) => poisoned.into_inner().keep(line),
@@ -582,6 +585,9 @@ pub(crate) struct Entry {
     pub answer: Option<String>,
     pub ended: String,
     pub code: Option<String>,
+    /// For a prompt asked of a model, its values as the code gave them
+    /// (chunk 5.5v4b): what `jadpo ai record` asks with again.
+    pub values: Option<String>,
     /// The line as written, for `--json`.
     pub json: serde_json::Value,
 }
@@ -620,6 +626,7 @@ pub(crate) fn read(root: &Path) -> Vec<Entry> {
                 answer: text("answer"),
                 ended: text("ended").unwrap_or_default(),
                 code: text("code"),
+                values: text("values"),
                 json: json.clone(),
             })
         })
