@@ -25,6 +25,8 @@
 //! - [`smtp`]: SMTP for the email capability (chunk 7.3), upgraded with
 //!   `STARTTLS` through OpenSSL, or in the clear to this machine.
 //! - [`dns`]: `TXT` lookups for `jadpo email check-domain` (chunk 7.3c2).
+//! - [`spamassassin`]: SpamAssassin on this machine, its network tests
+//!   off, for the dev inbox's health score (chunk 7.3c3).
 //! - [`stop_signals`]: SIGTERM and ctrl-c, which stop a server so that it
 //!   drains (chunk 6.7).
 //!
@@ -57,6 +59,7 @@ pub mod http;
 pub mod passkeys;
 mod signals;
 pub mod smtp;
+pub mod spamassassin;
 #[cfg(feature = "test-authenticator")]
 pub mod test_authenticator;
 

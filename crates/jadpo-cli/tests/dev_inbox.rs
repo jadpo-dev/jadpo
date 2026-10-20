@@ -8,7 +8,9 @@
 //!   address, never its words;
 //! - `jadpo email` lists it, shows it with its links and health, opens a
 //!   link in the browser `$BROWSER` names, and clears the inbox;
-//! - the page shows it, and its HTML on its own address.
+//! - the page shows it, and its HTML on its own address;
+//! - SpamAssassin, when installed, scored it as it was caught; otherwise
+//!   its score says SpamAssassin wasn't run (chunk 7.3c3).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -257,6 +259,15 @@ fn a_mail_the_app_sends_in_dev_is_caught_listed_shown_opened_and_cleared() {
         "{shown}"
     );
     assert_eq!(shown["trace"].as_str().map(str::len), Some(32), "{shown}");
+    let installed =
+        jadpo_host_native::spamassassin::find(std::env::var_os("PATH").as_deref()).is_some();
+    let spam = &shown["health"]["spamassassin"];
+    if installed {
+        assert!(spam["ran"].is_boolean(), "{shown}");
+    } else {
+        assert_eq!(spam["ran"], false, "{shown}");
+        assert_eq!(spam["why"], "not_installed", "{shown}");
+    }
     let links = json(&root, &["email", "links", "1"]);
     assert_eq!(links["links"], serde_json::json!(["http://localhost:5173"]));
     // `jadpo dev`'s line names the mail, never its words.
@@ -276,6 +287,13 @@ fn a_mail_the_app_sends_in_dev_is_caught_listed_shown_opened_and_cleared() {
         "{}",
         page.body()
     );
+    if !installed {
+        assert!(
+            page.body().contains("· SpamAssassin not run"),
+            "{}",
+            page.body()
+        );
+    }
     let body = dev.inbox("/mail/mail_1/body");
     assert!(body.body().contains("Hello, Ada."), "{}", body.body());
     assert!(
