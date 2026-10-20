@@ -5,6 +5,10 @@ api app
     authentication api_token
     idempotency required
 
+GET /app/openapi.json
+    generated openapi
+    status 200
+
 GET /app/orders
     output List<OrderView>
     status 200

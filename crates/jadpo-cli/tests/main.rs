@@ -47,6 +47,7 @@ mod records;
 mod round_trips;
 mod rule_slice;
 mod schedules;
+mod served_openapi;
 mod settle;
 mod signed;
 mod sql;
