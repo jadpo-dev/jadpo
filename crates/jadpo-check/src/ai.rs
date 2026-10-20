@@ -11,8 +11,10 @@
 //!   the length of every embedding (chunk 5.5v4), `limits:` (chunk 5.5v5)
 //!   and `personal_data: { allowed: }`, the personal-data categories the
 //!   model may be sent (chunk 5.5v5b, [`crate::ai_personal`]).
-//!   `keep_content:` is `toolchain.not_built_yet`. A package's connection fills `ai` through
-//!   its `provides/ai.jadpo` (chunk 5.5v3b, [`crate::ai_mapping`]).
+//!   `keep_content:` is `toolchain.not_built_yet`. A package's connection
+//!   fills `ai` through its `provides/ai.jadpo` (chunks 5.5v3b and 5.5v7,
+//!   [`crate::ai_mapping`]); `prices:` sets a model's price over its
+//!   package's (chunk 5.5v7).
 //! - [`schema`]: the JSON Schema a model is asked to answer a type in,
 //!   the one OpenAPI writes for it with each field's `///` description,
 //!   whole: the runtime cuts it to what a provider enforces.
@@ -80,6 +82,8 @@ pub struct AiSettings {
     /// `personal_data: { allowed: }` (chunk 5.5v5b): the personal-data
     /// categories the model may be sent, none when it is left out.
     pub allowed: Vec<String>,
+    /// `prices:`, the prices it sets for its models (chunk 5.5v7).
+    pub prices: Vec<crate::ai_limits::PriceRead>,
     pub problems: Vec<Diagnostic>,
 }
 
@@ -305,13 +309,23 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     );
                     continue;
                 }
+                if word == jadpo_std::ai::PRICES && given.insert(word.clone()) {
+                    out.prices = crate::ai_limits::prices(
+                        db,
+                        project,
+                        &found.path,
+                        &entry,
+                        &mut out.problems,
+                    );
+                    continue;
+                }
                 if !jadpo_std::ai::KEYS.contains(&word.as_str()) && word != jadpo_std::ai::LIMITS {
                     let near = nearest(
                         &word,
                         jadpo_std::ai::KEYS
                             .iter()
                             .copied()
-                            .chain([jadpo_std::ai::LIMITS])
+                            .chain([jadpo_std::ai::LIMITS, jadpo_std::ai::PRICES])
                             .chain(jadpo_std::ai::LATER_KEYS.iter().map(|(key, _)| *key)),
                     );
                     let mut problem = invalid(
@@ -513,6 +527,28 @@ pub fn settings(db: &dyn Db, project: Project) -> AiSettings {
                     );
                 }
                 out.models = read;
+            }
+            // Each price is for a model `models:` names.
+            for price in &out.prices {
+                if !out.models.iter().any(|(name, _)| *name == price.model) {
+                    let names: Vec<String> = out
+                        .models
+                        .iter()
+                        .map(|(name, _)| format!("`{name}`"))
+                        .collect();
+                    out.problems.push(
+                        invalid(
+                            format!("`{}` isn't a model `models:` names", price.model),
+                            price.at.clone(),
+                            "no such model",
+                        )
+                        .reason("`prices:` sets a price for a model the application asks, by its name in `models:`.")
+                        .next(match names.is_empty() {
+                            true => "Name a model of `models:`".to_string(),
+                            false => format!("Name one of {}", crate::and_list(&names)),
+                        }),
+                    );
+                }
             }
             if !given.contains(jadpo_std::ai::LIMITS) {
                 out.limits = crate::ai_limits::read(

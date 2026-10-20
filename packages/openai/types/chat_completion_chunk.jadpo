@@ -1,0 +1,7 @@
+/// One chunk of a streamed chat completion, a server-sent event's data.
+public type ChatCompletionChunk = Object {
+    id: Text
+    model: Text
+    choices: List<ChatCompletionChunkChoice>
+    usage: CompletionUsage?
+}

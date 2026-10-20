@@ -330,3 +330,137 @@ fn missing(span: Span, title: &str, label: &str, next: &str) -> Diagnostic {
         .reason("Nothing an application asks a model is unlimited: `per_day: { tokens: }` caps the day's tokens, so a loop, or a prompt an injection makes run on, can't spend without end.")
         .next(next.to_string())
 }
+
+/// One model's price as `ai: { prices: }` sets it (chunk 5.5v7): the
+/// `Money` settings its price per million input, cached and output
+/// tokens are read from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PriceRead {
+    /// The model's name in `models:`, and where it is written.
+    pub model: String,
+    pub at: Span,
+    pub input: String,
+    pub cached: Option<String>,
+    pub output: String,
+}
+
+/// The keys each model's price under `prices:` takes.
+const PRICE_KEYS: [&str; 3] = ["input", "cached", "output"];
+
+/// `ai: { prices: { <model>: { input: cached: output: } } }` (area 21,
+/// question 7; chunk 5.5v7): each a model `models:` names, its prices
+/// `Money` settings, `input:` and `output:` required.
+pub(crate) fn prices(
+    db: &dyn Db,
+    project: Project,
+    path: &str,
+    member: &ast::Member,
+    out: &mut Vec<Diagnostic>,
+) -> Vec<PriceRead> {
+    let shape = "Write `prices: { default: { input: config.<name>  cached: config.<name>  output: config.<name> } }`, each a `Money` setting giving the price per million tokens";
+    let reason = "`prices:` sets what a model costs per million tokens, overriding its package's table for the day's estimated cost: each model by its name in `models:`, its `input:` and `output:` price, and its `cached:` price where it differs from the input's, each a `Money` setting.";
+    let Some(block) = member.block() else {
+        out.push(
+            Diagnostic::new(&rule::AI_SETTINGS_INVALID, "`prices:` holds no block")
+                .at(node_span(path, member.syntax()), "not a block")
+                .reason(reason)
+                .next(shape),
+        );
+        return Vec::new();
+    };
+    let mut read = Vec::new();
+    for (model, entry) in tree::members(Some(block)) {
+        let name = name_text(&model).unwrap_or_default();
+        let at = node_span(path, model.syntax());
+        let mut given: Vec<(String, String)> = Vec::new();
+        let mut ok = entry.block().is_some();
+        for (key, inner) in tree::members(entry.block()) {
+            let word = name_text(&key).unwrap_or_default();
+            let span = node_span(path, inner.syntax());
+            if !PRICE_KEYS.contains(&word.as_str()) {
+                ok = false;
+                let next = match nearest(&word, PRICE_KEYS.iter().copied()) {
+                    Some(near) => format!("Use `{near}:` instead of `{word}:`"),
+                    None => format!("Remove `{word}:`"),
+                };
+                out.push(
+                    Diagnostic::new(
+                        &rule::AI_SETTINGS_INVALID,
+                        format!("`{name}`'s price has no `{word}:`"),
+                    )
+                    .at(node_span(path, key.syntax()), "not a price")
+                    .reason(reason)
+                    .next(next),
+                );
+                continue;
+            }
+            match money(db, project, &inner, &word, span, out) {
+                Some(setting) => given.push((word, setting)),
+                None => ok = false,
+            }
+        }
+        let find = |key: &str| {
+            given
+                .iter()
+                .find(|(word, _)| word == key)
+                .map(|(_, setting)| setting.clone())
+        };
+        match (find("input"), find("output")) {
+            (Some(input), Some(output)) if ok => read.push(PriceRead {
+                model: name,
+                at,
+                input,
+                cached: find("cached"),
+                output,
+            }),
+            (input, output) if ok || entry.block().is_none() => {
+                let missing = if input.is_none() { "input" } else { "output" };
+                let _ = output;
+                out.push(
+                    Diagnostic::new(
+                        &rule::AI_SETTINGS_INVALID,
+                        format!("`{name}`'s price doesn't give `{missing}:`"),
+                    )
+                    .at(at, format!("no `{missing}:`"))
+                    .reason(reason)
+                    .next(shape),
+                );
+            }
+            _ => {}
+        }
+    }
+    read
+}
+
+/// A price under `prices:`: a `Money` setting.
+fn money(
+    db: &dyn Db,
+    project: Project,
+    entry: &ast::Member,
+    word: &str,
+    span: Span,
+    out: &mut Vec<Diagnostic>,
+) -> Option<String> {
+    let lookup = Lookup::new(db, project);
+    let Some(field) = entry.value().as_ref().and_then(crate::ai::reads_setting) else {
+        out.push(
+            invalid(format!("`{word}:` must be a setting"), span, "not a setting")
+                .next("Declare `<name>: Money { default: \"USD 0.40\" }` in `config.jadpo`, and write `config.<name>` here"),
+        );
+        return None;
+    };
+    // An unknown setting is reported where it is read.
+    let setting = config(db, project).setting(&field)?;
+    if lookup.base_prim(&setting.ty) != Some(Prim::Money) {
+        out.push(
+            invalid(
+                format!("`{word}:` must be an amount of money"),
+                span,
+                &format!("`{field}` is `{}`", setting.ty),
+            )
+            .next(format!("Declare `{field}: Money` in `config.jadpo`")),
+        );
+        return None;
+    }
+    Some(field)
+}

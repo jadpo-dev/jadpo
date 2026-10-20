@@ -1,0 +1,7 @@
+/// Anthropic: the app's models asked through Anthropic's Claude API, as
+/// the `ai` capability: typed answers and streamed answers. Anthropic has
+/// no embeddings endpoint, so it doesn't embed.
+package Anthropic.v1 {
+    licence: Licence.apache_2_0
+    jadpo: "1.0"
+}

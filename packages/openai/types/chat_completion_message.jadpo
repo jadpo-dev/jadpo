@@ -1,0 +1,7 @@
+/// One message of the conversation: who wrote it and what it says.
+public type ChatCompletionMessage = Object {
+    role: Text {
+        max_length: 20
+    }
+    content: Text
+}

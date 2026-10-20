@@ -1,0 +1,9 @@
+/// What an event adds: a `text_delta`'s text, or, in `message_delta`, why
+/// the model stopped.
+public type MessageStreamDelta = Object {
+    kind: Text? {
+        wire_name: "type"
+    }
+    text: Text?
+    stop_reason: Text?
+}

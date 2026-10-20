@@ -79,6 +79,12 @@ pub struct Reach {
     pub runs_written: bool,
     /// Its credential scheme, `bearer`, when it sends one.
     pub credential: Option<String>,
+    /// `credential_header:`, the header `CredentialScheme.header` sends the
+    /// credential in (chunk 5.5v7).
+    pub credential_header: Option<String>,
+    /// `headers:`, the fixed headers every request carries, each its name
+    /// and value (chunk 5.5v7).
+    pub headers: Vec<(String, String)>,
     /// Each setting it declares, by name, with its type.
     pub settings: Vec<(String, Prim)>,
     /// `protocol:`'s variant, `json_http`.
@@ -351,12 +357,18 @@ fn asked_prompts(db: &dyn Db, project: Project, connection: &PackageConnection) 
     if crate::ai::settings(db, project).named.as_deref() != Some(connection.name.as_str()) {
         return Vec::new();
     }
-    crate::prompts::analysis(db, project)
+    let mut out: Vec<String> = crate::prompts::analysis(db, project)
         .prompts
         .iter()
         .filter(|prompt| prompt.ownership.package().is_none())
         .map(|prompt| prompt.key.clone())
-        .collect()
+        .collect();
+    // Its embeddings, by the operation they are logged as, where its
+    // package maps `embed:` (chunk 5.5v7).
+    if crate::ai_mapping::maps(db, project, &connection.name, "embed") == Some(true) {
+        out.push(jadpo_std::embed::OPERATION.to_string());
+    }
+    out
 }
 
 /// Each name a connection's `sandbox:` lists that is no public operation
@@ -624,6 +636,18 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                         .unwrap_or(&written)
                         .to_string()
                 });
+            }
+            Some("credential_header") => reach.credential_header = text_of(&member),
+            Some("headers") => {
+                if let Some(Const::List(items)) = member.value().as_ref().map(Const::from_expr) {
+                    reach.headers = items
+                        .into_iter()
+                        .filter_map(|item| match item {
+                            Const::Str(line) => crate::packages::header_line(&line),
+                            _ => None,
+                        })
+                        .collect();
+                }
             }
             Some("settings") => {
                 for (setting, inner) in tree::members(member.block()) {

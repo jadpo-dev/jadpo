@@ -1197,6 +1197,8 @@ fn request(
         ("Accept".to_string(), "application/json".to_string()),
         ("user-agent".to_string(), "jadpo".to_string()),
     ];
+    // The package's own fixed headers (chunk 5.5v7), as its API's version.
+    headers.extend(plan.headers.iter().cloned());
     if aws_json {
         // AWS's JSON protocol names the operation in a header, its body
         // always sent (chunk 7.7c).
@@ -1229,6 +1231,12 @@ fn request(
         match scheme {
             CredentialScheme::Bearer => {
                 headers.push(("Authorization".to_string(), format!("Bearer {secret}")));
+            }
+            CredentialScheme::Header => {
+                let Some(name) = plan.credential_header.as_ref() else {
+                    return Err(Unready::Misconfigured);
+                };
+                headers.push((name.clone(), secret.to_string()));
             }
             CredentialScheme::Basic => headers.push((
                 "Authorization".to_string(),

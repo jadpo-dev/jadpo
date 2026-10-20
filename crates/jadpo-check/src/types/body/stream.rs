@@ -195,24 +195,25 @@ impl Body<'_> {
             );
             ok = false;
         } else if let Some(connection) = &settings.connection
-            && !crate::ai::model_connections(self.db, self.project)
-                .list
-                .iter()
-                .any(|found| found.name == *connection)
+            && crate::ai_mapping::maps(self.db, self.project, connection, "stream") == Some(false)
         {
-            // A package fills `ai` through its `provide ai { generate: }`;
-            // its `stream:` mapping comes later (area 21, "How a provider
-            // fills it").
+            // A package's `provide ai` that maps no `stream:` (chunk 5.5v7).
+            let package = crate::connections::package_connections(self.db, self.project)
+                .connections
+                .iter()
+                .find(|known| known.name == *connection)
+                .map(|known| known.package.clone())
+                .unwrap_or_default();
             self.out.push(
                 Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    format!("`{written}` through a package's connection isn't built yet"),
+                    &rule::AI_SETTINGS_INVALID,
+                    format!("`{connection}` doesn't stream"),
                 )
-                .at(span, "decided, not built")
+                .at(span, "no `stream:` to ask through")
                 .reason(format!(
-                    "`{connection}` is a package's, and a package maps `ai.stream` with `provide ai {{ stream: }}`, which roadmap chunk 5.5v7 builds; this compiler streams only through `Driver.openai_compatible`."
+                    "`ai: {{ connection: }}` names `{connection}`, and its package `{package}` maps no `stream:` in its `provides/ai.jadpo`, so it has no streamed answer to give."
                 ))
-                .next("Stream through a connection with `driver: Driver.openai_compatible`, or ask with `ai.generate` for now"),
+                .next("Name a connection in `ai:` whose package maps `stream:`, or ask with `ai.generate`"),
             );
             ok = false;
         } else if let Some((at, model)) = &options.model

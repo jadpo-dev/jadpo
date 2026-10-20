@@ -33,6 +33,7 @@ mod layout;
 pub mod locales;
 pub mod lookups;
 pub mod mail;
+pub mod mail_health;
 mod naming;
 mod not_value;
 pub mod package_code;

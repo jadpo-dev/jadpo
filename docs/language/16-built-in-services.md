@@ -8,6 +8,7 @@ rules:
   - email.attachment_limit
   - email.connection_required
   - email.field_unused
+  - email.health_problem
   - email.partial_invalid
   - email.sent_context
   - email.settings_invalid
@@ -749,8 +750,9 @@ OpenTelemetry stays the transport; only what is sent changes.
 > Built in chunk 7.3: emails, their templates and the shared layout,
 > `email:`, sending after commit through the SMTP driver, attachments and
 > parking. Built in chunk 7.3c: a mail package as the connection,
-> partials and `email.sent`. The dev inbox and the health score come in
-> chunk 7.3c2.
+> partials and `email.sent`. Built in chunk 7.3c2: the dev inbox, `jadpo
+> email` and the health score, with `jadpo check`'s `email.health_problem`
+> and `jadpo email check-domain`.
 
 Applications send a handful of messages: confirm your address, reset your
 password, an invoice. A message is a type, `type X = EmailMessage`, whose fields are
@@ -1014,11 +1016,9 @@ and its delivery record alone says it went.
   `text` (`none` without that template), every link in it (`links`) and
   its attachments' file names (`attachments`). Only a test reads it
   (`email.sent_context`), and the mail is caught whole whichever
-  connection `email:` names, a mail package's included. Until the dev
-  inbox (chunk 7.3c2), `jadpo dev` gives an SMTP connection no driver, so
-  an email's delivery there fails as `misconfigured`, and a mail
-  package's call is faked as any provider call is; nothing leaves the
-  machine.
+  connection `email:` names, a mail package's included. `jadpo dev`
+  catches it the same way, in the dev inbox (chunk 7.3c2); nothing leaves
+  the machine.
 
 ```jadpo check project=email-welcome file=domains/accounts/actions/sign_up.test.jadpo
 use accounts/entities { User }
@@ -1033,9 +1033,10 @@ test "signing up welcomes the new user, with a link to sign in" {
 }
 ```
 - **`jadpo dev` catches every email in a local inbox** (Richard, 2026-10-13;
-  chunk 7.3c2).
-  Nothing leaves the machine. A person opens it in the browser from the dev
-  console (area 17): each mail rendered as HTML and as text, in its locale,
+  built in chunk 7.3c2, "Chosen in chunk 7.3c2" below).
+  Nothing leaves the machine. A person opens it in the browser, on the
+  page `jadpo dev` serves beside the app (the dev console's, area 17, once
+  it is built): each mail rendered as HTML and as text, in its locale,
   with its links working (a magic link opens the frontend's page, which
   signs in locally) and a link to
   the trace of the request that sent it. An agent uses the same inbox from
@@ -1045,13 +1046,14 @@ test "signing up welcomes the new user, with a link to sign in" {
   it. Phoenix's dev mailbox and Mailpit offer the browser half; the
   agent commands and the trace link are new.
 - **A mail health score: an early indication, not a guarantee** (Richard,
-  2026-10-13; chunk 7.3c2). Every mail in the dev inbox, and `jadpo email show <id>`,
+  2026-10-13; built in chunk 7.3c2 but SpamAssassin's rules, which come in
+  chunk 7.3c3). Every mail in the dev inbox, and `jadpo email show <id>`,
   shows what Jadpo's own checks found and how to fix each: no plain-text
   part, image-only content, broken HTML, links that are not absolute HTTPS,
   link shorteners, an all-capitals subject, a missing unsubscribe header on
   bulk mail, more than 102 KB (Gmail clips it). `jadpo check` warns about
   templates that would fail (a declinable error from chunk 5.4b, area 1's
-  question 11). When SpamAssassin is installed its open rules
+  question 11: [`email.health_problem`](#email-health-problem)). When SpamAssassin is installed its open rules
   are added. `jadpo email check-domain` compares the sending domain's SPF,
   DKIM and DMARC records with what the mail connection needs. What it does
   not do, said on every screen that shows a score: it cannot predict whether
@@ -2038,6 +2040,79 @@ error: `WelcomeEmail.referral_code` is written nowhere
 check failed: 1 error, 3 files
 ```
 
+### `email.health_problem`
+
+The mail health score's checks, run on a template as written wherever its
+own text answers them: an `.html` with no `.txt` beside it, a link written
+out that isn't absolute HTTPS or goes through a shortener, HTML that
+doesn't parse cleanly, images with no text, a subject worded in capitals,
+or a template over Gmail's 102 KB clip. What a template writes from its
+fields is scored once it is rendered, in the dev inbox. The score is an
+early indication, so a `decline` line above the email's or partial's type
+keeps a mail that breaks a rule on purpose:
+
+```jadpo check project=e-email-health-problem file=app.jadpo hidden
+application {
+    display_name: "Notes"
+    connections: {
+        mail: {
+            driver: Driver.smtp
+            host: "smtp.notes.example"
+        }
+    }
+    email: {
+        connection: mail
+        from: "hello@notes.example"
+    }
+    events: {
+        store: main
+    }
+}
+
+locales {
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}
+```
+
+```jadpo check project=e-email-health-problem file=domains/accounts/translations/en_gb.jadpo hidden
+translations {
+    welcome_email: "Welcome, {name}"
+}
+```
+
+```jadpo check project=e-email-health-problem file=domains/accounts/emails/welcome_email.txt hidden
+Hello, {{ name }}.
+
+Start writing: https://notes.example/start
+```
+
+```jadpo check project=e-email-health-problem file=domains/accounts/emails/welcome_email.html
+<p>Hello, {{ name }}.</p>
+<p><a href="http://notes.example/start">Start writing</a></p>
+```
+
+```jadpo check project=e-email-health-problem file=domains/accounts/emails/welcome_email.jadpo expect=email.health_problem
+/// Sent once someone signs up.
+type WelcomeEmail = EmailMessage {
+    name: Text
+}
+```
+
+```text output
+error: `WelcomeEmail` has a link that isn't absolute HTTPS
+ --> domains/accounts/emails/welcome_email.jadpo:2:6
+  |
+2 | type WelcomeEmail = EmailMessage {
+  |      ^^^^^^^^^^^^ link in welcome_email.html
+  reason: `welcome_email.html` links to `http://notes.example/start`; filters distrust plain `http://`, and the reader's click goes unencrypted.
+  next: Link to a full `https://` address, or write `decline email.health_problem: "<why>"` above it if this is deliberate (agent)
+  rule: email.health_problem
+  help: docs/language/16-built-in-services.html#email-health-problem
+
+check failed: 1 error, 3 files
+```
+
 ### `email.settings_invalid`
 
 `email: { connection: from: }` names the connection every email goes
@@ -2352,8 +2427,10 @@ in the app's layout ("Chosen in chunk 7.3b" below); in chunk 7.3b2: its
 levels 4 and 5, the app's own email filled with the link and the code
 and the app's own sending given them ("Chosen in chunk 7.3b2" below); in
 chunk 7.3c: a mail package as the connection, partials and `email.sent`
-("Chosen in chunk 7.3c" below); the dev inbox and the health score come
-with chunk 7.3c2. Default rate limits came with routes (chunk
+("Chosen in chunk 7.3c" below); in chunk 7.3c2: the dev inbox, `jadpo
+email`, the health score, `email.health_problem` and `jadpo email
+check-domain` ("Chosen in chunk 7.3c2" below), SpamAssassin's rules coming
+in chunk 7.3c3. Default rate limits came with routes (chunk
 4.1); flags, the rest of files (multipart slots, and image variants and
 scanning when an app needs them),
 audit, search, documents, bot protection, the `telemetry:` section and
@@ -2378,6 +2455,80 @@ the S3 driver, a deployable's disk driver at its `path:` and
 `free_space_floor:`, and checking a stored file against its field's
 `max_size:`, `types:` and `store:` as it is written come with the rest
 of the files capability.
+
+### Chosen in chunk 7.3c2
+
+What "Email" leaves to the build of the dev inbox and the health score,
+each the most conservative reading (designed with the design skills,
+2026-10-20):
+
+- **One catcher, kept on disk.** `jadpo dev` gives the connection
+  `email:` names the catching driver a test's host gives it, so each
+  message is handed over whole, a mail package's included, and kept in
+  `build/dev/inbox/`, a JSON file each with its attachments' bytes beside
+  it, written whole then renamed. `jadpo email` reads it from another
+  terminal, while `jadpo dev` runs or after. The last 200 are kept; ids
+  are `mail_<n>`, never given twice, a clear included. A mail package's
+  other operations still go to its fake. An SMTP connection's settings
+  that nothing gives get stand-ins, as a provider's do, since its server
+  is never reached.
+- **Codes and links only in the inbox.** A mail is kept whole, its
+  sign-in link and code included, which development needs; `jadpo dev`'s
+  line for a caught mail names its id, its email and its address, never
+  its subject or words, and the call log never sees it.
+- **The page.** `jadpo dev` serves it on `127.0.0.1`, on the port after
+  the app's, or one the system chooses when that is taken, its address on
+  the ready screen once the app sends mail; it answers only requests
+  addressed to `localhost`. Read-only, as the console is (area 17): the
+  mail newest first, and the one chosen with its HTML in a sandboxed frame
+  on white (its links open a new tab), its text, its links numbered with
+  the `jadpo email open` command for each, its attachments and its health;
+  it looks for new mail every two seconds. It shows the id of the trace
+  that sent each mail; the link to the trace comes with `jadpo trace`
+  (area 17).
+- **`jadpo email`.** `list` (the default) oldest first, `--to` narrowing it;
+  `show <id>` with the text part, or the HTML with `--html` or when there
+  is no text; `links <id>` numbered from 1; `open <id> <link>`, by number
+  or written out, opening only `http://` and `https://` links, in
+  `$BROWSER` or the system's opener; `clear`. An id is `mail_3` or `3`.
+- **The score's checks.** Seven, deterministic, each with its fix: no
+  plain-text part beside HTML; images with fewer than 20 characters of
+  text; HTML that doesn't parse cleanly (an end tag that closes nothing or
+  closes another element first, an element never closed but those HTML
+  lets a writer leave open, a tag never finished); a link, every `href`
+  and every web address in the text, that isn't absolute `https://`
+  (`mailto:`, `tel:` and `sms:` pass, and in the dev inbox so do links to
+  this machine); a link through a shared shortener, from a fixed list; a
+  subject of four or more letters with a case, none lower case; HTML over
+  102 KB. A score is the problems found and "N of 7 checks pass", with the
+  note that it can't predict inbox placement. The unsubscribe header's
+  check waits for bulk mail, which no email is yet; SpamAssassin's rules
+  come in chunk 7.3c3.
+- **What `jadpo check` scores** (`email.health_problem`, declinable on
+  the email's or partial's type) is what a template's own text answers:
+  an `.html` with no `.txt`; a link written out whole, not built inside
+  `{{ }}`, this machine included; the HTML's structure with its `{{ }}`
+  left out, only in a template with no `{{ if }}`, since a condition may
+  open an element in one branch and close it in another; an email's own
+  HTML with images and neither text nor a value written as text; a
+  template over 102 KB; a subject whose words, as a locale writes them,
+  are in capitals. What a template writes from its fields is scored once
+  rendered, in the dev inbox. One `decline` above the type answers every
+  finding there, as area 1 says a decline covers its rule on its
+  declaration (the build had let it answer one finding only).
+- **`jadpo email check-domain`** reads the domain given, or else
+  `email: { from: }`'s: the address written out, or the setting's value
+  from the environment, `.env.local` or its default. SPF at the domain:
+  one `v=spf1` record, ending `-all` or `~all` (`+all` fails; none, or
+  `?all`, is an alert), its own terms needing at most 10 lookups. DKIM at
+  `<selector>._domainkey.<domain>`, only with `--selector`: a key with a
+  `p=` that isn't empty. DMARC at `_dmarc.<domain>`: one `v=DMARC1`
+  record, `p=quarantine` or `p=reject` passing, `p=none` an alert. What a
+  provider needs beyond these, its include and its selector, waits for a
+  mail package to declare it. The records are asked of the name server
+  `/etc/resolv.conf` names, over UDP, then TCP when the answer is cut
+  short, behind a seam its tests fake. It exits 0 with its verdicts, and
+  `--json` says whether every record `passed`.
 
 ### Chosen in chunk 7.3c
 
@@ -3118,3 +3269,5 @@ leave to the build of reading gzip, each the most conservative reading:
 | Partials as built (chunk 7.3c) | A partial's `locale` goes with it from the template that includes it; included by its name in snake case; a domain's partials only its own emails', shared ones everyone's; `.html` from HTML, `.txt` from text; nesting allowed, cycles refused (`email.partial_invalid`); no email in `shared/emails/` (decided for Richard) | 2026-10-20 |
 | `email.sent` (chunk 7.3c) | Only in tests (`email.sent_context`): a `List<SentEmail>` of `to`, `from`, `subject`, `html`, `text`, `links` and attachment names; mail through a mail package caught the same way (decided for Richard) | 2026-10-20 |
 | Mail package mapping (chunk 7.3c) | `provide email { send: { call: input: receipt: failures: } limits: { attachments: } }`, input keys the input's field names; every part of the message and the attachments given; unmapped failures stay the package's; `File` fields need `max_size:` through a package, their sum within the limit (`email.attachment_limit`); Resend the second connection (decided for Richard) | 2026-10-20 |
+| Dev inbox (chunk 7.3c2) | The test's catching driver for `email:`'s connection in `jadpo dev`, each mail kept whole in `build/dev/inbox/` (last 200, ids never reused), codes and links only there; a read-only page on `127.0.0.1` at the app's port plus one, answering `localhost` only, the mail's HTML sandboxed; `jadpo email list/show/links/open/clear`; the trace id shown until `jadpo trace` links it (decided for Richard) | 2026-10-20 |
+| Health score (chunk 7.3c2) | Seven checks with fixes and "N of 7 checks pass", the inbox-placement caveat on every score; `email.health_problem` on templates where their own text answers a check, declinable on the type; `check-domain` reads SPF, DKIM with `--selector` and DMARC with generic rules, provider-specific needs waiting for packages to declare them; the unsubscribe check waits for bulk mail and SpamAssassin's rules for chunk 7.3c3 (decided for Richard) | 2026-10-20 |

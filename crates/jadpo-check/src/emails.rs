@@ -939,6 +939,7 @@ pub fn email_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     out.extend(unused_partial_fields(db, project));
     out.extend(crate::mail::attachment_problems(db, project));
     out.extend(include_cycles(db, project));
+    out.extend(crate::mail_health::health_problems(db, project));
     out.extend(unsent(db, project));
     out
 }

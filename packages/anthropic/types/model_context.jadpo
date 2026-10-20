@@ -1,0 +1,5 @@
+/// A model's context window, in tokens.
+type ModelContext = Object {
+    model: Text
+    tokens: TokenCount
+}

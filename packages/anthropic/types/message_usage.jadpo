@@ -1,0 +1,8 @@
+/// The tokens a message took: its input apart from the prompt cache's,
+/// its output, and the input read from and written to the cache.
+public type MessageUsage = Object {
+    input_tokens: TokenCount
+    output_tokens: TokenCount
+    cache_read_input_tokens: TokenCount?
+    cache_creation_input_tokens: TokenCount?
+}
