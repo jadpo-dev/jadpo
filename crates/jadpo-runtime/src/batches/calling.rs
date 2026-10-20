@@ -7,7 +7,7 @@
 //! `calls`), each item is a batch of its own, run as a subscriber's
 //! delivery is:
 //!
-//! - **Where the run is** is read in a statement of its own ([`PEEK`]),
+//! - **The run's place** is read in a statement of its own ([`PEEK`]),
 //!   locking nothing.
 //! - **The item** is read in a snapshot: a query's next page of one item,
 //!   giving that item's own cursor ([`crate::read::PageCursor::Last`]), or
@@ -50,7 +50,7 @@ use super::BatchStart;
 /// Where a run is, read on its own before an item's batch opens, locking
 /// nothing: the batch holds the run to it under [`LOCK`] once the item's
 /// calls have answered.
-const PEEK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
+pub(crate) const PEEK: &str = "SELECT \"state\", \"position\", \"read_all\", \"items_done\", \"problems\", EXISTS (SELECT 1 FROM \"jadpo_batch_cancels\" WHERE \"run_id\" = $1) FROM \"jadpo_batch_runs\" WHERE \"id\" = $1";
 
 /// The scope a run's calls' keys are derived in (area 11, "Calling").
 const SCOPE: &str = "batch";

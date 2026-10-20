@@ -2028,12 +2028,15 @@ entity PriceSheet {
 ```jadpo check project=write-after-call file=domains/bakery/actions/recheck_prices.jadpo migrate=initial
 use app { sheets }
 use bakery/entities { PriceSheet }
-use bakery/failures { SheetNotKept }
 use bakery/types { SheetText }
+use bakery/failures { SheetNotKept }
 
 /// Keeps the sheet a supplier sent again, then marks it checked: the
 /// call first, the write after it.
-action recheck_prices(price_sheet: PriceSheet, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+action recheck_prices(
+    price_sheet: PriceSheet,
+    sheet_text: SheetText
+) fails SheetNotKept -> PriceSheet {
     var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
         storage_full: SheetNotKept
     }
@@ -3846,12 +3849,15 @@ type SheetNotKept = Failure {
 ```jadpo check project=e-write-before-call file=domains/bakery/actions/recheck_prices.jadpo expect=data.write_before_call
 use app { sheets }
 use bakery/entities { PriceSheet }
-use bakery/failures { SheetNotKept }
 use bakery/types { SheetText }
+use bakery/failures { SheetNotKept }
 
 /// Marks a supplier's price sheet checked, then keeps the sheet they sent
 /// again: the write comes before the call.
-action recheck_prices(price_sheet: PriceSheet, sheet_text: SheetText) fails SheetNotKept -> PriceSheet {
+action recheck_prices(
+    price_sheet: PriceSheet,
+    sheet_text: SheetText
+) fails SheetNotKept -> PriceSheet {
     var checked: PriceSheet = PriceSheet.update(price_sheet) {
         set: {
             checked: true
@@ -3870,11 +3876,11 @@ action recheck_prices(price_sheet: PriceSheet, sheet_text: SheetText) fails Shee
 
 ```text output
 error: `PriceSheet.update` writes before the call to `sheets.put`
- --> domains/bakery/actions/recheck_prices.jadpo:9:31
+ --> domains/bakery/actions/recheck_prices.jadpo:12:31
    |
- 9 |     var checked: PriceSheet = PriceSheet.update(price_sheet) {
+12 |     var checked: PriceSheet = PriceSheet.update(price_sheet) {
    |                               ^^^^^^^^^^^^^^^^^ writes here
-14 |     var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
+17 |     var sheet: File = attempt sheets.put(encoding.to_utf8(sheet_text), FileType.csv) {
    |                               ---------- the call it must follow
   reason: No transaction is open while an outside call is out, so an action writes only after its last call; run as written, `sheets.put` would be refused.
   next: Move `PriceSheet.update` after `sheets.put` (agent)

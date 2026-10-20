@@ -550,7 +550,7 @@ action stop_sweep(shelf_run: BatchRun) -> Unit {
 - **Items that make outside calls** (chosen in chunk 7.4b). When
   `each:`'s action makes outside calls, itself or through an action it
   calls, each item is a batch of its own, as "How a run goes" decides, so
-  no call goes out while a transaction is open (area 6). Where the run is
+  no call goes out while a transaction is open (area 6). The run's place
   is read in a statement of its own, locking nothing; the item is read in
   a snapshot (a query's page of one item, or a file's next row) that its
   first call closes; its action runs as the system, as a subscriber's

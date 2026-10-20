@@ -36,7 +36,7 @@
 //! query's pages into a stored file, each page's rows put in the store
 //! once the page's transaction has closed ([`export`]).
 
-mod calling;
+pub(crate) mod calling;
 pub(crate) mod export;
 pub(crate) mod file;
 
