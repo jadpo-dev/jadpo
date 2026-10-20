@@ -84,6 +84,9 @@ pub enum Values {
     Query,
     /// The name of one of the project's schedules.
     Schedule,
+    /// A delivery's or schedule run's id, which nothing completes: they
+    /// are in a database, not the project (chunk 6.12).
+    Id,
 }
 
 #[derive(Debug)]
@@ -801,7 +804,7 @@ pub static COMMANDS: &[Command] = &[
         description: "Lists the deliveries of events to subscribers, and the schedules' runs, that need \
                       an operator (area 12): those that failed, and those whose outcome is unknown, \
                       newest first, 20 a page; --state lists those pending, running, dismissed or \
-                      cancelled instead. `retry` delivers a failed delivery again on the app's next \
+                      cancelled instead. `retry` sends a failed delivery again on the app's next \
                       tick, with a fresh retry budget, or asks the app's tick to run a schedule whose \
                       latest run failed and waits for it. `dismiss` sets a failed one aside, `cancel` \
                       stops a pending one, and `resolve` settles one whose outcome is unknown, once \
@@ -821,7 +824,7 @@ pub static COMMANDS: &[Command] = &[
                 name: "id",
                 description: "The delivery's or schedule run's id, as the list shows it",
                 required: false,
-                values: Values::Path,
+                values: Values::Id,
             },
         ],
         flags: &[
@@ -840,7 +843,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--done",
                 value: None,
-                description: "Resolve it as done: the outside call happened",
+                description: "Resolve as done: the outside call happened",
                 values: &[],
             },
             Flag {
@@ -858,7 +861,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--store",
                 value: Some("name"),
-                description: "Which store --url's database is, when there are several",
+                description: "The store --url's database is",
                 values: &[],
             },
         ],

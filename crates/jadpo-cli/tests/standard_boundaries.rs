@@ -700,6 +700,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "writes a schedule's own times (due, started, a lease's end) in an alert's log event, never an app's value (chunk 6.2b)",
     ),
     (
+        "crates/jadpo-cli/src/deliveries.rs",
+        "shows a delivery's and a schedule run's own times (tried, due, acted on) to an operator, never an app's value (chunk 6.12)",
+    ),
+    (
         "crates/jadpo-cli/src/schedules.rs",
         "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
     ),

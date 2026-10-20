@@ -84,9 +84,12 @@ fn argument_row(argument: &Argument) -> Row {
     );
     match &argument.values {
         Values::Fixed(values) => row.extra(values.iter().map(|value| value.name)),
-        Values::Commands | Values::Path | Values::TestPath | Values::Query | Values::Schedule => {
-            row
-        }
+        Values::Commands
+        | Values::Path
+        | Values::TestPath
+        | Values::Query
+        | Values::Schedule
+        | Values::Id => row,
     }
 }
 
@@ -134,6 +137,7 @@ fn argument_json(argument: &Argument) -> Json {
         Values::Path | Values::TestPath => ("path", Json::array(Vec::<Json>::new())),
         Values::Query => ("query", Json::array(Vec::<Json>::new())),
         Values::Schedule => ("schedule", Json::array(Vec::<Json>::new())),
+        Values::Id => ("id", Json::array(Vec::<Json>::new())),
     };
     Json::object([
         ("name", argument.name.into()),

@@ -6,7 +6,7 @@
 //! - `jadpo deliveries` (or `list`) lists those that failed or whose
 //!   outcome is unknown, newest first, 20 a page; `--state` lists those
 //!   pending, running, dismissed or cancelled instead.
-//! - `retry <id>` delivers a failed delivery again on the app's next
+//! - `retry <id>` sends a failed delivery again on the app's next
 //!   tick, with a fresh retry budget, or asks the app's tick to run a
 //!   schedule whose latest run failed, waiting for it as `jadpo schedules
 //!   run` does; `dismiss <id>` sets a failed one aside; `cancel <id>`
@@ -166,8 +166,8 @@ pub fn deliveries(call: &Call) -> Reply {
                 } else {
                     "cancel"
                 };
-                if let Some(reply) = only_for(call, "--done", name)
-                    .or_else(|| only_for(call, "--not-done", name))
+                if let Some(reply) =
+                    only_for(call, "--done", name).or_else(|| only_for(call, "--not-done", name))
                 {
                     return reply;
                 }
@@ -243,8 +243,7 @@ fn id_suffix(written: &str) -> Result<String, Reply> {
         .filter(|c| *c != '-')
         .collect::<String>()
         .to_ascii_lowercase();
-    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_hexdigit()) || digits.len() > 32
-    {
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_hexdigit()) || digits.len() > 32 {
         return Err(Reply::failed(arguments(
             format!("`{written}` isn't an id"),
             "An id is the hex digits the list shows, such as `4fa2c09e`.".to_string(),
@@ -320,7 +319,9 @@ impl Project {
                         let names: Vec<String> =
                             self.stores.iter().map(|(name, _)| name.clone()).collect();
                         return Err(Reply::failed(arguments(
-                            format!("`{store}` isn't a store that keeps deliveries or schedule runs"),
+                            format!(
+                                "`{store}` isn't a store that keeps deliveries or schedule runs"
+                            ),
                             format!("They are kept in {}.", crate::run::both(&quoted(&names))),
                             format!("Use {}", crate::run::either(&quoted(&names))),
                         )));
@@ -584,11 +585,15 @@ fn item_json(project: &Project, store: &str, item: &Item) -> Json {
                 Kind::Delivery => Json::Null,
             },
         ),
-        ("event", item.event.as_deref().map_or(Json::Null, Json::from)),
+        (
+            "event",
+            item.event.as_deref().map_or(Json::Null, Json::from),
+        ),
         ("state", Json::from(item.state.as_str())),
         (
             "attempts",
-            item.attempts.map_or(Json::Null, |n| Json::from(i64::from(n))),
+            item.attempts
+                .map_or(Json::Null, |n| Json::from(i64::from(n))),
         ),
         ("lastTriedAt", instant(item.last_tried)),
         ("nextAttemptAt", instant(item.next_attempt)),
@@ -732,13 +737,16 @@ fn list(call: &Call, project: &Project) -> Reply {
         .take(PAGE as usize)
         .collect();
     let data = Json::object([
-        (
-            "state",
-            state.as_deref().map_or(Json::Null, Json::from),
-        ),
+        ("state", state.as_deref().map_or(Json::Null, Json::from)),
         ("page", Json::from(i64::try_from(page).unwrap_or(i64::MAX))),
-        ("pages", Json::from(i64::try_from(pages).unwrap_or(i64::MAX))),
-        ("total", Json::from(i64::try_from(total).unwrap_or(i64::MAX))),
+        (
+            "pages",
+            Json::from(i64::try_from(pages).unwrap_or(i64::MAX)),
+        ),
+        (
+            "total",
+            Json::from(i64::try_from(total).unwrap_or(i64::MAX)),
+        ),
         (
             "items",
             Json::array(shown.iter().map(|item| {
@@ -765,7 +773,16 @@ fn list(call: &Call, project: &Project) -> Reply {
         ),
     ]);
     Reply::screen(
-        list_screen(project, state.as_deref(), &shown, &counts, total, page, pages, now),
+        list_screen(
+            project,
+            state.as_deref(),
+            &shown,
+            &counts,
+            total,
+            page,
+            pages,
+            now,
+        ),
         data,
     )
 }
@@ -864,17 +881,14 @@ fn list_screen(
             FAILED => Some(match item.kind {
                 Kind::Delivery => (
                     format!("jadpo deliveries retry {id}"),
-                    "delivers it again, once the cause is fixed",
+                    "sends it again, once the cause is fixed",
                 ),
                 Kind::ScheduleRun => (
                     format!("jadpo deliveries retry {id}"),
                     "runs it again, once the cause is fixed",
                 ),
             }),
-            PENDING => Some((
-                format!("jadpo deliveries cancel {id}"),
-                "stops it running",
-            )),
+            PENDING => Some((format!("jadpo deliveries cancel {id}"), "stops it running")),
             _ => None,
         }
     });
@@ -884,7 +898,10 @@ fn list_screen(
             .find(|item| item.state == OUTCOME_UNKNOWN)
             .map(|item| {
                 (
-                    format!("jadpo deliveries resolve {} --done", runtime::short(&item.id)),
+                    format!(
+                        "jadpo deliveries resolve {} --done",
+                        runtime::short(&item.id)
+                    ),
                     "once the provider shows it happened",
                 )
             })
@@ -941,12 +958,15 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
             return Reply::failed(arguments(
                 format!("More than one item has an id ending `{written}`"),
                 format!("They are {}.", crate::run::both(&ids)),
-                format!("Use more of the id, such as `jadpo deliveries {command} {}`", runtime::hex(&many[0].2.id)),
+                format!(
+                    "Use more of the id, such as `jadpo deliveries {command} {}`",
+                    runtime::hex(&many[0].2.id)
+                ),
             ));
         }
     };
     let id = runtime::short(&item.id);
-    if !action.applies_to(&item) {
+    if !action.fits(&item) {
         return Reply::failed(wrong_state(project, &item, action, &id));
     }
     let operator = operator(call);
@@ -1015,7 +1035,7 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
     let subject = subject(project, &item);
     let text = match (item.kind, action) {
         (Kind::Delivery, Action::Retry) => format!(
-            "Queued `{id}` for retry: the app's next tick delivers {} again, with a fresh retry budget",
+            "Queued `{id}` for retry: the app's next tick sends {} again, with a fresh retry budget",
             delivery_words(&item)
         ),
         (Kind::Delivery, Action::Dismiss) => format!(
@@ -1033,15 +1053,15 @@ fn act(call: &Call, project: &Project, written: &str, suffix: &str, action: Acti
             bare(&item.target)
         ),
         (Kind::Delivery, Action::ResolveNotDone) => format!(
-            "Resolved `{id}` as not done: the app's next tick delivers {} again",
+            "Resolved `{id}` as not done: the app's next tick sends {} again",
             delivery_words(&item)
         ),
-        (Kind::ScheduleRun, Action::Cancel) => format!(
-            "Cancelled `{id}`: the run asked of {subject} won't happen"
-        ),
-        (Kind::ScheduleRun, Action::ResolveDone) => format!(
-            "Resolved `{id}` as done: {subject}'s run took effect"
-        ),
+        (Kind::ScheduleRun, Action::Cancel) => {
+            format!("Cancelled `{id}`: the run asked of {subject} won't happen")
+        }
+        (Kind::ScheduleRun, Action::ResolveDone) => {
+            format!("Resolved `{id}` as done: {subject}'s run took effect")
+        }
         (Kind::ScheduleRun, _) => {
             let from = item
                 .last_tried
@@ -1115,9 +1135,9 @@ fn wrong_state(project: &Project, item: &Item, action: Action, id: &str) -> Diag
         ),
     };
     let next = match item.state.as_str() {
-        FAILED if item.latest => format!(
-            "Run `jadpo deliveries retry {id}`, or `jadpo deliveries dismiss {id}`"
-        ),
+        FAILED if item.latest => {
+            format!("Run `jadpo deliveries retry {id}`, or `jadpo deliveries dismiss {id}`")
+        }
         OUTCOME_UNKNOWN => format!(
             "Check with the provider, then run `jadpo deliveries resolve {id} --done` or `--not-done`"
         ),

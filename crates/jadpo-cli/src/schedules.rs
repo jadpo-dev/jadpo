@@ -1399,7 +1399,13 @@ fn request(
 /// `declared` by hand, and waits for that run's record, as `jadpo
 /// schedules run` does against a deployment and `jadpo deliveries retry`
 /// does for a schedule's failed run (chunk 6.12).
-pub(crate) fn ask_tick(declared: &Declared, period: u64, now: i64, store: &str, url: &str) -> Reply {
+pub(crate) fn ask_tick(
+    declared: &Declared,
+    period: u64,
+    now: i64,
+    store: &str,
+    url: &str,
+) -> Reply {
     let name = declared.name.clone();
     crate::run::say(&format!("Asking the app's next tick to run `{name}`"));
     let waited = with_database(store, url, |database| {

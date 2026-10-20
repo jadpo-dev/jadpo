@@ -73,12 +73,18 @@ fn mistakes_on_the_command_line_are_refused_before_any_database_is_read() {
             &["deliveries", "frobnicate"],
             "`frobnicate` isn't something `jadpo deliveries` does",
         ),
-        (&["deliveries", "retry"], "`jadpo deliveries retry` needs an id"),
+        (
+            &["deliveries", "retry"],
+            "`jadpo deliveries retry` needs an id",
+        ),
         (
             &["deliveries", "retry", "abc"],
             "`abc` is too short to be an id",
         ),
-        (&["deliveries", "retry", "zz12ab34"], "`zz12ab34` isn't an id"),
+        (
+            &["deliveries", "retry", "zz12ab34"],
+            "`zz12ab34` isn't an id",
+        ),
         (
             &["deliveries", "resolve", "4fa2c09e"],
             "`jadpo deliveries resolve` needs `--done` or `--not-done`",
@@ -117,10 +123,16 @@ fn mistakes_on_the_command_line_are_refused_before_any_database_is_read() {
     }
     // The nearest state is offered, and `delivery` is the same command.
     let near = operating(&root, None, T0, &["deliveries", "--state", "pendng"]);
-    assert!(near.stderr.contains("Use `--state pending`"), "{}", near.stderr);
+    assert!(
+        near.stderr.contains("Use `--state pending`"),
+        "{}",
+        near.stderr
+    );
     let synonym = operating(&root, None, T0, &["delivery", "frobnicate"]);
     assert!(
-        synonym.stderr.contains("isn't something `jadpo deliveries` does"),
+        synonym
+            .stderr
+            .contains("isn't something `jadpo deliveries` does"),
         "{}",
         synonym.stderr
     );
@@ -207,7 +219,7 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
 
 ✗ 4 failed  1 outcome unknown
 
-→ jadpo deliveries retry {d4}  delivers it again, once the cause is fixed
+→ jadpo deliveries retry {d4}  sends it again, once the cause is fixed
 "
         )
     );
@@ -216,7 +228,10 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     assert_eq!(document["data"]["total"], 5);
     assert_eq!(document["data"]["counts"]["failed"], 4);
     assert_eq!(document["data"]["items"][0]["kind"], "delivery");
-    assert_eq!(document["data"]["items"][0]["subscriber"], "subscriber ring_bell");
+    assert_eq!(
+        document["data"]["items"][0]["subscriber"],
+        "subscriber ring_bell"
+    );
     assert_eq!(document["data"]["items"][1]["schedule"], "bell_check");
 
     // Refused: each action only from the state it applies to.
@@ -263,7 +278,9 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
         blind.stderr
     );
     assert!(
-        blind.stderr.contains(&format!("`jadpo deliveries resolve {d1} --done`")),
+        blind
+            .stderr
+            .contains(&format!("`jadpo deliveries resolve {d1} --done`")),
         "{}",
         blind.stderr
     );
@@ -282,7 +299,11 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
 
     // Dismissed: set aside, and listed with who did it.
     let dismissed = op(at(77, 0), &["deliveries", "dismiss", &d4]);
-    assert_eq!(dismissed.code, 0, "{}{}", dismissed.stdout, dismissed.stderr);
+    assert_eq!(
+        dismissed.code, 0,
+        "{}{}",
+        dismissed.stdout, dismissed.stderr
+    );
     assert_eq!(
         dismissed.stdout,
         format!(
@@ -294,9 +315,9 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     let again = op(at(77, 10), &["deliveries", "dismiss", &d4]);
     assert_eq!(again.code, 1);
     assert!(
-        again
-            .stderr
-            .contains(&format!("✗ error  `{d4}` hasn't failed, so there is nothing to dismiss")),
+        again.stderr.contains(&format!(
+            "✗ error  `{d4}` hasn't failed, so there is nothing to dismiss"
+        )),
         "{}",
         again.stderr
     );
@@ -316,7 +337,11 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     let retried = op(at(78, 0), &["deliveries", "retry", &d3]);
     assert_eq!(retried.code, 0, "{}{}", retried.stdout, retried.stderr);
     let cancelled = op(at(79, 0), &["deliveries", "cancel", &d3]);
-    assert_eq!(cancelled.code, 0, "{}{}", cancelled.stdout, cancelled.stderr);
+    assert_eq!(
+        cancelled.code, 0,
+        "{}{}",
+        cancelled.stdout, cancelled.stderr
+    );
     assert_eq!(
         cancelled.stdout,
         format!(
@@ -344,7 +369,7 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     assert_eq!(
         retried.stdout,
         format!(
-            "✓ Queued `{d2}` for retry: the app's next tick delivers `CensusTaken` to `ring_bell` again, with a fresh retry budget
+            "✓ Queued `{d2}` for retry: the app's next tick sends `CensusTaken` to `ring_bell` again, with a fresh retry budget
     logged  sam · role {role}
 "
         )
@@ -401,7 +426,11 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
     // A schedule's latest run that failed, dismissed: its log row.
     runtime.block_on(host.rows("INSERT INTO \"jadpo_schedule_runs\" (\"id\", \"schedule\", \"due_slot\", \"started_at\", \"ended_at\", \"outcome\", \"failure\") VALUES ('00000000-0000-7000-8000-0000000000c1', 'schedule bell_check', '2026-10-19T10:50:00Z', '2026-10-19T10:50:00Z', '2026-10-19T10:50:00Z', 'failed', '{\"code\": \"bell_missing\", \"kind\": \"unavailable\"}') RETURNING 1"));
     let dismissed = op(at(111, 0), &["deliveries", "dismiss", "000000c1"]);
-    assert_eq!(dismissed.code, 0, "{}{}", dismissed.stdout, dismissed.stderr);
+    assert_eq!(
+        dismissed.code, 0,
+        "{}{}",
+        dismissed.stdout, dismissed.stderr
+    );
     assert_eq!(
         dismissed.stdout,
         format!(
@@ -448,7 +477,11 @@ fn deliveries_and_schedule_runs_are_listed_retried_dismissed_cancelled_and_resol
         )
     );
     let cancelled = op(at(113, 0), &["deliveries", "cancel", &run]);
-    assert_eq!(cancelled.code, 0, "{}{}", cancelled.stdout, cancelled.stderr);
+    assert_eq!(
+        cancelled.code, 0,
+        "{}{}",
+        cancelled.stdout, cancelled.stderr
+    );
     assert_eq!(
         cancelled.stdout,
         format!(

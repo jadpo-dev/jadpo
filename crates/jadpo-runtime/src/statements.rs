@@ -47,7 +47,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             "deliveries::FIND_REQUESTED",
             crate::deliveries::FIND_REQUESTED.to_string(),
         ),
-        ("deliveries::LOG_RUN", crate::deliveries::LOG_RUN.to_string()),
+        (
+            "deliveries::LOG_RUN",
+            crate::deliveries::LOG_RUN.to_string(),
+        ),
         (
             "deliveries::REQUESTED_RUNS",
             crate::deliveries::REQUESTED_RUNS.to_string(),

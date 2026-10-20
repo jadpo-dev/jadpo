@@ -317,14 +317,25 @@ pub async fn counts(
     let mut out = BTreeMap::new();
     if holds.deliveries {
         for row in database.query_once(DELIVERY_COUNTS, &[]).await? {
-            if let (Some(SqlValue::Text(state)), Some(SqlValue::Int8(n))) = (row.first(), row.get(1))
+            if let (Some(SqlValue::Text(state)), Some(SqlValue::Int8(n))) =
+                (row.first(), row.get(1))
             {
                 *out.entry(shown_state(state)).or_default() += u64::try_from(*n).unwrap_or(0);
             }
         }
     }
     if holds.runs {
-        for item in items(database, Holds { deliveries: false, runs: true }, &[FAILED, OUTCOME_UNKNOWN, RUNNING, PENDING], 10_000).await? {
+        for item in items(
+            database,
+            Holds {
+                deliveries: false,
+                runs: true,
+            },
+            &[FAILED, OUTCOME_UNKNOWN, RUNNING, PENDING],
+            10_000,
+        )
+        .await?
+        {
             *out.entry(item.state).or_default() += 1;
         }
     }
@@ -399,7 +410,7 @@ impl Action {
 
     /// Whether it may act on `item` as it was read: in its state, and,
     /// for a schedule's run, its latest.
-    pub fn applies_to(self, item: &Item) -> bool {
+    pub fn fits(self, item: &Item) -> bool {
         item.state == self.from_state() && item.latest
     }
 
