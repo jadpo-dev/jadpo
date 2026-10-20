@@ -65,6 +65,12 @@ pub struct DevArgs {
     pub no_run: bool,
     pub json: bool,
     pub choice: ColorChoice,
+    /// `--fake <connection>`: keeps all its provider calls faked for this
+    /// session (chunk 7.2d).
+    pub fake: Vec<String>,
+    /// `--sandbox <operation>`: lets it through to the sandbox for this
+    /// session.
+    pub sandbox: Vec<String>,
 }
 
 pub fn dev(call: &Call) -> Reply {
@@ -95,6 +101,12 @@ pub fn dev(call: &Call) -> Reply {
         no_run: call.flag("--no-run"),
         json: false,
         choice: ColorChoice::Auto,
+        fake: call.all("--fake").into_iter().map(str::to_string).collect(),
+        sandbox: call
+            .all("--sandbox")
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
     })))
 }
 
@@ -111,6 +123,8 @@ struct Line {
     address: Option<String>,
     /// The fault behind a 500: what it was and where, innermost first.
     fault: Option<(String, Vec<String>)>,
+    /// The calls it made outside the process (chunk 7.2d).
+    calls: Vec<jadpo_runtime::capability::Logged>,
 }
 
 /// What the session prints, as it happens: a request answered, a
@@ -207,6 +221,7 @@ impl Observer for Lines {
                     fault.stack(answered.program.places()),
                 )
             }),
+            calls: response.calls.clone(),
         })]);
     }
 
@@ -358,6 +373,19 @@ impl Out<'_> {
                     line.address.as_deref().map_or(Json::Null, Json::from),
                 ),
                 (
+                    "calls",
+                    Json::array(line.calls.iter().map(|call| {
+                        Json::object([
+                            (
+                                "call",
+                                Json::from(format!("{}.{}", call.connection, call.operation)),
+                            ),
+                            ("source", Json::from(call.source.word())),
+                            ("ended", Json::from(ended_word(&call.ended))),
+                        ])
+                    })),
+                ),
+                (
                     "fault",
                     line.fault.as_ref().map_or(Json::Null, |(kind, frames)| {
                         Json::object([
@@ -387,6 +415,28 @@ impl Out<'_> {
             format!("   {}", self.paint(Token::Muted, address))
         });
         let mut text = format!("{short_id}  {request:<34} {status}{code}   {time}{address}\n");
+        // Each call it made, as a muted line of its trace (chunk 7.2d),
+        // only a failed one in its colour.
+        for call in &line.calls {
+            let ended = ended_word(&call.ended);
+            let word = match &call.ended {
+                jadpo_runtime::capability::Ended::Answered => self.paint(Token::Muted, &ended),
+                _ => self.paint(Token::Failure, &ended),
+            };
+            text.push_str(&format!(
+                "  {} {}\n",
+                self.paint(
+                    Token::Muted,
+                    &format!(
+                        "└─ {}.{} · {} ·",
+                        call.connection,
+                        call.operation,
+                        call.source.word()
+                    )
+                ),
+                word
+            ));
+        }
         if let Some((kind, frames)) = &line.fault {
             text.push_str(&format!(
                 "  {} {kind}\n",
@@ -398,6 +448,20 @@ impl Out<'_> {
         }
         let _ = self.out.write_all(text.as_bytes());
         let _ = self.out.flush();
+    }
+}
+
+/// How a call ended, as a request line says it.
+fn ended_word(ended: &jadpo_runtime::capability::Ended) -> String {
+    use jadpo_runtime::capability::Ended;
+    match ended {
+        Ended::InFlight => "in flight".to_string(),
+        Ended::Answered => "answered".to_string(),
+        Ended::Failed(code) => code.clone(),
+        Ended::Unavailable => "unavailable".to_string(),
+        Ended::Unknown => "outcome unknown".to_string(),
+        Ended::Misconfigured => "misconfigured".to_string(),
+        Ended::Refused => "refused".to_string(),
     }
 }
 
@@ -471,7 +535,7 @@ pub fn serve_to(
         }
     };
     if args.no_run {
-        report_ready(&mut out, None, &first, Databases::Disposable);
+        report_ready(&mut out, None, &first, Databases::Disposable, None);
         return watch_only(&mut out, &root, &args.cwd, env, &mut poller, stop);
     }
     // Every request is answered under the system clock, so without one
@@ -486,6 +550,21 @@ pub fn serve_to(
         );
         return 1;
     }
+    // What each provider connection's calls do (chunk 7.2d): faked, or
+    // let through to the sandbox, never live.
+    let session = crate::dev_calls::Session {
+        fake: args.fake.clone(),
+        sandbox: args.sandbox.clone(),
+    };
+    let setup =
+        match crate::dev_calls::setup(&first.prepared, &first.config, &first.unset, &session) {
+            Ok(setup) => Arc::new(Mutex::new(setup)),
+            Err(problem) => {
+                report_failure(&mut out, *problem);
+                return 1;
+            }
+        };
+    let call_log = Arc::new(Mutex::new(crate::dev_calls::LogFile::open(&root)));
     // The stores, and their migrations applied.
     let mut disposable = None;
     let urls = match stores(&first, args.url.as_deref(), &mut disposable) {
@@ -538,6 +617,9 @@ pub fn serve_to(
     if !first.prepared.plan().file_stores().is_empty() {
         let _ = crate::suggestions::local_folder(&root);
     }
+    let make_setup = Arc::clone(&setup);
+    let make_log = Arc::clone(&call_log);
+    let make_root = root.clone();
     let make: MakeHandler = Arc::new(move || {
         // Only the connections the program running now keeps files in.
         let stores = Arc::clone(&make_shared);
@@ -552,6 +634,29 @@ pub fn serve_to(
                 .iter()
                 .any(|store| store.name == connection)
         });
+        // Every provider connection the program running now has: faked,
+        // or let through to the sandbox, each call logged (chunk 7.2d).
+        let providers = Arc::clone(&make_shared);
+        host = host
+            .with_providers(
+                Rc::new(crate::dev_calls::DevProviders::new(
+                    &make_root,
+                    Arc::clone(&make_setup),
+                )),
+                move |connection| {
+                    let current = match providers.current.lock() {
+                        Ok(current) => Arc::clone(&current.0),
+                        Err(poisoned) => Arc::clone(&poisoned.into_inner().0),
+                    };
+                    current
+                        .plan()
+                        .providers()
+                        .connections
+                        .iter()
+                        .any(|known| known.name == connection)
+                },
+            )
+            .with_call_log(Rc::new(crate::dev_calls::DevLog(Arc::clone(&make_log))));
         for (store, url) in &make_shared.urls {
             if let Ok(database) = postgres(url) {
                 host = host.with_store(store.clone(), database);
@@ -604,7 +709,7 @@ pub fn serve_to(
             .collect();
         remember_stores(&root, &started);
     }
-    report_ready(&mut out, Some(&url), &first, databases);
+    report_ready(&mut out, Some(&url), &first, databases, Some(&lock(&setup)));
     let mut current = first;
     // Request lines are written as they come, between looks for saves.
     loop {
@@ -649,6 +754,19 @@ pub fn serve_to(
                 report_errors(&mut out, &root, &args.cwd, &problems, &sources, true);
             }
             Ok(ready) => {
+                let reset = match crate::dev_calls::setup(
+                    &ready.prepared,
+                    &ready.config,
+                    &ready.unset,
+                    &session,
+                ) {
+                    Ok(reset) => reset,
+                    Err(problem) => {
+                        rule_line(&mut out, &time, &saved, "not reloaded");
+                        report_failure(&mut out, *problem);
+                        continue;
+                    }
+                };
                 if ready.steps != current.steps {
                     match migrate_all(&urls, &ready.steps, &ready.prepared) {
                         Ok(ran) => applied += ran,
@@ -662,8 +780,13 @@ pub fn serve_to(
                 if let Ok(mut slot) = shared.current.lock() {
                     *slot = (Arc::clone(&ready.prepared), Arc::clone(&ready.config));
                 }
+                let changed = *lock(&setup) != reset;
+                *lock(&setup) = reset;
                 shared.generation.fetch_add(1, Ordering::SeqCst);
                 rule_line(&mut out, &time, &saved, "reloaded");
+                if changed {
+                    report_providers(&mut out, &lock(&setup));
+                }
                 if out.json {
                     let data = Json::object([
                         ("event", "reloaded".into()),
@@ -744,6 +867,9 @@ pub(crate) struct Ready {
     /// The address each database store's connection reads, where a
     /// variable gives one.
     pub(crate) configured: BTreeMap<String, String>,
+    /// The settings each provider connection reads that nothing gives
+    /// (chunk 7.2d).
+    pub(crate) unset: crate::dev_calls::Unset,
 }
 
 /// Loads and checks the project, writes `build/`, and prepares it to run;
@@ -800,7 +926,7 @@ pub(crate) fn prepare(
     // applying its migrations runs (chunk 5.6b2).
     let prepared = Prepared::checked_with_backfills(db, project);
     let routes = prepared.plan().routes().routes.len();
-    let (config, configured) = if run {
+    let (config, configured, unset) = if run {
         let model = jadpo_check::config::config(db, project);
         let types = |field: &str| {
             model
@@ -810,7 +936,11 @@ pub(crate) fn prepare(
         start_config(&prepared, root, env, &stores, &types)
             .map_err(|problems| (problems, BTreeMap::new()))?
     } else {
-        (Arc::new(ConfigValues::default()), BTreeMap::new())
+        (
+            Arc::new(ConfigValues::default()),
+            BTreeMap::new(),
+            BTreeMap::new(),
+        )
     };
     Ok(Ready {
         prepared,
@@ -819,12 +949,17 @@ pub(crate) fn prepare(
         routes,
         config,
         configured,
+        unset,
     })
 }
 
 /// The settings the app starts with and the address each database store's
 /// connection reads, where a variable gives one.
-type StartConfig = (Arc<ConfigValues>, BTreeMap<String, String>);
+type StartConfig = (
+    Arc<ConfigValues>,
+    BTreeMap<String, String>,
+    crate::dev_calls::Unset,
+);
 
 /// The settings the app starts with, every one checked: from the
 /// environment over `.env.local`. A database store's address that no
@@ -841,7 +976,11 @@ fn start_config(
 ) -> Result<StartConfig, Vec<Diagnostic>> {
     let plan = prepared.plan().config();
     if plan.is_empty() {
-        return Ok((Arc::new(ConfigValues::default()), BTreeMap::new()));
+        return Ok((
+            Arc::new(ConfigValues::default()),
+            BTreeMap::new(),
+            BTreeMap::new(),
+        ));
     }
     let layered = crate::config::Layered::new(root, env).map_err(|problem| vec![*problem])?;
     // The addresses of the stores this project uses that a variable doesn't
@@ -861,7 +1000,7 @@ fn start_config(
             ))
         })
         .collect();
-    let placeholders: BTreeMap<String, String> = wanted
+    let mut placeholders: BTreeMap<String, String> = wanted
         .iter()
         .filter(|(_, _, missing)| *missing)
         .map(|(_, variable, _)| {
@@ -871,6 +1010,28 @@ fn start_config(
             )
         })
         .collect();
+    // A provider connection's settings that nothing gives: a stand-in
+    // lets the app start, and the connection's calls stay faked, so no
+    // credential is needed (area 11, "Provider calls in development").
+    let mut unset: crate::dev_calls::Unset = BTreeMap::new();
+    for (connection, read) in crate::dev_calls::provider_settings(prepared) {
+        for at in read {
+            let Some(field) = plan.fields.get(at as usize) else {
+                continue;
+            };
+            if field.default.is_some() || layered.variable(&field.variable).is_some() {
+                continue;
+            }
+            placeholders.insert(
+                field.variable.clone(),
+                crate::dev_calls::stand_in(&types(&field.name)),
+            );
+            unset
+                .entry(connection.clone())
+                .or_default()
+                .push(field.variable.clone());
+        }
+    }
     let stand_in = |name: &str| {
         layered
             .variable(name)
@@ -891,7 +1052,7 @@ fn start_config(
             Some((store.clone(), text.to_string()))
         })
         .collect();
-    Ok((Arc::new(values), configured))
+    Ok((Arc::new(values), configured, unset))
 }
 
 /// Each store's database URL: `--url` for the one store, else the address
@@ -1058,7 +1219,13 @@ impl Databases {
     }
 }
 
-fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, databases: Databases) {
+fn report_ready(
+    out: &mut Out<'_>,
+    url: Option<&str>,
+    ready: &Ready,
+    databases: Databases,
+    providers: Option<&crate::dev_calls::Setup>,
+) {
     if out.json {
         let data = Json::object([
             ("event", "listening".into()),
@@ -1073,6 +1240,7 @@ fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, databases: 
                 },
             ),
             ("settings", Json::from(ready.config.len())),
+            ("providers", providers.map_or(Json::Null, providers_json)),
         ]);
         out.json(data, &[], &BTreeMap::new());
         return;
@@ -1092,15 +1260,26 @@ fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, databases: 
     if !ready.stores.is_empty() && url.is_some() {
         rows.push(("database".to_string(), databases.describe().to_string()));
     }
+    let providers = providers.filter(|setup| !setup.connections.is_empty());
+    if let Some(setup) = providers {
+        rows.push(("providers".to_string(), providers_row(setup)));
+    }
     let text = match url {
         Some(url) => format!("listening on {url}"),
         None => "checked; serving nothing (--no-run)".to_string(),
     };
-    out.screen(Screen::new().with(Block::Status {
+    let mut screen = Screen::new().with(Block::Status {
         outcome: Outcome::Success,
         text,
         rows,
-    }));
+    });
+    if let Some(alerts) = providers
+        .map(providers_alerts)
+        .filter(|alerts| !alerts.is_empty())
+    {
+        screen.push(Block::Alerts(alerts));
+    }
+    out.screen(screen);
     let keys = Screen::new().with(Block::KeyBar {
         label: "serving".to_string(),
         facts: vec![Fact::plain("saves reload")],
@@ -1108,6 +1287,101 @@ fn report_ready(out: &mut Out<'_>, url: Option<&str>, ready: &Ready, databases: 
     });
     let _ = out.err.write_all(keys.render(&out.err_style).as_bytes());
     let _ = out.err.flush();
+}
+
+fn lock<T>(held: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match held.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// What the provider connections' calls do (chunk 7.2d): one line for
+/// those let through to the sandbox, and one alert for each that stays
+/// faked because a setting its sandbox needs has no value.
+fn report_providers(out: &mut Out<'_>, setup: &crate::dev_calls::Setup) {
+    if setup.connections.is_empty() {
+        return;
+    }
+    if out.json {
+        let data = Json::object([
+            ("event", "providers".into()),
+            ("providers", providers_json(setup)),
+        ]);
+        out.json(data, &[], &BTreeMap::new());
+        return;
+    }
+    let mut screen = Screen::new().with(Block::Status {
+        outcome: Outcome::Success,
+        text: "Provider calls changed".to_string(),
+        rows: vec![("providers".to_string(), providers_row(setup))],
+    });
+    let alerts = providers_alerts(setup);
+    if !alerts.is_empty() {
+        screen.push(Block::Alerts(alerts));
+    }
+    out.screen(screen);
+}
+
+/// Each provider connection, the operations let through to its sandbox
+/// and the variables that keep it faked.
+fn providers_json(setup: &crate::dev_calls::Setup) -> Json {
+    Json::array(setup.connections.iter().map(|connection| {
+        Json::object([
+            ("connection", Json::from(connection.name.as_str())),
+            (
+                "sandbox",
+                Json::array(connection.sandbox.iter().map(String::as_str)),
+            ),
+            (
+                "unset",
+                Json::array(connection.unset.iter().map(String::as_str)),
+            ),
+        ])
+    }))
+}
+
+/// What each provider connection's calls do, as one row says it:
+/// `couriers faked · ledger: bookings.get to the sandbox`.
+fn providers_row(setup: &crate::dev_calls::Setup) -> String {
+    setup
+        .connections
+        .iter()
+        .map(|connection| {
+            if connection.sandbox.is_empty() {
+                format!("{} faked", connection.name)
+            } else {
+                format!(
+                    "{}: {} to the sandbox",
+                    connection.name,
+                    connection.sandbox.join(", ")
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// An alert for each connection that stays faked because a setting its
+/// sandbox needs has no value, naming the variable to set.
+fn providers_alerts(setup: &crate::dev_calls::Setup) -> Vec<String> {
+    setup
+        .connections
+        .iter()
+        .filter(|connection| !connection.unset.is_empty())
+        .map(|connection| {
+            format!(
+                "`{}` stays faked: set {} in `.env.local` for its sandbox",
+                connection.name,
+                connection
+                    .unset
+                    .iter()
+                    .map(|variable| format!("`{variable}`"))
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            )
+        })
+        .collect()
 }
 
 fn rule_line(out: &mut Out<'_>, time: &str, saved: &[String], what: &str) {

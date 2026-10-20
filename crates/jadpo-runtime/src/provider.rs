@@ -529,6 +529,14 @@ pub async fn call(
         }
         Err(Unready::Fault(kind)) => return Done::Fault(kind),
     };
+    // What the development call log shows of the request (chunk 7.2d).
+    let shown = ctx.host().call_log().map(|_| {
+        (
+            request.method.word(),
+            request.url.clone(),
+            request.body.clone(),
+        )
+    });
     let made = made.with_request(request);
     let answer = match retried(ctx, &made, plan.retry).await {
         Ok(answer) => answer,
@@ -536,18 +544,52 @@ pub async fn call(
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
     };
+    let mut sent: Option<Rc<str>> = None;
     // No answer in time from a call safe to send again is the site's
     // `timed_out`, which its `attempt` maps (chunk 7.2c2).
-    if answer == Answer::TimedOut && site.call.timed_out && op.repeat != Repeat::Unkeyed {
-        return Done::Failed(Box::new(timed_out()));
+    let done = if answer == Answer::TimedOut && site.call.timed_out && op.repeat != Repeat::Unkeyed
+    {
+        Done::Failed(Box::new(timed_out()))
+    } else {
+        match crate::effects::answered(op.repeat, answer) {
+            Ok(Given::Value(value)) => Done::Value(value),
+            Ok(Given::Wire(text)) => {
+                let done = decode(ctx, providers, op, &name, &text, site);
+                sent = Some(text);
+                done
+            }
+            // A package's fake answering with the operation's generated
+            // default, made as the provider would send it and read back as
+            // any answer is (area 11, "Tests and fakes"; chunk 7.2d).
+            Ok(Given::Generated) => {
+                let text = crate::fakes::default_answer(ctx, providers, op);
+                let done = decode(ctx, providers, op, &name, &text, site);
+                sent = Some(text);
+                done
+            }
+            Err(Unanswered::Failed(code)) => failed(providers, op, &name, &code),
+            Err(Unanswered::Failure(failure)) => Done::Failed(failure),
+            Err(Unanswered::Fault(kind)) => Done::Fault(kind),
+        }
+    };
+    if let (Some((method, url, body)), Some(log)) = (shown, ctx.host().call_log())
+        && let Some(logged) = ctx.capabilities().calls().last()
+    {
+        log.seen(&crate::call_log::Seen {
+            connection,
+            operation,
+            request_id: ctx.request_id(),
+            at: logged.at,
+            source: logged.source,
+            took_ms: logged.took_ms,
+            method,
+            url: &url,
+            body: body.as_deref(),
+            answer: sent.as_deref(),
+            ended: &logged.ended,
+        });
     }
-    match crate::effects::answered(op.repeat, answer) {
-        Ok(Given::Value(value)) => Done::Value(value),
-        Ok(Given::Wire(text)) => decode(ctx, providers, op, &name, &text, site),
-        Err(Unanswered::Failed(code)) => failed(providers, op, &name, &code),
-        Err(Unanswered::Failure(failure)) => Done::Failed(failure),
-        Err(Unanswered::Fault(kind)) => Done::Fault(kind),
-    }
+    done
 }
 
 /// What the runtime raises when a call safe to send again gets no answer

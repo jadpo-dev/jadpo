@@ -70,6 +70,7 @@ use tokio::task::LocalSet;
 
 pub use signals::stop_signals;
 
+pub use jadpo_drivers::package::JsonHttp;
 pub use jadpo_drivers::postgres::Postgres;
 
 /// One current-thread tokio runtime and the `LocalSet` its tasks run in.
@@ -167,6 +168,12 @@ pub struct NativeHost {
     /// Every store of files, on the local disk (chunk 6.4b), and which
     /// connections are stores of files (chunk 7.1c).
     files: Option<(files::DiskFiles, FileStores)>,
+    /// The driver `jadpo dev` gives every provider package's connection
+    /// (chunk 7.2d), and which connections those are.
+    providers: Option<(Providers, FileStores)>,
+    /// `jadpo dev`'s call log, which keeps each provider call with its
+    /// values (chunk 7.2d).
+    call_log: Option<CallLog>,
     limits: RateLimits,
     deferred: Deferred,
     background: Rc<Background>,
@@ -180,6 +187,26 @@ struct FileStores(Rc<dyn Fn(&str) -> bool>);
 impl std::fmt::Debug for FileStores {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("FileStores")
+    }
+}
+
+/// The driver of every provider package's connection, held for the host.
+#[derive(Clone)]
+struct Providers(Rc<dyn jadpo_runtime::capability::Capability>);
+
+impl std::fmt::Debug for Providers {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Providers")
+    }
+}
+
+/// A development call log, held for the host.
+#[derive(Clone)]
+struct CallLog(Rc<dyn jadpo_runtime::call_log::CallLog>);
+
+impl std::fmt::Debug for CallLog {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CallLog")
     }
 }
 
@@ -269,6 +296,24 @@ impl NativeHost {
         self
     }
 
+    /// Gives `driver` for every connection `connections` says is a
+    /// provider package's (chunk 7.2d): `jadpo dev`'s fakes, letting named
+    /// calls through to the sandbox.
+    pub fn with_providers(
+        mut self,
+        driver: Rc<dyn jadpo_runtime::capability::Capability>,
+        connections: impl Fn(&str) -> bool + 'static,
+    ) -> NativeHost {
+        self.providers = Some((Providers(driver), FileStores(Rc::new(connections))));
+        self
+    }
+
+    /// Keeps each provider call with its values in `log` (chunk 7.2d).
+    pub fn with_call_log(mut self, log: Rc<dyn jadpo_runtime::call_log::CallLog>) -> NativeHost {
+        self.call_log = Some(CallLog(log));
+        self
+    }
+
     /// The work it was given to run after the response being answered,
     /// for whoever sends that response to run once it has been handed
     /// back: the HTTP worker, as a task on its thread. Each is counted as
@@ -322,8 +367,17 @@ impl Host for NativeHost {
     /// host carries yet, so any other connection, a package's included,
     /// has none until its driver is built (chunk 7.2c).
     fn capability(&self, connection: &str) -> Option<&dyn jadpo_runtime::capability::Capability> {
-        let (files, stores) = self.files.as_ref()?;
-        (stores.0)(connection).then_some(files as &dyn jadpo_runtime::capability::Capability)
+        if let Some((files, stores)) = &self.files
+            && (stores.0)(connection)
+        {
+            return Some(files as &dyn jadpo_runtime::capability::Capability);
+        }
+        let (driver, connections) = self.providers.as_ref()?;
+        (connections.0)(connection).then_some(driver.0.as_ref())
+    }
+
+    fn call_log(&self) -> Option<&dyn jadpo_runtime::call_log::CallLog> {
+        self.call_log.as_ref().map(|log| log.0.as_ref())
     }
 
     /// `webauthn-rs` (area 8, "Passkeys").

@@ -434,6 +434,8 @@ impl Dev {
             no_run: false,
             json: true,
             choice: ColorChoice::Never,
+            fake: Vec::new(),
+            sandbox: Vec::new(),
         };
         let thread = {
             let mut out = out.clone();
