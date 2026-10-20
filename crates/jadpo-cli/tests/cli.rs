@@ -70,6 +70,7 @@ Data
 Look things up
   routes        List every route
   ai            Show what a prompt sends      show
+  calls         Show provider calls in dev    list, show, script
   why           Explain why a schedule didn't run
 
 Change safely
@@ -141,6 +142,7 @@ Data
 Look things up
   routes        List every route
   ai            Show what a prompt sends      show
+  calls         Show provider calls in dev    list · show · script
   why           Explain why a schedule didn't run
 
 Change safely
@@ -312,6 +314,7 @@ fn help_json_is_the_whole_command_reference() {
             "sql",
             "routes",
             "ai",
+            "calls",
             "why",
             "api",
             "records",
@@ -712,6 +715,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
             "ai\tShow what a prompt sends",
+            "calls\tShow provider calls in dev",
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",
             "records\tList and update the records",
@@ -776,6 +780,7 @@ fn tab_completes_argument_values() {
         complete(&["help", "c"]),
         [
             "check\tCheck the project for errors",
+            "calls\tShow provider calls in dev",
             "config\tCheck and set local settings",
             "completions\tTurn on Tab completion"
         ]

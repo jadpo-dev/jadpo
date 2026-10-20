@@ -1,0 +1,4 @@
+/// A pickup slot, such as `am`.
+public type Slot = Text {
+    max_length: 20
+}

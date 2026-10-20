@@ -10,10 +10,13 @@ rules:
   - configuration.fixture_value_invalid
   - configuration.fixture_value_missing
   - semantic.request_invalid
+  - semantic.fake_invalid
   - semantic.request_route_unknown
   - semantic.test_service_fake_required
   - syntax.assertion_form
   - test.assertion_failed
+  - test.fake_exhausted
+  - test.fake_unused
   - test.fault
   - test.subscriber_failed
   - test.unexpected_failure
@@ -721,6 +724,176 @@ with secrets left out. A fake cannot run code of its own, and nothing else in
 the application can be faked. If the code calls an operation more times than
 the fake has responses, or fewer, the test fails and says so (question 7).
 
+> **Built (chunk 7.2d)** for provider packages' operations, as below and
+> under [Provider calls and capabilities in tests](#provider-calls-and-capabilities-in-tests):
+> every call a test reaches answers through its package's fake, and a
+> test's `fakes:` scripts an operation's answers in order, each a value of
+> its output type, one of its failures by its code, or a condition.
+> `.requests` and the capabilities' fakes (`email.sent`) are not built
+> yet. The choices are in area 11's "Chosen in chunk 7.2d".
+
+Here a courier's booking is faked three ways: with a scripted
+`AcmeCouriers.Booking`, with the operation's `slot_taken`, which the
+action maps to its own failure, and unscripted, with the generated
+default:
+
+```jadpo check project=fakes-in-tests file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```jadpo check project=fakes-in-tests file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=fakes-in-tests file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=fakes-in-tests file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=fakes-in-tests file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=fakes-in-tests file=domains/shipping/actions/book.test.jadpo
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+test "the courier's reference is kept" {
+    fakes: {
+        couriers.bookings.create: [
+            AcmeCouriers.Booking {
+                id: "b-17"
+            }
+        ]
+    }
+    var booking: AcmeCouriers.Booking = attempt book("N1 9GU")
+    assert booking.id == "b-17"
+}
+
+test "a taken slot is the app's own failure" {
+    fakes: {
+        couriers.bookings.create: [slot_taken]
+    }
+    assert book("N1 9GU") fails SlotGone
+}
+
+test "an unscripted call answers with the generated default" {
+    var booking: AcmeCouriers.Booking = attempt book("N1 9GU")
+    assert booking.id == "example"
+}
+```
+
+A scripted value is written as the provider would send it, its
+`wire_name:` spellings and `output_at:` envelope included, and read back
+through the operation's real decoding, as a real answer is; so is a
+generated default, a value of the output type keeping its rules: text of
+its least length (`example` where that fits), a number at its least, the
+first plain variant, empty lists and maps, `none` for what is optional,
+the test's clock for an instant and a fresh UUID. A type whose rules no
+such value keeps, a pattern say, faults where the answer is read, naming
+the field and the rule, so the test scripts that operation instead.
+
 ### Provider calls and capabilities in tests
 
 Decided 2026-10-16 (Richard), with the packages and capabilities decisions
@@ -728,7 +901,9 @@ Decided 2026-10-16 (Richard), with the packages and capabilities decisions
 `jadpo dev`; nothing can be let through to a sandbox from a test.
 
 - **Provider operations** answer with the package fake's valid defaults
-  unless the test scripts them, as question 7 decided:
+  unless the test scripts them, as question 7 decided (built in chunk
+  7.2d; a fake's `lost` answers as a call that may have acted, its
+  `in_use` as `unavailable` until several changing calls, chunk 7.5):
   `fakes: { stripe.payment_intents.create: [card_declined, ...] }`. A
   scripted answer is the clean output type or one of the operation's
   provider failures, never the wire shape; the package's own tests cover
@@ -1244,12 +1419,11 @@ clock, and the retry runs once `clock.advance(30s)` reaches it.
 
 ## Errors
 
-> The four `test.*` codes run on the new compiler, with `jadpo test`'s real report, and so does `type.test_clock_context` (chunk 5.2). The other `check` errors after them (fakes and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
+> The six `test.*` codes run on the new compiler, with `jadpo test`'s real report, and so do `semantic.fake_invalid` (chunk 7.2d) and `type.test_clock_context` (chunk 5.2). The other `check` errors after them (the old service fakes and configuration fixtures) predate the decisions above and are rewritten when areas 10 and 11 are built (roadmap Phases 5 and 7).
 
 Every error this area can produce, with an example that triggers it:
-first the four codes a failed test gets from `jadpo test`, each with its
-report (run with `--seed 1`), then the `jadpo check` errors for what the
-new compiler hasn't built yet.
+first the six codes a failed test gets from `jadpo test`, each with its
+report (run with `--seed 1`), then the `jadpo check` errors.
 
 ### `test.assertion_failed`
 
@@ -1543,6 +1717,458 @@ FAIL  a parcel for the moon is taken in
   rerun: jadpo test domains/post/actions/hand_in.test.jadpo:4 --seed 1
 
 test failed: 1 failed, 1 action test
+```
+
+### `test.fake_exhausted`
+
+A test called a faked provider operation more times than its `fakes:`
+scripts answers (built in chunk 7.2d). The call past the script was
+answered with the generated default, so whatever the test did next
+followed from a call it didn't expect; the report names the operation,
+at the line of its first scripted answer:
+
+```jadpo check project=e-fake-exhausted file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```jadpo check project=e-fake-exhausted file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e-fake-exhausted file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e-fake-exhausted file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e-fake-exhausted file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e-fake-exhausted file=domains/shipping/actions/book.test.jadpo expect=test.fake_exhausted
+use app { couriers }
+use shipping/failures { SlotGone }
+
+test "a taken slot is the app's own failure" {
+    fakes: {
+        couriers.bookings.create: [slot_taken]
+    }
+    assert book("N1 9GU") fails SlotGone
+    assert book("SW1A 1AA") fails SlotGone
+}
+```
+
+```text output
+FAIL  a taken slot is the app's own failure
+ --> domains/shipping/actions/book.test.jadpo:6
+
+  fake: `couriers.bookings.create` was called twice, and its `fakes:` scripts 1 answer
+  reason: A scripted operation answers each call with the next scripted answer, so a call past the last means the code calls it more often than the test says; that call was answered with the generated default.
+  next: Script an answer for every call of `couriers.bookings.create`, or find why the code calls it again (agent)
+
+  rule: test.fake_exhausted
+  rerun: jadpo test domains/shipping/actions/book.test.jadpo:6 --seed 1
+
+test failed: 1 failed, 1 action test
+```
+
+### `test.fake_unused`
+
+A test that otherwise passed left answers its `fakes:` scripts for an
+operation untaken (built in chunk 7.2d): the code made fewer calls than
+the test says.
+
+```jadpo check project=e-fake-unused file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```jadpo check project=e-fake-unused file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e-fake-unused file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e-fake-unused file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e-fake-unused file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e-fake-unused file=domains/shipping/actions/book.test.jadpo expect=test.fake_unused
+use app { couriers }
+use shipping/failures { SlotGone }
+
+test "a taken slot is the app's own failure" {
+    fakes: {
+        couriers.bookings.create: [slot_taken, unavailable]
+    }
+    assert book("N1 9GU") fails SlotGone
+}
+```
+
+```text output
+FAIL  a taken slot is the app's own failure
+ --> domains/shipping/actions/book.test.jadpo:6
+
+  fake: `couriers.bookings.create` was called once, and its `fakes:` scripts 2 answers
+  reason: Each scripted answer is for a call the test expects, so one left over means the code calls the operation less often than the test says.
+  next: Remove the answers no call takes, or find why the code doesn't call `couriers.bookings.create` (agent)
+
+  rule: test.fake_unused
+  rerun: jadpo test domains/shipping/actions/book.test.jadpo:6 --seed 1
+
+test failed: 1 failed, 1 action test
+```
+
+### `semantic.fake_invalid`
+
+A test's `fakes:` scripts something no provider operation answers (built
+in chunk 7.2d): an operation the app's connections don't have, a name
+that is none of the operation's failures' codes or a condition, an
+operation scripted twice or with no answers, or a value for one that
+gives nothing. A value of the wrong type is the usual `type.mismatch`.
+
+```jadpo check project=e-fake-invalid file=app.jadpo hidden
+application {
+    connections: {
+        couriers: {
+            package: AcmeCouriers.v1
+            domains: [shipping]
+            environment: config.couriers_environment
+        }
+    }
+}
+```
+
+```jadpo check project=e-fake-invalid file=config.jadpo hidden
+config {
+    couriers_environment: ProviderEnvironment {
+        default: ProviderEnvironment.sandbox
+    }
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        changes: true
+        idempotent: true
+        failures: [SlotTaken]
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/postcode.jadpo hidden
+/// Where a collection is.
+public type Postcode = Text {
+    max_length: 8
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/booking_id.jadpo hidden
+/// The courier's reference for a booking.
+public type BookingId = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Postcode
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: BookingId
+}
+```
+
+```jadpo check project=e-fake-invalid file=shared/providers/acme_couriers/v1/failures/slot_taken.jadpo hidden
+/// The slot went before the booking arrived.
+public type SlotTaken = Failure {
+    kind: FailureKind.conflict
+    message: "That slot is taken."
+}
+```
+
+```jadpo check project=e-fake-invalid file=domains/shipping/failures/slot_gone.jadpo hidden
+/// The slot the customer chose has gone.
+type SlotGone = Failure {
+    kind: FailureKind.conflict
+    message: "That slot has gone; choose another."
+}
+```
+
+```jadpo check project=e-fake-invalid file=domains/shipping/actions/book.jadpo hidden
+use app { couriers }
+use shipping/failures { SlotGone }
+use shared/providers/acme_couriers
+
+/// Books a collection with the courier.
+action book(postcode: AcmeCouriers.Postcode) fails SlotGone -> AcmeCouriers.Booking {
+    return attempt couriers.bookings.create(
+        AcmeCouriers.CreateBooking {
+            postcode: postcode
+        }
+    ) {
+        slot_taken: SlotGone
+    }
+}
+```
+
+```jadpo check project=e-fake-invalid file=domains/shipping/actions/book.test.jadpo expect=semantic.fake_invalid
+use app { couriers }
+use shipping/failures { SlotGone }
+
+test "a taken slot is the app's own failure" {
+    fakes: {
+        couriers.bookings.create: [slot_takn]
+    }
+    assert book("N1 9GU") fails SlotGone
+}
+```
+
+```text output
+error: `slot_takn` isn't an answer `couriers.bookings.create` gives
+ --> domains/shipping/actions/book.test.jadpo:6:36
+  |
+6 |         couriers.bookings.create: [slot_takn]
+  |                                    ^^^^^^^^^ not a failure or a condition
+  reason: A scripted answer is a value of `AcmeCouriers.Booking`, one of `couriers.bookings.create`'s failures by its code (`slot_taken`), or a condition: `unavailable`, `lost`, `in_use` or `misconfigured`.
+  next: Use `slot_taken` instead of `slot_takn` (agent)
+  rule: semantic.fake_invalid
+  help: docs/language/13-testing.html#semantic-fake-invalid
+
+check failed: 1 error, 13 files
 ```
 
 ### `semantic.request_route_unknown`
@@ -2132,7 +2758,7 @@ with when it comes.
 | Events | Work (run, chunk 6.11): what each step emits is delivered once it comes back and before the next statement, at the test's clock, until nothing is due, in an order the run's seed shuffles; a retry waits its full backoff until `clock.advance` reaches it, and a delivery that fails for good ends the test as `test.subscriber_failed` ("Caches and events"). A fake failing a subscriber's call is retried and given up the same way on 7.0c's fakes; a test writes one with `fakes:` once 7.2 generates them. |
 | Clock | Works (run, chunk 5.2): a test's clock starts at its `clock:`, or at 2000-01-01T00:00:00Z without one, and `clock.advance(...)` moves it on for the calls after it; only a test moves it (`type.test_clock_context`, a fixture and a seed included), and a move backwards is the fault `clock_backward`. |
 | Configuration | Works (check and run, chunk 5.1): `test:` values on fields, defaults, generated secrets and a test's own `config:`; a request sent through a route is not followed for the compile-time check that every setting a test reads has a value, and a read with none then ends the test as a fault naming the setting. |
-| Integration fakes | Decided, not built: fakes come with packages (area 11, roadmap 7.2), `email.sent` with email (7.3). Capability fakes, crash points for several changing calls, grants, documents and batches come with those features (areas 12 and 16). |
+| Integration fakes | Work for provider packages (run, chunk 7.2d): every provider call a test reaches answers through its package's fake, with the operation's generated default unless the test's `fakes:` scripts its answers, each checked against the package (`semantic.fake_invalid`); a script the calls run past is `test.fake_exhausted`, one with answers left `test.fake_unused` ("Fakes for integrations"). Not built: `.requests`, `email.sent` (7.3), and the capability fakes, crash points for several changing calls, grants, documents and batches, which come with those features (areas 12 and 16). |
 | Database | Works (run, chunk 3.1): `jadpo test` gives each action test in a project with tables its own copy of a template built from the migrations, on the server `JADPO_TEST_DATABASE_URL` names or a disposable one started from the machine's PostgreSQL tools; copies are prepared in the background, and a test gets its copy the first time it uses a store. `--keep-failed` keeps a failed test's database and names it in the report. Since chunks 3.2 and 3.3 tests read and write records through actions, queries and fixtures; a concurrent change, which needs a second connection, is shown by the runtime's own tests. |
 | Caller | Decided, not built: acting as a user comes with identity (area 8, roadmap 4.3). Until then tests run with no caller. |
 | Placement | Built (chunk 1.3, checked): a test sits in `<name>.test.jadpo` beside its subject, or in root `tests/`; a test elsewhere is `layout.wrong_folder`, which names the `.test.jadpo` file beside it, and a test file with nothing beside it is `layout.test_without_subject`. |
