@@ -200,7 +200,7 @@ pub fn record(call: &Call) -> Reply {
                     return Reply::failed(arguments(
                         "`--input` isn't JSON".to_string(),
                         "`--input` is the operation's input as one JSON document, written as a route's body is.".to_string(),
-                        "Quote the JSON so the shell passes it whole: `--input '{\"postcode\": \"N1 9GU\"}'`".to_string(),
+                        "Quote the JSON in single quotes so the shell passes it whole: `--input '{...}'`".to_string(),
                     ));
                 }
             }

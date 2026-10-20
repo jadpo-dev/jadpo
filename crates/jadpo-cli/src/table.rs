@@ -742,7 +742,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Argument {
                 name: "declaration",
-                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, such as pickups.create",
+                description: "One of its declarations, such as uk.dates; for import, the file; for record, the operation, as <resource>.<operation>",
                 required: false,
                 values: Values::Fixed(&[]),
             },
@@ -794,7 +794,7 @@ pub static COMMANDS: &[Command] = &[
             },
             Example {
                 description: "Record a sandbox's answer to confirm an operation",
-                command: "jadpo package record couriers pickups.get --input '{\"id\": \"p_1\"}'",
+                command: "jadpo package record holidays dates.list --input '{\"year\": 2027}'",
             },
         ],
         arguments_rule: &rule::CLI_PACKAGE_ARGUMENTS,

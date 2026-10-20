@@ -4264,7 +4264,7 @@ public type CreateBooking = Object {
 /// Where a booking stands.
 public type Status = Enum {
     booked
-    collected
+    on_hold
 }
 ```
 
@@ -4352,26 +4352,26 @@ public type CreateBooking = Object {
 }
 ```
 
-```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/window_code.jadpo hidden
-/// A collection window as the courier writes it.
-public type WindowCode = Text {
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/daypart_code.jadpo hidden
+/// A part of the day as the courier writes it.
+public type DaypartCode = Text {
     max_length: 3
 }
 ```
 
-```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/slot_window.jadpo hidden
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/daypart.jadpo hidden
 /// When in the day a collection comes.
-public type SlotWindow = Enum {
+public type Daypart = Enum {
     morning
     afternoon
 }
 ```
 
-```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/failures/window_unknown.jadpo hidden
-/// A collection window the courier names that this package doesn't know.
-type WindowUnknown = Failure {
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/failures/daypart_unknown.jadpo hidden
+/// A part of the day the courier names that this package doesn't know.
+type DaypartUnknown = Failure {
     kind: FailureKind.invalid_value
-    message: "The courier named a window this package doesn't know."
+    message: "The courier named a part of the day this package doesn't know."
 }
 ```
 
@@ -4379,30 +4379,30 @@ type WindowUnknown = Failure {
 /// A booked collection.
 public type Booking = Object {
     id: Text
-    window: SlotWindow {
-        decode: slots.parse_window
-        encode: slots.format_window
+    daypart: Daypart {
+        decode: dayparts.read_daypart
+        encode: dayparts.write_daypart
     }
 }
 ```
 
-```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/libraries/slots.jadpo
-/// The courier's collection windows, which it writes as "AM" and "PM".
-library slots {
-    /// The window the courier's code names.
-    function parse_window(code: WindowCode) fails WindowUnknown -> SlotWindow {
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/libraries/dayparts.jadpo
+/// The courier's part of the days, which it writes as "AM" and "PM".
+library dayparts {
+    /// The part of the day the courier's code names.
+    function read_daypart(code: DaypartCode) fails DaypartUnknown -> Daypart {
         if (code == "AM") {
-            return SlotWindow.morning
+            return Daypart.morning
         }
         if (code == "PM" or code == "EVE") {
-            return SlotWindow.afternoon
+            return Daypart.afternoon
         }
-        reject WindowUnknown
+        reject DaypartUnknown
     }
 
-    /// The courier's code for a window.
-    function format_window(window: SlotWindow) -> WindowCode {
-        if (window == SlotWindow.morning) {
+    /// The courier's code for a part of the day.
+    function write_daypart(daypart: Daypart) -> DaypartCode {
+        if (daypart == Daypart.morning) {
             return "AM"
         }
         return "PM"
@@ -4414,7 +4414,7 @@ library slots {
 {
   "data": {
     "id": "{Text}",
-    "window": "EVE"
+    "daypart": "EVE"
   }
 }
 ```
@@ -4423,11 +4423,11 @@ library slots {
 FAIL  bookings.create's recording decodes
  --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1
 
-  decode: `slots.parse_window` and `slots.format_window` don't round-trip `bookings.create`'s recording
+  decode: `dayparts.read_daypart` and `dayparts.write_daypart` don't round-trip `bookings.create`'s recording
   recorded: "EVE"
   written: "PM"
-  reason: A field's `encode:` writes back what its `decode:` read, so what the app sends is what the provider sent; `slots.format_window` doesn't give back the value `slots.parse_window` read from the recording.
-  next: Correct `slots.parse_window` or `slots.format_window` so each undoes the other (agent)
+  reason: A field's `encode:` writes back what its `decode:` read, so what the app sends is what the provider sent; `dayparts.write_daypart` doesn't give back the value `dayparts.read_daypart` read from the recording.
+  next: Correct `dayparts.read_daypart` or `dayparts.write_daypart` so each undoes the other (agent)
 
   rule: test.round_trip_failed
   rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1
