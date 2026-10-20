@@ -165,7 +165,8 @@ fn a_subscriber_that_fails_for_good_fails_the_test() {
             "event": "LoafOrdered",
             "subscriber": "bake_ordered",
             "attempt": 1,
-            "attempts": 3
+            "attempts": 3,
+            "diverged": false
         })
     );
     assert_eq!(failure["failure"]["name"], "BadDough");
@@ -365,6 +366,7 @@ fn a_fake_failing_a_subscriber_is_retried_as_the_clock_moves_then_fails_the_test
                 subscriber: "relay_note".into(),
                 attempt: 1,
                 attempts: 3,
+                diverged: false,
             })
         );
     });

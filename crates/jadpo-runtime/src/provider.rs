@@ -657,9 +657,26 @@ pub async fn call(
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),
         Err(Unanswered::Fault(kind)) => return Done::Fault(kind),
     };
+    // The key it goes under, which a fake keeps its answer under as the
+    // provider would (chunk 7.5d).
+    let mut sent_key = None;
     if let Some(keying) = &keying
         && let Some(header) = keying.header(providers, plan, step.map_or(0, |at| at.key_generation))
     {
+        sent_key = Some(crate::capability::SentKey {
+            key: header.1.clone(),
+            reused: plan
+                .idempotency
+                .as_ref()
+                .and_then(|idempotency| idempotency.reused.clone()),
+            did_nothing: op
+                .failures
+                .iter()
+                .filter_map(|key| providers.failures.iter().find(|plan| plan.key == *key))
+                .filter(|plan| matches!(plan.kind.as_deref(), Some("unavailable" | "rate_limited")))
+                .map(|plan| plan.code.clone())
+                .collect(),
+        });
         request.headers.push(header);
     }
     // What the development call log shows of the request (chunk 7.2d).
@@ -672,6 +689,7 @@ pub async fn call(
     });
     let mut made = made.with_request(request);
     made.step = step;
+    made.key = sent_key;
     let mut step = step;
     let mut answer = match retried(ctx, &made, plan.retry, plan.max_concurrent).await {
         Ok(answer) => answer,
@@ -706,6 +724,9 @@ pub async fn call(
             request
                 .headers
                 .retain(|(name, _)| !name.eq_ignore_ascii_case(&header));
+            if let Some(sent) = made.key.as_mut() {
+                sent.key.clone_from(&key);
+            }
             request.headers.push((header, key));
         }
         step = next;

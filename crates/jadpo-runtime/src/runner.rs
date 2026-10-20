@@ -164,6 +164,14 @@ pub async fn settle_within(
                     {
                         true
                     }
+                    // A crash `jadpo test` made (chunk 7.5d): delivered
+                    // again at once, as the request still waits.
+                    Some((Outcome::Fault(fault), GIVEN_BACK))
+                        if fault.kind == FaultKind::Crashed =>
+                    {
+                        queue.push_front(Piece::Delivery(delivery));
+                        true
+                    }
                     Some((_, GIVEN_BACK)) => {
                         queue.push_front(Piece::Delivery(delivery));
                         false
@@ -790,6 +798,13 @@ pub(crate) async fn attempt_delivery(
         // settled as one that timed out.
         Err(_) => Outcome::Fault(ctx.fault(FaultKind::DeadlineExceeded, Frame::ENTRY)),
     };
+    // A crash `jadpo test` made at a step (chunk 7.5d): nothing the run
+    // did was kept, and the delivery is given back, due now, as a
+    // restart's sweep would find it, without counting the attempt.
+    if matches!(&outcome, Outcome::Fault(fault) if fault.kind == FaultKind::Crashed) {
+        crate::lease::release(database, &lease, now).await;
+        return Some((outcome, GIVEN_BACK));
+    }
     let after = outbox::after(&outcome);
     let after = if acted { after.once_acted() } else { after };
     let state = match after {

@@ -53,10 +53,34 @@ pub struct Call {
     /// is kept and the call is a step (chunk 7.5b): written before it goes
     /// out.
     pub step: Option<crate::steps::StepAt>,
+    /// The idempotency key a keyed provider call is sent under, which a
+    /// package's fake keeps its answer under as its provider would
+    /// (chunk 7.5d). Never logged.
+    pub key: Option<SentKey>,
     /// Which of a call's answers it asks for, from 1: an `ai.generate`
     /// call's repair asks again (area 21; chunk 5.5v3), which a fake's
     /// `.requests` doesn't list as a call of its own.
     pub attempt: u32,
+}
+
+/// The idempotency key a provider call goes under, and its package's code
+/// for a key that came with a different request (`reused:`), which a fake
+/// answers such a call with (area 11, "Tests and tools"; chunk 7.5d).
+#[derive(Clone, PartialEq, Eq)]
+pub struct SentKey {
+    pub key: String,
+    pub reused: Option<String>,
+    /// Its operation's failure codes that say it did nothing and is worth
+    /// sending again (their kind `unavailable` or `rate_limited`), which
+    /// keep nothing under the key.
+    pub did_nothing: Vec<String>,
+}
+
+impl std::fmt::Debug for SentKey {
+    /// Never the key.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SentKey").finish_non_exhaustive()
+    }
 }
 
 impl Call {
@@ -74,6 +98,7 @@ impl Call {
             repeat,
             request: None,
             step: None,
+            key: None,
             attempt: 1,
         }
     }

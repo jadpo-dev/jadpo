@@ -300,6 +300,11 @@ pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswere
     let answer = driver.call(&call).await;
     let took = began.and_then(|began| Some(host.monotonic_ms()?.saturating_sub(began)));
     ctx.capabilities_mut().ended(place, &answer, took);
+    // A step answered, its answer not kept yet, which `jadpo test` may
+    // crash after (chunk 7.5d).
+    if call.step.is_some() && crate::crashes::due(ctx, crate::crashes::Boundary::AfterSend) {
+        return Err(Unanswered::Fault(FaultKind::Crashed));
+    }
     Ok(answer)
 }
 

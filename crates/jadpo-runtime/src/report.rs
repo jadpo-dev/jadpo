@@ -260,6 +260,7 @@ impl Report {
             FaultKind::Provider(_) => "the provider's answer".to_string(),
             FaultKind::CallInTransaction(_) => "not sent".to_string(),
             FaultKind::Diverged(_) => "differs from its record".to_string(),
+            FaultKind::Crashed => "crashed here".to_string(),
         };
         let text = site.map(|frame| site_text(places, sources, frame, &caret));
         let written = text.as_ref().map_or("", |text| text.written.as_str());
@@ -341,6 +342,11 @@ impl Report {
                     "`{call}` would have left the process while this action's transaction was open, after its first write; no transaction is held while an outside call is out, so it wasn't sent."
                 ),
                 "Make the call before the action's first write".to_string(),
+                "agent",
+            ),
+            FaultKind::Crashed => (
+                "`jadpo test` crashed the run here, at a step of an action with several changing calls, and nothing started it again.".to_string(),
+                "Run the action from a subscriber, or from a route whose API requires `Idempotency-Key`, so a crash resumes it".to_string(),
                 "agent",
             ),
             FaultKind::Diverged(what) => (
