@@ -10,9 +10,11 @@ use jadpo_check::lookups::Lookup;
 use jadpo_db::{Db, Project};
 use jadpo_graph::{Key, TypeRef};
 use jadpo_std::provider::{
-    Address, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan, OperationPlan,
-    PathPart, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan, WebhookReply,
+    Address, AwsPlan, ConnectionPlan, CredentialScheme, DEFAULT_TIMEOUT_MS, IdempotencyPlan,
+    OperationPlan, PathPart, Protocol, ProviderPlan, RecordedPlan, WebhookEvent, WebhookPlan,
+    WebhookReply,
 };
+use jadpo_std::receiving::{AcknowledgePlan, Mapped, QueueEvent, QueuePlan, ReceivePlan};
 use jadpo_std::subscriber::Repeat;
 
 /// The provider plan, numbering each operation's input and output in
@@ -67,6 +69,11 @@ pub(crate) fn plan(
                 let scheme = match scheme {
                     "bearer" => Some(CredentialScheme::Bearer),
                     "basic" => Some(CredentialScheme::Basic),
+                    "aws_sigv4" => connection
+                        .key_id
+                        .as_deref()
+                        .and_then(setting)
+                        .map(|key_id| CredentialScheme::AwsSigV4 { key_id }),
                     _ => None,
                 };
                 scheme.zip(setting(name))
@@ -91,6 +98,16 @@ pub(crate) fn plan(
             package: connection.package.clone(),
             address,
             credential,
+            protocol: match reach.protocol.as_deref() {
+                Some("aws_json") => Protocol::AwsJson,
+                _ => Protocol::JsonHttp,
+            },
+            aws: reach.aws.as_ref().and_then(|aws| {
+                Some(AwsPlan {
+                    service: aws.service.clone()?,
+                    target: aws.target.clone(),
+                })
+            }),
             timeout_ms: connection.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
             retry: connection.retry.unwrap_or_default(),
             idempotency,
@@ -169,6 +186,58 @@ pub(crate) fn plan(
                     }),
                 })
                 .collect(),
+        });
+    }
+    // Each queue `receiving:` names (chunk 7.7c): a message's body is read
+    // with its event's codec, numbered here, and its payload kept with it.
+    for queue in &jadpo_check::receiving::receiving(db, project).queues {
+        let inputs =
+            |given: &[(String, jadpo_check::receiving::Input)]| -> Option<Vec<(String, Mapped)>> {
+                given
+                    .iter()
+                    .map(|(member, input)| {
+                        use jadpo_check::receiving::Input;
+                        let mapped = match input {
+                            Input::Config(name) => Mapped::Setting(setting(name)?),
+                            Input::Text(text) => Mapped::Text(text.clone()),
+                            Input::Int(n) => Mapped::Int(*n),
+                            Input::Bool(flag) => Mapped::Bool(*flag),
+                            Input::Handle => Mapped::Handle,
+                        };
+                        Some((member.clone(), mapped))
+                    })
+                    .collect()
+            };
+        let (Some(receive), Some(acknowledge)) =
+            (inputs(&queue.receive.1), inputs(&queue.acknowledge.1))
+        else {
+            continue;
+        };
+        out.queues.push(QueuePlan {
+            connection: queue.connection.clone(),
+            type_at: queue.type_at.clone(),
+            id_at: queue.id_at.clone(),
+            events: queue
+                .events
+                .iter()
+                .map(|event| QueueEvent {
+                    wire_name: event.wire_name.clone(),
+                    key: event.key.as_str().to_string(),
+                    number: number(TypeRef::Node(event.key.clone())),
+                })
+                .collect(),
+            store: queue.store.clone(),
+            receive: ReceivePlan {
+                operation: queue.receive.0.clone(),
+                input: receive,
+                messages: queue.messages.clone(),
+                body: queue.body.clone(),
+                handle: queue.handle.clone(),
+            },
+            acknowledge: AcknowledgePlan {
+                operation: queue.acknowledge.0.clone(),
+                input: acknowledge,
+            },
         });
     }
     out

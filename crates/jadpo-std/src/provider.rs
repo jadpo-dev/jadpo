@@ -219,6 +219,10 @@ pub struct ProviderPlan {
     /// "Provenance and confirmation"; chunk 7.2d2), which `jadpo test` and
     /// the publishing bar decode with its operation's decoders.
     pub recorded: Vec<RecordedPlan>,
+    /// Each queue the app receives through `receiving:` (area 12, "Events
+    /// from outside"; chunk 7.7c), fetched by the tick through its
+    /// connection's package.
+    pub queues: Vec<crate::receiving::QueuePlan>,
 }
 
 /// One recording, `recordings/<resource>.<operation>.json`, of a package
@@ -267,6 +271,31 @@ pub enum CredentialScheme {
     /// `Authorization: Basic <base64 of the secret>`: the secret is
     /// `user:password`, as RFC 7617 joins them.
     Basic,
+    /// AWS Signature Version 4 (chunk 7.7c): each request signed with the
+    /// secret access key, which is the connection's secret setting, under
+    /// the access key id the setting numbered here holds.
+    AwsSigV4 { key_id: u32 },
+}
+
+/// How a provider's bodies are sent (area 11, `protocol:`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Protocol {
+    /// JSON over HTTP, each operation at its method and path.
+    #[default]
+    JsonHttp,
+    /// AWS's JSON protocol (chunk 7.7c): every operation a `POST` to `/`
+    /// with `Content-Type: application/x-amz-json-1.0`, named by
+    /// `X-Amz-Target: <target>.<Operation>`.
+    AwsJson,
+}
+
+/// A provider's `aws: { service: target: }` (chunk 7.7c): the service
+/// name its requests are signed for, `sqs`, and the prefix its operations
+/// are named under in `X-Amz-Target`, `AmazonSQS`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AwsPlan {
+    pub service: String,
+    pub target: Option<String>,
 }
 
 /// Where a connection's API is (area 11, "Where an API is").
@@ -320,6 +349,10 @@ pub struct ConnectionPlan {
     /// The scheme its credential is sent with, and the secret setting it
     /// is read from.
     pub credential: Option<(CredentialScheme, u32)>,
+    /// How its bodies are sent, and, for an AWS API, what its requests are
+    /// signed for and named under (chunk 7.7c).
+    pub protocol: Protocol,
+    pub aws: Option<AwsPlan>,
     /// How long a call waits for its answer, in milliseconds.
     pub timeout_ms: u64,
     /// How a call that may be sent again is retried (chunk 7.2c2).

@@ -1,0 +1,21 @@
+/// Receives up to ten messages at a time, and deletes each once its event
+/// is kept.
+provide receiving {
+    receive: {
+        call: messages.receive_message
+        input: {
+            queue_url: settings.queue_url
+            max_number_of_messages: 10
+        }
+        messages: response.messages
+        body: item.body
+        handle: item.receipt_handle
+    }
+    acknowledge: {
+        call: messages.delete_message
+        input: {
+            queue_url: settings.queue_url
+            receipt_handle: message.handle
+        }
+    }
+}
