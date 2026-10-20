@@ -547,6 +547,8 @@ impl EventStream {
 /// The settings a call reads, by number, for its model and its address.
 pub fn settings_read(plan: &AiPlan, site: &StreamSite) -> Vec<u32> {
     let mut read: Vec<u32> = plan.model(&site.model).into_iter().collect();
+    // The day's cost limit, a `Money` setting (chunk 5.5v5).
+    read.extend(plan.limits.as_ref().and_then(|limits| limits.cost));
     if let AiDriver::OpenAiCompatible(AiUrl::Setting(at)) = &plan.driver {
         read.push(*at);
     }
@@ -623,6 +625,39 @@ pub async fn stream(
         let place = capabilities.sent(&made, Source::Replayed, now);
         capabilities.ended(place, &Answer::Wire(Rc::from("")), Some(0));
         return Done::Value(ai_stream(number));
+    }
+    // What the call may use, taken from every limit before it is sent
+    // and charged whole, since what a stream used is never read from it
+    // (area 21, "Budgets"; chunk 5.5v5).
+    let input: u64 = messages
+        .iter()
+        .map(|(_, content)| jadpo_std::ai::estimated_tokens(content))
+        .sum();
+    let asked = crate::ai_budget::Asked {
+        prompt: &site.prompt,
+        max_output: site.max_output,
+        attempts: 1,
+    };
+    match crate::ai_budget::take(ctx, ai, asked, &model, input, settings).await {
+        Ok(taken) => {
+            let most = crate::ai_budget::Used {
+                input,
+                output: u64::from(site.max_output),
+                cached: 0,
+            };
+            crate::ai_budget::debit(ctx, taken, most).await;
+        }
+        Err(crate::ai_budget::Refused::OverBudget) => {
+            let now = ctx.now();
+            ctx.capabilities_mut().refused(&made, now);
+            return broke(RuleKey::OverBudget);
+        }
+        Err(crate::ai_budget::Refused::Unavailable) => {
+            return Done::Failed(Box::new(crate::unavailable()));
+        }
+        Err(crate::ai_budget::Refused::Misconfigured) => {
+            return Done::Failed(Box::new(crate::misconfigured()));
+        }
     }
     let host = ctx.host();
     let began = host.monotonic_ms();

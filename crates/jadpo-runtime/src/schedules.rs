@@ -371,6 +371,8 @@ pub struct Deleted {
     /// Parked queue messages an operator dismissed 30 days before (chunk
     /// 7.7c).
     pub parked: u64,
+    /// Counts of what `ai` calls used on days long past (chunk 5.5v5).
+    pub ai_usage: u64,
 }
 
 /// How many queue messages one tick kept as events, dropped as repeats,
@@ -501,6 +503,17 @@ pub async fn tick(executor: &dyn Executor, host: &dyn Host, now: i64) -> Ticked 
                 Ok(count) => ticked.deleted.actions += count,
                 Err(error) => ticked.problems.push((store.clone(), error)),
             }
+        }
+    }
+    // The counts of what `ai` calls used, once `jadpo ai usage` no
+    // longer shows their day (chunk 5.5v5).
+    if let Some(store) = &plan.ai_usage
+        && !budget.spent()
+    {
+        let before = now.saturating_sub(crate::ai_budget::KEPT_MS);
+        match delete(host, store, crate::ai_budget::OLD_DAYS, before).await {
+            Ok(count) => ticked.deleted.ai_usage += count,
+            Err(error) => ticked.problems.push((store.clone(), error)),
         }
     }
     // Each queue's messages, kept as events and delivered within what is

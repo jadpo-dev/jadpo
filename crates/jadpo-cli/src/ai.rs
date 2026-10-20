@@ -7,8 +7,8 @@
 //!
 //! The screen: the prompt's fields (its type, file and version), one
 //! section per message in the order they are sent, then a footer counting
-//! the placeholders and the data blocks among them. `jadpo ai record`
-//! comes with roadmap chunk 5.5v4b and `jadpo ai usage` with 5.5v5.
+//! the placeholders and the data blocks among them. `jadpo ai usage` is
+//! [`crate::ai_usage`]; `jadpo ai record` comes with roadmap chunk 5.5v4b.
 
 use std::path::PathBuf;
 
@@ -32,6 +32,10 @@ pub const ACTIONS: &[Value] = &[
         name: "record",
         description: "Keep the model's answer to a prompt for tests",
     },
+    Value {
+        name: "usage",
+        description: "Show the tokens and cost models used today and this month",
+    },
 ];
 
 pub fn ai(call: &Call) -> Reply {
@@ -39,16 +43,7 @@ pub fn ai(call: &Call) -> Reply {
     match call.arguments.first().map(String::as_str) {
         Some("show") => {}
         Some("record") => return crate::ai_record::record(call),
-        Some("usage") => {
-            return Reply::failed(
-                Diagnostic::new(
-                    &rule::TOOLCHAIN_NOT_BUILT_YET,
-                    "`jadpo ai usage` isn't built yet",
-                )
-                .reason("`usage` shows the day's and month's tokens and estimated cost by prompt and model (area 21); it is decided, and roadmap chunk 5.5v5 builds it.")
-                .next("Run `jadpo ai show <prompt>` to see what a prompt sends"),
-            );
-        }
+        Some("usage") => return crate::ai_usage::usage(call),
         Some(other) => {
             let diagnostic = Diagnostic::new(
                 &rule::CLI_AI_ARGUMENTS,

@@ -633,7 +633,7 @@ pub static COMMANDS: &[Command] = &[
         name: "ai",
         synonyms: &[],
         group: "Look things up",
-        summary: "Show prompts, record answers",
+        summary: "Show prompts, record, usage",
         description: "`show` prints what a prompt sends a model (area 21): its type, its file and its \
                       version, the first 8 hex characters of a SHA-256 over its two files, then the \
                       instructions as the system message, the conversation's turns, and the request \
@@ -642,11 +642,15 @@ pub static COMMANDS: &[Command] = &[
                       configured model the prompt once, with the values of its last `jadpo dev` call \
                       or a fixture's, and keeps the answer beside it as recordings/<prompt>/<name>.json \
                       for a test's recorded(\"<name>\"), its plain values placeholders; never through \
-                      a live connection.",
+                      a live connection. `usage` shows the tokens the app's calls used today and \
+                      this month (UTC) and their estimated cost, by prompt and model, against the \
+                      daily limit, from the counts `ai: { limits: }` keeps; never a prompt or an \
+                      answer. Its database is the one its store's connection's setting gives, or a \
+                      running jadpo dev's, or the one --url names.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: show or record",
+                description: "What to do: show, record or usage",
                 required: true,
                 values: Values::Fixed(crate::ai::ACTIONS),
             },
@@ -670,6 +674,12 @@ pub static COMMANDS: &[Command] = &[
                 description: "For record: a fixture to ask with",
                 values: &[],
             },
+            Flag {
+                name: "--url",
+                value: Some("url"),
+                description: "For usage: the database it reads",
+                values: &[],
+            },
         ],
         examples: &[
             Example {
@@ -684,12 +694,16 @@ pub static COMMANDS: &[Command] = &[
                 description: "Record the model's answer to the last jadpo dev call",
                 command: "jadpo ai record summarise_ticket --as long_thread",
             },
+            Example {
+                description: "See the tokens and cost models used today and this month",
+                command: "jadpo ai usage",
+            },
         ],
         arguments_rule: &rule::CLI_AI_ARGUMENTS,
         raises: &[
+            &rule::AI_USAGE_UNAVAILABLE,
             &rule::RECORDING_FAILED,
             &rule::RECORDING_REFUSED,
-            &rule::TOOLCHAIN_NOT_BUILT_YET,
             &rule::TOOLCHAIN_PROJECT_NOT_FOUND,
         ],
         run: commands::ai,

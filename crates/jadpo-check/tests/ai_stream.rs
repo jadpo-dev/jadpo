@@ -18,7 +18,7 @@ const CONFIG: (&str, &str) = (
 
 const APP: (&str, &str) = (
     "app.jadpo",
-    "application {\n    connections: {\n        local_model: {\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }\n    }\n    ai: {\n        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n    }\n}\n",
+    "application {\n    connections: {\n        local_model: {\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }\n    }\n    ai: {\n        connection: local_model\n        models: {\n            default: config.drafting_model\n        }\n        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n    }\n}\n",
 );
 
 const POLICY: (&str, &str) = (
@@ -75,7 +75,7 @@ fn problems(files: &[(&str, &str)]) -> Vec<String> {
     let mut all: Vec<(&str, &str)> = vec![APP, CONFIG, POLICY];
     all.extend_from_slice(&TYPES);
     all.extend_from_slice(files);
-    let project = support::project_with_records(&db, Layout::Project, &all, &[PROMPT]);
+    let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[PROMPT]);
     jadpo_check::check(&db, project)
         .iter()
         // The API's record is `jadpo api update`'s, read in the CLI's tests.

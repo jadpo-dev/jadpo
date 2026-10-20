@@ -20,7 +20,7 @@ const CONFIG: (&str, &str) = (
 /// `ai:` with `models:` and `rest` after them.
 fn app(models: &str, rest: &str) -> String {
     format!(
-        "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n{models}        }}\n{rest}    }}\n}}\n"
+        "application {{\n    connections: {{\n        local_model: {{\n            driver: Driver.openai_compatible\n            url: config.model_url\n        }}\n    }}\n    ai: {{\n        connection: local_model\n        models: {{\n{models}        }}\n{rest}        limits: {{\n            per_day: {{\n                tokens: 2000000\n            }}\n        }}\n    }}\n}}\n"
     )
 }
 
@@ -88,7 +88,8 @@ fn problems_with(app: &str, files: &[(&str, &str)]) -> Vec<String> {
     let mut all: Vec<(&str, &str)> = vec![("app.jadpo", app), CONFIG];
     all.extend_from_slice(&TYPES);
     all.extend_from_slice(files);
-    let project = support::project_with_records(&db, Layout::Project, &all, &[PROMPT, RECORDING]);
+    let project =
+        support::project_with_migrated_records(&db, Layout::Project, &all, &[PROMPT, RECORDING]);
     jadpo_check::check(&db, project)
         .iter()
         .map(|d| {
@@ -362,7 +363,7 @@ fn a_domain_that_embeds_asks_the_model() {
     let mut all: Vec<(&str, &str)> = vec![("app.jadpo", app.as_str()), CONFIG];
     all.extend_from_slice(&TYPES[..4]);
     all.push((ACTION_PATH, answer.as_str()));
-    let project = support::project_with_records(&db, Layout::Project, &all, &[]);
+    let project = support::project_with_migrated_records(&db, Layout::Project, &all, &[]);
     assert_eq!(*jadpo_check::ai::asking_domains(&db, project), ["support"]);
 }
 

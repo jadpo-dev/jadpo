@@ -41,6 +41,10 @@ pub struct SchedulesPlan {
     /// beside the queues' events (chunk 7.7c); `None` when the app
     /// receives no queue, and the tick receives each queue's messages.
     pub parked: Option<String>,
+    /// The store the counts of what `ai` calls used are kept in
+    /// (`jadpo_ai_usage`), whose old days the tick deletes (area 21,
+    /// "Budgets"; chunk 5.5v5); `None` when the app asks no model.
+    pub ai_usage: Option<String>,
 }
 
 impl SchedulesPlan {

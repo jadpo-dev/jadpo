@@ -247,6 +247,10 @@ pub struct Ctx<'p> {
     /// route its action answers, by the step it took and the request it
     /// sent (area 21; chunk 5.5v6): what an `AiStream` value names.
     streams: Vec<crate::stream::OpenStream>,
+    /// The tokens the `ai` calls of the request being answered used (area
+    /// 21, "Budgets"; chunk 5.5v5), with the action that request is: each
+    /// action a test calls is a request of its own.
+    ai_spent: (u32, u64),
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -314,6 +318,7 @@ impl<'p> Ctx<'p> {
             reused: Vec::new(),
             shown: Vec::new(),
             streams: Vec::new(),
+            ai_spent: (0, 0),
         }
     }
 
@@ -1003,6 +1008,23 @@ impl<'p> Ctx<'p> {
     }
 
     // --- the action boundary ----------------------------------------------
+
+    /// The tokens the `ai` calls of the request being answered have used.
+    pub(crate) fn ai_spent(&self) -> u64 {
+        if self.ai_spent.0 == self.actions {
+            self.ai_spent.1
+        } else {
+            0
+        }
+    }
+
+    /// Counts `tokens` against the request being answered.
+    pub(crate) fn add_ai_spent(&mut self, tokens: u64) {
+        if self.ai_spent.0 != self.actions {
+            self.ai_spent = (self.actions, 0);
+        }
+        self.ai_spent.1 = self.ai_spent.1.saturating_add(tokens);
+    }
 
     /// How many actions this invocation has run in a boundary of their
     /// own: each action or fixture a test calls opens one, and an action it

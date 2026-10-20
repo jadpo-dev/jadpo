@@ -16,7 +16,7 @@ const CONFIG: (&str, &str) = (
     "config {\n    acme_key: Text {\n        secret: true\n    }\n    acme_environment: ProviderEnvironment {\n        default: ProviderEnvironment.sandbox\n    }\n    drafting_model: ModelId {\n        default: \"acme/acme-small\"\n    }\n}\n",
 );
 
-const APP: &str = "application {\n    connections: {\n        acme: {\n            package: AcmeModels.v1\n            domains: [support]\n            credential: config.acme_key\n            environment: config.acme_environment\n            development: {\n                sandbox: [answer_question]\n            }\n        }\n    }\n    ai: {\n        connection: acme\n        models: {\n            default: config.drafting_model\n        }\n    }\n}\n";
+const APP: &str = "application {\n    connections: {\n        acme: {\n            package: AcmeModels.v1\n            domains: [support]\n            credential: config.acme_key\n            environment: config.acme_environment\n            development: {\n                sandbox: [answer_question]\n            }\n        }\n    }\n    ai: {\n        connection: acme\n        models: {\n            default: config.drafting_model\n        }\n        limits: {\n            per_day: {\n                tokens: 2000000\n            }\n        }\n    }\n}\n";
 
 /// The `generate:` mapping of the package as the tests write it.
 const GENERATE: &str = "    generate: {\n        call: chat.complete\n        input: {\n            model: request.model\n            instructions: request.instructions\n            messages: {\n                each: request.messages\n                as: {\n                    role: item.role\n                    content: item.content\n                }\n            }\n            max_tokens: request.max_output\n        }\n        answer: response.choices.first.message.content\n        refused_when: response.choices.first.message.refusal\n        cut_off_when: {\n            path: \"choices.0.finish_reason\"\n            equals: \"length\"\n        }\n        usage: {\n            input: response.usage.prompt_tokens\n            output: response.usage.completion_tokens\n        }\n        schema: {\n            mode: AiSchema.strict_subset\n            at: \"format\"\n        }\n    }\n";
@@ -30,12 +30,18 @@ fn provides(body: &str) -> String {
 /// The package and the app's desk, `provides/ai.jadpo` as given (none
 /// for `None`), with `app.jadpo` as given.
 fn problems_with(app: &str, mapping: Option<&str>) -> Vec<String> {
-    problems_with_extra(app, mapping, &[])
+    problems_in(app, mapping, &[])
 }
 
 /// [`problems_with`], with `extra` files besides.
 fn problems_with_extra(app: &str, mapping: Option<&str>, extra: &[(&str, &str)]) -> Vec<String> {
-    let mut files: Vec<(String, String)> = vec![
+    problems_in(app, mapping, extra)
+}
+
+/// [`problems_with`], each of `replaced` taking the place of the file at
+/// its path, or added.
+fn problems_in(app: &str, mapping: Option<&str>, replaced: &[(&str, &str)]) -> Vec<String> {
+    let files: Vec<(String, String)> = vec![
         ("app.jadpo".into(), app.into()),
         (CONFIG.0.into(), CONFIG.1.into()),
         (
@@ -103,11 +109,11 @@ fn problems_with_extra(app: &str, mapping: Option<&str>, extra: &[(&str, &str)])
             "use support/failures { AssistantUnavailable }\nuse support/prompts { AnswerQuestion }\nuse support/types { CustomerQuestion, SupportAnswer }\n\n/// Answers a customer's question.\naction answer_customer(question: CustomerQuestion) fails AssistantUnavailable -> SupportAnswer {\n    return attempt ai.generate(AnswerQuestion { question: question }, as: SupportAnswer) {\n        refused: AssistantUnavailable\n        malformed: AssistantUnavailable\n        timed_out: AssistantUnavailable\n        over_budget: AssistantUnavailable\n        too_long: AssistantUnavailable\n    }\n}\n".into(),
         ),
     ];
-    files.extend(
-        extra
-            .iter()
-            .map(|(path, text)| (path.to_string(), text.to_string())),
-    );
+    let mut files = files;
+    for (path, text) in replaced {
+        files.retain(|(known, _)| known != path);
+        files.push((path.to_string(), text.to_string()));
+    }
     if let Some(mapping) = mapping {
         files.push((format!("{PACKAGE}/provides/ai.jadpo"), mapping.to_string()));
     }
@@ -116,7 +122,7 @@ fn problems_with_extra(app: &str, mapping: Option<&str>, extra: &[(&str, &str)])
         .map(|(path, text)| (path.as_str(), text.as_str()))
         .collect();
     let db = Database::default();
-    let project = support::project_with_records(
+    let project = support::project_with_migrated_records(
         &db,
         Layout::Project,
         &borrowed,
@@ -245,6 +251,54 @@ fn each_mistake_in_the_mapping_is_reported() {
             "{from} -> {to}"
         );
     }
+}
+
+/// `models: { prices: }` names a constant of the package's libraries
+/// listing each model's price per million input, cached and output tokens
+/// in a currency, from a day: what the day's cost is estimated from
+/// (chunk 5.5v5).
+#[test]
+fn the_price_table_is_a_constant_of_the_package() {
+    let library = |rows: &str| {
+        format!(
+            "/// The models Acme serves.\nlibrary models {{\n    /// Each model's context window, in tokens.\n    constant context_windows: List<ModelContext> = [\n        ModelContext {{\n            model: \"acme-small\"\n            tokens: 64\n        }}\n    ]\n    /// What each model costs.\n    constant prices: List<ModelPrice> = [\n{rows}    ]\n}}\n"
+        )
+    };
+    let price_type = (
+        "shared/providers/acme_models/v1/types/model_price.jadpo",
+        "/// What a model costs per million tokens, from a day.\ntype ModelPrice = Object {\n    model: Text {\n        max_length: 100\n    }\n    currency: Currency\n    input: Decimal\n    cached: Decimal\n    output: Decimal\n    from: CalendarDate\n}\n",
+    );
+    let mapping = provides(&format!(
+        "{GENERATE}    models: {{\n        context: models.context_windows\n        prices: models.prices\n    }}\n"
+    ));
+    let with = |rows: &str| {
+        let library = library(rows);
+        problems_in(
+            APP,
+            Some(&mapping),
+            &[
+                price_type,
+                (
+                    "shared/providers/acme_models/v1/libraries/models.jadpo",
+                    library.as_str(),
+                ),
+            ],
+        )
+    };
+    let row = |input: &str| {
+        format!(
+            "        ModelPrice {{\n            model: \"acme-small\"\n            currency: Currency.usd\n            input: {input}\n            cached: 0.10\n            output: 1.60\n            from: \"2026-04-14\"\n        }}\n"
+        )
+    };
+    let none: Vec<String> = Vec::new();
+    assert_eq!(with(&row("0.40")), none);
+    // A price finer than a millionth can't be counted.
+    assert_eq!(
+        with(&row("0.0000004")),
+        [format!(
+            "{PROVIDES} package.provider_invalid: `prices:` isn't a table of models and their prices"
+        )]
+    );
 }
 
 /// `models: { context: }` names a constant of the package's libraries

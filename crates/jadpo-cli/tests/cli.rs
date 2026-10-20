@@ -69,7 +69,7 @@ Data
 
 Look things up
   routes        List every route
-  ai            Show prompts, record answers  show, record
+  ai            Show prompts, record, usage   show, record, usage
   calls         Show provider calls in dev    list, show, script
   why           Explain why a schedule didn't run
 
@@ -142,7 +142,7 @@ Data
 
 Look things up
   routes        List every route
-  ai            Show prompts, record answers  show · record
+  ai            Show prompts, record, usage   show · record · usage
   calls         Show provider calls in dev    list · show · script
   why           Explain why a schedule didn't run
 
@@ -717,7 +717,7 @@ fn tab_at_the_top_level_lists_every_command_with_its_description() {
             "migrate\tWrite and apply migrations",
             "sql\tShow the SQL a query or action sends",
             "routes\tList every route",
-            "ai\tShow prompts, record answers",
+            "ai\tShow prompts, record, usage",
             "calls\tShow provider calls in dev",
             "why\tExplain why a schedule didn't run",
             "api\tRewrite the API records",

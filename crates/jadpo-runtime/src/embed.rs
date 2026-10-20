@@ -43,6 +43,8 @@ use crate::provider::{Reading, Request};
 /// The settings a call reads, by number, for its model and its address.
 pub fn settings_read(ai: &Ai<'_>, site: &EmbedSite) -> Vec<u32> {
     let mut read: Vec<u32> = ai.plan.model(&site.model).into_iter().collect();
+    // The day's cost limit, a `Money` setting (chunk 5.5v5).
+    read.extend(ai.plan.limits.as_ref().and_then(|limits| limits.cost));
     if let AiDriver::OpenAiCompatible(AiUrl::Setting(at)) = &ai.plan.driver {
         read.push(*at);
     }
@@ -182,6 +184,32 @@ pub async fn embed(
     {
         return replayed(ctx, ai, site, texts.len(), made, kept);
     }
+    // What the call may use, taken from every limit before it is sent:
+    // its texts, since an embedding answers with no tokens of its own
+    // (area 21, "Budgets"; chunk 5.5v5).
+    let input: u64 = texts
+        .iter()
+        .map(|text| jadpo_std::ai::estimated_tokens(text))
+        .sum();
+    let asked = crate::ai_budget::Asked {
+        prompt: OPERATION,
+        max_output: 0,
+        attempts: 1,
+    };
+    let taken = match crate::ai_budget::take(ctx, ai, asked, &model, input, settings).await {
+        Ok(taken) => taken,
+        Err(crate::ai_budget::Refused::OverBudget) => {
+            let now = ctx.now();
+            ctx.capabilities_mut().refused(&made, now);
+            return broke(RuleKey::OverBudget);
+        }
+        Err(crate::ai_budget::Refused::Unavailable) => {
+            return Done::Failed(Box::new(crate::unavailable()));
+        }
+        Err(crate::ai_budget::Refused::Misconfigured) => {
+            return Done::Failed(Box::new(crate::misconfigured()));
+        }
+    };
     let began = ctx.host().monotonic_ms();
     let mut call = made.clone();
     call.step = step_at;
@@ -203,7 +231,9 @@ pub async fn embed(
     let (answer, _) =
         match crate::ai::sent(ctx, call, request, (began, site.timeout_ms), None).await {
             Ok(sent) => sent,
-            Err(done) => return done,
+            Err(done) => {
+                return crate::ai_budget::debited(ctx, taken, texts_used(input), done).await;
+            }
         };
     // A fake's own: the vectors made from each text and the seed.
     let answer = match answer {
@@ -213,6 +243,15 @@ pub async fn embed(
         }
         other => other,
     };
+    // Charged what the answer says it used, or what was sent.
+    let used = match &answer {
+        Answer::Wire(text) => serde_json::from_str::<serde_json::Value>(text)
+            .ok()
+            .and_then(|json| json.get("usage")?.get("prompt_tokens")?.as_u64())
+            .map_or_else(|| texts_used(input), texts_used),
+        _ => texts_used(input),
+    };
+    crate::ai_budget::debit(ctx, taken, used).await;
     let kept = match &answer {
         Answer::Wire(text) => Kept::Answer(text.clone()),
         Answer::TimedOut => Kept::Condition(RuleKey::TimedOut),
@@ -251,6 +290,15 @@ pub async fn embed(
         ctx.keep_reused(Reused { step, digest, kept });
     }
     done
+}
+
+/// An embedding's use: `input` tokens, and none answered.
+fn texts_used(input: u64) -> crate::ai_budget::Used {
+    crate::ai_budget::Used {
+        input,
+        output: 0,
+        cached: 0,
+    }
 }
 
 /// What the call gives when its answer is given back without asking
