@@ -837,7 +837,7 @@ impl Lower<'_> {
                 library, function, ..
             } => Callee::LibraryFunction(library_function_key(
                 self.names.registry(),
-                library,
+                &self.names.canonical(library),
                 function,
             )),
             Reach::Std(op) => Callee::Std(*op),

@@ -1,7 +1,7 @@
 use sales/types { DiscountCode }
 
 /// No discount has that code.
-type CodeUnknown = Failure {
+public type CodeUnknown = Failure {
     kind: FailureKind.not_found
     message: "That discount code doesn't exist."
     internal: {

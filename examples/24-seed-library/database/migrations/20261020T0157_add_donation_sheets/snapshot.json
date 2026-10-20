@@ -255,6 +255,11 @@
               "position": 1,
               "type": "uuid"
             },
+            "retried_at": {
+              "nullable": true,
+              "position": 8,
+              "type": "timestamptz(3)"
+            },
             "status": {
               "position": 3,
               "type": "text"
@@ -367,6 +372,66 @@
             "name": "jadpo_idempotency_keys_pkey"
           },
           "system": "idempotency_keys"
+        },
+        "jadpo_operator_actions": {
+          "columns": {
+            "acted_at": {
+              "position": 1,
+              "type": "timestamptz(3)"
+            },
+            "action": {
+              "position": 2,
+              "type": "text"
+            },
+            "event": {
+              "nullable": true,
+              "position": 6,
+              "type": "text"
+            },
+            "id": {
+              "position": 0,
+              "type": "uuid"
+            },
+            "item": {
+              "position": 4,
+              "type": "uuid"
+            },
+            "kind": {
+              "position": 3,
+              "type": "text"
+            },
+            "operator": {
+              "position": 8,
+              "type": "text"
+            },
+            "role": {
+              "position": 9,
+              "type": "text"
+            },
+            "target": {
+              "position": 5,
+              "type": "text"
+            },
+            "was": {
+              "position": 7,
+              "type": "text"
+            }
+          },
+          "indexes": {
+            "jadpo_operator_actions_item_idx": {
+              "columns": [
+                "item"
+              ],
+              "reason": "system operator actions"
+            }
+          },
+          "primary_key": {
+            "columns": [
+              "id"
+            ],
+            "name": "jadpo_operator_actions_pkey"
+          },
+          "system": "operator_actions"
         },
         "jadpo_outbox": {
           "columns": {

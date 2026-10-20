@@ -99,6 +99,10 @@ pub(crate) enum Target {
     /// A test's run of a schedule, by the callable number of the action it
     /// runs (area 13; chunk 6.2c).
     Schedule(u32),
+    /// `clock.advance(...)` in a test, by the duration it is given: a
+    /// step after which what has come due is delivered (area 13; chunk
+    /// 6.11).
+    AdvanceClock,
 }
 
 /// Where a run of the machine stopped.
@@ -186,8 +190,6 @@ enum Task<'p> {
     /// 12, chunk 6.1b).
     Emit(SiteId),
     PushUnit,
-    /// `clock.advance(...)`: the duration on the stack moves the clock.
-    AdvanceClock(SiteId),
     /// `none`, for an option a standard-library call leaves out.
     PushNone,
     /// A `crypto` call's `key: config.<name>`: the setting's number, the
@@ -789,22 +791,6 @@ impl<'p> Machine<'p> {
                 self.emit(ctx, value, at)?;
             }
             Task::PushUnit => self.values.push(Value::Unit),
-            Task::AdvanceClock(at) => {
-                let by = match self.pop() {
-                    Value::Duration(by) => by,
-                    _ => {
-                        return Err(self.defect(
-                            ctx,
-                            "a clock moved by something that isn't a duration",
-                            at,
-                        ));
-                    }
-                };
-                if !ctx.advance_clock(by) {
-                    return Err(self.fault(ctx, FaultKind::ClockBackward, at));
-                }
-                self.values.push(Value::Unit);
-            }
             Task::PushNone => self.values.push(Value::None),
             Task::PushKey(setting) => self.values.push(Value::Int(i64::from(setting))),
             Task::Translate { key, count, at } => {
@@ -1013,7 +999,8 @@ impl<'p> Machine<'p> {
                     | Target::Session(_)
                     | Target::Batch(..)
                     | Target::Files(..)
-                    | Target::Schedule(_) => {
+                    | Target::Schedule(_)
+                    | Target::AdvanceClock => {
                         return Ok(Flow::Pause { target, args, at });
                     }
                 }
@@ -2042,7 +2029,12 @@ impl<'p> Machine<'p> {
                 let [Some(arg)] = args else {
                     return Err(self.defect(ctx, "a clock moved by nothing", id));
                 };
-                self.tasks.push(Task::AdvanceClock(id));
+                self.tasks.push(Task::Invoke {
+                    target: Target::AdvanceClock,
+                    count: 1,
+                    at: id,
+                    then: None,
+                });
                 self.tasks.push(Task::Expr(*arg));
             }
             Callee::Object(_) | Callee::Variant(_) | Callee::Unknown => {

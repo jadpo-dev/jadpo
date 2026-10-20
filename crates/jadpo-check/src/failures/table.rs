@@ -131,12 +131,30 @@ pub fn provided_failures(db: &dyn Db, project: Project) -> Vec<FailureInfo> {
 pub fn failure_table(db: &dyn Db, project: Project) -> FailureTable {
     let mut table = FailureTable::default();
     let provided = provided_failures(db, project);
-    for found in project
+    for (package, found) in project
         .files(db)
         .iter()
-        .map(|file| failure_decls(db, *file).as_slice())
-        .chain(std::iter::once(provided.as_slice()))
+        .map(|file| {
+            let package = jadpo_db::location(db, project, *file)
+                .ownership
+                .package()
+                .map(|home| home.code.clone());
+            (package, failure_decls(db, *file).as_slice())
+        })
+        .chain(std::iter::once((None, provided.as_slice())))
     {
+        // A package's failures are known through it, `Postcodes.Invalid`
+        // (area 11), and their codes are the package's, not the app's.
+        if let Some(package) = package {
+            for info in found {
+                let info = FailureInfo {
+                    name: format!("{package}.{}", info.name),
+                    ..info.clone()
+                };
+                table.by_name.entry(info.name.clone()).or_insert(info);
+            }
+            continue;
+        }
         for info in found {
             table
                 .by_name

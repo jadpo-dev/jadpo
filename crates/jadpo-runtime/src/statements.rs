@@ -32,6 +32,55 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ),
         ("batches::WAITING", crate::batches::WAITING.to_string()),
         (
+            "deliveries::ACT_DELIVERY",
+            crate::deliveries::ACT_DELIVERY.to_string(),
+        ),
+        (
+            "deliveries::CANCEL_REQUEST",
+            crate::deliveries::CANCEL_REQUEST.to_string(),
+        ),
+        (
+            "deliveries::CANCELLED_RUNS",
+            crate::deliveries::CANCELLED_RUNS.to_string(),
+        ),
+        (
+            "deliveries::DELIVERY_COUNTS",
+            crate::deliveries::DELIVERY_COUNTS.to_string(),
+        ),
+        (
+            "deliveries::FIND_REQUESTED",
+            crate::deliveries::FIND_REQUESTED.to_string(),
+        ),
+        (
+            "deliveries::LOG_RUN",
+            crate::deliveries::LOG_RUN.to_string(),
+        ),
+        (
+            "deliveries::REQUESTED_RUNS",
+            crate::deliveries::REQUESTED_RUNS.to_string(),
+        ),
+        (
+            "deliveries::SETTLE_RUN",
+            crate::deliveries::SETTLE_RUN.to_string(),
+        ),
+        (
+            "deliveries::deliveries_sql",
+            crate::deliveries::deliveries_sql(),
+        ),
+        (
+            "deliveries::dismissed_runs_sql",
+            crate::deliveries::dismissed_runs_sql(),
+        ),
+        (
+            "deliveries::find_delivery_sql",
+            crate::deliveries::find_delivery_sql(),
+        ),
+        (
+            "deliveries::find_run_sql",
+            crate::deliveries::find_run_sql(),
+        ),
+        ("deliveries::runs_sql", crate::deliveries::runs_sql()),
+        (
             "http::idempotency::CLAIM",
             crate::http::idempotency::CLAIM.to_string(),
         ),

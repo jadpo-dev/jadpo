@@ -715,18 +715,25 @@ chunks below, taken before Phase 7, in this order.
   outbox) at a time, ten times a tick; statements in
   `jadpo_runtime::statements`; live tests in `tick_deletes.rs`. Choices
   in area 12, "The tick".
-- [ ] **6.11 Events in tests** `opus · high` (area 13, "Caches and
-  events"; area 12, question 15): what each step of a test emits
-  delivered after it commits and before the next statement, at the
-  test's clock, until none are left, in an order shuffled by the
-  printed seed, a subscriber that fails failing the test; a fake failing
-  a subscriber, to test retries, follows with 7.0c's fakes.
-- [ ] **6.12 `jadpo deliveries`** `opus · high` (area 14, question 13;
-  area 12, "What an operator sees"): list, retry, dismiss, cancel and
-  resolve deliveries and schedule runs against an environment, each
-  logged with who did it, on the screens of the CLI design language;
-  `show`, `retry --not-done` and `abandon` come with multi-step calls
-  (7.5), and batch runs and parked queue messages with 6.4b and 7.7.
+- [x] **6.11 Events in tests** `opus · high`. Built: what each step of
+  a test emits (a call, a request, a schedule's run, `clock.advance`)
+  delivered before the next statement, at the test's clock, until none
+  is due, each drawn in an order the printed seed and the test's key
+  decide; a retry waiting its full backoff for `clock.advance`; a
+  delivery that fails for good ending the test as
+  `test.subscriber_failed`, a fake failing a subscriber's call (7.0c's
+  `Faked`) retried and given up the same way, a test's `fakes:` coming
+  with 7.2's generated fakes; examples 23 and 25 reading what their
+  subscribers did.
+- [x] **6.12 `jadpo deliveries`** `opus · high`. Built: `jadpo
+  deliveries` listing what failed or is in doubt (`--state` for the
+  rest), and `retry`, `dismiss`, `cancel` and `resolve --done|--not-done`
+  on a delivery or a schedule's latest run, each from its state only and
+  logged in `jadpo_operator_actions` with the operator's name and
+  database role; a retried delivery's fresh budget (`retried_at`), and a
+  schedule's run retried through the app's tick. `show`, `retry
+  --not-done` and `abandon` come with multi-step calls (7.5), and batch
+  runs and parked queue messages with 6.4b and 7.7.
 - [x] **5.13b `jadpo dev` and half-written files** `opus · high`.
   Built: the watcher behind `jadpo dev` and `jadpo test --watch` takes a
   file that had text and is empty now as a save in place not yet
@@ -736,6 +743,10 @@ chunks below, taken before Phase 7, in this order.
   truncates the routes file, then writes it 400 ms later, and the old
   version serves between; `config.rs` saves `.env.local` atomically.
 
+- [ ] **6.13 Keeping what an operator settled** `opus · high` (found in
+  chunk 6.12): deliveries an operator dismissed or cancelled, and their
+  events and log rows, deleted by the tick after a window (30 days, as
+  run records), so they stop piling up; recorded in area 12.
 ## Phase 7 — Packages, capabilities and email (areas 11, 16)
 
 The design is area 11 as revised on 2026-10-16, with its research in
@@ -794,16 +805,33 @@ The design is area 11 as revised on 2026-10-16, with its research in
   warning for a `from:` ordered by a field that can be updated (a
   declinable error, area 1) and `estimated_total` from a query's count or
   a file's size.
-- [ ] **7.1 Packages and connections** `opus · high`: the package format
-  (`package.jadpo`, `provider.jadpo`, folders, `public` and the public
-  surface rule), library and provider kinds, `packages/` installed and
-  committed, the app's own integrations in `shared/providers/`,
-  `jadpo.lock` with its sources (path, git, link) and verification at
-  install, reserved names, `surface.jadpo_record` and `jadpo package show`,
-  `connections:` and the network report, lazy loading, library packages'
-  translations, and the `jadpo package` commands for adding, linking and
-  checking, with `type.standard_exists` on packages' public types in the
-  publishing bar (area 19, question 1). The public registry stays after the first build.
+- [x] **7.1 Packages: format, kinds, names and the lock** `opus · high`
+  (split from 7.1 Packages and connections on 2026-10-20). Built:
+  `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
+  read as packages laid out as `shared/` is, `package.jadpo` and
+  `provider.jadpo` checked, names scoped to their package and written
+  through it (`use packages/postcodes`, `Postcodes.UkPostcode`,
+  `Postcodes.uk.tidy(...)`) in the checker, the graph and the
+  interpreter, each package's code seeing only its own names, `public`
+  and `visibility.public_reaches_private` in packages and domains,
+  reserved and taken names, and `jadpo check` holding each installed
+  package to its line and digest in `jadpo.lock`; the `package.*` errors
+  and example 26. Choices in area 11's "Chosen in chunk 7.1", with one
+  flagged for Richard (a package's code doesn't see the app's `shared/`).
+- [ ] **7.1b Package surface and commands** `opus · high`, after 7.1:
+  `surface.jadpo_record` and `jadpo package show`, `jadpo package check`
+  with `type.standard_exists` on packages' public types in the publishing
+  bar (area 19, question 1), `jadpo package add` from a path and a git
+  repository with verification at install, `update` and `remove`, `link`
+  and `unlink` with the linked checkout compiled and refused where
+  production and CI build, and library packages' translations.
+- [ ] **7.1c Connections and the network report** `opus · high`, after
+  7.1b: `connections:` entries naming a package (`package:`, `domains:`,
+  `credential:`, `environment:`, `host:` against `hosts:` and `runs:`,
+  settings), the network report, lazy loading of a package's
+  resources by file name with the check cached per digest, and two
+  versions of one package side by side, names carrying the version. The
+  public registry stays after the first build.
 - [ ] **7.2 Importing, decoding and faking** `opus · high`: `x-jadpo`
   fields in every API's OpenAPI document and each API serving it at
   `<prefix>/openapi.json` (under its own authentication, `serve_openapi:

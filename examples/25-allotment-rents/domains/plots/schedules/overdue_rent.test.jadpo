@@ -1,5 +1,10 @@
-use plots/entities { Plot }
+// A schedule test runs the schedule once, as the tick would. What the
+// run emits is delivered before the next line, so the test sees each
+// reminder its subscriber sent, within its own society.
+
+use plots/entities { Plot, Reminder }
 use plots/types { SocietySites }
+use plots/queries { plot_reminders }
 use plots/fixtures { two_societies }
 
 test "one run flags the overdue plots of every society" {
@@ -12,6 +17,10 @@ test "one run flags the overdue plots of every society" {
     assert ada.reminded_on == "2026-10-19"
     assert ben.reminded_on == "2026-10-19"
     assert cy.reminded_on == none
+    var to_ada: List<Reminder> = plot_reminders(ada.id)
+    var to_cy: List<Reminder> = plot_reminders(cy.id)
+    assert list.count(to_ada) == 1
+    assert list.count(to_cy) == 0
 }
 
 test "a plot flagged once isn't flagged again the next day" {
@@ -22,4 +31,6 @@ test "a plot flagged once isn't flagged again the next day" {
     overdue_rent.run()
     var ada: Plot = attempt Plot.get(allotments.ada_overdue.id)
     assert ada.reminded_on == "2026-10-19"
+    var to_ada: List<Reminder> = plot_reminders(ada.id)
+    assert list.count(to_ada) == 1
 }

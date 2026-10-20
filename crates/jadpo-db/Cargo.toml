@@ -13,6 +13,8 @@ autotests = false
 jadpo-diag.workspace = true
 jadpo-syntax.workspace = true
 salsa.workspace = true
+# A package's digest in the lock (area 18): SHA-256, already in the lock.
+sha2.workspace = true
 
 [lints]
 workspace = true

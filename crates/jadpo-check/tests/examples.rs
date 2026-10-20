@@ -135,14 +135,6 @@ const EXEMPT: &[(&str, &str)] = &[
         "not built: a drop needs a person's acceptance (area 18)",
     ),
     (
-        "syntax PACKAGE_DECL",
-        "not built: provider packages (area 11)",
-    ),
-    (
-        "syntax RESOURCE_DECL",
-        "not built: provider packages (area 11)",
-    ),
-    (
         "syntax PROVIDE_DECL",
         "not built: provider packages (area 11)",
     ),
@@ -186,8 +178,27 @@ const EXEMPT: &[(&str, &str)] = &[
     ("domain folder emails", "not built: emails (area 16)"),
     ("place monitoring", "not built: monitoring (area 16)"),
     ("place seeds", "not built: seeds (area 5)"),
-    ("place providers", "not built: provider packages (area 11)"),
     ("place acceptances", "not built: acceptances (area 18)"),
+    (
+        "package folder actions",
+        "not built: a package's actions (area 11, chunk 7.6)",
+    ),
+    (
+        "package folder subscribers",
+        "not built: a package's subscribers (area 11, chunk 7.6)",
+    ),
+    (
+        "package folder events",
+        "not built: a package's events (area 11, chunk 7.6)",
+    ),
+    (
+        "package folder provides",
+        "not built: a package's capability mappings (area 11, chunk 7.3)",
+    ),
+    (
+        "package folder translations",
+        "not built: a library package's translations (area 11, chunk 7.1b)",
+    ),
 ];
 
 fn root() -> PathBuf {
@@ -305,9 +316,14 @@ fn built() -> BTreeSet<String> {
             .map(|file| format!("root file {}", file.file_name())),
     );
     out.extend(
-        Folder::ALL
+        Folder::DOMAIN
             .iter()
             .map(|folder| format!("domain folder {}", folder.name())),
+    );
+    out.extend(
+        Folder::PACKAGE
+            .iter()
+            .map(|folder| format!("package folder {}", folder.name())),
     );
     out.extend(
         Folder::SHARED
@@ -649,7 +665,10 @@ const PLACES: &[&str] = &[
     "monitoring",
     "seeds",
     "migration",
-    "providers",
+    "package index",
+    "provider",
+    "installed package",
+    "own integration",
     "acceptances",
     "root translations",
 ];
@@ -663,7 +682,8 @@ fn place(place: &Place) -> Option<&'static str> {
         Place::Monitoring => Some("monitoring"),
         Place::Seeds => Some("seeds"),
         Place::Migration => Some("migration"),
-        Place::Providers => Some("providers"),
+        Place::PackageIndex => Some("package index"),
+        Place::Provider => Some("provider"),
         Place::Acceptances => Some("acceptances"),
         Place::RootTranslations => Some("root translations"),
         // A root file is counted by name; loose and stray files aren't
@@ -1189,9 +1209,20 @@ fn used_by(project_dir: &Path) -> BTreeSet<String> {
             used.insert(format!("place {name}"));
         }
         if let Some(folder) = location.folder() {
-            let shared = location.ownership == jadpo_db::Ownership::Shared;
-            let side = if shared { "shared" } else { "domain" };
+            let side = match &location.ownership {
+                jadpo_db::Ownership::Shared => "shared",
+                jadpo_db::Ownership::Package(_) => "package",
+                _ => "domain",
+            };
             used.insert(format!("{side} folder {}", folder.name()));
+        }
+        if let Some(home) = location.ownership.package() {
+            let which = if home.installed {
+                "installed package"
+            } else {
+                "own integration"
+            };
+            used.insert(format!("place {which}"));
         }
         if location.test && location.folder().is_some() {
             used.insert("place test beside its subject".to_string());

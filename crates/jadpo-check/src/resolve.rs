@@ -438,7 +438,9 @@ impl Names<'_> {
                 }
                 if let Some(first) = names.first() {
                     let packaged = names.len() > 1 && self.table.is_package(&text(first));
-                    if !packaged {
+                    if packaged {
+                        self.package_type(first, &names[1], want, out);
+                    } else {
                         self.type_name(first, want, out);
                     }
                 }
@@ -461,10 +463,12 @@ impl Names<'_> {
         match expr {
             Expr::NameRef(name) => self.type_name(name, want, out),
             Expr::FieldExpr(_) => {
-                if let Some((first, _)) = dotted(expr)
-                    && !self.table.is_package(&text(&first))
-                {
-                    self.type_name(&first, want, out);
+                if let Some((first, rest)) = dotted(expr) {
+                    if !self.table.is_package(&text(&first)) {
+                        self.type_name(&first, want, out);
+                    } else if let Some(member) = rest.first() {
+                        self.package_type(&first, member, want, out);
+                    }
                 }
             }
             Expr::GenericExpr(generic) => {
@@ -619,6 +623,12 @@ impl Names<'_> {
     /// Checks that this file may use `symbol`: visible from its domain, and
     /// not domain code used from `shared/`.
     fn access(&self, symbol: &Symbol, span: Span, out: &mut Vec<Diagnostic>) {
+        if let Ownership::Package(home) = &symbol.ownership {
+            if !symbol.visible_from(self.ownership) {
+                out.push(package_private(symbol, &home.code, span));
+            }
+            return;
+        }
         if *self.ownership == Ownership::Shared {
             if let Ownership::Domain(domain) = &symbol.ownership {
                 out.push(call_direction(symbol, domain, span));
@@ -843,7 +853,10 @@ impl Names<'_> {
         };
         match &symbol.kind {
             ItemKind::Function => match (&symbol.library, other_domain) {
-                (Some((library, _)), _) if self.library != Some(library.as_str()) => {
+                (Some((library, _)), _)
+                    if self.library.map(|own| self.table.canonical(own)).as_ref()
+                        != Some(library) =>
+                {
                     out.push(
                         Diagnostic::new(
                             &rule::SEMANTIC_UNKNOWN_CALLEE,
@@ -909,6 +922,52 @@ impl Names<'_> {
                     span,
                 ));
             }
+        }
+    }
+
+    /// A call through a package (area 11): `Postcodes.uk.parse(...)`, a
+    /// function of its public library, or `Postcodes.UkPostcode(...)`, its
+    /// type built from a value.
+    fn package_call(&self, first: &ast::NameRef, rest: &[ast::NameRef], out: &mut Vec<Diagnostic>) {
+        let Some((member, after)) = rest.split_first() else {
+            return;
+        };
+        let Some(symbol) = self.package_member(first, member, out) else {
+            return;
+        };
+        if symbol.kind != ItemKind::Library {
+            return;
+        }
+        let library = format!("{}.{}", text(first), text(member));
+        match after {
+            [function] => {
+                let name = text(function);
+                if self.table.library_function(&library, &name).is_none() {
+                    let functions: Vec<String> = self
+                        .table
+                        .all()
+                        .declarations
+                        .values()
+                        .flatten()
+                        .filter(|symbol| {
+                            symbol
+                                .library
+                                .as_ref()
+                                .is_some_and(|(held_by, _)| *held_by == library)
+                        })
+                        .map(|symbol| symbol.name.clone())
+                        .collect();
+                    let near = nearest(&name, functions.iter().map(String::as_str));
+                    out.push(no_member(
+                        &format!("Library `{library}` has no function `{name}`"),
+                        &name,
+                        near,
+                        self.span(function),
+                    ));
+                }
+            }
+            [] => {}
+            _ => out.push(self.too_many_names(first, rest)),
         }
     }
 
@@ -1106,10 +1165,99 @@ impl Names<'_> {
     /// entity, resolved as a qualifier; a lower-case one is a local, area
     /// 3's to check.
     pub fn value_name(&self, expr: &Expr, out: &mut Vec<Diagnostic>) {
-        if let Some((first, _)) = dotted(expr)
+        if let Some((first, rest)) = dotted(expr)
             && starts_upper(&text(&first))
         {
+            if self.table.is_package(&text(&first))
+                && let Some(member) = rest.first()
+            {
+                self.package_member(&first, member, out);
+                return;
+            }
             self.type_qualifier(&first, false, out);
+        }
+    }
+
+    /// A name written through a package, `Postcodes.UkPostcode` or
+    /// `Postcodes.uk` (area 11): the package's declaration, reported when
+    /// it has none by that name or doesn't make it public.
+    fn package_member(
+        &self,
+        first: &ast::NameRef,
+        member: &ast::NameRef,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<Symbol> {
+        let package = text(first);
+        let name = text(member);
+        let joined = format!("{package}.{name}");
+        let found = self
+            .table
+            .declared(&joined)
+            .iter()
+            .find(|symbol| symbol.library.is_none() && symbol.ownership.package().is_some())
+            .cloned();
+        let Some(symbol) = found else {
+            let offered: Vec<String> = self
+                .table
+                .all()
+                .declarations
+                .values()
+                .flatten()
+                .filter(|symbol| {
+                    symbol.library.is_none()
+                        && symbol.public
+                        && symbol
+                            .ownership
+                            .package()
+                            .is_some_and(|home| home.code == package)
+                })
+                .map(|symbol| symbol.name.clone())
+                .collect();
+            let near = nearest(&name, offered.iter().map(String::as_str)).map(str::to_string);
+            let span = self.span(member);
+            let problem = Diagnostic::new(
+                &rule::SEMANTIC_UNKNOWN_NAME,
+                format!("Package `{package}` has no `{name}`"),
+            )
+            .at(span.clone(), "not in the package")
+            .reason(format!(
+                "Nothing `{package}` declares is called `{name}`.{}",
+                did_you_mean(near.as_deref())
+            ));
+            out.push(match near {
+                Some(near) => problem
+                    .next(format!("Use `{package}.{near}` instead"))
+                    .edit(span, near),
+                None => problem.next(format!("Use something `{package}` marks `public`")),
+            });
+            return None;
+        };
+        let span = Span::new(self.path, self.span(first).start, self.span(member).end);
+        self.access(&symbol, span, out);
+        Some(symbol)
+    }
+
+    /// A type written through a package, `Postcodes.UkPostcode`, in a
+    /// position that wants a type or a failure.
+    fn package_type(
+        &self,
+        first: &ast::NameRef,
+        member: &ast::NameRef,
+        want: Want,
+        out: &mut Vec<Diagnostic>,
+    ) {
+        let Some(symbol) = self.package_member(first, member, out) else {
+            return;
+        };
+        let written = format!("{}.{}", text(first), text(member));
+        let span = Span::new(self.path, self.span(first).start, self.span(member).end);
+        match (&symbol.kind, want) {
+            (ItemKind::Type(Base::Failure), _) => {}
+            (ItemKind::Type(_), Want::Type) => {}
+            (ItemKind::Type(_), Want::Failure) => {
+                out.push(not_a_failure(&written, &symbol.kind.with_a(), span));
+            }
+            (kind, _) => out.push(not_a_type(&written, &kind.with_a(), span)),
         }
     }
 
@@ -1122,6 +1270,10 @@ impl Names<'_> {
         out: &mut Vec<Diagnostic>,
     ) {
         let qualifier = text(first);
+        if starts_upper(&qualifier) && self.table.is_package(&qualifier) && !is_local {
+            self.package_call(first, rest, out);
+            return;
+        }
         if starts_upper(&qualifier) {
             self.type_qualifier(first, true, out);
             if let [operation] = rest {
@@ -1758,6 +1910,23 @@ fn private(symbol: &Symbol, domain: &str, span: Span) -> Diagnostic {
     } else {
         format!("Mark `{name}` `public` if `{domain}` should offer it to other domains")
     })
+}
+
+fn package_private(symbol: &Symbol, package: &str, span: Span) -> Diagnostic {
+    let name = &symbol.name;
+    Diagnostic::new(
+        &rule::PACKAGE_NOT_PUBLIC,
+        format!("`{package}.{name}` isn't public"),
+    )
+    .at(span, "not part of the package's API")
+    .reason(format!(
+        "A package offers only what it marks `public`; `{name}` is {} in `{}` that only the package's own code uses, and may change in any version.",
+        symbol.kind.with_a(),
+        symbol.path
+    ))
+    .next(format!(
+        "Use what `{package}` marks `public` instead"
+    ))
 }
 
 fn call_direction(symbol: &Symbol, domain: &str, span: Span) -> Diagnostic {

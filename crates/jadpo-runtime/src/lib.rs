@@ -75,6 +75,7 @@ pub mod budget;
 pub mod capability;
 pub mod config;
 mod ctx;
+pub mod deliveries;
 pub mod effects;
 mod env;
 mod executor;
@@ -101,6 +102,7 @@ pub mod schedules;
 pub mod serve;
 pub mod statements;
 mod store;
+pub mod test_steps;
 mod write;
 
 pub use boundary::{

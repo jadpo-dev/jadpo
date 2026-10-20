@@ -330,10 +330,11 @@ impl Body<'_> {
 
     /// Records that `failure` can leave the callable here.
     fn leave(&mut self, failure: &str, span: Span, how: &'static str) {
-        self.flow
-            .leaving
-            .entry(failure.to_string())
-            .or_insert((span, how));
+        // As the tables know it: a package's failure through its package
+        // (area 11), whether its own code names it bare or an app names it
+        // through the package.
+        let failure = self.symbols.canonical(failure);
+        self.flow.leaving.entry(failure).or_insert((span, how));
     }
 
     /// `reject Failure` or `reject Failure { ... }`.
@@ -1555,7 +1556,7 @@ impl Body<'_> {
         let mut listed: BTreeMap<String, Span> = BTreeMap::new();
         let mut entries: Vec<(String, ast::Type)> = Vec::new();
         for ty in fails.iter().flat_map(|clause| clause.types()) {
-            entries.push((tree::written(ty.syntax()), ty));
+            entries.push((self.symbols.canonical(&tree::written(ty.syntax())), ty));
         }
         for (index, (written, ty)) in entries.iter().enumerate() {
             let span = self.span(ty);
@@ -1586,7 +1587,13 @@ impl Body<'_> {
             .map(|(failure, (span, how))| (failure.clone(), span.clone(), *how))
             .collect();
         leaving.sort_by_key(|(_, span, _)| (span.start, span.end));
-        if let Some((_, first_span, first_how)) = leaving.first().cloned() {
+        // A name in the list that is no failure is resolution's to report;
+        // while one is, the failure it was meant to be may be the one that
+        // leaves, so one mistake gives one error.
+        let unresolved = entries
+            .iter()
+            .any(|(written, _)| !self.failures.is_declared_failure(written));
+        if !unresolved && let Some((_, first_span, first_how)) = leaving.first().cloned() {
             let names: Vec<String> = leaving.iter().map(|(f, _, _)| format!("`{f}`")).collect();
             let joined: Vec<&str> = leaving.iter().map(|(f, _, _)| f.as_str()).collect();
             let joined = joined.join(", ");

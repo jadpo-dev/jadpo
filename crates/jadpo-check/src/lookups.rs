@@ -66,14 +66,20 @@ pub fn in_scope<'db>(
 ) -> Vec<Symbol> {
     let all = &name_facts(db, project, name).declarations;
     let domain = Some(domain.text(db).as_str()).filter(|domain| !domain.is_empty());
-    let mut seen: Vec<Symbol> = all
+    // A package's names are seen outside it only written through it
+    // (`Postcodes.UkPostcode`, area 11), never bare.
+    let outside: Vec<&Symbol> = all
+        .iter()
+        .filter(|symbol| symbol.ownership.package().is_none())
+        .collect();
+    let mut seen: Vec<Symbol> = outside
         .iter()
         .filter(|symbol| symbol.scope.is_some() && symbol.in_scope_of(domain))
-        .chain(all.iter().filter(|symbol| symbol.scope.is_none()))
-        .cloned()
+        .chain(outside.iter().filter(|symbol| symbol.scope.is_none()))
+        .map(|symbol| (*symbol).clone())
         .collect();
     if seen.is_empty() {
-        seen = all.clone();
+        seen = outside.into_iter().cloned().collect();
     }
     seen
 }
@@ -92,7 +98,7 @@ pub fn domain_declarations<'db>(
         .declarations
         .iter()
         .filter(|symbol| {
-            symbol.ownership.domain() == Some(domain.text(db).as_str())
+            symbol.ownership.scope() == Some(domain.text(db).as_str())
                 && symbol.identity() != symbol.name
         })
         .cloned()
@@ -299,8 +305,12 @@ pub trait FailureView {
 pub struct Lookup<'db> {
     db: &'db dyn Db,
     project: Project,
-    /// The domain whose private names the reader sees.
+    /// The domain whose private names the reader sees, or the package
+    /// whose names it sees bare.
     domain: Option<String>,
+    /// Whether the reader is a package's own code, which sees only its
+    /// package's names and the built-ins (area 11).
+    in_package: bool,
     /// Lookups already made by this check, to save interning a name again.
     defs: RefCell<HashMap<String, Option<&'db Def>>>,
 }
@@ -325,6 +335,7 @@ impl<'db> Lookup<'db> {
             db,
             project,
             domain: None,
+            in_package: false,
             defs: RefCell::new(HashMap::new()),
         }
     }
@@ -332,7 +343,8 @@ impl<'db> Lookup<'db> {
     /// Lookups that read names as code owned by `ownership` writes them.
     pub fn within(db: &'db dyn Db, project: Project, ownership: &Ownership) -> Lookup<'db> {
         Lookup {
-            domain: ownership.domain().map(str::to_string),
+            domain: ownership.scope().map(str::to_string),
+            in_package: ownership.package().is_some(),
             ..Lookup::new(db, project)
         }
     }
@@ -361,10 +373,15 @@ impl<'db> Lookup<'db> {
     }
 
     /// The domain and name of `written` when it is the identity of a
-    /// function or type declared in a domain, `billing.Address`.
+    /// function or type declared in a domain, `billing.Address`, or a
+    /// package's declaration written through it, `Postcodes.UkPostcode`.
     fn identified<'w>(&self, written: &'w str) -> Option<(&'w str, &'w str)> {
         let (domain, name) = written.split_once('.')?;
-        if name.contains('.') || !self.facts(domain).domain {
+        if name.contains('.') {
+            return None;
+        }
+        let facts = self.facts(domain);
+        if !facts.domain && !facts.package {
             return None;
         }
         (!self.in_domain(name, domain).is_empty()).then_some((domain, name))
@@ -426,6 +443,19 @@ impl TypeView for Lookup<'_> {
 
 impl NameView for Lookup<'_> {
     fn declared(&self, name: &str) -> &[Symbol] {
+        if self.in_package {
+            // A package is published apart from any app, so its code sees
+            // only its own names (and the built-ins), bare.
+            let own = self.domain.clone().unwrap_or_default();
+            if let Some((package, rest)) = self.identified(name) {
+                return if package == own {
+                    self.in_domain(rest, package)
+                } else {
+                    &[]
+                };
+            }
+            return self.in_domain(name, &own);
+        }
         if let Some((domain, rest)) = self.identified(name) {
             return self.in_domain(rest, domain);
         }
@@ -442,19 +472,31 @@ impl NameView for Lookup<'_> {
     }
 
     fn is_domain(&self, name: &str) -> bool {
-        self.facts(name).domain
+        !self.in_package && self.facts(name).domain
     }
 
     fn is_connection(&self, name: &str) -> bool {
-        self.facts(name).connection
+        !self.in_package && self.facts(name).connection
     }
 
     fn is_package(&self, name: &str) -> bool {
-        self.facts(name).package
+        !self.in_package && self.facts(name).package
     }
 
     fn all(&self) -> &Symbols {
         symbols(self.db, self.project)
+    }
+
+    fn library_function(&self, library: &str, function: &str) -> Option<&Symbol> {
+        let library = self.canonical_name(library);
+        // The library names its function exactly, a package's included,
+        // which code outside the package sees only through its library.
+        self.facts(function).declarations.iter().find(|symbol| {
+            symbol
+                .library
+                .as_ref()
+                .is_some_and(|(held_by, _)| *held_by == library)
+        })
     }
 
     fn registry(&self) -> &Registry {
@@ -469,10 +511,11 @@ impl SigView for Lookup<'_> {
     }
 
     fn library_signature(&self, library: &str, function: &str) -> Option<&Sig> {
+        let library = self.canonical_name(library);
         library_signature(
             self.db,
             self.project,
-            self.name(library),
+            self.name(&library),
             self.name(function),
         )
         .as_ref()
@@ -501,6 +544,7 @@ impl WriteView for Lookup<'_> {
 
 impl FailureView for Lookup<'_> {
     fn failure_info(&self, name: &str) -> Option<&FailureInfo> {
-        failure_info(self.db, self.project, self.name(name)).as_ref()
+        let canonical = self.canonical_name(name);
+        failure_info(self.db, self.project, self.name(&canonical)).as_ref()
     }
 }

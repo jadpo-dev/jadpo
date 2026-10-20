@@ -103,6 +103,17 @@ fn test(order: usize, result: &TestResult) -> Json {
                 ("assertion", assertion),
                 ("failure", raised),
                 ("fault", fault),
+                (
+                    "delivery",
+                    failure.delivery.as_ref().map_or(Json::Null, |delivery| {
+                        Json::object([
+                            ("event", Json::from(&delivery.event)),
+                            ("subscriber", Json::from(&delivery.subscriber)),
+                            ("attempt", Json::from(i64::from(delivery.attempt))),
+                            ("attempts", Json::from(i64::from(delivery.attempts))),
+                        ])
+                    }),
+                ),
                 ("rerun", Json::from(&failure.rerun)),
                 ("kept", Json::array(failure.kept.iter().map(String::as_str))),
             ]),
@@ -315,7 +326,7 @@ pub fn schema() -> Json {
             fields(&[
                 (
                     "code",
-                    "test.assertion_failed, test.unexpected_failure or test.fault",
+                    "test.assertion_failed, test.unexpected_failure, test.fault or test.subscriber_failed",
                 ),
                 ("help", "The code's entry on the language pages"),
                 ("location", "Where in the test it failed (a location)"),
@@ -330,6 +341,10 @@ pub fn schema() -> Json {
                 (
                     "fault",
                     "For a fault: kind, message, rule, at (a location), reason, next and stack (stack frames, innermost first)",
+                ),
+                (
+                    "delivery",
+                    "For test.subscriber_failed: the delivery between the test's steps that failed for good, its event, subscriber, attempt and attempts (how many its retry: allows); its failure or fault is beside it",
                 ),
                 (
                     "rerun",

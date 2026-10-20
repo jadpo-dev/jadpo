@@ -1,4 +1,4 @@
--- 20261020T0148_add_donation_sheets: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T0157_add_donation_sheets: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "donation_sheet" (

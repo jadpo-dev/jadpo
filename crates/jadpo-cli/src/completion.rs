@@ -117,6 +117,7 @@ pub fn candidates(words: &[String], cwd: Option<&Path>) -> String {
                 .map(crate::sql::query_and_action_names)
                 .unwrap_or_default(),
             Some(Values::Schedule) => cwd.map(crate::schedules::names).unwrap_or_default(),
+            Some(Values::Id) => Vec::new(),
             None => Vec::new(),
         }
     } else {

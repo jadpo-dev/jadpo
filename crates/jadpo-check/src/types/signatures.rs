@@ -56,12 +56,16 @@ pub fn callables(db: &dyn Db, project: Project) -> Callables {
             .map_or(Ty::Prim(Prim::Unit), |result| {
                 table.resolve(&TypeRef::parse(result).scoped(canonical))
             }),
-        fails: signature.fails.clone(),
+        fails: signature
+            .fails
+            .iter()
+            .map(|failure| canonical(failure))
+            .collect(),
     };
     let mut out = Callables::default();
     for &file in project.files(db) {
         let location = jadpo_db::location(db, project, file);
-        let domain = location.ownership.domain();
+        let domain = location.ownership.scope();
         let canonical = |written: &str| contested.canonical(written, domain);
         for item in &item_tree(db, file).items {
             match item.kind {
@@ -77,7 +81,7 @@ pub fn callables(db: &dyn Db, project: Project) -> Callables {
                 }
                 ItemKind::Library => {
                     for member in &item.functions {
-                        let key = (item.name.clone(), member.name.clone());
+                        let key = (canonical(&item.name), member.name.clone());
                         if member.kind == ItemKind::Constant {
                             out.library_constants
                                 .entry(key)

@@ -1354,6 +1354,9 @@ impl AstNode for ResourceDecl {
 }
 
 impl ResourceDecl {
+    pub fn visibility(&self) -> Option<Visibility> {
+        support::child(&self.syntax)
+    }
     pub fn resource_kw_token(&self) -> Option<SyntaxToken> {
         support::token(&self.syntax, RESOURCE_KW)
     }

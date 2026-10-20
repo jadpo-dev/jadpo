@@ -137,7 +137,7 @@ pub fn type_table(db: &dyn Db, project: Project) -> TypeTable {
     let contested = jadpo_db::contested(db, project);
     for &file in project.files(db) {
         let location = jadpo_db::location(db, project, file);
-        let domain = location.ownership.domain();
+        let domain = location.ownership.scope();
         let canonical = |written: &str| contested.canonical(written, domain);
         for shape in type_shapes(db, file) {
             let shape = if contested.0.is_empty() {
@@ -904,6 +904,21 @@ pub trait TypeView {
                     [name] => self.resolve_name(name, args, stub),
                     [host, rest @ ..] if self.field(host, rest).is_some() => {
                         Ty::Field(self.canonical(host), rest.to_vec())
+                    }
+                    // A package's type written through it,
+                    // `Postcodes.UkPostcode`, or one of its fields (area
+                    // 11): the tables know it by both names.
+                    [package, name, rest @ ..]
+                        if !stub && self.def(&format!("{package}.{name}")).is_some() =>
+                    {
+                        let joined = format!("{package}.{name}");
+                        if rest.is_empty() {
+                            self.resolve_name(&joined, args, stub)
+                        } else if self.field(&joined, rest).is_some() {
+                            Ty::Field(joined, rest.to_vec())
+                        } else {
+                            Ty::Error
+                        }
                     }
                     // A kind of caller (area 8): `Principal.user`.
                     [host, kind]

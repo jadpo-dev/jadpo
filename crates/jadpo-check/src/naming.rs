@@ -58,7 +58,9 @@ fn public_not_allowed(path: &str, decl: &jadpo_syntax::ast::Decl) -> Option<Diag
         | Decl::QueryDecl(_)
         | Decl::LibraryDecl(_)
         | Decl::ActionDecl(_)
-        | Decl::FixtureDecl(_) => return None,
+        | Decl::FixtureDecl(_)
+        // A provider package's API (area 11).
+        | Decl::ResourceDecl(_) => return None,
         Decl::FunctionDecl(_) => "function",
         Decl::ConstantDecl(_) => "constant",
         Decl::RoutesDecl(_) => "route group",

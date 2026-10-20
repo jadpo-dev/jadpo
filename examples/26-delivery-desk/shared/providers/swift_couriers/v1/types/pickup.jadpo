@@ -1,0 +1,5 @@
+/// A booked pickup.
+public type Pickup = Object {
+    id: Text
+    collect_at: Instant
+}

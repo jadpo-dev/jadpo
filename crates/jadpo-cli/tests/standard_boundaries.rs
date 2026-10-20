@@ -671,10 +671,6 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "groups an aggregate by a stored enum or date",
     ),
     (
-        "crates/jadpo-interp/src/machine.rs",
-        "the interpreter: a test's clock moved by a duration",
-    ),
-    (
         "crates/jadpo-interp/src/probe.rs",
         "makes sample values for the proof probes",
     ),
@@ -688,6 +684,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     ),
     ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
     (
+        "crates/jadpo-runtime/src/test_steps.rs",
+        "moves a test's clock by the duration `clock.advance` is given (chunk 6.11)",
+    ),
+    (
         "crates/jadpo-runtime/src/write.rs",
         "writes `now` into a stamped field",
     ),
@@ -698,6 +698,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-runtime/src/schedules/watch.rs",
         "writes a schedule's own times (due, started, a lease's end) in an alert's log event, never an app's value (chunk 6.2b)",
+    ),
+    (
+        "crates/jadpo-cli/src/deliveries.rs",
+        "shows a delivery's and a schedule run's own times (tried, due, acted on) to an operator, never an app's value (chunk 6.12)",
     ),
     (
         "crates/jadpo-cli/src/schedules.rs",

@@ -37,11 +37,11 @@ const SHOP: &[(&str, &str)] = &[
     ),
     (
         "domains/ordering/failures/cart_empty.jadpo",
-        "type CartEmpty = Failure {\n    kind: FailureKind.rejected\n}\n",
+        "public type CartEmpty = Failure {\n    kind: FailureKind.rejected\n}\n",
     ),
     (
         "domains/ordering/actions/checkout.jadpo",
-        "use shared/types { ItemPrice, Quantity }\nuse shared/libraries { rounding }\nuse ordering/failures { CartEmpty }\nuse ordering/events { OrderPlaced }\nuse inventory\n\ntype CheckoutTotal = Output {\n    total: ItemPrice\n}\n\npublic action checkout(subtotal: ItemPrice, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == ItemPrice(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: ItemPrice = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
+        "use shared/types { ItemPrice, Quantity }\nuse shared/libraries { rounding }\nuse ordering/failures { CartEmpty }\nuse ordering/events { OrderPlaced }\nuse inventory\n\npublic type CheckoutTotal = Output {\n    total: ItemPrice\n}\n\npublic action checkout(subtotal: ItemPrice, quantity: Quantity) fails CartEmpty -> CheckoutTotal {\n    if (subtotal == ItemPrice(0.00)) {\n        reject CartEmpty\n    }\n    inventory.reserve_stock(quantity)\n    var total: ItemPrice = rounding.half_even(subtotal)\n    emit OrderPlaced {\n        total: total\n    }\n    return CheckoutTotal {\n        total: total\n    }\n}\n",
     ),
     (
         "domains/ordering/events/order_placed.jadpo",
