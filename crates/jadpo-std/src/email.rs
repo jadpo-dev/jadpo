@@ -117,6 +117,30 @@ pub const MAGIC_LINK_EMAIL: &str = "jadpo.MagicLinkEmail";
 /// verifiers, so the outbox never holds them.
 pub const MAGIC_LINK_EMAIL_FIELDS: [&str; 3] = ["to", "locale", "request"];
 
+/// The built-in type the application's own sign-in email takes its
+/// fields from with `pick:` (area 16, "Built-in emails", level 4): the
+/// address, the link, the code and how long both work, which Jadpo fills.
+/// App code never makes or emits one.
+pub const MAGIC_LINK_EMAIL_TYPE: &str = "MagicLinkEmail";
+
+/// `MagicLinkEmail`'s fields, in order, each with the built-in type it
+/// is.
+pub const MAGIC_LINK_EMAIL_TYPE_FIELDS: [(&str, crate::Builtin); 4] = [
+    ("address", crate::Builtin::Email),
+    ("sign_in_link", crate::Builtin::Url),
+    ("code", crate::Builtin::SignInCode),
+    ("expires_in", crate::Builtin::PresentationText),
+];
+
+/// The built-in type the action `magic_link: { send: }` names is given
+/// (area 16, "Built-in emails", level 5): the address, the link, the code,
+/// when both stop working and the locale to write in, made as it runs.
+pub const MAGIC_LINK_REQUEST: &str = "MagicLinkRequest";
+
+/// `MagicLinkRequest`'s fields, in order.
+pub const MAGIC_LINK_REQUEST_FIELDS: [&str; 5] =
+    ["address", "sign_in_link", "code", "expires_at", "locale"];
+
 /// One of Jadpo's own emails, which it writes itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BuiltinEmail {
@@ -148,6 +172,15 @@ pub struct MagicLinkEmailPlan {
     /// The locales its wording falls back through: the application's, or
     /// `en_gb` alone when it declares none.
     pub locales: LocalePlan,
+    /// `email:`, the application's own sign-in email (area 16, "Built-in
+    /// emails", level 4), by the key of its [`EmailPlan`]: Jadpo fills it
+    /// from the link and the code it makes, and sends it in place of its
+    /// own.
+    pub own: Option<String>,
+    /// `send:`, the action that sends the email itself (level 5), by
+    /// callable number: given a `MagicLinkRequest` in place of Jadpo
+    /// sending anything, run as a subscriber's action is.
+    pub send: Option<u32>,
 }
 
 impl MagicLinkEmailPlan {

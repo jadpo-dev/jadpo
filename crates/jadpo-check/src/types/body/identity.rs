@@ -23,24 +23,48 @@ pub(super) fn caller_kind(ty: &Ty) -> Option<PrincipalKind> {
     }
 }
 
-/// The fields of the built-in `FirstSignIn` (area 8, "A person the app
-/// has not seen"), which the runtime gives `on_first_sign_in:`'s action:
-/// the way in, the address and whether it was proved, the provider's or
-/// token's subject and the name a provider's profile gives.
+/// The fields of the built-in objects sign-in gives code (area 8, area
+/// 16): `FirstSignIn`, which the runtime gives `on_first_sign_in:`'s
+/// action (the way in, the address and whether it was proved, the
+/// provider's or token's subject and the name a provider's profile gives);
+/// `MagicLinkRequest`, which `magic_link: { send: }`'s action is given; and
+/// `MagicLinkEmail`, which the application's own sign-in email picks from.
 pub(crate) fn first_sign_in_fields(ty: &Ty) -> Option<Vec<(&'static str, Ty)>> {
     match ty.strip_nullable() {
-        Ty::Opaque(name, args) if name == jadpo_std::http::FIRST_SIGN_IN && args.is_empty() => {
-            Some(vec![
-                (
-                    "method",
-                    Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
-                ),
-                ("address", Ty::Prim(Prim::Email).nullable()),
-                ("address_verified", Ty::Prim(Prim::Bool)),
-                ("subject", Ty::Prim(Prim::Text).nullable()),
-                ("name", Ty::Prim(Prim::Text).nullable()),
-            ])
-        }
+        Ty::Opaque(name, args) if args.is_empty() => sign_in_object_fields(name),
+        _ => None,
+    }
+}
+
+/// The fields of the built-in sign-in object called `name`.
+pub(crate) fn sign_in_object_fields(name: &str) -> Option<Vec<(&'static str, Ty)>> {
+    use jadpo_std::email::{
+        MAGIC_LINK_EMAIL_TYPE, MAGIC_LINK_EMAIL_TYPE_FIELDS, MAGIC_LINK_REQUEST,
+    };
+    match name {
+        jadpo_std::http::FIRST_SIGN_IN => Some(vec![
+            (
+                "method",
+                Ty::Named(jadpo_std::SignInMethod::NAME.to_string()),
+            ),
+            ("address", Ty::Prim(Prim::Email).nullable()),
+            ("address_verified", Ty::Prim(Prim::Bool)),
+            ("subject", Ty::Prim(Prim::Text).nullable()),
+            ("name", Ty::Prim(Prim::Text).nullable()),
+        ]),
+        MAGIC_LINK_EMAIL_TYPE => Some(
+            MAGIC_LINK_EMAIL_TYPE_FIELDS
+                .iter()
+                .map(|(field, builtin)| (*field, Ty::Prim(*builtin)))
+                .collect(),
+        ),
+        MAGIC_LINK_REQUEST => Some(vec![
+            ("address", Ty::Prim(Prim::Email)),
+            ("sign_in_link", Ty::Prim(Prim::Url)),
+            ("code", Ty::Prim(Prim::SignInCode)),
+            ("expires_at", Ty::Prim(Prim::Instant)),
+            ("locale", Ty::Named(jadpo_std::LOCALE.to_string())),
+        ]),
         _ => None,
     }
 }

@@ -344,17 +344,7 @@ fn loosening_past_the_limits_needs_an_acceptance() {
 }
 
 #[test]
-fn the_apps_own_email_and_sending_come_later_and_never_together() {
-    let found = magic("            email: accounts.SignInEmail");
-    assert!(
-        has(&found, "toolchain.not_built_yet: `email:` isn't built yet"),
-        "{found:?}"
-    );
-    let found = magic("            send: accounts.send_sign_in_link");
-    assert!(
-        has(&found, "toolchain.not_built_yet: `send:` isn't built yet"),
-        "{found:?}"
-    );
+fn the_apps_own_email_and_sending_are_never_together() {
     let found = magic(
         "            email: accounts.SignInEmail\n            send: accounts.send_sign_in_link",
     );
@@ -365,6 +355,302 @@ fn the_apps_own_email_and_sending_come_later_and_never_together() {
         ),
         "{found:?}"
     );
+}
+
+/// A project in domains whose `magic_link:` holds `setting`, with the
+/// application `application` and the domain's files `extra`.
+fn project(application: &str, setting: &str, extra: &[(&str, &str)]) -> Vec<String> {
+    let config = r#"config {
+    browser_origin: Url
+    mail_sender: Email
+    smtp_host: Hostname
+}
+"#;
+    let app = format!(
+        r#"use accounts/entities {{ Member }}
+
+application {{
+{application}
+}}
+
+principal {{
+    user: {{
+        subject: Member.email
+    }}
+}}
+
+locales {{
+    default: Locale.en_gb
+    supported: [Locale.en_gb]
+}}
+"#
+    );
+    let authentication = format!(
+        r#"use accounts
+
+authentication {{
+    browser_session: {{
+        cookie: "session"
+        origin: config.browser_origin
+    }}
+    sign_in: {{
+        magic_link: {{
+            link: "/sign-in/confirm"
+            {setting}
+        }}
+    }}
+}}
+"#
+    );
+    let member = r#"entity Member {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+}
+"#;
+    let mut files: Vec<(&str, &str)> = vec![
+        ("config.jadpo", config),
+        ("app.jadpo", app.as_str()),
+        ("authentication.jadpo", authentication.as_str()),
+        ("domains/accounts/entities/member.jadpo", member),
+    ];
+    files.extend_from_slice(extra);
+    // The routes' API record, which `jadpo records update` writes, isn't
+    // what these tests are about.
+    support::problems(Layout::Project, &files)
+        .into_iter()
+        .filter(|problem| !problem.contains("`api/main.jadpo_record` is missing"))
+        .collect()
+}
+
+const SIGN_IN_EMAIL: (&str, &str) = (
+    "domains/accounts/emails/sign_in_email.jadpo",
+    r#"/// The sign-in email, in the application's own words.
+type SignInEmail = EmailMessage {
+    pick: [MagicLinkEmail.sign_in_link, MagicLinkEmail.code, MagicLinkEmail.expires_in]
+}
+"#,
+);
+
+const SIGN_IN_HTML: (&str, &str) = (
+    "domains/accounts/emails/sign_in_email.html",
+    "<p><a href=\"{{ sign_in_link }}\">Open Notes</a></p>\n<p>Or type {{ code }}. Both work for {{ expires_in }}.</p>\n",
+);
+
+const SIGN_IN_WORDS: (&str, &str) = (
+    "domains/accounts/translations/en_gb.jadpo",
+    "translations {\n    sign_in_email: \"Your Notes sign-in link\"\n}\n",
+);
+
+#[test]
+fn the_apps_own_email_picks_from_magic_link_email() {
+    let found = project(
+        SENDS,
+        "email: accounts.SignInEmail",
+        &[SIGN_IN_EMAIL, SIGN_IN_HTML, SIGN_IN_WORDS],
+    );
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_apps_own_email_has_only_fields_jadpo_fills() {
+    let written = (
+        "domains/accounts/emails/sign_in_email.jadpo",
+        r#"/// The sign-in email, with a greeting Jadpo can't know.
+type SignInEmail = EmailMessage {
+    pick: [MagicLinkEmail.sign_in_link, MagicLinkEmail.code]
+    greeting: Text
+}
+"#,
+    );
+    let html = (
+        "domains/accounts/emails/sign_in_email.html",
+        "<p>{{ greeting }} <a href=\"{{ sign_in_link }}\">{{ code }}</a></p>\n",
+    );
+    let found = project(
+        SENDS,
+        "email: accounts.SignInEmail",
+        &[written, html, SIGN_IN_WORDS],
+    );
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `accounts.SignInEmail` has fields Jadpo can't fill"
+        ),
+        "{found:?}"
+    );
+    let found = project(SENDS, "email: accounts.Nothing", &[]);
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `accounts.Nothing` isn't an email"
+        ),
+        "{found:?}"
+    );
+    let object = (
+        "domains/accounts/types/sign_in_email.jadpo",
+        "type SignInEmail = Object {\n    pick: [MagicLinkEmail.code]\n}\n",
+    );
+    let found = project(SENDS, "email: accounts.SignInEmail", &[object]);
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `accounts.SignInEmail` isn't an email"
+        ),
+        "{found:?}"
+    );
+    let unknown = (
+        "domains/accounts/emails/sign_in_email.jadpo",
+        "type SignInEmail = EmailMessage {\n    pick: [MagicLinkEmail.token]\n}\n",
+    );
+    let found = project(
+        SENDS,
+        "email: accounts.SignInEmail",
+        &[unknown, SIGN_IN_HTML, SIGN_IN_WORDS],
+    );
+    assert!(
+        has(
+            &found,
+            "type.unknown_field: `MagicLinkEmail` has no field `token`"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn code_never_emits_the_sign_in_email() {
+    let action = (
+        "domains/accounts/actions/fake_sign_in.jadpo",
+        r#"use accounts/emails { SignInEmail }
+
+/// Sends a sign-in email of its own making.
+action fake_sign_in(address: Email, link: MagicLinkEmail.sign_in_link, code: MagicLinkEmail.code, expires_in: MagicLinkEmail.expires_in) -> Unit {
+    emit SignInEmail {
+        to: address
+        locale: Locale.en_gb
+        sign_in_link: link
+        code: code
+        expires_in: expires_in
+    }
+}
+"#,
+    );
+    let found = project(
+        SENDS,
+        "email: accounts.SignInEmail",
+        &[SIGN_IN_EMAIL, SIGN_IN_HTML, SIGN_IN_WORDS, action],
+    );
+    assert!(
+        has(
+            &found,
+            "event.emit_invalid: `SignInEmail` is sent only by signing in"
+        ),
+        "{found:?}"
+    );
+}
+
+/// The application with its name and no email connection.
+const NAMED: &str = "    display_name: \"Notes\"";
+
+const SEND_ACTION: (&str, &str) = (
+    "domains/accounts/actions/send_sign_in_link.jadpo",
+    r#"/// Hands the sign-in link and code to the application's own sender.
+action send_sign_in_link(request: MagicLinkRequest) -> Unit {
+    assert request.expires_at > clock.now
+    assert request.locale == Locale.en_gb
+    assert request.address != "nobody@notes.example"
+}
+"#,
+);
+
+#[test]
+fn the_apps_own_sending_needs_no_email_connection() {
+    let found = project(NAMED, "send: accounts.send_sign_in_link", &[SEND_ACTION]);
+    assert_eq!(found, Vec::<String>::new());
+    let found = project(NAMED, "", &[]);
+    assert!(
+        has(
+            &found,
+            "email.connection_required: `magic_link:` sends email, but nothing sends email"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn the_apps_own_sending_takes_a_magic_link_request() {
+    let takes_text = (
+        "domains/accounts/actions/send_sign_in_link.jadpo",
+        "action send_sign_in_link(address: Email) -> Unit {\n    assert address != \"nobody@notes.example\"\n}\n",
+    );
+    let found = project(NAMED, "send: accounts.send_sign_in_link", &[takes_text]);
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `accounts.send_sign_in_link` can't send the sign-in email"
+        ),
+        "{found:?}"
+    );
+    let found = project(NAMED, "send: accounts.nobody", &[]);
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `accounts.nobody` isn't an action"
+        ),
+        "{found:?}"
+    );
+    let found = project(NAMED, "send: \"somewhere\"", &[]);
+    assert!(
+        has(
+            &found,
+            "semantic.auth_setting_invalid: `send:` doesn't name an action"
+        ),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_sign_in_code_is_never_kept() {
+    let kept = (
+        "domains/accounts/entities/sent_code.jadpo",
+        "entity SentCode {\n    id: Uuid\n    code: SignInCode\n}\n",
+    );
+    let found = project(SENDS, "", &[kept]);
+    assert!(
+        has(
+            &found,
+            "type.auth_credential_stored: `SentCode.code` keeps a sign-in code"
+        ),
+        "{found:?}"
+    );
+    // Nor answered, put in a failure or an event, nor copied from
+    // `MagicLinkEmail` into anything but an email.
+    let shown = (
+        "domains/accounts/types/code_view.jadpo",
+        "type CodeView = Output {\n    code: SignInCode\n}\n",
+    );
+    let failed = (
+        "domains/accounts/failures/wrong_code.jadpo",
+        "type WrongCode = Failure {\n    kind: FailureKind.rejected\n    client: {\n        code: SignInCode\n    }\n}\n",
+    );
+    let event = (
+        "domains/accounts/events/code_sent.jadpo",
+        "type CodeSent = Event {\n    codes: List<SignInCode>\n}\n",
+    );
+    let copied = (
+        "domains/accounts/events/link_sent.jadpo",
+        "type LinkSent = Event {\n    pick: [MagicLinkEmail.sign_in_link]\n}\n",
+    );
+    let found = project(SENDS, "", &[shown, failed, event, copied]);
+    for wanted in [
+        "type.secret_exposed: `CodeView.code` holds a `SignInCode`",
+        "type.secret_exposed: `WrongCode.code` holds a `SignInCode`",
+        "type.secret_exposed: `CodeSent.codes` holds a `SignInCode`",
+        "type.not_record: `LinkSent` can't copy from `MagicLinkEmail`",
+    ] {
+        assert!(has(&found, wanted), "{wanted}: {found:?}");
+    }
 }
 
 #[test]

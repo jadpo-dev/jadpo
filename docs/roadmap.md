@@ -1218,20 +1218,37 @@ The design is area 11 as revised on 2026-10-16, with its research in
   "Magic links (chosen in chunk 7.3b)" rows and area 16's "Chosen in
   chunk 7.3b"; area 8's question 15 (`routes` is a reserved word)
   decided as `generate_routes: false`.
-- [ ] **7.3b2 Magic links: the app's own email, its own routes, and the
-  sign-in events** `opus · high`, after 7.3b (split from 7.3b on
-  2026-10-20):
-  `magic_link: { email: }` (level 4, `MagicLinkEmail` with `pick:`,
-  `SignInCode`) and `send:` (level 5, an action taking
-  `MagicLinkRequest`, retried as a subscriber), `email.connection_required`
-  waived with `send:`; `generate_routes: false`
-  and `magic_links.request`, `.redeem` and `.redeem_code` for the app's
-  own routes, keeping every protection; the events `SignedIn`,
-  `SignInRefused` (with `SignInRefusal`) and `SignInCodesDisabled`, the
-  refusal's reason logged; `FirstSignIn` made in tests to call
-  `on_first_sign_in:`'s action directly.
+- [x] **7.3b2 Magic links: the app's own email and sending** `opus · high`,
+  after 7.3b (split from 7.3b on 2026-10-20, and again on 2026-10-20 into
+  7.3b2, 7.3b3 and 7.3b4): `magic_link: { email: }` (level 4,
+  `MagicLinkEmail` with `pick:`, `SignInCode`) and `send:` (level 5, an
+  action taking `MagicLinkRequest`, retried as a subscriber),
+  `email.connection_required` waived with `send:`. Built: `email:`
+  checked as an `EmailMessage` of the app's whose every field besides
+  `to:` and `locale:` is picked from the built-in `MagicLinkEmail`
+  (`address`, `sign_in_link`, `code`, `expires_in`), never emitted;
+  `send:` checked as an action taking one `MagicLinkRequest` and
+  returning `Unit`, needing no email connection; `SignInCode`, six digits
+  of text, never kept, answered, put in a failure or an event, or written
+  as JSON, and `MagicLinkEmail` copied only into an email; the one
+  `jadpo.MagicLinkEmail` delivery filling and rendering the app's email
+  from the link and the code it makes, or running the app's action as a
+  subscriber's, each attempt with a new link and code. Live tests in
+  `crates/jadpo-cli/tests/magic_links.rs`, the provider faked. Choices in
+  area 8's "The app's own sign-in email and sending (chosen in chunk
+  7.3b2)" and area 16's "Chosen in chunk 7.3b2".
+- [ ] **7.3b3 Magic links: the app's own routes** `opus · high`, after
+  7.3b2 (split from 7.3b2 on 2026-10-20): `generate_routes: false` and
+  `magic_links.request`, `.redeem` and `.redeem_code` for the app's own
+  routes, keeping every protection (`SignInToken`, `MagicLinkRedeemed`,
+  `same_browser:`'s cookie on the response of the route whose action asks).
+- [ ] **7.3b4 Sign-in events** `opus · high`, after 7.3b3 (split from 7.3b2
+  on 2026-10-20): the events `SignedIn`, `SignInRefused` (with
+  `SignInRefusal`) and `SignInCodesDisabled`, the refusal's reason logged;
+  `FirstSignIn` made in tests to call `on_first_sign_in:`'s action
+  directly.
 - [ ] **5.5z2 Passkey recovery** `opus · high` (area 8, "Passkeys"; split
-  from 5.5z), after 7.3b2 and the events of area 12: `passkey:` needs
+  from 5.5z), after 7.3b4 and the events of area 12: `passkey:` needs
   `magic_link:` (`semantic.auth_setting_required`), and area 8's passkeys
   example gains it; the device lists a passkey under `magic_link:`'s
   `address:` rather than the principal's subject; `test_passkeys.register`
@@ -1329,12 +1346,37 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `jadpo watch`; the late-failure warning (a declinable error) and the
   deadline sum; the personal-data report's entry, and the metric and
   alert.
-- [ ] **7.6 What package code may do** `opus · high`: package actions
-  calling only their own API (their changing calls counted as steps of
-  the calling action, as 7.5 counts an app action's, and a package action
-  over 8 refused at publishing), package subscribers on their own webhooks,
-  public and non-public package events, `polls:` run only while
-  subscribed, `max_concurrent:`, and recipes with `jadpo package recipe`.
+- [x] **7.6 What package code may do: actions and recipes** `opus ·
+  high` (split on 2026-10-20 into this and 7.6b; public and non-public
+  package events came with 7.7). Built: a package's action calls its own
+  operations, public or not, by their bare names (`customers.create`),
+  their failures passed on as its own; the app calls a `public` one as
+  `connection.action(input)` from a listed domain, its failures mapped at
+  the call by their codes (`Callee::PackageAction`, run by the interpreter
+  with its operations going through that connection); its changing calls
+  count as the caller's steps, at check time and in the keys the runtime
+  derives, and a package action over 8 is `step.too_many` where it is
+  declared, so `jadpo package check` refuses it; `package.action_invalid`
+  for a package action calling another action, a `public` one that emits
+  and an action named as a resource; public actions on the surface; a
+  test's `fakes:` scripting the package's own operations; and `jadpo
+  package recipe <package> <recipe> --into <domain>`, all or nothing.
+  Tests in `crates/jadpo-check/tests/package_actions.rs` and live ones in
+  `crates/jadpo-cli/tests/package_actions.rs` and `package_recipes.rs`;
+  example 26 calls a package action. Choices in area 11's "Chosen in
+  chunk 7.6".
+- [ ] **7.6b Package subscribers, polls and `max_concurrent:`** `opus ·
+  high`, after 7.6 (split from 7.6 on 2026-10-20): package subscribers on
+  their own webhooks (non-public events included), running a non-public
+  package action that enriches the event through the connection the
+  webhook came in on and emits the package's own declared events through
+  the app's outbox; `polls:` in `provider.jadpo` and the connection's
+  `polls: { <name>: <interval> }`, run only while something subscribes to
+  the poll's event, what it last saw kept as runtime state and only
+  changes emitted; `max_concurrent:` in `provider.jadpo`, lowered by a
+  connection, capping calls at once per app instance (further calls wait,
+  waiting deliveries retry later); and recipes compiled against the
+  package's `sample/` app by `jadpo package check`.
 - [x] **7.7 Webhooks as events** `opus · high` (split from 7.7 Receiving
   from outside on 2026-10-20: no webhook was received before it, so
   replies and handshakes had nothing to build on). Built: a provider's

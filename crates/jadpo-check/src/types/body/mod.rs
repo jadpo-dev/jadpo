@@ -1439,6 +1439,15 @@ impl Body<'_> {
                 true
             }
             Stmt::EmitStmt(emit) => {
+                // A package's action emits only about the outside world,
+                // run by its own subscribers (area 11; chunk 7.6).
+                if let Ownership::Package(home) = self.ownership
+                    && self.context == Context::Action
+                {
+                    let folder = home.folder.clone();
+                    self.package_emits(&folder, emit);
+                    return true;
+                }
                 if let Some(expr) = emit.expr() {
                     let before = self.out.len();
                     let ty = self.infer(&expr);
@@ -1502,6 +1511,26 @@ impl Body<'_> {
             );
             return;
         };
+        // The application's own sign-in email is Jadpo's to fill and send
+        // (area 16, "Built-in emails", level 4).
+        if crate::identity::own_magic_link_email(self.db, self.project)
+            .0
+            .as_ref()
+            == Some(event)
+        {
+            self.out.push(
+                Diagnostic::new(
+                    &rule::EVENT_EMIT_INVALID,
+                    format!("`{event}` is sent only by signing in"),
+                )
+                .at(self.span(expr), "the sign-in email")
+                .reason(format!(
+                    "`magic_link: {{ email: }}` names `{event}`, which Jadpo fills with a link and a code it makes as the email is sent, and sends when someone asks to sign in; code never emits it."
+                ))
+                .next("Remove the `emit`; ask for a link through the magic-link route instead"),
+            );
+            return;
+        }
         if self.context != Context::Action {
             let caller = self.context_word();
             self.out.push(

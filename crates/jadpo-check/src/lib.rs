@@ -30,6 +30,7 @@ pub mod locales;
 pub mod lookups;
 mod naming;
 mod not_value;
+pub mod package_code;
 pub mod packages;
 pub mod policy;
 pub mod prompts;
@@ -121,6 +122,11 @@ pub fn check(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
             out.extend(layout_problems(db, project, file).iter().cloned());
             out.extend(
                 packages::unbuilt_problems(db, project, file)
+                    .iter()
+                    .cloned(),
+            );
+            out.extend(
+                package_code::action_problems(db, project, file)
                     .iter()
                     .cloned(),
             );

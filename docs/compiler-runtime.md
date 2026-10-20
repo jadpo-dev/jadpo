@@ -1639,6 +1639,18 @@ subscriber. The HTTP component answers the routes in
 the link and the code (`magic_links::mint`) and `email::message` writes
 it from Jadpo's messages, wrapped in the app's layout.
 
+Built in chunk 7.3b2: the app's own sign-in email and sending (area 16,
+levels 4 and 5). `MagicLink::email` and `send` are read as written and
+checked by `sign_in_email` and `sign_in_send_action`; `MagicLinkEmail`'s
+fields come from `jadpo_std::email` (`types::builtin_fields`, which
+`pick:` copies from), and `SignInCode` is a `Builtin`. The plan sets
+`MagicLinkEmailPlan::own` (the app email's key) and `send` (the action's
+callable); with `send` the email's subscriber targets the action, with or
+without an email connection. `email::message` fills the app's email from
+the minted link and code and renders it as any email; the runner gives a
+`send` action the `MagicLinkRequest` `magic_links::request_value` makes
+for each attempt (`runner::run_job` runs it as a subscriber's action).
+
 Built in chunk 4.4: policy (area 9). `jadpo_check::policy` reads each
 entity's `policy:` and `membership:` by name (`policy_read`,
 `membership_read`) and root `policy { }` once (`root_read`), resolving

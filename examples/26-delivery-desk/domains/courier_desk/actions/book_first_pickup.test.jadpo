@@ -1,0 +1,27 @@
+// A package's action runs its real code in a test; only the operations
+// it calls answer through the fake.
+
+use app { couriers }
+use courier_desk/types { BookedPickup }
+use courier_desk/failures { PickupSlotGone }
+use shared/providers/swift_couriers
+
+test "the first slot is booked through the package's action" {
+    fakes: {
+        couriers.pickups.create: [
+            SwiftCouriers.Pickup {
+                id: "swift-4472"
+                collect_at: "2026-10-21T08:00:00Z"
+            }
+        ]
+    }
+    var booked: BookedPickup = attempt book_first_pickup("N1 9GU")
+    assert booked.id == "swift-4472"
+}
+
+test "a first slot already taken is the desk's own failure" {
+    fakes: {
+        couriers.pickups.create: [slot_taken]
+    }
+    assert book_first_pickup("N1 9GU") fails PickupSlotGone
+}

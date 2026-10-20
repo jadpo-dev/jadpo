@@ -419,6 +419,15 @@ pub fn emit_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnosti
     if emits.values().all(|(own, _)| own.is_empty()) {
         return out;
     }
+    // A package's action that emits is reported where it emits (chunk
+    // 7.6).
+    if jadpo_db::location(db, project, file)
+        .ownership
+        .package()
+        .is_some()
+    {
+        return out;
+    }
     let written = crate::types::written_stores(db, project);
     let path = file.path(db);
     let databases = crate::data::connections(db, project).databases();

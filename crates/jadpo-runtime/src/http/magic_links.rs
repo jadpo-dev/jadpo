@@ -91,7 +91,7 @@ pub(crate) const ASKED: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"request\
 
 /// The link and the code of request `$1`, as its email is sent, while it
 /// is still the latest and hasn't expired.
-pub(crate) const MINT: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"token\" = $2, \"code\" = $3, \"sealed\" = $4 WHERE \"request\" = $1 AND \"expires_at\" > $5 RETURNING \"id\"";
+pub(crate) const MINT: &str = "UPDATE \"jadpo_sign_in_requests\" SET \"token\" = $2, \"code\" = $3, \"sealed\" = $4 WHERE \"request\" = $1 AND \"expires_at\" > $5 RETURNING \"expires_at\"";
 
 /// The row a link's token names, held.
 pub(crate) const BY_TOKEN: &str = "SELECT \"id\", \"sealed\", \"return_to\", \"binding\", \"expires_at\" FROM \"jadpo_sign_in_requests\" WHERE \"token\" = $1 FOR UPDATE";
@@ -1077,12 +1077,14 @@ pub(crate) fn read_payload(payload: &str) -> Result<Value, String> {
 }
 
 /// What the email carries, made as it is sent: the link, the code, and
-/// how long they work. `None` when its request was used, replaced or has
-/// expired, and nothing is sent.
+/// when they stop working. `None` when its request was used, replaced or
+/// has expired, and nothing is sent.
 pub(crate) struct Minted {
     pub address: String,
     pub link: String,
     pub code: String,
+    /// When the link and the code stop working, in milliseconds.
+    pub expires_at: i64,
 }
 
 /// Makes the link and the code of the request `value` names, keeping only
@@ -1139,14 +1141,48 @@ pub(crate) async fn mint(
         )
         .await
         .map_err(|_| "unavailable")?;
-    if rows.is_empty() {
+    let Some(expires_at) = rows.first().and_then(|row| row.first()).and_then(millis) else {
         return Ok(None);
-    }
+    };
     Ok(Some(Minted {
         address: address.to_string(),
         link: format!("{origin}{}?token={token}", plan.link),
         code,
+        expires_at,
     }))
+}
+
+/// The `MagicLinkRequest` the action `magic_link: { send: }` names is
+/// given (area 16, "Built-in emails", level 5), made as its delivery runs:
+/// the link and the code made now, when they stop working, and the
+/// locale the request chose. `Ok(None)` when the request was used,
+/// replaced or has expired since, and nothing is sent.
+pub(crate) async fn request_value(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    plan: &MagicLinkEmailPlan,
+    value: &Value,
+) -> Result<Option<Value>, &'static str> {
+    let locale = match value {
+        Value::Record(record) => record.get("locale").cloned(),
+        _ => None,
+    };
+    let Some(locale @ Value::Variant(_)) = locale else {
+        return Err("a magic-link email with no locale");
+    };
+    let Some(minted) = mint(executor, ctx, plan, value).await? else {
+        return Ok(None);
+    };
+    Ok(Some(Value::record(
+        jadpo_std::email::MAGIC_LINK_REQUEST,
+        vec![
+            (Rc::from("address"), Value::text(&minted.address)),
+            (Rc::from("sign_in_link"), Value::text(&minted.link)),
+            (Rc::from("code"), Value::text(&minted.code)),
+            (Rc::from("expires_at"), Value::Instant(minted.expires_at)),
+            (Rc::from("locale"), locale),
+        ],
+    )))
 }
 
 #[cfg(test)]
