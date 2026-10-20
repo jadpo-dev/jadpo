@@ -115,7 +115,7 @@ impl Check {
                 "Write the message as text in the HTML, keeping images to support it: filters can't read images, and many clients block them"
             }
             Check::BrokenHtml => {
-                "Close each element, in the reverse order it was opened: clients repair broken HTML differently, and filters score it"
+                "Close each element, in the reverse order it was opened: clients read broken HTML differently, and filters score it"
             }
             Check::LinkNotHttps => {
                 "Link to a full `https://` address: a mail has no page to resolve a relative link against, and filters distrust plain `http://`"

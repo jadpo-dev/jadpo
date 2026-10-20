@@ -512,7 +512,7 @@ fn open(mail: &Mail, wanted: &str, environment: &jadpo_term::Environment) -> Rep
             "Open a web link, or copy this one from `jadpo email show`".to_string(),
         ));
     }
-    if let Err(error) = launch(link, environment) {
+    if let Err(error) = start_browser(link, environment) {
         return Reply::failed(
             Diagnostic::new(&rule::CLI_EMAIL_ARGUMENTS, "The browser couldn't be opened")
                 .reason(format!("Starting it failed: {error}."))
@@ -538,7 +538,7 @@ fn open(mail: &Mail, wanted: &str, environment: &jadpo_term::Environment) -> Rep
 
 /// Starts the browser on `link`: `$BROWSER` when set, else the system's
 /// opener. It isn't waited for.
-fn launch(link: &str, environment: &jadpo_term::Environment) -> std::io::Result<()> {
+fn start_browser(link: &str, environment: &jadpo_term::Environment) -> std::io::Result<()> {
     let mut command = match environment.var("BROWSER").filter(|value| !value.is_empty()) {
         Some(browser) => std::process::Command::new(browser),
         None if cfg!(target_os = "macos") => std::process::Command::new("open"),
@@ -681,7 +681,7 @@ enum Verdict {
 
 /// What one record check found.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct RecordCheck {
+struct DomainRecord {
     /// `SPF`, `DKIM`, `DMARC`.
     kind: &'static str,
     /// The name its record is at.
@@ -697,10 +697,10 @@ struct RecordCheck {
 
 /// Every record the domain needs to send mail that is trusted, read
 /// through `resolver`.
-fn domain_checks(domain: &str, selectors: &[&str], resolver: &dyn Resolver) -> Vec<RecordCheck> {
+fn domain_checks(domain: &str, selectors: &[&str], resolver: &dyn Resolver) -> Vec<DomainRecord> {
     let mut out = vec![spf(domain, resolver)];
     if selectors.is_empty() {
-        out.push(RecordCheck {
+        out.push(DomainRecord {
             kind: "DKIM",
             at: format!("<selector>._domainkey.{domain}"),
             verdict: Verdict::Unchecked,
@@ -719,8 +719,8 @@ fn domain_checks(domain: &str, selectors: &[&str], resolver: &dyn Resolver) -> V
     out
 }
 
-fn lookup_failed(kind: &'static str, at: String, why: String) -> RecordCheck {
-    RecordCheck {
+fn lookup_failed(kind: &'static str, at: String, why: String) -> DomainRecord {
+    DomainRecord {
         kind,
         problem: Some(format!(
             "{kind}'s record at `{at}` couldn't be looked up: {why}"
@@ -732,7 +732,7 @@ fn lookup_failed(kind: &'static str, at: String, why: String) -> RecordCheck {
     }
 }
 
-fn spf(domain: &str, resolver: &dyn Resolver) -> RecordCheck {
+fn spf(domain: &str, resolver: &dyn Resolver) -> DomainRecord {
     let at = domain.to_string();
     let records = match resolver.txt(&at) {
         Ok(records) => records,
@@ -748,7 +748,7 @@ fn spf(domain: &str, resolver: &dyn Resolver) -> RecordCheck {
     let check = |verdict,
                  record: Option<&String>,
                  problem: Option<String>,
-                 next: Option<String>| RecordCheck {
+                 next: Option<String>| DomainRecord {
         kind: "SPF",
         at: at.clone(),
         verdict,
@@ -834,7 +834,7 @@ fn spf(domain: &str, resolver: &dyn Resolver) -> RecordCheck {
     }
 }
 
-fn dkim(domain: &str, selector: &str, resolver: &dyn Resolver) -> RecordCheck {
+fn dkim(domain: &str, selector: &str, resolver: &dyn Resolver) -> DomainRecord {
     let at = format!("{selector}._domainkey.{domain}");
     let records = match resolver.txt(&at) {
         Ok(records) => records,
@@ -846,7 +846,7 @@ fn dkim(domain: &str, selector: &str, resolver: &dyn Resolver) -> RecordCheck {
             || lower.trim_start().starts_with("p=")
     });
     let Some(record) = found else {
-        return RecordCheck {
+        return DomainRecord {
             kind: "DKIM",
             problem: Some(format!("No DKIM key at `{at}`")),
             next: Some(format!(
@@ -863,7 +863,7 @@ fn dkim(domain: &str, selector: &str, resolver: &dyn Resolver) -> RecordCheck {
         .find_map(|tag| tag.strip_prefix("p=").or_else(|| tag.strip_prefix("P=")))
         .unwrap_or_default();
     if key.trim().is_empty() {
-        return RecordCheck {
+        return DomainRecord {
             kind: "DKIM",
             problem: Some(format!("The DKIM key at `{at}` is revoked (`p=` is empty)")),
             next: Some("Publish the key your provider signs with now".to_string()),
@@ -872,7 +872,7 @@ fn dkim(domain: &str, selector: &str, resolver: &dyn Resolver) -> RecordCheck {
             record: Some(record.clone()),
         };
     }
-    RecordCheck {
+    DomainRecord {
         kind: "DKIM",
         at,
         verdict: Verdict::Passes,
@@ -882,7 +882,7 @@ fn dkim(domain: &str, selector: &str, resolver: &dyn Resolver) -> RecordCheck {
     }
 }
 
-fn dmarc(domain: &str, resolver: &dyn Resolver) -> RecordCheck {
+fn dmarc(domain: &str, resolver: &dyn Resolver) -> DomainRecord {
     let at = format!("_dmarc.{domain}");
     let records = match resolver.txt(&at) {
         Ok(records) => records,
@@ -895,7 +895,7 @@ fn dmarc(domain: &str, resolver: &dyn Resolver) -> RecordCheck {
     let check = |verdict,
                  record: Option<&String>,
                  problem: Option<String>,
-                 next: Option<String>| RecordCheck {
+                 next: Option<String>| DomainRecord {
         kind: "DMARC",
         at: at.clone(),
         verdict,
@@ -933,7 +933,7 @@ fn dmarc(domain: &str, resolver: &dyn Resolver) -> RecordCheck {
         Some("none") => check(
             Verdict::Alert,
             Some(record),
-            Some("DMARC only monitors (`p=none`): mail that fails is still delivered".to_string()),
+            Some("DMARC only monitors (`p=none`): mail that fails still gets through".to_string()),
             Some(
                 "Once its reports show your mail passing, move to `p=quarantine`, then `p=reject`"
                     .to_string(),
@@ -1071,7 +1071,7 @@ mod tests {
         }
     }
 
-    fn states(checks: &[RecordCheck]) -> Vec<(&str, Verdict)> {
+    fn states(checks: &[DomainRecord]) -> Vec<(&str, Verdict)> {
         checks
             .iter()
             .map(|check| (check.kind, check.verdict.clone()))

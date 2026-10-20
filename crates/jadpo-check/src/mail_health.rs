@@ -27,7 +27,26 @@ pub fn health_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
     };
     let mut out = Vec::new();
     let plan = crate::translations::plan(db, project);
+    // A template that doesn't check is scored once it does, so its
+    // problems show alone.
+    let broken = |templates: &[&Option<String>]| {
+        templates
+            .iter()
+            .filter_map(|path| path.as_ref())
+            .any(|path| {
+                !crate::types::template_body(
+                    db,
+                    project,
+                    crate::lookups::Name::new(db, path.clone()),
+                )
+                .problems
+                .is_empty()
+            })
+    };
     for email in &analysis.emails {
+        if broken(&[&email.html, &email.text]) {
+            continue;
+        }
         let html = text_of(&email.html);
         let text = text_of(&email.text);
         let at = &email.name_span;
@@ -94,6 +113,9 @@ pub fn health_problems(db: &dyn Db, project: Project) -> Vec<Diagnostic> {
         }
     }
     for partial in &analysis.partials {
+        if broken(&[&partial.html, &partial.text]) {
+            continue;
+        }
         template_checks(
             &mut out,
             &partial.type_name,
@@ -187,7 +209,7 @@ fn template_checks(
             at,
             &format!("broken HTML in {}", file(path)),
             format!(
-                "{problem} Mail clients repair broken HTML each their own way, and filters score it."
+                "{problem} Mail clients each read broken HTML their own way, and filters score it."
             ),
             "Close each element, in the reverse order it was opened".to_string(),
         ));

@@ -8,6 +8,7 @@ rules:
   - email.attachment_limit
   - email.connection_required
   - email.field_unused
+  - email.health_problem
   - email.partial_invalid
   - email.sent_context
   - email.settings_invalid

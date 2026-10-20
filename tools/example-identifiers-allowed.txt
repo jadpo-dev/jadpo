@@ -534,3 +534,5 @@ subscription
 # Wrangler's queue consumer setting `max_batch_size`, which the consumer
 # written for Cloudflare Queues names (area 11, chunk 7.7c2)
 batch_size
+# CSS's own property names, in the pages `jadpo dev` serves (chunk 7.3c2)
+outline

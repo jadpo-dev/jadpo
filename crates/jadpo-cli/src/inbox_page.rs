@@ -352,10 +352,10 @@ fn detail(mail: &Mail, asked: &str) -> String {
     tabs.push_str(&tab(
         View::Health,
         if findings.is_empty() {
-            "Health".to_string()
+            "Health checks".to_string()
         } else {
             format!(
-                "Health <span class=\"count warn\">{}</span>",
+                "Health checks <span class=\"count warn\">{}</span>",
                 findings.len()
             )
         },

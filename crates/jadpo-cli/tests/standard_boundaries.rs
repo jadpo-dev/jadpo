@@ -732,6 +732,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "writes a provider call's own time in `jadpo dev`'s call log, never an app's value (chunk 7.2d)",
     ),
     (
+        "crates/jadpo-cli/src/dev_inbox.rs",
+        "writes when `jadpo dev`'s inbox caught a mail, its own time, never an app's value (chunk 7.3c2)",
+    ),
+    (
         "crates/jadpo-cli/src/schedules.rs",
         "shows a schedule's own times (due, started, ended) to an operator, never an app's value (chunk 6.2b)",
     ),
