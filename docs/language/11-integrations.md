@@ -2422,6 +2422,183 @@ var started: Stripe.StartedSubscription = attempt stripe.start_subscription(requ
 }
 ```
 
+Built in chunk 7.6 and checked by this checkout's `jadpo`: a package's
+action calling its own operations, one its package keeps to itself, each
+answer passed to the next, and the app calling it through its connection
+and mapping its failure at the call. A package action's changing calls
+are steps of the action that calls it (area 12, "Several changing calls
+in one action"); the record of those steps comes with roadmap 7.5b. Its
+subscribers and the events they emit, polls and `max_concurrent:` come
+with roadmap 7.6b. The choices are in "Chosen in chunk 7.6".
+
+```jadpo check project=p76-actions file=app.jadpo hidden
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+        pay: {
+            package: AcmePay.v1
+            domains: [billing]
+            credential: config.pay_api_key
+            environment: config.pay_environment
+        }
+    }
+    events: {
+        store: main
+    }
+}
+```
+
+```jadpo check project=p76-actions file=config.jadpo hidden
+config {
+    pay_api_key: Text {
+        secret: true
+    }
+    pay_environment: ProviderEnvironment
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's payments API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
+        window: 24h
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/types/pay_request.jadpo hidden
+/// What each call takes.
+public type PayRequest = Object {
+    reference: Reference
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/types/pay_reply.jadpo hidden
+/// What each call gives.
+public type PayReply = Object {
+    id: Reference
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/types/reference.jadpo hidden
+/// Acme Pay's reference for a record.
+public type Reference = Text {
+    max_length: 40
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/failures/card_declined.jadpo hidden
+/// The card was declined.
+public type CardDeclined = Failure {
+    kind: FailureKind.rejected
+    message: "The card was declined."
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/resources/customers.jadpo hidden
+resource customers {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/customers"
+        input: PayRequest
+        output: PayReply
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/resources/cards.jadpo hidden
+public resource cards {
+    attach: {
+        method: HttpMethod.post
+        path: "/v1/cards"
+        input: PayRequest
+        output: PayReply
+        changes: true
+        idempotent: true
+        failures: [CardDeclined]
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/failures/payment_refused.jadpo hidden
+/// The payment provider refused the card.
+type PaymentRefused = Failure {
+    kind: FailureKind.rejected
+    message: "The card was refused."
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/events/plan_chosen.jadpo hidden
+use shared/providers/acme_pay
+
+/// A customer chose a plan.
+type PlanChosen = Event {
+    plan: AcmePay.Reference
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/subscribers/start.jadpo hidden
+use billing/actions { subscribe }
+use billing/events { PlanChosen }
+
+/// Starts the subscription a customer chose.
+subscriber start {
+    on: PlanChosen
+    run: subscribe(event.plan)
+}
+```
+
+```jadpo check project=p76-actions file=shared/providers/acme_pay/v1/actions/start_subscription.jadpo
+/// Creates the customer, then attaches the card to it.
+public action start_subscription(input: PayRequest) fails CardDeclined -> PayReply {
+    var customer: PayReply = customers.create(input)
+    return attempt cards.attach(
+        PayRequest {
+            reference: customer.id
+        }
+    )
+}
+```
+
+```jadpo check project=p76-actions file=domains/billing/actions/subscribe.jadpo
+use app { pay }
+use billing/failures { PaymentRefused }
+use shared/providers/acme_pay
+
+/// Starts a subscription: two steps, run by a subscriber.
+action subscribe(plan: AcmePay.Reference) fails PaymentRefused -> AcmePay.PayReply {
+    return attempt pay.start_subscription(
+        AcmePay.PayRequest {
+            reference: plan
+        }
+    ) {
+        card_declined: PaymentRefused
+    }
+}
+```
+
 ### Polls
 
 **Polling turns an API without webhooks into events.** `polls:` in
@@ -3449,9 +3626,10 @@ example and real output under "Errors".
 > `hosts:` with `runs:`, a reserved name and a name the app uses, and the
 > reachable-from-public rule (area 1's `visibility.public_reaches_private`).
 > Chunk 7.1b2 built a surface that differs at install and a link in CI,
-> under "Installing errors". Still to come: a resource and an action with one
-> name, a public action that emits and subscribing to a non-public event
-> (chunk 7.6). Chunk 7.1c built a connection's `host:` for a package
+> under "Installing errors". Chunk 7.6 built a resource and an action with
+> one name and a public action that emits, under `package.action_invalid`,
+> and chunk 7.7 subscribing to a non-public event (`package.not_public`).
+> Chunk 7.1c built a connection's `host:` for a package
 > with fixed `hosts:`, with the rest of a connection's keys, under
 > "Connection errors". Chunk 7.2d2 built a decoder that fails on a
 > recording and a field's `decode:` and `encode:` that don't round-trip,
@@ -3937,6 +4115,104 @@ error: `AcmeCouriers.tidying` isn't public
   help: docs/language/11-integrations.html#package-not-public
 
 check failed: 1 error, 6 files
+```
+
+### `package.action_invalid`
+
+A package's action calls only its own API: its operations, in any order,
+and its pure functions, never another action, so what it does is one way
+through it that a retry replays in order. It never emits when it is
+`public`, since a package emits only about the outside world, and it
+never shares a name with one of its resources, which share its
+connection's namespace (chunk 7.6):
+
+```jadpo check project=p76-calls file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/package.jadpo hidden
+/// Acme Pay's payments API.
+package AcmePay.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/provider.jadpo hidden
+/// Acme Pay's payments API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-pay.example"
+        sandbox: "https://sandbox.acme-pay.example"
+    }
+    credential: CredentialScheme.bearer
+    idempotency: {
+        header: "Idempotency-Key"
+        window: 24h
+    }
+    error_code: "error.code"
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/types/pay_request.jadpo hidden
+/// What each call takes.
+public type PayRequest = Object {
+    reference: Text {
+        max_length: 40
+    }
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/types/pay_reply.jadpo hidden
+/// What each call gives.
+public type PayReply = Object {
+    id: Text {
+        max_length: 40
+    }
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/resources/customers.jadpo hidden
+resource customers {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/customers"
+        input: PayRequest
+        output: PayReply
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+    }
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/actions/open_customer.jadpo hidden
+/// Opens the customer.
+public action open_customer(input: PayRequest) -> PayReply {
+    return customers.create(input)
+}
+```
+
+```jadpo check project=p76-calls file=shared/providers/acme_pay/v1/actions/start_subscription.jadpo expect=package.action_invalid
+/// Opens the customer, through the other action.
+public action start_subscription(input: PayRequest) -> PayReply {
+    return open_customer(input)
+}
+```
+
+```text output
+error: `start_subscription` calls the package's action `open_customer`
+ --> shared/providers/acme_pay/v1/actions/start_subscription.jadpo:3:12
+  |
+3 |     return open_customer(input)
+  |            ^^^^^^^^^^^^^ another action
+  reason: A package's action calls only its own API: its operations, in any order, and its pure functions. The steps it makes are one way through it, which a retry replays in order.
+  next: Make `open_customer`'s calls here, or move what both share to a function (agent)
+  rule: package.action_invalid
+  help: docs/language/11-integrations.html#package-action-invalid
+
+check failed: 1 error, 8 files
 ```
 
 ### `package.not_locked`
@@ -6392,7 +6668,9 @@ side (below); the rest is still to build.
 | The scoped review of an import's types, tracked per type, and unconfirmed operations | 7.2e2 |
 | The `email` capability whole (Jadpo-rendered, attachments) with SMTP as one driver (built in 7.3) and a mail package as the second, proving the swap; provider calls faked in development and logged | 7.3, 7.3c |
 | No transaction open during a call | 7.4 |
-| Package actions, subscribers, polls and recipes; services; several changing calls in one action; receiving (replies, handshakes and queues, chunks 7.7b and 7.7c; webhooks as events built in 7.7); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
+| Package actions calling their own API, counted as the caller's steps; `jadpo package recipe` | 7.6 |
+| Package subscribers on their own webhooks and the events they emit, polls, `max_concurrent:`, recipes compiled against `sample/` at publish | 7.6b |
+| Package's services; several changing calls in one action; receiving (replies, handshakes and queues, chunks 7.7b and 7.7c; webhooks as events built in 7.7); OAuth grants; publisher trust (git packages and links are built, chunk 7.1b2); the hosted registry; deploy-time provider choice; erasure at providers | Not yet on the roadmap; erasure comes with personal data (area 15), after the first build |
 
 > **Built (chunk 7.1).** The package format and both kinds:
 > `packages/<name>/<version>/` and `shared/providers/<name>/<version>/`
@@ -7520,6 +7798,75 @@ replies, handshakes and Twilio's and SNS's schemes are 7.7b, queues through
   non-public package event is kept and reaches no subscriber, subscribing
   to one being `package.not_public`; package subscribers come with 7.6.
 
+### Chosen in chunk 7.6
+
+Package actions and recipes (the first part of chunk 7.6, split on
+2026-10-20: package subscribers, the events they emit, polls,
+`max_concurrent:` and recipes compiled against `sample/` are 7.6b), each
+the most conservative reading:
+
+- **Calling its own API.** In a package's action, `<resource>.<operation>(input)`
+  calls one of its package's operations, public or not, by its bare names;
+  a function or a test of the package calling one is
+  `effect.function_persistence`. The operation's failures are the
+  package's own, so they pass on to the action's `fails` with `attempt`
+  as a library function's do, or are handled with `match`. At run time
+  the call goes through the connection the app called the action
+  through, with its credential, host, timeout and fake.
+- **No other action.** A package's action calling another action, its
+  package's or any other, is `package.action_invalid`: the pages let a
+  package action call its operations and its pure functions, and keeping
+  it to one body keeps each way through it one sequence of steps. This
+  can be loosened later without breaking a package.
+- **The app's call.** `connection.<action>(...)` calls a `public` action
+  of the connection's package, from an action of a domain its
+  `domains:` lists (`connection.domain_not_listed` otherwise), with the
+  action's parameters as written; one without `public` is
+  `package.not_public`. Its package failures are mapped at the call by
+  their codes, as an operation's are (`failure.attempt_required` when
+  nothing maps them), and one no arm maps is a fault; its `attempt` may
+  not map `timed_out:`, since its calls are several, or may be. An
+  unknown name through the connection lists its public operations and
+  actions.
+- **Steps.** A package action's changing calls count as the calling
+  action's on its longest way through, and the keys the runtime derives
+  carry on the caller's step numbering, so a second package action, or
+  the app's own call after one, continues it. A package action over 8 is
+  `step.too_many` where it is declared, which `jadpo package check`'s
+  `compiles` row shows, so it can't be published.
+- **Emitting.** `emit` in a `public` package action is
+  `package.action_invalid`; in one without `public`, which only the
+  package's subscribers run, it is `toolchain.not_built_yet` until 7.6b.
+- **A resource and an action of one name** is `package.action_invalid`
+  at the action.
+- **The surface.** Each `public` action is an entry after the
+  operations, `action <name>` with its file, its `signature` and a `fails`
+  line per failure, compared between versions as a function's is.
+- **Fakes.** A test's `fakes:` may script any of the package's
+  operations, public or not, when the package has actions, since those
+  reach the ones it keeps to itself; a package action runs its real code
+  in a test, as every package's code does. The provider plan holds every
+  operation of a connection's package.
+- **`jadpo package recipe <package> <recipe> --into <domain>`** finds the
+  package as `jadpo package show` does and copies every file under its
+  `recipes/<recipe>/`, hidden ones left out, to the same path under
+  `domains/<domain>/`, which must be one of the app's domains. It copies
+  all or nothing: a file the domain already has is never written over,
+  and naming one refuses the copy with `cli.package_arguments`. The files
+  are copied as they are; `jadpo check` then shows what to fit to the app.
+  The screen lists each file written, the footer counts them, and the
+  hint is `jadpo check`, designed with the CLI design language:
+
+```text
+Copied recipe track_parcels into domains/shipping
+    domains/shipping/actions/track_parcel.jadpo
+    domains/shipping/schedules/track_nightly.jadpo
+
+recipe copied: Couriers.v1, track_parcels, 2 files
+
+next: jadpo check  shows what to fit to the app
+```
+
 ### Chosen in chunk 7.1e
 
 Enum values through a package's name, each the most conservative reading:
@@ -8074,3 +8421,4 @@ packages and extension points, as each note says; 26 was decided then.
 | `Wire.number` (after chunk 7.2c2) | A decimal a provider sends as a plain JSON number (`2.50`) is read with the built-in `Wire.number`, its digits kept as written both ways, since without it no decoder could read such a field (Richard, as recommended under the 2026-10-19 standing instruction) | 2026-10-20 |
 | A standard type read from its object's members (chunk 7.2e) | A provider package's field gives `wire_parts:`, the member of the object holding it that each part of its standard type is read from and written to, so Stripe's `amount` and `currency` are one `Money` and `lat` and `lng` one `Point`; for the standard types made of named parts and `Point`; fields may share a part's member, and two values that differ there stop the call; the field has no member of its own on the wire and is the contract's everywhere else. Decided by the building session where the page names the decoding but no mechanism could do it; follows `wire_name:`'s shape (decided for Richard) | 2026-10-20 |
 | What an import maps by shape, and what it flags (chunk 7.2e) | Mapped: a whole-number amount beside a currency, a latitude beside a longitude, and an object that is `Money` or `InstantRange` whole spelled as the contract spells it. Flagged as the declinable `package.standard_candidate` on a provider package's public field: a whole number named like a time, one named like an amount beside a currency, and an unmapped latitude and longitude (decided by the building session) | 2026-10-20 |
+| What a package action may call (chunk 7.6) | A package's action calls its package's operations, public or not, by their bare names, and its pure functions, never another action, its package's or any other (`package.action_invalid`), so each way through it is one sequence of steps; a test scripts the package's own operations its actions reach; `jadpo package recipe` copies all or nothing into an existing domain, never over a file the app has (decided by the building session, conservatively; loosening it breaks no package) | 2026-10-20 |
