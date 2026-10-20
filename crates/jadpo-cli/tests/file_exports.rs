@@ -141,7 +141,9 @@ type ItemLine = Output {
 
 entity Item {
     id: Uuid
-    code: ShelfCode
+    code: ShelfCode {
+        immutable: true
+    }
     name: ItemName
     count: StockCount
 

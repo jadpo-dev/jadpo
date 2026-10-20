@@ -2654,7 +2654,7 @@ type ChorePage = Input {
 
 query all_chores(page: ChorePage) -> Page<Chore> {
     from: Chore
-    order: [Chore.title asc]
+    order: [Chore.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -2780,7 +2780,7 @@ type ChorePage = Input {
 
 query all_chores(page: ChorePage) -> Page<Chore> {
     from: Chore
-    order: [Chore.title asc]
+    order: [Chore.id asc]
     page: {
         size: page.page_size
         after: page.after

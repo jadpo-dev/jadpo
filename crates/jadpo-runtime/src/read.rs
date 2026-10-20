@@ -188,6 +188,70 @@ pub(crate) async fn read(
     })
 }
 
+/// How many records the page-giving read `plan` finds given `args`, past
+/// any page's limit and from its start (chunk 6.4b3): its statement, as
+/// its first page runs it, counted, its limit given as `NULL`, which
+/// PostgreSQL takes as none. What a batch's run estimates its total from.
+/// `None` for a read whose rows Jadpo holds to its conditions again after
+/// the statement (area 20), which the statement alone doesn't count.
+pub(crate) async fn count(
+    ctx: &mut Ctx<'_>,
+    plan: &ReadPlan,
+    json: JsonCodecs<'_>,
+    args: &[Value],
+) -> Result<Option<i64>, StoreError> {
+    if plan.recheck.is_some() || plan.page.is_none() {
+        return Ok(None);
+    }
+    let env = Env {
+        args,
+        json,
+        now: ctx.now(),
+        size: 0,
+        cursor: Vec::new(),
+        keys: None,
+        callers: callers(ctx),
+        unpoliced: ctx.unpoliced(),
+        fetch: Cell::new(0),
+    };
+    let select = &plan.select;
+    let mut params = Vec::with_capacity(select.params.len());
+    for param in &select.params {
+        params.push(match &param.source {
+            Source::SizePlusOne | Source::Fetch => SqlValue::Null(SqlType::Int8),
+            _ => match bind(param, &env) {
+                Ok(value) => value,
+                Err(Problem::Store(error)) => return Err(error),
+                Err(Problem::Defect(what)) => return Err(StoreError::Fault(what)),
+                Err(Problem::Refused) => return Ok(None),
+            },
+        });
+    }
+    let sql = match (&select.unpoliced, env.unpoliced) {
+        (Some(unpoliced), true) => unpoliced,
+        _ => &select.sql,
+    };
+    let counted = format!("SELECT count(*) FROM ({sql}) AS \"jadpo_counted\"");
+    let transaction = ctx.transaction(&plan.store).await?;
+    // Behind a savepoint: a count the store refuses leaves the run
+    // without an estimate, never stopped by one.
+    transaction.savepoint().await?;
+    match transaction.query(&counted, &params).await {
+        Ok(rows) => {
+            transaction.release_savepoint().await?;
+            Ok(match rows.first().and_then(|row| row.first()) {
+                Some(SqlValue::Int8(n)) => Some(*n),
+                _ => None,
+            })
+        }
+        Err(error @ (StoreError::ConcurrentChange | StoreError::Unavailable)) => Err(error),
+        Err(_) => {
+            transaction.rollback_to_savepoint().await?;
+            Ok(None)
+        }
+    }
+}
+
 /// What the runtime raises when a page's cursor was made by another query,
 /// or isn't a cursor at all (area 6: "rejected as invalid input"; area 7:
 /// 422 `invalid_input`).

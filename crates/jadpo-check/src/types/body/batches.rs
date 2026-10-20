@@ -18,7 +18,8 @@ use std::collections::BTreeSet;
 use jadpo_db::ItemKind;
 use jadpo_diag::{Diagnostic, Span, rule};
 use jadpo_std::batch::{
-    BATCH_PROGRESS, BATCH_RUN, BatchOp, EACH_PARAMS, IMPORT_SUMMARY, READ_PARAMS, RowFormat,
+    BATCH_PROGRESS, BATCH_RUN, BatchOp, EACH_PARAMS, IMPORT_SUMMARY, ITEMS_AT, MAX_UNPACKED_SIZE,
+    READ_PARAMS, RowFormat,
 };
 use jadpo_syntax::ast::{self, AstNode, Expr};
 
@@ -244,8 +245,20 @@ impl Body<'_> {
         )
     }
 
-    /// `csv.read(file, as:, each:, finished:, key:)`, and `tsv`'s and
-    /// `json_lines`'s (chunk 6.4b): the stored file is saved with the run,
+    /// Whether a call of `json.read` is its file form (chunk 6.4b3): given
+    /// `each:`, or anything else only the file form takes, by name, where
+    /// the in-memory form takes text and `as:`.
+    pub(super) fn reads_a_file(call: &ast::CallExpr) -> bool {
+        Self::arguments(call).iter().any(|arg| {
+            Self::arg_name(arg)
+                .is_some_and(|name| name != "as" && READ_PARAMS[1..].contains(&name.as_str()))
+        })
+    }
+
+    /// `csv.read(file, as:, each:, finished:, key:, max_unpacked_size:)`,
+    /// and `tsv`'s, `json_lines`'s (chunk 6.4b) and `json`'s file form,
+    /// which also takes `items_at:` (chunk 6.4b3): the stored file is saved
+    /// with the run,
     /// each row read as the `Input` `as:` names and handed to `each:`.
     fn batch_read(
         &mut self,
@@ -253,17 +266,26 @@ impl Body<'_> {
         call: &ast::CallExpr,
         written: &str,
     ) -> (Ty, CallKind, Reach) {
+        // Only `json.read` takes `items_at:`.
+        let takes: Vec<&str> = READ_PARAMS
+            .iter()
+            .copied()
+            .filter(|param| format == RowFormat::Json || *param != READ_PARAMS[ITEMS_AT])
+            .collect();
         let args = Self::arguments(call);
         let mut slots: Vec<Option<usize>> = Vec::new();
-        let mut given: [Option<Expr>; 5] = [None, None, None, None, None];
+        let mut given: [Option<Expr>; 7] = Default::default();
         for (index, arg) in args.iter().enumerate() {
             let slot = match Self::arg_name(arg) {
                 Some(name) => {
-                    let found = READ_PARAMS.iter().position(|param| *param == name);
+                    let found = READ_PARAMS
+                        .iter()
+                        .position(|param| *param == name)
+                        .filter(|_| takes.contains(&name.as_str()));
                     if found.is_none()
                         && let Some(node) = arg.name()
                     {
-                        let params: Vec<(String, Ty)> = READ_PARAMS
+                        let params: Vec<(String, Ty)> = takes
                             .iter()
                             .map(|param| (param.to_string(), Ty::Error))
                             .collect();
@@ -272,7 +294,8 @@ impl Body<'_> {
                     }
                     found
                 }
-                None => (index < READ_PARAMS.len()).then_some(index),
+                // What came before `items_at:` may be written in order.
+                None => (index < ITEMS_AT).then_some(index),
             };
             match slot.and_then(|slot| given.get_mut(slot)) {
                 // `as:` is a type, read below rather than as a value.
@@ -295,12 +318,23 @@ impl Body<'_> {
                 )
                 .at(at, "missing")
                 .reason(format!(
-                    "`{written}` reads the rows of a stored `File`, each as the `Input` `as:` names, and runs `each:`, an action called per row; `finished:` and `key:` may follow."
+                    "`{written}` reads the rows of a stored `File`, each as the `Input` `as:` names, and runs `each:`, an action called per row; {} may follow.",
+                    if format == RowFormat::Json {
+                        "`items_at:`, `finished:`, `key:` and `max_unpacked_size:`"
+                    } else {
+                        "`finished:`, `key:` and `max_unpacked_size:`"
+                    }
                 ))
                 .next(format!(
                     "Write `{written}(file, as: RowType, each: row -> action(row))`"
                 )),
             );
+        }
+        if let Some(at) = &given[ITEMS_AT] {
+            self.items_at(at, written);
+        }
+        if let Some(size) = &given[MAX_UNPACKED_SIZE] {
+            self.unpacked_size(size, written);
         }
         if let Some(file) = &given[0] {
             let ty = self.infer(file);
@@ -354,6 +388,128 @@ impl Body<'_> {
             CallKind::Effect(written.to_string()),
             Reach::Batch(BatchOp::Read(format)),
         )
+    }
+
+    /// `json.read`'s `items_at:` (chunk 6.4b3): text written out, the names
+    /// of the members leading from the document's top object to its list
+    /// of items, between dots.
+    fn items_at(&mut self, value: &Expr, written: &str) {
+        let text = match super::super::rules::Const::from_expr(value) {
+            super::super::rules::Const::Str(text) => Some(text),
+            _ => None,
+        };
+        let label = match &text {
+            None => {
+                if !super::is_literal(value) {
+                    self.infer(value);
+                }
+                "not text written out"
+            }
+            Some(text) if text.is_empty() => "names no member",
+            Some(text) if text.split('.').any(str::is_empty) => "a member with no name",
+            Some(_) => return,
+        };
+        let span = self.span(value);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_BATCH_ROW_INVALID,
+                format!("`{written}`'s `items_at:` doesn't say where its list is"),
+            )
+            .at(span, label)
+            .reason(format!(
+                "`items_at:` names where the list of items sits in the document, written out as the members leading to it from its top object, between dots: `items_at: \"data.items\"`. When the document is the list, `{written}` is given no `items_at:`."
+            ))
+            .next(
+                "Write the members' names, such as `items_at: \"data.items\"`, or leave `items_at:` out if the document is the list",
+            ),
+        );
+    }
+
+    /// A file helper's `max_unpacked_size:` (chunk 6.4b3): a size written
+    /// out, more than nothing, as a `File` field's `max_size:` is.
+    fn unpacked_size(&mut self, value: &Expr, written: &str) {
+        let text = tree::written(value.syntax());
+        if jadpo_std::files::size(&text).is_some_and(|bytes| bytes > 0) {
+            return;
+        }
+        let span = self.span(value);
+        self.out.push(
+            Diagnostic::new(
+                &rule::TYPE_BATCH_ROW_INVALID,
+                format!("`{written}`'s `max_unpacked_size:` isn't a size"),
+            )
+            .at(span, "not a size")
+            .reason(
+                "`max_unpacked_size:` is the most a gzip file may unpack to, so a small file can't unpack to gigabytes: a whole number of bytes, kilobytes, megabytes or gigabytes, more than none, written `700b`, `512kb`, `200mb` or `2gb`, each a thousand times the last.",
+            )
+            .next("Write the size as a whole number and its unit, such as `max_unpacked_size: 200mb`"),
+        );
+    }
+
+    /// `from:`'s query, when its order puts a field an update can change
+    /// before its `id` (area 12, "No other way"; chunk 6.4b3): a run walks
+    /// live records a page at a time, after the last one the page before
+    /// ended on, so a record whose place in that order moves mid-run is
+    /// missed or met twice. `id`, a field marked `immutable: true` and one
+    /// generated as its record is created never change. A judgement call,
+    /// declined on the action with a reason when the field can't change in
+    /// practice.
+    fn batch_order(&mut self, query: &str, from: &Expr, written: &str) {
+        let Some(model) = crate::data::queries::query_model(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, query.to_string()),
+        )
+        .clone() else {
+            return;
+        };
+        let Some(entity) = crate::data::entity_model(
+            self.db,
+            self.project,
+            crate::lookups::Name::new(self.db, model.entity.clone()),
+        )
+        .clone() else {
+            return;
+        };
+        let mut order: Vec<String> = model
+            .order
+            .iter()
+            .map(|field| field.field.clone())
+            .collect();
+        if let Some(distance) = &model.distance {
+            order.insert(0, distance.field.clone());
+        }
+        for name in order {
+            let Some(field) = entity.fields.iter().find(|field| field.name == name) else {
+                continue;
+            };
+            let fixed = field.name == "id"
+                || field.immutable
+                || field.generated == Some(jadpo_std::Generated::OnCreate);
+            if !fixed {
+                let span = self.span(from);
+                let host = &entity.name;
+                self.out.push(
+                    Diagnostic::new(
+                        &rule::TYPE_BATCH_ORDER_UPDATABLE,
+                        format!("`{written}` walks `{query}` in an order an update can change"),
+                    )
+                    .at(span, format!("ordered by `{host}.{name}`, which an update can change"))
+                    .reason(format!(
+                        "A run walks live records a page at a time, each page after the record the one before ended on, so a `{host}` whose `{name}` changes mid-run can move behind that place and be missed, or ahead of it and be met twice. An order no update changes meets every record once: `id`, or a time generated as the record is created, then `id`."
+                    ))
+                    .next(format!(
+                        "Order `{query}` by `{host}.id`, or by a field marked `immutable: true` or generated with `Generated.on_create` and then `{host}.id`"
+                    )),
+                );
+                return;
+            }
+            // Nothing after a unique field that never changes moves a
+            // record.
+            if field.name == "id" || field.unique {
+                return;
+            }
+        }
     }
 
     /// A file helper's `as:`: an `Input` written out, each of whose fields
@@ -440,7 +596,7 @@ impl Body<'_> {
             );
             return None;
         }
-        if format != RowFormat::JsonLines {
+        if format.delimiter().is_some() {
             for field in &fields {
                 if let Some(what) = self.not_one_value(&field.declared) {
                     let name = &field.name;
@@ -563,6 +719,9 @@ impl Body<'_> {
             if let Some(saved) = self.facts.types.get(&node_key(value.syntax())).cloned() {
                 self.batch_saved(&value, &saved, Saved::From, written);
             }
+        }
+        if let Some(Reach::Callable { name, .. }) = &reach {
+            self.batch_order(name, from, written);
         }
         item
     }

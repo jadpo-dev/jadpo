@@ -426,10 +426,10 @@ entity Stocktake {
     }
 }
 
-/// The items, a page at a time, in code order.
+/// The items, a page at a time, in an order no change to an item moves.
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -749,7 +749,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -815,7 +815,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -1170,7 +1170,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -2761,7 +2761,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -2836,7 +2836,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -2915,7 +2915,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -2990,7 +2990,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after
@@ -3072,7 +3072,7 @@ entity Item {
 
 query items(page: ItemPage) -> Page<Item> {
     from: Item
-    order: [Item.code asc]
+    order: [Item.id asc]
     page: {
         size: page.page_size
         after: page.after

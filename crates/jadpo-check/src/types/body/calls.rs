@@ -447,6 +447,21 @@ impl Body<'_> {
                     &written,
                 );
             }
+            // `json.read`'s file form (chunk 6.4b3): given `each:` (or
+            // what only the file form takes), it starts a run over a
+            // stored file's list, where given text and `as:` it reads one
+            // document.
+            if head == jadpo_std::batch::RowFormat::Json.namespace()
+                && member == "read"
+                && Self::reads_a_file(call)
+            {
+                return self.batch_call(
+                    jadpo_std::batch::BatchOp::Read(jadpo_std::batch::RowFormat::Json),
+                    call,
+                    callee,
+                    &written,
+                );
+            }
             if let Some(targets) = jadpo_std::moved_namespace(&head)
                 && let [member] = rest.as_slice()
             {

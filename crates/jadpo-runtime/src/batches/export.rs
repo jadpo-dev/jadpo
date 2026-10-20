@@ -33,8 +33,8 @@ use jadpo_std::batch::{BatchEach, BatchPlan, FileWrite, RowFormat};
 use jadpo_value::Value;
 
 use super::{
-    ADVANCE, Batches, Held, Item, LOCK, PROBLEM, Ran, Saved, Step, Unread, abandoned, at, end_in,
-    finish, finished, problem, read_page,
+    ADVANCE, Batches, Held, Item, LOCK, PROBLEM, Ran, Saved, Step, Unread, abandoned, at, counted,
+    end_in, finish, finished, problem, read_page, total,
 };
 use crate::effects::Unanswered;
 use crate::runner::Batch;
@@ -299,6 +299,22 @@ pub(super) async fn page(
         open.rollback().await;
         return written(executor, ctx, plan, write, start, saved, &held, &place, now).await;
     }
+    // The query's count, as its first page reads it, the total the run
+    // estimates (chunk 6.4b3).
+    let estimate = if held.position.is_none() {
+        match counted(&mut open, batches, plan, saved.values).await {
+            Ok(estimate) => estimate,
+            Err(unread) => {
+                open.rollback().await;
+                return match unread {
+                    Unread::Changed => Step::Changed,
+                    Unread::Paused(why) | Unread::Refused(why) => Step::Ended(Ran::Paused(why)),
+                };
+            }
+        }
+    } else {
+        None
+    };
     let (items, next) = match read_page(
         &mut open,
         batches,
@@ -443,6 +459,7 @@ pub(super) async fn page(
                 SqlValue::Int8(held.problems + problems.len() as i64),
                 at(lease_until),
                 at(now),
+                total(estimate),
             ],
         )
         .await;
