@@ -562,7 +562,11 @@ fn an_installed_package_is_never_formatted() {
         ])
     );
     let formatted = jadpo(&root, &["fmt"]);
-    assert_eq!(formatted.code, 0, "{}{}", formatted.stdout, formatted.stderr);
+    assert_eq!(
+        formatted.code, 0,
+        "{}{}",
+        formatted.stdout, formatted.stderr
+    );
     assert_eq!(read(&root, "packages/counts/v1/types/count.jadpo"), messy);
     assert_eq!(read(&root, COUNT), TIDY_COUNT);
 }

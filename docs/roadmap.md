@@ -1871,22 +1871,44 @@ The design is area 11 as revised on 2026-10-16, with its research in
   Jadpo's own messages worded in Welsh, a `SignedIn` subscriber, and a
   route test that signs in through the emailed link, passing
   `--require-examples`.
-- [ ] **7.8b Teaching examples for Phase 7: packages, calls and
-  receiving** `opus · high`, after 7.8: packages (two versions of one,
-  package events, subscribers and polls, `max_concurrent:`, recipes,
-  capabilities and `provides/`, a mail package as the second connection,
-  OpenAPI import and mapping to standard types, recordings), multi-step
-  calls (step records, operators, crash points) and webhooks and queues
-  (`receiving`), extending 26-delivery-desk where they fit its story; the
-  coverage test's exemptions for the package folders `subscribers`,
-  `events`, `provides` and `translations` and for `syntax PROVIDE_DECL`
-  removed once an example uses them, or their reasons corrected.
+- [x] **7.8b Teaching examples for Phase 7: packages, calls and
+  receiving** `opus · high`, after 7.8. Built: 26-delivery-desk extended
+  with Swift Couriers' webhooks (`SignatureScheme.standard_webhooks`, its
+  `events/`), the package's own subscriber and action emitting its public
+  `ParcelsCollected` to the desk's subscriber, a poll of its price list
+  with `max_concurrent:` lowered by the connection, a recipe in
+  `recipes/keep_tariff/` compiled in its `sample/` app and copied into
+  the desk with `jadpo package recipe`, recordings confirming its calls,
+  Resend installed as the email connection (`provides/email.jadpo`), an
+  SQS queue through `receiving:` (`provides/receiving.jadpo`), Postcodes
+  2.0.0 with its `translations/` held beside 1.0.0 and reworded under
+  `postcodes_v2: { }`, Parcel Rates imported from OpenAPI with `amount`
+  and `currency` read as `Money` through `wire_parts:` and its types
+  `reviewed:`, and a pickup booked with its return as two steps under the
+  API's required `Idempotency-Key`, `steps: { encryption_key: }` and a
+  20-second deadline, passing `--require-examples` with the exemptions
+  for the package folders `subscribers`, `events`, `provides` and
+  `translations` and for `syntax PROVIDE_DECL` removed. Found and fixed:
+  `jadpo fmt` rewrote installed packages and broke their lock, and a
+  test's scripted provider answer was written as the contract writes it,
+  not on the provider's wire (`wire_parts:` and encodings), so it didn't
+  decode; the example-names check leaves out an example's copy of a
+  package this repository holds in `packages/`.
 - [ ] **7.8c Teaching examples for Phase 7: AI and passkeys** `opus ·
   high`, after 7.8b and 5.5v7b: `ai.generate`, embeddings, recordings,
   streaming to a route, budgets and personal data sent to models, through
   a model package and its fake (22-plant-helpline, whose tests need
   pgvector 0.8.0, or a new example), and passkey recovery through a
   magic link in 27-guest-house.
+- [ ] **7.8d Fixes found in chunk 7.8b** `opus · high`: an app can't
+  `match` on a package's failure from a provider call or package action
+  (`match couriers.pickups.create(...) { success(p) -> ...
+  SwiftCouriers.SlotTaken -> ... }` gives `failure.outcome_missing_arm`
+  asking for `SwiftCouriers.SlotTaken` and `failure.outcome_pattern_invalid`
+  on it, since an outcome pattern is one name), so a late failure is
+  handled only through an app action that maps it; and area 16 says a
+  connection only `email:` names needs no `domains:`, but
+  `connection.key_missing` asks for `domains: []`.
 
 ## Phase 8 — Compiled deployables
 
