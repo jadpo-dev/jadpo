@@ -924,6 +924,21 @@ fn package_reply(
     })
 }
 
+/// The tokens a package's answer to `generate:` says it used, read as its
+/// `usage:` says, `text` the answer as sent: input, output and cached;
+/// `None` when the answer doesn't read or says nothing. What `jadpo
+/// package conform` checks the usage of (chunk 5.5v7b).
+pub fn reported_usage(ctx: &mut Ctx<'_>, ai: &Ai<'_>, text: &str) -> Option<(u64, u64, u64)> {
+    let AiDriver::Package(package) = &ai.plan.driver else {
+        return None;
+    };
+    let providers = ai.providers?;
+    let reply = package_reply(ctx, &providers, &ai.plan.connection, package, text).ok()?;
+    reply
+        .usage
+        .map(|used| (used.input, used.output, used.cached))
+}
+
 /// Whether the member of `sent` at `path`, dotted by spellings on the
 /// wire, is the JSON value `equals`.
 pub(crate) fn equal_at(sent: &serde_json::Value, path: &str, equals: &str) -> bool {

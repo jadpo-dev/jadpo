@@ -4005,6 +4005,15 @@ with a passing run pinned to the package's digest, and the app's own
 integrations run it in scheduled CI. Tests use one fake per capability,
 whatever the provider: `email.sent`, `published` (question 22).
 
+> Built for `ai` in chunk 5.5v7b, with its choices under area 21's
+> "Chosen in chunk 5.5v7b": `jadpo package conform <package> ai` runs the
+> suite in an app, by default against the package's recordings and a
+> local fake on this machine's loopback address, and with `--live`
+> against the provider's API through the app's own connection, refused
+> (`conform.refused`) without one or without its credential set. Another
+> capability's suite, the run pinned to the digest for the registry and
+> the scheduled CI run come later.
+
 **Development.** In `jadpo dev` nothing leaves the machine: mail goes to the
 local inbox, files to local disk, published events to a log in the dev
 console, and search to PostgreSQL whatever production uses. The database

@@ -80,6 +80,10 @@ pub const ACTIONS: &[Value] = &[
         description: "Call a provider's sandbox and keep the answer as a recording",
     },
     Value {
+        name: "conform",
+        description: "Run a capability's conformance suite against a package",
+    },
+    Value {
         name: "add",
         description: "Install a package from a folder or a git repository's tag",
     },
@@ -109,7 +113,6 @@ pub const ACTIONS: &[Value] = &[
 /// work that brings each.
 const LATER: &[(&str, &str)] = &[
     ("new", "package repositories"),
-    ("conform", "capabilities"),
     ("publish", "the hosted registry"),
 ];
 
@@ -138,6 +141,7 @@ pub fn package(call: &Call) -> Reply {
         Some("unlink") => crate::install::unlink(call),
         Some("import") => crate::package_import::import(call),
         Some("record") => crate::package_record::record(call),
+        Some("conform") => crate::package_conform::conform(call),
         Some("recipe") => crate::package_recipe::recipe(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
@@ -949,7 +953,7 @@ pub(crate) fn index_name(text: &str) -> Option<String> {
 
 /// Every file under `folder`, relative, leaving out hidden entries and a
 /// `build/` at its root.
-fn package_files(folder: &Path) -> Vec<String> {
+pub(crate) fn package_files(folder: &Path) -> Vec<String> {
     let mut out = Vec::new();
     let mut pending = vec![folder.to_path_buf()];
     while let Some(dir) = pending.pop() {
