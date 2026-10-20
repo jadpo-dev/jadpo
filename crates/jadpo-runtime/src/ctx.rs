@@ -240,7 +240,7 @@ pub struct Ctx<'p> {
     /// Each `ai.stream` call's answer, open and waiting to be sent by the
     /// route its action answers, by the step it took and the request it
     /// sent (area 21; chunk 5.5v6): what an `AiStream` value names.
-    streams: Vec<crate::stream::Slot>,
+    streams: Vec<crate::stream::OpenStream>,
 }
 
 /// What a provider call's idempotency key is derived from besides the
@@ -450,7 +450,7 @@ impl<'p> Ctx<'p> {
 
     /// Keeps an open stream for the route its action answers, and gives
     /// its number.
-    pub(crate) fn keep_stream(&mut self, slot: crate::stream::Slot) -> u32 {
+    pub(crate) fn keep_stream(&mut self, slot: crate::stream::OpenStream) -> u32 {
         self.streams.push(slot);
         u32::try_from(self.streams.len() - 1).unwrap_or(u32::MAX)
     }

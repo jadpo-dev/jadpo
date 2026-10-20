@@ -231,7 +231,7 @@ fn read_streamed<S: Read + Write>(
     if out.send(Part::Head(status, headers)).is_err() {
         return Ok(());
     }
-    let mut body = Framing::new(chunked);
+    let mut body = Chunking::new(chunked);
     let mut pending: Vec<u8> = raw.get(start..).unwrap_or_default().to_vec();
     let mut total = 0usize;
     loop {
@@ -279,16 +279,16 @@ fn read_streamed<S: Read + Write>(
 }
 
 /// How a streamed body is framed, and how far its chunks have been read.
-struct Framing {
+struct Chunking {
     chunked: bool,
     /// Bytes left of the chunk being read, or `None` before a size line.
     in_chunk: Option<usize>,
     ended: bool,
 }
 
-impl Framing {
-    fn new(chunked: bool) -> Framing {
-        Framing {
+impl Chunking {
+    fn new(chunked: bool) -> Chunking {
+        Chunking {
             chunked,
             in_chunk: None,
             ended: false,

@@ -434,13 +434,13 @@ impl Events for Reply {
 /// One open stream an invocation keeps, by the step its call took and
 /// the request it sent, so an action run again after a concurrent change
 /// is given it back rather than asking again.
-pub(crate) struct Slot {
+pub(crate) struct OpenStream {
     pub step: Option<u32>,
     pub digest: [u8; 32],
     events: Option<Box<dyn Events>>,
 }
 
-impl Slot {
+impl OpenStream {
     pub(crate) fn open(&self) -> bool {
         self.events.is_some()
     }
@@ -450,9 +450,9 @@ impl Slot {
     }
 }
 
-impl std::fmt::Debug for Slot {
+impl std::fmt::Debug for OpenStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Slot")
+        f.debug_struct("OpenStream")
             .field("step", &self.step)
             .field("open", &self.open())
             .finish_non_exhaustive()
@@ -655,7 +655,7 @@ pub async fn stream(
         Some(Said::TimedOut) => return broke(RuleKey::TimedOut),
         Some(_) => return Done::Failed(Box::new(crate::unavailable())),
     }
-    let number = ctx.keep_stream(Slot {
+    let number = ctx.keep_stream(OpenStream {
         step,
         digest,
         events: Some(Box::new(reply)),
