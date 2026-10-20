@@ -453,7 +453,7 @@ action start(page: ItemPage) -> BatchRun {
     );
 }
 
-// A batch's summary under policy (area 12, "Chosen in chunk 6.4d"): in an
+// A batch's summary under policy (area 12, "What a run reaches under policy"): in an
 // application with a tenant, a run's `finished:` stores what its
 // `ImportSummary` counts in a record of the tenant the run is limited to.
 

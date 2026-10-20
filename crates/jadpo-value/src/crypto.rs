@@ -10,7 +10,7 @@
 //! | `hmac`, `verify_hmac` | HMAC-SHA-256 (RFC 2104, RFC 4231), checked in constant time |
 //! | `sign`, `verify_signature` | Ed25519 (RFC 8032), verified strictly |
 //!
-//! A key is never a [`Value`]: an executor gives each operation the
+//! A key is never a [`Value`]: the runtime gives each operation the
 //! [`KeyRing`] its `key: config.<name>` names, which nothing can read,
 //! print or compare. A nonce and a salt are the invocation's random bytes
 //! (a [`Source`]): the host's generator in a deployable, a test's seed in
@@ -394,8 +394,9 @@ fn bytes_value(bytes: &[u8]) -> Value {
     Value::Bytes(std::rc::Rc::from(bytes))
 }
 
-/// Whether `op` is one of `crypto`'s, which each executor runs through
-/// [`run`] with the key its call names.
+/// Whether `op` is one of `crypto`'s, which the runtime's entry point for
+/// effects runs through [`run`] with the key its call names, for either
+/// executor.
 pub fn is_crypto(op: Op) -> bool {
     matches!(
         op,
@@ -450,8 +451,8 @@ pub fn run(
         (Op::CryptoVerifySignature, [value, Value::Bytes(signature), key]) => Ok(Value::Bool(
             verify_signature(bytes_of(value)?, signature, text_of(key)?),
         )),
-        // Without `as:`, whose claims of the application's own type each
-        // executor reads with the plan's codecs ([`crate::jwt::verify_jwt_as`]).
+        // Without `as:`, whose claims of the application's own type the
+        // runtime reads with the plan's codecs ([`crate::jwt::verify_jwt_as`]).
         (Op::CryptoVerifyJwt, [token, Value::List(keys), issuer, audience, ..]) => {
             let option = |value: &Value| match value {
                 Value::None => Ok(None),

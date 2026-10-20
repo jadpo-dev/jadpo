@@ -593,7 +593,7 @@ fn summary_round<'db>(
 }
 
 /// What decides the failures of every batch the application starts
-/// (chunk 6.6b; area 12, "Chosen in chunk 6.6b"): what `batches.status`
+/// (chunk 6.6b; area 12, "What a run reaches under policy"): what `batches.status`
 /// gives is held to these, since where a status is read nothing says
 /// which batch its `BatchRun` is. A status read inside a batch's own
 /// actions goes round, solved as a summary's cycle is.
@@ -1430,6 +1430,7 @@ impl Walk<'_> {
             Expr::Literal(_)
             | Expr::Config { .. }
             | Expr::Constant { .. }
+            | Expr::Now
             | Expr::Unchecked
             | Expr::Propagate { .. } => Prov::default(),
             // A stored field an update by `id` reads is the record's.

@@ -339,7 +339,7 @@ impl<'a> Canon<'a> {
             Expr::Request { route, .. } => {
                 C::Tag("request", vec![C::Atom(route.written().to_string())])
             }
-            Expr::Unchecked => C::Atom("…".into()),
+            Expr::Now | Expr::Unchecked => C::Atom("…".into()),
         }
     }
 

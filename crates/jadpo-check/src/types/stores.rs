@@ -493,7 +493,7 @@ pub fn batch_store_problems(db: &dyn Db, project: Project, file: File) -> Vec<Di
                 .next(format!(
                     "Start the runs with `batches.each` over queries of one store, or do without `{written}` for now"
                 ))
-                .help_at("12-jobs-and-events.html#chosen-in-chunk-6-4"),
+                .help_at("12-jobs-and-events.html#how-a-run-is-kept"),
             );
         }
     }

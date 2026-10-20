@@ -672,7 +672,7 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     ),
     (
         "crates/jadpo-interp/src/machine.rs",
-        "the interpreter: `now` and a duration's arithmetic",
+        "the interpreter: a test's clock moved by a duration",
     ),
     (
         "crates/jadpo-interp/src/probe.rs",
@@ -681,6 +681,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
     (
         "crates/jadpo-runtime/src/read.rs",
         "turns a row's column into a value by the column kind the plan chose",
+    ),
+    (
+        "crates/jadpo-runtime/src/effects.rs",
+        "gives `clock.now` as an instant (chunk 7.0b)",
     ),
     ("crates/jadpo-runtime/src/store.rs", "fills a missing `now`"),
     (

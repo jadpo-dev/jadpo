@@ -1102,7 +1102,7 @@ fn body_features(
                 Expr::Constant { .. } => {
                     out.insert("expr constant");
                 }
-                Expr::Unchecked => {}
+                Expr::Now | Expr::Unchecked => {}
             },
         }
     }

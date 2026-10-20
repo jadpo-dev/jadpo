@@ -943,6 +943,53 @@ one per-invocation context in `jadpo-runtime`:
 | `enter(callable, site)`, `leave`, `branch(increment)` | Frames and path numbers |
 | `fail(failure)`, `fault(kind, site)` | Failures and defects with their `.jadpo` place |
 | `assertion_begin`, `record(site, value)`, `assertion_end` | A failed `assert`'s parts, recorded the same way by either executor (chunk 2.10) |
+| `effects::run(ctx, effects, effect, values)` | `clock.now`, `random`, `crypto` with its key, `json.read` and `json.write` with the plan's codec, and `emit` (chunk 7.0b) |
+
+**Operations with effects** (chunk 7.0b). Everything a body does that
+reads the invocation rather than only its values runs in one runtime
+function, `jadpo_runtime::effects::run`, which both executors call, so
+the interpreter keeps no copy and compiled code (Phase 8) re-implements
+none of it. The effect is named, never told by its source text:
+`Effect::Now` for `clock.now`, which the graph lowers to its own
+`Expr::Now` (a site that pauses, as it was); `Effect::Std { op, json }`
+for the standard operations `effects::is_effect` names, which
+`jadpo_value::run` refuses: `random`'s, from the invocation's random
+bytes, kept on a recording's tape; `crypto`'s but `read_certificate`,
+given the key ring its `key:` names (`effects::Keys`, read from the
+settings), its random bytes (secret for an encryption's nonce) and, for
+`verify_jwt`, its clock; and `json.read`, `json.write` and `verify_jwt`'s
+`as:` claims, through the codec the plan numbers for their site (`json`);
+and `Effect::Emit { event }`, whose payload is written as its type's
+contract JSON and kept, with its subscribers, in the running action's
+outbox. What they need of the program comes as `Effects` (the plan's JSON
+table with the program's validators and shapes, the events' numbers and
+subscribers, the settings and the keys), which the interpreter builds
+from its plan and compiled code will hold as statics. A refusal comes
+back as `Refused::Broke` (a condition the call's `attempt` maps, with how
+a report names it and, for `mismatch`, its `DecodeProblem`),
+`Refused::Fault` or `Refused::Defect`, which the executor raises at its
+site. `the_interpreter_runs_effects_only_through_the_runtime` holds the
+interpreter to it: none of its sources may name what runs an effect (the
+clock, random bytes, `crypto::run`, a key ring, the JSON reader, the
+outbox), and each such name must still be the entry point's. The
+capability seam (chunk 7.0c) joins here, an outside call another effect.
+
+**The context's parts** (chunk 7.0b). `Ctx`'s fields are private and
+reached through methods. Its background-run state is one struct,
+`Background` (the system and its tenant, the subscriber's delivery whose
+handled record commits with the action, the chain and the trace, the
+work left for after the response, and the events kept), which the
+runner and the boundary set through `Ctx::background_mut`; its
+capabilities another, `Capabilities` (the host, through which its stores,
+passkey ceremonies and random bytes are reached, the identities made from
+them and the recording tape), reached through `Ctx::capabilities` and the
+methods that draw on them (`random_bytes`, `secret_random_bytes`,
+`new_id`, `transaction`); the capability seam (chunk 7.0c) is built on
+it. The action boundary's own state is `boundary::Boundary`, read and
+written field by field only in `boundary.rs`; the runner's batches use its
+methods. The request's own state (its caller, client address, deadline
+and a test's settings), the frames and the assertion being recorded stay
+on `Ctx`. Its public methods are unchanged.
 
 The runtime, not the executor, owns the action boundary: it opens the
 transaction at the first store operation, runs the body (a closure either
@@ -1433,8 +1480,17 @@ hands each connection to a worker chosen by the client's address, and one
 current-thread tokio runtime per worker, each with its own handler, stores
 and rate-limit counters, so an address is always counted on one thread;
 hyper reads and writes HTTP/1.1. `NativeHost` gives each store by name,
-the operating system's randomness and tokio's timer. `jadpo dev` runs the
-interpreter on it, swapping in each save that checks cleanly. Since chunk
+the operating system's randomness and tokio's timer. Since chunk 6.9
+what a host does with a request and a tick is the runtime's
+(`jadpo_runtime::serve::Serving`, over an `Application`, an executor
+that gives its route table and codecs): it answers with `serve_request`,
+hands what the response left to `runner::after_response`, runs the tick,
+and tells an `Observer` of each request and tick. The native server's
+handler that serves an application is `jadpo_host_native::http::AppHandler`,
+`Serving` on a `NativeHost` with that host's deferred work, tracked ticks
+and drain; Workers' fetch and scheduled events call the same `Serving`
+(chunk 8.2). `jadpo dev` runs the interpreter on it, swapping in each
+save that checks cleanly, and only observes it to print its lines. Since chunk
 6.7 a stopped server drains (`Server::stop`): it accepts nothing more,
 its timer starts no more ticks, and each worker waits, at most
 `DRAIN_GRACE` (10 seconds), for its handler's background work
@@ -1797,8 +1853,8 @@ on, each `Job` (a callable, its arguments and the system it runs as) in
 a boundary of its own:
 
 - **deferred**: a committed action's outbox is left on the context as
-  `Deferred::Deliveries` (`Ctx::defer`), never delivered in the request
-  (`Host::deliver` is gone); `serve_request` moves what a request left
+  `Deferred::Deliveries` (`Ctx::defer`), and a batch run it started as
+  `Deferred::Batch`, never run in the request; `serve_request` moves what a request left
   to `Response::deferred`, and the host hands it to `runner::after_response`,
   which gives `Host::defer` a future running it once the
   response has been handed back: natively the HTTP worker takes it
@@ -1822,7 +1878,8 @@ A host with nothing to run deferred work on (a test's, a tool's) drops
 it, and the outbox keeps what it held. Schedules (6.2) run their actions
 through the same runner.
 
-**Within a host's budget** (chunk 6.7, area 12's "Chosen in chunk 6.7").
+**Within a host's budget** (chunk 6.7, area 12's "Running background
+work").
 Each invocation of background work (`budget::Invocation`: after a
 response, the tick, or work handed on) runs within the budget its host
 gives it (`Host::budget_ms`, at most `RUN_LIMIT_MS`, 15 minutes; the
@@ -1918,10 +1975,19 @@ each step starting only while it isn't spent, its runs' actions through
 `runner::within_budget`. Natively the HTTP server's first
 worker runs a timer that starts the tick at each whole minute of UTC, or
 each shortest `every:` (`Handler::tick`, `schedules::tick_every_ms`);
-`jadpo dev` ticks. On Workers the cron trigger calls the same function
+`jadpo dev` ticks. Since chunk 6.9 the tick raises the alerts too
+(`watch::raise`): once its schedules have run, it works out which hold
+for each schedule and records them on its state row (`alerts`, each id
+with when it was raised) in one conditional statement, so of several
+instances' ticks, or Workers invocations, the one that changed the
+record raises what newly holds (`Ticked::raised`), once until it stops
+holding. Readers (`jadpo schedules`, `jadpo why`) still work the alerts
+out from the rows when they read, since a stopped application raises
+nothing; `jadpo why`'s answer is decided by the runtime as data
+(`schedules::why`), which the CLI says in words. On Workers the cron trigger calls the same function
 (chunk 8.2).
 
-**Batch runs** (chunk 6.4, area 12's "Chosen in chunk 6.4"). The
+**Batch runs** (chunk 6.4, area 12's "How a run is kept"). The
 checker reads `batches.each(from:, each:, finished:, key:)`
 (`types::body::batches`) into a `Callee::Batch` call whose `from:` is
 its query's call and whose `each:` and `finished:` are inline functions
@@ -1975,8 +2041,8 @@ doubles the async signatures and lets bugs hide on one target.
 | Policy | Principal, tenancy and memberships; predicates arrive compiled in the plan's SQL and the runtime binds the caller | same |
 | Transactions | Read committed or repeatable read by what the action does, revision checks, rerun within the budget | same |
 | Idempotency | A key claimed in one statement before the action; its response stored in the action's transaction, or in one statement for a failure | same |
-| Outbox | Delivery, retries, circuit breaker, dead letters, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
-| Scheduler | Due times in the schedule's state row from its first tick, leases, run records, tick adapters; native timer | Cloudflare cron |
+| Outbox | Delivery, retries, dead letters and (7.2b) a circuit breaker, run by the runner after the response (chunk 6.1a), natively as a task on the worker's thread | `waitUntil` after the response, swept by the minute tick |
+| Scheduler | Due times in the schedule's state row from its first tick, leases, run records; native timer, and tick adapters (8.2) | Cloudflare cron |
 | Rate limits, caches | Rate limits through `Host::rate_limit`: Redis when one is named, otherwise each worker's bounded memory; cache reads with timeout, invalidation after commit | Redis or Cloudflare's rate-limiting binding required (area 16, question 6); the isolate's memory only while it can't be reached |
 | Telemetry | Spans per declaration, metrics, path numbers, threshold sampling, OTLP | export in `waitUntil` |
 | Email | Templates, translations, the `email` capability | SMTP on 587 or a package |
@@ -1984,10 +2050,14 @@ doubles the async signatures and lets bugs hide on one target.
 | Development | Request timeline, local inbox and disk, published-event log | none |
 
 **Capability drivers.** One trait per capability: `Database` (begin,
-query, execute, commit, rollback, and one statement on its own),
-`Cache`, `Email`, `Sms`, `Files`, `Publishing` and `ScheduleTick` (ticks
-and an optional lease); rate limits and the wall clock are `Host`
-methods (chunk 4.10). Drivers
+query, execute, commit, rollback, and one statement on its own) and
+`Passkeys` so far, with `Cache`, `Email`, `Sms` and `Files` to come with
+their capabilities; rate limits and the wall clock (chunk 4.10), and
+deferring work, its budget, handing it on and shutting down (chunks 6.1a
+and 6.7), are `Host` methods. A schedule's tick is no trait: every host
+calls `schedules::tick`, natively from a timer and on Workers from the
+cron trigger, and the `trigger:` adapter that lets another source call
+it comes in 8.2; publishing events outward comes with Phase 7. Drivers
 classify their own errors into the runtime's fixed set (conflict with the
 constraint name, serialisation failure, unavailable, fault), so executors
 and targets agree; the experiments found exactly this classification
@@ -1995,14 +2065,15 @@ drifting between adapters
 ([shared conformance](experiments/shared-rust-conformance-results.md)).
 Package-backed capabilities use one generic driver that runs the package's
 declared protocol, credentials, idempotency header, retries and error
-mapping through `Host::fetch`; packages never generate driver code. Drivers
+mapping through `Host::fetch` (Phase 7); packages never generate driver code. Drivers
 list their targets for `jadpo check` (area 11), and test fakes implement
 the same traits.
 
 **What differs on Workers.**
 
 - No threads, no timers between requests, no disk: delivery runs in
-  `waitUntil`, the minute cron sweeps the outbox and ticks every schedule,
+  `waitUntil`, and the minute cron calls `schedules::tick`, which runs
+  the schedules due and sweeps each store's outbox,
   each within the budget the host gives it (30 seconds after a response,
   15 minutes for the cron; chunk 6.7's `Host::budget_ms`, set in 8.2),
   and what one leaves goes on in a fresh invocation (`Host::hand_on`).

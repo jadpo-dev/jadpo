@@ -119,7 +119,7 @@ pub enum Decoded {
     /// `finished:` capture, then `key:`.
     Batch { number: u32, sites: Vec<u32> },
     /// Something a later area builds, as written up to its arguments or
-    /// block: `clock.now`, `query open_todos`, `Todo.update`.
+    /// block: `query open_todos`, `Todo.update`.
     Written(String),
 }
 
@@ -655,7 +655,7 @@ impl Decoder<'_> {
 }
 
 /// What a site is written as, up to its arguments or its block: what a
-/// fault for something not built yet names (`clock.now`, `Todo.update`).
+/// fault for something not built yet names (`Todo.update`).
 fn written(site: &Site, text: &str) -> String {
     let source = text
         .get(site.start as usize..site.end as usize)

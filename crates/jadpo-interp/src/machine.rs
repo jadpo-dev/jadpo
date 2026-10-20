@@ -30,6 +30,7 @@ use jadpo_graph::body::{
     RuleArm, Site, SiteId, Stmt, UnaryOp,
 };
 use jadpo_plan::{ArmPattern, CallablePlan, Decoded};
+use jadpo_runtime::effects::{self, Effect, Refused};
 use jadpo_runtime::{Assertion, AssertionDetail, Ctx, Failure, Fault, FaultKind, Frame, Got};
 use jadpo_std::{Kind as ParamKind, Op, RuleKey};
 use jadpo_value::{Value, ops};
@@ -665,53 +666,48 @@ impl<'p> Machine<'p> {
         self.fault(ctx, FaultKind::Defect(what.to_string()), at)
     }
 
-    /// Something a later chunk builds, named as written.
-    /// `emit`: `value`, the event its statement at `at` built, kept in
-    /// the running action's outbox with its payload, its type's contract
-    /// JSON, and the subscribers it is delivered to once the action
-    /// commits (area 12; chunk 6.1b).
+    /// `emit`: `value`, the event its statement at `at` built, run by the
+    /// runtime's entry point for effects with its type's identity key
+    /// (area 12; chunk 6.1b).
     fn emit(&self, ctx: &mut Ctx<'_>, value: Value, at: SiteId) -> Result<(), Stop> {
-        let plan = self.program.plan();
         let key = match self.site(at).map(|site| &site.node) {
             Some(Node::Stmt(Stmt::Emit { value: Some(built) })) => {
                 match self.site(*built).map(|site| &site.ty) {
-                    Some(jadpo_graph::TypeRef::Node(key)) => key.as_str().to_string(),
+                    Some(jadpo_graph::TypeRef::Node(key)) => key.as_str(),
                     _ => return Err(self.defect(ctx, "an event of no declared type", at)),
                 }
             }
             _ => return Err(self.defect(ctx, "an `emit` without its event", at)),
         };
-        let Some(number) = plan.json().event(&key) else {
-            return Err(self.defect(ctx, "an event type the plan didn't number", at));
-        };
-        let payload = match self.program.stored_json().write(number, &value) {
-            Ok(jadpo_runtime::SqlValue::Json(text)) => text,
-            Ok(_) => return Err(self.defect(ctx, "an event with no payload", at)),
-            Err(why) => return Err(self.defect(ctx, &why, at)),
-        };
-        let subscribers = plan
-            .events()
-            .subscribers_of(&key)
-            .map(|subscriber| subscriber.key.clone())
-            .collect();
-        let event = jadpo_runtime::Event {
-            key,
-            value,
-            payload,
-            subscribers,
-        };
-        match ctx.emit(event) {
-            Ok(()) => Ok(()),
-            Err(jadpo_runtime::EmitRefused::OutsideAction) => {
-                Err(self.defect(ctx, "an `emit` outside an action", at))
-            }
-            Err(jadpo_runtime::EmitRefused::TooMany) => {
-                Err(self.defect(ctx, "more than 1,000 events emitted by one action", at))
-            }
-            Err(jadpo_runtime::EmitRefused::TooLarge) => {
-                Err(self.defect(ctx, "an event past 64 KB", at))
-            }
-        }
+        self.run_effect(ctx, Effect::Emit { event: key }, &[value], at)
+            .map(|_| ())
+    }
+
+    /// An operation with effects, run by the runtime's one entry point for
+    /// them, which compiled code calls too (chunk 7.0b): what it refused
+    /// raised at `at`, a condition for its call's `attempt` to map.
+    fn run_effect(
+        &self,
+        ctx: &mut Ctx<'_>,
+        effect: Effect<'_>,
+        values: &[Value],
+        at: SiteId,
+    ) -> Result<Value, Stop> {
+        let effects = self.program.effects();
+        effects::run(ctx, &effects, effect, values).map_err(|refused| match refused {
+            Refused::Broke {
+                rule,
+                written,
+                problem,
+            } => Stop::Invalid {
+                rule,
+                written,
+                problem,
+                name: None,
+            },
+            Refused::Fault(fault) => self.value_fault(ctx, fault, at),
+            Refused::Defect(what) => self.defect(ctx, &what, at),
+        })
     }
 
     fn not_built_yet(&self, ctx: &mut Ctx<'_>, what: impl Into<String>, at: SiteId) -> Stop {
@@ -1814,14 +1810,14 @@ impl<'p> Machine<'p> {
                 },
                 _ => return Err(self.defect(ctx, "a setting the checker would have refused", id)),
             },
+            // `clock.now` reads the invocation's clock, the one a query's
+            // `clock.now` and generated fields read.
+            Expr::Now => {
+                let now = self.run_effect(ctx, Effect::Now, &[], id)?;
+                self.values.push(now);
+            }
             Expr::Unchecked => {
                 let written = self.written(id);
-                // `clock.now` reads the invocation's clock, the one a
-                // query's `clock.now` and generated fields read.
-                if written == "clock.now" {
-                    self.values.push(Value::Instant(ctx.now()));
-                    return Ok(Flow::Next);
-                }
                 return Err(self.not_built_yet(ctx, written, id));
             }
         }
@@ -2291,24 +2287,15 @@ impl<'p> Machine<'p> {
         inline: Option<(&'p [LocalId], SiteId)>,
         at: SiteId,
     ) -> Result<Value, Stop> {
-        // JSON in memory runs with the codec the plan numbers for its call
-        // (area 19, "Data formats").
-        if matches!(op, Op::JsonRead | Op::JsonWrite) {
-            return self.json(ctx, op, values, at);
-        }
-        // `crypto` runs with the key its `key:` names and the invocation's
-        // random bytes (area 19, "Hashing and cryptography").
-        if jadpo_value::crypto::is_crypto(op) {
-            return self.crypto(ctx, op, values, at);
-        }
-        // `random` reads the invocation's random bytes: the host's
-        // generator, a test's seed or a recorded run's (area 19, question
-        // 19).
-        if op.reads_generator() {
-            let made = jadpo_value::random::run(op, values, &mut |bytes: &mut [u8]| {
-                ctx.random_bytes(bytes)
-            });
-            return made.map_err(|fault| self.value_fault(ctx, fault, at));
+        // `random`, `crypto` and JSON in memory read the invocation or the
+        // plan's codec for their call, so the runtime runs them (chunk
+        // 7.0b).
+        if effects::is_effect(op) {
+            let json = match self.decoded(at) {
+                Some(Decoded::Json(number)) => Some(*number),
+                _ => None,
+            };
+            return self.run_effect(ctx, Effect::Std { op, json }, values, at);
         }
         let mut stopped: Option<Stop> = None;
         let locales = self.program.plan().locales();
@@ -2354,206 +2341,5 @@ impl<'p> Machine<'p> {
             }),
             (Err(fault), None) => Err(self.value_fault(ctx, fault, at)),
         }
-    }
-
-    /// A `crypto` operation (area 19, "Hashing and cryptography"), in
-    /// `jadpo-value`'s `crypto` module as compiled code calls it: given the
-    /// key ring its `key:` names by the setting's number, never the key as
-    /// a value, and the invocation's random bytes for a nonce or a salt.
-    /// `decrypt`'s `unreadable` is for its `attempt` to map.
-    fn crypto(
-        &mut self,
-        ctx: &mut Ctx<'_>,
-        op: Op,
-        values: &[Value],
-        at: SiteId,
-    ) -> Result<Value, Stop> {
-        let key_at = op.operation().params.iter().position(
-            |param| matches!(param.kind, ParamKind::Builtin(builtin) if builtin.is_key()),
-        );
-        let keys = match key_at.map(|place| values.get(place)) {
-            None => None,
-            Some(Some(Value::Int(setting))) => {
-                let setting = u32::try_from(*setting).unwrap_or(u32::MAX);
-                match self.program.key(setting) {
-                    Some(keys) => Some(keys),
-                    None => {
-                        let name = self.program.setting_name(setting);
-                        return Err(self.defect(
-                            ctx,
-                            &format!("the key `config.{name}` has no value in this run"),
-                            at,
-                        ));
-                    }
-                }
-            }
-            Some(_) => return Err(self.defect(ctx, "a key that isn't read from its setting", at)),
-        };
-        // `verify_jwt` checks a token's times against the invocation's
-        // clock, as `clock.now` reads it (area 19, chunk 5.5r).
-        let now = if op.reads_clock() { ctx.now() } else { 0 };
-        // With `as:`, its claims of the application's own type are read
-        // with the codec the plan numbers for the call (chunk 5.5r4).
-        if op == Op::CryptoVerifyJwt
-            && let Some(Decoded::Json(number)) = self.decoded(at)
-        {
-            let number = *number;
-            return self.claims(ctx, values, number, now, at);
-        }
-        // An encryption's nonce is secret randomness, never kept on a
-        // recording's tape nor taken from a replayed one, so a replay never
-        // seals with a nonce production used under the same key (chunk
-        // 5.8a); a password's salt is the invocation's random bytes, as
-        // `random`'s are.
-        let secret = op == Op::CryptoEncrypt;
-        let made = jadpo_value::crypto::run(
-            op,
-            values,
-            keys,
-            &mut |bytes: &mut [u8]| {
-                if secret {
-                    ctx.secret_random_bytes(bytes)
-                } else {
-                    ctx.random_bytes(bytes)
-                }
-            },
-            now,
-        );
-        match made {
-            Ok(value) => Ok(value),
-            Err(jadpo_value::Fault::Broke(rule)) => Err(Stop::Invalid {
-                rule,
-                written: format!("{}:", rule.word()),
-                problem: None,
-                name: None,
-            }),
-            Err(fault) => Err(self.value_fault(ctx, fault, at)),
-        }
-    }
-
-    /// `crypto.verify_jwt(..., as:)` (chunk 5.5r4): the token checked as
-    /// without `as:`, then its own claims read through the codec for the
-    /// type `as:` names, `mismatch` naming the first problem's field and
-    /// rule, never the value, as `json.read`'s does.
-    fn claims(
-        &mut self,
-        ctx: &mut Ctx<'_>,
-        values: &[Value],
-        number: u32,
-        now: i64,
-        at: SiteId,
-    ) -> Result<Value, Stop> {
-        let codec = self.program.plan().json().codec_of(number);
-        let (Some(codec), [token, Value::List(keys), issuer, audience, ..]) = (codec, values)
-        else {
-            return Err(self.defect(ctx, "a token's claims the plan gave no codec", at));
-        };
-        let token = match token {
-            Value::Secret(secret) => secret.expose().to_string(),
-            Value::Text(text) => text.to_string(),
-            _ => return Err(self.defect(ctx, "a token that isn't a `Jwt`", at)),
-        };
-        let option = |value: &Value| match value {
-            Value::Text(text) => Some(text.to_string()),
-            _ => None,
-        };
-        let codecs = self.program.json_codecs();
-        let read = jadpo_value::jwt::verify_jwt_as(
-            &token,
-            keys,
-            option(issuer).as_deref(),
-            option(audience).as_deref(),
-            now,
-            &codecs,
-            codec,
-        );
-        match read {
-            Ok(value) => Ok(value),
-            Err(jadpo_value::jwt::Refusal::Token(jadpo_value::Fault::Broke(rule))) => {
-                Err(Stop::Invalid {
-                    rule,
-                    written: format!("{}:", rule.word()),
-                    problem: None,
-                    name: None,
-                })
-            }
-            Err(jadpo_value::jwt::Refusal::Token(fault)) => Err(self.value_fault(ctx, fault, at)),
-            Err(jadpo_value::jwt::Refusal::Mismatch(problem)) => Err(Stop::Invalid {
-                rule: RuleKey::Mismatch,
-                written: mismatch_written(&problem),
-                problem: Some(decode_problem(&problem)),
-                name: None,
-            }),
-        }
-    }
-
-    /// `json.read` or `json.write` (area 19, "Data formats"), through the
-    /// wire's codec for the type its site names, in `jadpo-value`'s `json`
-    /// module as compiled code calls it. A document that isn't JSON is
-    /// `malformed`, and one that isn't the type `mismatch`, each for the
-    /// call's `attempt` to map; the report names the first problem's field
-    /// and rule, never the value.
-    fn json(
-        &mut self,
-        ctx: &mut Ctx<'_>,
-        op: Op,
-        values: &[Value],
-        at: SiteId,
-    ) -> Result<Value, Stop> {
-        let codec = match self.decoded(at) {
-            Some(Decoded::Json(number)) => self.program.plan().json().codec_of(*number),
-            _ => None,
-        };
-        let Some(codec) = codec else {
-            return Err(self.defect(ctx, "a JSON call the plan gave no codec", at));
-        };
-        let codecs = self.program.json_codecs();
-        match (op, values) {
-            (Op::JsonWrite, [value]) => Ok(Value::text(&codecs.write_value(codec, value))),
-            (Op::JsonRead, [text, _]) => {
-                codecs
-                    .read_value(codec, text)
-                    .map_err(|unread| match unread {
-                        jadpo_value::json::Unread::Malformed => Stop::Invalid {
-                            rule: RuleKey::Malformed,
-                            written: format!("`{}`", RuleKey::Malformed.word()),
-                            problem: None,
-                            name: None,
-                        },
-                        jadpo_value::json::Unread::Mismatch(problem) => Stop::Invalid {
-                            rule: RuleKey::Mismatch,
-                            written: mismatch_written(&problem),
-                            problem: Some(decode_problem(&problem)),
-                            name: None,
-                        },
-                    })
-            }
-            _ => Err(self.defect(ctx, "a JSON call without its values", at)),
-        }
-    }
-}
-
-/// `json.read`'s first problem as a `DecodeProblem` (area 19, "Data
-/// formats"): its field's path and its rule, never the value.
-fn decode_problem(problem: &jadpo_value::json::Problem) -> Value {
-    let [(field, _), (rule, _)] = jadpo_std::http::DECODE_PROBLEM_FIELDS;
-    Value::record(
-        jadpo_std::http::DECODE_PROBLEM,
-        vec![
-            (Rc::from(field), Value::text(&problem.field)),
-            (Rc::from(rule), Value::text(&problem.rule)),
-        ],
-    )
-}
-
-/// How a report names `json.read`'s first problem: "`mismatch` (`max` on
-/// `lines.2.quantity`)", or, for the document itself, "`mismatch`
-/// (`type`)".
-fn mismatch_written(problem: &jadpo_value::json::Problem) -> String {
-    let word = RuleKey::Mismatch.word();
-    if problem.field.is_empty() {
-        format!("`{word}` (`{}`)", problem.rule)
-    } else {
-        format!("`{word}` (`{}` on `{}`)", problem.rule, problem.field)
     }
 }

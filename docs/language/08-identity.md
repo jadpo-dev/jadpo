@@ -3486,7 +3486,8 @@ Not yet, each `toolchain.not_built_yet` where it is written:
   yet. `Driver.oidc` for Google and Microsoft sign-in comes with providers,
   after the first build.
 - Deleting ended sessions, tokens and expired keys from the runtime's
-  minute tick (area 12, chunk 6.2): a lookup ignores one past its end.
+  minute tick (area 12, "The tick"; roadmap 6.10): a lookup ignores one
+  past its end.
 
 **Listing tokens and keys from a `GET`** (decided 2026-10-16, built in
 chunk 4.4c). `sessions.tokens(user_id)` and `Service.keys(service_id)` are
@@ -3548,7 +3549,7 @@ builds it.
 | `toolchain.target_auth_not_implemented`, raised only by `jadpo build`; moving the "protected routes but no authentication" check into `jadpo check` | 14 | Built in chunk 4.3: `semantic.auth_not_set_up` |
 | A `lifecycle { }` block on an entity written `id: Uuid identity` is silently ignored | 5 | Raised |
 | Sessions in the principal's user store, rather than a `sessions: { store: }` setting (chosen in chunk 4.3, below) | 5 | Recorded on area 5's system tables |
-| Deleting ended sessions from the minute tick | 12 | Chunk 6.2 |
+| Deleting ended sessions from the minute tick | 12 | Roadmap 6.10 |
 
 ### Open questions
 

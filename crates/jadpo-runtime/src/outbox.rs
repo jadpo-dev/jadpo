@@ -48,8 +48,8 @@ pub const SWEEP_BATCH: u32 = 100;
 pub const BACKOFF_BASE_MS: i64 = 30_000;
 pub const BACKOFF_CAP_MS: i64 = 6 * 60 * 60 * 1000;
 /// The tenant a delivery whose event names none is limited to: an
-/// identity no record has, so it reaches no tenant's records (chosen in
-/// chunk 6.1b).
+/// identity no record has, so it reaches no tenant's records (area 12,
+/// "Background work and tenants").
 pub const NO_TENANT: [u8; 16] = [0; 16];
 
 /// A delivery record's states (area 12, "What an operator sees").

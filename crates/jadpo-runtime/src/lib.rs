@@ -34,11 +34,17 @@
 //!   route table, its placeholders and input decoded, what the route runs
 //!   run, and the output or the failure envelope written, with the default
 //!   rate limits ([`RateLimits`]).
+//! - [`effects`]: the one entry point for operations with effects
+//!   (chunk 7.0b): `clock.now`, `random`, `crypto` with its key,
+//!   `json.read` and `json.write` with the plan's codec, and `emit`, which
+//!   both executors call.
 //! - [`runner`]: the runner (chunk 6.1a), which drives an executor for
 //!   work no request waits on, as the system ([`System`]): deferred until
 //!   after a response, while a route waits for it, or once per item of a
 //!   batch, each invocation within the [`budget`] its host gives it and
 //!   each claim it takes a [`lease`] of the same length (chunk 6.7).
+//! - [`serve`]: what every host does with a request and a tick (chunk
+//!   6.9), which a host's server handler wraps.
 //!
 //! Built so far: pure execution (chunk 2.1) and the executor shape Phase 3
 //! plugs into (chunk 2.10). Drivers, hosts and the components of §2.6 come
@@ -63,6 +69,7 @@ mod boundary;
 pub mod budget;
 pub mod config;
 mod ctx;
+pub mod effects;
 mod env;
 mod executor;
 mod failure;
@@ -83,12 +90,13 @@ mod read;
 mod report;
 pub mod runner;
 pub mod schedules;
+pub mod serve;
 pub mod statements;
 mod store;
 mod write;
 
 pub use boundary::{ActionBody, RERUN_ATTEMPTS, action, commit_held, unavailable};
-pub use ctx::{Caller, Ctx, EmitRefused, Held, SessionEffect, System};
+pub use ctx::{Caller, Capabilities, Ctx, EmitRefused, Held, SessionEffect, System};
 pub use env::{Clock, Env};
 pub use executor::{Executor, Stalled, YieldNow, block_on, yield_now};
 pub use failure::Failure;
