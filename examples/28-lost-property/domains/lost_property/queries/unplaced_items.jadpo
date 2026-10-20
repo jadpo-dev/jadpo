@@ -1,0 +1,10 @@
+use lost_property/entities { FoundItem }
+
+/// Items the embedding model hasn't placed yet, oldest first: as many as
+/// one `ai.embed_all` call takes.
+query unplaced_items() -> List<FoundItem> {
+    from: FoundItem
+    where: FoundItem.description_meaning == none
+    order: [FoundItem.handed_in_on asc]
+    limit: 100
+}

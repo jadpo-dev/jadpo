@@ -1,0 +1,43 @@
+// A model is reached through a provider package: here OpenAI's, installed
+// in `packages/` and connected as `openai`. `ai:` says which connection
+// fills the `ai` capability, which models it asks, how much it may spend
+// and which kinds of personal data may be sent. Code only ever writes
+// `ai.`, so moving to another provider changes this file and nothing else.
+application {
+    connections: {
+        openai: {
+            package: OpenAi.v1
+            domains: [lost_property]
+            credential: config.openai_api_key
+            host: config.openai_host
+        }
+    }
+    ai: {
+        connection: openai
+        // Each model is a setting, so changing one is a reviewed change
+        // of configuration, never a name written in code.
+        models: {
+            default: config.reply_model
+            embedding: config.search_model
+        }
+        // Asked of the embedding model, and checked against every vector
+        // type an embedding is read as.
+        embedding_dimensions: 256
+        // Nothing is unlimited: `per_day:` is required. Each call is
+        // refused before it is sent if it could pass a limit.
+        limits: {
+            per_request: 20000
+            per_day: {
+                tokens: 2000000
+                cost: config.ai_daily_spend
+            }
+            per_caller_per_day: 60000
+        }
+        // A passenger's name reaches the reply prompt, so the category of
+        // its field is listed here; anything else personal would be a
+        // compile error.
+        personal_data: {
+            allowed: [PersonalData.identifying]
+        }
+    }
+}

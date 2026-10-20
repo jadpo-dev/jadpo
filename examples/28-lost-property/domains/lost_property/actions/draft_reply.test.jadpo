@@ -1,0 +1,38 @@
+// Each scripted answer is one attempt. `raw("...")` is the model's text
+// as it came, run through the real decoding: one that doesn't decode is
+// asked again once, with what was wrong. A failure by its name answers
+// an attempt with it.
+
+use lost_property/entities { LossReport }
+use lost_property/failures { ReplyUnavailable }
+use lost_property/fixtures { umbrella_report }
+
+test "an answer that doesn't decode is corrected once" {
+    fakes: {
+        ai.reply_to_passenger: [
+            raw("Sorry, we haven't found your umbrella yet."),
+            raw("{\"likely_found\": false, \"reply\": \"We haven't found your umbrella yet.\"}")
+        ]
+    }
+    var loss_report: LossReport = umbrella_report()
+    var drafted: LossReport = attempt draft_reply(loss_report.id)
+    assert drafted.drafted_reply == "We haven't found your umbrella yet."
+}
+
+test "when the model can't reply, the office writes it" {
+    fakes: {
+        ai.reply_to_passenger: [refused, over_budget, malformed, malformed]
+    }
+    var loss_report: LossReport = umbrella_report()
+    assert draft_reply(loss_report.id) fails ReplyUnavailable
+    assert draft_reply(loss_report.id) fails ReplyUnavailable
+    assert draft_reply(loss_report.id) fails ReplyUnavailable
+}
+
+test "when the embedding model is over its budget, the office writes it" {
+    fakes: {
+        ai.embed: [over_budget]
+    }
+    var loss_report: LossReport = umbrella_report()
+    assert draft_reply(loss_report.id) fails ReplyUnavailable
+}

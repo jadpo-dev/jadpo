@@ -1,0 +1,11 @@
+public resource embeddings {
+    create: {
+        method: HttpMethod.post
+        path: "/embeddings"
+        input: EmbeddingRequest
+        output: CreateEmbeddingResponse
+        changes: false
+        source: PackageSource.written
+        docs: "https://developers.openai.com/api/reference/resources/embeddings/methods/create"
+    }
+}

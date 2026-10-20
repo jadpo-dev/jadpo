@@ -1,0 +1,5 @@
+/// The tokens embedding the texts took.
+public type EmbeddingUsage = Object {
+    prompt_tokens: TokenCount
+    total_tokens: TokenCount
+}

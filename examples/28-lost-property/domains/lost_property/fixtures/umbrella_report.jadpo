@@ -1,0 +1,18 @@
+// A report kept with no event, so a test drafts its reply itself.
+
+use lost_property/entities { LossReport }
+
+/// Ana's report of the umbrella she left on a train, with no reply yet.
+fixture umbrella_report() -> LossReport {
+    return LossReport.create {
+        set: {
+            passenger_name: "Ana Morgan"
+            passenger_email: "ana@example.cymru"
+            what_was_lost: "Black umbrella with a curved wooden handle"
+            lost_on: "2026-11-03"
+            reader_locale: Locale.en_gb
+            likely_found: none
+            drafted_reply: none
+        }
+    }
+}

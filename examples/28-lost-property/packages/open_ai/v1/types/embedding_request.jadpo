@@ -1,0 +1,13 @@
+/// What asking for embeddings takes: the model, the texts, and how many
+/// dimensions each vector has, which `text-embedding-3` and later models
+/// shorten to.
+public type EmbeddingRequest = Object {
+    model: Text {
+        max_length: 200
+    }
+    input: List<Text>
+    dimensions: Int? {
+        min: 1
+        max: 16000
+    }
+}

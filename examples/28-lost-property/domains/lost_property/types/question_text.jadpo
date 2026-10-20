@@ -1,0 +1,4 @@
+/// A question someone asks the office on its website.
+type QuestionText = Text {
+    max_length: 1000
+}

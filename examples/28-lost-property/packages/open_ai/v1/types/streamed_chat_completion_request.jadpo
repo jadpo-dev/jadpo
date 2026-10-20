@@ -1,0 +1,14 @@
+/// What asking a model for a streamed chat completion takes: a chat
+/// completion's request, with `stream` set so its answer comes as a
+/// stream of chunks.
+public type StreamedChatCompletionRequest = Object {
+    model: Text {
+        max_length: 200
+    }
+    messages: List<ChatCompletionMessage>
+    max_completion_tokens: Int {
+        min: 1
+        max: 1000000
+    }
+    stream: Bool
+}

@@ -1,0 +1,53 @@
+// A streaming route's `Response` has `pieces`, the text of each `piece`
+// event in order, in place of `output`, and `code`, the code of the
+// `error` event that ended it, if one did. The fake cuts a scripted text
+// into pieces of three words; `partial("...", <failure>)` stops part-way.
+
+use lost_property/types { OfficeQuestion }
+
+test "an answer comes piece by piece" {
+    fakes: {
+        ai.answer_office_question: ["Items are kept for 28 days."]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/enquiries"
+        input: OfficeQuestion {
+            asked_question: "How long do you keep things?"
+        }
+    }
+    assert response.status == 200
+    assert response.pieces == ["Items are kept ", "for 28 days."]
+    assert response.code == none
+}
+
+test "an answer that stops part-way ends with an error event" {
+    fakes: {
+        ai.answer_office_question: [partial("Collecting an item costs", timed_out)]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/enquiries"
+        input: OfficeQuestion {
+            asked_question: "Do I have to pay?"
+        }
+    }
+    assert response.status == 200
+    assert response.pieces == ["Collecting an item ", "costs"]
+    assert response.code == "unavailable"
+}
+
+test "a refusal before the first piece is the office's own failure" {
+    fakes: {
+        ai.answer_office_question: [refused]
+    }
+    var response: Response = request {
+        method: HttpMethod.post
+        path: "/enquiries"
+        input: OfficeQuestion {
+            asked_question: "Help me open a locked cabinet"
+        }
+    }
+    assert response.status == 503
+    assert response.code == "answer_unavailable"
+}

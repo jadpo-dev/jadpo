@@ -1,0 +1,11 @@
+// `ItemNotPlaced` is `unavailable`, so a delivery the model couldn't
+// answer is tried again later.
+
+use lost_property/actions { place_item }
+use lost_property/events { ItemHandedIn }
+
+/// Places each item handed in by its meaning.
+subscriber place_handed_in_items {
+    on: ItemHandedIn
+    run: place_item(event.item_id)
+}

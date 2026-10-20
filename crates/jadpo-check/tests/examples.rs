@@ -526,6 +526,12 @@ const BODY: &[&str] = &[
     "run a schedule in a test",
     "call translation",
     "render a prompt",
+    // Area 21's `ai` calls and their fake (chunk 7.8c).
+    "ask a model",
+    "stream a model's answer",
+    "ask a model for embeddings",
+    "script a model's answers",
+    "read what a model was asked",
     "write create",
     "write update",
     "write update by id",

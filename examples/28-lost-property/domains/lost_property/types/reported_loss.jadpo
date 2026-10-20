@@ -1,0 +1,10 @@
+use lost_property/types { ItemDescription, PassengerName, ServiceDay }
+
+/// A loss a passenger reports on the website.
+type ReportedLoss = Input {
+    passenger_name: PassengerName
+    passenger_email: Email
+    what_was_lost: ItemDescription
+    lost_on: ServiceDay
+    reader_locale: Locale
+}

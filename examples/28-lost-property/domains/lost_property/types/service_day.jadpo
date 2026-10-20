@@ -1,0 +1,2 @@
+/// A day the trains ran: when an item was found, or lost.
+type ServiceDay = CalendarDate {}

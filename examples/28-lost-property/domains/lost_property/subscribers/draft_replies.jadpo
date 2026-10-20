@@ -1,0 +1,11 @@
+// A model can take a while to answer, so the reply is drafted after the
+// report is kept, never while the passenger's request waits.
+
+use lost_property/actions { draft_reply }
+use lost_property/events { LossReported }
+
+/// Drafts a reply to each loss reported.
+subscriber draft_replies {
+    on: LossReported
+    run: draft_reply(event.report_id)
+}

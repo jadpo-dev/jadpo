@@ -1,0 +1,40 @@
+// `ai.embed_all` asks for many texts' vectors in one call, in the same
+// order as the texts: here every item the model couldn't place when it
+// was handed in, or every item again after the embedding model changes.
+
+use lost_property/entities { FoundItem }
+use lost_property/types { ItemMeaning, ItemPlacing }
+use lost_property/failures { ItemNotPlaced }
+use lost_property/queries { unplaced_items }
+
+/// Places every item still waiting for its meaning, in one call.
+action place_unplaced_items() fails ItemNotPlaced -> List<FoundItem> {
+    var waiting: List<FoundItem> = unplaced_items()
+    var item_meanings: List<ItemMeaning> = attempt ai.embed_all(
+        list.map(waiting, item -> item.what_was_found),
+        as: ItemMeaning
+    ) {
+        timed_out: ItemNotPlaced
+        over_budget: ItemNotPlaced
+        too_long: ItemNotPlaced
+    }
+    var mut placed: List<FoundItem> = []
+    for placing in list.zip_with(
+        waiting,
+        item_meanings,
+        (item, item_meaning) -> ItemPlacing {
+            item: item
+            description_meaning: item_meaning
+        }
+    ) {
+        placed = list.append(
+            placed,
+            FoundItem.update(placing.item) {
+                set: {
+                    description_meaning: placing.description_meaning
+                }
+            }
+        )
+    }
+    return placed
+}

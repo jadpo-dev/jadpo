@@ -1,0 +1,8 @@
+// The vector type of the office's embedding model: as many dimensions as
+// `embedding_dimensions:` in `app.jadpo`, compared by cosine, the
+// default `distance:`.
+
+/// What an item's description is about, as the embedding model places it.
+type ItemMeaning = Vector {
+    dimensions: 256
+}

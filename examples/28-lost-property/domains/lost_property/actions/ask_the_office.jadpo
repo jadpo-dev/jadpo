@@ -1,0 +1,23 @@
+// `ai.stream` asks for text, not a typed answer, handed piece by piece
+// to the route that returns it. It can fail only before its first piece,
+// so it maps four failures: a stream's text isn't decoded, so it is
+// never `malformed`.
+
+use lost_property/types { OfficeQuestion }
+use lost_property/failures { AnswerUnavailable }
+use lost_property/prompts { AnswerOfficeQuestion }
+
+/// Streams the answer to a question about the office as it is written.
+action ask_the_office(asked: OfficeQuestion) fails AnswerUnavailable -> AiStream {
+    return attempt ai.stream(
+        AnswerOfficeQuestion {
+            asked_question: asked.asked_question
+        },
+        max_output: 300
+    ) {
+        refused: AnswerUnavailable
+        timed_out: AnswerUnavailable
+        over_budget: AnswerUnavailable
+        too_long: AnswerUnavailable
+    }
+}

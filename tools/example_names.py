@@ -29,6 +29,7 @@ committed (chunk 5.8): only the allow-lists are.
 from __future__ import annotations
 
 import argparse
+import functools
 import re
 import sys
 from pathlib import Path
@@ -41,20 +42,24 @@ SOURCES = [ROOT / 'docs/language', ROOT / 'examples']
 
 def source_files(root: Path, pattern: str) -> list[Path]:
     """Committed sources only: an example's `build/` output is generated and
-    ignored, and so is an example's installed copy of one of this
-    repository's own packages (`packages/<name>/`, such as Resend), whose
-    names are that package's, which the root `packages/` keeps and the
-    compiler may name, not the example's."""
+    ignored, and so is a first-party package an example installed, whose
+    files are copies of `packages/`'s and whose names are its own."""
     return [p for p in sorted(root.rglob(pattern))
             if 'build' not in p.relative_to(root).parts and not first_party_copy(root, p)]
 
 
+@functools.cache
+def first_party_files() -> frozenset[bytes]:
+    """The contents of every file of the first-party packages in `packages/`."""
+    return frozenset(p.read_bytes() for p in (ROOT / 'packages').rglob('*') if p.is_file())
+
+
 def first_party_copy(root: Path, path: Path) -> bool:
-    """Whether `path` is in an example's `packages/<name>/` for a package
-    this repository holds in its own `packages/<name>/`."""
+    """Whether `path` is in an example's installed `packages/` and is a copy of
+    a first-party package's file, as `jadpo package add` installs one."""
     parts = path.relative_to(root).parts
-    return (root == ROOT / 'examples' and len(parts) > 3 and parts[1] == 'packages'
-            and (ROOT / 'packages' / parts[2] / 'package.jadpo').is_file())
+    return (root.name == 'examples' and len(parts) > 2 and parts[1] == 'packages'
+            and path.read_bytes() in first_party_files())
 FENCE = re.compile(r'^```(\S*)(.*)$')
 IDENT = r'[A-Za-z_][A-Za-z0-9_]*'
 

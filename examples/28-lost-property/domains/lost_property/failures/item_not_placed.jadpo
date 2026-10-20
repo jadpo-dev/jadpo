@@ -1,0 +1,4 @@
+/// The embedding model can't place an item now; it is tried again later.
+type ItemNotPlaced = Failure {
+    kind: FailureKind.unavailable
+}

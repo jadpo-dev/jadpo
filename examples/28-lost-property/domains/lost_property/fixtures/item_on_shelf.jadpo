@@ -1,0 +1,22 @@
+// An item put straight on the shelves, as if the embedding model had
+// been unavailable when it was handed in: no event, so nothing places it.
+
+use lost_property/entities { FoundItem }
+use lost_property/types { ItemDescription, ServiceDay, WhereFound }
+
+/// An item on the shelves the model hasn't placed yet.
+fixture item_on_shelf(
+    what_was_found: ItemDescription,
+    where_found: WhereFound,
+    handed_in_on: ServiceDay
+) -> FoundItem {
+    return FoundItem.create {
+        set: {
+            what_was_found: what_was_found
+            where_found: where_found
+            handed_in_on: handed_in_on
+            returned_to_owner: false
+            description_meaning: none
+        }
+    }
+}
