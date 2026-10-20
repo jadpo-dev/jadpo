@@ -832,6 +832,10 @@ what is published. Descriptions alone are not the bar, because the compiler
 cannot judge whether one says anything; examples are, because they must
 run. A library package also ships complete wording in its own default
 locale, with a `///` description on every public message (area 10).
+Built in chunk 7.1b3: a `wording` row, shown when the package carries
+translations, holds every language it ships to completeness, and item 2
+asks the description of every public message (area 10, "Chosen in chunk
+7.1b3").
 
 > **Built (chunk 7.1b).** `jadpo package check`, run in a package's own
 > repository, checks the package placed as the app's own integration in a
@@ -3788,8 +3792,8 @@ What the pages leave to the build, each the most conservative reading:
   (`Postcodes.UkPostcode(text)`) and a public library's function
   (`Postcodes.uk.parse(text)`). A package's actions, subscribers and
   events (chunk 7.6) and capability mappings (chunk 7.3) are
-  `toolchain.not_built_yet` where they are declared, as are a library
-  package's translations (chunk 7.1b); a resource's
+  `toolchain.not_built_yet` where they are declared (a library
+  package's translations were too, until chunk 7.1b3); a resource's
   operations are read with provider calls (chunk 7.2c). Two versions of one
   package side by side, names carrying the version, are
   `toolchain.not_built_yet` too.
@@ -3840,7 +3844,10 @@ What the pages leave to the build, each the most conservative reading:
   function of a `public library`; each `public` type (`type Name =
   Base`), then each `public` failure; each folder in `recipes/`. A
   package's events, actions, polls and capability mappings join with their
-  chunks (7.6, 7.3), its messages with 7.1b3. A library itself has no
+  chunks (7.6, 7.3); its public messages, `message
+  translations.<message>` with their fields, after the functions, and a
+  `locale` line in the package's entry for each language it words, since
+  chunk 7.1b3 (area 10). A library itself has no
   entry: its functions do. Declarations without `public`, and test files,
   are left out.
 - **The package's entry.** `kind` is `provider` when the package has

@@ -67,6 +67,7 @@ pub fn analyse<'db>(db: &'db dyn Db, project: Project, scope: Name<'db>) -> Anal
         reachable,
         scope: &scope_name,
         features: None,
+        package_code: None,
         found: BTreeMap::new(),
         problems: Vec::new(),
     };
@@ -118,6 +119,9 @@ pub(super) struct Ctx<'a> {
     /// For Jadpo's own messages (the root file's `jadpo: { }`): the
     /// features the application has on.
     pub(super) features: Option<&'a std::collections::BTreeSet<jadpo_std::jadpo_text::Feature>>,
+    /// For a library package's group in the root file: the package's name
+    /// in code, `Postcodes`.
+    pub(super) package_code: Option<&'a str>,
     /// The wording each subject got, complete and clean, in each locale.
     pub(super) found: BTreeMap<String, Vec<(u32, Wording)>>,
     pub(super) problems: Vec<Diagnostic>,
@@ -216,6 +220,9 @@ impl Ctx<'_> {
         if self.features.is_some() {
             return self.unknown_jadpo(file, member);
         }
+        if let Some(package_code) = self.package_code {
+            return self.unknown_package(file, member, package_code);
+        }
         let keys: Vec<&str> = self
             .subjects
             .list
@@ -255,6 +262,46 @@ impl Ctx<'_> {
                 "Remove `{}` from `{}`, or declare the message it words beside the language files",
                 member.name, file.path
             )),
+        }
+    }
+
+    /// A member of a package's group in the root file that words none of
+    /// the package's public messages, enums or failures.
+    fn unknown_package(
+        &self,
+        file: &LanguageFile,
+        member: &Member,
+        package_code: &str,
+    ) -> Diagnostic {
+        let keys: Vec<&str> = self
+            .subjects
+            .list
+            .iter()
+            .map(|subject| subject.key.as_str())
+            .collect();
+        let near = nearest(&member.name, keys.iter().copied());
+        let listed: Vec<String> = keys.iter().map(|key| format!("`{key}`")).collect();
+        let problem = Diagnostic::new(
+            &rule::TRANSLATION_MEMBER_UNKNOWN,
+            format!("`{}` words nothing of `{package_code}`'s", member.name),
+        )
+        .at(member.key_span.clone(), format!("no such message of `{package_code}`'s"))
+        .reason(format!(
+            "`{}: {{ }}` words package `{package_code}`'s public messages and enums, by their names in lower_snake_case, and its failures, by their codes; `jadpo package show {}` lists them. `{}` is none of them.{}",
+            self.scope,
+            self.scope,
+            member.name,
+            match near {
+                Some(near) => format!(" Did you mean `{near}`?"),
+                None if listed.is_empty() => " The package offers none.".to_string(),
+                None => format!(" It offers {}.", crate::and_list(&listed)),
+            }
+        ));
+        match near {
+            Some(near) => problem
+                .next(format!("Rename the member to `{near}`"))
+                .edit(member.key_span.clone(), near),
+            None => problem.next(format!("Remove `{}` from `{}`", member.name, file.path)),
         }
     }
 

@@ -33,12 +33,13 @@
 //!
 //! ```text
 //! Publishing bar
-//! ✓ compiles   passed           no errors
-//! – examples   not checked yet  waits for how a description's example is written
-//! ✓ version    passed           2.1.0, 1 added since 2.0.0
+//! ✓ compiles   passed  no errors
+//! ✓ examples   passed  2 examples, every failure shown
+//! ✓ version    passed  2.1.0, 1 added since 2.0.0
+//! ✓ changelog  passed  2.1.0 says why
 //!
-//! ✓ Wrote surface.jadpo_record
-//! ✓ package check passed  Postcodes.v2 2.1.0 · 5 passed · 2 not checked yet
+//! ✓ Wrote surface.jadpo_record and CHANGELOG.md
+//! ✓ package check passed  Postcodes.v2 2.1.0 · 7 passed
 //! → git tag v2.1.0  tags the release once surface.jadpo_record is committed
 //! ```
 //!
@@ -349,14 +350,19 @@ fn summary(declaration: &Declaration) -> String {
             }
         }
         What::Failure { kind, code, .. } => kind.clone().unwrap_or_else(|| code.clone()),
+        What::Message { fields } => {
+            let fields: Vec<String> = fields.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+            format!("({})", fields.join(", "))
+        }
         What::Recipe => declaration.file.clone(),
     }
 }
 
 /// The sections a package's surface lists, in the record's order.
-const SECTIONS: [(&str, &str, &str); 5] = [
+const SECTIONS: [(&str, &str, &str); 6] = [
     ("operation", "Operations", "operation"),
     ("function", "Functions", "function"),
+    ("message", "Messages", "message"),
     ("type", "Types", "type"),
     ("failure", "Failures", "failure"),
     ("recipe", "Recipes", "recipe"),
@@ -382,6 +388,9 @@ fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Re
     }
     if let Some(jadpo) = &surface.jadpo {
         fields.push(("jadpo".into(), jadpo.clone()));
+    }
+    if !surface.locales.is_empty() {
+        fields.push(("locales".into(), surface.locales.join(", ")));
     }
     fields.push(("folder".into(), surface.folder.clone()));
     if surface.guide {
@@ -449,6 +458,10 @@ fn overview(surface: &Surface, folder_name: &str, locked: Option<&Locked>) -> Re
                 ),
                 ("folder", Json::from(surface.folder.as_str())),
                 ("guide", surface.guide.into()),
+                (
+                    "locales",
+                    Json::array(surface.locales.iter().map(String::as_str)),
+                ),
                 (
                     "description",
                     surface
@@ -686,6 +699,21 @@ fn declaration(surface: &Surface, folder_name: &str, name: &str) -> Reply {
                         .map(|(n, t)| Row::new(n.as_str(), t.as_str()))
                         .collect(),
                 ));
+            }
+        }
+        What::Message { fields: own } => {
+            let own: Vec<String> = own.iter().map(|(n, t)| format!("{n}: {t}")).collect();
+            fields.push((
+                "takes".into(),
+                if own.is_empty() {
+                    "locale".to_string()
+                } else {
+                    format!("{}, locale", own.join(", "))
+                },
+            ));
+            fields.push(("returns".into(), "PresentationText".into()));
+            if !surface.locales.is_empty() {
+                fields.push(("worded in".into(), surface.locales.join(", ")));
             }
         }
         What::Recipe => {}
@@ -1129,6 +1157,17 @@ fn check(call: &Call) -> Reply {
         )
     });
     diagnostics.extend(in_package(&compiled, described));
+    // A library package's translations: every language it ships is whole
+    // (area 10, "Jadpo's and packages' text").
+    let (worded, unworded) = jadpo_check::translations::packages::publishing(db, project, &mount);
+    if !worded.is_empty() || !unworded.is_empty() {
+        items.push(if unworded.is_empty() {
+            Item::passed("wording", format!("every message in {}", worded.join(", ")))
+        } else {
+            Item::failed("wording", format!("{} missing", unworded.len()))
+        });
+        diagnostics.extend(in_package(&compiled, unworded));
+    }
     let mut test_blocks: Vec<Block> = Vec::new();
     match (&found, compiled_cleanly) {
         (Some(surface), true) => {

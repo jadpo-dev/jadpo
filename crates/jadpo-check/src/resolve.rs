@@ -932,6 +932,11 @@ impl Names<'_> {
         let Some((member, after)) = rest.split_first() else {
             return;
         };
+        // `Postcodes.translations.<message>(...)` is checked as a message's
+        // call (area 10).
+        if text(member) == crate::translations::TRANSLATIONS {
+            return;
+        }
         let Some(symbol) = self.package_member(first, member, out) else {
             return;
         };

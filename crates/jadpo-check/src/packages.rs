@@ -956,9 +956,8 @@ fn folder_of(package: &str) -> String {
 }
 
 /// The package declarations of a file that the first part of chunk 7.1
-/// doesn't run: a package's actions, subscribers and events (chunk 7.6),
-/// its capability mappings (chunk 7.3) and a library package's
-/// translations (chunk 7.1b).
+/// doesn't run: a package's actions, subscribers and events (chunk 7.6)
+/// and its capability mappings (chunk 7.3).
 #[salsa::tracked(returns(ref))]
 pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagnostic> {
     let location = location(db, project, file);
@@ -970,16 +969,6 @@ pub fn unbuilt_problems(db: &dyn Db, project: Project, file: File) -> Vec<Diagno
         Place::Folder(Folder::Subscribers) => "A package's subscribers",
         Place::Folder(Folder::Events) => "A package's events",
         Place::Folder(Folder::Provides) => "A package's capability mappings",
-        // A provider package's are `package.provider_translations`.
-        Place::Folder(Folder::Translations) => {
-            let provider = format!("{}/{}", home.folder, jadpo_db::PROVIDER_FILE);
-            if crate::lookups::file_at(db, project, crate::lookups::Name::new(db, provider))
-                .is_some()
-            {
-                return Vec::new();
-            }
-            "A library package's translations"
-        }
         _ => return Vec::new(),
     };
     let path = file.path(db);
