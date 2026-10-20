@@ -248,9 +248,14 @@ impl Record {
 // --- statements -----------------------------------------------------------------
 
 /// Takes record `$1` over for generation `$2` at `$3`, from an equal or
-/// older one, as it is opened: its first run's start, and that it runs
-/// again. Nothing when it doesn't exist or a newer runner holds it.
-pub const OPEN: &str = "UPDATE \"jadpo_step_records\" SET \"generation\" = $2, \"taken_at\" = $3, \"state\" = 'running', \"problem\" = NULL WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"started_at\"";
+/// older one, as it is opened: its first run's start, and its state, that
+/// it runs again. Nothing when it doesn't exist or a newer runner holds
+/// it. One an operator abandoned is left as it is, and says so (chunk
+/// 7.5c).
+pub const OPEN: &str = "UPDATE \"jadpo_step_records\" SET \"generation\" = CASE WHEN \"state\" = 'abandoned' THEN \"generation\" ELSE $2 END, \"taken_at\" = CASE WHEN \"state\" = 'abandoned' THEN \"taken_at\" ELSE $3 END, \"problem\" = CASE WHEN \"state\" = 'abandoned' THEN \"problem\" ELSE NULL END, \"state\" = CASE WHEN \"state\" = 'abandoned' THEN \"state\" ELSE 'running' END WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"started_at\", \"state\"";
+
+/// A record an operator abandoned (chunk 7.5c): it never runs again.
+pub const ABANDONED: &str = "abandoned";
 
 /// Record `$1`'s steps, in order.
 pub const STEPS: &str = "SELECT \"position\", \"operation\", \"fingerprint\"::text, \"key_generation\", \"dispatched_at\", \"answer\" FROM \"jadpo_steps\" WHERE \"record_id\" = $1 ORDER BY \"position\"";
@@ -345,6 +350,18 @@ pub(crate) async fn open(ctx: &mut Ctx<'_>, spec: Option<Spec<'_>>) -> Result<bo
         Some(SqlValue::Timestamp(micros)) => Some(micros.div_euclid(1000)),
         _ => None,
     });
+    // An operator abandoned it (chunk 7.5c): a client retrying under its
+    // key finds it ended, and nothing more is sent.
+    if matches!(opened.first().and_then(|row| row.get(1)), Some(SqlValue::Text(state)) if state == ABANDONED)
+    {
+        let action = spec
+            .action
+            .split_once(' ')
+            .map_or(spec.action, |(_, name)| name);
+        return Err(Unanswered::Fault(FaultKind::Diverged(format!(
+            "the steps of `{action}` were abandoned by an operator"
+        ))));
+    }
     let mut steps = Vec::new();
     if started.is_some() {
         let rows = database
@@ -703,6 +720,59 @@ pub async fn answered(ctx: &mut Ctx<'_>, at: StepAt, answer: Answered) -> Result
     Ok(())
 }
 
+/// Step `$4` of record `$1` moved to key generation `$5` at `$3`, by
+/// generation `$2`: sent again under its next key from then on.
+pub const NEW_KEY: &str = "WITH \"holder\" AS (UPDATE \"jadpo_step_records\" SET \"generation\" = $2, \"taken_at\" = $3 WHERE \"id\" = $1 AND \"generation\" <= $2 RETURNING \"id\") UPDATE \"jadpo_steps\" SET \"key_generation\" = $5, \"dispatched_at\" = $3 FROM \"holder\" WHERE \"jadpo_steps\".\"record_id\" = \"holder\".\"id\" AND \"jadpo_steps\".\"position\" = $4 RETURNING \"jadpo_steps\".\"position\"";
+
+/// The provider answered step `at`, or an untracked keyed call, with its
+/// package's `new_key_on:` code: its key can't be used again (chunk 7.5c).
+/// The place to send it from under the next key generation: for a step,
+/// recorded first, so a rerun sends under that key too; `unavailable`,
+/// with nothing sent, when the store can't keep it or a newer runner
+/// holds the record.
+pub async fn new_key(ctx: &mut Ctx<'_>, at: StepAt) -> Result<StepAt, Unanswered> {
+    let next = StepAt {
+        position: at.position,
+        key_generation: at.key_generation.saturating_add(1),
+    };
+    let now = wall(ctx);
+    let (database, id, generation) = {
+        let Some(record) = ctx.steps_record() else {
+            return Ok(next);
+        };
+        if record.steps.get(at.position as usize - 1).is_none() {
+            return Ok(next);
+        }
+        let Some(database) = ctx.capabilities().database(&record.store) else {
+            return Err(Unanswered::Failure(Box::new(crate::unavailable())));
+        };
+        (database, record.id, record.generation)
+    };
+    let written = database
+        .query_once(
+            NEW_KEY,
+            &[
+                SqlValue::Uuid(id),
+                SqlValue::Int8(generation),
+                micros(now),
+                SqlValue::Int4(i32::try_from(at.position).unwrap_or(i32::MAX)),
+                SqlValue::Int4(i32::try_from(next.key_generation).unwrap_or(i32::MAX)),
+            ],
+        )
+        .await;
+    match written {
+        Ok(rows) if !rows.is_empty() => {}
+        _ => return Err(Unanswered::Failure(Box::new(crate::unavailable()))),
+    }
+    if let Some(record) = ctx.steps_record_mut()
+        && let Some(kept) = record.steps.get_mut(at.position as usize - 1)
+    {
+        kept.key_generation = next.key_generation;
+        kept.first_sent = now;
+    }
+    Ok(next)
+}
+
 /// What the AEAD binds a sealed answer to: its record and its place, so
 /// an answer moved to another step doesn't open.
 fn context(id: &[u8; 16], position: u32) -> String {
@@ -759,6 +829,32 @@ impl Diverged {
         }
     }
 
+    /// Read back from what the record keeps ([`Diverged::json`]).
+    fn from_json(text: &str) -> Option<Diverged> {
+        let json: serde_json::Value = serde_json::from_str(text).ok()?;
+        let position = u32::try_from(json.get("step")?.as_u64()?).ok()?;
+        let operation = json.get("operation")?.as_str()?.to_string();
+        let how = if let Some(now) = json.get("now").and_then(serde_json::Value::as_str) {
+            How::Operation(now.to_string())
+        } else if let Some(fields) = json.get("fields").and_then(serde_json::Value::as_array) {
+            How::Fields(
+                fields
+                    .iter()
+                    .filter_map(|field| field.as_str().map(str::to_string))
+                    .collect(),
+            )
+        } else if json.get("reused").is_some() {
+            How::Reused
+        } else {
+            How::Missed
+        };
+        Some(Diverged {
+            position,
+            operation,
+            how,
+        })
+    }
+
     fn json(&self) -> String {
         let mut object = serde_json::Map::new();
         object.insert("step".into(), self.position.into());
@@ -786,6 +882,15 @@ impl Diverged {
         }
         serde_json::Value::Object(object).to_string()
     }
+}
+
+/// What differed when a record was held as `diverged`, as its `problem`
+/// column keeps it, said as a delivery's record says it (chunk 7.5c):
+/// the step, its operation and the fields, never a value. `action` is the
+/// action's identity key.
+pub fn problem_text(problem: &str, action: &str) -> Option<String> {
+    let name = action.split_once(' ').map_or(action, |(_, name)| name);
+    Diverged::from_json(problem).map(|diverged| diverged.text(name))
 }
 
 /// The provider answered step `at` that its key came with a different
@@ -936,5 +1041,26 @@ mod tests {
             missed.text("pay_invoice"),
             "step 3 of `pay_invoice`, `sheets.put`, wasn't reached"
         );
+    }
+
+    #[test]
+    fn a_kept_problem_reads_back_as_the_same_words() {
+        for how in [
+            How::Fields(vec!["plan".into()]),
+            How::Operation("pay.refunds.create".into()),
+            How::Missed,
+            How::Reused,
+        ] {
+            let diverged = Diverged {
+                position: 3,
+                operation: "pay.subscriptions.create".into(),
+                how,
+            };
+            assert_eq!(
+                problem_text(&diverged.json(), "action subscribe"),
+                Some(diverged.text("subscribe"))
+            );
+        }
+        assert_eq!(problem_text("not json", "action subscribe"), None);
     }
 }

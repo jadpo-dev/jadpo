@@ -51,6 +51,18 @@ pub const SUPERSEDED: &str = "superseded";
 /// A schedule's run an operator resolved as done.
 pub const RESOLVED: &str = "resolved";
 
+/// A delivery whose action, with several changing calls, no longer
+/// matches the record of its steps (chunk 7.5b): held for an operator to
+/// deploy a fix and retry, or abandon.
+pub const DIVERGED: &str = crate::outbox::DIVERGED;
+/// A delivery, or a route's record, whose action with several changing
+/// calls an operator abandoned (chunk 7.5c): it never runs again, and its
+/// step list is kept 30 days.
+pub const ABANDONED: &str = "abandoned";
+/// A route's record of several changing calls that ended without
+/// committing and whose client's key has lapsed (chunk 7.5c).
+pub const UNFINISHED: &str = "unfinished";
+
 /// A delivery a circuit breaker holds while a provider it calls is
 /// unavailable (chunk 7.2b).
 pub const HELD: &str = crate::breaker::HELD;
@@ -65,7 +77,7 @@ fn shown_state(state: &str) -> String {
 }
 
 /// The states an operator is shown by default: those that need one.
-pub const NEEDS_AN_OPERATOR: [&str; 2] = [FAILED, OUTCOME_UNKNOWN];
+pub const NEEDS_AN_OPERATOR: [&str; 4] = [FAILED, OUTCOME_UNKNOWN, DIVERGED, UNFINISHED];
 
 /// The columns every item is read with: its id, kind, target (the
 /// subscriber's or the schedule's identity key), event, state, attempts,
@@ -87,6 +99,54 @@ const RUN_COLUMNS: &str = "\"r\".\"id\", 'schedule_run', \"r\".\"schedule\", NUL
 /// The last operator action on run `"r"`.
 fn run_action() -> &'static str {
     "LEFT JOIN LATERAL (SELECT \"acted_at\", \"action\", \"operator\", \"role\" FROM \"jadpo_operator_actions\" WHERE \"item\" = \"r\".\"id\" ORDER BY \"acted_at\" DESC, \"id\" DESC LIMIT 1) AS \"a\" ON TRUE"
+}
+
+/// A route's record as an operator item's state: `diverged` or
+/// `abandoned` as kept, else `unfinished` (chunk 7.5c).
+const REQUEST_STATE: &str = "CASE WHEN \"r\".\"state\" IN ('diverged', 'abandoned') THEN \"r\".\"state\" ELSE 'unfinished' END";
+
+/// A route's record of several changing calls as an item (chunk 7.5c):
+/// its id, its action, its state, when its last run took it (and so its
+/// order), `diverged` as its code when it diverged, and its last operator
+/// action. Never its key, which its client sent.
+fn request_columns() -> String {
+    format!(
+        "\"r\".\"id\", 'request', \"r\".\"action\", NULL::text, {REQUEST_STATE}, NULL::int4, \"r\".\"taken_at\", NULL::timestamptz, CASE WHEN \"r\".\"state\" = 'diverged' THEN 'diverged' END, NULL::text, \"a\".\"acted_at\", \"a\".\"action\", \"a\".\"operator\", \"a\".\"role\", \"r\".\"taken_at\", NULL::text, NULL::timestamptz"
+    )
+}
+
+/// Routes' records that are operator items: abandoned, or last taken at
+/// or before `$2`, so their client's key has lapsed.
+fn request_from() -> &'static str {
+    "FROM \"jadpo_step_records\" AS \"r\" LEFT JOIN LATERAL (SELECT \"acted_at\", \"action\", \"operator\", \"role\" FROM \"jadpo_operator_actions\" WHERE \"item\" = \"r\".\"id\" ORDER BY \"acted_at\" DESC, \"id\" DESC LIMIT 1) AS \"a\" ON TRUE WHERE \"r\".\"scope\" <> 'delivery' AND (\"r\".\"state\" = 'abandoned' OR \"r\".\"taken_at\" <= $2)"
+}
+
+/// Routes' records in states `$1`, as items, whose key lapsed by `$2`,
+/// most recent first, at most `$3` (chunk 7.5c).
+pub fn requests_sql() -> String {
+    format!(
+        "SELECT {} {} AND {REQUEST_STATE} = ANY($1::text[]) ORDER BY 15 DESC, \"r\".\"id\" DESC LIMIT $3",
+        request_columns(),
+        request_from()
+    )
+}
+
+/// The routes' records, as items whose key lapsed by `$2`, whose id ends
+/// with `$1`.
+pub fn find_request_sql() -> String {
+    format!(
+        "SELECT {} {} AND right(replace(\"r\".\"id\"::text, '-', ''), length($1::text)) = $1::text",
+        request_columns(),
+        request_from()
+    )
+}
+
+/// How many routes' records, as items whose key lapsed by `$1`, are in
+/// each state.
+pub fn request_counts_sql() -> String {
+    format!(
+        "SELECT {REQUEST_STATE}, count(*) FROM \"jadpo_step_records\" AS \"r\" WHERE \"r\".\"scope\" <> 'delivery' AND (\"r\".\"state\" = 'abandoned' OR \"r\".\"taken_at\" <= $1) GROUP BY 1"
+    )
 }
 
 /// The deliveries in states `$1`, most recently tried first, at most
@@ -154,6 +214,17 @@ pub const FIND_REQUESTED: &str = "SELECT \"run_requested\", 'schedule_run', \"sc
 /// state it was read in. The role it was logged as.
 pub const ACT_DELIVERY: &str = "WITH \"d\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = $6, \"next_attempt_at\" = $8, \"attempts\" = CASE WHEN $9 THEN 0 ELSE \"attempts\" END, \"retried_at\" = CASE WHEN $9 THEN $2 ELSE \"retried_at\" END, \"held_ms\" = CASE WHEN $9 THEN NULL ELSE \"held_ms\" END WHERE \"id\" = $1 AND \"status\" = $5 RETURNING \"id\", \"subscriber\", \"outbox_id\") INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") SELECT $3, $2, $7, 'delivery', \"d\".\"id\", \"d\".\"subscriber\", \"o\".\"event\", $5, $4, session_user FROM \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" RETURNING \"role\"";
 
+/// [`ACT_DELIVERY`] with its record of several changing calls `$10`, in
+/// the same store, made ready for the retry in the same statement (chunk
+/// 7.5c): its generation back to none, as its attempts are, and when
+/// `$11` names a step, that step's answer cleared and its key moved to
+/// the next generation, sent at `$2`.
+pub const RETRY_WITH_RECORD: &str = "WITH \"d\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = $6, \"next_attempt_at\" = $8, \"attempts\" = CASE WHEN $9 THEN 0 ELSE \"attempts\" END, \"retried_at\" = CASE WHEN $9 THEN $2 ELSE \"retried_at\" END, \"held_ms\" = CASE WHEN $9 THEN NULL ELSE \"held_ms\" END WHERE \"id\" = $1 AND \"status\" = $5 RETURNING \"id\", \"subscriber\", \"outbox_id\"), \"r\" AS (UPDATE \"jadpo_step_records\" SET \"generation\" = 0 WHERE \"id\" = $10 AND \"state\" <> 'abandoned' AND EXISTS (SELECT 1 FROM \"d\") RETURNING \"id\"), \"s\" AS (UPDATE \"jadpo_steps\" SET \"key_generation\" = \"key_generation\" + 1, \"outcome\" = NULL, \"answer\" = NULL, \"answered_at\" = NULL, \"dispatched_at\" = $2 WHERE \"record_id\" IN (SELECT \"id\" FROM \"r\") AND \"position\" = $11::int4 RETURNING 1) INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") SELECT $3, $2, $7, 'delivery', \"d\".\"id\", \"d\".\"subscriber\", \"o\".\"event\", $5, $4, session_user FROM \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" RETURNING \"role\"";
+
+/// [`ACT_DELIVERY`] abandoning its record `$10` in the same store, in the
+/// same statement, at `$2` (chunk 7.5c).
+pub const ABANDON_WITH_RECORD: &str = "WITH \"d\" AS (UPDATE \"jadpo_deliveries\" SET \"status\" = $6, \"next_attempt_at\" = $8, \"attempts\" = CASE WHEN $9 THEN 0 ELSE \"attempts\" END, \"retried_at\" = CASE WHEN $9 THEN $2 ELSE \"retried_at\" END, \"held_ms\" = CASE WHEN $9 THEN NULL ELSE \"held_ms\" END WHERE \"id\" = $1 AND \"status\" = $5 RETURNING \"id\", \"subscriber\", \"outbox_id\"), \"r\" AS (UPDATE \"jadpo_step_records\" SET \"state\" = 'abandoned', \"taken_at\" = $2 WHERE \"id\" = $10 AND EXISTS (SELECT 1 FROM \"d\") RETURNING \"id\") INSERT INTO \"jadpo_operator_actions\" (\"id\", \"acted_at\", \"action\", \"kind\", \"item\", \"target\", \"event\", \"was\", \"operator\", \"role\") SELECT $3, $2, $7, 'delivery', \"d\".\"id\", \"d\".\"subscriber\", \"o\".\"event\", $5, $4, session_user FROM \"d\" JOIN \"jadpo_outbox\" AS \"o\" ON \"o\".\"id\" = \"d\".\"outbox_id\" RETURNING \"role\"";
+
 /// Logs run `$1`, while its outcome is `$6` and no operator has settled
 /// it, as action `$5` at `$2` with id `$3` by `$4`: a dismissal, or a
 /// resolution as done. The role it was logged as.
@@ -174,6 +245,9 @@ pub const LOG_RUN: &str = "INSERT INTO \"jadpo_operator_actions\" (\"id\", \"act
 pub enum Kind {
     Delivery,
     ScheduleRun,
+    /// A route's record of several changing calls whose client's key
+    /// lapsed (chunk 7.5c).
+    Request,
 }
 
 impl Kind {
@@ -181,6 +255,7 @@ impl Kind {
         match self {
             Kind::Delivery => "delivery",
             Kind::ScheduleRun => "schedule_run",
+            Kind::Request => "request",
         }
     }
 }
@@ -200,7 +275,8 @@ pub struct Acted {
 pub struct Item {
     pub id: [u8; 16],
     pub kind: Kind,
-    /// The subscriber's identity key, or the schedule's.
+    /// The subscriber's identity key, the schedule's, or a route's
+    /// record's action's.
     pub target: String,
     /// A delivery's event type's identity key.
     pub event: Option<String>,
@@ -232,27 +308,39 @@ pub fn listable(state: &str) -> bool {
         HELD,
         FAILED,
         OUTCOME_UNKNOWN,
+        DIVERGED,
+        UNFINISHED,
+        ABANDONED,
         DISMISSED,
         CANCELLED,
     ]
     .contains(&state)
 }
 
-/// What a store holds: deliveries, when it holds an entity, and
-/// schedules' runs, when it is `schedules: { store: }`.
+/// What a store holds: deliveries, when it holds an entity, schedules'
+/// runs, when it is `schedules: { store: }`, and the records of actions
+/// with several changing calls, when one keeps them there (chunk 7.5c).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Holds {
     pub deliveries: bool,
     pub runs: bool,
+    pub steps: bool,
 }
 
-/// The items in `states` in one store, most recent first, at most
-/// `limit` of each kind.
+/// When a route's record last taken at `now` less a day was: its
+/// client's key has lapsed, so it is an operator's item.
+fn lapsed(now: i64) -> SqlValue {
+    micros(now.saturating_sub(crate::unfinished::ROUTE_LAPSES_MS))
+}
+
+/// The items in `states` in one store at `now`, most recent first, at
+/// most `limit` of each kind.
 pub async fn items(
     database: &dyn Database,
     holds: Holds,
     states: &[&str],
     limit: i64,
+    now: i64,
 ) -> Result<Vec<Item>, StoreError> {
     let mut out = Vec::new();
     // A delivery `sending` its unkeyed call (chunk 7.0c) is running.
@@ -273,6 +361,15 @@ pub async fn items(
     if holds.deliveries {
         let rows = database
             .query_once(&deliveries_sql(), &[wanted.clone(), SqlValue::Int8(limit)])
+            .await?;
+        out.extend(rows.iter().filter_map(|row| read_item(row)));
+    }
+    if holds.steps {
+        let rows = database
+            .query_once(
+                &requests_sql(),
+                &[wanted.clone(), lapsed(now), SqlValue::Int8(limit)],
+            )
             .await?;
         out.extend(rows.iter().filter_map(|row| read_item(row)));
     }
@@ -328,6 +425,7 @@ pub fn sort(items: &mut [Item]) {
 pub async fn counts(
     database: &dyn Database,
     holds: Holds,
+    now: i64,
 ) -> Result<BTreeMap<String, u64>, StoreError> {
     let mut out = BTreeMap::new();
     if holds.deliveries {
@@ -339,15 +437,29 @@ pub async fn counts(
             }
         }
     }
+    if holds.steps {
+        for row in database
+            .query_once(&request_counts_sql(), &[lapsed(now)])
+            .await?
+        {
+            if let (Some(SqlValue::Text(state)), Some(SqlValue::Int8(n))) =
+                (row.first(), row.get(1))
+            {
+                *out.entry(state.clone()).or_default() += u64::try_from(*n).unwrap_or(0);
+            }
+        }
+    }
     if holds.runs {
         for item in items(
             database,
             Holds {
                 deliveries: false,
                 runs: true,
+                steps: false,
             },
             &[FAILED, OUTCOME_UNKNOWN, RUNNING, PENDING],
             10_000,
+            now,
         )
         .await?
         {
@@ -357,18 +469,25 @@ pub async fn counts(
     Ok(out)
 }
 
-/// The items in one store whose id, as 32 hex digits, ends with
-/// `suffix`.
+/// The items in one store at `now` whose id, as 32 hex digits, ends
+/// with `suffix`.
 pub async fn find(
     database: &dyn Database,
     holds: Holds,
     suffix: &str,
+    now: i64,
 ) -> Result<Vec<Item>, StoreError> {
     let suffix = SqlValue::Text(suffix.to_string());
     let mut out = Vec::new();
     if holds.deliveries {
         let rows = database
             .query_once(&find_delivery_sql(), std::slice::from_ref(&suffix))
+            .await?;
+        out.extend(rows.iter().filter_map(|row| read_item(row)));
+    }
+    if holds.steps {
+        let rows = database
+            .query_once(&find_request_sql(), &[suffix.clone(), lapsed(now)])
             .await?;
         out.extend(rows.iter().filter_map(|row| read_item(row)));
     }
@@ -400,6 +519,12 @@ pub enum Action {
     Cancel,
     ResolveDone,
     ResolveNotDone,
+    /// A retry whose step in doubt, or that failed, didn't take effect: it
+    /// is sent again under its next key generation (chunk 7.5c).
+    RetryNotDone,
+    /// An action with several changing calls ended for good, its step
+    /// list kept (chunk 7.5c).
+    Abandon,
 }
 
 impl Action {
@@ -411,22 +536,43 @@ impl Action {
             Action::Cancel => "cancel",
             Action::ResolveDone => "resolve_done",
             Action::ResolveNotDone => "resolve_not_done",
+            Action::RetryNotDone => "retry_not_done",
+            Action::Abandon => "abandon",
         }
     }
 
-    /// The state it acts on.
+    /// The state it acts on, the first of those it acts on.
     pub fn from_state(self) -> &'static str {
         match self {
-            Action::Retry | Action::Dismiss => FAILED,
+            Action::Retry | Action::Dismiss | Action::RetryNotDone | Action::Abandon => FAILED,
             Action::Cancel => PENDING,
             Action::ResolveDone | Action::ResolveNotDone => OUTCOME_UNKNOWN,
         }
     }
 
-    /// Whether it may act on `item` as it was read: in its state, and,
-    /// for a schedule's run, its latest.
+    /// The states it acts on, for an item of `kind`: a delivery that
+    /// diverged is retried or abandoned, one in doubt or that failed with
+    /// a record is sent again "not done" or abandoned, and a route's
+    /// record is only abandoned (chunk 7.5c).
+    pub fn from_states(self, kind: Kind) -> &'static [&'static str] {
+        match (kind, self) {
+            (Kind::Request, Action::Abandon) => &[UNFINISHED, DIVERGED],
+            (Kind::Request, _) => &[],
+            (Kind::ScheduleRun, Action::RetryNotDone | Action::Abandon) => &[],
+            (Kind::ScheduleRun, Action::Retry) => &[FAILED],
+            (Kind::Delivery, Action::Retry) => &[FAILED, DIVERGED],
+            (Kind::Delivery, Action::RetryNotDone) => &[FAILED, OUTCOME_UNKNOWN],
+            (Kind::Delivery, Action::Abandon) => &[FAILED, OUTCOME_UNKNOWN, DIVERGED],
+            (_, Action::Dismiss) => &[FAILED],
+            (_, Action::Cancel) => &[PENDING],
+            (_, Action::ResolveDone | Action::ResolveNotDone) => &[OUTCOME_UNKNOWN],
+        }
+    }
+
+    /// Whether it may act on `item` as it was read: in a state it acts
+    /// on, and, for a schedule's run, its latest.
     pub fn fits(self, item: &Item) -> bool {
-        item.state == self.from_state() && item.latest
+        self.from_states(item.kind).contains(&item.state.as_str()) && item.latest
     }
 
     /// Whether it asks the application's tick for a schedule's run.
@@ -455,28 +601,55 @@ pub async fn act_on_delivery(
     operator: &str,
     now: i64,
 ) -> Result<Done, StoreError> {
+    act_on_delivery_and_record(database, host, item, action, operator, now, None).await
+}
+
+/// [`act_on_delivery`], changing the record of its action's steps,
+/// `record`, kept in the same store, in the same statement (chunk 7.5c);
+/// a record kept in another store is changed first, on its own
+/// ([`crate::unfinished::change_alone`]).
+pub async fn act_on_delivery_and_record(
+    database: &dyn Database,
+    host: &dyn Host,
+    item: &Item,
+    action: Action,
+    operator: &str,
+    now: i64,
+    record: Option<crate::unfinished::Change>,
+) -> Result<Done, StoreError> {
     let (to, due, fresh) = match action {
-        Action::Retry | Action::ResolveNotDone => (PENDING, Some(now), true),
+        Action::Retry | Action::ResolveNotDone | Action::RetryNotDone => {
+            (PENDING, Some(now), true)
+        }
         Action::Dismiss => (DISMISSED, None, false),
         Action::Cancel => (CANCELLED, None, false),
         Action::ResolveDone => (SUCCEEDED, None, false),
+        Action::Abandon => (ABANDONED, None, false),
     };
-    let rows = database
-        .query_once(
-            ACT_DELIVERY,
-            &[
-                SqlValue::Uuid(item.id),
-                micros(now),
-                SqlValue::Uuid(log_id(host, now)?),
-                SqlValue::Text(operator.to_string()),
-                SqlValue::Text(action.from_state().to_string()),
-                SqlValue::Text(to.to_string()),
-                SqlValue::Text(action.word().to_string()),
-                due.map_or(SqlValue::Null(SqlType::Timestamp), micros),
-                SqlValue::Bool(fresh),
-            ],
-        )
-        .await?;
+    let mut params = vec![
+        SqlValue::Uuid(item.id),
+        micros(now),
+        SqlValue::Uuid(log_id(host, now)?),
+        SqlValue::Text(operator.to_string()),
+        SqlValue::Text(item.state.clone()),
+        SqlValue::Text(to.to_string()),
+        SqlValue::Text(action.word().to_string()),
+        due.map_or(SqlValue::Null(SqlType::Timestamp), micros),
+        SqlValue::Bool(fresh),
+    ];
+    let sql = match record {
+        None => ACT_DELIVERY,
+        Some(crate::unfinished::Change::Retry { record, not_done }) => {
+            params.push(SqlValue::Uuid(record));
+            params.push(crate::unfinished::position(not_done));
+            RETRY_WITH_RECORD
+        }
+        Some(crate::unfinished::Change::Abandon { record }) => {
+            params.push(SqlValue::Uuid(record));
+            ABANDON_WITH_RECORD
+        }
+    };
+    let rows = database.query_once(sql, &params).await?;
     Ok(logged(&rows))
 }
 
@@ -583,6 +756,7 @@ fn read_item(row: &[SqlValue]) -> Option<Item> {
     };
     let kind = match text(1)?.as_str() {
         "delivery" => Kind::Delivery,
+        "request" => Kind::Request,
         _ => Kind::ScheduleRun,
     };
     let acted = match (millis(10), text(11), text(12), text(13)) {

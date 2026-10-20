@@ -292,7 +292,9 @@ fn schedules_plan(
             .filter(move |(_, store)| store.tables.contains_key(table))
             .map(|(name, _)| name.clone())
     };
-    use jadpo_std::system::{IDEMPOTENCY_KEYS, RECEIVED_EVENTS, SERVICE_KEYS, SESSIONS};
+    use jadpo_std::system::{
+        IDEMPOTENCY_KEYS, RECEIVED_EVENTS, SERVICE_KEYS, SESSIONS, STEP_RECORDS,
+    };
     SchedulesPlan {
         schedules,
         store,
@@ -300,6 +302,7 @@ fn schedules_plan(
         sessions: holding(SESSIONS.table).next(),
         keys: holding(SERVICE_KEYS.table).next(),
         received: holding(RECEIVED_EVENTS.table).next(),
+        steps: holding(STEP_RECORDS.table).collect(),
     }
 }
 

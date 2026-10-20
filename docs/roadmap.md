@@ -1354,17 +1354,20 @@ The design is area 11 as revised on 2026-10-16, with its research in
   `in_use` and `reused`, an older generation writing nothing, an answer
   past 1 MB, area 6's rerun, a route's client retry, and a recorded step
   never reached. Choices in area 12's "The record, chosen in chunk 7.5b".
-- [ ] **7.5c Multi-step calls: operators, tests and the warning** `opus ·
-  high`, after 7.5b (split from 7.5 on 2026-10-20): an unfinished record
-  as an operator item (`jadpo deliveries show`, `retry --not-done` under
-  the next key generation, `abandon`, a route's key lapsing), kept 30
-  days, with 7.5b's `diverged` deliveries listed and retried, and the
-  provider's `new_key_on:` sending under the next key generation; `jadpo runs unfinished
-  --build`; fakes keeping keys with `lost` and `in_use`; `jadpo test`'s
-  crash at each step boundary; each step's state in `jadpo dev` and
-  `jadpo watch`; the late-failure warning (a declinable error) and the
-  deadline sum; the personal-data report's entry, and the metric and
-  alert.
+- [ ] **7.5c Multi-step calls: operators** `opus · high`, after 7.5b
+  (split from 7.5 on 2026-10-20, and again into this and 7.5d): an
+  unfinished record as an operator item (`jadpo deliveries show`, `retry
+  --not-done` under the next key generation, `abandon`, a route's key
+  lapsing), kept 30 days, with 7.5b's `diverged` deliveries listed and
+  retried, and the provider's `new_key_on:` sending under the next key
+  generation; `jadpo runs unfinished --build`.
+- [ ] **7.5d Multi-step calls: tests, tools and the warning** `opus ·
+  high`, after 7.5c (split from 7.5c on 2026-10-20): fakes keeping keys
+  with `lost` and `in_use`; `jadpo test`'s crash at each step boundary;
+  each step's state in `jadpo dev` and `jadpo watch`; the late-failure
+  warning (a declinable error) and the deadline sum; the metric and alert
+  on unfinished records; the personal-data report's entry, with the report
+  itself if it isn't built by then.
 - [x] **7.6 What package code may do: actions and recipes** `opus ·
   high` (split on 2026-10-20 into this and 7.6b; public and non-public
   package events came with 7.7). Built: a package's action calls its own

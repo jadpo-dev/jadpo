@@ -58,6 +58,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::deliveries::ACT_DELIVERY.to_string(),
         ),
         (
+            "deliveries::ABANDON_WITH_RECORD",
+            crate::deliveries::ABANDON_WITH_RECORD.to_string(),
+        ),
+        (
             "deliveries::CANCEL_REQUEST",
             crate::deliveries::CANCEL_REQUEST.to_string(),
         ),
@@ -82,6 +86,10 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
             crate::deliveries::REQUESTED_RUNS.to_string(),
         ),
         (
+            "deliveries::RETRY_WITH_RECORD",
+            crate::deliveries::RETRY_WITH_RECORD.to_string(),
+        ),
+        (
             "deliveries::SETTLE_RUN",
             crate::deliveries::SETTLE_RUN.to_string(),
         ),
@@ -100,6 +108,18 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         (
             "deliveries::find_run_sql",
             crate::deliveries::find_run_sql(),
+        ),
+        (
+            "deliveries::find_request_sql",
+            crate::deliveries::find_request_sql(),
+        ),
+        (
+            "deliveries::request_counts_sql",
+            crate::deliveries::request_counts_sql(),
+        ),
+        (
+            "deliveries::requests_sql",
+            crate::deliveries::requests_sql(),
         ),
         ("deliveries::runs_sql", crate::deliveries::runs_sql()),
         (
@@ -331,9 +351,38 @@ pub fn system_statements() -> Vec<(&'static str, String)> {
         ("steps::CREATE", crate::steps::CREATE.to_string()),
         ("steps::DELETE", crate::steps::DELETE.to_string()),
         ("steps::DIVERGE", crate::steps::DIVERGE.to_string()),
+        ("steps::NEW_KEY", crate::steps::NEW_KEY.to_string()),
         ("steps::OPEN", crate::steps::OPEN.to_string()),
         ("steps::SEND", crate::steps::SEND.to_string()),
         ("steps::STEPS", crate::steps::STEPS.to_string()),
+        ("unfinished::ABANDON", crate::unfinished::ABANDON.to_string()),
+        (
+            "unfinished::ABANDON_REQUEST",
+            crate::unfinished::ABANDON_REQUEST.to_string(),
+        ),
+        (
+            "unfinished::ABANDONED",
+            crate::unfinished::ABANDONED.to_string(),
+        ),
+        (
+            "unfinished::OLD_ACTIONS",
+            crate::unfinished::OLD_ACTIONS.to_string(),
+        ),
+        (
+            "unfinished::OLD_ANSWERS",
+            crate::unfinished::OLD_ANSWERS.to_string(),
+        ),
+        ("unfinished::RETRY", crate::unfinished::RETRY.to_string()),
+        ("unfinished::STEPS", crate::unfinished::STEPS.to_string()),
+        ("unfinished::by_id_sql", crate::unfinished::by_id_sql()),
+        (
+            "unfinished::of_delivery_sql",
+            crate::unfinished::of_delivery_sql(),
+        ),
+        (
+            "unfinished::unfinished_sql",
+            crate::unfinished::unfinished_sql(),
+        ),
         (
             "webhooks::OLD_RECEIVED",
             crate::webhooks::OLD_RECEIVED.to_string(),

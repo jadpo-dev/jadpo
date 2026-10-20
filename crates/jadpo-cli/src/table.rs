@@ -953,21 +953,27 @@ pub static COMMANDS: &[Command] = &[
         group: "Production",
         summary: "Retry, dismiss or cancel deliveries",
         description: "Lists the deliveries of events to subscribers, and the schedules' runs, that need \
-                      an operator (area 12): those that failed, and those whose outcome is unknown, \
-                      newest first, 20 a page; --state lists those pending, running, dismissed or \
-                      cancelled instead. `retry` sends a failed delivery again on the app's next \
-                      tick, with a fresh retry budget, or asks the app's tick to run a schedule whose \
-                      latest run failed and waits for it. `dismiss` sets a failed one aside, `cancel` \
-                      stops a pending one, and `resolve` settles one whose outcome is unknown, once \
-                      the provider shows whether it happened: --not-done retries it. Each action is \
-                      logged in the database with who did it, and runs none of the app's code. An id \
-                      is the last 8 hex digits the list shows, or more. The databases are the ones \
-                      the stores' connections' settings give, or a running jadpo dev's, or the one \
-                      --url names (with --store when there are several). Times are in UTC.",
+                      an operator (area 12): those that failed, those whose outcome is unknown, and \
+                      those whose action, with several changing calls, diverged from the record of \
+                      its steps, newest first, 20 a page; a route's steps whose client didn't retry \
+                      within a day are listed as unfinished. --state lists those pending, running, \
+                      dismissed, cancelled or abandoned instead. `retry` sends a failed or diverged \
+                      delivery again on the app's next tick, with a fresh retry budget, or asks the \
+                      app's tick to run a schedule whose latest run failed and waits for it; with \
+                      --not-done, a step in doubt or that failed goes again under a new key. \
+                      `dismiss` sets a failed one aside, `cancel` stops a pending one, and `resolve` \
+                      settles one whose outcome is unknown, once the provider shows whether it \
+                      happened: --not-done retries it. `show` lists one's recorded steps, never a \
+                      request or an answer, and `abandon` ends one with several changing calls for \
+                      good, keeping that list 30 days. Each action is logged in the database with \
+                      who did it, and runs none of the app's code. An id is the last 8 hex digits \
+                      the list shows, or more. The databases are the ones the stores' connections' \
+                      settings give, or a running jadpo dev's, or the one --url names (with --store \
+                      when there are several). Times are in UTC.",
         arguments: &[
             Argument {
                 name: "action",
-                description: "What to do: list, retry, dismiss, cancel or resolve",
+                description: "What to do: list, show, retry, dismiss, cancel, resolve or abandon",
                 required: false,
                 values: Values::Fixed(crate::deliveries::ACTIONS),
             },
@@ -1000,7 +1006,7 @@ pub static COMMANDS: &[Command] = &[
             Flag {
                 name: "--not-done",
                 value: None,
-                description: "Resolve it as not done, which retries it",
+                description: "It didn't happen: retry it, a step under a new key",
                 values: &[],
             },
             Flag {
@@ -1032,6 +1038,14 @@ pub static COMMANDS: &[Command] = &[
             Example {
                 description: "See what is waiting to run",
                 command: "jadpo deliveries --state pending",
+            },
+            Example {
+                description: "List the steps of one with several changing calls",
+                command: "jadpo deliveries show 7c31e0b2",
+            },
+            Example {
+                description: "Send its step in doubt again, once the provider shows it didn't happen",
+                command: "jadpo deliveries retry 7c31e0b2 --not-done",
             },
         ],
         arguments_rule: &rule::CLI_DELIVERIES_ARGUMENTS,
