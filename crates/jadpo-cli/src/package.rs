@@ -99,6 +99,10 @@ pub const ACTIONS: &[Value] = &[
         name: "unlink",
         description: "Go back to the installed version of a linked package",
     },
+    Value {
+        name: "recipe",
+        description: "Copy one of a package's recipes into a domain",
+    },
 ];
 
 /// What the language decides `jadpo package` does, not built yet, and the
@@ -107,7 +111,6 @@ const LATER: &[(&str, &str)] = &[
     ("new", "package repositories"),
     ("conform", "capabilities"),
     ("publish", "the hosted registry"),
-    ("recipe", "recipes"),
 ];
 
 pub fn package(call: &Call) -> Reply {
@@ -135,6 +138,7 @@ pub fn package(call: &Call) -> Reply {
         Some("unlink") => crate::install::unlink(call),
         Some("import") => crate::package_import::import(call),
         Some("record") => crate::package_record::record(call),
+        Some("recipe") => crate::package_recipe::recipe(call),
         Some(later) if LATER.iter().any(|(name, _)| *name == later) => {
             let comes = LATER
                 .iter()
