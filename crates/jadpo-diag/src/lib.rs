@@ -692,6 +692,10 @@ rules! {
         "18-records-and-manifest.html#record-format-newer", "Record was written by a newer Jadpo";
     RECORD_OUT_OF_DATE: "record.out_of_date", area 18, Error, Agent,
         "18-records-and-manifest.html#record-out-of-date", "Generated record disagrees with the source";
+    RECORDING_FAILED: "recording.failed", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Provider's sandbox gave no answer to record";
+    RECORDING_REFUSED: "recording.refused", area 14, Error, Human,
+        "14-tooling.html#command-errors", "Operation can't be recorded through this connection";
     ROUTE_API_UNKNOWN: "route.api_unknown", area 7, Error, Agent,
         "07-http.html#route-api-unknown", "Route group names an API the application doesn't declare";
     ROUTE_ARGUMENT_INVALID: "route.argument_invalid", area 7, Error, Agent,
@@ -972,6 +976,10 @@ rules! {
         "13-testing.html#test-fault", "Test stopped on a fault";
     TEST_NO_TESTS: "test.no_tests", area 14, Error, Agent,
         "14-tooling.html#command-errors", "No tests to run";
+    TEST_RECORDING_UNDECODABLE: "test.recording_undecodable", area 11, Error, Agent,
+        "11-integrations.html#test-recording-undecodable", "Recorded provider answer its operation's decoders don't read";
+    TEST_ROUND_TRIP_FAILED: "test.round_trip_failed", area 11, Error, Agent,
+        "11-integrations.html#test-round-trip-failed", "Field's decode and encode don't round-trip a recorded value";
     TEST_RUNTIME_START_FAILED: "test.runtime_start_failed", area 14, Error, Human,
         "14-tooling.html#command-errors", "Test runtime could not start";
     TEST_SUBSCRIBER_FAILED: "test.subscriber_failed", area 13, Error, Agent,

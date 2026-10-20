@@ -129,6 +129,15 @@ not prove that the route decodes input or checks who is signed in.
 | route | a route, through `request` | the whole HTTP boundary: input, sign-in, policy, failures, output |
 | schedule | a schedule, through `.run()` | what one run of the schedule does |
 
+A fifth kind runs beside them without a `test` declaration (area 11,
+chunk 7.2d2): each recording of the app's own integrations,
+`shared/providers/<name>/<version>/recordings/<resource>.<operation>.json`,
+is read as its operation's output through the package's decoders, a test
+of kind `recording` named `<resource>.<operation>'s recording decodes`.
+`jadpo test --kind recording` runs only those, and giving the recording's
+file runs it alone; one that doesn't decode is area 11's
+`test.recording_undecodable` or `test.round_trip_failed`.
+
 A test that calls actions to set up data and then makes a request is a route
 test. Calling an action is an ordinary call, with no `call` word. Area 1
 named the second kind "integration"; this page calls it "action", because

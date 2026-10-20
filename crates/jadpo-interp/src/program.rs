@@ -495,6 +495,44 @@ impl Program {
         }))
     }
 
+    /// Calls operation `operation` (`pickups.create`) of provider
+    /// connection `connection` with `input`, as a call's site in code does
+    /// but reading the whole answer (chunk 7.2d2): what `jadpo package
+    /// record` sends to a provider's sandbox, on `ctx`'s host.
+    pub async fn call_provider(
+        &self,
+        ctx: &mut Ctx<'_>,
+        connection: &str,
+        operation: &str,
+        input: Option<Value>,
+    ) -> jadpo_runtime::provider::Done {
+        use jadpo_runtime::provider;
+        let providers = self.providers();
+        let settings: Vec<(u32, Value)> = providers
+            .plan
+            .operation(connection, operation)
+            .map(|(plan, _)| provider::settings_read(plan))
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|number| Some((number, self.setting(number)?)))
+            .collect();
+        let whole = jadpo_std::provider::CallSite::default();
+        let site = provider::Site {
+            call: &whole,
+            functions: self,
+            at: Frame::ENTRY,
+        };
+        provider::call(
+            ctx,
+            &providers,
+            (connection, operation),
+            input,
+            &settings,
+            site,
+        )
+        .await
+    }
+
     /// What the runtime's HTTP component answers this program's routes
     /// with (area 7): the route table and its codecs, with this thread's
     /// validators and shapes.
@@ -719,6 +757,29 @@ impl Executor for Program {
             .iter()
             .map(|connection| connection.name.as_str())
             .collect()
+    }
+
+    fn recording(
+        &self,
+        ctx: &mut Ctx<'_>,
+        file: &str,
+    ) -> Option<Result<(), jadpo_runtime::recorded::Unread>> {
+        let recorded = self
+            .plan()
+            .providers()
+            .recorded
+            .iter()
+            .find(|recorded| recorded.file == file)?;
+        let Some(op) = &recorded.plan else {
+            return Some(Err(jadpo_runtime::recorded::Unread::NoOperation));
+        };
+        Some(jadpo_runtime::recorded::check(
+            ctx,
+            &self.stored_json(),
+            op,
+            &recorded.text,
+            self,
+        ))
     }
 
     fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {

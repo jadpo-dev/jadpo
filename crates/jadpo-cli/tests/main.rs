@@ -60,6 +60,7 @@ mod provider_fakes;
 mod provider_wire;
 mod purge_schedule;
 mod queries;
+mod recordings;
 mod records;
 mod round_trips;
 mod rule_slice;

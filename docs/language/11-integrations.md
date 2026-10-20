@@ -16,6 +16,8 @@ rules:
   - semantic.service_secret_sink_invalid
   - package.*
   - connection.*
+  - test.recording_undecodable
+  - test.round_trip_failed
 ---
 
 # External services
@@ -715,6 +717,59 @@ Written operations that are not confirmed are allowed in every build. The
 approval report flags them, and CI requires a passing contract run against
 the sandbox for each one (see "Tests and fakes").
 
+> **Built (chunk 7.2d2).** `jadpo package record <connection>
+> <resource>.<operation>` calls the sandbox once through the connection,
+> with its credential from `.env.local` and the operation's input, written
+> as a route's body is, from `--input`. It checks the answer against the
+> operation's output type and keeps it as the recording: along
+> `output_at:`, only the members the type declares, each plain text or
+> number replaced by a placeholder naming its built-in type (`"{Text}"`),
+> and what the package's own encodings and decoders read kept as sent.
+> The surface then marks the operation `confirmed`, and `jadpo test`
+> decodes the recording ("Recording errors"):
+>
+> ```text
+> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
+> ✓ Recorded `couriers.bookings.create` from the sandbox
+>     sent    POST https://sandbox.acme-couriers.example/v1/bookings
+>     answer  decodes as Booking
+>     values  2 placeholders, 2 kept as sent
+>     file    shared/providers/acme_couriers/v1/recordings/bookings.create.json
+>
+> ✓ operation recorded  AcmeCouriers.v1 bookings.create · confirmed
+>
+> → jadpo test  decodes the recording with every decoder
+> ```
+>
+> ```json
+> {
+>   "data": {
+>     "collectAt": "{Instant}",
+>     "id": "{Text}",
+>     "status": "booked",
+>     "window": "PM"
+>   }
+> }
+> ```
+>
+> It refuses before anything is sent a connection whose environment is
+> live, or whose credential nothing sets (`recording.refused`), and keeps
+> nothing from an answer that doesn't decode or a refusal
+> (`recording.failed`):
+>
+> ```text
+> $ jadpo package record couriers bookings.create --input '{"postcode": "N1 9GU"}'
+> error: The sandbox's answer to `couriers.bookings.create` doesn't decode as `Booking`
+>   reason: Reading it found `variant` on `status`: the operation's types and the provider disagree, so a real call would fault. Nothing was recorded.
+>   next: Correct `Booking` against the answer and the provider's documentation, then run it again (agent)
+>   rule: recording.failed
+>   help: docs/language/14-tooling.html#command-errors
+> ```
+>
+> Writing an operation's output type from the answer when it has none
+> comes with chunk 7.2e; a HAR capture's operations with its importer.
+> The choices are in "Chosen in chunk 7.2d2" below.
+
 ### Installing safely
 
 - **Every package is verified at install, wherever it came from**:
@@ -974,7 +1029,9 @@ asks the description of every public message (area 10, "Chosen in chunk
 > the last tag and refuses a breaking change (`publish.breaking_change`);
 > item 7 is the index's own check. Item 4's decoders and recipes come with
 > decoding (chunk 7.2) and recipes; the bar says "not checked yet" for
-> each. The surface is written whenever the package compiles and its
+> each. Built in chunk 7.2d2: the `decoders` row, every decoder over every
+> recording with each field's `decode:` and `encode:` round-tripping
+> ("Recording errors"); recipes still come later. The surface is written whenever the package compiles and its
 > version is allowed.
 >
 > **Built (chunk 7.1b2).** Item 3: each ```` ```jadpo ```` block in a
@@ -2924,10 +2981,11 @@ recommends.
   This changes area 17's hashing of text for call payloads in development
   only; production keeps area 16's spans with no values.
 
-> **Built (chunk 7.2d)**, but for recordings (chunk 7.2d2), `jadpo trace`
-> and the timelines: every provider call `jadpo dev` makes is answered by
-> the package's fake, with what `jadpo calls script` scripted or else the
-> operation's generated default ("Tests and fakes"), and a provider
+> **Built (chunk 7.2d)**, but for `jadpo trace` and the timelines: every
+> provider call `jadpo dev` makes is answered by the package's fake, with
+> what `jadpo calls script` scripted, else from the operation's recording
+> with its placeholders filled (chunk 7.2d2, logged as `recording`), else
+> the operation's generated default ("Tests and fakes"), and a provider
 > connection's setting that nothing gives (its credential, environment or
 > address) gets a stand-in, so the app starts with no credential set.
 > `development: { sandbox: }` names operations, `resource.operation`, or
@@ -3178,7 +3236,9 @@ example and real output under "Errors".
 > name, a public action that emits and subscribing to a non-public event
 > (chunk 7.6). Chunk 7.1c built a connection's `host:` for a package
 > with fixed `hosts:`, with the rest of a connection's keys, under
-> "Connection errors".
+> "Connection errors". Chunk 7.2d2 built a decoder that fails on a
+> recording and a field's `decode:` and `encode:` that don't round-trip,
+> under "Recording errors".
 
 ## Package errors
 
@@ -4143,6 +4203,242 @@ error: `Postcodes.v2` is linked to `../postcodes`
   help: docs/language/14-tooling.html#command-errors
 
 check failed: 1 error, 7 files
+```
+
+## Recording errors
+
+> Built in chunk 7.2d2. `jadpo test` reads every recording of the app's
+> own integrations as its operation's output, its placeholders filled,
+> through the package's own decoders, each as a test of the `recording`
+> kind (area 13), and the publishing bar does the same as its
+> `decoders` row. `jadpo package record` reports `recording.refused` and
+> `recording.failed`, which area 14 lists with its command errors.
+
+### `test.recording_undecodable`
+
+A recording the operation's output type, or one of the package's own
+decoders, doesn't read: here the provider sent a status the package's
+`Status` doesn't have.
+
+```jadpo check project=e72d2-undecodable file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        output_at: "data"
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/types/status.jadpo hidden
+/// Where a booking stands.
+public type Status = Enum {
+    booked
+    on_hold
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/types/booking.jadpo
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+    status: Status
+}
+```
+
+```jadpo check project=e72d2-undecodable file=shared/providers/acme_couriers/v1/recordings/bookings.create.json expect=test.recording_undecodable
+{
+  "data": {
+    "id": "{Text}",
+    "status": "lost"
+  }
+}
+```
+
+```text output
+FAIL  bookings.create's recording decodes
+ --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1
+
+  decode: `bookings.create`'s recording doesn't decode: `variant` on `status`
+  reason: Every decoder decodes every recorded answer: the operation's output type, or a decoder of its own, refuses what the provider sent here, so a real answer like it would fault the call.
+  next: Correct the type or its decoder against the recording and the provider's documentation (agent)
+
+  rule: test.recording_undecodable
+  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1
+
+test failed: 1 failed, 1 recording test
+```
+
+### `test.round_trip_failed`
+
+A field's `encode:` that doesn't give back what its `decode:` read from a
+recording, so what the app sends isn't what the provider sent: here the
+package reads the courier's `EVE` as the afternoon, and writes the
+afternoon back as `PM`.
+
+```jadpo check project=e72d2-round-trip file=app.jadpo hidden
+application {}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/package.jadpo hidden
+/// Acme Couriers' booking API.
+package AcmeCouriers.v1 {
+    licence: Licence.proprietary
+    jadpo: "1.0"
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/provider.jadpo hidden
+/// Acme Couriers' booking API.
+provider {
+    protocol: Protocol.json_http
+    hosts: {
+        live: "https://api.acme-couriers.example"
+        sandbox: "https://sandbox.acme-couriers.example"
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/resources/bookings.jadpo hidden
+public resource bookings {
+    create: {
+        method: HttpMethod.post
+        path: "/v1/bookings"
+        input: CreateBooking
+        output: Booking
+        output_at: "data"
+        changes: true
+        idempotent: true
+        source: PackageSource.written
+        docs: "https://docs.acme-couriers.example/bookings"
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/create_booking.jadpo hidden
+/// What booking a collection takes.
+public type CreateBooking = Object {
+    postcode: Text
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/daypart_code.jadpo hidden
+/// A part of the day as the courier writes it.
+public type DaypartCode = Text {
+    max_length: 3
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/daypart.jadpo hidden
+/// When in the day a collection comes.
+public type Daypart = Enum {
+    morning
+    afternoon
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/failures/daypart_unknown.jadpo hidden
+/// A part of the day the courier names that this package doesn't know.
+type DaypartUnknown = Failure {
+    kind: FailureKind.invalid_value
+    message: "The courier named a part of the day this package doesn't know."
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/types/booking.jadpo hidden
+/// A booked collection.
+public type Booking = Object {
+    id: Text
+    daypart: Daypart {
+        decode: dayparts.read_daypart
+        encode: dayparts.write_daypart
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/libraries/dayparts.jadpo
+/// The courier's part of the days, which it writes as "AM" and "PM".
+library dayparts {
+    /// The part of the day the courier's code names.
+    function read_daypart(code: DaypartCode) fails DaypartUnknown -> Daypart {
+        if (code == "AM") {
+            return Daypart.morning
+        }
+        if (code == "PM" or code == "EVE") {
+            return Daypart.afternoon
+        }
+        reject DaypartUnknown
+    }
+
+    /// The courier's code for a part of the day.
+    function write_daypart(daypart: Daypart) -> DaypartCode {
+        if (daypart == Daypart.morning) {
+            return "AM"
+        }
+        return "PM"
+    }
+}
+```
+
+```jadpo check project=e72d2-round-trip file=shared/providers/acme_couriers/v1/recordings/bookings.create.json expect=test.round_trip_failed
+{
+  "data": {
+    "id": "{Text}",
+    "daypart": "EVE"
+  }
+}
+```
+
+```text output
+FAIL  bookings.create's recording decodes
+ --> shared/providers/acme_couriers/v1/recordings/bookings.create.json:1
+
+  decode: `dayparts.read_daypart` and `dayparts.write_daypart` don't round-trip `bookings.create`'s recording
+  recorded: "EVE"
+  written: "PM"
+  reason: A field's `encode:` writes back what its `decode:` read, so what the app sends is what the provider sent; `dayparts.write_daypart` doesn't give back the value `dayparts.read_daypart` read from the recording.
+  next: Correct `dayparts.read_daypart` or `dayparts.write_daypart` so each undoes the other (agent)
+
+  rule: test.round_trip_failed
+  rerun: jadpo test shared/providers/acme_couriers/v1/recordings/bookings.create.json:1 --seed 1
+
+test failed: 1 failed, 1 recording test
 ```
 
 ## Publishing errors
@@ -5847,8 +6143,16 @@ side (below); the rest is still to build.
 > `calls script` (area 17). The errors are area 13's
 > `semantic.fake_invalid`, `test.fake_exhausted` and `test.fake_unused`,
 > and `connection.value_invalid` for a `sandbox:` name the package
-> doesn't have; the choices are in "Chosen in chunk 7.2d" below. Next:
-> recordings and `jadpo package record` (chunk 7.2d2).
+> doesn't have; the choices are in "Chosen in chunk 7.2d" below.
+
+> **Built (chunk 7.2d2).** Recordings, under "Provenance and
+> confirmation", "Provider calls in development" and "Recording errors":
+> `jadpo package record` keeps a sandbox's answer as an operation's
+> recording, its values placeholders; `jadpo test` and the publishing bar
+> decode every recording of the app's own integrations with every
+> decoder (`test.recording_undecodable`, `test.round_trip_failed`); and
+> `jadpo dev`'s fake answers an operation from its recording. The choices
+> are in "Chosen in chunk 7.2d2" below.
 
 ### Chosen in chunk 7.1
 
@@ -6596,7 +6900,7 @@ Fakes and the development call log, each the most conservative reading:
 - **The call log** is `build/dev/calls.jsonl`, one call a line: its id
   (`call_31`, counted on from the last the log holds), when it went out,
   its connection and operation, its source (`generated`, `scripted`,
-  `sandbox`; `recording` with chunk 7.2d2), its request's id, how long it
+  `sandbox`, and `recording` since chunk 7.2d2), its request's id, how long it
   took, the request as made (method, address and body, never its headers,
   which hold the credential) and the answer as sent or generated, and how
   it ended with a failure's code. It keeps the last 500 calls rather than
@@ -6606,6 +6910,63 @@ Fakes and the development call log, each the most conservative reading:
   calls (files) are not, and a delivery's or a schedule's call has no
   request. Each request's line in `jadpo dev` lists its calls, and its
   `--json` event gives them.
+
+### Chosen in chunk 7.2d2
+
+Recordings, each choice the most conservative reading:
+
+- **What a recording keeps.** The answer as the provider sent it, only
+  along `output_at:`'s path and only the members the operation's output
+  type declares, written with two spaces of indentation and members in
+  name order. Each text or number the type reads as a plain value is a
+  placeholder naming its built-in type in braces, `"{Text}"`,
+  `"{Instant}"`, `"{Int}"`, so no personal data or account detail from
+  the sandbox is committed. Kept as sent: booleans and `null`, an enum's
+  spellings and a map's keys, which say nothing about anyone; a field in
+  a built-in encoding or with the package's own `decode:` and `encode:`,
+  and the whole answer of an operation with `wire_output:`, which its
+  decoders exist to read, numbers with their digits as written; and a
+  value whose type's rules no generated value keeps (a pattern), which a
+  placeholder couldn't stand in for.
+- **Filling a placeholder** gives a generated value of the type at its
+  place, as the fake's generated default makes one (chunk 7.2d): the
+  invocation's clock, a fresh UUID. Members a hand-written recording adds
+  beyond the type are left as they are and ignored by decoding.
+- **Which recordings `jadpo test` reads.** Every
+  `recordings/<resource>.<operation>.json` of the app's own integrations
+  in `shared/providers/`, connected or not; an installed package's were
+  read when it was published, and its files are held to its digest. Each
+  is a test of a fifth kind, `recording` (area 13), named
+  `<resource>.<operation>'s recording decodes`, run alone by its file;
+  it reads the whole output, never only the fields code reads. A
+  recording named after no operation of its package fails it too.
+- **Round trips** are checked on what a recording holds: each field's
+  `decode:` over the value recorded, then its `encode:` over what that
+  gave, which must be the value recorded (`test.round_trip_failed`,
+  showing both). Built-in encodings round-trip by construction.
+- **The publishing bar** counts the recordings as its `decoders` row,
+  apart from the package's own tests, and shows each failure's report.
+- **`jadpo dev`** answers an unscripted call from its operation's
+  recording where its package keeps one, the generated default
+  otherwise; a script still comes first. Tests keep the generated
+  default, so a test never depends on a recording.
+- **`jadpo package record <connection> <resource>.<operation>`** runs in
+  an app, through one of its connections, since a package alone has no
+  credential or sandbox to call. It records into the app's own
+  integration, or into a linked package's checkout, and refuses an
+  installed package (`recording.refused`), whose files its digest holds.
+  The operation's input is `--input`, JSON as a route's body is written,
+  required when the operation takes one. It refuses before sending
+  anything a connection whose environment setting chooses `live`, one
+  whose credential, environment or address nothing sets (the stand-in
+  `jadpo dev` gives it would reach nobody), and one with no address. A
+  keyed operation takes a key derived as any call's (area 12, "Keys"),
+  from a scope of its own and this run's randomness, so recording again
+  is a new request. A refusal, no answer, or an answer that doesn't
+  decode keeps nothing (`recording.failed`); recording the same answer
+  again leaves the file as it was. An operation with no `output:` is
+  `toolchain.not_built_yet`: writing the type from the answer comes with
+  chunk 7.2e.
 
 ### Chosen in chunk 7.1e
 

@@ -393,11 +393,11 @@ impl fmt::Debug for Site<'_> {
 /// The package's field decoders and encoders run at a call's site, for
 /// the codecs on the provider's wire ([`jadpo_value::json::Coder`]),
 /// keeping how the first that ended without a value ended.
-struct SiteCoder<'c, 'x> {
-    ctx: RefCell<&'c mut Ctx<'x>>,
-    functions: &'c dyn Functions,
-    at: u32,
-    ended: RefCell<Option<String>>,
+pub(crate) struct SiteCoder<'c, 'x> {
+    pub(crate) ctx: RefCell<&'c mut Ctx<'x>>,
+    pub(crate) functions: &'c dyn Functions,
+    pub(crate) at: u32,
+    pub(crate) ended: RefCell<Option<String>>,
 }
 
 impl fmt::Debug for SiteCoder<'_, '_> {
@@ -409,7 +409,7 @@ impl fmt::Debug for SiteCoder<'_, '_> {
 }
 
 impl SiteCoder<'_, '_> {
-    fn run(&self, function: &str, value: Value) -> Option<Value> {
+    pub(crate) fn run(&self, function: &str, value: Value) -> Option<Value> {
         let mut ctx = self.ctx.borrow_mut();
         match self
             .functions
@@ -567,6 +567,15 @@ pub async fn call(
                 sent = Some(text);
                 done
             }
+            // A package's fake answering from the operation's recording,
+            // its placeholders filled with generated values of their types
+            // (area 11, "Provider calls in development"; chunk 7.2d2).
+            Ok(Given::Recorded) => {
+                let text = recorded_answer(ctx, providers, op);
+                let done = decode(ctx, providers, op, &name, &text, site);
+                sent = Some(text);
+                done
+            }
             Err(Unanswered::Failed(code)) => failed(providers, op, &name, &code),
             Err(Unanswered::Failure(failure)) => Done::Failed(failure),
             Err(Unanswered::Fault(kind)) => Done::Fault(kind),
@@ -590,6 +599,25 @@ pub async fn call(
         });
     }
     done
+}
+
+/// Operation `op`'s recording with its placeholders filled, as its
+/// provider would send it; its generated default when it keeps none, or
+/// one that isn't JSON.
+fn recorded_answer(ctx: &mut Ctx<'_>, providers: &Providers<'_>, op: &OperationPlan) -> Rc<str> {
+    let now = ctx.now();
+    let filled = op.recording.as_deref().and_then(|text| {
+        let mut uuid = || crate::fakes::uuid_text(ctx.new_id().unwrap_or_default());
+        let mut making = crate::fakes::Making {
+            now,
+            uuid: &mut uuid,
+        };
+        crate::recorded::filled(&providers.json, op, text, &mut making)
+    });
+    match filled {
+        Some(text) => Rc::from(text),
+        None => crate::fakes::default_answer(ctx, providers, op),
+    }
 }
 
 /// What the runtime raises when a call safe to send again gets no answer

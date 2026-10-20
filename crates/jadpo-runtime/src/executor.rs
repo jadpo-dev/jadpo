@@ -95,6 +95,20 @@ pub trait Executor {
         Vec::new()
     }
 
+    /// Reads the recording at `file` of one of the app's own integrations
+    /// as its operation's output, through the package's own decoders run
+    /// at `ctx` (area 11, "Provenance and confirmation"; chunk 7.2d2):
+    /// what `jadpo test` runs for each. `None` when the program holds no
+    /// such recording.
+    fn recording(
+        &self,
+        ctx: &mut Ctx<'_>,
+        file: &str,
+    ) -> Option<Result<(), crate::recorded::Unread>> {
+        let _ = (ctx, file);
+        None
+    }
+
     /// Runs callable `callable` with `args`, one per parameter, against
     /// `ctx`, whose stack is empty: an action or fixture inside the
     /// runtime's action boundary, anything else as it is.
