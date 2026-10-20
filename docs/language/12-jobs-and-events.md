@@ -1766,7 +1766,26 @@ each way through an `if` or a `match` counts on its own, a `return` ends
 its way, and an action called counts the changing calls of the longest
 way through it. The record and replay came with roadmap 7.5b, the
 operator's items with 7.5c, the tests' crash points with 7.5d, and the
-warning comes with 7.5e.
+warning with 7.5e.
+
+Built in chunk 7.5e, the warning: after the first changing call on a way
+through an action, each point that can end it for good is
+[`step.late_failure`](#step-late-failure), one finding for the action at
+the first such point with the others beside it, declinable since the
+condition may be unable to change. A point is an `attempt` whose call or
+write passes on a failure that isn't `unavailable` or `rate_limited` (an
+operation's or a called action's, a write's `conflict:` or not-found, a
+construction's), a `reject` or a `propagate`; a call whose failures a
+`match` handles isn't one, though a `reject` in its arm is. Where two ways
+meet, a changing call on either counts. A package's action is never told
+itself: its surface lists `after_effect` for each failure that can follow
+its own changing call, and the app's `attempt` of it is the point, even
+as the app's first call. It holds for single calls too, as area 11's
+question 26 asked. The same walk sums how long a route's outside calls
+can take, area 11's
+[`route.calls_past_deadline`](11-integrations.md#route-calls-past-deadline).
+Choices in the decisions table, "The late-failure warning and the
+deadline sum, chosen in chunk 7.5e".
 
 Built in chunk 7.5b, the record: an action whose longest way makes
 several changing calls, run by a subscriber's delivery or by a route
@@ -3394,6 +3413,94 @@ error: `pay.bank_statements.export` gives a large answer, and `pay_supplier` mak
 check failed: 1 error, 10 files
 ```
 
+### `step.late_failure`
+
+After an action's first changing call has taken effect, a failure that
+ends it for good rolls back its writes but not what the call did, and a
+retry fails the same way. Such a point (an `attempt` whose call or write
+can fail with a failure that isn't retried, `reject`, `propagate`) is an
+error until it is moved before the changing call, handled with `match`,
+or declined. Here the shop could be checked before the sheet is kept:
+
+```jadpo check project=e-step-late-failure file=app.jadpo hidden
+application {
+    connections: {
+        sheets: {
+            driver: Driver.disk
+            path: "/var/lib/bakery/sheets"
+        }
+    }
+}
+```
+
+```jadpo check project=e-step-late-failure file=domains/bakery/types/price_list.jadpo hidden
+/// A supplier's prices, one line for each loaf.
+type PriceList = Text {
+    min_length: 1
+    max_length: 2000
+}
+```
+
+```jadpo check project=e-step-late-failure file=domains/bakery/types/shop_state.jadpo hidden
+/// Whether a shop is trading this week.
+type ShopState = Enum {
+    open
+    closed
+}
+```
+
+```jadpo check project=e-step-late-failure file=domains/bakery/failures/sheet_not_kept.jadpo hidden
+/// The sheets store had no room for a sheet.
+type SheetNotKept = Failure {
+    kind: FailureKind.unavailable
+    message: "There was no room to keep the sheet."
+}
+```
+
+```jadpo check project=e-step-late-failure file=domains/bakery/failures/shop_closed.jadpo hidden
+/// The shop isn't trading this week.
+type ShopClosed = Failure {
+    kind: FailureKind.rejected
+    message: "The shop is closed this week."
+}
+```
+
+```jadpo check project=e-step-late-failure file=domains/bakery/actions/keep_price_sheet.jadpo expect=step.late_failure
+use app { sheets }
+use bakery/types { PriceList, ShopState }
+use bakery/failures { SheetNotKept, ShopClosed }
+
+/// Keeps the week's price sheet for a shop that is trading.
+action keep_price_sheet(
+    price_list: PriceList,
+    state: ShopState
+) fails SheetNotKept, ShopClosed -> File {
+    var sheet: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
+        storage_full: SheetNotKept
+    }
+    if (state == ShopState.closed) {
+        reject ShopClosed
+    }
+    return sheet
+}
+```
+
+```text output
+error: `keep_price_sheet` can fail for good at `reject ShopClosed`, after `sheets.put` took effect
+ --> domains/bakery/actions/keep_price_sheet.jadpo:14:9
+   |
+10 |     var sheet: File = attempt sheets.put(encoding.to_utf8(price_list), FileType.csv) {
+   |                               ---------- takes effect first
+14 |         reject ShopClosed
+   |         ^^^^^^^^^^^^^^^^^ can fail with `ShopClosed`
+  reason: Once a changing call has taken effect, a failure that ends `keep_price_sheet` for good rolls back its writes but not what `sheets.put` did, and a retry fails the same way; a failure of kind `unavailable` or `rate_limited` is retried instead, and one handled with `match` doesn't end it.
+  next: Check the condition before `sheets.put`, record what happened and finish in a subscriber of an event `keep_price_sheet` emits, or undo `sheets.put` as another step in a `match` arm, or write `decline step.late_failure: "<why>"` above it if this is deliberate (agent)
+  rule: step.late_failure
+  help: docs/language/12-jobs-and-events.html#step-late-failure
+
+check failed: 1 error, 6 files
+```
+
 ### `step.settings_invalid`
 
 `steps:` holds one setting, `encryption_key:`, which reads a `SigningKey`
@@ -4732,7 +4839,10 @@ keeps of several changing calls in one action, with the errors that name
 unfinished records as operator items, `new_key_on:` and `jadpo runs
 unfinished` ("What an operator sees"). Built in chunk 7.5d: fakes keeping
 keys with `lost` and `in_use`, and `jadpo test`'s crash at each step
-boundary (area 13). Built in chunk 7.5f: each step's state under its
+boundary (area 13). Built in chunk 7.5e: the late-failure warning,
+`step.late_failure`, and the sum of a route's outside calls against its
+deadline ("Several changing calls in one action").
+Built in chunk 7.5f: each step's state under its
 request's or delivery's line in `jadpo dev`, and the metric and alert
 on unfinished records ("Several changing calls in one action").
 
@@ -5012,6 +5122,7 @@ Not yet:
 |---|---|---|
 | Multi-step calls' encryption key | Recorded answers are encrypted with `application { steps: { encryption_key: config.step_encryption_key } }`, a `SigningKey` setting rotated as grants' `encryption_key:` is; required only when some action makes several changing calls, a compile error naming the first such action otherwise (decided for Richard, following grants) | 2026-10-20 |
 | Development and the metric, chosen in chunk 7.5f | Each the conservative reading. Until area 17's request timelines (`jadpo trace`), a request's timeline in `jadpo dev` is its line and the trace lines under it, so each step a request's action reached is a trace line there, in place of the call it made; a delivery, which `jadpo dev` didn't print, gets a line of its own only when its subscriber's action reached steps under a record, since that is when one needs following, with `jadpo deliveries show <id>` under it when the attempt failed, parked or diverged. A step's state is what this run made of it, from the record: `replayed` (answered on an earlier run), `answered`, its failure's code, `in doubt` (sent, no answer kept), `diverged` or `outcome unknown` (in doubt and not to be sent again), with where its answer came from; never its request, answer or key, nor the key's generation. The metric counts the records not abandoned, a run under way included, and gives when the oldest's first run started; the tick carries it for each store that keeps records, until telemetry (area 16) sends it. The alert holds once a record has been unfinished a day from its first run's start, a subscriber's default `within:` and a route's key's lapse, so no retry with the default budget is still to finish it; each such record is marked in `jadpo_step_records.alerted_at`, and the tick raises the alert only when none still unfinished was marked before, so it is raised once until no record is unfinished past a day, by one instance's tick. `jadpo deliveries` shows it in its default list and with `--state diverged` or `unfinished` (decided for Richard) | 2026-10-20 |
+| The late-failure warning and the deadline sum, chosen in chunk 7.5e | Each the conservative reading. A failure ends a run for good unless its kind is `unavailable` or `rate_limited`, the two retried ("Retries and giving up"); one whose kind isn't known counts as ending it. A point after the first changing call is an `attempt` passing a failure on (the failures its arms map to, or else the call's or write's own), `reject` and `propagate`; a failure handled by an outcome `match` isn't one. Where two ways meet, a changing call on either may have been made. One finding for each action, at its first point, the others shown beside it, so one `decline` answers it, as declines answer one finding each. A package's action is never told, since the app decides what can be left behind: its surface lists each failure that can follow its own changing call as `after_effect`, and an app's `attempt` of it is a point even before the app's own first changing call; an app's action called before any is told itself instead. The deadline sum is one analysis over every outside call a route reaches, a provider's operation and an `ai` call alike, so chunk 5.5v6's streaming routes rely on it: a provider call through a connection costs its `timeout:` (10s by default) times its `retry: { attempts: }` (3), a package's action its own calls through the connection the app called it through, and `ai.generate` its `timeout:` times its `attempts:`; the waits between attempts and `within:` aren't counted, and a store's `put` and `read` have no `timeout:` and cost nothing. The ways are summed and the longest compared with the route's `deadline:` (10s by default): more is `route.calls_past_deadline` at the route, a plain mistake, not declinable (area 1, question 11), whatever its API; equal fits. Schedules and subscribers have no deadline to compare (decided for Richard) | 2026-10-20 |
 | Tests, chosen in chunk 7.5d | Each the conservative reading. A package's fake keeps a keyed call's first answer under its key, as its provider does: the same key and request are given it again without taking a scripted answer, and a different request the package's `reused:` answer (with none, a refusal without a code, a fault). A failure is kept as Stripe keeps one, whatever the package's `replays_failures:`, unless its kind is `unavailable` or `rate_limited`, so a step sent again after a crash is answered as it was the first time. `lost` acted: what it did, the generated default, answers the next call under its key. `in_use` is another runner's request under the key, the one that acts, so it keeps nothing and answers as `unavailable`; `unavailable` and `misconfigured` keep nothing either. `jadpo dev`'s fake keeps keys the same way, its last 10,000. Crash points count every step a test's run reaches under a record, a step sent again counted again, across the whole run; only a run that passed is crashed, once for each boundary of each step, each on its own copy of the database with a fresh fake, and the first crash that fails is the one reported, with a `crash` line first. A crash isn't counted as an attempt: the delivery is given back, due at once, and a route's claim is given up and its request sent again under its key. A crashed run whose fake acted more or less often than the run without one is a defect in Jadpo, reported as `test.fault`. A delivery that stops as `diverged` between a test's steps ends the test as `test.subscriber_failed`, since it never finishes; one parked as `outcome_unknown` still doesn't. Each delivery attempt in a test counts its keyed calls from none under the delivery's own key, as a runner's fresh context does, and gives the test's back after. An `ai.generate` call kept as a step (chunk 5.5v3) gets crash points like any other step; the `ai` fake keeps no keys, area 21 asking none of it, so a step sent again after a crash once it was answered takes the prompt's next scripted answer, as a model asked again answers afresh. Crash points have no switch to turn them off (decided for Richard) | 2026-10-20 |
 | Operators, chosen in chunk 7.5c | Each the conservative reading. A route's record becomes an item once a day has passed since its last run took it (area 11's 24 hours), whatever its own `window:`; before that it is its client's to retry, and an operator can only abandon it, since only its client holds the request. "Not done" acts on the record's last step when it has no answer or failed, clearing its answer and moving its key to the next generation, with its window counted from the operator's action; with nothing in doubt it is a plain retry, and on a delivery with no record it is `retry` (failed) or `resolve --not-done` (in doubt). A retry resets the record's generation to none with the delivery's attempts. A delivery with a record is refused `dismiss` and `resolve --done`, pointing at `abandon`; `abandon` on one without is refused. A record whose answers were dropped can't be retried, only abandoned. Answers are dropped 30 days after the record's last run; an abandoned record and its delivery go 30 days after the abandon. A route's client retrying under an abandoned record's key stops as a fault, answered `500`, sending nothing. `new_key_on:` sends again once per call; a second such answer is the operation's failure. `show` never shows a key: the CLI reads no setting it would be derived from. `jadpo runs unfinished` requires `--build`, refuses a build the checkout doesn't make (naming the one it does), lists a record whose build differs and whose action's step shape the build changes or no longer keeps, and a running batch run whose call the build changes or no longer has; it succeeds whatever it lists, as listing commands do (decided for Richard) | 2026-10-20 |
 | The record, chosen in chunk 7.5b | Each the conservative reading, where the pages left it open. A record is kept only where the action's key survives a retry: a subscriber's delivery, and a route whose API requires `Idempotency-Key` under the key it claimed; a test calling the action directly keeps none. It is one row keyed by a digest of the key's scope and the key, with a row per step, in the store the action writes or `events: { store: }`'s. A request's fingerprint is an HMAC-SHA-256 of each top-level field as the provider is sent it, by its name there, under a key derived from the steps key (checked under the current and the previous one), so a low-entropy field can't be guessed from it; an answer is sealed with XChaCha20-Poly1305 under another key derived from it (`crypto.encrypt`'s construction; grants' encryption isn't built yet), bound to the record and the step. The generation every write checks is a delivery's attempt or a route's claim time; a write takes the record over from an equal or older one only. A rerun is checked step by step (its operation and fields) and at the end (every recorded step replayed), before anything more is sent; the record keeps the build it started under (until area 18's build id, a digest of every graph node's key and digest) and a digest of its step shape for roadmap 7.5c's `jadpo runs unfinished`, and a rerun doesn't compare the digest, since steps added after the last recorded one aren't a change. A step answered "did nothing" (`unavailable`, `misconfigured`) stays in doubt, so the window rule still holds it. A `put` keeps its object under a key derived from the record and its step and goes again whatever the window. `diverged` is a runtime fault that holds a delivery in the state `diverged` with the step, its operation and the fields; a route answers it `500` and keeps no response, so a client's retry after a fix finishes it. `new_key_on:` comes with 7.5c's new key generation (decided for Richard) | 2026-10-20 |

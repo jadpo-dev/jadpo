@@ -149,6 +149,13 @@ fn one<E: Executor>(
         let env = TestEnv::new(&test.key);
         let host = env.host();
         let mut ctx = Ctx::new(executor.places(), &host, env.env);
+        // A recording of a prompt's answer, read through each type the
+        // prompt is asked for as (chunk 5.5v4).
+        if let Some(read) = executor.prompt_recording(&mut ctx, &test.file) {
+            return read
+                .err()
+                .map(|unread| Box::new(outcome::prompt_recording(sources, test, &unread, rerun)));
+        }
         return match executor.recording(&mut ctx, &test.file) {
             Some(Ok(())) => None,
             Some(Err(unread)) => {

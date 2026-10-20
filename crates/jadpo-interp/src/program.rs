@@ -861,6 +861,23 @@ impl Executor for Program {
         ))
     }
 
+    fn prompt_recording(
+        &self,
+        ctx: &mut Ctx<'_>,
+        file: &str,
+    ) -> Option<Result<(), jadpo_runtime::prompt_recordings::Unread>> {
+        let recording = self
+            .plan()
+            .prompt_recordings()
+            .iter()
+            .find(|recording| recording.file == file)?;
+        Some(jadpo_runtime::prompt_recordings::check(
+            ctx,
+            &self.stored_json(),
+            recording,
+        ))
+    }
+
     fn purge(&self, entity: &str) -> Option<(&jadpo_std::write::PurgePlan, Option<i64>)> {
         let purges = self.plan().purges();
         let at = purges.iter().position(|plan| plan.entity == entity)?;

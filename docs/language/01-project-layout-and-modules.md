@@ -152,7 +152,10 @@ area 3's [`constant.similar_exists`](03-logic.md#constant-similar-exists),
 area 21's [`query.nearest_exact`](21-ai.md#query-nearest-exact)
 (chunk 5.5v1c) and area 12's
 [`type.batch_order_updatable`](12-jobs-and-events.md#type-batch-order-updatable),
-a batch walking a query in an order an update can change (chunk 6.4b3);
+a batch walking a query in an order an update can change (chunk 6.4b3),
+and area 12's [`step.late_failure`](12-jobs-and-events.md#step-late-failure),
+a failure that can end an action for good after a changing call took
+effect (chunk 7.5e);
 the other judgement calls question 11 lists join as their rules are
 built. Naming any other rule, or one Jadpo doesn't have,
 is [`decline.not_declinable`](#decline-not-declinable), which names the
@@ -1535,7 +1538,7 @@ error: `layout.unused_declaration` can't be declined
   |
 5 | decline layout.unused_declaration: "Kept for next quarter"
   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ a plain mistake
-  reason: Only judgement calls can be declined: `constant.similar_exists`, `email.field_unused`, `library.similar_exists`, `package.standard_candidate`, `query.nearest_exact`, `translation.field_unused`, `type.batch_order_updatable`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
+  reason: Only judgement calls can be declined: `constant.similar_exists`, `email.field_unused`, `library.similar_exists`, `package.standard_candidate`, `query.nearest_exact`, `step.late_failure`, `translation.field_unused`, `type.batch_order_updatable`, `type.standard_exists` and `type.variant_retired`. `layout.unused_declaration` reports a mistake, which only a fix answers.
   next: Remove the `decline` line, and fix what `layout.unused_declaration` reports if it fires (agent)
   rule: decline.not_declinable
   help: docs/language/01-project-layout-and-modules.html#decline-not-declinable
@@ -2591,7 +2594,7 @@ integrations in `shared/providers/`, both laid out as `shared/` is.
      | A personal field nothing reads | 15 | Kept for a legal reason and read only by export |
      | Rate limits counted in memory | 16 | One instance, by design |
      | An email that would fail the deliverability checks | 16 | An image-only notice can be deliberate |
-     | A write refusable after a changing call (proposed) | 11, question open there | The condition may be unable to change |
+     | `step.late_failure`, a failure after a changing call (decided 2026-10-16 in area 11's question 26; built in chunk 7.5e) | 12 | The condition may be unable to change |
      | #88's warnings (an unhandled failure, an unused template field) | #88 | Sorted when #88 merges |
 
      Plain mistakes are never declinable: every other rule, including area
