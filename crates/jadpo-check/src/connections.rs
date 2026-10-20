@@ -119,6 +119,12 @@ pub struct Idempotency {
     pub in_use: Option<String>,
     /// The provider's error code for a key sent with a different request.
     pub reused: Option<String>,
+    /// How long the provider keeps a key, in milliseconds (`window:`).
+    pub window_ms: Option<u64>,
+    /// The provider's error code for a key that can't be used again.
+    pub new_key_on: Option<String>,
+    /// Whether the provider replays a failed answer under the same key.
+    pub replays_failures: bool,
 }
 
 /// One connection to a provider package, as `app.jadpo` gives it.
@@ -498,6 +504,20 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                         }
                         Some("in_use") => idempotency.in_use = text_of(&inner),
                         Some("reused") => idempotency.reused = text_of(&inner),
+                        Some("new_key_on") => idempotency.new_key_on = text_of(&inner),
+                        Some("window") => {
+                            idempotency.window_ms =
+                                match inner.value().as_ref().map(Const::from_expr) {
+                                    Some(Const::Duration(text)) => jadpo_std::Dur::parse(&text)
+                                        .and_then(|dur| u64::try_from(dur.millis).ok()),
+                                    _ => None,
+                                };
+                        }
+                        Some("replays_failures") => {
+                            idempotency.replays_failures = inner
+                                .value()
+                                .is_some_and(|value| tree::written(value.syntax()) == "true");
+                        }
                         _ => {}
                     }
                 }

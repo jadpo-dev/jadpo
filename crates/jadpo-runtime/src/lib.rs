@@ -107,6 +107,7 @@ pub mod runner;
 pub mod schedules;
 pub mod serve;
 pub mod statements;
+pub mod steps;
 mod store;
 pub mod test_steps;
 pub mod webhooks;

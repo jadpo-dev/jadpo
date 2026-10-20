@@ -31,6 +31,15 @@
 //!   route whose API requires the key, that writes no store, with no
 //!   `events: { store: }` to keep its record in; one that emits is told
 //!   the same by `event.store_required`.
+//! - **`step.encryption_key_required`** (chunk 7.5b): the first action
+//!   making several changing calls on one way, when `application {
+//!   steps: { encryption_key: } }` names no `SigningKey` setting to encrypt
+//!   their answers with; `step.settings_invalid` for a `steps:` block that
+//!   doesn't read ([`steps_settings`]).
+//!
+//! The runtime's record of such an action is planned here too
+//! ([`record_plans`]): the store it is kept in and a digest of its step
+//! shape.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -723,6 +732,29 @@ fn body_problems(
             )),
         );
     }
+    // The answers of an action with several changing calls are kept
+    // encrypted, under the key `application { steps: }` names (decided
+    // 2026-10-20): reported once, at the first such action.
+    if steps.several()
+        && !steps_settings(db, project).written
+        && first_several(db, project).as_ref() == Some(key)
+        && let Some(made) = walk.made.first()
+    {
+        out.push(
+            Diagnostic::new(
+                &rule::STEP_ENCRYPTION_KEY_REQUIRED,
+                format!(
+                    "`{action}` makes {} changing calls, but `app.jadpo` names no key to encrypt their answers with",
+                    steps.longest
+                ),
+            )
+            .at(names.span(body, made.site), "its answers are kept")
+            .reason(format!(
+                "Each answer of an action with several changing calls is kept, encrypted, until the action commits, so a retry can replay it; `application {{ steps: {{ encryption_key: }} }}` names the `SigningKey` setting it is encrypted with, and `{action}` is the first action that needs it."
+            ))
+            .next("Add `steps: { encryption_key: config.step_encryption_key }` to `application { }` in `app.jadpo`, and declare `step_encryption_key: SigningKey` in `config.jadpo`"),
+        );
+    }
     // A run's items and its end, each run as a batch of its own.
     for (fact, site) in facts_of(body) {
         let Fact::Batch(batch) = fact else {
@@ -854,5 +886,328 @@ fn schedule_problems(
             .reason("Several changing calls are each recorded under their action's key, so a retry carries on from the last answer instead of sending them again; a schedule's retry is its next run, under a key of its own.")
             .next("Emit an event for each piece of work and make the calls in its subscriber"),
         );
+    }
+}
+
+// --- the record (chunk 7.5b) ----------------------------------------------------
+
+/// `application { steps: { encryption_key: config.<name> } }`, read (area
+/// 12, "Several changing calls in one action"; decided 2026-10-20): the
+/// `SigningKey` setting a record's answers are encrypted with.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StepsRead {
+    /// The setting `encryption_key:` reads.
+    pub encryption_key: Option<String>,
+    /// Whether `app.jadpo` writes a `steps:` block at all: one that doesn't
+    /// read is reported as itself, not as a missing key.
+    pub written: bool,
+    pub problems: Vec<Diagnostic>,
+}
+
+/// The project's `steps:` settings, with `step.settings_invalid` for each
+/// member that doesn't read as one.
+#[salsa::tracked(returns(ref))]
+pub fn steps_settings(db: &dyn Db, project: Project) -> Arc<StepsRead> {
+    use jadpo_syntax::ast::{AstNode, Decl, Expr};
+
+    use crate::tree::{self, dotted, node_span};
+    use crate::types::TypeView;
+    let mut out = StepsRead::default();
+    let Some(file) = project
+        .files(db)
+        .iter()
+        .find(|file| file.path(db) == jadpo_db::PROJECT_FILE)
+    else {
+        return Arc::new(out);
+    };
+    let Some(source) = tree::source(db, *file) else {
+        return Arc::new(out);
+    };
+    let path = file.path(db);
+    let declare = "Declare `step_encryption_key: SigningKey` in `config.jadpo`, and write `encryption_key: config.step_encryption_key`";
+    for decl in source.decls() {
+        let Decl::SingletonDecl(singleton) = decl else {
+            continue;
+        };
+        if singleton.keyword().map(|t| t.text().to_string()).as_deref() != Some("application") {
+            continue;
+        }
+        for (key, member) in tree::members(singleton.member_list()) {
+            if tree::name_text(&key).as_deref() != Some("steps") {
+                continue;
+            }
+            out.written = true;
+            let Some(block) = member.block() else {
+                out.problems.push(
+                    Diagnostic::new(&rule::STEP_SETTINGS_INVALID, "`steps:` holds no block")
+                        .at(node_span(path, member.syntax()), "not a block")
+                        .reason("`steps: { encryption_key: config.<name> }` names the `SigningKey` setting the answers of an action with several changing calls are encrypted with while they are kept.")
+                        .next(declare),
+                );
+                continue;
+            };
+            for (setting, entry) in tree::members(Some(block)) {
+                let name = tree::name_text(&setting).unwrap_or_default();
+                if name != "encryption_key" {
+                    out.problems.push(
+                        Diagnostic::new(
+                            &rule::STEP_SETTINGS_INVALID,
+                            format!("`{name}` isn't a steps setting"),
+                        )
+                        .at(node_span(path, setting.syntax()), "not a setting")
+                        .reason("`steps:` holds one setting, `encryption_key:`, the `SigningKey` setting the answers of an action with several changing calls are encrypted with.")
+                        .next(format!("Remove `{name}:`")),
+                    );
+                    continue;
+                }
+                let value = entry.value();
+                let span = value.as_ref().map_or_else(
+                    || node_span(path, entry.syntax()),
+                    |value| node_span(path, value.syntax()),
+                );
+                let read = value
+                    .as_ref()
+                    .and_then(dotted)
+                    .filter(|(first, rest)| {
+                        tree::name_ref_text(first).as_deref() == Some("config") && rest.len() == 1
+                    })
+                    .and_then(|(_, rest)| rest.first().and_then(tree::name_ref_text));
+                let Some(read) = read else {
+                    let literal = matches!(value, Some(Expr::Literal(_)));
+                    let (message, label) = if literal {
+                        (
+                            "An encryption key is written in the source",
+                            "a secret in source",
+                        )
+                    } else {
+                        (
+                            "`encryption_key:` doesn't read a setting",
+                            "not `config.<name>`",
+                        )
+                    };
+                    out.problems.push(
+                        Diagnostic::new(&rule::STEP_SETTINGS_INVALID, message)
+                            .at(span, label)
+                            .reason("The key a record's answers are encrypted with comes only from secret configuration (area 10): a `SigningKey` setting, read as `config.<name>`.")
+                            .next(declare),
+                    );
+                    continue;
+                };
+                let config = crate::config::config(db, project);
+                if let Some(found) = config.setting(&read) {
+                    let lookup = Lookup::new(db, project);
+                    if lookup.base_prim(&found.ty) != Some(jadpo_std::Builtin::SigningKey) {
+                        out.problems.push(
+                            Diagnostic::new(
+                                &rule::STEP_SETTINGS_INVALID,
+                                format!("`encryption_key:` reads `{read}`, which isn't a `SigningKey`"),
+                            )
+                            .at(span, format!("`{read}` is `{}`", found.ty))
+                            .reason("A record's answers are encrypted with a `SigningKey` setting: secret, at least 32 characters, and replaced by moving the old value to the variable with `_PREVIOUS` after its name (area 10), as grants' `encryption_key:` is.")
+                            .next(format!("Declare `{read}: SigningKey` in `config.jadpo`")),
+                        );
+                        continue;
+                    }
+                }
+                out.encryption_key = Some(read);
+            }
+        }
+    }
+    Arc::new(out)
+}
+
+/// The first action, in key order, whose longest way makes several
+/// changing calls: where `step.encryption_key_required` is reported when
+/// `app.jadpo` names no key.
+#[salsa::tracked(returns(ref))]
+pub fn first_several(db: &dyn Db, project: Project) -> Option<Key> {
+    action_steps(db, project)
+        .iter()
+        .find(|(key, steps)| key.kind() == Some(Kind::Action) && steps.several())
+        .map(|(key, _)| key.clone())
+}
+
+/// The store the record of action `action` is kept in: the one it
+/// writes, else the one `events: { store: }` names, as its handled record
+/// and its outbox are (area 12, "Outbox placement, settled").
+pub fn record_store(db: &dyn Db, project: Project, action: &str) -> Option<String> {
+    crate::types::written_stores(db, project)
+        .get(action)
+        .and_then(|stores| stores.keys().next().cloned())
+        .or_else(|| crate::events::events_settings(db, project).store.clone())
+}
+
+/// What the runtime keeps for each action that makes several changing
+/// calls and is run where its key survives a retry (chunk 7.5b), by key:
+/// the store its record is kept in and a digest of its step shape.
+#[salsa::tracked(returns(ref))]
+pub fn record_plans(db: &dyn Db, project: Project) -> BTreeMap<Key, jadpo_std::steps::RecordPlan> {
+    let all = action_steps(db, project);
+    let mut bodies_by_key = AllBodies::new();
+    for &file in project.files(db) {
+        for (key, body) in bodies(db, project, file) {
+            bodies_by_key.entry(key).or_insert((file, body));
+        }
+    }
+    let calls = Calls::new(db, project);
+    let mut out = BTreeMap::new();
+    for key in resumable_runs(db, project) {
+        if !all.get(key).is_some_and(Steps::several) {
+            continue;
+        }
+        let Some(store) = record_store(db, project, key.name()) else {
+            continue;
+        };
+        let mut text = String::new();
+        let mut seen = BTreeSet::new();
+        shape(
+            db,
+            project,
+            &bodies_by_key,
+            &calls,
+            key,
+            &mut seen,
+            &mut text,
+        );
+        let digest = blake3::hash(text.as_bytes()).to_hex().to_string();
+        out.insert(
+            key.clone(),
+            jadpo_std::steps::RecordPlan {
+                store,
+                shape: digest,
+            },
+        );
+    }
+    out
+}
+
+/// Writes the step shape of action `key` to `out`: each outside call by
+/// its operation (`pay.payments.create`, `sheets.put`) in the order its
+/// body makes them, each way through an `if` or a `match` in brackets,
+/// a `for` body in braces, and an action it calls in place.
+fn shape(
+    db: &dyn Db,
+    project: Project,
+    bodies: &AllBodies,
+    calls: &Calls,
+    key: &Key,
+    seen: &mut BTreeSet<Key>,
+    out: &mut String,
+) {
+    let Some((file, body)) = bodies.get(key) else {
+        return;
+    };
+    if !seen.insert(key.clone()) {
+        return;
+    }
+    let names = Names::of(db, *file);
+    let package = package_of(db, project, *file);
+    let mut walker = Shape {
+        db,
+        project,
+        package: package.as_deref(),
+        bodies,
+        calls,
+        body,
+        names: names.as_ref(),
+        seen,
+        out,
+    };
+    walker.block(&body.block);
+    walker.seen.remove(key);
+}
+
+struct Shape<'a, 'o> {
+    db: &'a dyn Db,
+    project: Project,
+    package: Option<&'a str>,
+    bodies: &'a AllBodies,
+    calls: &'a Calls,
+    body: &'a Body,
+    names: Option<&'a Names<'a>>,
+    seen: &'o mut BTreeSet<Key>,
+    out: &'o mut String,
+}
+
+impl Shape<'_, '_> {
+    fn block(&mut self, block: &[SiteId]) {
+        for &id in block {
+            self.site(id);
+        }
+    }
+
+    fn site(&mut self, id: SiteId) {
+        let body = self.body;
+        let node = &body.site(id).node;
+        match node {
+            Node::Stmt(Stmt::If {
+                arms, otherwise, ..
+            }) => {
+                self.out.push_str("if(");
+                for arm in arms {
+                    if let Some(site) = arm.condition {
+                        self.site(site);
+                    }
+                    self.out.push('[');
+                    self.block(&arm.then);
+                    self.out.push(']');
+                }
+                self.out.push('[');
+                self.block(otherwise);
+                self.out.push_str("])");
+            }
+            Node::Stmt(Stmt::For { list, body, .. }) => {
+                if let Some(site) = *list {
+                    self.site(site);
+                }
+                self.out.push('{');
+                self.block(body);
+                self.out.push('}');
+            }
+            Node::Expr(Expr::Match { subject, arms, .. }) if !arms.is_empty() => {
+                if let Some(site) = *subject {
+                    self.site(site);
+                }
+                self.out.push_str("match(");
+                for arm in arms {
+                    self.out.push('[');
+                    match &arm.body {
+                        ArmBody::Value(site) => self.site(*site),
+                        ArmBody::Block(block) => self.block(block),
+                        ArmBody::Empty => {}
+                    }
+                    self.out.push(']');
+                }
+                self.out.push(')');
+            }
+            _ => {
+                for site in children(node) {
+                    self.site(site);
+                }
+                match does(node) {
+                    Does::Calls => {
+                        if self.calls.of(node, self.package).is_some()
+                            && let Some(names) = self.names
+                        {
+                            self.out.push_str(&names.name(body, id));
+                            self.out.push(';');
+                        }
+                    }
+                    Does::Joins(callee) => {
+                        let callee = callee.clone();
+                        shape(
+                            self.db,
+                            self.project,
+                            self.bodies,
+                            self.calls,
+                            &callee,
+                            self.seen,
+                            self.out,
+                        );
+                    }
+                    Does::Writes | Does::Nothing => {}
+                }
+            }
+        }
     }
 }
