@@ -30,7 +30,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use jadpo_std::ai::{AiPlan, AiUrl, StreamSite, events};
+use jadpo_std::ai::{AiDriver, AiPlan, AiUrl, StreamSite, events};
 use jadpo_std::subscriber::Repeat;
 use jadpo_std::{HttpMethod, RuleKey};
 use jadpo_value::Value;
@@ -547,7 +547,7 @@ impl EventStream {
 /// The settings a call reads, by number, for its model and its address.
 pub fn settings_read(plan: &AiPlan, site: &StreamSite) -> Vec<u32> {
     let mut read: Vec<u32> = plan.model(&site.model).into_iter().collect();
-    if let AiUrl::Setting(at) = &plan.url {
+    if let AiDriver::OpenAiCompatible(AiUrl::Setting(at)) = &plan.driver {
         read.push(*at);
     }
     read
@@ -590,12 +590,15 @@ pub async fn stream(
             Ok(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         });
-    let base = match &ai.plan.url {
-        AiUrl::Written(text) => Some(text.clone()),
-        AiUrl::Setting(at) => match setting(*at) {
+    // Through the built-in driver only: a package's `stream:` mapping
+    // comes with chunk 5.5v7, and the checker refuses a stream through one.
+    let base = match &ai.plan.driver {
+        AiDriver::OpenAiCompatible(AiUrl::Written(text)) => Some(text.clone()),
+        AiDriver::OpenAiCompatible(AiUrl::Setting(at)) => match setting(*at) {
             Some(Value::Text(text)) => Some(text.to_string()),
             _ => None,
         },
+        AiDriver::Package(_) => return defect("a stream through a package's connection"),
     };
     let made = Call::new(&ai.plan.connection, &site.prompt, prompt, Repeat::Safe);
     let (Some(model), Some(base)) = (

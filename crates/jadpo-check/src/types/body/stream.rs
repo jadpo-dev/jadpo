@@ -194,6 +194,27 @@ impl Body<'_> {
                 .next("Add `ai: { connection: <name>  models: { default: config.<name> } }` to `application { }` in `app.jadpo`, naming a connection with `driver: Driver.openai_compatible`"),
             );
             ok = false;
+        } else if let Some(connection) = &settings.connection
+            && !crate::ai::model_connections(self.db, self.project)
+                .list
+                .iter()
+                .any(|found| found.name == *connection)
+        {
+            // A package fills `ai` through its `provide ai { generate: }`;
+            // its `stream:` mapping comes later (area 21, "How a provider
+            // fills it").
+            self.out.push(
+                Diagnostic::new(
+                    &rule::TOOLCHAIN_NOT_BUILT_YET,
+                    format!("`{written}` through a package's connection isn't built yet"),
+                )
+                .at(span, "decided, not built")
+                .reason(format!(
+                    "`{connection}` is a package's, and a package maps `ai.stream` with `provide ai {{ stream: }}`, which roadmap chunk 5.5v7 builds; this compiler streams only through `Driver.openai_compatible`."
+                ))
+                .next("Stream through a connection with `driver: Driver.openai_compatible`, or ask with `ai.generate` for now"),
+            );
+            ok = false;
         } else if let Some((at, model)) = &options.model
             && settings.connection.is_some()
             && !settings.models.iter().any(|(name, _)| name == model)

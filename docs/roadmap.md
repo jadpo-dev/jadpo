@@ -1673,7 +1673,8 @@ The design is area 11 as revised on 2026-10-16, with its research in
 - [ ] **5.5v7 OpenAI and Anthropic packages** `opus · high` (area 21),
   after 5.5v3b, 5.5v4 and 5.5v6: two provider packages filling `ai`, each
   with its context and price tables, recordings and `jadpo package conform
-  <package> ai`. **Needs Richard** for the API keys the live conformance run uses.
+  <package> ai`, and a package's `provide ai { stream: }` mapping (5.5v6
+  streams through the built-in driver only). **Needs Richard** for the API keys the live conformance run uses.
 - [x] **7.7d Fixes found in Phase 7** `opus · high` (found in chunks
   7.7c2 and 5.5v3): a served OpenAPI schema keeps a field's inline rules
   (`reply: Text { max_length: 2000 }` gives `maxLength`, and the same for
