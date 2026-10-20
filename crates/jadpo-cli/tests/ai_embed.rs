@@ -276,6 +276,7 @@ fn jadpo_test_embeds_through_the_fake_and_answers_from_recordings() {
             "name": "not_covered",
             "recorded": now,
             "now": changed,
+            "next": "jadpo ai record answer_question --as not_covered",
         }])
     );
     let tested = jadpo(&root, &["test"]);
@@ -292,7 +293,7 @@ fn jadpo_test_embeds_through_the_fake_and_answers_from_recordings() {
     assert!(
         tested
             .stdout
-            .contains("next: jadpo ai show answer_question"),
+            .contains("next: jadpo ai record answer_question --as not_covered"),
         "{}",
         tested.stdout
     );

@@ -65,6 +65,7 @@ pub fn json(run: &Run) -> Json {
                     ("name", Json::from(&alert.name)),
                     ("recorded", Json::from(&alert.recorded)),
                     ("now", Json::from(&alert.now)),
+                    ("next", Json::from(alert.next().as_str())),
                 ])
             })),
         ),
@@ -332,7 +333,7 @@ pub fn schema() -> Json {
                 ("tests", "Every test that ran, in the order it ran"),
                 (
                     "alerts",
-                    "What passed but should change: each recording of a prompt's answer the run read that was made from another version of the prompt, { kind: recording_stale, file, prompt, name, recorded (the version it was made from), now (the prompt's version now) }",
+                    "What passed but should change: each recording of a prompt's answer the run read that was made from another version of the prompt, { kind: recording_stale, file, prompt, name, recorded (the version it was made from), now (the prompt's version now), next (the command that records it again) }",
                 ),
             ]),
         ),

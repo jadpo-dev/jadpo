@@ -11,6 +11,7 @@ mod ai;
 mod ai_embed;
 mod ai_generate;
 mod ai_providers;
+mod ai_record;
 mod ai_steps;
 mod ai_stream;
 mod backfills;

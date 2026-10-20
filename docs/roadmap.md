@@ -1677,16 +1677,21 @@ The design is area 11 as revised on 2026-10-16, with its research in
   OpenAI-compatible server started in the test, and the support desk end
   to end in PostgreSQL: embed, nearest query, typed answer from a
   recording). Choices in area 21's "Chosen in chunk 5.5v4".
-- [ ] **5.5v4b `jadpo ai record`** `opus · high` (area 21, "Tests"), after
-  5.5v4 (split from 5.5v4 on 2026-10-20): `jadpo ai record <prompt> --as
-  <name>`, designed with the CLI design language first, asking the
-  configured model with the prompt values of the last `jadpo dev` call or
-  a fixture, and keeping the answer as 5.5v4's recording (plain values as
-  placeholders, the prompt's version), refused for a live connection; the
-  stale recording's alert then naming it as the next step. Tested only
-  against an OpenAI-compatible server started in the test. Done when a
-  recording made by `jadpo ai record` answers a test through
-  `recorded(...)`.
+- [x] **5.5v4b `jadpo ai record`** `opus · high` (area 21, "Tests"; split
+  from 5.5v4 on 2026-10-20). Built: `jadpo ai record <prompt> --as
+  <name>`, asking the configured model once as the prompt's first
+  `ai.generate` call asks, with the values of its last `jadpo dev` call
+  (the call log now keeps a prompt's values) or `--fixture <fixture>`'s,
+  and keeping the answer as 5.5v4's recording, its plain values
+  placeholders by area 11's code, with the prompt's version; through a
+  package's connection refused when live or unset by `jadpo package
+  record`'s own refusals (`recording.refused`), and nothing kept on any
+  condition (`recording.failed`); the stale recording's alert naming it
+  as the next step, in the hint and `data.alerts[].next`. Tests in
+  `crates/jadpo-cli/tests/ai_record.rs`, against an OpenAI-compatible
+  server started in the test: a recording made from a `jadpo dev` call
+  answers a test through `recorded(...)`. Choices in area 21's "Chosen in
+  chunk 5.5v4b".
 - [ ] **5.5v5 Budgets and personal data to models** `opus · high` (area
   21, "Safety and privacy"), after 5.5v3b: the per-call, per-request,
   per-day and per-caller limits counted in the main store, the cost
