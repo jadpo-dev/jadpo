@@ -18,3 +18,7 @@ LIMIT $7
 -- $7: page size + 1 as Int8
 -- columns: uuid, text, enum TodoStatus, instant
 -- record TodoView: id = column 0, title = column 1, status = column 2
+-- row versions of todo, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "todo"
+--   WHERE "id" = ANY($1)

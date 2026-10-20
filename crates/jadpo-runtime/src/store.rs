@@ -178,6 +178,13 @@ async fn run(
                             None => defect(ctx, "a reference with no failure for none"),
                         }
                     }
+                    // Deleted while an outside call was out, after the
+                    // snapshot that loaded it closed: a concurrent change,
+                    // as repeatable read would find it (chunk 7.4).
+                    Some(Raises::Gone(_)) if ctx.loaded_before_call() => {
+                        ctx.concurrent_change();
+                        defect(ctx, "a concurrent change")
+                    }
                     Some(Raises::Gone(what)) => {
                         Stored::Fault(ctx.fault(FaultKind::Store(what.clone()), site))
                     }

@@ -367,7 +367,7 @@ pub async fn status(ctx: &mut Ctx<'_>, batches: Batches<'_>, run: &Value, site: 
             site,
         );
     };
-    let transaction = match ctx.transaction(store).await {
+    let transaction = match ctx.read_transaction(store).await {
         Ok(transaction) => transaction,
         Err(error) => return refused(ctx, error, site),
     };

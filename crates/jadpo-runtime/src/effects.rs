@@ -183,8 +183,10 @@ pub enum Unanswered {
 }
 
 /// Sends `call` from `ctx`, the one way a call leaves the process (chunk
-/// 7.0c): its value, or why it gave none. Refused while the running
-/// action's transaction is open (area 6, "Outside calls hold no
+/// 7.0c): its value, or why it gave none. What the running action has
+/// only read is a snapshot, closed before the call goes out once the
+/// versions of the rows it loaded are read (chunk 7.4); refused while a
+/// transaction that has written is open (area 6, "Outside calls hold no
 /// transaction"); in a replayed run, answered from the recording without
 /// going out (area 17); otherwise sent through the driver the host gives
 /// for its connection, logged on the invocation as it goes out and again
@@ -223,6 +225,13 @@ pub async fn send(ctx: &mut Ctx<'_>, call: Call) -> Result<Given, Unanswered> {
 /// recorded answer, or the driver's.
 pub async fn exchange(ctx: &mut Ctx<'_>, call: Call) -> Result<Answer, Unanswered> {
     let now = ctx.now();
+    // No transaction stays open while the call is out: one that has only
+    // read closes, and the next store operation begins another (area 6,
+    // "Outside calls hold no transaction"; chunk 7.4).
+    if ctx.close_snapshot().await.is_err() {
+        ctx.capabilities_mut().refused(&call, now);
+        return Err(Unanswered::Failure(Box::new(crate::unavailable())));
+    }
     if ctx.transaction_open() {
         ctx.capabilities_mut().refused(&call, now);
         return Err(Unanswered::Fault(FaultKind::CallInTransaction(call.name())));

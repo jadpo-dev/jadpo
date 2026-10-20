@@ -1577,11 +1577,14 @@ public type SlotTaken = Failure {
   `408`, `429` or that the key is still in use, or the call never left)
   and for a keyed call that may have acted, `outcome_unknown` for an
   unkeyed one that may have (a server's error, or no answer in time).
-- **Sent once no transaction is open.** The call goes through 7.0c's seam,
-  which refuses it while the action's transaction is open: until chunk
-  7.4 opens the transaction after the calls, an action makes its calls
-  before its first read or write, and one after it is the fault
-  `call_in_transaction`, sent to nobody.
+- **Sent once no transaction is open.** The call goes through 7.0c's seam.
+  Since chunk 7.4 what the action has only read before it is a snapshot,
+  closed before the call goes out, and its writes run in a transaction
+  opened after it, holding each record loaded before the call to the row
+  version it was loaded at (area 6, "Outside calls hold no transaction").
+  A call after the action's first write is still the fault
+  `call_in_transaction`, sent to nobody, and a change made while the call
+  is out runs the action again, the call repeated under its key.
 
 Built in chunk 7.2c2 and checked by this checkout's `jadpo`: a
 connection's `retry:`, and `timed_out:` mapped at the call of an

@@ -23,3 +23,8 @@ RETURNING "id", "board_id", "stage", "published_at", "archived_at", "changed_at"
 --   $1: Input(0) as Uuid
 --   $2: Now as Timestamp
 -- no row: the entity's not-found failure
+-- loaded before a call: card row input 0 held to its version first
+--   SELECT "xmin"::text
+--   FROM "card"
+--   WHERE "id" = $1
+--   FOR NO KEY UPDATE

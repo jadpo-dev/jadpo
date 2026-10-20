@@ -8,6 +8,10 @@ WHERE "id" = $1
 -- $2: clock.now as Timestamp
 -- columns: uuid, enum Stage, uuid
 -- record CardWithBoard: id = column 0, stage = column 1, board = include 0
+-- row versions of card, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "card"
+--   WHERE "id" = ANY($1)
 
 -- include 0: one, matching column 2
   SELECT "id", "name"
@@ -17,3 +21,7 @@ WHERE "id" = $1
   -- $1: keys as Array(Uuid)
   -- columns: uuid, text
   -- record BoardView: id = column 0, name = column 1
+  -- row versions of board, by the id in column 0:
+  --   SELECT "id", "xmin"::text
+  --   FROM "board"
+  --   WHERE "id" = ANY($1)

@@ -37,12 +37,16 @@ impl Request {
     }
 }
 
+/// What a test runs while a request is held, before it is answered.
+type Hold = Arc<dyn Fn(&Request) + Send + Sync>;
+
 #[derive(Default)]
 struct State {
     requests: Vec<Request>,
     /// Each answer's status, body and how long it waits first, in
     /// milliseconds.
     answers: VecDeque<(u16, String, u64)>,
+    hold: Option<Hold>,
 }
 
 pub struct FakeProvider {
@@ -99,6 +103,13 @@ impl FakeProvider {
             .push_back((status, body.to_string(), millis));
     }
 
+    /// Runs `hold` with each request as it arrives, on the server's
+    /// thread, and answers it only once `hold` returns: what a test does
+    /// while a call is out (chunk 7.4).
+    pub fn hold(&self, hold: impl Fn(&Request) + Send + Sync + 'static) {
+        self.state.lock().expect("state").hold = Some(Arc::new(hold));
+    }
+
     /// Every request so far.
     pub fn requests(&self) -> Vec<Request> {
         self.state.lock().expect("state").requests.clone()
@@ -151,19 +162,26 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
     if reader.read_exact(&mut body).is_err() {
         return;
     }
-    let (status, reply, wait) = {
-        let mut state = state.lock().expect("state");
-        state.requests.push(Request {
-            method,
-            path,
-            headers,
-            body: String::from_utf8_lossy(&body).into_owned(),
-        });
-        state
-            .answers
-            .pop_front()
-            .unwrap_or_else(|| (200, "{}".to_string(), 0))
+    let request = Request {
+        method,
+        path,
+        headers,
+        body: String::from_utf8_lossy(&body).into_owned(),
     };
+    let hold = {
+        let mut state = state.lock().expect("state");
+        state.requests.push(request.clone());
+        state.hold.clone()
+    };
+    if let Some(hold) = hold {
+        hold(&request);
+    }
+    let (status, reply, wait) = state
+        .lock()
+        .expect("state")
+        .answers
+        .pop_front()
+        .unwrap_or_else(|| (200, "{}".to_string(), 0));
     if wait > 0 {
         std::thread::sleep(Duration::from_millis(wait));
     }

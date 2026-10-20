@@ -8,3 +8,7 @@ WHERE "id" = $1
 -- columns: uuid, uuid, text, int, text, bool
 -- the caller may read a row: column 5
 -- record Ledger: id = column 0, owner_id = column 1, title = column 2, balance = column 3, import_reference = column 4
+-- row versions of ledger, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "ledger"
+--   WHERE "id" = ANY($1)

@@ -8,3 +8,7 @@ WHERE "id" = $1
 -- columns: uuid, uuid, enum Stage, instant, instant, instant, bool
 -- the caller may read a row: column 6
 -- record Card: id = column 0, board_id = column 1, stage = column 2, published_at = column 3, archived_at = column 4, changed_at = column 5
+-- row versions of card, by the id in column 0:
+--   SELECT "id", "xmin"::text
+--   FROM "card"
+--   WHERE "id" = ANY($1)
