@@ -42,7 +42,7 @@ pub struct Mark {
     pub refused: bool,
 }
 
-/// Every entity's and event's marked field, by its owner's name and its
+/// Every entity's and event's marked field, by its host's name and its
 /// own.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Marks {
@@ -291,7 +291,7 @@ pub(crate) fn read_allowed(
 /// that is personal data whatever holds it.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Holder {
-    Field { owner: String, field: String },
+    Field { host: String, field: String },
     Type(String),
 }
 
@@ -300,8 +300,8 @@ impl Holder {
     /// read with: `` `Patient.notes` ``, `` a `NhsNumber` ``.
     pub fn named(&self) -> String {
         match self {
-            Holder::Field { owner, field } => {
-                format!("`{}.{field}`", owner.rsplit('.').next().unwrap_or(owner))
+            Holder::Field { host, field } => {
+                format!("`{}.{field}`", host.rsplit('.').next().unwrap_or(host))
             }
             Holder::Type(ty) => format!("a `{ty}`"),
         }
@@ -310,7 +310,7 @@ impl Holder {
     /// The key a problem is reported once for.
     pub fn key(&self) -> String {
         match self {
-            Holder::Field { owner, field } => format!("{owner}.{field}"),
+            Holder::Field { host, field } => format!("{host}.{field}"),
             Holder::Type(ty) => ty.clone(),
         }
     }
@@ -341,19 +341,19 @@ impl Holding {
     }
 }
 
-/// What `owner`'s field `field` holds: its own marks, and the categories
+/// What `host`'s field `field` holds: its own marks, and the categories
 /// of the standard types its type is or holds.
 pub fn field_holding(
     lookup: &dyn TypeView,
     marks: &Marks,
-    owner: &str,
+    host: &str,
     field: &str,
 ) -> Option<Holding> {
     let mut holding = Holding::default();
-    let bare = owner.rsplit('.').next().unwrap_or(owner);
+    let bare = host.rsplit('.').next().unwrap_or(host);
     if let Some(mark) = marks
         .fields
-        .get(&(owner.to_string(), field.to_string()))
+        .get(&(host.to_string(), field.to_string()))
         .or_else(|| marks.fields.get(&(bare.to_string(), field.to_string())))
     {
         if let Some(category) = &mark.category {
@@ -361,7 +361,7 @@ pub fn field_holding(
         }
         holding.refused = mark.refused;
     }
-    if let Some(def) = lookup.field(owner, &[field.to_string()]) {
+    if let Some(def) = lookup.field(host, &[field.to_string()]) {
         let mut found = BTreeMap::new();
         deep(
             lookup,
@@ -421,7 +421,7 @@ pub fn deep(
                             && let Some(holding) = own_mark(marks, name, &field.name)
                         {
                             out.entry(Holder::Field {
-                                owner: name.clone(),
+                                host: name.clone(),
                                 field: field.name.clone(),
                             })
                             .or_default()
@@ -440,18 +440,18 @@ pub fn deep(
                 _ => {}
             }
         }
-        Ty::Field(owner, path) => {
+        Ty::Field(host, path) => {
             if let [field] = path.as_slice()
-                && let Some(holding) = own_mark(marks, owner, field)
+                && let Some(holding) = own_mark(marks, host, field)
             {
                 out.entry(Holder::Field {
-                    owner: owner.clone(),
+                    host: host.clone(),
                     field: field.clone(),
                 })
                 .or_default()
                 .join(&holding);
             }
-            if let Some(def) = lookup.field(owner, path) {
+            if let Some(def) = lookup.field(host, path) {
                 deep(lookup, marks, &def.declared, out, seen);
             }
         }
@@ -471,11 +471,11 @@ pub fn deep(
 }
 
 /// A field's own `personal:` and `to_models:`, as a holding.
-fn own_mark(marks: &Marks, owner: &str, field: &str) -> Option<Holding> {
-    let bare = owner.rsplit('.').next().unwrap_or(owner);
+fn own_mark(marks: &Marks, host: &str, field: &str) -> Option<Holding> {
+    let bare = host.rsplit('.').next().unwrap_or(host);
     let mark = marks
         .fields
-        .get(&(owner.to_string(), field.to_string()))
+        .get(&(host.to_string(), field.to_string()))
         .or_else(|| marks.fields.get(&(bare.to_string(), field.to_string())))?;
     let mut holding = Holding {
         categories: BTreeMap::new(),
@@ -534,8 +534,8 @@ fn shallow_ref(lookup: &dyn TypeView, ty: &TypeRef, out: &mut Vec<(String, Strin
             shallow_ty(lookup, &Ty::Named(key.name().to_string()), out, depth + 1)
         }
         TypeRef::Field(key) => {
-            if let Some((owner, field)) = key.name().rsplit_once('.')
-                && let Some(def) = lookup.field(owner, &[field.to_string()])
+            if let Some((host, field)) = key.name().rsplit_once('.')
+                && let Some(def) = lookup.field(host, &[field.to_string()])
             {
                 shallow_ty(lookup, &def.declared, out, depth + 1);
             }
@@ -570,8 +570,8 @@ fn shallow_ty(lookup: &dyn TypeView, ty: &Ty, out: &mut Vec<(String, String)>, d
                 shallow_ty(lookup, parent, out, depth + 1);
             }
         }
-        Ty::Field(owner, path) => {
-            if let Some(def) = lookup.field(owner, path) {
+        Ty::Field(host, path) => {
+            if let Some(def) = lookup.field(host, path) {
                 shallow_ty(lookup, &def.declared, out, depth + 1);
             }
         }

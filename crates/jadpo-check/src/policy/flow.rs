@@ -122,10 +122,10 @@ enum Src {
     /// whatever holds it (area 19), anywhere inside: only the walk for
     /// what reaches a model makes these ([`models`]).
     Typed { ty: String, category: String },
-    /// `owner`'s field `field`, marked personal data or kept from models,
+    /// `host`'s field `field`, marked personal data or kept from models,
     /// read from a value the walk can't follow to a record: only the walk
     /// for what reaches a model makes these ([`models`]).
-    Marked { owner: String, field: String },
+    Marked { host: String, field: String },
 }
 
 /// Which record a [`Src::Record`] or [`Src::Field`] is, when the body

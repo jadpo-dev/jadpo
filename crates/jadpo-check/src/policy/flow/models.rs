@@ -95,12 +95,12 @@ impl Walk<'_> {
         let TypeRef::Node(key) = ty else {
             return;
         };
-        let owner = key.name();
+        let host = key.name();
         let followed = held
             .whole
             .iter()
             .any(|src| matches!(shallow(src.clone()), Src::Record { .. } | Src::Param(..)));
-        if followed && flow.lookup.base(owner) == Some(FieldsBase::Entity) {
+        if followed && flow.lookup.base(host) == Some(FieldsBase::Entity) {
             return;
         }
         if held
@@ -111,9 +111,9 @@ impl Walk<'_> {
             return;
         }
         let marks = ai_personal::marks(flow.db, flow.project);
-        if ai_personal::field_holding(&flow.lookup, marks, owner, field).is_some() {
+        if ai_personal::field_holding(&flow.lookup, marks, host, field).is_some() {
             out.add(Src::Marked {
-                owner: owner.to_string(),
+                host: host.to_string(),
                 field: field.to_string(),
             });
         }
@@ -222,9 +222,8 @@ impl Walk<'_> {
             }
             entry.refused |= holding.refused;
         };
-        let field = |owner: &str, field: &str| {
-            ai_personal::field_holding(&flow.lookup, marks, owner, field)
-        };
+        let field =
+            |host: &str, field: &str| ai_personal::field_holding(&flow.lookup, marks, host, field);
         for src in prov.flat() {
             // What decided the value isn't sent with it.
             match shallow(src) {
@@ -234,13 +233,13 @@ impl Walk<'_> {
                     ..
                 }
                 | Src::Marked {
-                    owner: entity,
+                    host: entity,
                     field: name,
                 } => {
                     if let Some(holding) = field(&entity, &name) {
                         hold(
                             Holder::Field {
-                                owner: entity,
+                                host: entity,
                                 field: name,
                             },
                             &holding,
@@ -257,7 +256,7 @@ impl Walk<'_> {
                         if let Some(holding) = field(&entity, &name) {
                             hold(
                                 Holder::Field {
-                                    owner: entity.clone(),
+                                    host: entity.clone(),
                                     field: name,
                                 },
                                 &holding,
@@ -474,7 +473,7 @@ pub(super) fn subscriber_problems(db: &dyn Db, project: Project, file: File) -> 
             for name in fields {
                 if ai_personal::field_holding(&flow.lookup, marks, event, &name).is_some() {
                     prov.add(Src::Marked {
-                        owner: event.to_string(),
+                        host: event.to_string(),
                         field: name,
                     });
                 }
