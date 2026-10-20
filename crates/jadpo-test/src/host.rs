@@ -117,8 +117,8 @@ impl<D: Database> Bench<D> {
         self
     }
 
-    /// Its store.
-    pub fn database(&self) -> &D {
+    /// Its store, as the test made it.
+    pub fn store(&self) -> &D {
         &self.database
     }
 

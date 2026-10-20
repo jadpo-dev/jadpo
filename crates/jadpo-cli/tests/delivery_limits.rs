@@ -604,8 +604,8 @@ fn a_routes_within_races_a_subscribers_body_never_its_commit() {
     runtime.block_on(async {
         let work = post(&host, program, "quick").await;
         // `within:` passes the moment a commit begins.
-        host.database().committing.set(false);
-        let committing = Rc::clone(&host.database().committing);
+        host.store().committing.set(false);
+        let committing = Rc::clone(&host.store().committing);
         let mut within: LocalFuture<'_, ()> = Box::pin(std::future::poll_fn(move |_| {
             if committing.get() {
                 std::task::Poll::Ready(())

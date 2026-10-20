@@ -16,10 +16,11 @@ use std::rc::Rc;
 use jadpo_cli::{Output, run};
 use jadpo_interp::Program;
 use jadpo_runtime::{
-    Clock, Ctx, Database, Env, Executor, Host, Isolation, LocalFuture, Outcome, Row, SqlValue,
+    Clock, Ctx, Database, Env, Executor, Isolation, LocalFuture, Outcome, Row, SqlValue,
     StoreError, Transaction,
 };
 use jadpo_term::Environment;
+use jadpo_test::host::Bench;
 use jadpo_value::Value;
 
 use crate::support;
@@ -189,16 +190,6 @@ impl Database for Counted {
     }
 }
 
-impl Host for Counted {
-    fn database(&self, _store: &str) -> Option<&dyn Database> {
-        Some(self)
-    }
-
-    fn random(&self, _bytes: &mut [u8]) -> bool {
-        false
-    }
-}
-
 /// The days from 1970-01-01 to 2024-01-01.
 const FIRST_DAY: i32 = 19_723;
 
@@ -261,10 +252,10 @@ fn calls(url: &str) {
 fn call(program: &Program, url: &str, name: &str, since: i32) -> (Value, usize) {
     let runtime = jadpo_host_native::Runtime::new().expect("runtime");
     let sent = Rc::new(Cell::new(0));
-    let host = Counted {
+    let host = Bench::new(Counted {
         store: jadpo_host_native::postgres(url).expect("store"),
         sent: sent.clone(),
-    };
+    });
     let id = program.plan().find(name).expect("the action");
     let found = runtime.block_on(async {
         let env = Env {

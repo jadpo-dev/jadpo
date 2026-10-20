@@ -368,7 +368,7 @@ fn project(name: &str) -> PathBuf {
 }
 
 async fn execute(host: &Bench, sql: &str, params: &[SqlValue]) {
-    host.database()
+    host.store()
         .query_once(sql, params)
         .await
         .expect("the statement");
@@ -376,7 +376,7 @@ async fn execute(host: &Bench, sql: &str, params: &[SqlValue]) {
 
 /// Each chore's title and how many times it was ticked, by title.
 async fn ticks(host: &Bench) -> Vec<(String, i64)> {
-    host.database()
+    host.store()
         .query_once(
             "SELECT \"title\", \"ticks\"::int8 FROM \"chore\" ORDER BY \"title\"",
             &[],
@@ -393,7 +393,7 @@ async fn ticks(host: &Bench) -> Vec<(String, i64)> {
 
 /// Each tally's household, items walked and items skipped.
 async fn tallies(host: &Bench) -> Vec<(String, i64, i64)> {
-    host.database()
+    host.store()
         .query_once(
             "SELECT \"household_id\"::text, \"walked\"::int8, \"skipped\"::int8 FROM \"tally\" ORDER BY 1",
             &[],
@@ -417,7 +417,7 @@ async fn kept(host: &Bench, run: &Value) -> (String, i64) {
         other => panic!("not an identity: {other:?}"),
     };
     let rows = host
-        .database()
+        .store()
         .query_once(
             "SELECT \"state\", \"items_done\" FROM \"jadpo_batch_runs\" WHERE \"id\" = $1",
             &[id],

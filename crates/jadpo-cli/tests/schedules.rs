@@ -1371,7 +1371,7 @@ fn two_instances_ticking_raise_an_alert_once() {
     let now = T0 + 300 * MINUTE + 20_000;
     let why = runtime
         .block_on(jadpo_runtime::schedules::why::why(
-            host.database(),
+            host.store(),
             &declared,
             60_000,
             now,
@@ -1640,7 +1640,7 @@ fn a_run_on_a_deployment_is_requested_and_the_apps_own_tick_runs_it() {
     });
     let again = runtime
         .block_on(jadpo_runtime::schedules::watch::request_run(
-            host.database(),
+            host.store(),
             &host,
             &declared,
             at(1, 5),
