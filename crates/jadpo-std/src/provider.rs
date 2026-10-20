@@ -635,6 +635,40 @@ pub struct WebhookReply {
     pub number: u32,
 }
 
+/// `address` when a call may be sent to it (area 11, question 9): HTTPS,
+/// or plain HTTP to this machine, which is how a test reaches its server;
+/// a host and an optional port and path, with no credentials, query or
+/// fragment of its own. The runtime holds every provider call to it, and
+/// `ai:`'s local driver too (area 21; chunk 5.5v3).
+pub fn sendable(address: &str) -> Option<String> {
+    let address = address.trim();
+    let (secure, rest) = if let Some(rest) = address.strip_prefix("https://") {
+        (true, rest)
+    } else {
+        (false, address.strip_prefix("http://")?)
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') || rest.contains(['?', '#']) {
+        return None;
+    }
+    let host = if let Some(inner) = authority.strip_prefix('[') {
+        format!("[{}]", inner.split(']').next().unwrap_or_default())
+    } else {
+        authority
+            .rsplit_once(':')
+            .map_or(authority, |(host, _)| host)
+            .to_string()
+    };
+    if host.is_empty() {
+        return None;
+    }
+    let host = host.to_ascii_lowercase();
+    let loopback = host == "localhost"
+        || host == "[::1]"
+        || host.starts_with("127.") && host.split('.').count() == 4;
+    (secure || loopback).then(|| address.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

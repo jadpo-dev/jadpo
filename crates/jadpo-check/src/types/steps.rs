@@ -146,6 +146,8 @@ impl Calls {
                 FilesOp::Put => (Call::Safe, false),
                 FilesOp::Read => (Call::Reads, false),
             }),
+            // A model asked changes nothing (area 21; chunk 5.5v3).
+            Callee::Generate { .. } => Some((Call::Reads, false)),
             _ => None,
         }
     }

@@ -11,6 +11,7 @@ mod support;
 mod across;
 mod aggregates;
 mod ai;
+mod ai_generate;
 mod batches;
 mod bodies;
 mod calendar;

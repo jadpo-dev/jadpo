@@ -491,6 +491,14 @@ impl Program {
             jadpo_runtime::capability::Faked::new(MemoryHost::new()),
             |host, connection| host.with(&connection.name, std::rc::Rc::clone(&fake)),
         );
+        // And every model asked answered by the `ai` fake (area 21).
+        let host = match self.plan().ai() {
+            Some(ai) => host.with(
+                &ai.connection,
+                std::rc::Rc::new(jadpo_runtime::ai::AiFake::new()),
+            ),
+            None => host,
+        };
         let mut ctx = Ctx::new(self.places(), &host, Env::default());
         let ran = jadpo_runtime::block_on(self.run(&mut ctx, id, args));
         Ok(ran.unwrap_or_else(|_| {
@@ -570,6 +578,31 @@ impl Program {
             config: self.plan().config(),
             keys: &self.keys,
         }
+    }
+
+    /// What an `ai` call runs with (area 21, chunk 5.5v3): the connection
+    /// `ai:` names and its models, the prompts, and the JSON codecs their
+    /// fields and the answers' types are written and read with; `None`
+    /// for a program that asks no model.
+    pub fn ai(&self) -> Option<jadpo_runtime::ai::Ai<'_>> {
+        Some(jadpo_runtime::ai::Ai {
+            plan: self.plan().ai()?,
+            prompts: self.plan().prompts(),
+            json: self.stored_json(),
+        })
+    }
+
+    /// An `ai.generate` call of prompt `prompt`, as its site decodes it:
+    /// how a scripted value of its type is sent (chunk 5.5v3).
+    pub(crate) fn generate_site_of(&self, prompt: &str) -> Option<&jadpo_std::ai::GenerateSite> {
+        self.plan().callables().iter().find_map(|callable| {
+            callable.sites.iter().find_map(|site| match &site.decoded {
+                jadpo_plan::Decoded::Generate(generate) if generate.prompt == prompt => {
+                    Some(generate.as_ref())
+                }
+                _ => None,
+            })
+        })
     }
 
     /// What a provider call runs with (area 11, chunk 7.2c): the plan's
@@ -788,6 +821,10 @@ impl Executor for Program {
             .iter()
             .map(|connection| connection.name.as_str())
             .collect()
+    }
+
+    fn ai_connection(&self) -> Option<&str> {
+        self.plan().ai().map(|ai| ai.connection.as_str())
     }
 
     fn recording(

@@ -631,6 +631,10 @@ const MAY_ENCODE: &[(&str, &str)] = &[
         "proves a call's literal arguments",
     ),
     (
+        "crates/jadpo-check/src/types/body/generate.rs",
+        "checks `ai.generate`'s `timeout:`, a duration read by the contract's own reader",
+    ),
+    (
         "crates/jadpo-check/src/types/body/standard_rules.rs",
         "proves a standard type's rules on its literals",
     ),

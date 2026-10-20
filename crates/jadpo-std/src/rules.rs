@@ -146,6 +146,16 @@ pub enum RuleKey {
     /// A store a file is put in has no room for it (area 16, "Files";
     /// chunk 6.4b): `store.put`'s own condition.
     StorageFull,
+    /// The model declined to answer: a refusal its provider reported
+    /// (area 21, "The `ai` capability"; chunk 5.5v3). `ai.generate`'s.
+    Refused,
+    /// No complete answer from the model within the call's `timeout:`.
+    TimedOut,
+    /// The call would pass a limit, or its answer was cut off at
+    /// `max_output:`.
+    OverBudget,
+    /// The rendered prompt is longer than the model's context.
+    TooLong,
     /// A rule an object type names across its fields (area 2, "Rules
     /// across fields"): its name is carried beside the key, since an
     /// `attempt`'s arm names it by that. Never in [`RuleKey::ALL`], so no
@@ -157,7 +167,7 @@ impl RuleKey {
     /// Every key: a type's rules in the order its block lists them, then
     /// the conditions a temporal operation can fail on, each named by the
     /// option that would settle it.
-    pub const ALL: [RuleKey; 29] = [
+    pub const ALL: [RuleKey; 33] = [
         RuleKey::Min,
         RuleKey::Max,
         RuleKey::MinLength,
@@ -187,6 +197,10 @@ impl RuleKey {
         RuleKey::WrongIssuer,
         RuleKey::SamePoint,
         RuleKey::StorageFull,
+        RuleKey::Refused,
+        RuleKey::TimedOut,
+        RuleKey::OverBudget,
+        RuleKey::TooLong,
     ];
 
     /// The key as written: `max`, `min_length`.
@@ -221,6 +235,10 @@ impl RuleKey {
             RuleKey::WrongIssuer => "wrong_issuer",
             RuleKey::SamePoint => "same_point",
             RuleKey::StorageFull => "storage_full",
+            RuleKey::Refused => "refused",
+            RuleKey::TimedOut => "timed_out",
+            RuleKey::OverBudget => "over_budget",
+            RuleKey::TooLong => "too_long",
             RuleKey::Named => "rule",
         }
     }
@@ -229,8 +247,9 @@ impl RuleKey {
     /// proof settles it and only an `attempt` does: what text or bytes
     /// decode to (`malformed`, `mismatch`), whether a sealed value opens
     /// (`unreadable`), what a token says (`crypto.verify_jwt`'s) and
-    /// whether two points are the same place (`geo.bearing`'s), and
-    /// whether a store has room for a file (`storage_full`).
+    /// whether two points are the same place (`geo.bearing`'s), whether
+    /// a store has room for a file (`storage_full`), and how a model
+    /// answers (`ai.generate`'s).
     pub fn only_when_run(self) -> bool {
         matches!(
             self,
@@ -244,6 +263,25 @@ impl RuleKey {
                 | RuleKey::WrongIssuer
                 | RuleKey::SamePoint
                 | RuleKey::StorageFull
+                | RuleKey::Refused
+                | RuleKey::TimedOut
+                | RuleKey::OverBudget
+                | RuleKey::TooLong
+        )
+    }
+
+    /// Whether it is a condition of an outside call rather than of a
+    /// value: a store with no room (`storage_full`), or how a model
+    /// answered (`ai.generate`'s five, chunk 5.5v3). Only an `unavailable`
+    /// failure maps one, and `invalid:` covers none of them.
+    pub fn of_a_call(self) -> bool {
+        matches!(
+            self,
+            RuleKey::StorageFull
+                | RuleKey::Refused
+                | RuleKey::TimedOut
+                | RuleKey::OverBudget
+                | RuleKey::TooLong
         )
     }
 

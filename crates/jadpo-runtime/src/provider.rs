@@ -1364,32 +1364,7 @@ fn write_json(
 /// a host and an optional port and path, with no credentials, query or
 /// fragment of its own.
 pub fn sendable(address: &str) -> Option<String> {
-    let address = address.trim();
-    let (secure, rest) = if let Some(rest) = address.strip_prefix("https://") {
-        (true, rest)
-    } else {
-        (false, address.strip_prefix("http://")?)
-    };
-    let authority = rest.split('/').next().unwrap_or_default();
-    if authority.is_empty() || authority.contains('@') || rest.contains(['?', '#']) {
-        return None;
-    }
-    let host = if let Some(inner) = authority.strip_prefix('[') {
-        format!("[{}]", inner.split(']').next().unwrap_or_default())
-    } else {
-        authority
-            .rsplit_once(':')
-            .map_or(authority, |(host, _)| host)
-            .to_string()
-    };
-    if host.is_empty() {
-        return None;
-    }
-    let host = host.to_ascii_lowercase();
-    let loopback = host == "localhost"
-        || host == "[::1]"
-        || host.starts_with("127.") && host.split('.').count() == 4;
-    (secure || loopback).then(|| address.to_string())
+    jadpo_std::provider::sendable(address)
 }
 
 /// The value `text`, an answer as sent, holds as `op`'s output, read at

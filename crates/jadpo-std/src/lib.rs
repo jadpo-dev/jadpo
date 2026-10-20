@@ -53,6 +53,7 @@
 )]
 
 pub mod across;
+pub mod ai;
 pub mod batch;
 mod builtin;
 pub mod config;
