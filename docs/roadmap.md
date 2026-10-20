@@ -1385,15 +1385,30 @@ The design is area 11 as revised on 2026-10-16, with its research in
   (`WebhookHandshake.sns`, `.slack`, `.microsoft_graph`); and Twilio's
   HMAC-SHA1 over a form body and SNS's certificates, which fetch the
   signing certificate from AWS through an outbound guard.
-- [ ] **7.7c Queues through `receiving`** `opus · high`, after 7.7: the
-  `receiving` capability (`type_at:`, `id_at:`, `events:`, an app event's
-  `wire_name:`), each message its event for the app's subscribers,
-  acknowledged after the subscriber's transaction commits, repeats dropped
-  by id in `jadpo_received_events`, an unlisted type or a message that
-  keeps failing parked for an operator in `jadpo deliveries`; the SQS
-  package, tested against a local fake of SQS's JSON API; and on Workers
-  the Cloudflare Queues driver, its seam and consumer configuration built
-  and unit-tested here, deploying it Phase 8's.
+- [x] **7.7c Queues through `receiving`** `opus · high` (split on
+  2026-10-20: the Cloudflare Queues driver is 7.7c2). Built: `receiving:`
+  in `application { }` (`type_at:`, `id_at:`, `events:` named as code
+  names them, each with a text `wire_name:` when the queue has types;
+  `receiving.invalid`), a package's `provides/receiving.jadpo` mapping
+  `receive:` and `acknowledge:` onto its own operations as data, and the
+  tick fetching each queue through its connection, at least every 10
+  seconds: each message kept once as its event, its id in
+  `jadpo_received_events` with its outbox row, and only then deleted from
+  the queue; an unlisted type, an unreadable message or one over 64 KB
+  parked whole in `jadpo_parked_messages` and listed, retried through the
+  next tick and dismissed by `jadpo deliveries`; `Protocol.aws_json`,
+  `aws: { service: target: }` and `CredentialScheme.aws_sigv4` with a
+  `key_id:` and `secret:` credential, checked against AWS's published
+  test suite; a `T?` member a provider leaves out read as `none`; and the
+  SQS package in `packages/amazon_sqs`, tested against a local fake of
+  SQS's JSON API that checks every signature (`receiving.rs`). Choices in
+  area 11's "Chosen in chunk 7.7c".
+- [ ] **7.7c2 Cloudflare Queues on Workers** `opus · high`, after 7.7c:
+  the built-in Cloudflare Queues driver, a queue's consumer handed a
+  batch, each message kept as 7.7c keeps one and acknowledged or retried
+  by the batch's answer, a parked one acknowledged; its seam and its
+  consumer configuration for the Wrangler file built and unit-tested
+  here, deploying it Phase 8's.
 - [ ] **5.5v3 The `ai` capability: `generate` and its fake** `opus ·
   xhigh` (area 21, "The `ai` capability" and "Typed output"), after
   5.5v2 and 7.3: `ai:` in `application { }` with models as `ModelId`

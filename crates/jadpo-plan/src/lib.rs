@@ -295,6 +295,7 @@ fn schedules_plan(
         sessions: holding(SESSIONS.table).next(),
         keys: holding(SERVICE_KEYS.table).next(),
         received: holding(RECEIVED_EVENTS.table).next(),
+        parked: holding(jadpo_std::system::PARKED_MESSAGES.table).next(),
     }
 }
 

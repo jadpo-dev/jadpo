@@ -73,6 +73,7 @@ mod prompt_policy;
 mod prompts;
 mod quantities;
 mod randomness;
+mod receiving;
 mod records_measures;
 mod result_rules;
 mod review;

@@ -1,0 +1,22 @@
+public resource messages {
+    receive_message: {
+        method: HttpMethod.post
+        path: "/"
+        input: ReceiveMessageRequest
+        output: ReceiveMessageResult
+        changes: false
+        failures: [QueueDoesNotExist]
+        source: PackageSource.written
+        docs: "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_ReceiveMessage.html"
+    }
+    delete_message: {
+        method: HttpMethod.post
+        path: "/"
+        input: DeleteMessageRequest
+        changes: true
+        idempotent: true
+        failures: [QueueDoesNotExist, ReceiptHandleIsInvalid]
+        source: PackageSource.written
+        docs: "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_DeleteMessage.html"
+    }
+}

@@ -341,6 +341,14 @@ pub fn signed_by(key: &[u8], parts: &[&[u8]], mac: &[u8]) -> bool {
     check.verify_slice(mac).is_ok()
 }
 
+/// The HMAC-SHA-256 of `parts`, one after another, under `key`: what AWS's
+/// Signature Version 4 derives its keys and signs with (chunk 7.7c). Any
+/// key length is taken.
+pub fn mac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+    // HMAC takes a key of any length, so this never gives the zeros.
+    hmac_sha256(key, parts).unwrap_or([0; 32])
+}
+
 /// Whether `given` and `expected` are the same bytes, compared in constant
 /// time for their length: a webhook's basic credential against the
 /// secret (chunk 7.7).

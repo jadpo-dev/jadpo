@@ -75,6 +75,36 @@ pub fn reached(db: &dyn Db, project: Project) -> BTreeSet<String> {
             }
         }
     }
+    // A connected package's capability mappings call its own operations,
+    // `call: <resource>.<operation>`, so those resources are reached too
+    // (chunk 7.7c).
+    let folders: BTreeSet<&String> = connected.values().collect();
+    for &file in files {
+        let path = file.path(db);
+        let Some(folder) = folders
+            .iter()
+            .find(|folder| path.starts_with(&format!("{folder}/provides/")))
+        else {
+            continue;
+        };
+        let tokens: Vec<_> = parse(db, file)
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| !token.kind().is_trivia())
+            .collect();
+        for window in tokens.windows(4) {
+            let [key, colon, resource, dot] = window else {
+                continue;
+            };
+            if key.text() == "call"
+                && colon.kind() == SyntaxKind::COLON
+                && dot.kind() == SyntaxKind::DOT
+            {
+                out.insert(format!("{folder}/resources/{}.jadpo", resource.text()));
+            }
+        }
+    }
     out
 }
 

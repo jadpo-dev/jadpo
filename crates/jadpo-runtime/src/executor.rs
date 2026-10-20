@@ -72,6 +72,13 @@ pub trait Executor {
         None
     }
 
+    /// The program's queues and how a call through their connections is
+    /// made (area 12, "Events from outside"; chunk 7.7c). `None` for a
+    /// program that receives none.
+    fn receiving(&self) -> Option<crate::receiving::Receiving<'_>> {
+        None
+    }
+
     /// The program's schedules, where their state is kept, and the stores
     /// the tick sweeps (area 12, chunk 6.2). `None` for a program the tick
     /// has nothing to do for.

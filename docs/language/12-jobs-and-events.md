@@ -5,6 +5,7 @@ status: decided
 checked-with: jadpo 3ce094d0 (2026-10-12)
 rules:
   - event.*
+  - receiving.*
   - schedule.*
   - step.*
   - subscriber.*
@@ -2123,6 +2124,12 @@ application {
   driver on Workers, its consumer generated into the Wrangler
   configuration, and a package (its HTTP pull API) from a native server;
   Kafka is a built-in driver in a later release.
+  Built in chunk 7.7c (area 11, "Chosen in chunk 7.7c"): each message is
+  acknowledged once the transaction keeping its event and its id commits,
+  its subscribers then delivered from the outbox; one that can't be kept
+  is parked whole in `jadpo_parked_messages`, which `jadpo deliveries`
+  lists, retries and dismisses; queues are received on the tick, at least
+  every 10 seconds; the Cloudflare Queues driver is chunk 7.7c2.
 
 ## Retries and giving up
 
@@ -2482,7 +2489,7 @@ and 6 type rules (question 2).
 
 ## Errors
 
-Built in chunk 6.1b: the errors of events and subscribers. Built in chunk 6.2: the errors of schedules.
+Built in chunk 6.1b: the errors of events and subscribers. Built in chunk 6.2: the errors of schedules. Built in chunk 7.7c: the errors of queues received.
 
 ### `event.emit_invalid`
 
@@ -2577,6 +2584,43 @@ error: `glance` emits `NoteSeen` but writes no store to keep it in
   next: Add `events: { store: main }` to `application { }` in `app.jadpo` (human)
   rule: event.store_required
   help: docs/language/12-jobs-and-events.html#event-store-required
+
+check failed: 1 error, 1 file
+```
+
+### `receiving.invalid`
+
+A queue in `receiving:` is read through a connection to a package that
+provides `receiving`, says where each message's id is with `id_at:`, and
+lists the events its messages may be; with more than one event, `type_at:`
+says where each message's type is. A database's connection reads no queue:
+
+```jadpo check project=e-receiving-invalid file=app.jadpo expect=receiving.invalid
+application {
+    connections: {
+        main: {
+            driver: Driver.postgres
+        }
+    }
+    receiving: {
+        main: {
+            id_at: "message_id"
+            events: []
+        }
+    }
+}
+```
+
+```text output
+error: `main` isn't a connection to a package
+ --> app.jadpo:8:9
+  |
+8 |         main: {
+  |         ^^^^ not a queue's connection
+  reason: A queue in `receiving:` is a connection to a package that provides `receiving`; it gives `id_at:`, where each message's id is in its body, `events:`, the events its messages may be, and `type_at:`, where each message's type is, unless it lists one event.
+  next: Add `main` to `connections:` with the `package:` its queue is read through, or name one that is (agent)
+  rule: receiving.invalid
+  help: docs/language/12-jobs-and-events.html#receiving-invalid
 
 check failed: 1 error, 1 file
 ```

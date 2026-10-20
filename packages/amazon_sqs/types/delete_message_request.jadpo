@@ -1,0 +1,10 @@
+/// The message to delete from its queue, by the handle it was received
+/// with.
+public type DeleteMessageRequest = Object {
+    queue_url: Text {
+        wire_name: "QueueUrl"
+    }
+    receipt_handle: Text {
+        wire_name: "ReceiptHandle"
+    }
+}

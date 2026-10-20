@@ -51,6 +51,10 @@ pub const KEYS: [&str; 13] = [
     "outbound",
 ];
 
+/// The credential scheme of AWS's Signature Version 4 (chunk 7.7c), whose
+/// credential is a key id and a secret.
+pub const AWS_SIGV4: &str = "aws_sigv4";
+
 /// The types a provider's `settings:` may give a setting (chunk 7.1c):
 /// the plain values a connection writes or reads from a setting.
 pub const SETTING_TYPES: [Prim; 5] = [
@@ -86,6 +90,30 @@ pub struct Reach {
     pub error_code: Option<String>,
     /// `webhooks:`, when the provider sends them (chunk 7.7).
     pub webhooks: Option<WebhookReach>,
+    /// `aws: { service: target: }`, for an AWS API (chunk 7.7c): the
+    /// service its requests are signed for and the prefix its operations
+    /// are named under.
+    pub aws: Option<AwsReach>,
+}
+
+/// A provider's `aws:` (chunk 7.7c), as written; [`crate::packages`]
+/// checks it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct AwsReach {
+    pub service: Option<String>,
+    pub target: Option<String>,
+}
+
+/// A value a connection gives one of its package's settings (chunk
+/// 7.7c): a setting it reads, or one written in `app.jadpo`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Given {
+    Setting(String),
+    Text(String),
+    Int(i64),
+    Bool(bool),
+    /// Another value, which nothing reads yet.
+    Other,
 }
 
 /// A provider's `webhooks:` (area 11, "Receiving from outside"; chunk
@@ -150,6 +178,12 @@ pub struct PackageConnection {
     /// provider's webhooks are checked with, when it receives them (area
     /// 11, "Receiving from outside"; chunk 7.7), and where it is written.
     pub webhook_secret: Option<(String, (String, u32, u32))>,
+    /// The setting an AWS credential's access key id is read from, beside
+    /// its secret, `credential: { key_id: secret: }` (chunk 7.7c).
+    pub key_id: Option<String>,
+    /// Each setting of its package the connection gives, by name (chunk
+    /// 7.7c).
+    pub settings: Vec<(String, Given)>,
     pub reach: Reach,
 }
 
@@ -414,6 +448,17 @@ pub fn reach(db: &dyn Db, project: Project, home: &PackageHome) -> Option<Reach>
                 });
             }
             Some("error_code") => reach.error_code = text_of(&member),
+            Some("aws") => {
+                let mut aws = AwsReach::default();
+                for (key, inner) in tree::members(member.block()) {
+                    match name_text(&key).as_deref() {
+                        Some("service") => aws.service = text_of(&inner),
+                        Some("target") => aws.target = text_of(&inner),
+                        _ => {}
+                    }
+                }
+                reach.aws = Some(aws);
+            }
             Some("webhooks") => {
                 let mut webhooks = WebhookReach::default();
                 for (key, inner) in tree::members(member.block()) {
@@ -644,6 +689,8 @@ impl Reader<'_> {
             sandbox: Vec::new(),
             retry: None,
             webhook_secret: None,
+            key_id: None,
+            settings: Vec::new(),
             reach: reach.clone(),
         };
         let mut given: BTreeSet<String> = BTreeSet::new();
@@ -670,6 +717,12 @@ impl Reader<'_> {
                     ),
                 },
                 "credential" => match &reach.credential {
+                    Some(scheme) if scheme == AWS_SIGV4 => {
+                        if let Some((key_id, secret)) = self.aws_credential(member, out) {
+                            read.key_id = Some(key_id);
+                            read.credential = Some(secret);
+                        }
+                    }
                     Some(_) => read.credential = self.credential(member, out),
                     None => out.push(
                         self.not_taken(key_span, "credential", &package)
@@ -719,6 +772,7 @@ impl Reader<'_> {
                         reach.settings.iter().find(|(setting, _)| setting == other)
                     {
                         self.setting(other, *prim, &package, member, out);
+                        read.settings.push((other.to_string(), self.given(member)));
                     } else {
                         out.push(self.unknown(key_span, other, &package, reach));
                     }
@@ -749,7 +803,11 @@ impl Reader<'_> {
                 format!(
                     "`{package}` sends a `{scheme}` credential with every call, which the connection gives from a secret setting."
                 ),
-                "Declare `<name>: Text { secret: true }` in `config.jadpo`, and add `credential: config.<name>`".to_string(),
+                if scheme == AWS_SIGV4 {
+                    "Add `credential: { key_id: config.<name>  secret: config.<name> }`, the secret a `secret: true` setting".to_string()
+                } else {
+                    "Declare `<name>: Text { secret: true }` in `config.jadpo`, and add `credential: config.<name>`".to_string()
+                },
             ));
         }
         if reach.hosts && !given.contains("environment") {
@@ -1071,6 +1129,115 @@ impl Reader<'_> {
             || node_span(self.path, member.syntax()),
             |value| node_span(self.path, value.syntax()),
         )
+    }
+
+    /// What a setting of the package is given: a setting read, or a
+    /// value written.
+    fn given(&self, member: &ast::Member) -> Given {
+        if let Some(field) = self.reads(member) {
+            return Given::Setting(field);
+        }
+        match member.value().as_ref().map(Const::from_expr) {
+            Some(Const::Str(text)) => Given::Text(text),
+            Some(Const::Number {
+                value,
+                decimal: false,
+            }) if value.scale == 0 => i64::try_from(value.mantissa)
+                .map(Given::Int)
+                .unwrap_or(Given::Other),
+            Some(Const::Bool(flag)) => Given::Bool(flag),
+            _ => Given::Other,
+        }
+    }
+
+    /// An AWS credential, `credential: { key_id: config.<name>  secret:
+    /// config.<name> }` (chunk 7.7c): the settings its access key id and
+    /// its secret access key are read from, the secret a secret setting.
+    fn aws_credential(
+        &self,
+        member: &ast::Member,
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<(String, String)> {
+        let shape = "`credential: { key_id: config.<name>  secret: config.<name> }`";
+        let reason = "AWS signs each request with an access key id and its secret access key, so the credential gives both: `key_id:` read from a setting, and `secret:` from a secret setting (area 10, \"Secrets\").";
+        let Some(block) = member.block() else {
+            out.push(
+                self.invalid(
+                    format!(
+                        "`{}`'s AWS credential needs a key id and a secret",
+                        self.connection
+                    ),
+                    self.value_span(member),
+                    "one value",
+                )
+                .reason(reason)
+                .next(format!("Write {shape}")),
+            );
+            return None;
+        };
+        let mut key_id = None;
+        let mut secret = None;
+        let mut ok = true;
+        for (key, entry) in tree::members(Some(block)) {
+            let written = name_text(&key).unwrap_or_default();
+            match written.as_str() {
+                "key_id" => match self.reads(&entry) {
+                    Some(field) => key_id = Some(field),
+                    None => {
+                        ok = false;
+                        out.push(
+                            self.invalid(
+                                format!("`{}`'s `key_id:` isn't a setting", self.connection),
+                                self.value_span(&entry),
+                                "not a setting",
+                            )
+                            .reason(reason)
+                            .next("Declare `<name>: Text` in `config.jadpo`, and write `key_id: config.<name>`"),
+                        );
+                    }
+                },
+                "secret" => match self.secret(&entry, "secret access key", out) {
+                    Some(field) => secret = Some(field),
+                    None => ok = false,
+                },
+                other => {
+                    ok = false;
+                    out.push(
+                        Diagnostic::new(
+                            &rule::CONNECTION_KEY_INVALID,
+                            format!("`{}`'s credential has no key `{other}:`", self.connection),
+                        )
+                        .at(node_span(self.path, key.syntax()), "not a credential key")
+                        .reason(reason)
+                        .next(format!("Remove `{other}:`")),
+                    );
+                }
+            }
+        }
+        match (key_id, secret, ok) {
+            (Some(key_id), Some(secret), true) => Some((key_id, secret)),
+            (key_id, secret, true) => {
+                let missing = if key_id.is_none() { "key_id" } else { "secret" };
+                let _ = secret;
+                out.push(
+                    Diagnostic::new(
+                        &rule::CONNECTION_KEY_MISSING,
+                        format!(
+                            "`{}`'s credential doesn't give `{missing}:`",
+                            self.connection
+                        ),
+                    )
+                    .at(
+                        node_span(self.path, member.syntax()),
+                        format!("no `{missing}:`"),
+                    )
+                    .reason(reason)
+                    .next(format!("Write {shape}")),
+                );
+                None
+            }
+            _ => None,
+        }
     }
 
     /// `credential: config.<name>`, a secret setting.
