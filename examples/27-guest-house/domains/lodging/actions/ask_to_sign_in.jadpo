@@ -1,0 +1,14 @@
+// With `generate_routes: false` Jadpo makes no sign-in routes, and the
+// guest house writes its own over `magic_links`' three operations, which
+// keep every protection the generated ones have: sends limited per
+// address, only the latest link and code working, wrong codes counted.
+// `request` keeps the request with the action, and the email goes once
+// it commits; the answer is the same whether or not the address has
+// booked.
+
+use lodging/types { SignInAsk }
+
+/// Sends a sign-in link and code to the address asked for.
+action ask_to_sign_in(input: SignInAsk) -> Unit {
+    magic_links.request(input.address, input.locale, none)
+}

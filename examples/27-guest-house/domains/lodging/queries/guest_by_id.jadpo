@@ -1,0 +1,9 @@
+use lodging/entities { Guest }
+use lodging/failures { GuestNotFound }
+
+/// One guest, by id.
+query guest_by_id(guest_id: Guest.id) fails GuestNotFound -> Guest {
+    from: Guest
+    where: Guest.id == guest_id
+    missing: GuestNotFound
+}

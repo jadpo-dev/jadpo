@@ -1,12 +1,16 @@
 // A test catches every email instead of sending it: the confirmation is
 // rendered whole once the booking commits, before the test's next line,
 // and a template that couldn't be rendered would fail the test.
+// `email.sent` is what the test has sent so far, a `List<SentEmail>`,
+// each with its `to`, `from`, `subject`, its `html` and `text` as the
+// guest would get them, and every link in it. Only a test can read it:
+// outside one, an email goes out and nothing keeps it.
 
-use lodging/entities { Booking }
-use lodging/types { RoomKind, StayRequest }
+use lodging/types { BookingView, RoomKind, StayRequest }
+use lodging/fixtures { guest_at }
 
 test "booking a stay keeps it, and confirms it in the guest's language" {
-    var booked: Booking = book_stay(
+    var booked: BookingView = book_stay(
         StayRequest {
             guest_email: "megan@example.cymru"
             guest_name: "Megan"
@@ -15,8 +19,16 @@ test "booking a stay keeps it, and confirms it in the guest's language" {
             nights: 3
             breakfast: true
             guest_locale: Locale.cy_gb
-        }
+        },
+        guest_at("megan@example.cymru")
     )
-    assert booked.guest_name == "Megan"
     assert booked.nights == 3
+    var sent: List<SentEmail> = email.sent
+    assert list.count(sent) == 1
+    assert list.all(
+        sent,
+        item -> item.to == "megan@example.cymru" and item.from == "bookings@tygwyn.example"
+    )
+    assert list.all(sent, item -> item.subject == "Eich arhosiad yn Nhŷ Gwyn, Megan")
+    assert list.all(sent, item -> list.contains(item.links, "https://tygwyn.example/my-stay"))
 }

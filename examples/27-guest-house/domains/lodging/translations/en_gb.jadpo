@@ -1,18 +1,25 @@
 // An email's subject is its member in the domain's language files,
-// `booking_confirmed`, and may write the email's fields: it is required
-// in every supported language, as a message is.
+// `booking_confirmed` and `sign_in_email`, and may write the email's
+// fields: it is required in every supported language, as a message is.
 
 translations {
     booking_confirmed: "Your stay at Tŷ Gwyn, {guest_name}"
     breakfast_line: "Breakfast is served from 8 until 10."
     bring_boots: "Walking boots"
     bring_torch: "A torch for the lane"
+    code_offer: "Or type this code on the sign-in page: {code}"
     confirmed_heading: "Welcome, {name}"
+    guest_already_known: "You are already signed up; sign in again."
+    lifetime_note: "The link and the code work for {expires_in}."
     no_breakfast_line: "The café in the village opens at 9."
     room_kind: {
         double_room: "A double room"
         family_room: "A family room"
         twin_room: "A twin room"
     }
+    see_stay: "See your stay"
+    sign_in_button: "Sign in"
+    sign_in_email: "Sign in to Tŷ Gwyn"
+    sign_in_heading: "Sign in to see your stay"
     stay_line: "Nights: {nights}, from {arrives_on}."
 }

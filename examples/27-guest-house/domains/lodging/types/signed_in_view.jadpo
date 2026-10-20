@@ -1,0 +1,4 @@
+/// Where the site takes a guest once they are signed in.
+type SignedInView = Output {
+    next_page: Text
+}

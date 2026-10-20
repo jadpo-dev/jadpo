@@ -72,7 +72,7 @@ const BUILT_AREAS: [u8; 11] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13];
 
 /// Features no valid, runnable example can use yet, and why.
 const EXEMPT: &[(&str, &str)] = &[
-    // Documentation only, and partials, which are not built yet.
+    // Documentation only.
     ("syntax SNIPPET", "documentation snippets only"),
     (
         "syntax ELISION",
@@ -81,10 +81,6 @@ const EXEMPT: &[(&str, &str)] = &[
     (
         "syntax ELISION_EXPR",
         "`...` marks code left out of documentation",
-    ),
-    (
-        "syntax TEMPLATE_INCLUDE",
-        "not built: partials, once where one is declared is decided (roadmap chunk 7.3c)",
     ),
     // Later areas' declarations and the syntax only they use.
     ("syntax SEED_DECL", "not built: seeds (area 5)"),
@@ -544,6 +540,8 @@ const BODY: &[&str] = &[
     "call provider operation",
     "call package action",
     "script a provider's fake",
+    "include an email partial",
+    "read the emails a test sent",
     "advance the test clock",
     "run a schedule in a test",
     "call translation",

@@ -3,12 +3,19 @@ translations {
     breakfast_line: "Mae brecwast rhwng 8 a 10."
     bring_boots: "Esgidiau cerdded"
     bring_torch: "Tortsh ar gyfer y lôn"
+    code_offer: "Neu teipiwch y cod hwn ar y dudalen mewngofnodi: {code}"
     confirmed_heading: "Croeso, {name}"
+    guest_already_known: "Rydych chi wedi cofrestru yn barod; mewngofnodwch eto."
+    lifetime_note: "Mae'r ddolen a'r cod yn gweithio am {expires_in}."
     no_breakfast_line: "Mae'r caffi yn y pentref yn agor am 9."
     room_kind: {
         double_room: "Ystafell ddwbl"
         family_room: "Ystafell deulu"
         twin_room: "Ystafell â dau wely"
     }
+    see_stay: "Gweld eich arhosiad"
+    sign_in_button: "Mewngofnodi"
+    sign_in_email: "Mewngofnodi i Dŷ Gwyn"
+    sign_in_heading: "Mewngofnodwch i weld eich arhosiad"
     stay_line: "Nosweithiau: {nights}, o {arrives_on}."
 }

@@ -1,0 +1,20 @@
+// The principal's user entity, found by the address a guest signs in
+// with. A guest reads only their own record. The system makes one the
+// first time a guest signs in, and reads and changes it to note when
+// they last did: a subscriber runs as the system, and policy holds for
+// it as for anyone, so it is granted by name.
+
+/// Someone who books stays, signed in by email.
+entity Guest {
+    id: Uuid
+    email: Email {
+        unique: true
+    }
+    last_signed_in_at: Instant?
+
+    policy: {
+        create: [Access.system]
+        read: [id, Access.system]
+        update: [Access.system]
+    }
+}

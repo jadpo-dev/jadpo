@@ -1,0 +1,28 @@
+// `on_first_sign_in:` names this action: it runs the first time an
+// address no guest has signs in, as the system, in its own transaction,
+// and gives the new guest's `id`. A magic link has proved the address is
+// the person's, so anyone with an address can sign in and book.
+
+use lodging/entities { Guest }
+use lodging/failures { GuestAlreadyKnown }
+
+/// Makes a guest of someone signing in for the first time.
+action welcome_guest(first: FirstSignIn) fails GuestAlreadyKnown -> Guest.id {
+    match first.address {
+        none -> {
+            reject GuestAlreadyKnown {}
+        }
+        some(address) -> {
+            var guest: Guest = attempt Guest.create {
+                set: {
+                    email: address
+                    last_signed_in_at: none
+                }
+                conflict: {
+                    Guest.email: GuestAlreadyKnown
+                }
+            }
+            return guest.id
+        }
+    }
+}

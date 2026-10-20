@@ -1,0 +1,41 @@
+// Jadpo's own messages, in Welsh. Jadpo words its failures, and the
+// sign-in email it would send, in `en_gb` and `en_us` only, so an
+// application supporting another language words the messages of every
+// feature it has on here, under `jadpo: { }`, and `jadpo check` lists any
+// it is missing. `jadpo translations builtin` lists them with their
+// fields and English wording.
+
+translations {
+    jadpo: {
+        ambiguous_credentials: "Cafodd mwy nag un ffordd o fewngofnodi ei hanfon. Defnyddiwch un."
+        authentication_required: "Mewngofnodwch i barhau."
+        authentication_unavailable: "Dydy mewngofnodi ddim ar gael ar hyn o bryd. Rhowch gynnig arall arni cyn bo hir."
+        csrf_rejected: "Ddaeth y cais hwnnw ddim o'r wefan hon. Ail-lwythwch y dudalen a rhowch gynnig arall arni."
+        deadline_exceeded: "Cymerodd hynny ormod o amser, a chafodd dim ei gadw. Rhowch gynnig arall arni."
+        idempotency_key_reused: "Cafodd y cais hwnnw ei anfon yn barod gyda manylion gwahanol. Dechreuwch eto."
+        internal_fault: "Aeth rhywbeth o'i le ar ein hochr ni. Rhowch gynnig arall arni cyn bo hir."
+        invalid_credentials: "Mae eich mewngofnodi yn annilys neu wedi dod i ben. Mewngofnodwch eto."
+        invalid_input: "Dydy peth o'r wybodaeth a anfonwyd ddim yn ddilys. Gwiriwch hi a rhowch gynnig arall arni."
+        invalid_request: "Doedd dim modd darllen y cais. Rhowch gynnig arall arni."
+        magic_link_button: "Mewngofnodi"
+        magic_link_code_line: "Neu rhowch y cod hwn: {code}"
+        magic_link_email: "Mewngofnodi i {app_name}"
+        magic_link_expiry_line: "Mae'r ddolen a'r cod yn gweithio am {expires_in}."
+        magic_link_heading: "Mewngofnodi"
+        magic_link_ignore_line: "Os na wnaethoch chi ofyn am gael mewngofnodi, gallwch anwybyddu'r e-bost hwn."
+        magic_link_intro: "Gofynnodd rhywun am gael mewngofnodi fel {address}."
+        method_not_allowed: "Dydy'r cyfeiriad hwn ddim yn gallu gwneud hynny."
+        not_permitted: "Allwch chi ddim gwneud hynny."
+        rate_limited: "Gormod o geisiadau. Arhoswch funud, yna rhowch gynnig arall arni."
+        request_too_large: "Mae'r hyn a anfonwyd yn rhy fawr. Anfonwch lai a rhowch gynnig arall arni."
+        route_not_found: "Allwn ni ddim dod o hyd i'r hyn roeddech chi'n chwilio amdano."
+        sign_in_code_invalid: "Dydy'r cod hwnnw ddim yn iawn. Gwiriwch ef, neu gofynnwch am un newydd."
+        sign_in_codes_disabled: "Gormod o godau anghywir heddiw. Defnyddiwch y ddolen yn eich e-bost yn lle hynny."
+        sign_in_link_expired: "Mae'r ddolen hon wedi dod i ben neu wedi cael ei defnyddio. Gofynnwch am un newydd."
+        sign_in_link_other_browser: "Agorwch y ddolen hon yn y porwr lle gofynnoch chi amdani, neu rhowch y cod yn lle hynny."
+        sign_in_refused: "Allwn ni ddim eich mewngofnodi."
+        sign_in_return_invalid: "Allwn ni ddim mynd â chi'n ôl yno ar ôl mewngofnodi. Dechreuwch eto o'r wefan hon."
+        unavailable: "Dydy gwasanaeth mae hyn yn dibynnu arno ddim ar gael ar hyn o bryd. Rhowch gynnig arall arni cyn bo hir."
+        user_disabled: "Mae'r cyfrif hwn wedi'i analluogi."
+    }
+}

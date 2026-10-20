@@ -1,0 +1,6 @@
+use lodging/entities { Booking }
+
+/// A booking as the guest who made it sees it.
+type BookingView = Output {
+    pick: [Booking.id, Booking.booked_room, Booking.arrives_on, Booking.nights, Booking.breakfast]
+}

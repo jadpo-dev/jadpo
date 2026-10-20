@@ -1,0 +1,5 @@
+{{ translations.lodging.sign_in_heading() }}
+
+{{ include button(label: translations.lodging.sign_in_button(), url: sign_in_link) }}
+{{ translations.lodging.code_offer(code: code) }}
+{{ translations.lodging.lifetime_note(expires_in: expires_in) }}

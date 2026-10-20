@@ -1,0 +1,10 @@
+// A `SignInToken` is the 64 hexadecimal digits after `?token=` in a
+// sign-in link, and a `SignInCode` the six digits the email gives
+// beside it. Each signs a person in, so only an `Input` or an `Object`
+// may hold one: keeping it in an entity, or putting it in an `Output`, a
+// failure, an event or an email, is a compile error.
+
+/// The token of the sign-in link a guest opened.
+type LinkGiven = Input {
+    token: SignInToken
+}

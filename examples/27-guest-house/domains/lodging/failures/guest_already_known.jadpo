@@ -1,0 +1,4 @@
+/// A guest with this address signed in for the first time twice at once.
+type GuestAlreadyKnown = Failure {
+    kind: FailureKind.conflict
+}

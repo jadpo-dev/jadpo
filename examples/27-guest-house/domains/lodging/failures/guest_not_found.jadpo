@@ -1,0 +1,4 @@
+/// No guest has this id.
+type GuestNotFound = Failure {
+    kind: FailureKind.not_found
+}

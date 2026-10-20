@@ -1,0 +1,17 @@
+// A test hands a subscriber's action the event it would hear, every
+// field given, as the runtime would after a sign-in.
+
+use lodging/entities { Guest }
+use lodging/fixtures { guest_at }
+
+test "a sign-in is noted on the guest" {
+    var megan: Principal.user = guest_at("megan@example.cymru")
+    var megan_after: Guest = attempt note_sign_in(
+        SignedIn {
+            user_id: megan.id
+            method: SignInMethod.magic_link
+            first_time: false
+        }
+    )
+    assert megan_after.last_signed_in_at == clock.now
+}

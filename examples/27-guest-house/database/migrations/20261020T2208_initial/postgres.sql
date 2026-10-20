@@ -1,8 +1,9 @@
--- 20261020T0746_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
+-- 20261020T2208_initial: written by `jadpo migrate new` from the snapshots; never edit it by hand.
 
 -- store: main
 CREATE TABLE "booking" (
     "id" uuid NOT NULL,
+    "guest_id" uuid NOT NULL,
     "guest_email" text NOT NULL,
     "guest_name" text NOT NULL,
     "booked_room" text NOT NULL,
@@ -11,6 +12,12 @@ CREATE TABLE "booking" (
     "breakfast" boolean NOT NULL,
     "guest_locale" text NOT NULL,
     CONSTRAINT "booking_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "guest" (
+    "id" uuid NOT NULL,
+    "email" text NOT NULL,
+    "last_signed_in_at" timestamptz(3),
+    CONSTRAINT "guest_pkey" PRIMARY KEY ("id")
 );
 CREATE TABLE "jadpo_circuit_breakers" (
     "connection" text NOT NULL,
@@ -77,9 +84,49 @@ CREATE TABLE "jadpo_outbox" (
     "depth" integer,
     CONSTRAINT "jadpo_outbox_pkey" PRIMARY KEY ("id")
 );
+CREATE TABLE "jadpo_sessions" (
+    "id" uuid NOT NULL,
+    "principal_id" uuid NOT NULL,
+    "verifier" text NOT NULL,
+    "csrf_verifier" text,
+    "started_at" timestamptz(3) NOT NULL,
+    "ends_at" timestamptz(3) NOT NULL,
+    CONSTRAINT "jadpo_sessions_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "jadpo_sign_in_requests" (
+    "id" uuid NOT NULL,
+    "address" text NOT NULL,
+    "exact" text,
+    "request" uuid,
+    "token" text,
+    "code" text,
+    "sealed" bytea,
+    "return_to" text,
+    "binding" text,
+    "wrong_codes" integer NOT NULL,
+    "requested_at" timestamptz(3),
+    "expires_at" timestamptz(3),
+    "sends_since" timestamptz(3),
+    "sends" integer NOT NULL,
+    "failed_since" timestamptz(3),
+    "failed" integer NOT NULL,
+    "kept_until" timestamptz(3) NOT NULL,
+    CONSTRAINT "jadpo_sign_in_requests_pkey" PRIMARY KEY ("id")
+);
+ALTER TABLE "guest" ADD CONSTRAINT "guest_email_key" UNIQUE ("email");
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_subscriber_key" UNIQUE ("outbox_id", "subscriber");
+ALTER TABLE "jadpo_sessions" ADD CONSTRAINT "jadpo_sessions_verifier_key" UNIQUE ("verifier");
+ALTER TABLE "jadpo_sign_in_requests" ADD CONSTRAINT "jadpo_sign_in_requests_address_key" UNIQUE ("address");
+ALTER TABLE "jadpo_sign_in_requests" ADD CONSTRAINT "jadpo_sign_in_requests_request_key" UNIQUE ("request");
+ALTER TABLE "jadpo_sign_in_requests" ADD CONSTRAINT "jadpo_sign_in_requests_token_key" UNIQUE ("token");
+ALTER TABLE "booking" ADD CONSTRAINT "booking_guest_id_fkey" FOREIGN KEY ("guest_id") REFERENCES "guest" ("id") ON DELETE CASCADE;
 ALTER TABLE "jadpo_deliveries" ADD CONSTRAINT "jadpo_deliveries_outbox_id_fkey" FOREIGN KEY ("outbox_id") REFERENCES "jadpo_outbox" ("id") ON DELETE CASCADE;
+CREATE INDEX "booking_arrives_on_id_idx" ON "booking" ("arrives_on", "id");
+CREATE INDEX "booking_guest_id_idx" ON "booking" ("guest_id");
 CREATE INDEX "jadpo_deliveries_status_next_attempt_at_idx" ON "jadpo_deliveries" ("status", "next_attempt_at");
 CREATE INDEX "jadpo_idempotency_keys_kept_until_idx" ON "jadpo_idempotency_keys" ("kept_until");
 CREATE INDEX "jadpo_operator_actions_item_idx" ON "jadpo_operator_actions" ("item");
 CREATE INDEX "jadpo_outbox_emitted_at_idx" ON "jadpo_outbox" ("emitted_at");
+CREATE INDEX "jadpo_sessions_ends_at_idx" ON "jadpo_sessions" ("ends_at");
+CREATE INDEX "jadpo_sessions_principal_id_idx" ON "jadpo_sessions" ("principal_id");
+CREATE INDEX "jadpo_sign_in_requests_kept_until_idx" ON "jadpo_sign_in_requests" ("kept_until");

@@ -6,13 +6,14 @@
 // bring is worded in the guest's language before it is sent.
 
 use lodging/entities { Booking }
-use lodging/types { StayRequest }
+use lodging/types { BookingView, StayRequest }
 use lodging/emails { BookingConfirmed }
 
 /// Books a stay, and confirms it to the guest once it is booked.
-action book_stay(input: StayRequest) -> Booking {
+action book_stay(input: StayRequest, caller: Principal.user) -> BookingView {
     var booking: Booking = Booking.create {
         set: {
+            guest_id: caller.id
             guest_email: input.guest_email
             guest_name: input.guest_name
             booked_room: input.booked_room
@@ -34,6 +35,13 @@ action book_stay(input: StayRequest) -> Booking {
             translations.lodging.bring_boots(locale: booking.guest_locale),
             translations.lodging.bring_torch(locale: booking.guest_locale)
         ]
+        stay_page: web.resolve(config.site, "/my-stay")
     }
-    return booking
+    return BookingView {
+        id: booking.id
+        booked_room: booking.booked_room
+        arrives_on: booking.arrives_on
+        nights: booking.nights
+        breakfast: booking.breakfast
+    }
 }

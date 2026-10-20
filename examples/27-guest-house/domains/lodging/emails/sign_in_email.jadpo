@@ -1,0 +1,9 @@
+// The guest house's own sign-in email. It holds no field of its own: it
+// picks what Jadpo makes for each sign-in from `MagicLinkEmail`, the
+// link, the code and how long both work, and is filled in and sent by
+// Jadpo itself, so the link never sits in the outbox.
+
+/// The sign-in email, in the guest house's own words.
+type SignInEmail = EmailMessage {
+    pick: [MagicLinkEmail.sign_in_link, MagicLinkEmail.code, MagicLinkEmail.expires_in]
+}

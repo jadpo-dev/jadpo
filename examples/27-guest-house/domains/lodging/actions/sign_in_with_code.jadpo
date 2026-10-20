@@ -1,0 +1,10 @@
+use lodging/types { CodeGiven, SignedInView }
+
+/// Signs this browser in with the code from a sign-in email.
+action sign_in_with_code(input: CodeGiven) -> SignedInView {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem_code(input.address, input.code)
+    sessions.start(redeemed.user_id)
+    return SignedInView {
+        next_page: redeemed.return_to
+    }
+}

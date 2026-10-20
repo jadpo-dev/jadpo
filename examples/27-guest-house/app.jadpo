@@ -1,3 +1,5 @@
+use lodging/entities { Guest }
+
 // Every email goes through the one connection `email:` names, from the
 // address its `from:` gives. Here that is an SMTP server; a mail
 // provider's package is another, and changing which is `app.jadpo`'s
@@ -17,6 +19,12 @@ application {
     email: {
         connection: mail
         from: config.bookings_address
+    }
+}
+
+principal {
+    user: {
+        subject: Guest.email
     }
 }
 

@@ -1,0 +1,15 @@
+// `redeem` uses the link's token once, and gives who it signs in and
+// where they asked to go; `sessions.start` then signs this browser in.
+// A link that has expired or been used fails with a built-in
+// `sign_in_` failure, which passes through without a `fails` line.
+
+use lodging/types { LinkGiven, SignedInView }
+
+/// Signs this browser in with a sign-in link's token.
+action sign_in_with_link(input: LinkGiven) -> SignedInView {
+    var redeemed: MagicLinkRedeemed = magic_links.redeem(input.token)
+    sessions.start(redeemed.user_id)
+    return SignedInView {
+        next_page: redeemed.return_to
+    }
+}

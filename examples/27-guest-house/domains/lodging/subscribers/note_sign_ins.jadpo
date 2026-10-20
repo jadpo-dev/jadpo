@@ -1,0 +1,7 @@
+use lodging/actions { note_sign_in }
+
+/// Notes each guest's sign-in.
+subscriber note_sign_ins {
+    on: SignedIn
+    run: note_sign_in(event)
+}

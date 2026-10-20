@@ -2,3 +2,5 @@
 
 {{ booked_room }}
 {{ translations.lodging.stay_line(nights: nights, arrives_on: text.format(arrives_on, format: TimeFormat.date_long)) }}
+
+{{ include button(label: translations.lodging.see_stay(), url: stay_page) }}
