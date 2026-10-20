@@ -1,6 +1,6 @@
 # Jadpo roadmap
 
-**Updated:** 2026-10-19. This page is the only list of outstanding work: the
+**Updated:** 2026-10-20. This page is the only list of outstanding work: the
 delivery plan for building Jadpo from the decided language, one chunk per
 session. Record decisions in the [decision register](decision-register.md)
 and the [language pages](language/README.md), not here.
@@ -790,11 +790,20 @@ The design is area 11 as revised on 2026-10-16, with its research in
   package to its line and digest in `jadpo.lock`; the `package.*` errors
   and example 26. Choices in area 11's "Chosen in chunk 7.1", with one
   flagged for Richard (a package's code doesn't see the app's `shared/`).
-- [ ] **7.1b Package surface, `show` and `check`** `opus · high`, after
-  7.1 (split from 7.1b Package surface and commands on 2026-10-20):
-  `surface.jadpo_record` and `jadpo package show`, and `jadpo package
-  check` with the publishing bar and `type.standard_exists` on packages'
-  public types (area 19, question 1).
+- [x] **7.1b Package surface, `show` and `check`** `opus · high`, after
+  7.1 (split from 7.1b Package surface and commands on 2026-10-20).
+  Built: `surface.jadpo_record` (`record surface 1`) written from a
+  package's code, every entry pointing at its file; `jadpo package show`
+  of a package, one declaration in full or its guide, installed or the
+  app's own, and each own integration's surface in `build/providers/`;
+  `jadpo package check` in a package's own repository, checked as the
+  app's own integration, with the publishing bar, the version worked out
+  from the surface at the last tag, `publish.description_missing`,
+  `publish.breaking_change`, and `type.standard_exists` on a package's
+  public types only, in a package's words. Choices in area 11's "Chosen in
+  chunk 7.1b"; two questions for Richard (area 11, questions 27 and 28:
+  how an example in a description is written, and the changelog's form),
+  whose bar items say "not checked yet" meanwhile.
 - [ ] **7.1b2 Installing packages** `opus · high`, after 7.1b: `jadpo
   package add` from a path and a git repository with verification at
   install, `update` and `remove`, `link` and `unlink` with the linked

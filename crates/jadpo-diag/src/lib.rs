@@ -136,10 +136,10 @@ rules! {
         "14-tooling.html#command-errors", "Language-server command has invalid arguments";
     CLI_MIGRATE_ARGUMENTS: "cli.migrate_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Migrate command has invalid arguments";
-    CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
-        "14-tooling.html#command-errors", "Terminal presentation option is invalid";
     CLI_PACKAGE_ARGUMENTS: "cli.package_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Package command has invalid arguments";
+    CLI_PRESENTATION_ARGUMENTS: "cli.presentation_arguments", area 14, Error, Agent,
+        "14-tooling.html#command-errors", "Terminal presentation option is invalid";
     CLI_RECORDS_ARGUMENTS: "cli.records_arguments", area 14, Error, Agent,
         "14-tooling.html#command-errors", "Records command has invalid arguments";
     CLI_ROUTES_ARGUMENTS: "cli.routes_arguments", area 14, Error, Agent,

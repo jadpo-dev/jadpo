@@ -109,15 +109,15 @@ pub fn package(call: &Call) -> Reply {
                 .iter()
                 .find(|(name, _)| *name == later)
                 .map_or("", |(_, comes)| comes);
-            let mut diagnostic = Diagnostic::new(
+            let diagnostic = Diagnostic::new(
                 &rule::TOOLCHAIN_NOT_BUILT_YET,
                 format!("`jadpo package {later}` isn't built yet"),
             )
             .reason(format!(
                 "Area 11 decides `jadpo package {later}`, and it comes with {comes}."
             ))
-            .next("Run `jadpo package show <name>` or `jadpo package check` meanwhile");
-            diagnostic.help = Some("11-integrations.html#developing-and-publishing-a-package".into());
+            .next("Run `jadpo package show <name>` or `jadpo package check` meanwhile")
+            .help_at("11-integrations.html#developing-and-publishing-a-package");
             Reply::failed(diagnostic)
         }
         Some(other) => {
