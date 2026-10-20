@@ -188,10 +188,9 @@ pub struct Program {
     /// The settings' values, decoded, by the setting's number in the plan:
     /// `None` for one no value reached ([`Program::with_config`]).
     settings: Vec<Option<Value>>,
-    /// The key settings' keys, by the setting's number: what a `crypto`
-    /// call's `key: config.<name>` gives it (area 19), held apart from the
-    /// values code reads, since code never reads a key.
-    keys: Vec<Option<jadpo_value::crypto::KeyRing>>,
+    /// The key settings' keys: what a `crypto` call's `key:
+    /// config.<name>` gives it (area 19).
+    keys: jadpo_runtime::effects::Keys,
     /// What signing in reads from them: the signing keys and the browser
     /// session's origin (area 8).
     auth: jadpo_runtime::http::signed::AuthSettings,
@@ -259,7 +258,7 @@ impl Program {
             .unwrap_or_default();
         let keys = values
             .as_ref()
-            .map(|values| Self::key_rings(&prepared, values))
+            .map(|values| jadpo_runtime::effects::Keys::read(prepared.plan.config(), values))
             .unwrap_or_default();
         let auth = values
             .as_ref()
@@ -304,7 +303,7 @@ impl Program {
     /// the application started with, or a test run's.
     pub fn with_config(mut self, values: &jadpo_runtime::config::ConfigValues) -> Program {
         self.settings = Self::decoded(&self.prepared, values);
-        self.keys = Self::key_rings(&self.prepared, values);
+        self.keys = jadpo_runtime::effects::Keys::read(self.prepared.plan.config(), values);
         self.auth = Self::auth(&self.prepared, values);
         self.client = Self::client(&self.prepared, values);
         self.purge_after = Self::purge_periods(&self.prepared, Some(values));
@@ -353,22 +352,6 @@ impl Program {
             prepared.plan.routes().identity.as_ref(),
             values,
         )
-    }
-
-    /// The keys the key settings in `values` hold, by their numbers.
-    fn key_rings(
-        prepared: &Prepared,
-        values: &jadpo_runtime::config::ConfigValues,
-    ) -> Vec<Option<jadpo_value::crypto::KeyRing>> {
-        let config = prepared.plan.config();
-        (0..config.fields.len())
-            .map(|at| jadpo_runtime::config::key_ring(config, values, at as u32))
-            .collect()
-    }
-
-    /// The key setting number `at` holds, for a `crypto` call's `key:`.
-    pub(crate) fn key(&self, at: u32) -> Option<&jadpo_value::crypto::KeyRing> {
-        self.keys.get(at as usize)?.as_ref()
     }
 
     /// The settings `values` hold, decoded, by their numbers.
@@ -512,8 +495,22 @@ impl Program {
         }
     }
 
-    /// The codecs `json.read` and `json.write` run with (area 19), with
-    /// this thread's validators and shapes.
+    /// What the runtime's entry point for operations with effects runs
+    /// them with (chunk 7.0b): the plan's JSON table, events and settings,
+    /// and the keys.
+    pub(crate) fn effects(&self) -> jadpo_runtime::effects::Effects<'_> {
+        jadpo_runtime::effects::Effects {
+            json: self.stored_json(),
+            event_numbers: &self.plan().json().events,
+            events: self.plan().events(),
+            config: self.plan().config(),
+            keys: &self.keys,
+        }
+    }
+
+    /// The plan's JSON codecs, with this thread's validators and shapes:
+    /// what [`Program::stored_json`] numbers, and a prompt's fields are
+    /// written with (area 21).
     pub(crate) fn json_codecs(&self) -> jadpo_value::json::Codecs<'_> {
         jadpo_value::json::Codecs {
             codecs: &self.plan().json().codecs,

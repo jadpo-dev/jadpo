@@ -737,12 +737,17 @@ chunks below, taken before Phase 7, in this order.
 The design is area 11 as revised on 2026-10-16, with its research in
 [packages and extension points](language/research/packages-and-extension-proposals.md).
 
-- [ ] **7.0b Effectful operations in the runtime** `opus · xhigh`, from
-  the Phase 5 and 6 reviews: one runtime entry point for operations with
-  effects (JSON with the plan's codec, keyed `crypto`, the clock as a
-  real operation, randomness, `emit`), called by both executors instead
-  of the interpreter's own dispatch; `Ctx`'s background-run state and its
-  capability state each one sub-struct reached through methods.
+- [x] **7.0b Effectful operations in the runtime** `opus · xhigh`.
+  Built: `jadpo_runtime::effects::run`, the one entry point both
+  executors call for `clock.now` (the graph's own `Expr::Now`, no longer
+  source text), `random`, keyed `crypto` and a token's claims,
+  `json.read` and `json.write` with the plan's codec, and `emit`, the
+  interpreter's copy removed and held off by
+  `the_interpreter_runs_effects_only_through_the_runtime`; `Ctx`'s
+  background-run state (`Background`) and capabilities (`Capabilities`)
+  each a struct of its own, the boundary's state in `boundary.rs`, and
+  every field private, reached through methods. Choices in
+  compiler-runtime.md §2.5.
 - [ ] **7.0c The capability seam** `opus · xhigh`, after 7.0b: a seam that
   logs each outside call on its invocation, feeding recordings, `jadpo
   calls` and an `outcome_unknown` result; fakes as `Host` wrappers and one

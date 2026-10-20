@@ -1,25 +1,39 @@
 //! The per-invocation context (docs/compiler-runtime.md §2.5): what an
 //! executor is handed, never what it owns. It keeps the shadow stack of
 //! frames both executors push, the depth limit, the faults and failures
-//! that capture the stack, the recording of a failed `assert`'s parts, and
-//! the state of the action boundary the runtime runs ([`crate::action`]):
-//! the transaction it opens at the first store operation and the events
-//! waiting to be delivered once it commits; the work it leaves for after
-//! its response (chunk 6.1a, [`crate::runner`]); who runs it, a request's
-//! signed-in caller or the system; and the effects with one source each,
-//! the clock and new identities. Reads and writes run through
-//! [`crate::store`] against it; integration calls join it with their area.
+//! that capture the stack, the recording of a failed `assert`'s parts, the
+//! action boundary the runtime runs ([`crate::action`]), who runs it (a
+//! request's signed-in caller, or no one under a test), and the clock.
+//!
+//! Two parts of it are structs of their own, each reached through
+//! methods, never written field by field from elsewhere (chunk 7.0b): its
+//! background-run state ([`Background`]: the system, the delivery being
+//! handled, the chain and trace, the work left for after the response and
+//! the events kept), which the runner sets; and its capabilities
+//! ([`Capabilities`]: the host's stores, passkeys and random bytes, with
+//! the identities made from them and what a recording keeps), which the
+//! capability seam builds on (chunk 7.0c). Reads and writes run through
+//! [`crate::store`] against it, and operations with effects through
+//! [`crate::effects`].
 
 use std::fmt;
 
 use jadpo_value::Value;
 
+use crate::boundary::Boundary;
 use crate::outcome::{Assertion, AssertionDetail, Part};
 use crate::runner::Deferred;
 use crate::{
     Env, Event, Failure, Fault, FaultKind, Frame, Host, Isolation, MAX_DEPTH, Places, SqlType,
     SqlValue, StoreError, Transaction,
 };
+
+mod background;
+mod capabilities;
+
+pub(crate) use background::{Background, Handled};
+pub use capabilities::Capabilities;
+pub(crate) use capabilities::random_id;
 
 /// The values an `assert`'s condition gave, site by site, while it runs.
 struct Recording {
@@ -31,40 +45,6 @@ struct Recording {
     /// How many inline functions it is inside: their values are per item,
     /// not one a report could show.
     paused: u32,
-}
-
-/// An action's boundary while its body runs: opened when the outermost
-/// action starts, joined by every action it calls (area 6).
-#[derive(Default)]
-pub(crate) struct Boundary {
-    /// The level its transaction begins at: the outermost action's.
-    pub isolation: Isolation,
-    /// Begun at the first store operation.
-    pub transaction: Option<Box<dyn Transaction>>,
-    /// The store it was begun in.
-    pub store: Option<String>,
-    /// What the action emitted, for after it commits.
-    pub outbox: Vec<Event>,
-    /// Where in `outbox` the running action's own events begin, which
-    /// its allowance of [`crate::outbox::MAX_EVENTS`] counts from: 0, but
-    /// for each item of a batch, an action of its own whose events join
-    /// its page's (chunk 6.6a).
-    pub allowance: usize,
-    /// Its events' deliveries, once written to the outbox in its
-    /// transaction as it commits (chunk 6.1b), for the runner after it
-    /// commits.
-    pub sealed: Vec<crate::outbox::Delivery>,
-    /// How many events it wrote to the outbox as it sealed (chunk 6.2).
-    pub kept: u32,
-    /// A store operation found another transaction had changed what this
-    /// one read, so the body is run again.
-    pub concurrent_change: bool,
-    /// What the body did to the request's session, for its response once
-    /// it commits (area 8).
-    pub session: Option<SessionEffect>,
-    /// Whether the body issued an API token or a service key, whose
-    /// response is never kept for an idempotent repeat (area 8).
-    pub issued: bool,
 }
 
 /// What an action did to the session of the request a route answers
@@ -136,15 +116,6 @@ impl fmt::Debug for Held {
     }
 }
 
-/// A subscriber's delivery being run: the handled record its action
-/// commits with its writes, in the store it writes (area 12, chunk 6.1b).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Handled {
-    pub store: String,
-    /// The delivery's `id`.
-    pub id: [u8; 16],
-}
-
 /// Why an `emit` wasn't kept (area 12, "Limits and runtime faults").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmitRefused {
@@ -156,77 +127,39 @@ pub enum EmitRefused {
     TooLarge,
 }
 
-/// What happens to the random bytes an invocation is given (area 17).
-enum Tape {
-    Off,
-    /// Kept, in the order they were given.
-    Recording(Vec<u8>),
-    /// A recorded run's, given back from `at`.
-    Replaying {
-        bytes: Vec<u8>,
-        at: usize,
-    },
-}
-
 /// One invocation's context.
 pub struct Ctx<'p> {
     places: &'p Places,
-    host: &'p dyn Host,
     env: Env,
     /// Outermost first.
     frames: Vec<Frame>,
     recording: Option<Recording>,
-    pub(crate) boundary: Option<Boundary>,
+    /// The running action's boundary, while one is open.
+    boundary: Option<Boundary>,
     /// How many boundaries it has opened.
-    pub(crate) actions: u32,
-    /// How many identities it has made.
-    ids: u64,
+    actions: u32,
     /// The next action to open a boundary of its own holds its commit.
-    pub(crate) hold: bool,
+    hold: bool,
     /// What a held boundary left open.
-    pub(crate) held: Option<Held>,
+    held: Option<Held>,
     /// The signed-in caller of the request being answered (area 8).
-    pub(crate) caller: Option<Caller>,
-    /// The system, when the runner runs a schedule's or a subscriber's
-    /// work; never alongside a caller.
-    pub(crate) system: Option<System>,
-    /// What runs after the response, in the order it was left: what
-    /// committed actions emitted, and runs the runner was handed (chunk
-    /// 6.1a).
-    pub(crate) deferred: Vec<Deferred>,
+    caller: Option<Caller>,
     /// The address the request being answered counts as (area 10, "Client
     /// addresses"); `None` when none is known.
     client: Option<String>,
     /// Whether the statements it runs leave their policy out: only for a
     /// call a test, fixture or seed makes without a caller (area 9).
-    pub(crate) unpoliced: bool,
-    /// How many random values it has made from its seed.
-    draws: u64,
-    /// How many trace and span ids it has worked out without the host's
-    /// randomness.
-    spans: u64,
-    /// The random bytes a recorded run keeps, or a replayed run gives back
-    /// (area 17, "Replaying a production request").
-    tape: Tape,
+    unpoliced: bool,
     /// When the request being answered runs out of time, on the host's
     /// monotonic clock (area 7, "Time limits").
     deadline: Option<u64>,
     /// The settings a test gives its own values (area 13): each by its
     /// number in the plan.
     settings: Vec<(u32, Value)>,
-    /// The trace context of the work under way (area 12, question 17):
-    /// a request's, or the event's a delivery continues.
-    trace: Option<crate::outbox::Trace>,
-    /// How many events led to the work under way from the request that
-    /// set the chain off: 0 for a request (area 12, "Limits").
-    pub(crate) chain: u32,
-    /// The subscriber's delivery being run, whose handled record the
-    /// outermost action commits.
-    pub(crate) handled: Option<Handled>,
-    /// How many events the actions it ran kept in the outbox once they
-    /// committed, which a schedule's run record counts (area 12,
-    /// "Watching schedules").
-    pub(crate) emitted: u32,
+    /// What background work carries while it runs.
+    background: Background,
+    /// What it reaches outside itself, through its host.
+    capabilities: Capabilities<'p>,
 }
 
 impl fmt::Debug for Ctx<'_> {
@@ -247,72 +180,59 @@ impl<'p> Ctx<'p> {
     pub fn new(places: &'p Places, host: &'p dyn Host, env: Env) -> Ctx<'p> {
         Ctx {
             places,
-            host,
             env,
             frames: Vec::new(),
             recording: None,
             boundary: None,
             actions: 0,
-            ids: 0,
             hold: false,
             held: None,
             caller: None,
-            system: None,
-            deferred: Vec::new(),
             client: None,
             unpoliced: false,
-            draws: 0,
-            spans: 0,
-            tape: Tape::Off,
             deadline: None,
             settings: Vec::new(),
-            trace: None,
-            chain: 0,
-            handled: None,
-            emitted: 0,
+            background: Background::default(),
+            capabilities: Capabilities::new(host, env.seed),
         }
+    }
+
+    /// Its background-run state, for the runner and the boundary.
+    pub(crate) fn background(&self) -> &Background {
+        &self.background
+    }
+
+    pub(crate) fn background_mut(&mut self) -> &mut Background {
+        &mut self.background
+    }
+
+    /// What it reaches outside itself, through its host: its stores, its
+    /// passkey ceremonies and its random bytes.
+    pub fn capabilities(&self) -> &Capabilities<'p> {
+        &self.capabilities
     }
 
     /// The trace context of the work under way, when it has one.
     pub fn trace(&self) -> Option<crate::outbox::Trace> {
-        self.trace
+        self.background.trace()
     }
 
     /// Sets the trace context of the work under way.
     pub fn set_trace(&mut self, trace: Option<crate::outbox::Trace>) {
-        self.trace = trace;
+        self.background.set_trace(trace);
     }
 
     /// How many events led to the work under way.
     pub fn chain(&self) -> u32 {
-        self.chain
+        self.background.chain()
     }
 
     /// Bytes for a new trace or span id: the host's, or worked out from
     /// the seed and the clock, without drawing on what `random` gives, so
     /// tracing never changes a test's values (area 13).
     pub fn trace_bytes(&mut self, out: &mut [u8]) {
-        if self.host.random(out) {
-            return;
-        }
-        let mut state = self
-            .env
-            .seed
-            .unwrap_or(0)
-            .wrapping_add(self.env.clock.now() as u64)
-            .wrapping_add(u64::from(self.chain).wrapping_mul(0x2545_F491_4F6C_DD1D))
-            .wrapping_add(self.spans.wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        self.spans += 1;
-        for chunk in out.chunks_mut(8) {
-            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-            let mut z = state;
-            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            z ^= z >> 31;
-            for (to, from) in chunk.iter_mut().zip(z.to_be_bytes()) {
-                *to = from;
-            }
-        }
+        let (now, chain) = (self.env.clock.now(), self.background.chain());
+        self.capabilities.trace_bytes(now, chain, out);
     }
 
     /// A new trace, for a request that brings none.
@@ -354,7 +274,7 @@ impl<'p> Ctx<'p> {
     /// signed in, or no one, it is never the system.
     pub fn set_caller(&mut self, caller: Option<Caller>) {
         self.caller = caller;
-        self.system = None;
+        self.background.set_system(None);
         self.unpoliced = false;
     }
 
@@ -364,14 +284,14 @@ impl<'p> Ctx<'p> {
     /// policy (areas 9 and 13). Nothing a request runs does this.
     pub fn set_unpoliced(&mut self) {
         self.caller = None;
-        self.system = None;
+        self.background.set_system(None);
         self.unpoliced = true;
     }
 
     /// The system, when what runs is a schedule's or a subscriber's work
     /// (area 12); `None` for everything a request or a test's call runs.
     pub fn system(&self) -> Option<System> {
-        self.system
+        self.background.system()
     }
 
     /// Runs what follows as the system, with no signed-in caller and with
@@ -379,14 +299,18 @@ impl<'p> Ctx<'p> {
     /// outside the runtime, a request least of all, can.
     pub(crate) fn become_system(&mut self, system: System) {
         self.caller = None;
-        self.system = Some(system);
+        self.background.set_system(Some(system));
         self.unpoliced = false;
     }
 
     /// Who runs what follows, to put back with [`Ctx::restore_runner`]
     /// once the runner's work inside it is done.
     pub(crate) fn runner(&self) -> (Option<Caller>, Option<System>, bool) {
-        (self.caller.clone(), self.system, self.unpoliced)
+        (
+            self.caller.clone(),
+            self.background.system(),
+            self.unpoliced,
+        )
     }
 
     pub(crate) fn restore_runner(
@@ -394,7 +318,7 @@ impl<'p> Ctx<'p> {
         (caller, system, unpoliced): (Option<Caller>, Option<System>, bool),
     ) {
         self.caller = caller;
-        self.system = system;
+        self.background.set_system(system);
         self.unpoliced = unpoliced;
     }
 
@@ -402,17 +326,17 @@ impl<'p> Ctx<'p> {
     /// the background on a deployable (`Host::defer`), or at once for a
     /// route that waits for it (chunk 6.1a).
     pub fn defer(&mut self, work: Deferred) {
-        self.deferred.push(work);
+        self.background.defer(work);
     }
 
     /// The work left for after the response, in the order it was left.
     pub fn deferred(&self) -> &[Deferred] {
-        &self.deferred
+        self.background.deferred()
     }
 
     /// Takes the work left for after the response.
     pub fn take_deferred(&mut self) -> Vec<Deferred> {
-        std::mem::take(&mut self.deferred)
+        self.background.take_deferred()
     }
 
     /// Whether statements leave their policy out ([`Ctx::set_unpoliced`]).
@@ -431,11 +355,13 @@ impl<'p> Ctx<'p> {
             _ => None,
         });
         match part {
-            CallerPart::System => SqlValue::Bool(self.system.is_some()),
-            CallerPart::SystemTenant => match self.system.and_then(|system| system.tenant) {
-                Some(tenant) => SqlValue::Uuid(tenant),
-                None => SqlValue::Null(SqlType::Uuid),
-            },
+            CallerPart::System => SqlValue::Bool(self.background.system().is_some()),
+            CallerPart::SystemTenant => {
+                match self.background.system().and_then(|system| system.tenant) {
+                    Some(tenant) => SqlValue::Uuid(tenant),
+                    None => SqlValue::Null(SqlType::Uuid),
+                }
+            }
             CallerPart::Signed => SqlValue::Bool(held.is_some()),
             CallerPart::User | CallerPart::Service => {
                 let wanted = if part == CallerPart::User {
@@ -461,24 +387,7 @@ impl<'p> Ctx<'p> {
     /// What `random` gives and the tokens signing in makes come from here
     /// (areas 8 and 19).
     pub fn random_bytes(&mut self, out: &mut [u8]) -> bool {
-        if let Tape::Replaying { bytes, at } = &mut self.tape {
-            let Some(next) = at
-                .checked_add(out.len())
-                .and_then(|end| bytes.get(*at..end))
-            else {
-                return false;
-            };
-            out.copy_from_slice(next);
-            *at += out.len();
-            return true;
-        }
-        if !self.fresh_random(out) {
-            return false;
-        }
-        if let Tape::Recording(kept) = &mut self.tape {
-            kept.extend_from_slice(out);
-        }
-        true
+        self.capabilities.random_bytes(out)
     }
 
     /// Fills `out` with random bytes a credential is made of (a session's
@@ -489,54 +398,27 @@ impl<'p> Ctx<'p> {
     /// chunk 5.5r2). A replayed run makes a fresh credential, and the
     /// draws around it still replay in order.
     pub fn secret_random_bytes(&mut self, out: &mut [u8]) -> bool {
-        self.fresh_random(out)
-    }
-
-    /// Random bytes no recording gave: the host's, or the seed's.
-    fn fresh_random(&mut self, out: &mut [u8]) -> bool {
-        if self.host.random(out) {
-            return true;
-        }
-        let Some(seed) = self.env.seed else {
-            return false;
-        };
-        for chunk in out.chunks_mut(8) {
-            self.draws += 1;
-            let mut z = seed
-                .wrapping_add(self.draws.wrapping_mul(0xD1B5_4A32_D192_ED03))
-                .wrapping_add(0x9E37_79B9_7F4A_7C15);
-            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            z ^= z >> 31;
-            let bytes = z.to_be_bytes();
-            for (to, from) in chunk.iter_mut().zip(bytes) {
-                *to = from;
-            }
-        }
-        true
+        self.capabilities.secret_random_bytes(out)
     }
 
     /// Keeps the random bytes the invocation is given from now on, for
     /// [`Ctx::recorded_random`]: what a recorded run replays (area 17).
     pub fn record_random(&mut self) {
-        self.tape = Tape::Recording(Vec::new());
+        self.capabilities.record_random();
     }
 
     /// The random bytes kept since [`Ctx::record_random`]; `None` when not
     /// recording. They can hold tokens, so they never leave the process
     /// except as area 17's recording does.
     pub fn recorded_random(&self) -> Option<&[u8]> {
-        match &self.tape {
-            Tape::Recording(kept) => Some(kept),
-            _ => None,
-        }
+        self.capabilities.recorded_random()
     }
 
     /// Gives `bytes`, a recorded run's, as the invocation's random bytes,
     /// in order, so it makes the same tokens, codes and shuffles; once
     /// they run out it has no randomness to give (area 17).
     pub fn replay_random(&mut self, bytes: Vec<u8>) {
-        self.tape = Tape::Replaying { bytes, at: 0 };
+        self.capabilities.replay_random(bytes);
     }
 
     /// Records what the running action did to the request's session;
@@ -544,7 +426,7 @@ impl<'p> Ctx<'p> {
     pub fn session(&mut self, effect: SessionEffect) -> bool {
         match &mut self.boundary {
             Some(boundary) => {
-                boundary.session = Some(effect);
+                boundary.set_session(effect);
                 true
             }
             None => false,
@@ -556,7 +438,7 @@ impl<'p> Ctx<'p> {
     pub fn issued(&mut self) -> bool {
         match &mut self.boundary {
             Some(boundary) => {
-                boundary.issued = true;
+                boundary.set_issued();
                 true
             }
             None => false,
@@ -568,7 +450,7 @@ impl<'p> Ctx<'p> {
     }
 
     pub fn host(&self) -> &'p dyn Host {
-        self.host
+        self.capabilities.host()
     }
 
     pub fn env(&self) -> &Env {
@@ -746,7 +628,38 @@ impl<'p> Ctx<'p> {
     /// The level the running action's transaction begins, or began, at;
     /// `None` outside an action.
     pub fn isolation(&self) -> Option<Isolation> {
-        self.boundary.as_ref().map(|boundary| boundary.isolation)
+        self.boundary.as_ref().map(Boundary::isolation)
+    }
+
+    /// The running action's boundary, while one is open.
+    pub(crate) fn boundary(&self) -> Option<&Boundary> {
+        self.boundary.as_ref()
+    }
+
+    pub(crate) fn boundary_mut(&mut self) -> Option<&mut Boundary> {
+        self.boundary.as_mut()
+    }
+
+    /// Opens a boundary whose transaction begins at `isolation`.
+    pub(crate) fn open_boundary(&mut self, isolation: Isolation) {
+        self.boundary = Some(Boundary::new(isolation));
+    }
+
+    /// Closes the running action's boundary, giving back what it holds.
+    pub(crate) fn close_boundary(&mut self) -> Boundary {
+        self.boundary.take().unwrap_or_default()
+    }
+
+    /// Counts an action that opens a boundary of its own, and says whether
+    /// it is to hold its commit ([`Ctx::hold`]), which only it is.
+    pub(crate) fn own_boundary(&mut self) -> bool {
+        self.actions += 1;
+        std::mem::take(&mut self.hold)
+    }
+
+    /// Keeps what a held boundary left open, for [`Ctx::take_held`].
+    pub(crate) fn keep_held(&mut self, held: Held) {
+        self.held = Some(held);
     }
 
     /// Gives the invocation its own values for some settings, by their
@@ -776,11 +689,9 @@ impl<'p> Ctx<'p> {
     /// now on the host's monotonic clock, or with `None` to have no
     /// deadline. A host without that clock, as a test's, sets none.
     pub fn set_deadline(&mut self, millis: Option<u64>) {
-        self.deadline = millis.and_then(|millis| {
-            self.host
-                .monotonic_ms()
-                .map(|now| now.saturating_add(millis))
-        });
+        let host = self.capabilities.host();
+        self.deadline =
+            millis.and_then(|millis| host.monotonic_ms().map(|now| now.saturating_add(millis)));
     }
 
     /// Whether the invocation answers a request with a deadline: then an
@@ -794,8 +705,9 @@ impl<'p> Ctx<'p> {
     /// as it runs work that never waits, and the route once its work ends
     /// (area 7, "Time limits").
     pub fn out_of_time(&self) -> bool {
+        let host = self.capabilities.host();
         self.deadline
-            .is_some_and(|at| self.host.monotonic_ms().is_some_and(|now| now >= at))
+            .is_some_and(|at| host.monotonic_ms().is_some_and(|now| now >= at))
     }
 
     /// The running action's transaction in `store`, begun at the first
@@ -804,31 +716,12 @@ impl<'p> Ctx<'p> {
     /// action writes one store (area 5), so asking for a second is a
     /// fault.
     pub async fn transaction(&mut self, store: &str) -> Result<&mut dyn Transaction, StoreError> {
-        let host = self.host;
         let Some(boundary) = &mut self.boundary else {
             return Err(StoreError::Fault(
                 "a store operation outside an action".into(),
             ));
         };
-        match &boundary.store {
-            Some(open) if open != store => {
-                return Err(StoreError::Fault(format!(
-                    "an action writes one store, and this one already uses `{open}`, not `{store}`"
-                )));
-            }
-            Some(_) => {}
-            None => {
-                let Some(database) = host.database(store) else {
-                    return Err(StoreError::Fault(format!("no store called `{store}`")));
-                };
-                boundary.transaction = Some(database.begin_at(boundary.isolation).await?);
-                boundary.store = Some(store.to_string());
-            }
-        }
-        match &mut boundary.transaction {
-            Some(transaction) => Ok(transaction.as_mut()),
-            None => Err(StoreError::Fault("no transaction".into())),
-        }
+        boundary.transaction(&self.capabilities, store).await
     }
 
     /// A new identity: a version 7 UUID (area 5), its first 48 bits the
@@ -837,47 +730,17 @@ impl<'p> Ctx<'p> {
     /// seed starts, so a test that makes records reproduces with its seed.
     /// `None` when there is no seed and the host has no randomness to give.
     pub fn new_id(&mut self) -> Option<[u8; 16]> {
-        self.ids += 1;
-        let (a, b) = match self.env.seed {
-            Some(seed) => {
-                let mut state = seed ^ self.ids.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-                let mut next = || {
-                    state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-                    let mut z = state;
-                    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-                    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-                    z ^ (z >> 31)
-                };
-                (next(), next())
-            }
-            None => {
-                let mut random = [0u8; 16];
-                if !self.host.random(&mut random) {
-                    return None;
-                }
-                let [a @ .., _, _, _, _, _, _, _, _] = random;
-                let [_, _, _, _, _, _, _, _, b @ ..] = random;
-                (u64::from_be_bytes(a), u64::from_be_bytes(b))
-            }
-        };
-        Some(uuid_v7(self.env.clock.now(), a, b))
+        self.capabilities.new_id(self.env.clock.now())
     }
 
     /// Queues `event` in the running action's outbox, written to it as
     /// the action commits and delivered once it has (area 12); refused
     /// outside an action, and past the limits of one action's events.
     pub fn emit(&mut self, event: Event) -> Result<(), EmitRefused> {
-        let Some(boundary) = &mut self.boundary else {
-            return Err(EmitRefused::OutsideAction);
-        };
-        if boundary.outbox.len().saturating_sub(boundary.allowance) >= crate::outbox::MAX_EVENTS {
-            return Err(EmitRefused::TooMany);
+        match &mut self.boundary {
+            Some(boundary) => boundary.emit(event),
+            None => Err(EmitRefused::OutsideAction),
         }
-        if event.payload.len() > crate::outbox::MAX_EVENT_BYTES {
-            return Err(EmitRefused::TooLarge);
-        }
-        boundary.outbox.push(event);
-        Ok(())
     }
 
     /// Asks the next action that opens a boundary of its own not to commit
@@ -912,49 +775,9 @@ impl<'p> Ctx<'p> {
     /// budget (area 6).
     pub fn concurrent_change(&mut self) {
         if let Some(boundary) = &mut self.boundary {
-            boundary.concurrent_change = true;
+            boundary.mark_changed();
         }
     }
-}
-
-/// A new identity made at `now` from `host`'s randomness, outside any
-/// context: the run an operator asks a schedule's tick for (chunk 6.2d).
-/// None when the host can't give random bytes.
-pub(crate) fn random_id(host: &dyn Host, now: i64) -> Option<[u8; 16]> {
-    let mut random = [0u8; 16];
-    if !host.random(&mut random) {
-        return None;
-    }
-    let [a @ .., _, _, _, _, _, _, _, _] = random;
-    let [_, _, _, _, _, _, _, _, b @ ..] = random;
-    Some(uuid_v7(now, u64::from_be_bytes(a), u64::from_be_bytes(b)))
-}
-
-/// A version 7 UUID made at `millis` (milliseconds since the epoch), its
-/// 12 bits of `rand_a` from `a` and 62 of `rand_b` from `b` (RFC 9562).
-fn uuid_v7(millis: i64, a: u64, b: u64) -> [u8; 16] {
-    let millis = u64::try_from(millis).unwrap_or(0) & 0xFFFF_FFFF_FFFF;
-    let [_, _, m0, m1, m2, m3, m4, m5] = millis.to_be_bytes();
-    let [a0, a1] = ((a & 0x0FFF) as u16 | 0x7000).to_be_bytes();
-    let [b0, b1, b2, b3, b4, b5, b6, b7] = b.to_be_bytes();
-    [
-        m0,
-        m1,
-        m2,
-        m3,
-        m4,
-        m5,
-        a0,
-        a1,
-        (b0 & 0x3F) | 0x80,
-        b1,
-        b2,
-        b3,
-        b4,
-        b5,
-        b6,
-        b7,
-    ]
 }
 
 #[cfg(test)]

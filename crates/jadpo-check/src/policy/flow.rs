@@ -1430,6 +1430,7 @@ impl Walk<'_> {
             Expr::Literal(_)
             | Expr::Config { .. }
             | Expr::Constant { .. }
+            | Expr::Now
             | Expr::Unchecked
             | Expr::Propagate { .. } => Prov::default(),
             // A stored field an update by `id` reads is the record's.

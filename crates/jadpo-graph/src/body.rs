@@ -365,6 +365,11 @@ pub enum Expr {
     Constant {
         constant: Key,
     },
+    /// `clock.now`: the time the invocation's clock reads (area 10), an
+    /// operation with effects the runtime runs for either executor
+    /// (`jadpo_runtime::effects`, chunk 7.0b), never told by its source
+    /// text.
+    Now,
     /// Nothing to run: a mistake already reported, or something a later
     /// area builds.
     Unchecked,

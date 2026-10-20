@@ -476,13 +476,14 @@ pub fn run(
         }
         (Op::HashSha256, _) => Err(Fault::Shape),
         // `json.read` and `json.write` take the codec the plan numbers for
-        // their call besides their values, so each executor runs them
-        // through [`json::Codecs::read_value`] and
+        // their call besides their values, so the runtime's entry point for
+        // effects (`jadpo_runtime::effects`, which both executors call)
+        // runs them through [`json::Codecs::read_value`] and
         // [`json::Codecs::write_value`] over the plan's codecs.
         (Op::JsonRead | Op::JsonWrite, _) => Err(Fault::Shape),
-        // `random` reads the generator, so each executor runs it through
-        // [`random::run`] with the invocation's source of random bytes
-        // (area 19, question 19).
+        // `random` reads the generator, so the runtime's entry point for
+        // effects runs it through [`random::run`] with the invocation's
+        // source of random bytes (area 19, question 19).
         (
             Op::RandomCode
             | Op::RandomInteger
@@ -495,8 +496,9 @@ pub fn run(
         (Op::CryptoReadCertificate, [Value::Bytes(der)]) => certificate::read_certificate(der),
         (Op::CryptoReadCertificate, _) => Err(Fault::Shape),
         // `crypto` takes the key its call's `key:` names, the invocation's
-        // random bytes and its clock, so each executor runs it through
-        // [`crypto::run`] (area 19, "Hashing and cryptography").
+        // random bytes and its clock, so the runtime's entry point for
+        // effects runs it through [`crypto::run`] (area 19, "Hashing and
+        // cryptography").
         (
             Op::CryptoDecrypt
             | Op::CryptoEncrypt

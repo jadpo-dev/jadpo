@@ -323,7 +323,7 @@ impl Lower<'_> {
 
     fn fill(&mut self, id: usize, node: &SyntaxNode, ty: TypeRef, site: typed::Node) {
         let (start, end) = range(node);
-        let pauses = self.pauses(node, &site);
+        let pauses = Self::pauses(&site);
         self.sites[id] = Some(typed::Site {
             start,
             end,
@@ -337,7 +337,7 @@ impl Lower<'_> {
     /// Whether a site can pause (docs/compiler-runtime.md §2.5): an effect,
     /// or a call into the runtime's action boundary. Functions are pure
     /// (area 3), so calls to them, operations and constructions never do.
-    fn pauses(&self, node: &SyntaxNode, site: &typed::Node) -> bool {
+    fn pauses(site: &typed::Node) -> bool {
         match site {
             typed::Node::Stmt(TypedStmt::Emit { .. }) => true,
             typed::Node::Expr(typed::Expr::Call { callee, .. }) => matches!(
@@ -352,9 +352,7 @@ impl Lower<'_> {
             // `create`, `update` and `delete` write a record, and a
             // route test's request goes through the HTTP boundary.
             typed::Node::Expr(typed::Expr::Write { .. } | typed::Expr::Request { .. }) => true,
-            typed::Node::Expr(typed::Expr::Unchecked) => {
-                self.facts.effects.contains(&node_key(node))
-            }
+            typed::Node::Expr(typed::Expr::Now) => true,
             _ => false,
         }
     }
@@ -806,6 +804,9 @@ impl Lower<'_> {
             };
         }
         self.scan(expr.syntax());
+        if self.facts.effects.contains(&key) {
+            return typed::Expr::Now;
+        }
         typed::Expr::Unchecked
     }
 
