@@ -334,6 +334,10 @@ pub struct Logged {
     /// `None` while it is out, or on a host with no such clock.
     pub took_ms: Option<u64>,
     pub ended: Ended,
+    /// Its place among the steps of an action with several changing
+    /// calls, from 1, when it is one, sent or given back from the record
+    /// (chunk 7.5f).
+    pub step: Option<u32>,
 }
 
 impl Logged {
@@ -677,6 +681,7 @@ mod tests {
                 at: Clock::TEST.now(),
                 took_ms: None,
                 ended: Ended::Answered,
+                step: None,
             }]
         );
         assert_eq!(fake.sent(), [send("ada@example.com", Repeat::Unkeyed)]);
@@ -772,6 +777,7 @@ mod tests {
             at: 0,
             took_ms: None,
             ended,
+            step: None,
         };
         for (repeat, ended, acted) in [
             (Repeat::Unkeyed, Ended::Answered, true),

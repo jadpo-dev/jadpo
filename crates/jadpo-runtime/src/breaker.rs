@@ -470,6 +470,7 @@ mod tests {
             at: 0,
             took_ms: None,
             ended,
+            step: None,
         }
     }
 

@@ -687,6 +687,9 @@ pub const STEP_RECORDS: SystemTable = SystemTable {
         column("state", "text", false),
         column("problem", "jsonb", true),
         column("taken_at", "timestamptz(3)", false),
+        // When a tick raised the alert on unfinished records for it, once
+        // it had been unfinished a day (chunk 7.5f).
+        column("alerted_at", "timestamptz(3)", true),
     ],
     primary_key: &["id"],
     unique: &[SystemUnique {

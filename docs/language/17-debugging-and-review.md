@@ -179,7 +179,11 @@ POST /todos/0192…/complete   409 todo_mutation_conflict   41 ms   as user 0192
   (`recording`, `generated`, `scripted` or `sandbox`), and their inputs and
   answers in full ("Provider calls in development", below). An action with
   several changing calls shows each step's state: recorded, sent, answered,
-  replayed, in doubt (area 12).
+  replayed, in doubt (area 12). Built in chunk 7.5f for `jadpo dev`'s
+  lines, before the timelines: each step a request's action reached is a
+  trace line under its request's line, and a delivery whose action
+  reached steps gets a line of its own (area 12, "Development and the
+  metric, chosen in chunk 7.5f").
 
 ## Watching code run: `jadpo watch`
 

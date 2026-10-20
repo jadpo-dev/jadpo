@@ -48,8 +48,28 @@ impl std::fmt::Debug for Seen<'_> {
     }
 }
 
+/// A delivery whose subscriber's action kept a record of several changing
+/// calls, as an attempt at it ended (chunk 7.5f): what became of each step
+/// it reached, never a request, an answer or a key.
+#[derive(Clone, Copy, Debug)]
+pub struct Delivered<'a> {
+    pub delivery: [u8; 16],
+    /// The subscriber, as a log names it.
+    pub subscriber: &'a str,
+    /// The state the attempt left it in: `succeeded`, `pending` (to be
+    /// tried again), `failed`, `outcome_unknown` or `diverged`.
+    pub state: &'a str,
+    pub steps: &'a [crate::steps::RunSteps],
+}
+
 /// Where a host keeps its development call log.
 pub trait CallLog {
     /// Keeps `seen`.
     fn seen(&self, seen: &Seen<'_>);
+
+    /// Hears a delivery whose action reached steps under a record, as an
+    /// attempt at it ends: `jadpo dev` prints its line (chunk 7.5f).
+    fn delivered(&self, delivered: &Delivered<'_>) {
+        let _ = delivered;
+    }
 }

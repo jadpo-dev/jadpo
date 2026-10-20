@@ -346,6 +346,9 @@ pub async fn generate(
                 },
                 crate::steps::Answered::Done => return defect("a recorded answer with nothing"),
             };
+            // Logged as the step it is (chunk 7.5f).
+            let mut made = made;
+            made.step = ctx.steps_at();
             return replayed(ctx, ai, site, &asked, made, kept);
         }
         Err(Unanswered::Failure(failure)) => return Done::Failed(failure),

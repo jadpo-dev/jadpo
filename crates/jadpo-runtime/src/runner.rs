@@ -446,7 +446,40 @@ const GIVEN_BACK: &str = "given back";
 /// 6.6a). Once a call its run made may have acted outside, and sending it
 /// again could act twice, the delivery is neither given back nor retried
 /// but parked as `outcome_unknown` for an operator (area 16).
+///
+/// A host's development call log hears each attempt whose subscriber's
+/// action reached steps under a record, with what became of each (chunk
+/// 7.5f).
 pub(crate) async fn attempt_delivery(
+    executor: &dyn Executor,
+    ctx: &mut Ctx<'_>,
+    budget: &Budget<'_>,
+    delivery: Delivery,
+    within: Option<&mut crate::LocalFuture<'_, ()>>,
+) -> Option<(Outcome, &'static str)> {
+    let from = ctx.steps_kept();
+    let (id, subscriber) = (delivery.id, delivery.subscriber.clone());
+    let attempted = attempt(executor, ctx, budget, delivery, within).await;
+    let steps = ctx.take_steps(from);
+    if let (Some((_, state)), false) = (&attempted, steps.is_empty())
+        && let Some(log) = ctx.host().call_log()
+    {
+        let name = executor
+            .events()
+            .and_then(|events| events.plan.subscriber(&subscriber))
+            .map_or(subscriber.as_str(), |plan| plan.name.as_str());
+        log.delivered(&crate::call_log::Delivered {
+            delivery: id,
+            subscriber: name,
+            state,
+            steps: &steps,
+        });
+    }
+    attempted
+}
+
+/// [`attempt_delivery`]'s attempt.
+async fn attempt(
     executor: &dyn Executor,
     ctx: &mut Ctx<'_>,
     budget: &Budget<'_>,

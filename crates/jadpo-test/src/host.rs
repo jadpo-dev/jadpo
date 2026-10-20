@@ -53,6 +53,8 @@ pub struct Harness<D = jadpo_host_native::Postgres> {
     outbound: Option<std::rc::Rc<dyn jadpo_runtime::Outbound>>,
     /// Each connection's calls at once, the harness's own (chunk 7.6c).
     slots: jadpo_runtime::slots::Slots,
+    /// The development call log, when the test gives one (chunk 7.5f).
+    call_log: Option<std::rc::Rc<dyn jadpo_runtime::call_log::CallLog>>,
 }
 
 impl<D> std::fmt::Debug for Harness<D> {
@@ -95,6 +97,7 @@ impl<D: Database> Harness<D> {
             deferred: RefCell::new(Vec::new()),
             handed: RefCell::new(Vec::new()),
             outbound: None,
+            call_log: None,
             slots: jadpo_runtime::slots::Slots::new(),
         }
     }
@@ -103,6 +106,16 @@ impl<D: Database> Harness<D> {
     /// account: a test's server standing in for AWS's (chunk 7.7b).
     pub fn outbound(mut self, outbound: std::rc::Rc<dyn jadpo_runtime::Outbound>) -> Harness<D> {
         self.outbound = Some(outbound);
+        self
+    }
+
+    /// Gives it `log` for its development call log, as `jadpo dev`'s host
+    /// has one (chunk 7.5f).
+    pub fn with_call_log(
+        mut self,
+        log: std::rc::Rc<dyn jadpo_runtime::call_log::CallLog>,
+    ) -> Harness<D> {
+        self.call_log = Some(log);
         self
     }
 
@@ -253,6 +266,10 @@ impl<D: Database> Host for Harness<D> {
 
     fn outbound(&self) -> Option<&dyn jadpo_runtime::Outbound> {
         self.outbound.as_deref()
+    }
+
+    fn call_log(&self) -> Option<&dyn jadpo_runtime::call_log::CallLog> {
+        self.call_log.as_deref()
     }
 
     fn random(&self, bytes: &mut [u8]) -> bool {
