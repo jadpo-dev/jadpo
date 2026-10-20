@@ -80,6 +80,17 @@ pub fn texts(db: &dyn Db, project: Project) -> BTreeMap<String, Vec<FailureText>
         .collect::<BTreeSet<_>>()
         .into_iter()
         .flat_map(|scope| analyse(db, project, Name::new(db, scope)).failures.clone())
+        // A library package's failures, worded by the package or the app's
+        // root file (area 10, "Jadpo's and packages' text").
+        .chain(
+            super::packages::scopes(db, project)
+                .into_iter()
+                .flat_map(|scope| {
+                    super::packages::analyse_package(db, project, Name::new(db, scope))
+                        .failures
+                        .clone()
+                }),
+        )
         .map(|words| {
             (
                 words.name,

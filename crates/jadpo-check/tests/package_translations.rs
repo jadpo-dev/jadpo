@@ -518,3 +518,185 @@ public type PostcodeHint = Message {
         )]
     );
 }
+
+#[test]
+fn a_package_rewording_its_own_text_makes_the_app_s_translation_stale() {
+    use jadpo_check::translations::sources::{Entry, hash, render};
+    let german = "Schreiben Sie sie wie auf einem Brief, etwa SW1A 1AA.";
+    let record = |from: &str| {
+        render(&[Entry {
+            locale: "de_de".to_string(),
+            member: "postcodes.postcode_hint".to_string(),
+            from: hash(from),
+            wording: hash(german),
+            accepted: false,
+        }])
+    };
+    let check = |from: &str| {
+        let files = with(APP_EN_DE, &[SHOW, COUNT, ROOT_DE]);
+        let prefix = "packages/postcodes/v2/";
+        let held: Vec<(&str, &[u8])> = files
+            .iter()
+            .filter_map(|(path, text)| Some((path.strip_prefix(prefix)?, text.as_bytes())))
+            .collect();
+        let lock = write_lock(&[Locked {
+            package: "Postcodes.v2".to_string(),
+            source: Source::Path {
+                version: "2.0.0".to_string(),
+                path: "../postcodes".to_string(),
+                digest: package_digest(&held),
+            },
+        }]);
+        let sources = record(from);
+        let db = Database::default();
+        let project = project_with_records(
+            &db,
+            Layout::Project,
+            &files,
+            &[
+                ("jadpo.lock", &lock),
+                ("translations/sources.jadpo_record", &sources),
+            ],
+        );
+        jadpo_check::check(&db, project)
+            .iter()
+            .map(|d| format!("{}: {}", d.rule.id, d.message))
+            .collect::<Vec<_>>()
+    };
+    // Made from the package's English as it is today.
+    assert_eq!(
+        check("Write it as it is on a letter, such as SW1A 1AA."),
+        Vec::<String>::new()
+    );
+    // Made from English the package has since reworded.
+    assert_eq!(
+        check("Write it as on an envelope."),
+        vec![
+            "translation.stale: `postcodes.postcode_hint` in `de_de` was translated from `en_gb` wording that has since changed"
+                .to_string()
+        ]
+    );
+}
+
+#[test]
+fn a_package_failure_a_route_answers_with_is_worded_in_every_locale() {
+    let uk = (
+        "packages/postcodes/v2/libraries/uk.jadpo",
+        "/// Reading UK postcodes.
+public library uk {
+    /// Reads a postcode in upper case.
+    function tidy(entered: EnteredPostcode) fails InvalidPostcode -> EnteredPostcode {
+        return attempt EnteredPostcode(text.upper(entered)) {
+            invalid: InvalidPostcode
+        }
+    }
+}
+",
+    );
+    let entered_postcode = (
+        "packages/postcodes/v2/types/entered_postcode.jadpo",
+        "/// A postcode as someone typed it.
+public type EnteredPostcode = Text {
+    max_length: 20
+}
+",
+    );
+    let read = (
+        "domains/intake/actions/read_postcode.jadpo",
+        "use intake/types { EnteredText, PostcodeAnswer }
+use packages/postcodes
+
+/// Reads a customer's postcode.
+action read_postcode(entered: EnteredText) fails Postcodes.InvalidPostcode -> PostcodeAnswer {
+    var tidied: Postcodes.EnteredPostcode = attempt Postcodes.uk.tidy(Postcodes.EnteredPostcode(entered))
+    return PostcodeAnswer {
+        postcode: EnteredText(tidied)
+    }
+}
+",
+    );
+    let entered = (
+        "domains/intake/types/entered_text.jadpo",
+        "/// What someone typed.
+type EnteredText = Text {
+    max_length: 20
+}
+",
+    );
+    let request = (
+        "domains/intake/types/postcode_request.jadpo",
+        "use intake/types { EnteredText }
+
+/// A postcode to read.
+type PostcodeRequest = Input {
+    entered: EnteredText
+}
+",
+    );
+    let answer = (
+        "domains/intake/types/postcode_answer.jadpo",
+        "use intake/types { EnteredText }
+
+/// A postcode read.
+type PostcodeAnswer = Output {
+    postcode: EnteredText
+}
+",
+    );
+    let routes = (
+        "domains/intake/routes/postcode_checks.jadpo",
+        "use intake/types { PostcodeAnswer, PostcodeRequest }
+use intake/actions { read_postcode }
+
+routes PostcodeChecks {
+    prefix: /postcode-checks
+
+    POST / {
+        authentication: RouteAuthentication.none
+        input: PostcodeRequest
+        output: PostcodeAnswer
+        run: read_postcode(input.entered)
+    }
+}
+",
+    );
+    let policy = (
+        "policy.jadpo",
+        "use intake
+
+policy {
+    actions: {
+        intake.read_postcode: [Access.public]
+    }
+}
+",
+    );
+    let found = problems(&with(
+        APP_EN_DE,
+        &[
+            SHOW,
+            COUNT,
+            ROOT_DE,
+            uk,
+            entered_postcode,
+            read,
+            entered,
+            request,
+            answer,
+            routes,
+            policy,
+        ],
+    ));
+    // The API's record and Jadpo's own German are beside the point here.
+    let found: Vec<String> = found
+        .into_iter()
+        .filter(|problem| {
+            !problem.contains(" record.") && !problem.contains("translation.jadpo_missing")
+        })
+        .collect();
+    assert_eq!(found.len(), 1, "{found:#?}");
+    has(
+        &found,
+        "translations/de_de.jadpo translation.wording_missing: `postcodes.invalid_postcode` has no wording in `translations/de_de.jadpo`",
+    );
+}
